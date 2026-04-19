@@ -1,0 +1,210 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ESC LOG ERP — Design System (HSL only) */
+
+@layer base {
+  :root {
+    --background: 0 0% 97%;
+    --foreground: 0 0% 9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 9%;
+
+    --primary: 18 100% 50%;
+    --primary-foreground: 0 0% 100%;
+    --primary-soft: 18 100% 96%;
+    --primary-hover: 18 100% 45%;
+
+    --secondary: 0 0% 94%;
+    --secondary-foreground: 0 0% 9%;
+
+    --muted: 0 0% 92%;
+    --muted-foreground: 0 0% 45%;
+
+    --accent: 0 0% 94%;
+    --accent-foreground: 0 0% 9%;
+
+    --info: 221 83% 53%;
+    --info-foreground: 0 0% 100%;
+    --info-soft: 214 95% 93%;
+    /* #DBEAFE approx */
+    --info-strong: 221 70% 48%;
+    /* #1D4ED8 approx */
+
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --success-soft: 141 79% 93%;
+    /* #DCFCE7 approx */
+    --success-strong: 141 72% 29%;
+    /* #15803D approx */
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --warning-soft: 48 96% 91%;
+    /* #FEF9C3 approx */
+    --warning-strong: 38 92% 33%;
+    /* #A16207 approx */
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --destructive-soft: 0 92% 94%;
+    /* #FEE2E2 approx */
+    --destructive-strong: 0 74% 42%;
+    /* #B91C1C approx */
+
+    --border: 0 0% 87%;
+    --input: 0 0% 77%;
+    --ring: 221 83% 53%;
+
+    --row-alert: 12 100% 98%;
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 0 0% 30%;
+    --sidebar-primary: 18 100% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 0 0% 94%;
+    --sidebar-accent-foreground: 0 0% 9%;
+    --sidebar-border: 0 0% 87%;
+    --sidebar-ring: 221 83% 53%;
+
+    /* Specific Grays from DS */
+    --gray-100: 0 0% 92%;
+    --gray-200: 0 0% 87%;
+    --gray-300: 0 0% 77%;
+    --gray-400: 0 0% 64%;
+    --gray-500: 0 0% 45%;
+    --gray-600: 0 0% 30%;
+    --gray-900: 0 0% 9%;
+
+    /* Spacing Scale (4px) */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    --space-8: 32px;
+  }
+
+  .dark {
+    --background: 0 0% 7%;
+    --foreground: 0 0% 96%;
+
+    --card: 0 0% 11%;
+    --card-foreground: 0 0% 96%;
+
+    --popover: 0 0% 11%;
+    --popover-foreground: 0 0% 96%;
+
+    --primary: 18 100% 55%;
+    --primary-foreground: 0 0% 100%;
+    --primary-soft: 18 60% 16%;
+    --primary-hover: 18 100% 50%;
+
+    --secondary: 0 0% 16%;
+    --secondary-foreground: 0 0% 96%;
+
+    --muted: 0 0% 18%;
+    --muted-foreground: 0 0% 63%;
+
+    --accent: 0 0% 16%;
+    --accent-foreground: 0 0% 96%;
+
+    --info: 217 91% 60%;
+    --info-foreground: 0 0% 100%;
+    --info-soft: 217 60% 18%;
+
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --success-soft: 142 50% 15%;
+    --success-strong: 142 70% 70%;
+
+    --warning: 38 92% 55%;
+    --warning-foreground: 0 0% 9%;
+    --warning-soft: 38 60% 16%;
+    --warning-strong: 38 90% 70%;
+
+    --destructive: 0 75% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --destructive-soft: 0 60% 18%;
+    --destructive-strong: 0 80% 75%;
+
+    --border: 0 0% 20%;
+    --input: 0 0% 25%;
+    --ring: 217 91% 60%;
+
+    --row-alert: 12 60% 14%;
+
+    --sidebar-background: 0 0% 9%;
+    --sidebar-foreground: 0 0% 75%;
+    --sidebar-primary: 18 100% 55%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 0 0% 16%;
+    --sidebar-accent-foreground: 0 0% 96%;
+    --sidebar-border: 0 0% 18%;
+    --sidebar-ring: 217 91% 60%;
+
+    /* Specific Grays Dark */
+    --gray-100: 0 0% 15%;
+    --gray-200: 0 0% 20%;
+    --gray-300: 0 0% 30%;
+    --gray-400: 0 0% 45%;
+    --gray-500: 0 0% 63%;
+    --gray-600: 0 0% 75%;
+    --gray-900: 0 0% 96%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  .font-display {
+    font-family: 'Manrope', system-ui, sans-serif;
+  }
+}
+
+@layer components {
+  .esc-card {
+    @apply bg-card border border-border rounded-xl;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  }
+
+  .esc-chip {
+    @apply inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  .esc-table-header {
+    @apply bg-muted text-muted-foreground uppercase text-xs font-medium tracking-wide;
+  }
+}
