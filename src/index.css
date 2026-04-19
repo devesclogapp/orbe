@@ -9,9 +9,8 @@
 
 @layer base {
   :root {
-    /* Surfaces */
-    --background: 0 0% 97%;            /* #F7F7F7 */
-    --foreground: 0 0% 9%;             /* #171717 */
+    --background: 0 0% 97%;
+    --foreground: 0 0% 9%;
 
     --card: 0 0% 100%;
     --card-foreground: 0 0% 9%;
@@ -19,54 +18,47 @@
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 9%;
 
-    /* Brand — ESC LOG orange #FD4C00 */
     --primary: 18 100% 50%;
     --primary-foreground: 0 0% 100%;
-    --primary-soft: 18 100% 96%;       /* #FFF1EC */
-    --primary-hover: 18 100% 45%;      /* #E54300 */
+    --primary-soft: 18 100% 96%;
+    --primary-hover: 18 100% 45%;
 
-    /* Secondary surfaces */
-    --secondary: 0 0% 94%;             /* #F0F0F0 */
+    --secondary: 0 0% 94%;
     --secondary-foreground: 0 0% 9%;
 
-    --muted: 0 0% 92%;                 /* #EBEBEB */
-    --muted-foreground: 0 0% 45%;      /* #737373 */
+    --muted: 0 0% 92%;
+    --muted-foreground: 0 0% 45%;
 
     --accent: 0 0% 94%;
     --accent-foreground: 0 0% 9%;
 
-    /* Info — interactions, focus, links */
-    --info: 221 83% 53%;               /* #2563EB */
+    --info: 221 83% 53%;
     --info-foreground: 0 0% 100%;
-    --info-soft: 214 95% 93%;          /* #DBEAFE */
+    --info-soft: 214 95% 93%;
 
-    /* States */
     --success: 142 71% 45%;
     --success-foreground: 0 0% 100%;
-    --success-soft: 141 79% 87%;       /* #DCFCE7 */
-    --success-strong: 142 72% 29%;     /* #15803D */
+    --success-soft: 141 79% 87%;
+    --success-strong: 142 72% 29%;
 
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
-    --warning-soft: 55 97% 88%;        /* #FEF9C3 */
-    --warning-strong: 35 92% 33%;      /* #A16207 */
+    --warning-soft: 55 97% 88%;
+    --warning-strong: 35 92% 33%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --destructive-soft: 0 93% 94%;     /* #FEE2E2 */
-    --destructive-strong: 0 74% 42%;   /* #B91C1C */
+    --destructive-soft: 0 93% 94%;
+    --destructive-strong: 0 74% 42%;
 
-    /* Borders / inputs */
-    --border: 0 0% 87%;                /* #DEDEDE */
-    --input: 0 0% 77%;                 /* #C4C4C4 */
+    --border: 0 0% 87%;
+    --input: 0 0% 77%;
     --ring: 221 83% 53%;
 
-    /* Inconsistency row highlight */
-    --row-alert: 12 100% 98%;          /* #FFF5F3 */
+    --row-alert: 12 100% 98%;
 
     --radius: 0.5rem;
 
-    /* Sidebar */
     --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 0 0% 30%;
     --sidebar-primary: 18 100% 50%;
@@ -78,26 +70,62 @@
   }
 
   .dark {
-    /* Dark mode is intentionally identical to light — MVP is light-only. */
-    --background: 0 0% 97%;
-    --foreground: 0 0% 9%;
-    --card: 0 0% 100%;
-    --card-foreground: 0 0% 9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 9%;
-    --primary: 18 100% 50%;
+    --background: 0 0% 7%;             /* #121212 */
+    --foreground: 0 0% 96%;
+
+    --card: 0 0% 11%;                  /* #1C1C1C */
+    --card-foreground: 0 0% 96%;
+
+    --popover: 0 0% 11%;
+    --popover-foreground: 0 0% 96%;
+
+    --primary: 18 100% 55%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 0 0% 94%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 92%;
-    --muted-foreground: 0 0% 45%;
-    --accent: 0 0% 94%;
-    --accent-foreground: 0 0% 9%;
-    --destructive: 0 84% 60%;
+    --primary-soft: 18 60% 16%;
+    --primary-hover: 18 100% 50%;
+
+    --secondary: 0 0% 16%;
+    --secondary-foreground: 0 0% 96%;
+
+    --muted: 0 0% 18%;
+    --muted-foreground: 0 0% 63%;
+
+    --accent: 0 0% 16%;
+    --accent-foreground: 0 0% 96%;
+
+    --info: 217 91% 60%;
+    --info-foreground: 0 0% 100%;
+    --info-soft: 217 60% 18%;
+
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --success-soft: 142 50% 15%;
+    --success-strong: 142 70% 70%;
+
+    --warning: 38 92% 55%;
+    --warning-foreground: 0 0% 9%;
+    --warning-soft: 38 60% 16%;
+    --warning-strong: 38 90% 70%;
+
+    --destructive: 0 75% 55%;
     --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 87%;
-    --input: 0 0% 77%;
-    --ring: 221 83% 53%;
+    --destructive-soft: 0 60% 18%;
+    --destructive-strong: 0 80% 75%;
+
+    --border: 0 0% 20%;
+    --input: 0 0% 25%;
+    --ring: 217 91% 60%;
+
+    --row-alert: 12 60% 14%;
+
+    --sidebar-background: 0 0% 9%;
+    --sidebar-foreground: 0 0% 75%;
+    --sidebar-primary: 18 100% 55%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 0 0% 16%;
+    --sidebar-accent-foreground: 0 0% 96%;
+    --sidebar-border: 0 0% 18%;
+    --sidebar-ring: 217 91% 60%;
   }
 }
 
