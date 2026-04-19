@@ -1,6 +1,7 @@
-import { LayoutDashboard, ClipboardCheck, Users, Building2, Cpu, Download, AlertTriangle, CalendarCheck, BarChart3, Settings, FilePlus, UploadCloud, ExternalLink, Clock, History, UserCheck, Shield, ListChecks, Scale, Wallet, FileCheck } from "lucide-react";
-import { NavLink } from "react-router-dom";
+import { LayoutDashboard, ClipboardCheck, Users, Building2, Cpu, Download, AlertTriangle, CalendarCheck, BarChart3, Settings, FilePlus, UploadCloud, ExternalLink, Clock, UserCheck, Shield, ListChecks, Scale, Wallet, FileCheck, LogOut } from "lucide-react";
+import { NavLink, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 
 const mainItems = [
   { icon: LayoutDashboard, label: "Dashboard", to: "/" },
@@ -42,6 +43,20 @@ const govItems = [
 
 // Substituindo o export da Sidebar para usar estas seções
 export const Sidebar = () => {
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/login");
+  };
+
+  const userInitials = user?.user_metadata?.full_name
+    ? user.user_metadata.full_name.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2)
+    : user?.email?.slice(0, 2).toUpperCase() || "??";
+
+  const userName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Usuário";
+
   return (
     <aside className="w-60 shrink-0 bg-sidebar border-r border-sidebar-border flex flex-col h-screen sticky top-0">
       <div className="px-4 py-5">
@@ -84,17 +99,24 @@ export const Sidebar = () => {
         </div>
       </nav>
 
-      <div className="px-2 pt-2 border-t border-sidebar-border">
+      <div className="px-2 pt-2 border-t border-sidebar-border space-y-1">
         {renderItem({ icon: Settings, label: "Configurações", to: "/configuracoes" })}
+        <button
+          onClick={handleSignOut}
+          className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors text-left text-red-500 hover:bg-red-50"
+        >
+          <LogOut className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+          <span>Sair do sistema</span>
+        </button>
       </div>
 
       <div className="m-3 p-3 rounded-lg bg-background flex items-center gap-3 border border-border">
         <div className="h-9 w-9 rounded-full bg-secondary flex items-center justify-center font-display font-semibold text-foreground text-sm">
-          JD
+          {userInitials}
         </div>
-        <div className="leading-tight min-w-0">
-          <div className="font-display font-semibold text-foreground text-sm truncate">João Dias</div>
-          <div className="text-[11px] text-muted-foreground truncate">Encarregado</div>
+        <div className="leading-tight min-w-0 flex-1">
+          <div className="font-display font-semibold text-foreground text-sm truncate">{userName}</div>
+          <div className="text-[11px] text-muted-foreground truncate">{user?.email}</div>
         </div>
       </div>
 

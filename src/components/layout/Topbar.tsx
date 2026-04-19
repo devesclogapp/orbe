@@ -2,10 +2,16 @@ import { Bell, Search, Moon, Sun, ArrowLeft } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { usePreferences } from "@/contexts/PreferencesContext";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
 
 export const Topbar = ({ title, subtitle, backPath }: { title: string; subtitle?: string; backPath?: string }) => {
   const { theme, toggleTheme } = usePreferences();
+  const { user } = useAuth();
   const navigate = useNavigate();
+
+  const userInitials = user?.user_metadata?.full_name
+    ? user.user_metadata.full_name.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2)
+    : user?.email?.slice(0, 2).toUpperCase() || "??";
 
   return (
     <header className="h-16 bg-card border-b border-border flex items-center justify-between px-6 sticky top-0 z-10">
@@ -44,7 +50,7 @@ export const Topbar = ({ title, subtitle, backPath }: { title: string; subtitle?
           <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-primary" />
         </button>
         <div className="h-9 w-9 rounded-full bg-secondary flex items-center justify-center font-display font-semibold text-foreground text-sm">
-          JD
+          {userInitials}
         </div>
       </div>
     </header>
