@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
-import { EmpresaService, BaseService } from "@/services/base.service";
+import { EmpresaService, ColetorService } from "@/services/base.service";
 import { Button } from "@/components/ui/button";
 import { Plus, Cpu, Wifi, WifiOff, AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 
-const ColetorService = new BaseService('coletores');
+
 
 const statusMap = {
   online: { label: "Online", icon: Wifi, cls: "bg-success-soft text-success-strong" },
@@ -37,14 +37,7 @@ const Coletores = () => {
 
   const { data: list = [], isLoading } = useQuery({
     queryKey: ["coletores"],
-    queryFn: async () => {
-      const { data, error } = await (ColetorService as any).supabase
-        .from('coletores')
-        .select('*, empresas(nome)')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data;
-    }
+    queryFn: () => ColetorService.getWithEmpresa(),
   });
 
   const { data: empresaOptions = [] } = useQuery({

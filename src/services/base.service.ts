@@ -5,6 +5,7 @@ type Table = keyof Database['public']['Tables'];
 
 // SERVIÇO GENÉRICO DE CRUD
 export class BaseService<T extends Table> {
+  public supabase = supabase;
   constructor(protected table: T) {}
 
   async getAll() {
@@ -39,11 +40,74 @@ export class BaseService<T extends Table> {
 }
 
 // SERVIÇOS ESPECÍFICOS
-export const EmpresaService = new BaseService('empresas');
-export const ColaboradorService = new BaseService('colaboradores');
+class EmpresaServiceClass extends BaseService<'empresas'> {
+  constructor() { super('empresas'); }
 
-export const OperacaoService = {
-  ...new BaseService('operacoes'),
+  async getWithCounts() {
+    const { data, error } = await supabase
+      .from('empresas')
+      .select(`
+        *,
+        colaboradores:colaboradores(count),
+        coletores:coletores(count)
+      `);
+    if (error) throw error;
+    
+    return data.map(item => ({
+      ...item,
+      total_colaboradores: (item.colaboradores as any)?.[0]?.count || 0,
+      total_coletores: (item.coletores as any)?.[0]?.count || 0
+    }));
+  }
+}
+export const EmpresaService = new EmpresaServiceClass();
+
+class ColaboradorServiceClass extends BaseService<'colaboradores'> {
+  constructor() { super('colaboradores'); }
+
+  async getWithEmpresa() {
+    const { data, error } = await supabase
+      .from('colaboradores')
+      .select('*, empresas(nome, cidade, estado)')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data;
+  }
+}
+export const ColaboradorService = new ColaboradorServiceClass();
+
+class ColetorServiceClass extends BaseService<'coletores'> {
+  constructor() { super('coletores'); }
+  async getWithEmpresa() {
+    const { data, error } = await supabase.from('coletores').select('*, empresas(nome)').order('created_at', { ascending: false });
+    if (error) throw error;
+    return data;
+  }
+}
+export const ColetorService = new ColetorServiceClass();
+
+class LogSincronizacaoServiceClass extends BaseService<'logs_sincronizacao'> {
+  constructor() { super('logs_sincronizacao'); }
+  async getWithEmpresa() {
+    const { data, error } = await supabase.from('logs_sincronizacao').select('*, empresas(nome)').order('data', { ascending: false });
+    if (error) throw error;
+    return data;
+  }
+}
+export const LogSincronizacaoService = new LogSincronizacaoServiceClass();
+
+class ResultadosServiceClass extends BaseService<'resultados_processamento'> {
+  constructor() { super('resultados_processamento'); }
+  async getSummary() {
+    const { data, error } = await supabase.from('resultados_processamento').select('*, empresas(nome)').order('data', { ascending: false });
+    if (error) throw error;
+    return data;
+  }
+}
+export const ResultadosService = new ResultadosServiceClass();
+
+class OperacaoServiceClass extends BaseService<'operacoes'> {
+  constructor() { super('operacoes'); }
   async getByDate(date: string) {
     const { data, error } = await supabase
       .from('operacoes')
@@ -52,10 +116,33 @@ export const OperacaoService = {
     if (error) throw error;
     return data;
   }
-};
+  async getInconsistencies() {
+    const { data, error } = await supabase
+      .from('operacoes')
+      .select('*, colaboradores(nome, cargo, empresas(nome))')
+      .eq('status', 'inconsistente');
+    if (error) throw error;
+    return data;
+  }
+  async getWeeklyHistory() {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const dateStr = sevenDaysAgo.toISOString().split('T')[0];
 
-export const PontoService = {
-  ...new BaseService('registros_ponto'),
+    const { data, error } = await supabase
+      .from('resultados_processamento')
+      .select('*')
+      .gte('data', dateStr)
+      .order('data', { ascending: true });
+    
+    if (error) throw error;
+    return data;
+  }
+}
+export const OperacaoService = new OperacaoServiceClass();
+
+class PontoServiceClass extends BaseService<'registros_ponto'> {
+  constructor() { super('registros_ponto'); }
   async getByDate(date: string) {
     const { data, error } = await supabase
       .from('registros_ponto')
@@ -63,13 +150,14 @@ export const PontoService = {
       .eq('data', date);
     if (error) throw error;
     return data;
-  },
+  }
   async getByCollaborator(collabId: string) {
     const { data, error } = await supabase.from('registros_ponto').select('*').eq('colaborador_id', collabId).order('data', { ascending: false });
     if (error) throw error;
     return data;
   }
-};
+}
+export const PontoService = new PontoServiceClass();
 
 // STORAGE SERVICE
 export const StorageService = {

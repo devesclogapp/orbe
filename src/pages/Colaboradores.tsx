@@ -27,14 +27,7 @@ const Colaboradores = () => {
   // Queries
   const { data: list = [], isLoading } = useQuery({
     queryKey: ["colaboradores_list"],
-    queryFn: async () => {
-      const { data, error } = await (ColaboradorService as any).supabase
-        .from('colaboradores')
-        .select('*, empresas(nome, cidade, estado)')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data;
-    }
+    queryFn: () => ColaboradorService.getWithEmpresa(),
   });
 
   const { data: empresaOptions = [] } = useQuery({

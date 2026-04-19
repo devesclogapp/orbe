@@ -30,7 +30,7 @@ const Empresas = () => {
 
   const { data: list = [], isLoading } = useQuery({
     queryKey: ["empresas"],
-    queryFn: () => EmpresaService.getAll(),
+    queryFn: () => EmpresaService.getWithCounts(),
   });
 
   const createMutation = useMutation({
@@ -91,8 +91,8 @@ const Empresas = () => {
                   <MapPin className="h-3 w-3" /> {e.unidade} — {e.cidade}/{e.estado}
                 </p>
                 <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-border">
-                  <Stat icon={<Users className="h-3.5 w-3.5" />} label="Colaboradores" value={0} />
-                  <Stat icon={<Cpu className="h-3.5 w-3.5" />} label="Coletores" value={0} />
+                  <Stat icon={<Users className="h-3.5 w-3.5" />} label="Colaboradores" value={e.total_colaboradores} />
+                  <Stat icon={<Cpu className="h-3.5 w-3.5" />} label="Coletores" value={e.total_coletores} />
                 </div>
               </article>
             ))}

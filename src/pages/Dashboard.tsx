@@ -21,7 +21,7 @@ import {
 } from "recharts";
 import { useQuery } from "@tanstack/react-query";
 import { EmpresaService, ColaboradorService, OperacaoService } from "@/services/base.service";
-import { serieSemanal } from "@/data/mock";
+
 import { cn } from "@/lib/utils";
 
 const COLORS = ["hsl(var(--primary))", "hsl(var(--info))", "hsl(var(--success))", "hsl(var(--warning))"];
@@ -45,32 +45,44 @@ const Dashboard = () => {
     queryFn: () => OperacaoService.getByDate(new Date().toISOString().split('T')[0]),
   });
 
+  const { data: history = [] } = useQuery({
+    queryKey: ["operacoes_history"],
+    queryFn: () => OperacaoService.getWeeklyHistory(),
+  });
+
+  const serieSemanalReal = (history || []).map(h => ({
+    dia: new Date(h.data).toLocaleDateString('pt-BR', { weekday: 'short' }),
+    operacoes: h.total_operacoes || 0,
+    valor: Number(h.valor_total_calculado) || 0,
+    colaboradores: 0
+  }));
+
   const totalCalculado = ops.reduce((acc, op) => acc + (Number(op.quantidade) * Number(op.valor_unitario || 0)), 0);
   const inconsistencias = ops.filter(op => op.status === 'inconsistente').length;
 
   // Distribuição por cargo
   const distribCargo = Object.entries(
-    cols.reduce<Record<string, number>>((acc, c) => {
+    cols.reduce<Record<string, number>>((acc, c: any) => {
       const cargo = c.cargo || "Sem cargo";
       acc[cargo] = (acc[cargo] || 0) + 1;
       return acc;
     }, {})
-  ).map(([name, value]) => ({ name, value }));
+  ).map(([name, value]) => ({ name, value: Number(value) }));
 
   // Distribuição por tipo de contrato (Ponto vs Operação)
   const distribContrato = [
-    { name: "Por Hora (Ponto)", value: cols.filter((c) => c.tipo_contrato === "Hora").length },
-    { name: "Por Operação", value: cols.filter((c) => c.tipo_contrato === "Operação").length },
+    { name: "Por Hora (Ponto)", value: cols.filter((c: any) => c.tipo_contrato === "Hora").length },
+    { name: "Por Operação", value: cols.filter((c: any) => c.tipo_contrato === "Operação").length },
   ];
 
   return (
     <AppShell title="Dashboard" subtitle={`Visão geral · ${new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`}>
       <div className="space-y-5">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <MetricCard label="Operações hoje" value={ops.length.toString()} icon={Boxes} delta={{ value: "+30%", positive: true }} />
-          <MetricCard label="Colaboradores" value={cols.length.toString()} icon={Users} delta={{ value: "+1", positive: true }} />
-          <MetricCard label="Total calculado" value={`R$ ${totalCalculado.toLocaleString('pt-BR')}`} icon={Wallet} delta={{ value: "+12%", positive: true }} accent />
-          <MetricCard label="Inconsistências" value={inconsistencias.toString()} icon={AlertTriangle} delta={{ value: "-2", positive: true }} />
+          <MetricCard label="Operações hoje" value={ops.length.toString()} icon={Boxes} delta={{ value: ops.length > 0 ? "Ativo" : "Pendente", positive: ops.length > 0 }} />
+          <MetricCard label="Colaboradores" value={cols.length.toString()} icon={Users} />
+          <MetricCard label="Total calculado" value={`R$ ${totalCalculado.toLocaleString('pt-BR')}`} icon={Wallet} accent />
+          <MetricCard label="Inconsistências" value={inconsistencias.toString()} icon={AlertTriangle} delta={{ value: inconsistencias > 0 ? "Atenção" : "OK", positive: inconsistencias === 0 }} />
         </div>
 
         {/* Gráfico semanal com toggle */}
@@ -80,46 +92,56 @@ const Dashboard = () => {
               <Activity className="h-4 w-4 text-muted-foreground" />
               <h2 className="font-display font-semibold text-foreground">Operações e faturamento — últimos 7 dias</h2>
             </div>
-            <div className="inline-flex items-center bg-muted rounded-lg p-1">
-              <ChartTabBtn active={chartType === "line"} onClick={() => setChartType("line")} icon={<LineIcon className="h-3.5 w-3.5" />}>
-                Linhas
-              </ChartTabBtn>
-              <ChartTabBtn active={chartType === "bar"} onClick={() => setChartType("bar")} icon={<BarChart3 className="h-3.5 w-3.5" />}>
-                Colunas
-              </ChartTabBtn>
-            </div>
+            {serieSemanalReal.length > 0 && (
+              <div className="inline-flex items-center bg-muted rounded-lg p-1">
+                <ChartTabBtn active={chartType === "line"} onClick={() => setChartType("line")} icon={<LineIcon className="h-3.5 w-3.5" />}>
+                  Linhas
+                </ChartTabBtn>
+                <ChartTabBtn active={chartType === "bar"} onClick={() => setChartType("bar")} icon={<BarChart3 className="h-3.5 w-3.5" />}>
+                  Colunas
+                </ChartTabBtn>
+              </div>
+            )}
           </div>
 
           <div className="h-[280px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              {chartType === "line" ? (
-                <LineChart data={serieSemanal} margin={{ top: 8, right: 16, left: -10, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                  <XAxis dataKey="dia" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis yAxisId="l" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis yAxisId="r" orientation="right" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                  <Tooltip
-                    contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
-                    formatter={(v: number, n: string) => (n === "Faturamento (R$)" ? [`R$ ${v.toLocaleString("pt-BR")}`, n] : [v, n])}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Line yAxisId="l" type="monotone" dataKey="operacoes" name="Operações" stroke="hsl(var(--info))" strokeWidth={2.5} dot={{ r: 3 }} />
-                  <Line yAxisId="r" type="monotone" dataKey="valor" name="Faturamento (R$)" stroke="hsl(var(--primary))" strokeWidth={2.5} dot={{ r: 3 }} />
-                </LineChart>
-              ) : (
-                <BarChart data={serieSemanal} margin={{ top: 8, right: 16, left: -10, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                  <XAxis dataKey="dia" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                  <Tooltip
-                    contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="operacoes" name="Operações" fill="hsl(var(--info))" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="colaboradores" name="Colaboradores" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              )}
-            </ResponsiveContainer>
+            {serieSemanalReal.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                {chartType === "line" ? (
+                  <LineChart data={serieSemanalReal} margin={{ top: 8, right: 16, left: -10, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                    <XAxis dataKey="dia" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
+                    <YAxis yAxisId="l" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
+                    <YAxis yAxisId="r" orientation="right" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
+                    <Tooltip
+                      contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
+                      formatter={(v: number, n: string) => (n === "Faturamento (R$)" ? [`R$ ${v.toLocaleString("pt-BR")}`, n] : [v, n])}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Line yAxisId="l" type="monotone" dataKey="operacoes" name="Operações" stroke="hsl(var(--info))" strokeWidth={2.5} dot={{ r: 3 }} />
+                    <Line yAxisId="r" type="monotone" dataKey="valor" name="Faturamento (R$)" stroke="hsl(var(--primary))" strokeWidth={2.5} dot={{ r: 3 }} />
+                  </LineChart>
+                ) : (
+                  <BarChart data={serieSemanalReal} margin={{ top: 8, right: 16, left: -10, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                    <XAxis dataKey="dia" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
+                    <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
+                    <Tooltip
+                      contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Bar dataKey="operacoes" name="Operações" fill="hsl(var(--info))" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="valor" name="Faturamento" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                )}
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center text-muted-foreground bg-muted/20 rounded-lg border border-dashed border-border p-8 text-center">
+                <LineIcon className="h-10 w-10 mb-2 opacity-20" />
+                <p className="text-sm">Nenhum dado histórico disponível nos últimos 7 dias.</p>
+                <p className="text-xs mt-1">Os dados aparecerão aqui após o processamento diário.</p>
+              </div>
+            )}
           </div>
         </section>
 
