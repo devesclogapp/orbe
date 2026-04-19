@@ -94,6 +94,19 @@
     --space-5: 20px;
     --space-6: 24px;
     --space-8: 32px;
+
+    /* Aliases for Design System Compatibility */
+    --color-brand: var(--primary);
+    --color-foreground: var(--foreground);
+    --color-text-secondary: var(--gray-600);
+    --color-border: var(--border);
+    --color-surface: var(--card);
+    --color-bg: var(--background);
+    --color-bg-subtle: var(--gray-100);
+    --color-success: var(--success);
+    --color-error: var(--destructive);
+    --color-warning: var(--warning);
+    --color-info: var(--info);
   }
 
   .dark {

@@ -33,8 +33,8 @@ const ClientReports = () => {
             <div className="space-y-6">
                 {/* Filters and Search */}
                 <div className="flex flex-wrap gap-4 items-center justify-between">
-                    <div className="flex items-center gap-3 bg-white border border-slate-200 px-4 py-2.5 rounded-xl flex-1 max-w-md shadow-sm">
-                        <Search className="w-5 h-5 text-slate-400" />
+                    <div className="flex items-center gap-3 bg-card border border-border px-4 py-2.5 rounded-xl flex-1 max-w-md shadow-sm">
+                        <Search className="w-5 h-5 text-muted-foreground" />
                         <input
                             type="text"
                             placeholder="Pesquisar relatórios..."
@@ -42,10 +42,10 @@ const ClientReports = () => {
                         />
                     </div>
                     <div className="flex gap-2">
-                        <Button variant="outline" className="rounded-xl border-slate-200 font-bold gap-2">
+                        <Button variant="outline" className="rounded-xl border-border font-bold gap-2">
                             <Calendar className="w-4 h-4" /> Período
                         </Button>
-                        <Button variant="outline" className="rounded-xl border-slate-200 font-bold gap-2">
+                        <Button variant="outline" className="rounded-xl border-border font-bold gap-2">
                             <Filter className="w-4 h-4" /> Tipo
                         </Button>
                     </div>
@@ -54,15 +54,15 @@ const ClientReports = () => {
                 {/* Reports Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     {reports.slice(0, 4).map((rep) => (
-                        <Card key={rep.id} className="p-5 border-none shadow-sm shadow-slate-100 group hover:shadow-md transition-all">
-                            <div className="w-12 h-12 bg-slate-50 text-slate-400 rounded-xl flex items-center justify-center mb-4 group-hover:bg-[#FD4C00]/5 group-hover:text-[#FD4C00] transition-colors">
+                        <Card key={rep.id} className="p-5 border-none shadow-sm shadow-gray-100 group hover:shadow-md transition-all">
+                            <div className="w-12 h-12 bg-muted/30 text-muted-foreground rounded-xl flex items-center justify-center mb-4 group-hover:bg-primary/5 group-hover:text-brand transition-colors">
                                 <FileText className="w-6 h-6" />
                             </div>
-                            <h4 className="font-bold text-slate-800 text-sm mb-1">{rep.type}</h4>
-                            <p className="text-xs text-slate-400 mb-4">{rep.period}</p>
-                            <div className="flex items-center justify-between pt-4 border-t border-slate-50">
-                                <span className="text-[10px] font-bold text-slate-300 uppercase">{rep.size}</span>
-                                <button className="text-[#FD4C00] hover:bg-[#FD4C00]/10 p-1.5 rounded-lg transition-colors">
+                            <h4 className="font-bold text-gray-900 text-sm mb-1">{rep.type}</h4>
+                            <p className="text-xs text-muted-foreground mb-4">{rep.period}</p>
+                            <div className="flex items-center justify-between pt-4 border-t border-border/50">
+                                <span className="text-[10px] font-bold text-gray-300 uppercase">{rep.size}</span>
+                                <button className="text-brand hover:bg-brand/10 p-1.5 rounded-lg transition-colors">
                                     <Download className="w-4 h-4" />
                                 </button>
                             </div>
@@ -71,42 +71,42 @@ const ClientReports = () => {
                 </div>
 
                 {/* Detailed List */}
-                <Card className="border-none shadow-sm shadow-slate-100 overflow-hidden">
-                    <div className="p-6 border-b border-slate-50">
-                        <h3 className="font-bold text-slate-800">Todos os Arquivos</h3>
+                <Card className="border-none shadow-sm shadow-gray-100 overflow-hidden">
+                    <div className="p-6 border-b border-border/50">
+                        <h3 className="font-bold text-gray-900">Todos os Arquivos</h3>
                     </div>
                     <Table>
-                        <TableHeader className="bg-slate-50/50">
+                        <TableHeader className="bg-muted/30">
                             <TableRow>
-                                <TableHead className="font-bold text-slate-500 uppercase text-[10px]">Documento</TableHead>
-                                <TableHead className="font-bold text-slate-500 uppercase text-[10px]">Competência</TableHead>
-                                <TableHead className="font-bold text-slate-500 uppercase text-[10px]">Data de Publicação</TableHead>
-                                <TableHead className="font-bold text-slate-500 uppercase text-[10px] text-right">Ações</TableHead>
+                                <TableHead className="font-bold text-muted-foreground uppercase text-[10px]">Documento</TableHead>
+                                <TableHead className="font-bold text-muted-foreground uppercase text-[10px]">Competência</TableHead>
+                                <TableHead className="font-bold text-muted-foreground uppercase text-[10px]">Data de Publicação</TableHead>
+                                <TableHead className="font-bold text-muted-foreground uppercase text-[10px] text-right">Ações</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {reports.map((rep) => (
-                                <TableRow key={rep.id} className="hover:bg-slate-50/30">
+                                <TableRow key={rep.id} className="hover:bg-muted/20">
                                     <TableCell>
                                         <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 bg-slate-100 text-slate-400 rounded flex items-center justify-center">
+                                            <div className="w-8 h-8 bg-muted text-muted-foreground rounded flex items-center justify-center">
                                                 <FileBox className="w-4 h-4" />
                                             </div>
-                                            <span className="font-bold text-slate-700 text-sm">{rep.type}</span>
+                                            <span className="font-bold text-gray-700 text-sm">{rep.type}</span>
                                         </div>
                                     </TableCell>
                                     <TableCell>
-                                        <Badge variant="secondary" className="bg-slate-100 text-slate-500 hover:bg-slate-100 border-none">
+                                        <Badge variant="secondary" className="bg-muted text-muted-foreground hover:bg-muted border-none">
                                             {rep.period}
                                         </Badge>
                                     </TableCell>
-                                    <TableCell className="text-sm text-slate-500">{rep.date}</TableCell>
+                                    <TableCell className="text-sm text-muted-foreground">{rep.date}</TableCell>
                                     <TableCell className="text-right">
                                         <div className="flex justify-end gap-2">
-                                            <Button variant="ghost" size="icon" className="h-9 w-9 text-slate-400 hover:text-slate-900 border border-transparent hover:border-slate-100">
+                                            <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground hover:text-foreground border border-transparent hover:border-border">
                                                 <Eye className="w-4 h-4" />
                                             </Button>
-                                            <Button variant="ghost" size="icon" className="h-9 w-9 text-[#FD4C00] hover:bg-[#FD4C00]/5 border border-transparent hover:border-[#FD4C00]/10">
+                                            <Button variant="ghost" size="icon" className="h-9 w-9 text-brand hover:bg-brand/10 border border-transparent hover:border-brand/20">
                                                 <Download className="w-4 h-4" />
                                             </Button>
                                         </div>

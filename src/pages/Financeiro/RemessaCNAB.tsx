@@ -76,12 +76,12 @@ const RemessaCNAB = () => {
             <div className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <Card className="p-6 space-y-4">
-                        <h3 className="text-sm font-semibold text-gray-500 uppercase flex items-center gap-2">
+                        <h3 className="text-sm font-semibold text-muted-foreground uppercase flex items-center gap-2">
                             <Settings className="w-4 h-4" /> Configurações do Lote
                         </h3>
 
                         <div className="space-y-2">
-                            <label className="text-xs font-medium text-gray-700">Competência</label>
+                            <label className="text-xs font-medium text-gray-600">Competência</label>
                             <Select value={competencia} onValueChange={setCompetencia}>
                                 <SelectTrigger>
                                     <SelectValue placeholder="Selecione o mês" />
@@ -95,7 +95,7 @@ const RemessaCNAB = () => {
                         </div>
 
                         <div className="space-y-2">
-                            <label className="text-xs font-medium text-gray-700">Empresa (Cliente)</label>
+                            <label className="text-xs font-medium text-gray-600">Empresa (Cliente)</label>
                             <Select value={empresaId} onValueChange={setEmpresaId}>
                                 <SelectTrigger>
                                     <SelectValue placeholder="Selecione o cliente" />
@@ -109,7 +109,7 @@ const RemessaCNAB = () => {
                         </div>
 
                         <div className="space-y-2">
-                            <label className="text-xs font-medium text-gray-700">Conta Bancária Origem</label>
+                            <label className="text-xs font-medium text-gray-600">Conta Bancária Origem</label>
                             <Select value={contaId} onValueChange={setContaId}>
                                 <SelectTrigger>
                                     <SelectValue placeholder="Selecione a conta" />
@@ -129,42 +129,42 @@ const RemessaCNAB = () => {
                         </Button>
                     </Card>
 
-                    <Card className={`p-6 md:col-span-2 border-l-4 ${validation?.isValid ? 'border-l-success' : validation === null ? 'border-l-gray-300' : 'border-l-error'}`}>
-                        <h3 className="text-sm font-semibold text-gray-500 uppercase flex items-center gap-2 mb-4">
+                    <Card className={`p-6 md:col-span-2 border-l-4 ${validation?.isValid ? 'border-l-success' : validation === null ? 'border-l-border' : 'border-l-destructive'}`}>
+                        <h3 className="text-sm font-semibold text-muted-foreground uppercase flex items-center gap-2 mb-4">
                             <FileText className="w-4 h-4" /> Resumo e Validação
                         </h3>
 
                         {!validation ? (
-                            <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+                            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground/50">
                                 <FileText className="w-12 h-12 mb-2 opacity-20" />
                                 <p>Selecione os parâmetros e valide a remessa para ver os detalhes.</p>
                             </div>
                         ) : (
                             <div className="space-y-6">
                                 <div className="grid grid-cols-2 gap-4">
-                                    <div className="bg-gray-50 p-4 rounded-lg">
-                                        <span className="text-xs text-gray-500 block uppercase">Quantidade de Títulos</span>
+                                    <div className="bg-muted/30 p-4 rounded-lg">
+                                        <span className="text-xs text-muted-foreground block uppercase">Quantidade de Títulos</span>
                                         <span className="text-2xl font-bold">{validation.summary.totalItems}</span>
                                     </div>
-                                    <div className="bg-gray-50 p-4 rounded-lg">
-                                        <span className="text-xs text-gray-500 block uppercase">Valor Total</span>
-                                        <span className="text-2xl font-bold text-brand">
+                                    <div className="bg-muted/30 p-4 rounded-lg">
+                                        <span className="text-xs text-muted-foreground block uppercase">Valor Total</span>
+                                        <span className="text-2xl font-bold text-primary">
                                             {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(validation.summary.totalValue)}
                                         </span>
                                     </div>
                                 </div>
 
                                 <div className="space-y-3">
-                                    <h4 className="text-xs font-bold text-gray-700 uppercase">Status da Verificação</h4>
+                                    <h4 className="text-xs font-bold text-gray-600 uppercase">Status da Verificação</h4>
                                     {validation.isValid ? (
-                                        <div className="flex items-center gap-3 bg-green-50 text-green-700 p-3 rounded-md border border-green-200">
+                                        <div className="flex items-center gap-3 bg-success/10 text-success-strong p-3 rounded-md border border-success/20">
                                             <CheckCircle2 className="w-5 h-5" />
                                             <span className="text-sm">Todos os dados estão completos e o faturamento foi aprovado.</span>
                                         </div>
                                     ) : (
                                         <div className="space-y-2">
                                             {validation.errors.map((err: string, i: number) => (
-                                                <div key={i} className="flex items-center gap-3 bg-red-50 text-red-700 p-3 rounded-md border border-red-200">
+                                                <div key={i} className="flex items-center gap-3 bg-destructive/10 text-destructive-strong p-3 rounded-md border border-destructive/20">
                                                     <AlertCircle className="w-5 h-5 flex-shrink-0" />
                                                     <span className="text-sm">{err}</span>
                                                 </div>
@@ -174,7 +174,7 @@ const RemessaCNAB = () => {
                                 </div>
 
                                 {validation.isValid && (
-                                    <div className="pt-4 border-t border-gray-100 flex justify-end">
+                                    <div className="pt-4 border-t border-border flex justify-end">
                                         <Button className="bg-brand gap-2" onClick={handleGenerate}>
                                             <Download className="w-4 h-4" /> Gerar Arquivo CNAB
                                         </Button>
