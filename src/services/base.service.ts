@@ -159,6 +159,46 @@ class PontoServiceClass extends BaseService<'registros_ponto'> {
 }
 export const PontoService = new PontoServiceClass();
 
+class ClienteServiceClass extends BaseService<'clientes'> {
+  constructor() { super('clientes'); }
+}
+export const ClienteService = new ClienteServiceClass();
+
+class RegraCalculoServiceClass extends BaseService<'financeiro_regras'> {
+  constructor() { super('financeiro_regras'); }
+  async getByCliente(clienteId: string) {
+    const { data, error } = await supabase.from('financeiro_regras').select('*').eq('cliente_id', clienteId).eq('status', 'ativo');
+    if (error) throw error;
+    return data;
+  }
+}
+export const RegraCalculoService = new RegraCalculoServiceClass();
+
+class CompetenciaServiceClass extends BaseService<'financeiro_competencias'> {
+  constructor() { super('financeiro_competencias'); }
+  async getAtual() {
+    const firstDay = new Date();
+    firstDay.setDate(1);
+    const dateStr = firstDay.toISOString().split('T')[0];
+    
+    const { data, error } = await supabase.from('financeiro_competencias').select('*').eq('competencia', dateStr).maybeSingle();
+    if (error) throw error;
+    return data;
+  }
+}
+export const CompetenciaService = new CompetenciaServiceClass();
+
+class ConsolidadoServiceClass {
+  async getByCompetencia(competencia: string) {
+    const { data: clientes, error: errC } = await supabase.from('financeiro_consolidados_cliente').select('*, clientes(nome)').eq('competencia', competencia);
+    const { data: colaboradores, error: errCol } = await supabase.from('financeiro_consolidados_colaborador').select('*, colaboradores(nome, cargo)').eq('competencia', competencia);
+    
+    if (errC || errCol) throw errC || errCol;
+    return { clientes, colaboradores };
+  }
+}
+export const ConsolidadoService = new ConsolidadoServiceClass();
+
 // STORAGE SERVICE
 export const StorageService = {
   async uploadFile(bucket: string, path: string, file: File) {

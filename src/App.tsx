@@ -15,9 +15,14 @@ import Importacoes from "./pages/Importacoes";
 import Fechamento from "./pages/Fechamento";
 import Relatorios from "./pages/Relatorios";
 import Inconsistencias from "./pages/Inconsistencias";
+import FinanceiroGeral from "./pages/Financeiro/FinanceiroGeral";
+import RegrasCalculo from "./pages/Financeiro/RegrasCalculo";
+import FaturamentoCliente from "./pages/Financeiro/FaturamentoCliente";
+import DetalhamentoColaborador from "./pages/Financeiro/DetalhamentoColaborador";
 import Configuracoes from "./pages/Configuracoes";
 import Styleguide from "./pages/Styleguide";
 import NotFound from "./pages/NotFound.tsx";
+
 
 const queryClient = new QueryClient();
 
@@ -37,6 +42,10 @@ const App = () => (
               <Route path="/coletores" element={<Coletores />} />
               <Route path="/importacoes" element={<Importacoes />} />
               <Route path="/inconsistencias" element={<Inconsistencias />} />
+              <Route path="/financeiro" element={<FinanceiroGeral />} />
+              <Route path="/financeiro/regras" element={<RegrasCalculo />} />
+              <Route path="/financeiro/faturamento" element={<FaturamentoCliente />} />
+              <Route path="/financeiro/colaborador/:id" element={<DetalhamentoColaborador />} />
               <Route path="/fechamento" element={<Fechamento />} />
               <Route path="/relatorios" element={<Relatorios />} />
               <Route path="/configuracoes" element={<Configuracoes />} />

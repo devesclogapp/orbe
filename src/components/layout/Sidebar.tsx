@@ -2,22 +2,33 @@ import { LayoutDashboard, ClipboardCheck, Users, Building2, Cpu, Download, Alert
 import { NavLink } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
-const items = [
+const mainItems = [
   { icon: LayoutDashboard, label: "Dashboard", to: "/" },
-  { icon: ClipboardCheck, label: "Processamento de Ponto", to: "/processamento" },
+  { icon: ClipboardCheck, label: "Processamento", to: "/processamento" },
+  { icon: Download, label: "Importações", to: "/importacoes" },
+  { icon: AlertTriangle, label: "Inconsistências", to: "/inconsistencias" },
+];
+
+const rhItems = [
   { icon: Users, label: "Colaboradores", to: "/colaboradores" },
   { icon: Building2, label: "Empresas", to: "/empresas" },
   { icon: Cpu, label: "Coletores REP", to: "/coletores" },
-  { icon: Download, label: "Importações", to: "/importacoes" },
-  { icon: AlertTriangle, label: "Inconsistências", to: "/inconsistencias" },
+];
+
+const finItems = [
+  { icon: Wallet, label: "Financeiro Geral", to: "/financeiro" },
+  { icon: Scale, label: "Regras de Cálculo", to: "/financeiro/regras" },
+  { icon: FileCheck, label: "Faturamento", to: "/financeiro/faturamento" },
   { icon: CalendarCheck, label: "Fechamento Mensal", to: "/fechamento" },
   { icon: BarChart3, label: "Relatórios", to: "/relatorios" },
 ];
 
+import { Wallet, Scale, FileCheck } from "lucide-react";
+
+// Substituindo o export da Sidebar para usar estas seções
 export const Sidebar = () => {
   return (
     <aside className="w-60 shrink-0 bg-sidebar border-r border-sidebar-border flex flex-col h-screen sticky top-0">
-      {/* Logo */}
       <div className="px-4 py-5">
         <div className="flex items-center gap-2">
           <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
@@ -30,60 +41,27 @@ export const Sidebar = () => {
         </div>
       </div>
 
-      {/* Menu */}
-      <nav className="flex-1 px-2 space-y-0.5 overflow-y-auto pt-2">
-        {items.map((it) => {
-          const Icon = it.icon;
-          return (
-            <NavLink
-              key={it.to}
-              to={it.to}
-              end={it.to === "/"}
-              className={({ isActive }) =>
-                cn(
-                  "w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors text-left relative",
-                  isActive
-                    ? "bg-primary-soft text-primary font-medium"
-                    : "text-sidebar-foreground hover:bg-secondary hover:text-foreground"
-                )
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  {isActive && <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r bg-primary" />}
-                  <Icon className="h-4 w-4 shrink-0" strokeWidth={1.75} />
-                  <span className="truncate">{it.label}</span>
-                </>
-              )}
-            </NavLink>
-          );
-        })}
+      <nav className="flex-1 px-2 space-y-4 overflow-y-auto pt-2">
+        <div>
+          <h3 className="px-3 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Operacional</h3>
+          {mainItems.map(renderItem)}
+        </div>
+
+        <div>
+          <h3 className="px-3 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Recursos Humanos</h3>
+          {rhItems.map(renderItem)}
+        </div>
+
+        <div>
+          <h3 className="px-3 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Controladoria</h3>
+          {finItems.map(renderItem)}
+        </div>
       </nav>
 
-      {/* Configurações */}
       <div className="px-2 pt-2 border-t border-sidebar-border">
-        <NavLink
-          to="/configuracoes"
-          className={({ isActive }) =>
-            cn(
-              "w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors relative",
-              isActive
-                ? "bg-primary-soft text-primary font-medium"
-                : "text-sidebar-foreground hover:bg-secondary hover:text-foreground"
-            )
-          }
-        >
-          {({ isActive }) => (
-            <>
-              {isActive && <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r bg-primary" />}
-              <Settings className="h-4 w-4 shrink-0" strokeWidth={1.75} />
-              <span className="truncate">Configurações</span>
-            </>
-          )}
-        </NavLink>
+        {renderItem({ icon: Settings, label: "Configurações", to: "/configuracoes" })}
       </div>
 
-      {/* Usuário */}
       <div className="m-3 p-3 rounded-lg bg-background flex items-center gap-3 border border-border">
         <div className="h-9 w-9 rounded-full bg-secondary flex items-center justify-center font-display font-semibold text-foreground text-sm">
           JD
@@ -95,8 +73,35 @@ export const Sidebar = () => {
       </div>
 
       <div className="px-4 pb-3 text-[11px] text-muted-foreground">
-        v0.1 — MVP
+        v0.2 — Financeiro
       </div>
     </aside>
+  );
+};
+
+const renderItem = (it: any) => {
+  const Icon = it.icon;
+  return (
+    <NavLink
+      key={it.to}
+      to={it.to}
+      end={it.to === "/"}
+      className={({ isActive }) =>
+        cn(
+          "w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors text-left relative",
+          isActive
+            ? "bg-primary-soft text-primary font-medium"
+            : "text-sidebar-foreground hover:bg-secondary hover:text-foreground"
+        )
+      }
+    >
+      {({ isActive }) => (
+        <>
+          {isActive && <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r bg-primary" />}
+          <Icon className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+          <span className="truncate">{it.label}</span>
+        </>
+      )}
+    </NavLink>
   );
 };
