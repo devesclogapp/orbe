@@ -13,8 +13,18 @@ import Empresas from "./pages/Empresas";
 import Coletores from "./pages/Coletores";
 import Importacoes from "./pages/Importacoes";
 import Fechamento from "./pages/Fechamento";
-import Relatorios from "./pages/Relatorios";
+
+// Relatórios e Integração V4
+import RelatoriosHub from "./pages/Relatorios/RelatoriosHub";
+import RelatorioDetalhe from "./pages/Relatorios/RelatorioDetalhe";
+import Agendamentos from "./pages/Relatorios/Agendamentos";
+import LayoutsExportacao from "./pages/Relatorios/LayoutsExportacao";
+import IntegracaoContabil from "./pages/Relatorios/IntegracaoContabil";
+import MapeamentoContabil from "./pages/Relatorios/MapeamentoContabil";
+import LogsIntegracao from "./pages/Relatorios/LogsIntegracao";
+
 import Inconsistencias from "./pages/Inconsistencias";
+
 import FinanceiroGeral from "./pages/Financeiro/FinanceiroGeral";
 import RegrasCalculo from "./pages/Financeiro/RegrasCalculo";
 import FaturamentoCliente from "./pages/Financeiro/FaturamentoCliente";
@@ -74,9 +84,18 @@ const App = () => (
               <Route path="/cliente/aprovacoes" element={<ClientApprovals />} />
 
               <Route path="/fechamento" element={<Fechamento />} />
-              <Route path="/relatorios" element={<Relatorios />} />
+
+              {/* Relatórios e Integração V4 */}
+              <Route path="/relatorios" element={<RelatoriosHub />} />
+              <Route path="/relatorios/detalhe/:id" element={<RelatorioDetalhe />} />
+              <Route path="/relatorios/agendamentos" element={<Agendamentos />} />
+              <Route path="/relatorios/layouts" element={<LayoutsExportacao />} />
+              <Route path="/relatorios/integracao" element={<IntegracaoContabil />} />
+              <Route path="/relatorios/mapeamento" element={<MapeamentoContabil />} />
+              <Route path="/relatorios/integracao/logs" element={<LogsIntegracao />} />
 
               {/* Banco de Horas V4 */}
+
               <Route path="/banco-horas" element={<PainelGeralBH />} />
               <Route path="/banco-horas/regras" element={<RegrasBH />} />
               <Route path="/banco-horas/extrato/:id" element={<ExtratoColaborador />} />

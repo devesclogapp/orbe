@@ -7,6 +7,11 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
+  }
   public: {
     Tables: {
       auditoria: {
@@ -768,7 +773,7 @@ export type Database = {
           }
         ]
       }
-      registros_ponto: {
+      records_ponto: {
         Row: {
           colaborador_id: string | null
           created_at: string | null
@@ -821,30 +826,33 @@ export type Database = {
           data: string
           empresa_id: string | null
           id: string
-          total_colaboradores: number | null
-          total_faturado: number | null
-          total_horas: number | null
+          total_horas_extras: number | null
+          total_horas_normais: number | null
+          total_inconsistencias: number | null
           total_operacoes: number | null
+          valor_total_calculado: number | null
         }
         Insert: {
           created_at?: string | null
           data: string
           empresa_id?: string | null
           id?: string
-          total_colaboradores?: number | null
-          total_faturado?: number | null
-          total_horas?: number | null
+          total_horas_extras?: number | null
+          total_horas_normais?: number | null
+          total_inconsistencias?: number | null
           total_operacoes?: number | null
+          valor_total_calculado?: number | null
         }
         Update: {
           created_at?: string | null
           data?: string
           empresa_id?: string | null
           id?: string
-          total_colaboradores?: number | null
-          total_faturado?: number | null
-          total_horas?: number | null
+          total_horas_extras?: number | null
+          total_horas_normais?: number | null
+          total_inconsistencias?: number | null
           total_operacoes?: number | null
+          valor_total_calculado?: number | null
         }
         Relationships: [
           {
@@ -855,6 +863,268 @@ export type Database = {
             referencedColumns: ["id"]
           }
         ]
+      }
+      relatorios_catalogo: {
+        Row: {
+          id: string
+          nome: string
+          descricao: string | null
+          categoria: string
+          formatos_disponiveis: string[] | null
+          filtros_suportados: Json | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          nome: string
+          descricao?: string | null
+          categoria: string
+          formatos_disponiveis?: string[] | null
+          filtros_suportados?: Json | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          nome?: string
+          descricao?: string | null
+          categoria?: string
+          formatos_disponiveis?: string[] | null
+          filtros_suportados?: Json | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      relatorios_favoritos: {
+        Row: {
+          id: string
+          user_id: string
+          relatorio_id: string | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          relatorio_id?: string | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          relatorio_id?: string | null
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "relatorios_favoritos_relatorio_id_fkey"
+            columns: ["relatorio_id"]
+            isOneToOne: false
+            referencedRelation: "relatorios_catalogo"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      relatorios_layouts_exportacao: {
+        Row: {
+          id: string
+          nome: string
+          tipo: string
+          destino: string
+          colunas: Json
+          status: string | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          nome: string
+          tipo: string
+          destino: string
+          colunas: Json
+          status?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          nome?: string
+          tipo?: string
+          destino?: string
+          colunas?: Json
+          status?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      relatorios_agendamentos: {
+        Row: {
+          id: string
+          nome: string
+          relatorio_id: string | null
+          frequencia: string
+          destinatarios: string[]
+          filtros_padrao: Json | null
+          layout_id: string | null
+          status: string | null
+          ultima_execucao: string | null
+          proxima_execucao: string | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          nome: string
+          relatorio_id?: string | null
+          frequencia: string
+          destinatarios: string[]
+          filtros_padrao?: Json | null
+          layout_id?: string | null
+          status?: string | null
+          ultima_execucao?: string | null
+          proxima_execucao?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          nome?: string
+          relatorio_id?: string | null
+          frequencia?: string
+          destinatarios?: string[]
+          filtros_padrao?: Json | null
+          layout_id?: string | null
+          status?: string | null
+          ultima_execucao?: string | null
+          proxima_execucao?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "relatorios_agendamentos_relatorio_id_fkey"
+            columns: ["relatorio_id"]
+            isOneToOne: false
+            referencedRelation: "relatorios_catalogo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "relatorios_agendamentos_layout_id_fkey"
+            columns: ["layout_id"]
+            isOneToOne: false
+            referencedRelation: "relatorios_layouts_exportacao"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      contabil_configuracao: {
+        Row: {
+          id: string
+          sistema_destino: string
+          status: string | null
+          credenciais: Json | null
+          parametros_api: Json | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          sistema_destino: string
+          status?: string | null
+          credenciais?: Json | null
+          parametros_api?: Json | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          sistema_destino?: string
+          status?: string | null
+          credenciais?: Json | null
+          parametros_api?: Json | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      contabil_mapeamento: {
+        Row: {
+          id: string
+          operacao_tipo: string
+          conta_contabil: string
+          classificacao: string | null
+          empresa_id: string | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          operacao_tipo: string
+          conta_contabil: string
+          classificacao?: string | null
+          empresa_id?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          operacao_tipo?: string
+          conta_contabil?: string
+          classificacao?: string | null
+          empresa_id?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contabil_mapeamento_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      contabil_logs_integracao: {
+        Row: {
+          id: string
+          execucao_data: string | null
+          tipo_envio: string
+          status: string
+          sistema_destino: string
+          payload: Json | null
+          resposta_sistema: Json | null
+          erro_detalhe: string | null
+          user_id: string | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          execucao_data?: string | null
+          tipo_envio: string
+          status: string
+          sistema_destino: string
+          payload?: Json | null
+          resposta_sistema?: Json | null
+          erro_detalhe?: string | null
+          user_id?: string | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          execucao_data?: string | null
+          tipo_envio?: string
+          status?: string
+          sistema_destino?: string
+          payload?: Json | null
+          resposta_sistema?: Json | null
+          erro_detalhe?: string | null
+          user_id?: string | null
+          created_at?: string | null
+        }
+        Relationships: []
       }
     }
     Views: {

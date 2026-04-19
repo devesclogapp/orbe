@@ -99,7 +99,7 @@ export const Sidebar = () => {
       </div>
 
       <div className="px-4 pb-3 text-[11px] text-muted-foreground">
-        v4.0 — Banco de Horas & Governança
+        v4.1 — Relatórios & Integração
       </div>
     </aside>
   );

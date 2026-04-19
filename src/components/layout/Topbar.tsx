@@ -1,15 +1,29 @@
-import { Bell, Search, Moon, Sun } from "lucide-react";
+import { Bell, Search, Moon, Sun, ArrowLeft } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { usePreferences } from "@/contexts/PreferencesContext";
+import { useNavigate } from "react-router-dom";
 
-export const Topbar = ({ title, subtitle }: { title: string; subtitle?: string }) => {
+export const Topbar = ({ title, subtitle, backPath }: { title: string; subtitle?: string; backPath?: string }) => {
   const { theme, toggleTheme } = usePreferences();
+  const navigate = useNavigate();
+
   return (
     <header className="h-16 bg-card border-b border-border flex items-center justify-between px-6 sticky top-0 z-10">
-      <div>
-        <h1 className="font-display font-semibold text-[18px] text-foreground leading-none">{title}</h1>
-        {subtitle && <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>}
+      <div className="flex items-center gap-3">
+        {backPath && (
+          <button
+            onClick={() => navigate(backPath)}
+            className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors mr-1"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+        )}
+        <div>
+          <h1 className="font-display font-semibold text-[18px] text-foreground leading-none">{title}</h1>
+          {subtitle && <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>}
+        </div>
       </div>
+
       <div className="flex items-center gap-3">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
