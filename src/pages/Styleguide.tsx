@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Label } from "@/components/ui/label";
-import { Sun, Moon, Palette, Type, Square, Layers, MousePointer2 } from "lucide-react";
+import { Sun, Moon, Palette, Type, Square, Layers, MousePointer2, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 
 const Styleguide = () => {
@@ -330,7 +330,44 @@ const Styleguide = () => {
                             </Table>
                         </CardContent>
                     </Card>
+                    {/* Padrões de Configuração */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="font-display">Padrões de Configuração</CardTitle>
+                            <CardDescription>Componentes para navegação de preferências e gestão de tabelas auxiliares.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-8">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="p-4 rounded-xl border border-primary bg-primary-soft ring-1 ring-primary">
+                                    <div className="mb-3 h-10 w-10 rounded-lg bg-primary text-white flex items-center justify-center">
+                                        <Palette className="h-5 w-5" />
+                                    </div>
+                                    <div className="font-display font-bold text-sm">Opção Ativa</div>
+                                    <div className="text-[11px] text-muted-foreground mt-1">Utilizado em seletores de preferência e temas.</div>
+                                </div>
+                                <div className="p-4 rounded-xl border border-border bg-card">
+                                    <div className="mb-3 h-10 w-10 rounded-lg bg-muted text-muted-foreground flex items-center justify-center">
+                                        <Palette className="h-5 w-5" />
+                                    </div>
+                                    <div className="font-display font-bold text-sm">Opção Inativa</div>
+                                    <div className="text-[11px] text-muted-foreground mt-1">Estado padrão para escolhas não selecionadas.</div>
+                                </div>
+                            </div>
+
+                            <div className="p-4 rounded-xl border bg-muted/20">
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className="text-xs font-bold uppercase tracking-tight text-muted-foreground">ConfigTable Action Bar</span>
+                                    <Button size="sm" className="h-8 text-xs font-bold"><Plus className="h-3 w-3 mr-1" /> Novo</Button>
+                                </div>
+                                <div className="h-10 bg-card border rounded-md border-dashed flex items-center justify-center text-xs text-muted-foreground">
+                                    Área de Tabela Auxiliar (CRUD)
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
                     {/* Portal do Cliente */}
+
                     <Card className="bg-slate-900 text-white overflow-hidden">
                         <CardHeader>
                             <CardTitle className="font-display">Portal do Cliente (Ambiente Externo)</CardTitle>
