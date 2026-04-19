@@ -5,9 +5,10 @@ interface AuthLayoutProps {
     children: React.ReactNode;
     title: string;
     subtitle?: string;
+    centerHeader?: boolean;
 }
 
-export const AuthLayout: React.FC<AuthLayoutProps> = ({ children, title, subtitle }) => {
+export const AuthLayout: React.FC<AuthLayoutProps> = ({ children, title, subtitle, centerHeader }) => {
     return (
         <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
             <div className="mb-8 flex flex-col items-center gap-2">
@@ -18,7 +19,7 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({ children, title, subtitl
             </div>
 
             <Card className="w-full max-w-md p-8 border border-border shadow-xl bg-card">
-                <div className="mb-6">
+                <div className={`mb-6 ${centerHeader ? 'text-center' : ''}`}>
                     <h2 className="text-xl font-bold font-display text-foreground">{title}</h2>
                     {subtitle && (
                         <p className="text-sm font-sans text-muted-foreground mt-1">{subtitle}</p>
@@ -26,6 +27,7 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({ children, title, subtitl
                 </div>
                 {children}
             </Card>
+
 
             <div className="mt-8 text-center">
                 <p className="text-xs text-muted-foreground font-sans">

@@ -51,10 +51,8 @@ const Cadastro = () => {
 
             if (error) throw error;
 
-            toast.success("Conta criada com sucesso! Redirecionando...");
-            // Com Supabase Auth, se o autologin estiver ativado, ele já loga.
-            // Se precisar de confirmação de email, o comportamento muda.
-            setTimeout(() => navigate("/"), 2000);
+            toast.success("Conta criada com sucesso!");
+            setTimeout(() => navigate("/verificar-email", { state: { email: data.email } }), 1000);
         } catch (error) {
             toast.error(error instanceof Error ? error.message : "Erro ao criar conta");
         } finally {

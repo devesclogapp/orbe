@@ -52,6 +52,7 @@ const EsqueciSenha = () => {
             <AuthLayout
                 title="Verifique seu e-mail"
                 subtitle="Enviamos um link de recuperação para o endereço informado."
+                centerHeader={true}
             >
                 <div className="space-y-6 text-center">
                     <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">

@@ -14,6 +14,7 @@ import Login from "./pages/Auth/Login";
 import Cadastro from "./pages/Auth/Cadastro";
 import EsqueciSenha from "./pages/Auth/EsqueciSenha";
 import RedefinirSenha from "./pages/Auth/RedefinirSenha";
+import VerificarEmail from "./pages/Auth/VerificarEmail";
 
 import Dashboard from "./pages/Dashboard";
 import Processamento from "./pages/Processamento";
@@ -76,6 +77,7 @@ const App = () => (
                 <Route path="/cadastro" element={<Cadastro />} />
                 <Route path="/esqueci-senha" element={<EsqueciSenha />} />
                 <Route path="/redefinir-senha" element={<RedefinirSenha />} />
+                <Route path="/verificar-email" element={<VerificarEmail />} />
 
                 {/* Protected Routes */}
                 <Route path="/" element={<AuthGuard><Dashboard /></AuthGuard>} />
