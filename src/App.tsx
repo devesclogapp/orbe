@@ -29,6 +29,16 @@ import Configuracoes from "./pages/Configuracoes";
 import Styleguide from "./pages/Styleguide";
 import NotFound from "./pages/NotFound.tsx";
 
+// V4 — Banco de Horas
+import PainelGeralBH from "./pages/BancoHoras/PainelGeral";
+import RegrasBH from "./pages/BancoHoras/Regras";
+import ExtratoColaborador from "./pages/BancoHoras/ExtratoColaborador";
+
+// V4 — Governança
+import UsuariosGestao from "./pages/Governanca/Usuarios";
+import PerfisPermissoes from "./pages/Governanca/Perfis";
+import AuditoriaLogs from "./pages/Governanca/Auditoria";
+
 
 const queryClient = new QueryClient();
 
@@ -65,6 +75,17 @@ const App = () => (
 
               <Route path="/fechamento" element={<Fechamento />} />
               <Route path="/relatorios" element={<Relatorios />} />
+
+              {/* Banco de Horas V4 */}
+              <Route path="/banco-horas" element={<PainelGeralBH />} />
+              <Route path="/banco-horas/regras" element={<RegrasBH />} />
+              <Route path="/banco-horas/extrato/:id" element={<ExtratoColaborador />} />
+
+              {/* Governança V4 */}
+              <Route path="/governanca/usuarios" element={<UsuariosGestao />} />
+              <Route path="/governanca/perfis" element={<PerfisPermissoes />} />
+              <Route path="/governanca/auditoria" element={<AuditoriaLogs />} />
+
               <Route path="/configuracoes" element={<Configuracoes />} />
               <Route path="/styleguide" element={<Styleguide />} />
               <Route path="*" element={<NotFound />} />

@@ -1,4 +1,4 @@
-import { LayoutDashboard, ClipboardCheck, Users, Building2, Cpu, Download, AlertTriangle, CalendarCheck, BarChart3, Settings, FilePlus, UploadCloud, ExternalLink } from "lucide-react";
+import { LayoutDashboard, ClipboardCheck, Users, Building2, Cpu, Download, AlertTriangle, CalendarCheck, BarChart3, Settings, FilePlus, UploadCloud, ExternalLink, Clock, History, UserCheck, Shield, ListChecks, Scale, Wallet, FileCheck } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
@@ -29,7 +29,16 @@ const portalItems = [
   { icon: ExternalLink, label: "Portal do Cliente", to: "/cliente/dashboard" },
 ];
 
-import { Wallet, Scale, FileCheck } from "lucide-react";
+const bhItems = [
+  { icon: Clock, label: "Banco de Horas", to: "/banco-horas" },
+  { icon: Scale, label: "Regras de Banco", to: "/banco-horas/regras" },
+];
+
+const govItems = [
+  { icon: UserCheck, label: "Gestão de Usuários", to: "/governanca/usuarios" },
+  { icon: Shield, label: "Perfis e Permissões", to: "/governanca/perfis" },
+  { icon: ListChecks, label: "Auditoria", to: "/governanca/auditoria" },
+];
 
 // Substituindo o export da Sidebar para usar estas seções
 export const Sidebar = () => {
@@ -56,11 +65,17 @@ export const Sidebar = () => {
         <div>
           <h3 className="px-3 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Recursos Humanos</h3>
           {rhItems.map(renderItem)}
+          {bhItems.map(renderItem)}
         </div>
 
         <div>
           <h3 className="px-3 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Controladoria</h3>
           {finItems.map(renderItem)}
+        </div>
+
+        <div>
+          <h3 className="px-3 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Governança</h3>
+          {govItems.map(renderItem)}
         </div>
 
         <div>
@@ -84,7 +99,7 @@ export const Sidebar = () => {
       </div>
 
       <div className="px-4 pb-3 text-[11px] text-muted-foreground">
-        v3.0 — CNAB & Portal
+        v4.0 — Banco de Horas & Governança
       </div>
     </aside>
   );
