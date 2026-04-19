@@ -24,7 +24,14 @@ import { EmpresaService, ColaboradorService, OperacaoService } from "@/services/
 
 import { cn } from "@/lib/utils";
 
-const COLORS = ["hsl(var(--primary))", "hsl(var(--info))", "hsl(var(--success))", "hsl(var(--warning))"];
+// Cores autorizadas pelo Orbe Design System
+const COLORS = [
+  "hsl(var(--primary))", // Brand Orange
+  "hsl(var(--info))",    // Interaction Blue
+  "hsl(var(--success))", // Status Green
+  "hsl(var(--warning))", // Alert Amber
+  "hsl(var(--gray-300))" // Neutral Gray
+];
 
 const Dashboard = () => {
   const [chartType, setChartType] = useState<"line" | "bar">("line");
@@ -114,7 +121,13 @@ const Dashboard = () => {
                     <YAxis yAxisId="l" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
                     <YAxis yAxisId="r" orientation="right" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
                     <Tooltip
-                      contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
+                      contentStyle={{
+                        background: "hsl(var(--card))",
+                        border: "1px solid hsl(var(--border))",
+                        borderRadius: "8px",
+                        fontSize: "12px",
+                        fontFamily: "Inter, sans-serif"
+                      }}
                       formatter={(v: number, n: string) => (n === "Faturamento (R$)" ? [`R$ ${v.toLocaleString("pt-BR")}`, n] : [v, n])}
                     />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
@@ -127,7 +140,13 @@ const Dashboard = () => {
                     <XAxis dataKey="dia" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
                     <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
                     <Tooltip
-                      contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
+                      contentStyle={{
+                        background: "hsl(var(--card))",
+                        border: "1px solid hsl(var(--border))",
+                        borderRadius: "8px",
+                        fontSize: "12px",
+                        fontFamily: "Inter, sans-serif"
+                      }}
                     />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
                     <Bar dataKey="operacoes" name="Operações" fill="hsl(var(--info))" radius={[4, 4, 0, 0]} />
@@ -208,13 +227,45 @@ const PieCard = ({ title, icon, data }: { title: string; icon: React.ReactNode; 
     <div className="h-[240px]">
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
-          <Pie data={data} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={85} paddingAngle={2}>
+          <Pie
+            data={data}
+            dataKey="value"
+            nameKey="name"
+            cx="50%"
+            cy="50%"
+            innerRadius={60}
+            outerRadius={80}
+            paddingAngle={5}
+            stroke="none"
+          >
             {data.map((_, i) => (
-              <Cell key={i} fill={COLORS[i % COLORS.length]} stroke="hsl(var(--card))" strokeWidth={2} />
+              <Cell key={i} fill={COLORS[i % COLORS.length]} />
             ))}
           </Pie>
-          <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
-          <Legend wrapperStyle={{ fontSize: 12 }} />
+          <Tooltip
+            contentStyle={{
+              background: "hsl(var(--card))",
+              border: "1px solid hsl(var(--border))",
+              borderRadius: "8px",
+              fontSize: "12px",
+              fontFamily: "Inter, sans-serif",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.1)"
+            }}
+          />
+          <Legend
+            verticalAlign="bottom"
+            align="center"
+            iconType="circle"
+            wrapperStyle={{
+              paddingTop: "24px",
+              fontSize: "11px",
+              fontFamily: "Inter, sans-serif",
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+              fontWeight: 600,
+              color: "hsl(var(--muted-foreground))"
+            }}
+          />
         </PieChart>
       </ResponsiveContainer>
     </div>

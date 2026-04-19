@@ -11,6 +11,8 @@ import {
 import { Link, useLocation } from "react-router-dom";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
+import { Logo } from "@/components/ui/Logo";
+
 interface PortalShellProps {
     children: ReactNode;
     title: string;
@@ -30,9 +32,8 @@ const PortalShell = ({ children, title }: PortalShellProps) => {
             {/* Sidebar do Portal */}
             <aside className="w-64 bg-card border-r border-border flex flex-col fixed h-full z-20">
                 <div className="p-6">
-                    <div className="flex items-center gap-2 mb-8">
-                        <div className="w-8 h-8 bg-brand rounded-lg flex items-center justify-center text-white font-bold">O</div>
-                        <span className="font-bold text-xl tracking-tight">ORBE <span className="text-brand">CLIENTE</span></span>
+                    <div className="mb-10 flex flex-col items-start px-2">
+                        <Logo className="w-32" align="left" showSlogan sloganSize="xs" />
                     </div>
 
                     <div className="bg-muted/30 p-3 rounded-xl mb-8 flex items-center gap-3 border border-border/50">

@@ -2,6 +2,7 @@ import { LayoutDashboard, ClipboardCheck, Users, Building2, Cpu, Download, Alert
 import { NavLink, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
+import { Logo } from "@/components/ui/Logo";
 
 const mainItems = [
   { icon: LayoutDashboard, label: "Dashboard", to: "/" },
@@ -41,7 +42,6 @@ const govItems = [
   { icon: ListChecks, label: "Auditoria", to: "/governanca/auditoria" },
 ];
 
-// Substituindo o export da Sidebar para usar estas seções
 export const Sidebar = () => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
@@ -59,16 +59,8 @@ export const Sidebar = () => {
 
   return (
     <aside className="w-60 shrink-0 bg-sidebar border-r border-sidebar-border flex flex-col h-screen sticky top-0">
-      <div className="px-4 py-5">
-        <div className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-            <span className="font-display font-bold text-primary-foreground text-sm">EL</span>
-          </div>
-          <div className="leading-tight">
-            <div className="font-display font-bold text-foreground text-sm">ESC LOG</div>
-            <div className="text-[11px] text-muted-foreground">ERP Operacional</div>
-          </div>
-        </div>
+      <div className="px-5 py-8 flex flex-col items-start">
+        <Logo className="w-32" align="left" showSlogan sloganSize="xs" />
       </div>
 
       <nav className="flex-1 px-2 space-y-4 overflow-y-auto pt-2">
