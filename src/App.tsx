@@ -19,6 +19,12 @@ import FinanceiroGeral from "./pages/Financeiro/FinanceiroGeral";
 import RegrasCalculo from "./pages/Financeiro/RegrasCalculo";
 import FaturamentoCliente from "./pages/Financeiro/FaturamentoCliente";
 import DetalhamentoColaborador from "./pages/Financeiro/DetalhamentoColaborador";
+import RemessaCNAB from "./pages/Financeiro/RemessaCNAB";
+import HistoricoRemessas from "./pages/Financeiro/HistoricoRemessas";
+import RetornoBancario from "./pages/Financeiro/RetornoBancario";
+import ClientDashboard from "./pages/Cliente/ClientDashboard";
+import ClientReports from "./pages/Cliente/ClientReports";
+import ClientApprovals from "./pages/Cliente/ClientApprovals";
 import Configuracoes from "./pages/Configuracoes";
 import Styleguide from "./pages/Styleguide";
 import NotFound from "./pages/NotFound.tsx";
@@ -42,10 +48,21 @@ const App = () => (
               <Route path="/coletores" element={<Coletores />} />
               <Route path="/importacoes" element={<Importacoes />} />
               <Route path="/inconsistencias" element={<Inconsistencias />} />
+
+              {/* Financeiro V3 */}
               <Route path="/financeiro" element={<FinanceiroGeral />} />
               <Route path="/financeiro/regras" element={<RegrasCalculo />} />
               <Route path="/financeiro/faturamento" element={<FaturamentoCliente />} />
               <Route path="/financeiro/colaborador/:id" element={<DetalhamentoColaborador />} />
+              <Route path="/financeiro/remessa" element={<RemessaCNAB />} />
+              <Route path="/financeiro/remessa/historico" element={<HistoricoRemessas />} />
+              <Route path="/financeiro/retorno" element={<RetornoBancario />} />
+
+              {/* Portal Cliente V3 */}
+              <Route path="/cliente/dashboard" element={<ClientDashboard />} />
+              <Route path="/cliente/relatorios" element={<ClientReports />} />
+              <Route path="/cliente/aprovacoes" element={<ClientApprovals />} />
+
               <Route path="/fechamento" element={<Fechamento />} />
               <Route path="/relatorios" element={<Relatorios />} />
               <Route path="/configuracoes" element={<Configuracoes />} />

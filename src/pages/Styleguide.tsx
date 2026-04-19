@@ -330,6 +330,33 @@ const Styleguide = () => {
                             </Table>
                         </CardContent>
                     </Card>
+                    {/* Portal do Cliente */}
+                    <Card className="bg-slate-900 text-white overflow-hidden">
+                        <CardHeader>
+                            <CardTitle className="font-display">Portal do Cliente (Ambiente Externo)</CardTitle>
+                            <CardDescription className="text-slate-400">Layout focado em leitura, aprovação e transparência para o cliente final.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="p-6 bg-slate-800 rounded-xl border border-slate-700">
+                                    <div className="flex items-center gap-2 mb-4">
+                                        <div className="w-6 h-6 bg-[#FD4C00] rounded flex items-center justify-center text-[10px] font-bold">O</div>
+                                        <span className="font-bold text-sm">Identidade Premium</span>
+                                    </div>
+                                    <p className="text-xs text-slate-400">Uso de tons mais escuros (Slate 900) e azul/branco para transmitir seriedade e contraste com o operacional.</p>
+                                </div>
+                                <div className="p-6 bg-white text-slate-900 rounded-xl">
+                                    <div className="flex justify-between items-center mb-4 text-xs font-bold uppercase text-slate-400">
+                                        <span>Ação Crítica</span>
+                                        <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-none">Workflow</Badge>
+                                    </div>
+                                    <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl h-12">
+                                        Aprovar Faturamento
+                                    </Button>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
                 </section>
             </main>
         </div>

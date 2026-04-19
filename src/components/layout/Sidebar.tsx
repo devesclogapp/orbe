@@ -1,4 +1,4 @@
-import { LayoutDashboard, ClipboardCheck, Users, Building2, Cpu, Download, AlertTriangle, CalendarCheck, BarChart3, Settings } from "lucide-react";
+import { LayoutDashboard, ClipboardCheck, Users, Building2, Cpu, Download, AlertTriangle, CalendarCheck, BarChart3, Settings, FilePlus, UploadCloud, ExternalLink } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
@@ -19,8 +19,14 @@ const finItems = [
   { icon: Wallet, label: "Financeiro Geral", to: "/financeiro" },
   { icon: Scale, label: "Regras de Cálculo", to: "/financeiro/regras" },
   { icon: FileCheck, label: "Faturamento", to: "/financeiro/faturamento" },
+  { icon: FilePlus, label: "Remessa CNAB", to: "/financeiro/remessa" },
+  { icon: UploadCloud, label: "Retorno Bancário", to: "/financeiro/retorno" },
   { icon: CalendarCheck, label: "Fechamento Mensal", to: "/fechamento" },
   { icon: BarChart3, label: "Relatórios", to: "/relatorios" },
+];
+
+const portalItems = [
+  { icon: ExternalLink, label: "Portal do Cliente", to: "/cliente/dashboard" },
 ];
 
 import { Wallet, Scale, FileCheck } from "lucide-react";
@@ -56,6 +62,11 @@ export const Sidebar = () => {
           <h3 className="px-3 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Controladoria</h3>
           {finItems.map(renderItem)}
         </div>
+
+        <div>
+          <h3 className="px-3 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Ambiente Externo</h3>
+          {portalItems.map(renderItem)}
+        </div>
       </nav>
 
       <div className="px-2 pt-2 border-t border-sidebar-border">
@@ -73,7 +84,7 @@ export const Sidebar = () => {
       </div>
 
       <div className="px-4 pb-3 text-[11px] text-muted-foreground">
-        v0.2 — Financeiro
+        v3.0 — CNAB & Portal
       </div>
     </aside>
   );
