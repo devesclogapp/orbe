@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { StatusChip } from "@/components/painel/StatusChip";
 import { Button } from "@/components/ui/button";
-import { Plus, RefreshCw, Loader2, Pencil, Trash2, MoreHorizontal } from "lucide-react";
+import { Plus, RefreshCw, Loader2, Pencil, Trash2, MoreHorizontal, AlertTriangle } from "lucide-react";
 import { ColaboradorService, EmpresaService } from "@/services/base.service";
 import {
   Dialog,
@@ -26,9 +26,10 @@ const Colaboradores = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   // Queries
-  const { data: list = [], isLoading } = useQuery({
+  const { data: list = [], isLoading, isError, error: queryError } = useQuery({
     queryKey: ["colaboradores_list"],
     queryFn: () => ColaboradorService.getWithEmpresa(),
+    retry: 1,
   });
 
   const { data: empresaOptions = [] } = useQuery({
@@ -134,7 +135,23 @@ const Colaboradores = () => {
         <section className="esc-card overflow-hidden">
           {isLoading ? (
             <div className="flex items-center justify-center p-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <div className="flex flex-col items-center gap-2">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <p className="text-xs text-muted-foreground animate-pulse">Carregando colaboradores...</p>
+              </div>
+            </div>
+          ) : isError ? (
+            <div className="flex flex-col items-center justify-center p-12 text-center">
+              <div className="h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
+                <AlertTriangle className="h-6 w-6 text-destructive" />
+              </div>
+              <h3 className="font-display font-semibold text-foreground text-sm">Erro ao carregar dados</h3>
+              <p className="text-xs text-muted-foreground max-w-[240px] mt-1 mb-4">
+                {(queryError as any)?.message || "Não foi possível conectar ao servidor."}
+              </p>
+              <Button variant="outline" size="sm" className="h-8" onClick={() => queryClient.invalidateQueries({ queryKey: ["colaboradores_list"] })}>
+                Tentar novamente
+              </Button>
             </div>
           ) : (
             <table className="w-full text-sm">

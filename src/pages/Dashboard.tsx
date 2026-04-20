@@ -1,6 +1,6 @@
 import { AppShell } from "@/components/layout/AppShell";
 import { MetricCard } from "@/components/painel/MetricCard";
-import { Users, Boxes, Wallet, AlertTriangle, ArrowRight, Activity, LineChart as LineIcon, BarChart3, PieChart as PieIcon } from "lucide-react";
+import { Users, Boxes, Wallet, AlertTriangle, ArrowRight, Activity, LineChart as LineIcon, BarChart3, PieChart as PieIcon, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { useState } from "react";
@@ -38,27 +38,34 @@ const Dashboard = () => {
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().substring(0, 7)); // YYYY-MM
 
   // Busca dados reais
-  const { data: cols = [] } = useQuery({
+  const { data: cols = [], isLoading: isLoadingCols, isError: isErrorCols } = useQuery({
     queryKey: ["colaboradores"],
     queryFn: () => ColaboradorService.getAll(),
+    retry: 1
   });
 
-  const { data: empresas = [] } = useQuery({
+  const { data: empresas = [], isLoading: isLoadingEmpresas, isError: isErrorEmpresas } = useQuery({
     queryKey: ["empresas"],
     queryFn: () => EmpresaService.getAll(),
+    retry: 1
   });
 
   const selectedDate = `${selectedMonth}-01`;
 
-  const { data: ops = [], isLoading: loadingOps } = useQuery({
+  const { data: ops = [], isLoading: isLoadingOps, isError: isErrorOps } = useQuery({
     queryKey: ["operacoes", selectedDate],
     queryFn: () => OperacaoService.getByDate(selectedDate),
+    retry: 1
   });
 
-  const { data: history = [] } = useQuery({
+  const { data: history = [], isLoading: isLoadingHistory, isError: isErrorHistory } = useQuery({
     queryKey: ["operacoes_history", selectedMonth],
-    queryFn: () => OperacaoService.getWeeklyHistory(), // Aqui poderíamos filtrar pela competência se o serviço suportasse
+    queryFn: () => OperacaoService.getWeeklyHistory(),
+    retry: 1
   });
+
+  const isLoading = isLoadingCols || isLoadingEmpresas || isLoadingOps || isLoadingHistory;
+  const isError = isErrorCols || isErrorEmpresas || isErrorOps || isErrorHistory;
 
   const serieSemanalReal = (history || []).map(h => ({
     dia: new Date(h.data).toLocaleDateString('pt-BR', { weekday: 'short' }),
@@ -104,90 +111,110 @@ const Dashboard = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <MetricCard label="Operações no período" value={ops.length.toString()} icon={Boxes} delta={{ value: ops.length > 0 ? "Ativo" : "Pendente", positive: ops.length > 0 }} />
-          <MetricCard label="Colaboradores" value={cols.length.toString()} icon={Users} />
-          <MetricCard label="Total calculado" value={`R$ ${totalCalculado.toLocaleString('pt-BR')}`} icon={Wallet} accent />
-          <MetricCard label="Inconsistências" value={inconsistencias.toString()} icon={AlertTriangle} delta={{ value: inconsistencias > 0 ? "Atenção" : "OK", positive: inconsistencias === 0 }} />
-        </div>
-
-        {/* Gráfico semanal com toggle */}
-        <section className="esc-card p-5">
-          <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-            <div className="flex items-center gap-2">
-              <Activity className="h-4 w-4 text-muted-foreground" />
-              <h2 className="font-display font-semibold text-foreground">Operações e faturamento — últimos 7 dias</h2>
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center p-20 esc-card">
+            <Loader2 className="h-10 w-10 animate-spin text-primary mb-3" />
+            <p className="text-sm text-muted-foreground animate-pulse">Consolidando visão geral...</p>
+          </div>
+        ) : isError ? (
+          <div className="flex flex-col items-center justify-center p-20 esc-card text-center">
+            <div className="h-14 w-14 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
+              <AlertTriangle className="h-7 w-7 text-destructive" />
             </div>
-            {serieSemanalReal.length > 0 && (
-              <div className="inline-flex items-center bg-muted rounded-lg p-1">
-                <ChartTabBtn active={chartType === "line"} onClick={() => setChartType("line")} icon={<LineIcon className="h-3.5 w-3.5" />}>
-                  Linhas
-                </ChartTabBtn>
-                <ChartTabBtn active={chartType === "bar"} onClick={() => setChartType("bar")} icon={<BarChart3 className="h-3.5 w-3.5" />}>
-                  Colunas
-                </ChartTabBtn>
-              </div>
-            )}
+            <h2 className="text-lg font-display font-semibold text-foreground">Erro de conexão</h2>
+            <p className="text-sm text-muted-foreground max-w-md mt-2 mb-6">
+              Não foi possível carregar os indicadores do dashboard. Verifique sua permissão ou conexão com o servidor.
+            </p>
+            <Button onClick={() => window.location.reload()} className="h-10 px-8">
+              Recarregar sistema
+            </Button>
           </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <MetricCard label="Operações no período" value={ops.length.toString()} icon={Boxes} delta={{ value: ops.length > 0 ? "Ativo" : "Pendente", positive: ops.length > 0 }} />
+              <MetricCard label="Colaboradores" value={cols.length.toString()} icon={Users} />
+              <MetricCard label="Total calculado" value={`R$ ${totalCalculado.toLocaleString('pt-BR')}`} icon={Wallet} accent />
+              <MetricCard label="Inconsistências" value={inconsistencias.toString()} icon={AlertTriangle} delta={{ value: inconsistencias > 0 ? "Atenção" : "OK", positive: inconsistencias === 0 }} />
+            </div>
 
-          <div className="h-[280px] w-full">
-            {serieSemanalReal.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                {chartType === "line" ? (
-                  <LineChart data={serieSemanalReal} margin={{ top: 8, right: 16, left: -10, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                    <XAxis dataKey="dia" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                    <YAxis yAxisId="l" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                    <YAxis yAxisId="r" orientation="right" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                    <Tooltip
-                      contentStyle={{
-                        background: "hsl(var(--card))",
-                        border: "1px solid hsl(var(--border))",
-                        borderRadius: "8px",
-                        fontSize: "12px",
-                        fontFamily: "Inter, sans-serif"
-                      }}
-                      formatter={(v: number, n: string) => (n === "Faturamento (R$)" ? [`R$ ${v.toLocaleString("pt-BR")}`, n] : [v, n])}
-                    />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Line yAxisId="l" type="monotone" dataKey="operacoes" name="Operações" stroke="hsl(var(--info))" strokeWidth={2.5} dot={{ r: 3 }} />
-                    <Line yAxisId="r" type="monotone" dataKey="valor" name="Faturamento (R$)" stroke="hsl(var(--primary))" strokeWidth={2.5} dot={{ r: 3 }} />
-                  </LineChart>
-                ) : (
-                  <BarChart data={serieSemanalReal} margin={{ top: 8, right: 16, left: -10, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                    <XAxis dataKey="dia" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                    <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                    <Tooltip
-                      contentStyle={{
-                        background: "hsl(var(--card))",
-                        border: "1px solid hsl(var(--border))",
-                        borderRadius: "8px",
-                        fontSize: "12px",
-                        fontFamily: "Inter, sans-serif"
-                      }}
-                    />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Bar dataKey="operacoes" name="Operações" fill="hsl(var(--info))" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="valor" name="Faturamento" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                  </BarChart>
+            <section className="esc-card p-5">
+              <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+                <div className="flex items-center gap-2">
+                  <Activity className="h-4 w-4 text-muted-foreground" />
+                  <h2 className="font-display font-semibold text-foreground">Operações e faturamento — últimos 7 dias</h2>
+                </div>
+                {serieSemanalReal.length > 0 && (
+                  <div className="inline-flex items-center bg-muted rounded-lg p-1">
+                    <ChartTabBtn active={chartType === "line"} onClick={() => setChartType("line")} icon={<LineIcon className="h-3.5 w-3.5" />}>
+                      Linhas
+                    </ChartTabBtn>
+                    <ChartTabBtn active={chartType === "bar"} onClick={() => setChartType("bar")} icon={<BarChart3 className="h-3.5 w-3.5" />}>
+                      Colunas
+                    </ChartTabBtn>
+                  </div>
                 )}
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-full flex flex-col items-center justify-center text-muted-foreground bg-muted/20 rounded-lg border border-dashed border-border p-8 text-center">
-                <LineIcon className="h-10 w-10 mb-2 opacity-20" />
-                <p className="text-sm">Nenhum dado histórico disponível nos últimos 7 dias.</p>
-                <p className="text-xs mt-1">Os dados aparecerão aqui após o processamento diário.</p>
               </div>
-            )}
-          </div>
-        </section>
 
-        {/* Pizzas: por cargo e por tipo de contrato */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <PieCard title="Colaboradores por cargo" icon={<PieIcon className="h-4 w-4 text-muted-foreground" />} data={distribCargo} />
-          <PieCard title="Distribuição: Ponto vs Operação" icon={<PieIcon className="h-4 w-4 text-muted-foreground" />} data={distribContrato} />
-        </div>
+              <div className="h-[280px] w-full">
+                {serieSemanalReal.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    {chartType === "line" ? (
+                      <LineChart data={serieSemanalReal} margin={{ top: 8, right: 16, left: -10, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                        <XAxis dataKey="dia" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
+                        <YAxis yAxisId="l" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
+                        <YAxis yAxisId="r" orientation="right" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
+                        <Tooltip
+                          contentStyle={{
+                            background: "hsl(var(--card))",
+                            border: "1px solid hsl(var(--border))",
+                            borderRadius: "8px",
+                            fontSize: "12px",
+                            fontFamily: "Inter, sans-serif"
+                          }}
+                          formatter={(v: number, n: string) => (n === "Faturamento (R$)" ? [`R$ ${v.toLocaleString("pt-BR")}`, n] : [v, n])}
+                        />
+                        <Legend wrapperStyle={{ fontSize: 12 }} />
+                        <Line yAxisId="l" type="monotone" dataKey="operacoes" name="Operações" stroke="hsl(var(--info))" strokeWidth={2.5} dot={{ r: 3 }} />
+                        <Line yAxisId="r" type="monotone" dataKey="valor" name="Faturamento (R$)" stroke="hsl(var(--primary))" strokeWidth={2.5} dot={{ r: 3 }} />
+                      </LineChart>
+                    ) : (
+                      <BarChart data={serieSemanalReal} margin={{ top: 8, right: 16, left: -10, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                        <XAxis dataKey="dia" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
+                        <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
+                        <Tooltip
+                          contentStyle={{
+                            background: "hsl(var(--card))",
+                            border: "1px solid hsl(var(--border))",
+                            borderRadius: "8px",
+                            fontSize: "12px",
+                            fontFamily: "Inter, sans-serif"
+                          }}
+                        />
+                        <Legend wrapperStyle={{ fontSize: 12 }} />
+                        <Bar dataKey="operacoes" name="Operações" fill="hsl(var(--info))" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="valor" name="Faturamento" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    )}
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center text-muted-foreground bg-muted/20 rounded-lg border border-dashed border-border p-8 text-center">
+                    <LineIcon className="h-10 w-10 mb-2 opacity-20" />
+                    <p className="text-sm">Nenhum dado histórico disponível nos últimos 7 dias.</p>
+                    <p className="text-xs mt-1">Os dados aparecerão aqui após o processamento diário.</p>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <PieCard title="Colaboradores por cargo" icon={<PieIcon className="h-4 w-4 text-muted-foreground" />} data={distribCargo} />
+              <PieCard title="Distribuição: Ponto vs Operação" icon={<PieIcon className="h-4 w-4 text-muted-foreground" />} data={distribContrato} />
+            </div>
+          </>
+        )}
 
         <section className="esc-card p-5">
           <div className="flex items-center justify-between mb-3">

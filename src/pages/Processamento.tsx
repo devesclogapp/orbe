@@ -17,20 +17,26 @@ const Processamento = () => {
   const today = new Date().toISOString().split('T')[0];
 
   // Busca a primeira empresa para o processamento (simplificação MVP)
-  const { data: empresas = [] } = useQuery({
+  const { data: empresas = [], isLoading: isLoadingEmpresas, isError: isErrorEmpresas } = useQuery({
     queryKey: ["empresas"],
     queryFn: () => EmpresaService.getAll(),
+    retry: 1
   });
 
-  const { data: cols = [] } = useQuery({
+  const { data: cols = [], isLoading: isLoadingCols, isError: isErrorCols } = useQuery({
     queryKey: ["colaboradores"],
     queryFn: () => ColaboradorService.getAll(),
+    retry: 1
   });
 
-  const { data: ops = [] } = useQuery({
+  const { data: ops = [], isLoading: isLoadingOps, isError: isErrorOps } = useQuery({
     queryKey: ["operacoes", today],
     queryFn: () => OperacaoService.getByDate(today),
+    retry: 1
   });
+
+  const isLoading = isLoadingEmpresas || isLoadingCols || isLoadingOps;
+  const isError = isErrorEmpresas || isErrorCols || isErrorOps;
 
   const totalCalculado = ops.reduce((acc, op) => acc + (Number(op.quantidade) * Number(op.valor_unitario || 0)), 0);
   const inconsistencias = ops.filter(o => o.status === 'inconsistente').length;
@@ -105,16 +111,38 @@ const Processamento = () => {
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <MetricCard label="Colaboradores" value={cols.length.toString()} icon={Users} delta={{ value: "+1", positive: true }} />
-          <MetricCard label="Operações" value={ops.length.toString()} icon={Boxes} delta={{ value: "+30%", positive: true }} />
-          <MetricCard label="Total do dia" value={`R$ ${totalCalculado.toLocaleString('pt-BR')}`} icon={Wallet} delta={{ value: "+12%", positive: true }} accent />
-          <MetricCard label="Inconsistências" value={inconsistencias.toString()} icon={AlertTriangle} delta={{ value: "-2", positive: true }} />
-        </div>
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center p-20 esc-card">
+            <Loader2 className="h-10 w-10 animate-spin text-primary mb-3" />
+            <p className="text-sm text-muted-foreground animate-pulse">Sincronizando dados operacionais...</p>
+          </div>
+        ) : isError ? (
+          <div className="flex flex-col items-center justify-center p-20 esc-card text-center">
+            <div className="h-14 w-14 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
+              <AlertTriangle className="h-7 w-7 text-destructive" />
+            </div>
+            <h2 className="text-lg font-display font-semibold text-foreground">Falha na sincronização</h2>
+            <p className="text-sm text-muted-foreground max-w-md mt-2 mb-6">
+              Ocorreu um erro ao carregar os dados do dia. Isso pode ser devido a políticas de segurança ou instabilidade na conexão.
+            </p>
+            <Button onClick={() => queryClient.invalidateQueries()} className="h-10 px-8">
+              Tentar novamente
+            </Button>
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <MetricCard label="Colaboradores" value={cols.length.toString()} icon={Users} delta={{ value: "+1", positive: true }} />
+              <MetricCard label="Operações" value={ops.length.toString()} icon={Boxes} delta={{ value: "+30%", positive: true }} />
+              <MetricCard label="Total do dia" value={`R$ ${totalCalculado.toLocaleString('pt-BR')}`} icon={Wallet} delta={{ value: "+12%", positive: true }} accent />
+              <MetricCard label="Inconsistências" value={inconsistencias.toString()} icon={AlertTriangle} delta={{ value: "-2", positive: true }} />
+            </div>
 
-        <PontoOperacoesBlock />
-        <ResultadoBlock />
-        <StatusIABlock stage={processingStage} />
+            <PontoOperacoesBlock />
+            <ResultadoBlock />
+            <StatusIABlock stage={processingStage} />
+          </>
+        )}
 
         <div className="h-2" />
       </div>

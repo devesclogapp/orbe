@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { EmpresaService } from "@/services/base.service";
 import { Button } from "@/components/ui/button";
-import { Plus, Building2, MapPin, Users, Cpu, Loader2, RefreshCw, Pencil, Trash2 } from "lucide-react";
+import { Plus, Building2, MapPin, Users, Cpu, Loader2, RefreshCw, Pencil, Trash2, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Dialog,
@@ -34,9 +34,10 @@ const Empresas = () => {
     setEditingId(null);
   };
 
-  const { data: list = [], isLoading } = useQuery({
+  const { data: list = [], isLoading, isError, error: queryError } = useQuery({
     queryKey: ["empresas"],
     queryFn: () => EmpresaService.getWithCounts(),
+    retry: 1
   });
 
   const createMutation = useMutation({
@@ -100,8 +101,22 @@ const Empresas = () => {
         </div>
 
         {isLoading ? (
-          <div className="flex items-center justify-center p-20">
-            <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
+          <div className="flex flex-col items-center justify-center p-20">
+            <Loader2 className="h-10 w-10 animate-spin text-primary mb-3" />
+            <p className="text-sm text-muted-foreground animate-pulse">Carregando unidades...</p>
+          </div>
+        ) : isError ? (
+          <div className="flex flex-col items-center justify-center p-20 esc-card text-center">
+            <div className="h-14 w-14 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
+              <AlertTriangle className="h-7 w-7 text-destructive" />
+            </div>
+            <h3 className="font-display font-semibold text-foreground">Falha ao obter empresas</h3>
+            <p className="text-sm text-muted-foreground mt-1 mb-6 max-w-md">
+              {(queryError as any)?.message || "Erro desconhecido ao carregar dados operacionais."}
+            </p>
+            <Button variant="outline" onClick={() => queryClient.invalidateQueries({ queryKey: ["empresas"] })}>
+              Tentar reconectar
+            </Button>
           </div>
         ) : list.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-20 esc-card border-dashed">

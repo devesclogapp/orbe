@@ -5,7 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Logo } from "@/components/ui/Logo";
 
 const mainItems = [
-  { icon: LayoutDashboard, label: "Dashboard", to: "/" },
+  { icon: LayoutDashboard, label: "Dashboard", to: "/", end: true },
   { icon: ClipboardCheck, label: "Processamento", to: "/processamento" },
   { icon: Download, label: "Importações", to: "/importacoes" },
   { icon: AlertTriangle, label: "Inconsistências", to: "/inconsistencias" },
@@ -18,7 +18,7 @@ const rhItems = [
 ];
 
 const finItems = [
-  { icon: Wallet, label: "Financeiro Geral", to: "/financeiro" },
+  { icon: Wallet, label: "Financeiro Geral", to: "/financeiro", end: true },
   { icon: Scale, label: "Regras de Cálculo", to: "/financeiro/regras" },
   { icon: FileCheck, label: "Faturamento", to: "/financeiro/faturamento" },
   { icon: FilePlus, label: "Remessa CNAB", to: "/financeiro/remessa" },
@@ -32,7 +32,7 @@ const portalItems = [
 ];
 
 const bhItems = [
-  { icon: Clock, label: "Banco de Horas", to: "/banco-horas" },
+  { icon: Clock, label: "Banco de Horas", to: "/banco-horas", end: true },
   { icon: Scale, label: "Regras de Banco", to: "/banco-horas/regras" },
 ];
 
@@ -125,7 +125,7 @@ const renderItem = (it: any) => {
     <NavLink
       key={it.to}
       to={it.to}
-      end={it.to === "/"}
+      end={it.end}
       className={({ isActive }) =>
         cn(
           "w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors text-left relative",
