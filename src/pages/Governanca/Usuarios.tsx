@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { StatusChip } from "@/components/painel/StatusChip";
 import { Button } from "@/components/ui/button";
-import { UserPlus, RefreshCw, Loader2, Shield } from "lucide-react";
+import { UserPlus, RefreshCw, Loader2, Shield, Pencil, Trash2 } from "lucide-react";
 import { UserProfileService, ProfileService } from "@/services/v4.service";
 import { EmpresaService } from "@/services/base.service";
 import {
@@ -39,21 +39,57 @@ const UsuariosGestao = () => {
         queryFn: () => EmpresaService.getAll(),
     });
 
+    const [editingId, setEditingId] = useState<string | null>(null);
     const [form, setForm] = useState({
-        user_id: "", // No MVP, isso viria de uma lista de usuários do Auth ou input manual
+        user_id: "",
         perfil_id: "",
         empresa_id: "",
         status: "ativo" as "ativo" | "inativo",
     });
 
+    const reset = () => {
+        setForm({ user_id: "", perfil_id: "", empresa_id: "", status: "ativo" });
+        setEditingId(null);
+    };
+
     const createMutation = useMutation({
-        mutationFn: (payload: any) => UserProfileService.create(payload),
+        mutationFn: (payload: any) => editingId
+            ? UserProfileService.update(editingId, payload)
+            : UserProfileService.create(payload),
         onSuccess: () => {
-            toast.success("Vínculo de usuário criado");
+            toast.success(editingId ? "Vínculo atualizado" : "Vínculo de usuário criado");
             queryClient.invalidateQueries({ queryKey: ["users_profiles"] });
             setOpen(false);
+            reset();
         },
+        onError: (err: any) => toast.error("Erro ao salvar", { description: err.message })
     });
+
+    const deleteMutation = useMutation({
+        mutationFn: (id: string) => UserProfileService.delete(id),
+        onSuccess: () => {
+            toast.success("Vínculo removido");
+            queryClient.invalidateQueries({ queryKey: ["users_profiles"] });
+        },
+        onError: (err: any) => toast.error("Erro ao remover", { description: err.message })
+    });
+
+    const handleEdit = (u: any) => {
+        setEditingId(u.id);
+        setForm({
+            user_id: u.user_id,
+            perfil_id: u.perfil_id,
+            empresa_id: u.empresa_id || "",
+            status: u.status,
+        });
+        setOpen(true);
+    };
+
+    const handleDelete = (id: string) => {
+        if (confirm("Remover este vínculo de usuário?")) {
+            deleteMutation.mutate(id);
+        }
+    };
 
     return (
         <AppShell title="Gestão de Usuários" subtitle="Controle quem pode acessar cada módulo e empresa">
@@ -100,7 +136,14 @@ const UsuariosGestao = () => {
                                             <StatusChip status={u.status === 'ativo' ? 'ok' : 'inconsistente'} label={u.status} />
                                         </td>
                                         <td className="px-5 text-right">
-                                            <Button variant="ghost" size="sm">Editar</Button>
+                                            <div className="flex justify-end gap-1">
+                                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(u)}>
+                                                    <Pencil className="h-3.5 w-3.5" />
+                                                </Button>
+                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDelete(u.id)}>
+                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                </Button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}
@@ -120,18 +163,35 @@ const UsuariosGestao = () => {
             <Dialog open={open} onOpenChange={setOpen}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Vincular Perfil a Usuário</DialogTitle>
-                        <DialogDescription>Associe um ID de usuário a um perfil de acesso e empresa.</DialogDescription>
+                        <DialogTitle>{editingId ? "Editar Vínculo" : "Vincular Perfil a Usuário"}</DialogTitle>
+                        <DialogDescription>
+                            {editingId ? "Atualize o perfil e empresa associados a este usuário." : "Associe um ID de usuário a um perfil de acesso e empresa."}
+                        </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
                         <div className="space-y-1.5">
                             <Label>UUID do Usuário (Auth)</Label>
-                            <Input placeholder="00000000-0000-0000-0000-000000000000" onChange={(e) => setForm({ ...form, user_id: e.target.value })} />
+                            <Input
+                                placeholder="00000000-0000-0000-0000-000000000000"
+                                value={form.user_id}
+                                onChange={(e) => setForm({ ...form, user_id: e.target.value })}
+                                disabled={!!editingId}
+                            />
+                        </div>
+                        <div className="space-y-1.5">
+                            <Label>Status</Label>
+                            <Select value={form.status} onValueChange={(v: "ativo" | "inativo") => setForm({ ...form, status: v })}>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="ativo">Ativo</SelectItem>
+                                    <SelectItem value="inativo">Inativo</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1.5">
                                 <Label>Perfil</Label>
-                                <Select onValueChange={(v) => setForm({ ...form, perfil_id: v })}>
+                                <Select value={form.perfil_id} onValueChange={(v) => setForm({ ...form, perfil_id: v })}>
                                     <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                                     <SelectContent>
                                         {perfis.map((p: any) => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
@@ -140,9 +200,10 @@ const UsuariosGestao = () => {
                             </div>
                             <div className="space-y-1.5">
                                 <Label>Empresa (Opcional)</Label>
-                                <Select onValueChange={(v) => setForm({ ...form, empresa_id: v })}>
+                                <Select value={form.empresa_id} onValueChange={(v) => setForm({ ...form, empresa_id: v })}>
                                     <SelectTrigger><SelectValue placeholder="Todas" /></SelectTrigger>
                                     <SelectContent>
+                                        <SelectItem value="all">Acesso Global</SelectItem>
                                         {empresas.map((e: any) => <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
@@ -150,8 +211,13 @@ const UsuariosGestao = () => {
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-                        <Button onClick={() => createMutation.mutate(form)}>Salvar Vínculo</Button>
+                        <Button variant="outline" onClick={() => { setOpen(false); reset(); }}>Cancelar</Button>
+                        <Button onClick={() => createMutation.mutate({
+                            ...form,
+                            empresa_id: form.empresa_id === "all" ? null : form.empresa_id
+                        })} disabled={createMutation.isPending}>
+                            {createMutation.isPending ? "Salvando..." : editingId ? "Salvar alterações" : "Salvar Vínculo"}
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

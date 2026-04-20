@@ -35,6 +35,7 @@ const COLORS = [
 
 const Dashboard = () => {
   const [chartType, setChartType] = useState<"line" | "bar">("line");
+  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().substring(0, 7)); // YYYY-MM
 
   // Busca dados reais
   const { data: cols = [] } = useQuery({
@@ -47,14 +48,16 @@ const Dashboard = () => {
     queryFn: () => EmpresaService.getAll(),
   });
 
-  const { data: ops = [] } = useQuery({
-    queryKey: ["operacoes", new Date().toISOString().split('T')[0]],
-    queryFn: () => OperacaoService.getByDate(new Date().toISOString().split('T')[0]),
+  const selectedDate = `${selectedMonth}-01`;
+
+  const { data: ops = [], isLoading: loadingOps } = useQuery({
+    queryKey: ["operacoes", selectedDate],
+    queryFn: () => OperacaoService.getByDate(selectedDate),
   });
 
   const { data: history = [] } = useQuery({
-    queryKey: ["operacoes_history"],
-    queryFn: () => OperacaoService.getWeeklyHistory(),
+    queryKey: ["operacoes_history", selectedMonth],
+    queryFn: () => OperacaoService.getWeeklyHistory(), // Aqui poderíamos filtrar pela competência se o serviço suportasse
   });
 
   const serieSemanalReal = (history || []).map(h => ({
@@ -83,10 +86,26 @@ const Dashboard = () => {
   ];
 
   return (
-    <AppShell title="Dashboard" subtitle={`Visão geral · ${new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`}>
+    <AppShell title="Dashboard" subtitle={`Visão consolidada · ${new Date(selectedDate).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}`}>
       <div className="space-y-5">
+        <div className="flex items-center justify-between gap-4 flex-wrap bg-card border border-border p-3 rounded-xl">
+          <div className="flex items-center gap-3">
+            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Período de análise:</div>
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="h-9 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium"
+            />
+          </div>
+          <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="h-2 w-2 rounded-full bg-success animate-pulse" />
+            Dados sincronizados em tempo real
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <MetricCard label="Operações hoje" value={ops.length.toString()} icon={Boxes} delta={{ value: ops.length > 0 ? "Ativo" : "Pendente", positive: ops.length > 0 }} />
+          <MetricCard label="Operações no período" value={ops.length.toString()} icon={Boxes} delta={{ value: ops.length > 0 ? "Ativo" : "Pendente", positive: ops.length > 0 }} />
           <MetricCard label="Colaboradores" value={cols.length.toString()} icon={Users} />
           <MetricCard label="Total calculado" value={`R$ ${totalCalculado.toLocaleString('pt-BR')}`} icon={Wallet} accent />
           <MetricCard label="Inconsistências" value={inconsistencias.toString()} icon={AlertTriangle} delta={{ value: inconsistencias > 0 ? "Atenção" : "OK", positive: inconsistencias === 0 }} />

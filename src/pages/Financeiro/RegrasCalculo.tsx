@@ -7,11 +7,44 @@ import { Plus, Scale, Tag, Clock, Trash2, Pencil, Loader2, CircleCheck, CircleDa
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const RegrasCalculo = () => {
     const queryClient = useQueryClient();
     const [filterCliente, setFilterCliente] = useState<string>("todos");
+    const [open, setOpen] = useState(false);
+    const [editingId, setEditingId] = useState<string | null>(null);
 
+    const [form, setForm] = useState({
+        nome: "",
+        tipo: "adicional" as "adicional" | "desconto",
+        valor: "0",
+        cliente_id: "geral",
+        status: "ativo" as "ativo" | "inativo",
+    });
+
+    const resetForm = () => {
+        setForm({
+            nome: "",
+            tipo: "adicional",
+            valor: "0",
+            cliente_id: "geral",
+            status: "ativo",
+        });
+        setEditingId(null);
+    };
+
+    // Queries
     const { data: regras = [], isLoading } = useQuery({
         queryKey: ["regras_calculo"],
         queryFn: () => RegraCalculoService.getAll(),
@@ -21,6 +54,69 @@ const RegrasCalculo = () => {
         queryKey: ["clientes"],
         queryFn: () => ClienteService.getAll(),
     });
+
+    // Mutations
+    const saveMutation = useMutation({
+        mutationFn: (payload: any) => editingId
+            ? RegraCalculoService.update(editingId, payload)
+            : RegraCalculoService.create(payload),
+        onSuccess: () => {
+            toast.success(editingId ? "Regra atualizada" : "Regra criada com sucesso");
+            queryClient.invalidateQueries({ queryKey: ["regras_calculo"] });
+            setOpen(false);
+            resetForm();
+        },
+        onError: (error: any) => {
+            toast.error("Erro ao salvar regra", { description: error.message });
+        }
+    });
+
+    const deleteMutation = useMutation({
+        mutationFn: (id: string) => RegraCalculoService.delete(id),
+        onSuccess: () => {
+            toast.success("Regra removida");
+            queryClient.invalidateQueries({ queryKey: ["regras_calculo"] });
+        },
+        onError: (error: any) => {
+            toast.error("Erro ao remover", { description: error.message });
+        }
+    });
+
+    // Handlers
+    const handleEdit = (r: any) => {
+        setEditingId(r.id);
+        setForm({
+            nome: r.nome,
+            tipo: r.tipo as "adicional" | "desconto",
+            valor: String(r.valor),
+            cliente_id: r.cliente_id || "geral",
+            status: (r.status as "ativo" | "inativo") || "ativo",
+        });
+        setOpen(true);
+    };
+
+    const handleDelete = (id: string) => {
+        if (confirm("Deseja realmente excluir esta regra? Esta ação não pode ser desfeita.")) {
+            deleteMutation.mutate(id);
+        }
+    };
+
+    const handleSubmit = () => {
+        if (!form.nome.trim()) {
+            toast.error("O nome da regra é obrigatório");
+            return;
+        }
+
+        const payload = {
+            nome: form.nome.trim(),
+            tipo: form.tipo,
+            valor: Number(form.valor) || 0,
+            cliente_id: form.cliente_id === "geral" ? null : form.cliente_id,
+            status: form.status,
+        };
+
+        saveMutation.mutate(payload);
+    };
 
     const filtered = filterCliente === "todos"
         ? regras
@@ -42,7 +138,7 @@ const RegrasCalculo = () => {
                             ))}
                         </select>
                     </div>
-                    <Button size="sm">
+                    <Button size="sm" onClick={() => { resetForm(); setOpen(true); }}>
                         <Plus className="h-4 w-4 mr-2" /> Nova Regra
                     </Button>
                 </div>
@@ -77,14 +173,13 @@ const RegrasCalculo = () => {
                                     <div className="flex items-center justify-between text-xs">
                                         <span className="text-muted-foreground inline-flex items-center gap-1.5"><Tag className="h-3 w-3" /> Valor esperado</span>
                                         <span className="font-display font-bold text-lg text-foreground">
-                                            {r.unidade === 'percentual' ? `${r.valor}%` : `R$ ${r.valor.toLocaleString('pt-BR')}`}
+                                            R$ {Number(r.valor).toLocaleString('pt-BR')}
                                         </span>
                                     </div>
                                     <div className="flex items-center justify-between text-xs">
                                         <span className="text-muted-foreground inline-flex items-center gap-1.5"><Clock className="h-3 w-3" /> Vigência</span>
                                         <span className="text-foreground">
-                                            {r.vigencia_inicio ? new Date(r.vigencia_inicio).toLocaleDateString('pt-BR') : 'Sem data'}
-                                            {r.vigencia_fim ? ` até ${new Date(r.vigencia_fim).toLocaleDateString('pt-BR')}` : ''}
+                                            {(r as any).vigencia_inicio ? new Date((r as any).vigencia_inicio).toLocaleDateString('pt-BR') : 'Sem data'}
                                         </span>
                                     </div>
                                 </div>
@@ -94,10 +189,16 @@ const RegrasCalculo = () => {
                                         {r.cliente_id ? clientes.find((c: any) => c.id === r.cliente_id)?.nome : 'Geral (Todos os clientes)'}
                                     </span>
                                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground">
+                                        <button
+                                            onClick={() => handleEdit(r)}
+                                            className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
+                                        >
                                             <Pencil className="h-3.5 w-3.5" />
                                         </button>
-                                        <button className="h-7 w-7 rounded-md hover:bg-destructive-soft flex items-center justify-center text-muted-foreground hover:text-destructive">
+                                        <button
+                                            onClick={() => handleDelete(r.id)}
+                                            className="h-7 w-7 rounded-md hover:bg-destructive-soft flex items-center justify-center text-muted-foreground hover:text-destructive"
+                                        >
                                             <Trash2 className="h-3.5 w-3.5" />
                                         </button>
                                     </div>
@@ -112,6 +213,67 @@ const RegrasCalculo = () => {
                     </div>
                 )}
             </div>
+
+            <Dialog open={open} onOpenChange={(val) => { if (!val) resetForm(); setOpen(val); }}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle>{editingId ? "Editar Regra" : "Nova Regra"}</DialogTitle>
+                        <DialogDescription>
+                            Configure os parâmetros para cálculo automático de faturamento.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="grid gap-2">
+                            <Label htmlFor="nome">Nome da Regra</Label>
+                            <Input id="nome" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="Ex: Adicional Noturno 20%" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="grid gap-2">
+                                <Label>Tipo</Label>
+                                <Select value={form.tipo} onValueChange={(v: any) => setForm({ ...form, tipo: v })}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="adicional">Adicional (+)</SelectItem>
+                                        <SelectItem value="desconto">Desconto (-)</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor="valor">Valor (R$)</Label>
+                                <Input id="valor" type="number" value={form.valor} onChange={(e) => setForm({ ...form, valor: e.target.value })} />
+                            </div>
+                        </div>
+                        <div className="grid gap-2">
+                            <Label>Cliente Vinculado</Label>
+                            <Select value={form.cliente_id} onValueChange={(v) => setForm({ ...form, cliente_id: v })}>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="geral">Geral (Todos os Clientes)</SelectItem>
+                                    {clientes.map((c: any) => (
+                                        <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="grid gap-2">
+                            <Label>Status</Label>
+                            <Select value={form.status} onValueChange={(v: any) => setForm({ ...form, status: v })}>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="ativo">Ativo</SelectItem>
+                                    <SelectItem value="inativo">Inativo</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
+                        <Button onClick={handleSubmit} disabled={saveMutation.isPending}>
+                            {saveMutation.isPending ? "Salvando..." : editingId ? "Salvar Alterações" : "Criar Regra"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </AppShell>
     );
 };

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { EmpresaService } from "@/services/base.service";
 import { Button } from "@/components/ui/button";
-import { Plus, Building2, MapPin, Users, Cpu, Loader2, RefreshCw } from "lucide-react";
+import { Plus, Building2, MapPin, Users, Cpu, Loader2, RefreshCw, Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Dialog,
@@ -20,6 +20,7 @@ import { toast } from "sonner";
 const Empresas = () => {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({
     nome: "",
     cnpj: "",
@@ -28,21 +29,55 @@ const Empresas = () => {
     estado: "",
   });
 
+  const reset = () => {
+    setForm({ nome: "", cnpj: "", unidade: "", cidade: "", estado: "" });
+    setEditingId(null);
+  };
+
   const { data: list = [], isLoading } = useQuery({
     queryKey: ["empresas"],
     queryFn: () => EmpresaService.getWithCounts(),
   });
 
   const createMutation = useMutation({
-    mutationFn: (payload: any) => EmpresaService.create(payload),
+    mutationFn: (payload: any) => editingId
+      ? EmpresaService.update(editingId, payload)
+      : EmpresaService.create(payload),
     onSuccess: () => {
-      toast.success("Empresa cadastrada");
+      toast.success(editingId ? "Empresa atualizada" : "Empresa cadastrada");
       queryClient.invalidateQueries({ queryKey: ["empresas"] });
       setOpen(false);
-      setForm({ nome: "", cnpj: "", unidade: "", cidade: "", estado: "" });
+      reset();
     },
-    onError: (err: any) => toast.error("Erro ao cadastrar", { description: err.message })
+    onError: (err: any) => toast.error(editingId ? "Erro ao atualizar" : "Erro ao cadastrar", { description: err.message })
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => EmpresaService.delete(id),
+    onSuccess: () => {
+      toast.success("Empresa removida");
+      queryClient.invalidateQueries({ queryKey: ["empresas"] });
+    },
+    onError: (err: any) => toast.error("Erro ao remover", { description: err.message })
+  });
+
+  const handleEdit = (e: any) => {
+    setEditingId(e.id);
+    setForm({
+      nome: e.nome,
+      cnpj: e.cnpj,
+      unidade: e.unidade,
+      cidade: e.cidade,
+      estado: e.estado,
+    });
+    setOpen(true);
+  };
+
+  const handleDelete = (id: string) => {
+    if (confirm("Deseja realmente remover esta empresa? Todos os colaboradores e registros vinculados serão afetados.")) {
+      deleteMutation.mutate(id);
+    }
+  };
 
   const submit = () => {
     if (!form.nome.trim() || !form.cnpj.trim()) {
@@ -68,22 +103,40 @@ const Empresas = () => {
           <div className="flex items-center justify-center p-20">
             <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
           </div>
+        ) : list.length === 0 ? (
+          <div className="flex flex-col items-center justify-center p-20 esc-card border-dashed">
+            <Building2 className="h-12 w-12 text-muted-foreground mb-4 opacity-20" />
+            <p className="text-muted-foreground italic">Nenhuma empresa cadastrada ainda.</p>
+            <Button variant="outline" className="mt-4" onClick={() => setOpen(true)}>
+              Cadastrar primeira empresa
+            </Button>
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {list.map((e: any) => (
-              <article key={e.id} className="esc-card p-5">
+              <article key={e.id} className="esc-card p-5 group relative">
                 <div className="flex items-start justify-between mb-3">
                   <div className="h-10 w-10 rounded-lg bg-primary-soft flex items-center justify-center text-primary">
                     <Building2 className="h-5 w-5" />
                   </div>
-                  <span
-                    className={cn(
-                      "esc-chip",
-                      e.status === "ativa" ? "bg-success-soft text-success-strong" : "bg-muted text-muted-foreground"
-                    )}
-                  >
-                    {e.status === "ativa" ? "Ativa" : "Inativa"}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={cn(
+                        "esc-chip",
+                        e.status === "ativa" ? "bg-success-soft text-success-strong" : "bg-muted text-muted-foreground"
+                      )}
+                    >
+                      {e.status === "ativa" ? "Ativa" : "Inativa"}
+                    </span>
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEdit(e)}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDelete(e.id)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
                 </div>
                 <h3 className="font-display font-semibold text-foreground">{e.nome}</h3>
                 <p className="text-xs text-muted-foreground mt-0.5">{e.cnpj}</p>
@@ -103,8 +156,10 @@ const Empresas = () => {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Nova Empresa</DialogTitle>
-            <DialogDescription>Cadastre uma nova unidade operacional no sistema.</DialogDescription>
+            <DialogTitle>{editingId ? "Editar Empresa" : "Nova Empresa"}</DialogTitle>
+            <DialogDescription>
+              {editingId ? "Atualize as informações da unidade operacional." : "Cadastre uma nova unidade operacional no sistema."}
+            </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="space-y-1.5">
@@ -131,9 +186,9 @@ const Empresas = () => {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
+            <Button variant="outline" onClick={() => { setOpen(false); reset(); }}>Cancelar</Button>
             <Button onClick={submit} disabled={createMutation.isPending}>
-              {createMutation.isPending ? "Salvando..." : "Salvar"}
+              {createMutation.isPending ? "Salvando..." : editingId ? "Salvar alterações" : "Salvar"}
             </Button>
           </DialogFooter>
         </DialogContent>

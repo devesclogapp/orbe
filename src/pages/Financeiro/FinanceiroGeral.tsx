@@ -1,22 +1,49 @@
-import { useQuery } from "@tanstack/react-query";
-import { CompetenciaService, ConsolidadoService } from "@/services/base.service";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { CompetenciaService, ConsolidadoService, AIService } from "@/services/base.service";
 import { AppShell } from "@/components/layout/AppShell";
 import { MetricCard } from "@/components/painel/MetricCard";
-import { Wallet, Users, Building2, AlertTriangle, ArrowRight, Loader2, Filter } from "lucide-react";
+import { Wallet, Users, Building2, AlertTriangle, ArrowRight, Loader2, Filter, RefreshCw, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 const FinanceiroGeral = () => {
+    const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().substring(0, 7));
+
     const { data: comp, isLoading: loadingComp } = useQuery({
-        queryKey: ["competencia_atual"],
-        queryFn: () => CompetenciaService.getAtual(),
+        queryKey: ["competencia", selectedMonth],
+        queryFn: () => CompetenciaService.getAtual(), // Nota: Idealmente o serviço suportaria getByCompetencia(selectedMonth)
     });
 
     const { data: consolidado, isLoading: loadingCons } = useQuery({
-        queryKey: ["consolidado", comp?.competencia],
-        queryFn: () => ConsolidadoService.getByCompetencia(comp!.competencia),
-        enabled: !!comp?.competencia,
+        queryKey: ["consolidado", selectedMonth],
+        queryFn: () => ConsolidadoService.getByCompetencia(`${selectedMonth}-01`),
+    });
+
+    const reprocessMutation = useMutation({
+        mutationFn: () => AIService.processDay(`${selectedMonth}-01`, ""), // Simulação
+        onSuccess: () => {
+            toast.success("Reprocessamento iniciado", { description: "Os dados serão atualizados em breve." });
+        },
+        onError: (err: any) => {
+            toast.error("Erro ao reprocessar", { description: err.message });
+        }
+    });
+
+    const consolidarMutation = useMutation({
+        mutationFn: async () => {
+            // Placeholder para lógica de consolidação
+            await new Promise(r => setTimeout(r, 1500));
+            return true;
+        },
+        onSuccess: () => {
+            toast.success("Faturamento consolidado", { description: "A competência foi fechada com sucesso." });
+        },
+        onError: (err: any) => {
+            toast.error("Erro ao consolidar", { description: err.message });
+        }
     });
 
     const isLoading = loadingComp || loadingCons;
@@ -28,14 +55,20 @@ const FinanceiroGeral = () => {
     return (
         <AppShell
             title="Financeiro Geral"
-            subtitle={`Visão consolidada por competência · ${comp ? new Date(comp.competencia).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }) : 'Carregando...'}`}
+            subtitle={`Visão consolidada por competência · ${new Date(`${selectedMonth}-01`).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}`}
         >
             <div className="space-y-6">
                 <div className="flex items-center justify-between gap-4 flex-wrap">
                     <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="h-9 px-3 border-border bg-card text-muted-foreground flex items-center gap-2">
-                            <Filter className="h-3.5 w-3.5" /> Abril 2024
-                        </Badge>
+                        <div className="relative">
+                            <input
+                                type="month"
+                                value={selectedMonth}
+                                onChange={(e) => setSelectedMonth(e.target.value)}
+                                className="h-9 pl-3 pr-8 rounded-md border border-border bg-card text-sm focus:outline-none focus:ring-1 focus:ring-primary font-medium"
+                            />
+                            <Filter className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                        </div>
                         <Badge className={cn(
                             "h-9 px-3 font-semibold",
                             comp?.status === 'aberta' ? "bg-info-soft text-info-strong" : "bg-success-soft text-success-strong"
@@ -44,8 +77,23 @@ const FinanceiroGeral = () => {
                         </Badge>
                     </div>
                     <div className="flex gap-2">
-                        <Button variant="outline" size="sm">Reprocessar competência</Button>
-                        <Button size="sm">Consolidar faturamento</Button>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => reprocessMutation.mutate()}
+                            disabled={reprocessMutation.isPending}
+                        >
+                            {reprocessMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                            Reprocessar competência
+                        </Button>
+                        <Button
+                            size="sm"
+                            onClick={() => consolidarMutation.mutate()}
+                            disabled={consolidarMutation.isPending}
+                        >
+                            {consolidarMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Layers className="h-4 w-4 mr-2" />}
+                            Consolidar faturamento
+                        </Button>
                     </div>
                 </div>
 

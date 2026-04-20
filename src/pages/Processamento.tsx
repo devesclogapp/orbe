@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { EmpresaService, AIService, ColaboradorService, OperacaoService } from "@/services/base.service";
 import { AppShell } from "@/components/layout/AppShell";
@@ -7,11 +8,12 @@ import { PontoOperacoesBlock } from "@/components/painel/PontoOperacoesBlock";
 import { ResultadoBlock } from "@/components/painel/ResultadoBlock";
 import { StatusIABlock } from "@/components/painel/StatusIABlock";
 import { Button } from "@/components/ui/button";
-import { Users, Boxes, Wallet, AlertTriangle, Calendar, Building2, PlayCircle, RefreshCw } from "lucide-react";
+import { Users, Boxes, Wallet, AlertTriangle, Calendar, Building2, PlayCircle, RefreshCw, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 const Processamento = () => {
   const queryClient = useQueryClient();
+  const [processingStage, setProcessingStage] = useState<"idle" | "sync" | "ai" | "save" | "done">("idle");
   const today = new Date().toISOString().split('T')[0];
 
   // Busca a primeira empresa para o processamento (simplificação MVP)
@@ -35,18 +37,38 @@ const Processamento = () => {
 
   const mutation = useMutation({
     mutationFn: (empresaId: string) => AIService.processDay(today, empresaId),
+    onMutate: () => {
+      setProcessingStage("sync");
+    },
     onSuccess: (res) => {
+      setProcessingStage("done");
       toast.success("Dia processado!", {
         description: `Resultado: R$ ${res.resultado?.[0]?.valor_total_calculado?.toLocaleString('pt-BR') || '0,00'}`
       });
       // Invalida as queries para atualizar os cards e tabelas
       queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       queryClient.invalidateQueries({ queryKey: ["ponto"] });
+
+      // Volta para idle após um tempo
+      setTimeout(() => setProcessingStage("idle"), 3000);
     },
     onError: (err: any) => {
+      setProcessingStage("idle");
       toast.error("Erro ao processar", { description: err.message });
     }
   });
+
+  // Simulação de estágios granulares durante o processamento
+  useEffect(() => {
+    if (mutation.isPending) {
+      const timer1 = setTimeout(() => setProcessingStage("ai"), 1500);
+      const timer2 = setTimeout(() => setProcessingStage("save"), 3500);
+      return () => {
+        clearTimeout(timer1);
+        clearTimeout(timer2);
+      };
+    }
+  }, [mutation.isPending]);
 
   const handleProcessar = () => {
     if (empresas.length === 0) {
@@ -92,7 +114,7 @@ const Processamento = () => {
 
         <PontoOperacoesBlock />
         <ResultadoBlock />
-        <StatusIABlock />
+        <StatusIABlock stage={processingStage} />
 
         <div className="h-2" />
       </div>

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { StatusChip } from "@/components/painel/StatusChip";
 import { Button } from "@/components/ui/button";
-import { Plus, RefreshCw, Loader2 } from "lucide-react";
+import { Plus, RefreshCw, Loader2, Pencil, Trash2, MoreHorizontal } from "lucide-react";
 import { ColaboradorService, EmpresaService } from "@/services/base.service";
 import {
   Dialog,
@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 const Colaboradores = () => {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   // Queries
   const { data: list = [], isLoading } = useQuery({
@@ -45,7 +46,7 @@ const Colaboradores = () => {
     flag_faturamento: true,
   });
 
-  const reset = () =>
+  const reset = () => {
     setForm({
       nome: "",
       cargo: "",
@@ -55,18 +56,51 @@ const Colaboradores = () => {
       valor_base: "22",
       flag_faturamento: true,
     });
+    setEditingId(null);
+  };
 
   // Mutations
   const createMutation = useMutation({
-    mutationFn: (payload: any) => ColaboradorService.create(payload),
+    mutationFn: (payload: any) => editingId
+      ? ColaboradorService.update(editingId, payload)
+      : ColaboradorService.create(payload),
     onSuccess: () => {
-      toast.success("Colaborador cadastrado");
+      toast.success(editingId ? "Colaborador atualizado" : "Colaborador cadastrado");
       queryClient.invalidateQueries({ queryKey: ["colaboradores_list"] });
       setOpen(false);
       reset();
     },
-    onError: (err: any) => toast.error("Erro ao cadastrar", { description: err.message })
+    onError: (err: any) => toast.error(editingId ? "Erro ao atualizar" : "Erro ao cadastrar", { description: err.message })
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => ColaboradorService.delete(id),
+    onSuccess: () => {
+      toast.success("Colaborador removido");
+      queryClient.invalidateQueries({ queryKey: ["colaboradores_list"] });
+    },
+    onError: (err: any) => toast.error("Erro ao remover", { description: err.message })
+  });
+
+  const handleEdit = (c: any) => {
+    setEditingId(c.id);
+    setForm({
+      nome: c.nome,
+      cargo: c.cargo,
+      matricula: c.matricula,
+      empresa_id: c.empresa_id,
+      tipo_contrato: c.tipo_contrato,
+      valor_base: String(c.valor_base),
+      flag_faturamento: c.flag_faturamento,
+    });
+    setOpen(true);
+  };
+
+  const handleDelete = (id: string) => {
+    if (confirm("Tem certeza que deseja remover este colaborador?")) {
+      deleteMutation.mutate(id);
+    }
+  };
 
   const submit = () => {
     if (!form.nome.trim() || !form.cargo.trim() || !form.matricula.trim()) {
@@ -113,11 +147,12 @@ const Colaboradores = () => {
                   <th className="px-3 h-11 font-medium text-right">Valor base</th>
                   <th className="px-3 h-11 font-medium text-center">Faturamento</th>
                   <th className="px-5 h-11 font-medium text-center">Status</th>
+                  <th className="px-5 h-11 font-medium text-right"></th>
                 </tr>
               </thead>
               <tbody>
                 {list.map((c: any) => (
-                  <tr key={c.id} className="border-t border-muted hover:bg-background">
+                  <tr key={c.id} className="border-t border-muted hover:bg-background group">
                     <td className="px-5 h-[52px]">
                       <div className="font-medium text-foreground">{c.nome}</div>
                       <div className="text-xs text-muted-foreground">Mat. {c.matricula}</div>
@@ -130,6 +165,16 @@ const Colaboradores = () => {
                     </td>
                     <td className="px-3 text-center text-muted-foreground">{c.flag_faturamento ? "Sim" : "Não"}</td>
                     <td className="px-5 text-center"><StatusChip status={c.status} /></td>
+                    <td className="px-5 text-right">
+                      <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(c)}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDelete(c.id)}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
                 {list.length === 0 && (
@@ -148,9 +193,9 @@ const Colaboradores = () => {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
-            <DialogTitle>Novo colaborador</DialogTitle>
+            <DialogTitle>{editingId ? "Editar colaborador" : "Novo colaborador"}</DialogTitle>
             <DialogDescription>
-              Cadastre manualmente um colaborador. Vínculo com empresa define qual coletor REP recebe o ponto.
+              {editingId ? "Atualize as informações do colaborador." : "Cadastre manualmente um colaborador. Vínculo com empresa define qual coletor REP recebe o ponto."}
             </DialogDescription>
           </DialogHeader>
 
@@ -209,9 +254,9 @@ const Colaboradores = () => {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
+            <Button variant="outline" onClick={() => { setOpen(false); reset(); }}>Cancelar</Button>
             <Button onClick={submit} disabled={createMutation.isPending}>
-              {createMutation.isPending ? "Cadastrando..." : "Cadastrar"}
+              {createMutation.isPending ? "Salvando..." : editingId ? "Salvar alterações" : "Cadastrar"}
             </Button>
           </DialogFooter>
         </DialogContent>
