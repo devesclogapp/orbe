@@ -71,7 +71,7 @@ const Dashboard = () => {
     dia: new Date(h.data).toLocaleDateString('pt-BR', { weekday: 'short' }),
     operacoes: h.total_operacoes || 0,
     valor: Number(h.valor_total_calculado) || 0,
-    colaboradores: 0
+    colaboradores: cols.length // Mapeando o total atual como referência lateral
   }));
 
   const totalCalculado = ops.reduce((acc, op) => acc + (Number(op.quantidade) * Number(op.valor_unitario || 0)), 0);
@@ -92,6 +92,8 @@ const Dashboard = () => {
     { name: "Por Operação", value: cols.filter((c: any) => c.tipo_contrato === "Operação").length },
   ];
 
+  const lastSync = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
   return (
     <AppShell title="Dashboard" subtitle={`Visão consolidada · ${new Date(selectedDate).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}`}>
       <div className="space-y-5">
@@ -107,7 +109,7 @@ const Dashboard = () => {
           </div>
           <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
             <div className="h-2 w-2 rounded-full bg-success animate-pulse" />
-            Dados sincronizados em tempo real
+            Dados sincronizados em tempo real ({lastSync})
           </div>
         </div>
 
@@ -222,10 +224,15 @@ const Dashboard = () => {
               <Activity className="h-4 w-4 text-muted-foreground" />
               <h2 className="font-display font-semibold text-foreground">Status do dia</h2>
             </div>
-            <span className="esc-chip bg-warning-soft text-warning-strong">Pendente de processamento</span>
+            <span className={cn(
+              "esc-chip",
+              inconsistencias > 0 ? "bg-warning-soft text-warning-strong" : "bg-success-soft text-success-strong"
+            )}>
+              {inconsistencias > 0 ? "Pendente de processamento" : "Pronto para fechamento"}
+            </span>
           </div>
           <p className="text-sm text-muted-foreground mb-4">
-            Última sincronização há 2 minutos. 3 inconsistências aguardando revisão antes do fechamento do dia.
+            Última sincronização às {lastSync}. {inconsistencias > 0 ? `${inconsistencias} inconsistências aguardando revisão.` : "Todos os registros estão consistentes."}
           </p>
           <div className="flex gap-2">
             <Button asChild>

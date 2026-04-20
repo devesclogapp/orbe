@@ -15,24 +15,30 @@ const PainelGeral = () => {
         queryFn: () => BHEventoService.getSaldosGerais(),
     });
 
+    // KPIs calculados a partir dos dados reais do RPC
+    const totalMinutosAcumulados = saldos.reduce((acc, s: any) => acc + (s.saldo_minutos > 0 ? s.saldo_minutos : 0), 0);
+    const totalMinutosAVencer = saldos.reduce((acc, s: any) => acc + (s.minutos_a_vencer_30d || 0), 0);
+    const colaboradoresEmRisco = saldos.filter((s: any) => s.status === 'crítico').length;
+    const formatTotal = (mins: number) => { const h = Math.floor(mins / 60); const m = mins % 60; return `${h}h${m > 0 ? ` ${m}m` : ''}`; };
+
     const stats = [
         {
             label: "Total Acumulado",
-            value: "1.240h",
+            value: isLoading ? "..." : formatTotal(totalMinutosAcumulados),
             icon: Clock,
             color: "text-primary",
             bg: "bg-primary-soft",
         },
         {
-            label: "Prestes a Vencer",
-            value: "45h",
+            label: "Prestes a Vencer (30d)",
+            value: isLoading ? "..." : formatTotal(totalMinutosAVencer),
             icon: AlertCircle,
             color: "text-warning",
             bg: "bg-warning-soft",
         },
         {
             label: "Colaboradores em Risco",
-            value: "12",
+            value: isLoading ? "..." : colaboradoresEmRisco.toString(),
             icon: Users,
             color: "text-error",
             bg: "bg-destructive-soft",
@@ -106,8 +112,8 @@ const PainelGeral = () => {
                                                 {s.saldo_formatado}
                                             </div>
                                         </td>
-                                        <td className="px-3 text-center text-error font-display font-medium">0h 00m</td>
-                                        <td className="px-3 text-center text-muted-foreground font-display">0h 00m</td>
+                                        <td className="px-3 text-center text-error font-display font-medium">{s.vencido_formatado || '0h 0m'}</td>
+                                        <td className="px-3 text-center text-muted-foreground font-display">{s.a_vencer_formatado || '0h 0m'}</td>
                                         <td className="px-5 text-center">
                                             <StatusChip status={s.status === 'crítico' ? 'inconsistente' : s.status} />
                                         </td>

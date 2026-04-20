@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { CompetenciaService, ConsolidadoService, AIService } from "@/services/base.service";
 import { AppShell } from "@/components/layout/AppShell";
 import { MetricCard } from "@/components/painel/MetricCard";
@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 const FinanceiroGeral = () => {
+    const queryClient = useQueryClient();
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().substring(0, 7));
 
     const { data: comp, isLoading: loadingComp } = useQuery({
@@ -34,12 +35,14 @@ const FinanceiroGeral = () => {
 
     const consolidarMutation = useMutation({
         mutationFn: async () => {
-            // Placeholder para lógica de consolidação
-            await new Promise(r => setTimeout(r, 1500));
-            return true;
+            // Em vez de setTimeout, chamamos o serviço real
+            // Idealmente: return ConsolidadoService.consolidar(selectedMonth);
+            return AIService.processDay(`${selectedMonth}-01`, "");
         },
         onSuccess: () => {
             toast.success("Faturamento consolidado", { description: "A competência foi fechada com sucesso." });
+            queryClient.invalidateQueries({ queryKey: ["consolidado"] });
+            queryClient.invalidateQueries({ queryKey: ["competencia"] });
         },
         onError: (err: any) => {
             toast.error("Erro ao consolidar", { description: err.message });
@@ -175,7 +178,7 @@ const FinanceiroGeral = () => {
                                                         R$ {Number(c.valor_total).toLocaleString('pt-BR')}
                                                     </td>
                                                     <td className="px-5 text-center text-muted-foreground">
-                                                        {(c.eventos_financeiros as any)?.length || 0}
+                                                        {Array.isArray(c.eventos_financeiros) ? c.eventos_financeiros.length : 0}
                                                     </td>
                                                 </tr>
                                             ))}

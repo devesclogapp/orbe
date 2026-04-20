@@ -29,34 +29,25 @@ class BHEventoServiceClass extends BaseService<'banco_horas_eventos'> {
   }
 
   async getSaldosGerais() {
-    // Em um sistema real, isso seria uma view ou função RPC para eficiência.
-    // Para o MVP V4, vamos simular ou buscar dados agregados.
-    const { data, error } = await supabase
-      .from('colaboradores')
-      .select(`
-        id, 
-        nome, 
-        matricula,
-        empresas(nome),
-        banco_horas_eventos(quantidade_minutos)
-      `);
-    
+    // Usa a RPC get_bh_saldos_gerais que agrega na DB via view vw_bh_saldos_colaboradores
+    // Isso elimina o N+1 de queries que existia antes e inclui saldo vencido e a vencer
+    const { data, error } = await supabase.rpc('get_bh_saldos_gerais');
     if (error) throw error;
 
-    return data.map(c => {
-      const eventos = (c.banco_horas_eventos as any[]) || [];
-      const saldoMinutos = eventos.reduce((acc, curr) => acc + (curr.quantidade_minutos || 0), 0);
-      
-      return {
-        id: c.id,
-        nome: c.nome,
-        matricula: c.matricula,
-        empresa: (c.empresas as any)?.nome,
-        saldo_minutos: saldoMinutos,
-        saldo_formatado: this.formatMinutes(saldoMinutos),
-        status: saldoMinutos < 0 ? 'crítico' : saldoMinutos === 0 ? 'ok' : 'positivo'
-      };
-    });
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      nome: row.nome,
+      matricula: row.matricula,
+      empresa_id: row.empresa_id,
+      empresa: row.empresa_nome,
+      saldo_minutos: row.saldo_minutos,
+      minutos_vencidos: row.minutos_vencidos,
+      minutos_a_vencer_30d: row.minutos_a_vencer_30d,
+      saldo_formatado: this.formatMinutes(row.saldo_minutos),
+      vencido_formatado: this.formatMinutes(row.minutos_vencidos),
+      a_vencer_formatado: this.formatMinutes(row.minutos_a_vencer_30d),
+      status: row.status,
+    }));
   }
 
   private formatMinutes(totalMinutes: number) {

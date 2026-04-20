@@ -15,6 +15,8 @@ import {
     DialogTitle,
     DialogDescription,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const AuditoriaLogs = () => {
     const [selectedLog, setSelectedLog] = useState<any>(null);
@@ -85,32 +87,34 @@ const AuditoriaLogs = () => {
                 <div className="flex flex-col md:flex-row gap-3 justify-between">
                     <div className="flex flex-wrap gap-2 w-full md:w-auto">
                         <div className="relative flex-1 md:w-64 min-w-[200px]">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                            <input
-                                className="esc-input h-9 w-full pl-9"
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
+                            <Input
+                                className="h-9 w-full pl-9 bg-card"
                                 placeholder="Buscar usuários ou ações..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                             />
                         </div>
 
-                        <select
-                            className="h-9 rounded-md border border-border bg-card px-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                            value={filterModulo}
-                            onChange={(e) => setFilterModulo(e.target.value)}
-                        >
-                            <option value="todos">Todos os Módulos</option>
-                            {modulos.map(m => <option key={m} value={m}>{m}</option>)}
-                        </select>
+                        <Select value={filterModulo} onValueChange={setFilterModulo}>
+                            <SelectTrigger className="h-9 w-[180px] bg-card">
+                                <SelectValue placeholder="Módulo" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="todos">Todos os Módulos</SelectItem>
+                                {modulos.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
 
-                        <select
-                            className="h-9 rounded-md border border-border bg-card px-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                            value={filterImpacto}
-                            onChange={(e) => setFilterImpacto(e.target.value)}
-                        >
-                            <option value="todos">Todos os Impactos</option>
-                            {impactos.map(i => <option key={i} value={i}>{i.charAt(0).toUpperCase() + i.slice(1)}</option>)}
-                        </select>
+                        <Select value={filterImpacto} onValueChange={setFilterImpacto}>
+                            <SelectTrigger className="h-9 w-[160px] bg-card">
+                                <SelectValue placeholder="Impacto" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="todos">Todos os Impactos</SelectItem>
+                                {impactos.map(i => <SelectItem key={i} value={i}>{i.charAt(0).toUpperCase() + i.slice(1)}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
                     </div>
                     <Button
                         variant="outline"

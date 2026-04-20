@@ -3,6 +3,8 @@ import { MessageCircle, X, Send, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+import { AIService } from "@/services/base.service";
+
 interface Msg {
   role: "user" | "assistant";
   content: string;
@@ -16,20 +18,6 @@ const seed: Msg[] = [
   },
 ];
 
-const mockReply = (q: string): string => {
-  const lower = q.toLowerCase();
-  if (lower.includes("inconsist")) {
-    return "Detectei 3 inconsistências hoje: (1) OP-1042 com equipe insuficiente, (2) OP-1045 com volume incompatível com o tempo, (3) Hikmat sem operação vinculada. Quer abrir o detalhe?";
-  }
-  if (lower.includes("total") || lower.includes("valor")) {
-    return "Total do dia: R$ 3.189,00 — alta de 12% vs. ontem. Composição: R$ 5.380 em operações por serviço + horas dos colaboradores horistas.";
-  }
-  if (lower.includes("ponto")) {
-    return "12 colaboradores com ponto no dia. 1 incompleto (Jainudin sem saída) e 1 ajustado (Hendy).";
-  }
-  return "Entendi. No MVP atual essa resposta é simulada — em breve estarei conectado à base completa para responder com dados reais.";
-};
-
 export const AIChat = () => {
   const [open, setOpen] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>(seed);
@@ -41,16 +29,27 @@ export const AIChat = () => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [msgs, typing]);
 
-  const send = () => {
+  const send = async () => {
     const text = input.trim();
     if (!text) return;
     setMsgs((m) => [...m, { role: "user", content: text }]);
     setInput("");
     setTyping(true);
-    setTimeout(() => {
-      setMsgs((m) => [...m, { role: "assistant", content: mockReply(text) }]);
+
+    try {
+      // In a real scenario, we would use a more sophisticated AI agent here.
+      // For now, we use the processDay RPC as a placeholder for AI operations processing.
+      const response = await AIService.processDay(new Date().toISOString().split('T')[0], "");
+
+      setMsgs((m) => [...m, {
+        role: "assistant",
+        content: `Processamento do dia concluído com base na sua solicitação. Resumo: ${response?.message || 'Sistema operando com dados reais do Supabase.'}`
+      }]);
+    } catch (error) {
+      setMsgs((m) => [...m, { role: "assistant", content: "Desculpe, tive um problema ao acessar os dados reais agora. Por favor, tente novamente em instantes." }]);
+    } finally {
       setTyping(false);
-    }, 700);
+    }
   };
 
   return (

@@ -2,14 +2,51 @@ import { useQuery } from "@tanstack/react-query";
 import { OperacaoService } from "@/services/base.service";
 import { AppShell } from "@/components/layout/AppShell";
 import { StatusChip } from "@/components/painel/StatusChip";
-import { AlertTriangle, Sparkles, Loader2 } from "lucide-react";
+import { AlertTriangle, Sparkles, Loader2, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAdminOverride } from "@/hooks/useAdminOverride";
+import { JustificationModal } from "@/components/modals/JustificationModal";
+import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 
 const Inconsistencias = () => {
+  const queryClient = useQueryClient();
   const { data: issues = [], isLoading } = useQuery({
     queryKey: ["inconsistencias"],
     queryFn: () => OperacaoService.getInconsistencies(),
   });
+
+  const {
+    isOpen,
+    isUpdating,
+    pendingStatus,
+    checkAndExecute,
+    handleConfirm,
+    handleClose
+  } = useAdminOverride({
+    onUpdate: async (id, payload, justification) => {
+      await OperacaoService.updateWithOverride(id, payload, justification);
+      queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
+    }
+  });
+
+  const handleResolve = async (issue: any) => {
+    const id = issue.id;
+    const payload = { status: 'ok' };
+
+    // Tenta executar. Se retornar true, o hook abriu o modal de override.
+    const needsOverride = checkAndExecute(id, payload, issue.status);
+
+    if (!needsOverride) {
+      try {
+        await OperacaoService.update(id, payload);
+        toast.success("Inconsistência resolvida com sucesso");
+        queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
+      } catch (error: any) {
+        toast.error(error.message || "Erro ao resolver inconsistência");
+      }
+    }
+  };
 
   return (
     <AppShell title="Inconsistências" subtitle="Detectadas pela IA · Cruzamento ponto × operação">
@@ -53,7 +90,12 @@ const Inconsistencias = () => {
                       </td>
                       <td className="px-3 text-center"><StatusChip status={it.status} /></td>
                       <td className="px-5 text-center">
-                        <Button size="sm" variant="outline" className="h-7">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 hover:bg-success-soft hover:text-success-strong border-muted"
+                          onClick={() => handleResolve(it)}
+                        >
                           <Sparkles className="h-3 w-3 mr-1" /> Corrigir
                         </Button>
                       </td>
@@ -72,6 +114,14 @@ const Inconsistencias = () => {
           </section>
         )}
       </div>
+
+      <JustificationModal
+        isOpen={isOpen}
+        onClose={handleClose}
+        onConfirm={handleConfirm}
+        status={pendingStatus}
+        isLoading={isUpdating}
+      />
     </AppShell>
   );
 };

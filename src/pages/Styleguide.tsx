@@ -5,11 +5,15 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Label } from "@/components/ui/label";
-import { Sun, Moon, Palette, Type, Square, Layers, MousePointer2, Plus } from "lucide-react";
+import { Sun, Moon, Palette, Type, Square, Layers, MousePointer2, Plus, ShieldAlert } from "lucide-react";
+import { JustificationModal } from "@/components/modals/JustificationModal";
+import { FilterPill } from "@/components/ui/FilterPill";
+import { Calendar, Building2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 const Styleguide = () => {
     const [theme, setTheme] = useState<"light" | "dark">("light");
+    const [isOverrideModalOpen, setIsOverrideModalOpen] = useState(false);
 
     useEffect(() => {
         const root = window.document.documentElement;
@@ -42,9 +46,17 @@ const Styleguide = () => {
 
     const states = [
         { name: "Success", token: "var(--success)", hex: "#22C55E" },
-        { name: "Error", token: "var(--error)", hex: "#EF4444" },
+        { name: "Success Soft", token: "var(--success-soft)", hex: "#DCFCE7" },
+        { name: "Success Strong", token: "var(--success-strong)", hex: "#15803D" },
+        { name: "Error", token: "var(--destructive)", hex: "#EF4444" },
+        { name: "Error Soft", token: "var(--destructive-soft)", hex: "#FEE2E2" },
+        { name: "Error Strong", token: "var(--destructive-strong)", hex: "#B91C1C" },
         { name: "Warning", token: "var(--warning)", hex: "#F59E0B" },
+        { name: "Warning Soft", token: "var(--warning-soft)", hex: "#FEF9C3" },
+        { name: "Warning Strong", token: "var(--warning-strong)", hex: "#A16207" },
         { name: "Info", token: "var(--info)", hex: "#2563EB" },
+        { name: "Info Soft", token: "var(--info-soft)", hex: "#DBEAFE" },
+        { name: "Info Strong", token: "var(--info-strong)", hex: "#1D4ED8" },
     ];
 
     const typography = [
@@ -130,16 +142,16 @@ const Styleguide = () => {
                         ))}
                     </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                         {states.map((state) => (
                             <div key={state.name} className="flex items-center gap-3 p-3 rounded-lg border bg-card">
                                 <div
-                                    className="w-10 h-10 rounded shadow-sm"
+                                    className="w-10 h-10 rounded shadow-sm shrink-0"
                                     style={{ backgroundColor: `hsl(${state.token})` }}
                                 />
-                                <div className="flex flex-col">
-                                    <span className="text-xs font-bold font-display">{state.name}</span>
-                                    <code className="text-[10px] text-muted-foreground">{state.token}</code>
+                                <div className="flex flex-col overflow-hidden">
+                                    <span className="text-[11px] font-bold font-display truncate">{state.name}</span>
+                                    <code className="text-[9px] text-muted-foreground truncate">{state.token}</code>
                                 </div>
                             </div>
                         ))}
@@ -251,6 +263,18 @@ const Styleguide = () => {
                         </CardContent>
                     </Card>
 
+                    {/* Filter Pills */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="font-display">Filter Pills</CardTitle>
+                            <CardDescription>Botões de seleção de contexto e filtros rápidos.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="flex flex-wrap gap-3">
+                            <FilterPill icon={Calendar} label="18/04/2026" />
+                            <FilterPill icon={Building2} label="ESC LOG Transportes" />
+                        </CardContent>
+                    </Card>
+
                     {/* Inputs */}
                     <Card>
                         <CardHeader>
@@ -298,15 +322,15 @@ const Styleguide = () => {
                         <CardContent className="p-0 border-t">
                             <Table>
                                 <TableHeader>
-                                    <TableRow className="bg-gray-100 hover:bg-gray-100">
-                                        <TableHead className="uppercase text-[10px] font-bold tracking-wider">Colaborador</TableHead>
-                                        <TableHead className="uppercase text-[10px] font-bold tracking-wider text-center">Data</TableHead>
-                                        <TableHead className="uppercase text-[10px] font-bold tracking-wider text-center">Status</TableHead>
-                                        <TableHead className="uppercase text-[10px] font-bold tracking-wider text-right">Ação</TableHead>
+                                    <TableRow className="esc-table-header">
+                                        <TableHead className="text-[10px] font-bold tracking-wider">Colaborador</TableHead>
+                                        <TableHead className="text-[10px] font-bold tracking-wider text-center">Data</TableHead>
+                                        <TableHead className="text-[10px] font-bold tracking-wider text-center">Status</TableHead>
+                                        <TableHead className="text-[10px] font-bold tracking-wider text-right">Ação</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    <TableRow>
+                                    <TableRow className="esc-table-row">
                                         <TableCell className="font-medium text-sm">João Silva</TableCell>
                                         <TableCell className="text-center text-xs text-muted-foreground">18/04/2026</TableCell>
                                         <TableCell className="text-center">
@@ -316,7 +340,7 @@ const Styleguide = () => {
                                             <Button variant="ghost" size="sm" className="h-7 text-xs">Editar</Button>
                                         </TableCell>
                                     </TableRow>
-                                    <TableRow className="bg-row-alert border-l-2 border-l-primary">
+                                    <TableRow className="esc-table-row bg-rowAlert border-l-2 border-l-primary hover:bg-rowAlert/80">
                                         <TableCell className="font-medium text-sm">Maria Santos</TableCell>
                                         <TableCell className="text-center text-xs text-muted-foreground">18/04/2026</TableCell>
                                         <TableCell className="text-center">
@@ -366,6 +390,31 @@ const Styleguide = () => {
                         </CardContent>
                     </Card>
 
+                    {/* Modais Especializados */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="font-display">Modais Especializados</CardTitle>
+                            <CardDescription>Modais com lógica de negócio e segurança integrada.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="p-6 border rounded-xl bg-warning-soft/10 border-warning-strong/10">
+                                <div className="flex items-center gap-3 mb-4">
+                                    <ShieldAlert className="h-6 w-6 text-warning-strong" />
+                                    <span className="font-bold text-sm">Justificativa de Admin</span>
+                                </div>
+                                <p className="text-xs text-muted-foreground mb-6">
+                                    Utilizado para garantir que alterações em registros imutáveis sejam justificadas e auditadas.
+                                </p>
+                                <Button
+                                    className="bg-warning-strong hover:bg-warning-strong/90 text-white"
+                                    onClick={() => setIsOverrideModalOpen(true)}
+                                >
+                                    Testar Modal de Override
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+
                     {/* Portal do Cliente */}
 
                     <Card className="bg-slate-900 text-white overflow-hidden">
@@ -396,6 +445,16 @@ const Styleguide = () => {
                     </Card>
                 </section>
             </main>
+
+            <JustificationModal
+                isOpen={isOverrideModalOpen}
+                onClose={() => setIsOverrideModalOpen(false)}
+                onConfirm={(just) => {
+                    console.log("Justificativa capturada no Styleguide:", just);
+                    setIsOverrideModalOpen(false);
+                }}
+                status="Fechado"
+            />
         </div>
     );
 };

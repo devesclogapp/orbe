@@ -79,16 +79,16 @@ const PontoTable = () => {
       <table className="w-full text-sm">
         <thead className="esc-table-header">
           <tr className="text-left">
-            <th className="px-5 h-11 font-medium">Colaborador</th>
-            <th className="px-3 h-11 font-medium text-center">Entrada</th>
-            <th className="px-3 h-11 font-medium text-center">Saída almoço</th>
-            <th className="px-3 h-11 font-medium text-center">Retorno almoço</th>
-            <th className="px-3 h-11 font-medium text-center">Saída</th>
-            <th className="px-3 h-11 font-medium text-center">Horas</th>
-            <th className="px-3 h-11 font-medium text-center">Extras</th>
-            <th className="px-3 h-11 font-medium text-center">Tipo dia</th>
-            <th className="px-3 h-11 font-medium text-right">Valor do dia</th>
-            <th className="px-5 h-11 font-medium text-center">Status</th>
+            <th className="px-5 font-medium">Colaborador</th>
+            <th className="px-3 font-medium text-center">Entrada</th>
+            <th className="px-3 font-medium text-center">Saída almoço</th>
+            <th className="px-3 font-medium text-center">Retorno almoço</th>
+            <th className="px-3 font-medium text-center">Saída</th>
+            <th className="px-3 font-medium text-center">Horas</th>
+            <th className="px-3 font-medium text-center">Extras</th>
+            <th className="px-3 font-medium text-center">Tipo dia</th>
+            <th className="px-3 font-medium text-right">Valor do dia</th>
+            <th className="px-5 font-medium text-center">Status</th>
           </tr>
         </thead>
         <tbody>
@@ -99,12 +99,12 @@ const PontoTable = () => {
                 key={r.id}
                 onClick={() => select("colaborador", r.colaborador_id)}
                 className={cn(
-                  "border-t border-muted hover:bg-background transition-colors cursor-pointer",
+                  "esc-table-row",
                   r.status === 'inconsistente' && "bg-rowAlert border-l-[3px] border-l-primary",
                   isSelected && "bg-primary-soft/40 border-l-[3px] border-l-primary"
                 )}
               >
-                <td className="px-5 h-[52px]">
+                <td className="px-5">
                   <div className="font-medium text-foreground">{r.colaboradores?.nome}</div>
                   <div className="text-xs text-muted-foreground">{r.colaboradores?.cargo} · {r.colaboradores?.empresas?.nome}</div>
                 </td>
@@ -112,10 +112,12 @@ const PontoTable = () => {
                 <td className="px-3 text-center text-muted-foreground">{r.saida_almoco || '—'}</td>
                 <td className="px-3 text-center text-muted-foreground">{r.retorno_almoco || '—'}</td>
                 <td className="px-3 text-center text-foreground">{r.saida || '—'}</td>
-                <td className="px-3 text-center font-display font-medium">0h00</td>
-                <td className="px-3 text-center text-muted-foreground">—</td>
+                <td className="px-3 text-center font-display font-medium">{r.horas_trabalhadas || '0h00'}</td>
+                <td className="px-3 text-center text-muted-foreground">{r.horas_extras || '—'}</td>
                 <td className="px-3 text-center text-muted-foreground">{r.tipo_dia}</td>
-                <td className="px-3 text-right font-display font-semibold text-foreground">R$ 0,00</td>
+                <td className="px-3 text-right font-display font-semibold text-foreground">
+                  R$ {Number(r.valor_dia || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </td>
                 <td className="px-5 text-center"><StatusChip status={r.status} /></td>
               </tr>
             );
@@ -147,16 +149,16 @@ const OperacoesTable = () => {
       <table className="w-full text-sm">
         <thead className="esc-table-header">
           <tr className="text-left">
-            <th className="px-5 h-11 font-medium">Operação</th>
-            <th className="px-3 h-11 font-medium">Transportadora</th>
-            <th className="px-3 h-11 font-medium text-center">Serviço</th>
-            <th className="px-3 h-11 font-medium text-center">Qtd</th>
-            <th className="px-3 h-11 font-medium text-center">Início</th>
-            <th className="px-3 h-11 font-medium text-center">Fim</th>
-            <th className="px-3 h-11 font-medium text-right">Valor unit.</th>
-            <th className="px-3 h-11 font-medium text-right">Valor do dia</th>
-            <th className="px-3 h-11 font-medium text-center">Status</th>
-            <th className="px-5 h-11 font-medium text-center">Ações</th>
+            <th className="px-5 font-medium">Operação</th>
+            <th className="px-3 font-medium">Transportadora</th>
+            <th className="px-3 font-medium text-center">Serviço</th>
+            <th className="px-3 font-medium text-center">Qtd</th>
+            <th className="px-3 font-medium text-center">Início</th>
+            <th className="px-3 font-medium text-center">Fim</th>
+            <th className="px-3 font-medium text-right">Valor unit.</th>
+            <th className="px-3 font-medium text-right">Valor do dia</th>
+            <th className="px-3 font-medium text-center">Status</th>
+            <th className="px-5 font-medium text-center">Ações</th>
           </tr>
         </thead>
         <tbody>
@@ -168,12 +170,12 @@ const OperacoesTable = () => {
                 key={o.id}
                 onClick={() => select("operacao", o.id)}
                 className={cn(
-                  "border-t border-muted hover:bg-background transition-colors cursor-pointer",
+                  "esc-table-row",
                   o.status === 'inconsistente' && "bg-rowAlert border-l-[3px] border-l-primary",
                   isSelected && "bg-primary-soft/40 border-l-[3px] border-l-primary"
                 )}
               >
-                <td className="px-5 h-[52px]">
+                <td className="px-5">
                   <div className="font-medium text-foreground">{o.id.substring(0, 8)}</div>
                   <div className="text-xs text-muted-foreground">{o.produto}</div>
                 </td>

@@ -39,9 +39,17 @@ Criar um ERP moderno estilo SaaS com foco em clareza operacional, leitura de dad
 | Token | Hex | Uso |
 |---|---|---|
 | `--color-success` | `#22C55E` | Registros OK, confirmações |
+| `--color-success-soft` | `#DCFCE7` | Fundo de status OK, hover positivo |
+| `--color-success-strong` | `#15803D` | Texto de status OK, ícones de sucesso |
 | `--color-error` | `#EF4444` | Erros, inconsistências |
+| `--color-destructive-soft` | `#FEE2E2` | Fundo de erros, hover destrutivo |
+| `--color-destructive-strong` | `#B91C1C` | Texto de erros, títulos críticos |
 | `--color-warning` | `#F59E0B` | Atenção, alertas |
+| `--color-warning-soft` | `#FEF9C3` | Fundo de alertas, atenção moderada |
+| `--color-warning-strong` | `#A16207` | Texto de alertas, títulos de atenção |
 | `--color-info` | `#2563EB` | Interações, links, foco |
+| `--color-info-soft` | `#DBEAFE` | Fundo de informativos, estado ativo |
+| `--color-info-strong` | `#1D4ED8` | Texto de informativos, botões de ação secundária |
 
 > **Regra de uso:** `#FD4C00` é exclusivo para CTAs e identidade de marca. Azul `#2563EB` é reservado para interações secundárias (foco, links, estado ativo de menu). Cinzas são a base da interface.
 
@@ -182,10 +190,22 @@ Criar um ERP moderno estilo SaaS com foco em clareza operacional, leitura de dad
 - **Sombra:** `0 1px 3px rgba(0,0,0,0.06)`
 
 ### Estrutura interna
-- Label: Inter `500`, `12px`, `#737373`, uppercase
-- Valor: Manrope `700`, `28px`, `#171717`
-- Variação positiva: `#22C55E` com seta ↑
-- Variação negativa: `#EF4444` com seta ↓
+- Label: Inter `500`, `12px`, `#737373` (text-xs), uppercase
+- Valor: Manrope `700`, `30px` (text-3xl), `#171717`
+- Variação positiva: `#22C55E` (success-strong) com seta ↑
+- Variação negativa: `#EF4444` (destructive-strong) com seta ↓
+- Ícones: `h-8`, `w-8` container, `h-4`, `w-4` SVG.
+
+---
+
+## FilterPill
+- **Fundo:** `#FFFFFF` (bg-card)
+- **Borda:** `1px solid #DEDEDE`
+- **Altura:** `36px` (h-9)
+- **Padding horizontal:** `12px` (px-3)
+- **Border-radius:** `6px`
+- **Texto:** Inter `400`, `14px`, `#171717`
+- **Uso:** Seletores de data, empresa, filtros rápidos.
 
 ---
 
@@ -197,15 +217,15 @@ Criar um ERP moderno estilo SaaS com foco em clareza operacional, leitura de dad
 - **Overflow:** hidden
 
 ### Header da tabela
-- **Fundo:** `#EBEBEB`
+- **Fundo:** `#EBEBEB` (bg-muted)
 - **Texto:** Inter `500`, `12px`, `#4D4D4D`, uppercase
-- **Altura da linha:** `44px`
+- **Altura da linha:** `44px` (esc-table-header)
 - **Padding horizontal:** `16px`
 
 ### Linhas de dados
 - **Fundo padrão:** `#FFFFFF`
-- **Hover:** `#F7F7F7`
-- **Altura:** `52px`
+- **Hover:** `#F7F7F7` (bg-background)
+- **Altura:** `52px` (esc-table-row)
 - **Separador:** `1px solid #EBEBEB`
 - **Texto:** Inter `400`, `14px`, `#171717`
 
@@ -289,6 +309,11 @@ Estilo base dos chips: `border-radius: 6px`, `padding: 2px 8px`, Inter `500`, `1
 - **Overlay:** `rgba(23,23,23,0.5)` (usa `--color-foreground`)
 - **Modal container:** `#FFFFFF`, border-radius `16px`, padding `24px`
 - **Sombra:** `0 20px 60px rgba(0,0,0,0.15)`
+
+### Justificativa de Admin (Override)
+Toda alteração em registros com status `processado`, `fechado` ou `pago` deve obrigatoriamente disparar um modal de justificativa.
+- **Tonalidade recomendada**: Usar variantes `warning` para indicar que a ação é permitida mas requer atenção.
+- **Auditoria**: O campo de justificativa deve ser gravado na tabela `audit.overrides`.
 
 ---
 

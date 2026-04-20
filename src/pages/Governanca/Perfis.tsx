@@ -91,7 +91,21 @@ const PerfisPermissoes = () => {
                                             <tr key={m.id} className="hover:bg-background">
                                                 <td className="px-5 h-14 font-medium text-foreground">{m.label}</td>
                                                 {actions.map(a => {
-                                                    const hasAccess = Math.random() > 0.5; // Mock logic for UI
+                                                    // Lógica REAL de verificação de permissão baseada no array do banco
+                                                    const checkPermission = (moduloId: string, acaoId: string) => {
+                                                        const p = selectedPerfil.permissoes || [];
+                                                        if (p.includes("*")) return true;
+                                                        if (p.includes(`${moduloId}.*`)) return true;
+
+                                                        // Mapeamento simples de ações para os sufixos do banco
+                                                        const acaoMap: any = { "ver": "read", "editar": "write", "excluir": "delete", "aprovar": "approve" };
+                                                        const mappedAcao = acaoMap[acaoId] || acaoId;
+
+                                                        return p.includes(`${moduloId}.${mappedAcao}`);
+                                                    };
+
+                                                    const hasAccess = checkPermission(m.id, a.id);
+
                                                     return (
                                                         <td key={a.id} className="px-3 h-14 text-center">
                                                             <button className={cn(

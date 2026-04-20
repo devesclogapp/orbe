@@ -47,7 +47,7 @@ const RegrasCalculo = () => {
     // Queries
     const { data: regras = [], isLoading } = useQuery({
         queryKey: ["regras_calculo"],
-        queryFn: () => RegraCalculoService.getAll(),
+        queryFn: () => RegraCalculoService.getAllActive(),
     });
 
     const { data: clientes = [] } = useQuery({
@@ -58,7 +58,7 @@ const RegrasCalculo = () => {
     // Mutations
     const saveMutation = useMutation({
         mutationFn: (payload: any) => editingId
-            ? RegraCalculoService.update(editingId, payload)
+            ? RegraCalculoService.updateVersioned(editingId, payload)
             : RegraCalculoService.create(payload),
         onSuccess: () => {
             toast.success(editingId ? "Regra atualizada" : "Regra criada com sucesso");
@@ -127,16 +127,17 @@ const RegrasCalculo = () => {
             <div className="space-y-4">
                 <div className="flex items-center justify-between gap-4 flex-wrap">
                     <div className="flex items-center gap-2">
-                        <select
-                            className="h-9 rounded-md border border-border bg-card px-3 py-1 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                            value={filterCliente}
-                            onChange={(e) => setFilterCliente(e.target.value)}
-                        >
-                            <option value="todos">Todos os Clientes</option>
-                            {clientes.map((c: any) => (
-                                <option key={c.id} value={c.id}>{c.nome}</option>
-                            ))}
-                        </select>
+                        <Select value={filterCliente} onValueChange={setFilterCliente}>
+                            <SelectTrigger className="h-9 w-[220px]">
+                                <SelectValue placeholder="Filtrar por Cliente" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="todos">Todos os Clientes</SelectItem>
+                                {clientes.map((c: any) => (
+                                    <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                     </div>
                     <Button size="sm" onClick={() => { resetForm(); setOpen(true); }}>
                         <Plus className="h-4 w-4 mr-2" /> Nova Regra

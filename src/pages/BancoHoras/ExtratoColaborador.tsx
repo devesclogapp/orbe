@@ -25,6 +25,25 @@ const ExtratoColaborador = () => {
     });
 
     const totalMinutos = eventos.reduce((acc, curr) => acc + (curr.quantidade_minutos || 0), 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const in30Days = new Date(today); in30Days.setDate(today.getDate() + 30);
+
+    const minutosVencidos = eventos.reduce((acc, e) => {
+        if (e.data_vencimento && new Date(e.data_vencimento) < today && e.quantidade_minutos > 0)
+            return acc + e.quantidade_minutos;
+        return acc;
+    }, 0);
+
+    const minutosAVencer30d = eventos.reduce((acc, e) => {
+        const venc = e.data_vencimento ? new Date(e.data_vencimento) : null;
+        if (venc && venc >= today && venc <= in30Days && e.quantidade_minutos > 0)
+            return acc + e.quantidade_minutos;
+        return acc;
+    }, 0);
+
+    const totalCreditos = eventos.filter(e => e.quantidade_minutos > 0).reduce((a, b) => a + b.quantidade_minutos, 0);
+
     const formatTime = (mins: number) => {
         const abs = Math.abs(mins);
         const h = Math.floor(abs / 60);
@@ -58,17 +77,15 @@ const ExtratoColaborador = () => {
                     </div>
                     <div className="esc-card p-5">
                         <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Saldo Vencido</p>
-                        <h3 className="text-xl font-bold font-display text-error">0h 00m</h3>
+                        <h3 className="text-xl font-bold font-display text-error">{formatTime(minutosVencidos)}</h3>
                     </div>
                     <div className="esc-card p-5">
                         <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">A Vencer (30 dias)</p>
-                        <h3 className="text-xl font-bold font-display text-warning">0h 00m</h3>
+                        <h3 className="text-xl font-bold font-display text-warning">{formatTime(minutosAVencer30d)}</h3>
                     </div>
                     <div className="esc-card p-5">
                         <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Total Créditos</p>
-                        <h3 className="text-xl font-bold font-display text-success">
-                            {formatTime(eventos.filter(e => e.quantidade_minutos > 0).reduce((a, b) => a + b.quantidade_minutos, 0))}
-                        </h3>
+                        <h3 className="text-xl font-bold font-display text-success">{formatTime(totalCreditos)}</h3>
                     </div>
                 </div>
 

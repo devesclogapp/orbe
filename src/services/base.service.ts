@@ -32,6 +32,35 @@ export class BaseService<T extends Table> {
     return data;
   }
 
+  async updateWithOverride(id: string, payload: Database['public']['Tables'][T]['Update'], justification: string) {
+    // 1. Definir a justificativa na variável de sessão via RPC
+    const { error: rpcError } = await supabase.rpc('set_session_variable', {
+      name: 'app.override_justification',
+      value: justification
+    });
+
+    if (rpcError) {
+      console.error('Erro ao definir justificativa de override:', rpcError);
+      throw new Error('Falha ao registrar justificativa no servidor.');
+    }
+
+    // 2. Executar o update normalmente
+    // A trigger no banco irá capturar a variável de sessão
+    const { data, error } = await supabase
+      .from(this.table)
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      // Se houver erro de trigger (ex: falta de justificativa ou role), ele virá aqui
+      throw error;
+    }
+
+    return data;
+  }
+
   async delete(id: string) {
     const { error } = await supabase.from(this.table).delete().eq('id', id);
     if (error) throw error;
@@ -166,8 +195,32 @@ export const ClienteService = new ClienteServiceClass();
 
 class RegraCalculoServiceClass extends BaseService<'financeiro_regras'> {
   constructor() { super('financeiro_regras'); }
+
+  async getAllActive() {
+    const { data, error } = await supabase
+      .from('financeiro_regras')
+      .select('*')
+      .eq('esta_ativa', true)
+      .order('nome', { ascending: true });
+    if (error) throw error;
+    return data;
+  }
+
   async getByCliente(clienteId: string) {
-    const { data, error } = await supabase.from('financeiro_regras').select('*').eq('cliente_id', clienteId).eq('status', 'ativo');
+    const { data, error } = await supabase
+      .from('financeiro_regras')
+      .select('*')
+      .eq('cliente_id', clienteId)
+      .eq('esta_ativa', true);
+    if (error) throw error;
+    return data;
+  }
+
+  async updateVersioned(id: string, payload: any) {
+    const { data, error } = await supabase.rpc('create_new_rule_version', {
+      p_regra_id: id,
+      p_new_data: payload
+    });
     if (error) throw error;
     return data;
   }
@@ -198,6 +251,44 @@ class ConsolidadoServiceClass {
   }
 }
 export const ConsolidadoService = new ConsolidadoServiceClass();
+
+class UnidadeServiceClass extends BaseService<'unidades'> {
+  constructor() { super('unidades'); }
+  async getByEmpresa(empresaId: string) {
+    const { data, error } = await supabase.from('unidades').select('*').eq('empresa_id', empresaId);
+    if (error) throw error;
+    return data;
+  }
+}
+export const UnidadeService = new UnidadeServiceClass();
+
+class EquipeServiceClass extends BaseService<'equipes'> {
+  constructor() { super('equipes'); }
+  async getWithDetails() {
+    const { data, error } = await supabase
+      .from('equipes')
+      .select('*, unidades(nome), empresas(nome)')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data;
+  }
+}
+export const EquipeService = new EquipeServiceClass();
+
+class ConfigTipoOperacaoServiceClass extends BaseService<'config_tipos_operacao'> {
+  constructor() { super('config_tipos_operacao'); }
+}
+export const ConfigTipoOperacaoService = new ConfigTipoOperacaoServiceClass();
+
+class ConfigProdutoServiceClass extends BaseService<'config_produtos'> {
+  constructor() { super('config_produtos'); }
+}
+export const ConfigProdutoService = new ConfigProdutoServiceClass();
+
+class ConfigTipoDiaServiceClass extends BaseService<'config_tipos_dia'> {
+  constructor() { super('config_tipos_dia'); }
+}
+export const ConfigTipoDiaService = new ConfigTipoDiaServiceClass();
 
 // STORAGE SERVICE
 export const StorageService = {

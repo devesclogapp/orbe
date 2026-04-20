@@ -8,6 +8,7 @@ import { PontoOperacoesBlock } from "@/components/painel/PontoOperacoesBlock";
 import { ResultadoBlock } from "@/components/painel/ResultadoBlock";
 import { StatusIABlock } from "@/components/painel/StatusIABlock";
 import { Button } from "@/components/ui/button";
+import { FilterPill } from "@/components/ui/FilterPill";
 import { Users, Boxes, Wallet, AlertTriangle, Calendar, Building2, PlayCircle, RefreshCw, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -44,7 +45,7 @@ const Processamento = () => {
   const mutation = useMutation({
     mutationFn: (empresaId: string) => AIService.processDay(today, empresaId),
     onMutate: () => {
-      setProcessingStage("sync");
+      setProcessingStage("ai"); // Pula direto para o estágio de processamento
     },
     onSuccess: (res) => {
       setProcessingStage("done");
@@ -63,18 +64,6 @@ const Processamento = () => {
       toast.error("Erro ao processar", { description: err.message });
     }
   });
-
-  // Simulação de estágios granulares durante o processamento
-  useEffect(() => {
-    if (mutation.isPending) {
-      const timer1 = setTimeout(() => setProcessingStage("ai"), 1500);
-      const timer2 = setTimeout(() => setProcessingStage("save"), 3500);
-      return () => {
-        clearTimeout(timer1);
-        clearTimeout(timer2);
-      };
-    }
-  }, [mutation.isPending]);
 
   const handleProcessar = () => {
     if (empresas.length === 0) {
@@ -112,12 +101,12 @@ const Processamento = () => {
         </div>
 
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center p-20 esc-card">
+          <div className="flex flex-col items-center justify-center p-12 esc-card">
             <Loader2 className="h-10 w-10 animate-spin text-primary mb-3" />
             <p className="text-sm text-muted-foreground animate-pulse">Sincronizando dados operacionais...</p>
           </div>
         ) : isError ? (
-          <div className="flex flex-col items-center justify-center p-20 esc-card text-center">
+          <div className="flex flex-col items-center justify-center p-12 esc-card text-center">
             <div className="h-14 w-14 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
               <AlertTriangle className="h-7 w-7 text-destructive" />
             </div>
@@ -132,10 +121,10 @@ const Processamento = () => {
         ) : (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <MetricCard label="Colaboradores" value={cols.length.toString()} icon={Users} delta={{ value: "+1", positive: true }} />
-              <MetricCard label="Operações" value={ops.length.toString()} icon={Boxes} delta={{ value: "+30%", positive: true }} />
-              <MetricCard label="Total do dia" value={`R$ ${totalCalculado.toLocaleString('pt-BR')}`} icon={Wallet} delta={{ value: "+12%", positive: true }} accent />
-              <MetricCard label="Inconsistências" value={inconsistencias.toString()} icon={AlertTriangle} delta={{ value: "-2", positive: true }} />
+              <MetricCard label="Colaboradores" value={cols.length.toString()} icon={Users} />
+              <MetricCard label="Operações" value={ops.length.toString()} icon={Boxes} />
+              <MetricCard label="Total do dia" value={`R$ ${totalCalculado.toLocaleString('pt-BR')}`} icon={Wallet} accent />
+              <MetricCard label="Inconsistências" value={inconsistencias.toString()} icon={AlertTriangle} delta={{ value: inconsistencias > 0 ? "Atenção" : "OK", positive: inconsistencias === 0 }} />
             </div>
 
             <PontoOperacoesBlock />
@@ -150,11 +139,5 @@ const Processamento = () => {
   );
 };
 
-const FilterPill = ({ icon: Icon, label }: { icon: any; label: string }) => (
-  <button className="inline-flex items-center gap-2 h-9 px-3 rounded-md bg-card border border-border text-sm text-foreground hover:bg-secondary transition-colors">
-    <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-    {label}
-  </button>
-);
 
 export default Processamento;

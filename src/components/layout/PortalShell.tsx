@@ -8,10 +8,11 @@ import {
     Building2,
     Bell
 } from "lucide-react";
-import { Link, useLocation } from "react-router-dom";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Logo } from "@/components/ui/Logo";
+import { useAuth } from "@/contexts/AuthContext";
+import { useClient } from "@/contexts/ClientContext";
 
 interface PortalShellProps {
     children: ReactNode;
@@ -20,12 +21,25 @@ interface PortalShellProps {
 
 const PortalShell = ({ children, title }: PortalShellProps) => {
     const location = useLocation();
+    const navigate = useNavigate();
+    const { signOut } = useAuth();
+    const { cliente } = useClient();
 
     const menuItems = [
         { label: "Dashboard", icon: <BarChart3 className="w-5 h-5" />, path: "/cliente/dashboard" },
         { label: "Relatórios", icon: <FileBox className="w-5 h-5" />, path: "/cliente/relatorios" },
         { label: "Aprovações", icon: <CheckSquare className="w-5 h-5" />, path: "/cliente/aprovacoes" },
     ];
+
+    const handleLogout = async () => {
+        await signOut();
+        navigate("/login");
+    };
+
+    // Iniciais do nome do cliente para o Avatar
+    const initials = cliente?.nome
+        ? cliente.nome.split(" ").slice(0, 2).map(w => w[0]).join("").toUpperCase()
+        : "CL";
 
     return (
         <div className="flex bg-background min-h-screen text-foreground font-sans">
@@ -36,14 +50,18 @@ const PortalShell = ({ children, title }: PortalShellProps) => {
                         <Logo className="w-28" align="left" showSlogan sloganSize="xs" />
                     </div>
 
+                    {/* Identidade do cliente */}
                     <div className="bg-muted/30 p-3 rounded-xl mb-8 flex items-center gap-3 border border-border/50">
                         <Avatar className="w-10 h-10 border-2 border-background shadow-sm">
-                            <AvatarImage src="https://github.com/shadcn.png" />
-                            <AvatarFallback>CL</AvatarFallback>
+                            <AvatarFallback className="text-sm font-bold bg-primary/10 text-primary">
+                                {initials}
+                            </AvatarFallback>
                         </Avatar>
                         <div className="overflow-hidden">
-                            <p className="text-sm font-bold truncate">Logística Global SA</p>
-                            <p className="text-xs text-muted-foreground truncate">Sessão: 2024.04</p>
+                            <p className="text-sm font-bold truncate">{cliente?.nome || "Carregando..."}</p>
+                            <p className="text-xs text-muted-foreground truncate">
+                                Portal do Cliente
+                            </p>
                         </div>
                     </div>
 
@@ -76,7 +94,10 @@ const PortalShell = ({ children, title }: PortalShellProps) => {
                         </button>
                     </div>
 
-                    <button className="w-full flex items-center gap-2 text-muted-foreground hover:text-destructive transition-colors text-sm font-medium px-4 py-2">
+                    <button
+                        onClick={handleLogout}
+                        className="w-full flex items-center gap-2 text-muted-foreground hover:text-destructive transition-colors text-sm font-medium px-4 py-2"
+                    >
                         <LogOut className="w-4 h-4" /> Sair
                     </button>
                 </div>
@@ -90,12 +111,13 @@ const PortalShell = ({ children, title }: PortalShellProps) => {
                     <div className="flex items-center gap-4">
                         <button className="p-2 text-muted-foreground hover:bg-muted/30 rounded-full relative">
                             <Bell className="w-5 h-5" />
-                            <span className="absolute top-2 right-2 w-2 h-2 bg-destructive rounded-full border-2 border-background"></span>
                         </button>
                         <div className="h-8 w-px bg-border mx-1"></div>
                         <div className="flex items-center gap-3">
                             <Building2 className="w-4 h-4 text-muted-foreground" />
-                            <span className="text-sm font-medium text-gray-600">Matriz Campinas</span>
+                            <span className="text-sm font-medium text-gray-600">
+                                {cliente?.nome || "—"}
+                            </span>
                         </div>
                     </div>
                 </header>

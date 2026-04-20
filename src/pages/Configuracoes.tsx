@@ -1,5 +1,6 @@
 import { AppShell } from "@/components/layout/AppShell";
 import { usePreferences } from "@/contexts/PreferencesContext";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Moon,
   Sun,
@@ -20,31 +21,49 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConfigTable } from "@/components/ui/ConfigTable";
 import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { ConfigTipoOperacaoService, ConfigProdutoService, ConfigTipoDiaService } from "@/services/base.service";
+import { Loader2 } from "lucide-react";
 
 const Configuracoes = () => {
+  const queryClient = useQueryClient();
   const { theme, setTheme, defaultTab, setDefaultTab } = usePreferences();
+  const { user } = useAuth();
 
-  // Mock data for Minimum Configurations
-  const [tiposOperacao, setTiposOperacao] = useState([
-    { id: 1, nome: "Carga Geral", codigo: "CG", status: "ativo" },
-    { id: 2, nome: "Descarga", codigo: "DESC", status: "ativo" },
-    { id: 3, nome: "Paletização", codigo: "PALET", status: "ativo" },
-    { id: 4, nome: "Carregamento", codigo: "CARR", status: "inativo" },
-  ]);
+  // Real data fetching
+  const { data: tiposOperacao = [], isLoading: loadingOps } = useQuery({
+    queryKey: ['config_tipos_operacao'],
+    queryFn: () => ConfigTipoOperacaoService.getAll()
+  });
 
-  const [produtos, setProdutos] = useState([
-    { id: 1, categoria: "Eletro", icms: "18%", status: "ativo" },
-    { id: 2, categoria: "Bebidas", icms: "25%", status: "ativo" },
-    { id: 3, categoria: "Móveis", icms: "12%", status: "ativo" },
-    { id: 4, categoria: "Químicos", icms: "18%", status: "inativo" },
-  ]);
+  const { data: produtos = [], isLoading: loadingProds } = useQuery({
+    queryKey: ['config_produtos'],
+    queryFn: () => ConfigProdutoService.getAll()
+  });
 
-  const [tiposDia, setTiposDia] = useState([
-    { id: 1, nome: "Dia Útil", fator: "1.0", status: "ativo" },
-    { id: 2, nome: "Sábado", fator: "1.5", status: "ativo" },
-    { id: 3, nome: "Domingo", fator: "2.0", status: "ativo" },
-    { id: 4, nome: "Feriado", fator: "2.0", status: "ativo" },
-  ]);
+  const { data: tiposDia = [], isLoading: loadingDias } = useQuery({
+    queryKey: ['config_tipos_dia'],
+    queryFn: () => ConfigTipoDiaService.getAll()
+  });
+
+  // Mutations for toggling status
+  const toggleOpStatus = useMutation({
+    mutationFn: (item: any) => ConfigTipoOperacaoService.update(item.id, { status: item.status === 'ativo' ? 'inativo' : 'ativo' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['config_tipos_operacao'] });
+      toast.success("Status atualizado");
+    }
+  });
+
+  if (loadingOps || loadingProds || loadingDias) {
+    return (
+      <AppShell title="Configurações" subtitle="Carregando configurações...">
+        <div className="flex items-center justify-center p-20">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell title="Configurações" subtitle="Gerencie as diretrizes e preferências do ERP">
@@ -141,7 +160,7 @@ const Configuracoes = () => {
                 ]}
                 onAdd={() => toast.info("Funcionalidade de criação em breve")}
                 onEdit={(item) => toast.info(`Editando: ${item.nome}`)}
-                onToggleStatus={(item) => toast.success(`${item.nome} ${item.status === 'ativo' ? 'desativado' : 'ativado'}`)}
+                onToggleStatus={(item) => toggleOpStatus.mutate(item)}
               />
             </TabsContent>
 
@@ -212,11 +231,14 @@ const Configuracoes = () => {
                 <User className="h-10 w-10 text-primary" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-foreground">João Dias</h2>
-                <p className="text-sm text-muted-foreground flex items-center gap-1.5 mt-1">
-                  <Shield className="h-4 w-4 text-success" /> Encarregado Administrativo
-                </p>
-                <p className="text-xs text-muted-foreground mt-4">Matrícula: <code className="bg-muted px-1.5 py-0.5 rounded">0042-X</code></p>
+                <h2 className="text-xl font-bold text-foreground">{user?.user_metadata?.full_name || user?.email?.split('@')[0] || "Usuário Orbe"}</h2>
+                <div className="text-sm text-muted-foreground flex flex-col gap-1 mt-1">
+                  <div className="flex items-center gap-1.5">
+                    <Shield className="h-4 w-4 text-success" /> {user?.user_metadata?.role || "Colaborador Administrativo"}
+                  </div>
+                  <div className="text-xs opacity-70">{user?.email}</div>
+                </div>
+                <p className="text-xs text-muted-foreground mt-4">Matrícula: <code className="bg-muted px-1.5 py-0.5 rounded">{user?.user_metadata?.matricula || "N/A"}</code></p>
               </div>
             </div>
 

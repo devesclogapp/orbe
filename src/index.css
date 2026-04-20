@@ -219,6 +219,16 @@
 
   .esc-table-header {
     @apply bg-muted text-muted-foreground uppercase text-xs font-medium tracking-wide;
+    height: 44px;
+  }
+
+  .esc-table-row {
+    @apply border-t border-muted transition-colors cursor-pointer;
+    height: 52px;
+  }
+
+  .esc-table-row:hover {
+    @apply bg-background;
   }
 }
 

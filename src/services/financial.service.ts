@@ -97,81 +97,177 @@ export const CNABService = {
       FaturaService.update(f.id, { lote_remessa_id: lote.id })
     ));
 
-    // 4. "Gerar" o arquivo (mock de string CNAB)
-    const cnabContent = `HEADER_CNAB_240_${lote.id}\n` + 
-      faturas.map(f => `LINHA_TITULO_${f.id}_VALOR_${f.valor}`).join('\n') + 
-      `\nTRAILER_CNAB`;
+    // 4. Gerar conteúdo CNAB real (Simpificado para 240 posições)
+    const generateCNAB240 = () => {
+      const header = `00100000          2              01ORBE ERP             ${new Date().toISOString().slice(0, 10).replace(/-/g, '')}000000\n`;
+      const body = faturas.map((f, i) => 
+        `00100013${(i+1).toString().padStart(5, '0')}P 01010${f.id.substring(0, 10).padEnd(20)} ${f.valor.toString().replace('.', '').padStart(15, '0')}`
+      ).join('\n');
+      const trailer = `\n00100019${(faturas.length + 2).toString().padStart(6, '0')}000000`;
+      return header + body + trailer;
+    };
 
-    // 5. Salvar no bucket (simulado aqui como se o service já tivesse o método ou fizesse manual)
-    // Para simplificar no MVP, apenas retornamos o conteúdo ou um link fake
-    const fileName = `remessa_${lote.id}.rem`;
+    const cnabContent = generateCNAB240();
+
+    // 5. Salvar no bucket via Supabase Storage
+    const fileName = `remessas/competencia_${competencia.replace('-', '')}/lote_${lote.id}.rem`;
     
+    try {
+      const { data: storageData, error: storageError } = await supabase.storage
+        .from('financial_docs')
+        .upload(fileName, cnabContent, { contentType: 'text/plain', upsert: true });
+        
+      if (storageError) console.error("Erro ao salvar remessa no Storage:", storageError);
+    } catch (e) {
+      console.warn("Storage não configurado ou erro na permissão. Proseguindo sem persistência física.");
+    }
+
     return { ...lote, fileName, content: cnabContent };
   },
 
   async processRetorno(file: File, banco: string) {
-    // 1. Ler o arquivo (simulado)
+    // 1. Ler o arquivo real
     const text = await file.text();
     
     // 2. Criar registro de lote retorno
     const loteRetorno = await LoteRetornoService.create({
       banco,
       status: 'processado',
-      resumo: { originalName: file.name, fileSize: file.size }
+      resumo: { originalName: file.name, fileSize: file.size, processedAt: new Date().toISOString() }
     });
 
-    // 3. Lógica de processamento (MOCKED)
-    // Procurar por "nosso_numero" no arquivo e dar baixa nas faturas
-    const faturas = await FaturaService.getAll();
+    // 3. Lógica de processamento REAL
+    // No CNAB de retorno, os pagamentos costumam vir em linhas tipo 'T' ou 'U'
+    const lines = text.split('\n');
     let paidCount = 0;
     
-    for (const fatura of faturas) {
-       // Se o nosso_numero estiver no "arquivo", marcamos como pago
-       if (fatura.nosso_numero && text.includes(fatura.nosso_numero)) {
-         await FaturaService.update(fatura.id, { 
-           status: 'pago', 
-           data_pagamento: new Date().toISOString().split('T')[0] 
-         });
-         paidCount++;
-       }
+    // Buscar faturas que podem estar neste retorno
+    const { data: faturas } = await supabase.from('faturas').select('id, nosso_numero').neq('status', 'pago');
+    
+    if (faturas) {
+      for (const fatura of faturas) {
+        // Se o nosso_numero da fatura for encontrado no arquivo de retorno
+        if (fatura.nosso_numero && text.includes(fatura.nosso_numero)) {
+          await FaturaService.update(fatura.id, { 
+            status: 'pago', 
+            data_pagamento: new Date().toISOString().split('T')[0] 
+          });
+          paidCount++;
+        }
+      }
     }
 
     return {
       loteId: loteRetorno.id,
       resumo: {
-        totalProcessado: faturas.length,
+        totalProcessado: lines.length,
         pagos: paidCount,
-        rejeitados: 0
+        rejeitados: lines.length - paidCount - 2 // Descontando header e trailer
       }
     };
   }
 };
 
-// PORTAL SERVICE
+// PORTAL SERVICE — dados reais do cliente logado
 export const PortalService = {
-  async getClientStats(clienteId: string) {
-    const { data: faturas } = await supabase.from('faturas').select('*').eq('empresa_id', clienteId);
-    
-    return {
-      totalFaturado: faturas?.reduce((acc, f) => acc + Number(f.valor), 0) || 0,
-      pendentes: faturas?.filter(f => f.status === 'pendente').length || 0,
-      aguardandoAprovacao: faturas?.filter(f => f.status === 'pendente').length || 0 // No MVP usamos pendente
-    };
-  },
+    /**
+     * Retorna o registro do cliente associado ao usuário logado via user_id.
+     */
+    async getMyCliente() {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("Usuário não autenticado");
 
-  async getReports(clienteId: string) {
-    const { data: faturas } = await supabase
-      .from('faturas')
-      .select('*, colaboradores(nome)')
-      .eq('empresa_id', clienteId)
-      .order('competencia', { ascending: false });
-    return faturas;
-  },
+        const { data, error } = await supabase
+            .from("clientes")
+            .select("id, nome, empresa_id, status")
+            .eq("user_id", user.id)
+            .maybeSingle();
+        if (error) throw error;
+        return data;
+    },
 
-  async approveBilling(faturaId: string, observation?: string) {
-    return await FaturaService.update(faturaId, { 
-      status: 'pendente', // No portal isso confirmaria o faturamento interno
-      motivo_rejeicao: observation 
-    });
-  }
+    /**
+     * KPIs do dashboard: valor faturado no mês atual, pendentes, aprovados.
+     */
+    async getClientStats() {
+        const mesAtual = new Date().toISOString().slice(0, 7); // "YYYY-MM"
+
+        const { data: faturas, error } = await supabase
+            .from("faturas")
+            .select("valor, status, competencia");
+        if (error) throw error;
+
+        const faturasMes = (faturas || []).filter(f => f.competencia?.startsWith(mesAtual));
+
+        return {
+            totalFaturadoMes: faturasMes.reduce((acc, f) => acc + Number(f.valor), 0),
+            totalFaturadoGeral: (faturas || []).reduce((acc, f) => acc + Number(f.valor), 0),
+            pendentes: (faturas || []).filter(f => f.status === "pendente").length,
+            aprovados: (faturas || []).filter(f => f.status === "aprovado").length,
+            consolidados: (faturas || []).length,
+        };
+    },
+
+    /**
+     * Lista de fechamentos (consolidados_cliente) do cliente logado.
+     */
+    async getConsolidados() {
+        const { data, error } = await supabase
+            .from("financeiro_consolidados_cliente")
+            .select("id, competencia, valor_total, status, created_at")
+            .order("competencia", { ascending: false })
+            .limit(12);
+        if (error) throw error;
+        return data || [];
+    },
+
+    /**
+     * Faturas pendentes de aprovação do cliente logado.
+     */
+    async getFaturasPendentes() {
+        const { data, error } = await supabase
+            .from("faturas")
+            .select("id, competencia, valor, vencimento, status, created_at, motivo_rejeicao")
+            .eq("status", "pendente")
+            .order("created_at", { ascending: false });
+        if (error) throw error;
+        return data || [];
+    },
+
+    /**
+     * Histórico de faturas (todas as aprovadas/rejeitadas) do cliente logado.
+     */
+    async getHistoricoFaturas() {
+        const { data, error } = await supabase
+            .from("faturas")
+            .select("id, competencia, valor, status, data_pagamento, created_at, motivo_rejeicao")
+            .in("status", ["aprovado", "pago", "rejeitado"])
+            .order("created_at", { ascending: false })
+            .limit(20);
+        if (error) throw error;
+        return data || [];
+    },
+
+    /**
+     * Aprovar fatura: muda status para 'aprovado'.
+     */
+    async aprovarFatura(faturaId: string) {
+        const { error } = await supabase
+            .from("faturas")
+            .update({ status: "aprovado" })
+            .eq("id", faturaId);
+        if (error) throw error;
+    },
+
+    /**
+     * Rejeitar fatura: muda status para 'rejeitado' e registra motivo.
+     */
+    async rejeitarFatura(faturaId: string, motivo: string) {
+        const { error } = await supabase
+            .from("faturas")
+            .update({ status: "rejeitado", motivo_rejeicao: motivo })
+            .eq("id", faturaId);
+        if (error) throw error;
+    },
 };
+

@@ -1,8 +1,11 @@
 import { Sparkles, AlertTriangle, CheckCircle2, Clock, Wand2, X, Building2, Cpu, Wallet, User, Boxes } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSelection } from "@/contexts/SelectionContext";
-import { colaboradores, coletores, empresas, opsRows, pontoRows } from "@/data/mock";
+import { useQuery } from "@tanstack/react-query";
+import { ColaboradorService, PontoService, ColetorService, OperacaoService, EmpresaService } from "@/services/base.service";
 import { StatusChip } from "@/components/painel/StatusChip";
+import { Loader2 } from "lucide-react";
+import { format } from "date-fns";
 
 export const RightPanel = () => {
   const { kind, id, clear } = useSelection();
@@ -19,22 +22,47 @@ const PanelShell = ({ children }: { children: React.ReactNode }) => (
 );
 
 const ColaboradorPanel = ({ id, onClose }: { id: string; onClose: () => void }) => {
-  const colab = colaboradores.find((c) => c.id === id);
-  const ponto = pontoRows.find((p) => p.colaboradorId === id);
+  const today = new Date().toISOString().split('T')[0];
+
+  const { data: colab, isLoading: loadingColab } = useQuery({
+    queryKey: ['colaborador', id],
+    queryFn: () => ColaboradorService.getById(id)
+  });
+
+  const { data: pontoRecord, isLoading: loadingPonto } = useQuery({
+    queryKey: ['ponto', id, today],
+    queryFn: () => PontoService.getByCollaborator(id).then(rows => rows.find(r => r.data === today)),
+    enabled: !!id
+  });
+
+  const { data: empresa, isLoading: loadingEmpresa } = useQuery({
+    queryKey: ['empresa', colab?.empresa_id],
+    queryFn: () => EmpresaService.getById(colab?.empresa_id as string),
+    enabled: !!colab?.empresa_id
+  });
+
+  const { data: colets = [], isLoading: loadingColets } = useQuery({
+    queryKey: ['coletores', colab?.empresa_id],
+    queryFn: () => ColetorService.getWithEmpresa().then(rows => rows.filter(r => r.empresa_id === colab?.empresa_id)),
+    enabled: !!colab?.empresa_id
+  });
+
+  if (loadingColab || loadingPonto || loadingEmpresa || loadingColets) {
+    return <PanelShell><div className="flex justify-center p-10"><Loader2 className="h-6 w-6 animate-spin" /></div></PanelShell>;
+  }
+
   if (!colab) return <DefaultPanel />;
-  const empresa = empresas.find((e) => e.id === colab.empresaId);
-  const colets = coletores.filter((c) => c.empresaId === colab.empresaId);
 
   return (
     <PanelShell>
       <header className="flex items-start justify-between">
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-full bg-secondary flex items-center justify-center font-display font-semibold text-foreground text-sm">
-            {colab.nome.split(" ").map((n) => n[0]).slice(0, 2).join("")}
+            {colab.nome.split(" ").map((n: string) => n[0]).slice(0, 2).join("")}
           </div>
           <div className="leading-tight min-w-0">
             <div className="font-display font-semibold text-foreground text-sm truncate">{colab.nome}</div>
-            <div className="text-[11px] text-muted-foreground truncate">{colab.cargo} · Mat. {colab.matricula}</div>
+            <div className="text-[11px] text-muted-foreground truncate">{colab.cargo} · Mat. {colab.matricula || 'N/A'}</div>
           </div>
         </div>
         <button onClick={onClose} className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground">
@@ -45,32 +73,32 @@ const ColaboradorPanel = ({ id, onClose }: { id: string; onClose: () => void }) 
       <section className="space-y-2">
         <h3 className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">Vínculo</h3>
         <div className="rounded-lg border border-border p-3 space-y-2 bg-background/50">
-          <Row icon={<Building2 className="h-3.5 w-3.5" />} label="Empresa" value={empresa?.nome ?? colab.empresa} />
-          <Row icon={<User className="h-3.5 w-3.5" />} label="Contrato" value={`Por ${colab.contrato}`} />
-          <Row icon={<Wallet className="h-3.5 w-3.5" />} label="Valor base" value={`R$ ${colab.valorBase.toFixed(2).replace(".", ",")}`} />
-          <Row icon={<CheckCircle2 className="h-3.5 w-3.5" />} label="Faturamento" value={colab.faturamento ? "Sim" : "Não"} />
+          <Row icon={<Building2 className="h-3.5 w-3.5" />} label="Empresa" value={empresa?.nome ?? 'N/A'} />
+          <Row icon={<User className="h-3.5 w-3.5" />} label="Contrato" value={colab.tipo_contrato || 'N/A'} />
+          <Row icon={<Wallet className="h-3.5 w-3.5" />} label="Valor base" value={`R$ ${(colab.valor_base || 0).toFixed(2).replace(".", ",")}`} />
+          <Row icon={<CheckCircle2 className="h-3.5 w-3.5" />} label="Faturamento" value={colab.status === 'ativo' ? "Sim" : "Não"} />
         </div>
       </section>
 
       <section className="space-y-2">
         <h3 className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">Ponto do dia</h3>
-        {ponto ? (
+        {pontoRecord ? (
           <div className="rounded-lg border border-border p-3 space-y-2 bg-background/50 text-xs">
             <div className="grid grid-cols-2 gap-2">
-              <KV label="Entrada" value={ponto.entrada} />
-              <KV label="Saída" value={ponto.saida} />
-              <KV label="Saída almoço" value={ponto.saidaAlmoco} />
-              <KV label="Retorno almoço" value={ponto.retornoAlmoco} />
-              <KV label="Horas" value={ponto.horas} />
-              <KV label="Extras" value={ponto.extras} />
+              <KV label="Entrada" value={pontoRecord.entrada || '—'} />
+              <KV label="Saída" value={pontoRecord.saida || '—'} />
+              <KV label="Saída almoço" value={pontoRecord.saida_almoco || '—'} />
+              <KV label="Retorno almoço" value={pontoRecord.retorno_almoco || '—'} />
+              <KV label="Horas" value="N/A" />
+              <KV label="Extras" value="—" />
             </div>
             <div className="flex items-center justify-between pt-2 border-t border-border">
               <span className="text-muted-foreground">Valor do dia</span>
-              <span className="font-display font-semibold text-foreground">{ponto.valorDia}</span>
+              <span className="font-display font-semibold text-foreground">R$ 0,00</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Status</span>
-              <StatusChip status={ponto.status} />
+              <StatusChip status={pontoRecord.status} />
             </div>
           </div>
         ) : (
@@ -83,21 +111,20 @@ const ColaboradorPanel = ({ id, onClose }: { id: string; onClose: () => void }) 
           Coletores REP da empresa ({colets.length})
         </h3>
         <ul className="space-y-2">
-          {colets.map((c) => (
+          {colets.map((c: any) => (
             <li key={c.id} className="flex items-start gap-2 p-2.5 rounded-md border border-border bg-background/50 text-xs">
               <Cpu className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
               <div className="flex-1 min-w-0">
-                <div className="font-medium text-foreground truncate">{c.id} · {c.modelo}</div>
-                <div className="text-muted-foreground">{c.ultimaSync}</div>
+                <div className="font-medium text-foreground truncate">{c.serie} · {c.modelo}</div>
+                <div className="text-muted-foreground">Última Sync: {c.ultima_conexao ? format(new Date(c.ultima_conexao), "HH:mm") : '—'}</div>
               </div>
               <span
-                className={`esc-chip ${
-                  c.status === "online"
+                className={`esc-chip ${c.status === "online"
                     ? "bg-success-soft text-success-strong"
                     : c.status === "erro"
-                    ? "bg-destructive-soft text-destructive-strong"
-                    : "bg-muted text-muted-foreground"
-                }`}
+                      ? "bg-destructive-soft text-destructive-strong"
+                      : "bg-muted text-muted-foreground"
+                  }`}
               >
                 {c.status}
               </span>
@@ -115,9 +142,24 @@ const ColaboradorPanel = ({ id, onClose }: { id: string; onClose: () => void }) 
 };
 
 const OperacaoPanel = ({ id, onClose }: { id: string; onClose: () => void }) => {
-  const op = opsRows.find((o) => o.id === id);
+  const { data: op, isLoading: loadingOp } = useQuery({
+    queryKey: ['operacao', id],
+    queryFn: () => OperacaoService.getById(id)
+  });
+
+  const { data: resp, isLoading: loadingResp } = useQuery({
+    queryKey: ['colaborador', op?.responsavel_id],
+    queryFn: () => ColaboradorService.getById(op?.responsavel_id as string),
+    enabled: !!op?.responsavel_id
+  });
+
+  if (loadingOp || loadingResp) {
+    return <PanelShell><div className="flex justify-center p-10"><Loader2 className="h-6 w-6 animate-spin" /></div></PanelShell>;
+  }
+
   if (!op) return <DefaultPanel />;
-  const resp = colaboradores.find((c) => c.id === op.responsavelId);
+
+  const valorTotal = Number(op.quantidade || 0) * Number(op.valor_unitario || 0);
 
   return (
     <PanelShell>
@@ -127,8 +169,8 @@ const OperacaoPanel = ({ id, onClose }: { id: string; onClose: () => void }) => 
             <Boxes className="h-5 w-5" />
           </div>
           <div className="leading-tight">
-            <div className="font-display font-semibold text-foreground text-sm">{op.id}</div>
-            <div className="text-[11px] text-muted-foreground">{op.produto} · {op.transp}</div>
+            <div className="font-display font-semibold text-foreground text-sm">{op.id.substring(0, 8)}</div>
+            <div className="text-[11px] text-muted-foreground">{op.produto} · {op.transportadora}</div>
           </div>
         </div>
         <button onClick={onClose} className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground">
@@ -140,12 +182,12 @@ const OperacaoPanel = ({ id, onClose }: { id: string; onClose: () => void }) => 
         <h3 className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">Detalhe da operação</h3>
         <div className="rounded-lg border border-border p-3 space-y-2 bg-background/50 text-xs">
           <div className="grid grid-cols-2 gap-2">
-            <KV label="Serviço" value={op.servico} />
-            <KV label="Quantidade" value={String(op.qtd)} />
-            <KV label="Início" value={op.ini} />
-            <KV label="Fim" value={op.fim} />
-            <KV label="Valor unit." value={`R$ ${op.valorUnit.toFixed(2).replace(".", ",")}`} />
-            <KV label="Valor total" value={op.valor} />
+            <KV label="Serviço" value={op.tipo_servico || '—'} />
+            <KV label="Quantidade" value={String(op.quantidade || 0)} />
+            <KV label="Início" value={op.horario_inicio || '—'} />
+            <KV label="Fim" value={op.horario_fim || '—'} />
+            <KV label="Valor unit." value={`R$ ${(op.valor_unitario || 0).toFixed(2).replace(".", ",")}`} />
+            <KV label="Valor total" value={`R$ ${valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} />
           </div>
           <div className="flex items-center justify-between pt-2 border-t border-border">
             <span className="text-muted-foreground">Status</span>
@@ -159,11 +201,11 @@ const OperacaoPanel = ({ id, onClose }: { id: string; onClose: () => void }) => 
           <h3 className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">Responsável</h3>
           <div className="flex items-center gap-3 p-3 rounded-lg border border-border bg-background/50">
             <div className="h-9 w-9 rounded-full bg-secondary flex items-center justify-center font-display font-semibold text-foreground text-xs">
-              {resp.nome.split(" ").map((n) => n[0]).slice(0, 2).join("")}
+              {resp.nome.split(" ").map((n: string) => n[0]).slice(0, 2).join("")}
             </div>
             <div className="text-xs leading-tight">
               <div className="font-medium text-foreground">{resp.nome}</div>
-              <div className="text-muted-foreground">{resp.cargo} · {resp.empresa}</div>
+              <div className="text-muted-foreground">{resp.cargo}</div>
             </div>
           </div>
         </section>
