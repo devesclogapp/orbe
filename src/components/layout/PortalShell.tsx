@@ -31,9 +31,9 @@ const PortalShell = ({ children, title }: PortalShellProps) => {
         <div className="flex bg-background min-h-screen text-foreground font-sans">
             {/* Sidebar do Portal */}
             <aside className="w-64 bg-card border-r border-border flex flex-col fixed h-full z-20">
-                <div className="p-6">
-                    <div className="mb-10 flex flex-col items-start px-2">
-                        <Logo className="w-32" align="left" showSlogan sloganSize="xs" />
+                <div className="px-5 py-5">
+                    <div className="mb-6 flex flex-col items-start px-2">
+                        <Logo className="w-28" align="left" showSlogan sloganSize="xs" />
                     </div>
 
                     <div className="bg-muted/30 p-3 rounded-xl mb-8 flex items-center gap-3 border border-border/50">

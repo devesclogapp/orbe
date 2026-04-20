@@ -59,8 +59,8 @@ export const Sidebar = () => {
 
   return (
     <aside className="w-60 shrink-0 bg-sidebar border-r border-sidebar-border flex flex-col h-screen sticky top-0">
-      <div className="px-5 py-8 flex flex-col items-start">
-        <Logo className="w-32" align="left" showSlogan sloganSize="xs" />
+      <div className="px-5 py-5 flex flex-col items-start">
+        <Logo className="w-28" align="left" showSlogan sloganSize="xs" />
       </div>
 
       <nav className="flex-1 px-2 space-y-4 overflow-y-auto pt-2">

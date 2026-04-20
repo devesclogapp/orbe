@@ -11,7 +11,7 @@ interface LogoProps {
 export const Logo: React.FC<LogoProps> = ({ className, showSlogan = false, sloganSize = "xs", align = "left" }) => {
     return (
         <div className={cn(
-            "flex flex-col gap-2",
+            "flex flex-col gap-1",
             align === "center" ? "items-center text-center" : "items-start text-left",
             className
         )}>
@@ -38,11 +38,12 @@ export const Logo: React.FC<LogoProps> = ({ className, showSlogan = false, sloga
             </svg>
             {showSlogan && (
                 <p className={cn(
-                    "font-bold text-muted-foreground uppercase tracking-widest",
+                    "font-bold text-muted-foreground uppercase tracking-wider leading-tight",
                     align === "center" ? "text-center" : "text-left",
                     sloganSize === "xs" ? "text-[8px]" : "text-[10px]"
                 )}>
-                    Gestão Operacional Inteligente
+                    <span className="whitespace-nowrap">Gestão Operacional</span><br />
+                    <span className="whitespace-nowrap">Inteligente</span>
                 </p>
             )}
         </div>
