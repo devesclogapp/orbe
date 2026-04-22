@@ -7,6 +7,7 @@ interface AuthContextType {
     user: User | null;
     loading: boolean;
     signOut: () => Promise<void>;
+    updateProfile: (data: { full_name?: string; avatar_url?: string }) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -40,8 +41,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await supabase.auth.signOut();
     };
 
+    const updateProfile = async (data: { full_name?: string; avatar_url?: string }) => {
+        const { data: { user: updatedUser }, error } = await supabase.auth.updateUser({
+            data: data
+        });
+
+        if (error) throw error;
+        if (updatedUser) setUser(updatedUser);
+    };
+
     return (
-        <AuthContext.Provider value={{ session, user, loading, signOut }}>
+        <AuthContext.Provider value={{ session, user, loading, signOut, updateProfile }}>
             {children}
         </AuthContext.Provider>
     );

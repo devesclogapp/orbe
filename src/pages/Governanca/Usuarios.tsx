@@ -24,7 +24,7 @@ const UsuariosGestao = () => {
     const queryClient = useQueryClient();
     const [open, setOpen] = useState(false);
 
-    const { data: usuarios = [], isLoading } = useQuery({
+    const { data: usuarios = [], isLoading, isFetching } = useQuery({
         queryKey: ["users_profiles"],
         queryFn: () => UserProfileService.getWithDetails(),
     });
@@ -96,7 +96,7 @@ const UsuariosGestao = () => {
             <div className="space-y-4">
                 <div className="flex justify-end gap-2">
                     <Button variant="outline" size="icon" onClick={() => queryClient.invalidateQueries({ queryKey: ["users_profiles"] })}>
-                        <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />
+                        <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
                     </Button>
                     <Button onClick={() => setOpen(true)}>
                         <UserPlus className="h-4 w-4 mr-1.5" /> Vincular Usuário

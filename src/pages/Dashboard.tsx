@@ -20,7 +20,7 @@ import {
   Legend,
 } from "recharts";
 import { useQuery } from "@tanstack/react-query";
-import { EmpresaService, ColaboradorService, OperacaoService } from "@/services/base.service";
+import { EmpresaService, ColaboradorService, OperacaoService, ResultadosService } from "@/services/base.service";
 
 import { cn } from "@/lib/utils";
 
@@ -50,32 +50,51 @@ const Dashboard = () => {
     retry: 1
   });
 
-  const selectedDate = `${selectedMonth}-01`;
-
-  const { data: ops = [], isLoading: isLoadingOps, isError: isErrorOps } = useQuery({
-    queryKey: ["operacoes", selectedDate],
-    queryFn: () => OperacaoService.getByDate(selectedDate),
+  const { data: results = [], isLoading: isLoadingResults, isError: isErrorResults } = useQuery({
+    queryKey: ["resultados_mensais", selectedMonth],
+    queryFn: () => ResultadosService.getByMonth(selectedMonth),
     retry: 1
   });
 
-  const { data: history = [], isLoading: isLoadingHistory, isError: isErrorHistory } = useQuery({
-    queryKey: ["operacoes_history", selectedMonth],
-    queryFn: () => OperacaoService.getWeeklyHistory(),
+  const { data: rawOps = [], isLoading: isLoadingRawOps } = useQuery({
+    queryKey: ["operacoes_mensais", selectedMonth],
+    queryFn: () => OperacaoService.getByMonth(selectedMonth),
     retry: 1
   });
 
-  const isLoading = isLoadingCols || isLoadingEmpresas || isLoadingOps || isLoadingHistory;
-  const isError = isErrorCols || isErrorEmpresas || isErrorOps || isErrorHistory;
+  const isLoading = isLoadingCols || isLoadingEmpresas || isLoadingResults || isLoadingRawOps;
+  const isError = isErrorCols || isErrorEmpresas || isErrorResults;
 
-  const serieSemanalReal = (history || []).map(h => ({
-    dia: new Date(h.data).toLocaleDateString('pt-BR', { weekday: 'short' }),
-    operacoes: h.total_operacoes || 0,
-    valor: Number(h.valor_total_calculado) || 0,
-    colaboradores: cols.length // Mapeando o total atual como referência lateral
-  }));
+  const totalOperacoes = results.length > 0
+    ? results.reduce((acc, r) => acc + (r.total_operacoes || 0), 0)
+    : rawOps.length;
 
-  const totalCalculado = ops.reduce((acc, op) => acc + (Number(op.quantidade) * Number(op.valor_unitario || 0)), 0);
-  const inconsistencias = ops.filter(op => op.status === 'inconsistente').length;
+  const totalCalculado = results.length > 0
+    ? results.reduce((acc, r) => acc + Number(r.valor_total_calculado || 0), 0)
+    : rawOps.reduce((acc, op) => acc + (Number(op.quantidade) * Number(op.valor_unitario || 0)), 0);
+
+  const inconsistencias = results.length > 0
+    ? results.reduce((acc, r) => acc + (r.contagem_inconsistencias || 0), 0)
+    : rawOps.filter(op => op.status === 'inconsistente').length;
+
+  // Se não houver histórico processado, gerar histórico baseado nas operações reais (modo preview)
+  const serieMensal = results.length > 0
+    ? (results || []).map(r => ({
+      dia: new Date(r.data).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+      operacoes: r.total_operacoes || 0,
+      valor: Number(r.valor_total_calculado) || 0,
+      inconsistencias: r.contagem_inconsistencias || 0
+    }))
+    : Object.values(
+      rawOps.reduce((acc: any, op: any) => {
+        const dia = new Date(op.data).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+        if (!acc[dia]) acc[dia] = { dia, operacoes: 0, valor: 0, inconsistencias: 0 };
+        acc[dia].operacoes += 1;
+        acc[dia].valor += (Number(op.quantidade) * Number(op.valor_unitario || 0));
+        if (op.status === 'inconsistente') acc[dia].inconsistencias += 1;
+        return acc;
+      }, {})
+    );
 
   // Distribuição por cargo
   const distribCargo = Object.entries(
@@ -95,7 +114,7 @@ const Dashboard = () => {
   const lastSync = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
   return (
-    <AppShell title="Dashboard" subtitle={`Visão consolidada · ${new Date(selectedDate).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}`}>
+    <AppShell title="Dashboard" subtitle={`Visão consolidada · ${new Date(selectedMonth + "-01").toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}`}>
       <div className="space-y-5">
         <div className="flex items-center justify-between gap-4 flex-wrap bg-card border border-border p-3 rounded-xl">
           <div className="flex items-center gap-3">
@@ -104,7 +123,7 @@ const Dashboard = () => {
               type="month"
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
-              className="h-9 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium"
+              className="h-9 px-3 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-primary transition-all font-bold text-foreground"
             />
           </div>
           <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
@@ -134,19 +153,19 @@ const Dashboard = () => {
         ) : (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <MetricCard label="Operações no período" value={ops.length.toString()} icon={Boxes} delta={{ value: ops.length > 0 ? "Ativo" : "Pendente", positive: ops.length > 0 }} />
+              <MetricCard label="Operações no mês" value={totalOperacoes.toLocaleString('pt-BR')} icon={Boxes} delta={{ value: results.length > 0 ? "Processado" : "Simulado", positive: results.length > 0 }} />
               <MetricCard label="Colaboradores" value={cols.length.toString()} icon={Users} />
-              <MetricCard label="Total calculado" value={`R$ ${totalCalculado.toLocaleString('pt-BR')}`} icon={Wallet} accent />
-              <MetricCard label="Inconsistências" value={inconsistencias.toString()} icon={AlertTriangle} delta={{ value: inconsistencias > 0 ? "Atenção" : "OK", positive: inconsistencias === 0 }} />
+              <MetricCard label="Faturamento do mês" value={`R$ ${totalCalculado.toLocaleString('pt-BR')}`} icon={Wallet} accent />
+              <MetricCard label="Inconsistências (Preview)" value={inconsistencias.toString()} icon={AlertTriangle} delta={{ value: inconsistencias > 0 ? "Atenção" : "OK", positive: inconsistencias === 0 }} />
             </div>
 
             <section className="esc-card p-5">
               <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
                 <div className="flex items-center gap-2">
                   <Activity className="h-4 w-4 text-muted-foreground" />
-                  <h2 className="font-display font-semibold text-foreground">Operações e faturamento — últimos 7 dias</h2>
+                  <h2 className="font-display font-semibold text-foreground">Operações e faturamento — histórico mensal</h2>
                 </div>
-                {serieSemanalReal.length > 0 && (
+                {serieMensal.length > 0 && (
                   <div className="inline-flex items-center bg-muted rounded-lg p-1">
                     <ChartTabBtn active={chartType === "line"} onClick={() => setChartType("line")} icon={<LineIcon className="h-3.5 w-3.5" />}>
                       Linhas
@@ -159,10 +178,10 @@ const Dashboard = () => {
               </div>
 
               <div className="h-[280px] w-full">
-                {serieSemanalReal.length > 0 ? (
+                {serieMensal.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     {chartType === "line" ? (
-                      <LineChart data={serieSemanalReal} margin={{ top: 8, right: 16, left: -10, bottom: 0 }}>
+                      <LineChart data={serieMensal} margin={{ top: 8, right: 16, left: -10, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                         <XAxis dataKey="dia" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
                         <YAxis yAxisId="l" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
@@ -180,9 +199,10 @@ const Dashboard = () => {
                         <Legend wrapperStyle={{ fontSize: 12 }} />
                         <Line yAxisId="l" type="monotone" dataKey="operacoes" name="Operações" stroke="hsl(var(--info))" strokeWidth={2.5} dot={{ r: 3 }} />
                         <Line yAxisId="r" type="monotone" dataKey="valor" name="Faturamento (R$)" stroke="hsl(var(--primary))" strokeWidth={2.5} dot={{ r: 3 }} />
+                        <Line yAxisId="l" type="monotone" dataKey="inconsistencias" name="Inconsistências" stroke="hsl(var(--destructive))" strokeWidth={2} strokeDasharray="5 5" />
                       </LineChart>
                     ) : (
-                      <BarChart data={serieSemanalReal} margin={{ top: 8, right: 16, left: -10, bottom: 0 }}>
+                      <BarChart data={serieMensal} margin={{ top: 8, right: 16, left: -10, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                         <XAxis dataKey="dia" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
                         <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
@@ -198,6 +218,7 @@ const Dashboard = () => {
                         <Legend wrapperStyle={{ fontSize: 12 }} />
                         <Bar dataKey="operacoes" name="Operações" fill="hsl(var(--info))" radius={[4, 4, 0, 0]} />
                         <Bar dataKey="valor" name="Faturamento" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="inconsistencias" name="Inconsistências" fill="hsl(var(--destructive))" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     )}
                   </ResponsiveContainer>
@@ -259,16 +280,18 @@ const ChartTabBtn = ({
   icon: React.ReactNode;
   children: React.ReactNode;
 }) => (
-  <button
+  <Button
+    variant={active ? "secondary" : "ghost"}
+    size="sm"
     onClick={onClick}
     className={cn(
-      "inline-flex items-center gap-1.5 h-8 px-3 rounded-md text-sm font-medium transition-colors",
-      active ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+      "gap-1.5 h-7 px-3 text-[11px] font-bold uppercase tracking-wider transition-all",
+      active ? "bg-background text-foreground shadow-sm ring-1 ring-border" : "text-muted-foreground hover:text-foreground"
     )}
   >
     {icon}
     {children}
-  </button>
+  </Button>
 );
 
 const PieCard = ({ title, icon, data }: { title: string; icon: React.ReactNode; data: { name: string; value: number }[] }) => (

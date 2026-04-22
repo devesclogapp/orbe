@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { CompetenciaService, ConsolidadoService, AIService } from "@/services/base.service";
+import { CompetenciaService, ConsolidadoService, AIService, EmpresaService } from "@/services/base.service";
 import { AppShell } from "@/components/layout/AppShell";
 import { MetricCard } from "@/components/painel/MetricCard";
 import { Wallet, Users, Building2, AlertTriangle, ArrowRight, Loader2, Filter, RefreshCw, Layers } from "lucide-react";
@@ -13,20 +13,38 @@ const FinanceiroGeral = () => {
     const queryClient = useQueryClient();
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().substring(0, 7));
 
+    const { data: empresas = [], isLoading: loadingEmps } = useQuery({
+        queryKey: ["empresas"],
+        queryFn: () => EmpresaService.getAll(),
+    });
+
+    const [selectedEmpresaId, setSelectedEmpresaId] = useState<string | null>(null);
+
+    // Seleciona a primeira empresa automaticamente quando carregar
+    useEffect(() => {
+        if (empresas.length > 0 && !selectedEmpresaId) {
+            setSelectedEmpresaId(empresas[0].id);
+        }
+    }, [empresas, selectedEmpresaId]);
+
     const { data: comp, isLoading: loadingComp } = useQuery({
-        queryKey: ["competencia", selectedMonth],
-        queryFn: () => CompetenciaService.getAtual(), // Nota: Idealmente o serviço suportaria getByCompetencia(selectedMonth)
+        queryKey: ["competencia", selectedMonth, selectedEmpresaId],
+        queryFn: () => CompetenciaService.getByMonth(selectedMonth, selectedEmpresaId!),
+        enabled: !!selectedEmpresaId,
     });
 
     const { data: consolidado, isLoading: loadingCons } = useQuery({
-        queryKey: ["consolidado", selectedMonth],
-        queryFn: () => ConsolidadoService.getByCompetencia(`${selectedMonth}-01`),
+        queryKey: ["consolidado", selectedMonth, selectedEmpresaId],
+        queryFn: () => ConsolidadoService.getByCompetencia(`${selectedMonth}-01`, selectedEmpresaId!),
+        enabled: !!selectedEmpresaId,
     });
 
     const reprocessMutation = useMutation({
-        mutationFn: () => AIService.processDay(`${selectedMonth}-01`, ""), // Simulação
+        mutationFn: () => AIService.processDay(`${selectedMonth}-01`, selectedEmpresaId!),
         onSuccess: () => {
-            toast.success("Reprocessamento iniciado", { description: "Os dados serão atualizados em breve." });
+            toast.success("Reprocessamento concluído", { description: "Os dados financeiros foram atualizados." });
+            queryClient.invalidateQueries({ queryKey: ["consolidado", selectedMonth, selectedEmpresaId] });
+            queryClient.invalidateQueries({ queryKey: ["competencia", selectedMonth, selectedEmpresaId] });
         },
         onError: (err: any) => {
             toast.error("Erro ao reprocessar", { description: err.message });
@@ -35,21 +53,20 @@ const FinanceiroGeral = () => {
 
     const consolidarMutation = useMutation({
         mutationFn: async () => {
-            // Em vez de setTimeout, chamamos o serviço real
-            // Idealmente: return ConsolidadoService.consolidar(selectedMonth);
-            return AIService.processDay(`${selectedMonth}-01`, "");
+            // Em cenários reais, aqui haveria uma lógica de fechamento de competência
+            return AIService.processDay(`${selectedMonth}-01`, selectedEmpresaId!);
         },
         onSuccess: () => {
-            toast.success("Faturamento consolidado", { description: "A competência foi fechada com sucesso." });
-            queryClient.invalidateQueries({ queryKey: ["consolidado"] });
-            queryClient.invalidateQueries({ queryKey: ["competencia"] });
+            toast.success("Faturamento consolidado", { description: "A competência foi processada e os valores atualizados." });
+            queryClient.invalidateQueries({ queryKey: ["consolidado", selectedMonth, selectedEmpresaId] });
+            queryClient.invalidateQueries({ queryKey: ["competencia", selectedMonth, selectedEmpresaId] });
         },
         onError: (err: any) => {
             toast.error("Erro ao consolidar", { description: err.message });
         }
     });
 
-    const isLoading = loadingComp || loadingCons;
+    const isLoading = loadingComp || loadingCons || loadingEmps;
 
     const totalFaturavel = comp?.valor_total_faturado || 0;
     const clientesCount = consolidado?.clientes?.length || 0;
@@ -72,6 +89,22 @@ const FinanceiroGeral = () => {
                             />
                             <Filter className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
                         </div>
+
+                        {empresas.length > 0 && (
+                            <div className="relative">
+                                <select
+                                    value={selectedEmpresaId || ""}
+                                    onChange={(e) => setSelectedEmpresaId(e.target.value)}
+                                    className="h-9 pl-3 pr-8 rounded-md border border-border bg-card text-sm focus:outline-none focus:ring-1 focus:ring-primary font-medium appearance-none min-w-[180px]"
+                                >
+                                    {empresas.map(emp => (
+                                        <option key={emp.id} value={emp.id}>{emp.nome}</option>
+                                    ))}
+                                </select>
+                                <Building2 className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                            </div>
+                        )}
+
                         <Badge className={cn(
                             "h-9 px-3 font-semibold",
                             comp?.status === 'aberta' ? "bg-info-soft text-info-strong" : "bg-success-soft text-success-strong"

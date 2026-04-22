@@ -426,7 +426,7 @@ const Styleguide = () => {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="p-6 bg-slate-800 rounded-xl border border-slate-700">
                                     <div className="flex items-center gap-2 mb-4">
-                                        <div className="w-6 h-6 bg-[#FD4C00] rounded flex items-center justify-center text-[10px] font-bold">O</div>
+                                        <div className="w-6 h-6 bg-primary rounded flex items-center justify-center text-[10px] font-bold text-white">O</div>
                                         <span className="font-bold text-sm">Identidade Premium</span>
                                     </div>
                                     <p className="text-xs text-slate-400">Uso de tons mais escuros (Slate 900) e azul/branco para transmitir seriedade e contraste com o operacional.</p>

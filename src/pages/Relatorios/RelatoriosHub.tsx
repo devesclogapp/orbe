@@ -29,9 +29,10 @@ const RelatoriosHub = () => {
     const navigate = useNavigate();
     const [search, setSearch] = useState("");
 
-    const { data: reports = [], isLoading } = useQuery({
+    const { data: reports = [], isLoading, error: reportError } = useQuery({
         queryKey: ["reports_catalog"],
         queryFn: () => ReportService.getAll(),
+        retry: 1
     });
 
     const categories = [
@@ -97,6 +98,13 @@ const RelatoriosHub = () => {
                         {isLoading ? (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-32 w-full rounded-xl" />)}
+                            </div>
+                        ) : reportError ? (
+                            <div className="flex flex-col items-center justify-center p-20 border border-dashed rounded-xl border-destructive/20 bg-destructive/5 text-destructive">
+                                <AlertTriangle className="h-10 w-10 mb-4 opacity-50" />
+                                <h3 className="font-semibold">Erro ao carregar catálogo</h3>
+                                <p className="text-xs opacity-80">Não foi possível conectar ao servidor de relatórios.</p>
+                                <Button variant="outline" size="sm" className="mt-4" onClick={() => window.location.reload()}>Tentar novamente</Button>
                             </div>
                         ) : filteredReports.length > 0 ? (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

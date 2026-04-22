@@ -94,11 +94,17 @@ export const EmpresaService = new EmpresaServiceClass();
 class ColaboradorServiceClass extends BaseService<'colaboradores'> {
   constructor() { super('colaboradores'); }
 
-  async getWithEmpresa() {
-    const { data, error } = await supabase
+  async getWithEmpresa(empresaId?: string) {
+    let query = supabase
       .from('colaboradores')
       .select('*, empresas(nome, cidade, estado)')
       .order('created_at', { ascending: false });
+
+    if (empresaId) {
+      query = query.eq('empresa_id', empresaId);
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
     return data;
   }
@@ -132,16 +138,53 @@ class ResultadosServiceClass extends BaseService<'resultados_processamento'> {
     if (error) throw error;
     return data;
   }
+  async getByMonth(month: string) {
+    // Calculando o próximo mês para o limite superior (exclusivo)
+    const [year, mo] = month.split('-').map(Number);
+    const nextMonth = mo === 12 ? 1 : mo + 1;
+    const nextYear = mo === 12 ? year + 1 : year;
+    const nextMonthStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+
+    const { data, error } = await supabase
+      .from('resultados_processamento')
+      .select('*')
+      .gte('data', `${month}-01`)
+      .lt('data', nextMonthStr)
+      .order('data', { ascending: true });
+    if (error) throw error;
+    return data;
+  }
 }
 export const ResultadosService = new ResultadosServiceClass();
 
 class OperacaoServiceClass extends BaseService<'operacoes'> {
   constructor() { super('operacoes'); }
-  async getByDate(date: string) {
-    const { data, error } = await supabase
+  async getByDate(date: string, empresaId?: string) {
+    let query = supabase
       .from('operacoes')
       .select('*, colaboradores(nome, cargo, empresas(nome))')
       .eq('data', date);
+    
+    if (empresaId) {
+      query = query.eq('empresa_id', empresaId);
+    }
+    
+    const { data, error } = await query;
+    if (error) throw error;
+    return data;
+  }
+  async getByMonth(month: string) {
+    // Calculando o próximo mês para o limite superior (exclusivo)
+    const [year, mo] = month.split('-').map(Number);
+    const nextMonth = mo === 12 ? 1 : mo + 1;
+    const nextYear = mo === 12 ? year + 1 : year;
+    const nextMonthStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+
+    const { data, error } = await supabase
+      .from('operacoes')
+      .select('*, colaboradores(nome, cargo, empresas(nome))')
+      .gte('data', `${month}-01`)
+      .lt('data', nextMonthStr);
     if (error) throw error;
     return data;
   }
@@ -172,11 +215,17 @@ export const OperacaoService = new OperacaoServiceClass();
 
 class PontoServiceClass extends BaseService<'registros_ponto'> {
   constructor() { super('registros_ponto'); }
-  async getByDate(date: string) {
-    const { data, error } = await supabase
+  async getByDate(date: string, empresaId?: string) {
+    let query = supabase
       .from('registros_ponto')
       .select('*, colaboradores(nome, cargo, empresas(nome))')
       .eq('data', date);
+
+    if (empresaId) {
+      query = query.eq('empresa_id', empresaId);
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
     return data;
   }
@@ -229,25 +278,44 @@ export const RegraCalculoService = new RegraCalculoServiceClass();
 
 class CompetenciaServiceClass extends BaseService<'financeiro_competencias'> {
   constructor() { super('financeiro_competencias'); }
-  async getAtual() {
-    const firstDay = new Date();
-    firstDay.setDate(1);
-    const dateStr = firstDay.toISOString().split('T')[0];
-    
-    const { data, error } = await supabase.from('financeiro_competencias').select('*').eq('competencia', dateStr).maybeSingle();
+  async getByMonth(month: string, empresaId: string) {
+    const dateStr = month.includes('-') ? `${month}-01` : month;
+    const { data, error } = await supabase
+      .from('financeiro_competencias')
+      .select('*')
+      .eq('competencia', dateStr)
+      .eq('empresa_id', empresaId)
+      .maybeSingle();
     if (error) throw error;
     return data;
+  }
+  async getAtual(empresaId: string) {
+    const month = new Date().toISOString().substring(0, 7);
+    return this.getByMonth(month, empresaId);
   }
 }
 export const CompetenciaService = new CompetenciaServiceClass();
 
 class ConsolidadoServiceClass {
-  async getByCompetencia(competencia: string) {
-    const { data: clientes, error: errC } = await supabase.from('financeiro_consolidados_cliente').select('*, clientes(nome)').eq('competencia', competencia);
-    const { data: colaboradores, error: errCol } = await supabase.from('financeiro_consolidados_colaborador').select('*, colaboradores(nome, cargo)').eq('competencia', competencia);
+  async getByCompetencia(competencia: string, empresaId?: string) {
+    let qC = supabase
+      .from('financeiro_consolidados_cliente')
+      .select('*, clientes(nome)')
+      .eq('competencia', competencia);
     
-    if (errC || errCol) throw errC || errCol;
-    return { clientes, colaboradores };
+    if (empresaId) qC = qC.eq('empresa_id', empresaId);
+
+    let qCol = supabase
+      .from('financeiro_consolidados_colaborador')
+      .select('*, colaboradores(nome, cargo)')
+      .eq('competencia', competencia);
+    
+    if (empresaId) qCol = qCol.eq('empresa_id', empresaId);
+
+    const [resC, resCol] = await Promise.all([qC, qCol]);
+    
+    if (resC.error || resCol.error) throw resC.error || resCol.error;
+    return { clientes: resC.data, colaboradores: resCol.data };
   }
 }
 export const ConsolidadoService = new ConsolidadoServiceClass();
@@ -289,6 +357,29 @@ class ConfigTipoDiaServiceClass extends BaseService<'config_tipos_dia'> {
   constructor() { super('config_tipos_dia'); }
 }
 export const ConfigTipoDiaService = new ConfigTipoDiaServiceClass();
+
+class ConfiguracaoOperacionalServiceClass extends BaseService<'configuracoes_operacionais'> {
+  constructor() { super('configuracoes_operacionais'); }
+  async getByEmpresa(empresaId: string) {
+    const { data, error } = await supabase
+      .from('configuracoes_operacionais')
+      .select('*')
+      .eq('empresa_id', empresaId)
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  }
+  async upsert(payload: any) {
+    const { data, error } = await supabase
+      .from('configuracoes_operacionais')
+      .upsert(payload)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  }
+}
+export const ConfiguracaoOperacionalService = new ConfiguracaoOperacionalServiceClass();
 
 // STORAGE SERVICE
 export const StorageService = {

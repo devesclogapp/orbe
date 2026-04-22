@@ -25,8 +25,13 @@ const Colaboradores = () => {
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
+  // Filter states
+  const [searchText, setSearchText] = useState("");
+  const [selectedEmpresa, setSelectedEmpresa] = useState("all");
+  const [selectedContrato, setSelectedContrato] = useState("all");
+
   // Queries
-  const { data: list = [], isLoading, isError, error: queryError } = useQuery({
+  const { data: list = [], isLoading, isFetching, isError, error: queryError } = useQuery({
     queryKey: ["colaboradores_list"],
     queryFn: () => ColaboradorService.getWithEmpresa(),
     retry: 1,
@@ -123,13 +128,52 @@ const Colaboradores = () => {
   return (
     <AppShell title="Colaboradores" subtitle="Cadastro e configuração de equipe">
       <div className="space-y-4">
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" size="icon" onClick={() => queryClient.invalidateQueries({ queryKey: ["colaboradores_list"] })}>
-            <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />
-          </Button>
-          <Button onClick={() => setOpen(true)}>
-            <Plus className="h-4 w-4 mr-1.5" /> Novo colaborador
-          </Button>
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex flex-1 items-center gap-3 w-full">
+            <div className="relative flex-1 max-w-sm">
+              <Input
+                placeholder="Buscar por nome ou matrícula..."
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                className="pl-9 h-10 border-border"
+              />
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
+              </div>
+            </div>
+
+            <Select value={selectedEmpresa} onValueChange={setSelectedEmpresa}>
+              <SelectTrigger className="w-[200px] h-10">
+                <SelectValue placeholder="Empresa" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas as empresas</SelectItem>
+                {empresaOptions.map((e) => (
+                  <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={selectedContrato} onValueChange={setSelectedContrato}>
+              <SelectTrigger className="w-[160px] h-10">
+                <SelectValue placeholder="Tipo contrato" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os tipos</SelectItem>
+                <SelectItem value="Hora">Por hora</SelectItem>
+                <SelectItem value="Operação">Por operação</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center gap-2 w-full md:w-auto">
+            <Button variant="outline" size="icon" className="h-10 w-10 flex-shrink-0" onClick={() => queryClient.invalidateQueries({ queryKey: ["colaboradores_list"] })}>
+              <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
+            </Button>
+            <Button className="h-10 px-4 w-full md:w-auto font-display font-semibold" onClick={() => setOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" /> Novo colaborador
+            </Button>
+          </div>
         </div>
 
         <section className="esc-card overflow-hidden">
@@ -168,7 +212,13 @@ const Colaboradores = () => {
                 </tr>
               </thead>
               <tbody>
-                {list.map((c: any) => (
+                {(list || []).filter((c: any) => {
+                  const matchesSearch = c.nome.toLowerCase().includes(searchText.toLowerCase()) ||
+                    c.matricula.toLowerCase().includes(searchText.toLowerCase());
+                  const matchesEmpresa = selectedEmpresa === "all" || c.empresa_id === selectedEmpresa;
+                  const matchesContrato = selectedContrato === "all" || c.tipo_contrato === selectedContrato;
+                  return matchesSearch && matchesEmpresa && matchesContrato;
+                }).map((c: any) => (
                   <tr key={c.id} className="border-t border-muted hover:bg-background group">
                     <td className="px-5 h-[52px]">
                       <div className="font-medium text-foreground">{c.nome}</div>

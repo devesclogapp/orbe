@@ -1,25 +1,43 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CompetenciaService, ConsolidadoService } from "@/services/base.service";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
-import { FileCheck, Search, Filter, Loader2, ExternalLink, Printer } from "lucide-react";
+import { FileCheck, Search, Filter, Loader2, ExternalLink, Printer, Building2 } from "lucide-react";
+import { EmpresaService } from "@/services/base.service";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 const FaturamentoCliente = () => {
     const [searchTerm, setSearchTerm] = useState("");
 
-    const { data: comp } = useQuery({
-        queryKey: ["competencia_atual"],
-        queryFn: () => CompetenciaService.getAtual(),
+    const { data: empresas = [], isLoading: loadingEmps } = useQuery({
+        queryKey: ["empresas"],
+        queryFn: () => EmpresaService.getAll(),
     });
 
-    const { data: consolidado, isLoading } = useQuery({
-        queryKey: ["consolidado", comp?.competencia],
-        queryFn: () => ConsolidadoService.getByCompetencia(comp!.competencia),
-        enabled: !!comp?.competencia,
+    const [selectedEmpresaId, setSelectedEmpresaId] = useState<string | null>(null);
+
+    // Seleciona a primeira empresa se nenhuma estiver selecionada
+    useEffect(() => {
+        if (empresas.length > 0 && !selectedEmpresaId) {
+            setSelectedEmpresaId(empresas[0].id);
+        }
+    }, [empresas, selectedEmpresaId]);
+
+    const { data: comp } = useQuery({
+        queryKey: ["competencia_atual", selectedEmpresaId],
+        queryFn: () => CompetenciaService.getAtual(selectedEmpresaId!),
+        enabled: !!selectedEmpresaId,
     });
+
+    const { data: consolidado, isLoading: loadingCons } = useQuery({
+        queryKey: ["consolidado", comp?.competencia, selectedEmpresaId],
+        queryFn: () => ConsolidadoService.getByCompetencia(comp!.competencia, selectedEmpresaId!),
+        enabled: !!comp?.competencia && !!selectedEmpresaId,
+    });
+
+    const isLoading = loadingCons || loadingEmps;
 
     const list = consolidado?.clientes || [];
     const filtered = list.filter((c: any) =>
@@ -41,6 +59,20 @@ const FaturamentoCliente = () => {
                         />
                     </div>
                     <div className="flex gap-2">
+                        {empresas.length > 0 && (
+                            <div className="relative">
+                                <select
+                                    value={selectedEmpresaId || ""}
+                                    onChange={(e) => setSelectedEmpresaId(e.target.value)}
+                                    className="h-10 pl-3 pr-8 rounded-md border border-border bg-card text-sm focus:outline-none focus:ring-1 focus:ring-primary appearance-none min-w-[200px]"
+                                >
+                                    {empresas.map(emp => (
+                                        <option key={emp.id} value={emp.id}>{emp.nome}</option>
+                                    ))}
+                                </select>
+                                <Building2 className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                            </div>
+                        )}
                         <Button variant="outline" size="sm"><Printer className="h-4 w-4 mr-2" /> Imprimir Tudo</Button>
                         <Button size="sm"><FileCheck className="h-4 w-4 mr-2" /> Aprovar Lote</Button>
                     </div>

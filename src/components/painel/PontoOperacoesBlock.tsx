@@ -1,16 +1,17 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { StatusChip } from "./StatusChip";
-import { Clock, RefreshCw, Boxes, Plus, Pencil, Trash2 } from "lucide-react";
+import { Clock, RefreshCw, Boxes, Plus, Pencil, Trash2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { usePreferences } from "@/contexts/PreferencesContext";
 import { useSelection } from "@/contexts/SelectionContext";
 import { PontoService, OperacaoService } from "@/services/base.service";
 
-export const PontoOperacoesBlock = () => {
+export const PontoOperacoesBlock = ({ date, empresaId }: { date: string; empresaId: string }) => {
   const { defaultTab } = usePreferences();
   const [tab, setTab] = useState<"ponto" | "operacoes">(defaultTab);
+  const queryClient = useQueryClient();
 
   return (
     <section className="esc-card overflow-hidden">
@@ -25,8 +26,11 @@ export const PontoOperacoesBlock = () => {
         </div>
 
         {tab === "ponto" ? (
-          <button className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5">
-            <RefreshCw className="h-3.5 w-3.5" /> Sincronizado agora
+          <button
+            onClick={() => queryClient.invalidateQueries({ queryKey: ["ponto", date, empresaId] })}
+            className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 transition-colors group"
+          >
+            <RefreshCw className="h-3.5 w-3.5 group-active:animate-spin" /> Atualizar dados
           </button>
         ) : (
           <Button size="sm" className="h-8">
@@ -35,7 +39,7 @@ export const PontoOperacoesBlock = () => {
         )}
       </header>
 
-      {tab === "ponto" ? <PontoTable /> : <OperacoesTable />}
+      {tab === "ponto" ? <PontoTable date={date} empresaId={empresaId} /> : <OperacoesTable date={date} empresaId={empresaId} />}
     </section>
   );
 };
@@ -63,32 +67,34 @@ const TabButton = ({
   </button>
 );
 
-const PontoTable = () => {
+const PontoTable = ({ date, empresaId }: { date: string; empresaId: string }) => {
   const { id: selectedId, kind, select } = useSelection();
-  const today = new Date().toISOString().split('T')[0];
 
   const { data: rows = [], isLoading } = useQuery({
-    queryKey: ["ponto", today],
-    queryFn: () => PontoService.getByDate(today),
+    queryKey: ["ponto", date, empresaId],
+    queryFn: () => PontoService.getByDate(date, empresaId === 'all' ? undefined : empresaId),
   });
 
-  if (isLoading) return <div className="p-8 text-center text-muted-foreground">Carregando ponto...</div>;
+  if (isLoading) return <div className="p-12 text-center text-muted-foreground min-h-[300px] flex flex-col items-center justify-center">
+    <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
+    Carregando registros de ponto...
+  </div>;
 
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead className="esc-table-header">
-          <tr className="text-left">
-            <th className="px-5 font-medium">Colaborador</th>
-            <th className="px-3 font-medium text-center">Entrada</th>
-            <th className="px-3 font-medium text-center">Saída almoço</th>
-            <th className="px-3 font-medium text-center">Retorno almoço</th>
-            <th className="px-3 font-medium text-center">Saída</th>
-            <th className="px-3 font-medium text-center">Horas</th>
-            <th className="px-3 font-medium text-center">Extras</th>
-            <th className="px-3 font-medium text-center">Tipo dia</th>
-            <th className="px-3 font-medium text-right">Valor do dia</th>
-            <th className="px-5 font-medium text-center">Status</th>
+          <tr className="text-left font-display">
+            <th className="px-5 font-semibold py-3">Colaborador</th>
+            <th className="px-3 font-semibold text-center">Entrada</th>
+            <th className="px-3 font-semibold text-center">Saída almoço</th>
+            <th className="px-3 font-semibold text-center">Retorno almoço</th>
+            <th className="px-3 font-semibold text-center">Saída</th>
+            <th className="px-3 font-semibold text-center">Horas</th>
+            <th className="px-3 font-semibold text-center">Extras</th>
+            <th className="px-3 font-semibold text-center">Tipo dia</th>
+            <th className="px-3 font-semibold text-right">Valor do dia</th>
+            <th className="px-5 font-semibold text-center">Status</th>
           </tr>
         </thead>
         <tbody>
@@ -99,12 +105,12 @@ const PontoTable = () => {
                 key={r.id}
                 onClick={() => select("colaborador", r.colaborador_id)}
                 className={cn(
-                  "esc-table-row",
+                  "esc-table-row cursor-pointer transition-all",
                   r.status === 'inconsistente' && "bg-rowAlert border-l-[3px] border-l-primary",
                   isSelected && "bg-primary-soft/40 border-l-[3px] border-l-primary"
                 )}
               >
-                <td className="px-5">
+                <td className="px-5 py-3">
                   <div className="font-medium text-foreground">{r.colaboradores?.nome}</div>
                   <div className="text-xs text-muted-foreground">{r.colaboradores?.cargo} · {r.colaboradores?.empresas?.nome}</div>
                 </td>
@@ -124,7 +130,7 @@ const PontoTable = () => {
           })}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={10} className="p-8 text-center text-muted-foreground">Nenhum registro encontrado para hoje.</td>
+              <td colSpan={10} className="p-12 text-center text-muted-foreground italic">Nenhum registro encontrado para {date}.</td>
             </tr>
           )}
         </tbody>
@@ -133,32 +139,34 @@ const PontoTable = () => {
   );
 };
 
-const OperacoesTable = () => {
+const OperacoesTable = ({ date, empresaId }: { date: string; empresaId: string }) => {
   const { id: selectedId, kind, select } = useSelection();
-  const today = new Date().toISOString().split('T')[0];
 
   const { data: rows = [], isLoading } = useQuery({
-    queryKey: ["operacoes", today],
-    queryFn: () => OperacaoService.getByDate(today),
+    queryKey: ["operacoes", date, empresaId],
+    queryFn: () => OperacaoService.getByDate(date, empresaId === 'all' ? undefined : empresaId),
   });
 
-  if (isLoading) return <div className="p-8 text-center text-muted-foreground">Carregando operações...</div>;
+  if (isLoading) return <div className="p-12 text-center text-muted-foreground min-h-[300px] flex flex-col items-center justify-center">
+    <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
+    Carregando operações...
+  </div>;
 
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead className="esc-table-header">
-          <tr className="text-left">
-            <th className="px-5 font-medium">Operação</th>
-            <th className="px-3 font-medium">Transportadora</th>
-            <th className="px-3 font-medium text-center">Serviço</th>
-            <th className="px-3 font-medium text-center">Qtd</th>
-            <th className="px-3 font-medium text-center">Início</th>
-            <th className="px-3 font-medium text-center">Fim</th>
-            <th className="px-3 font-medium text-right">Valor unit.</th>
-            <th className="px-3 font-medium text-right">Valor do dia</th>
-            <th className="px-3 font-medium text-center">Status</th>
-            <th className="px-5 font-medium text-center">Ações</th>
+          <tr className="text-left font-display">
+            <th className="px-5 font-semibold py-3">Operação</th>
+            <th className="px-3 font-semibold">Transportadora</th>
+            <th className="px-3 font-semibold text-center">Serviço</th>
+            <th className="px-3 font-semibold text-center">Qtd</th>
+            <th className="px-3 font-semibold text-center">Início</th>
+            <th className="px-3 font-semibold text-center">Fim</th>
+            <th className="px-3 font-semibold text-right">Valor unit.</th>
+            <th className="px-3 font-semibold text-right">Valor do dia</th>
+            <th className="px-3 font-semibold text-center">Status</th>
+            <th className="px-5 font-semibold text-center">Ações</th>
           </tr>
         </thead>
         <tbody>
@@ -170,12 +178,12 @@ const OperacoesTable = () => {
                 key={o.id}
                 onClick={() => select("operacao", o.id)}
                 className={cn(
-                  "esc-table-row",
+                  "esc-table-row cursor-pointer transition-all",
                   o.status === 'inconsistente' && "bg-rowAlert border-l-[3px] border-l-primary",
                   isSelected && "bg-primary-soft/40 border-l-[3px] border-l-primary"
                 )}
               >
-                <td className="px-5">
+                <td className="px-5 py-3">
                   <div className="font-medium text-foreground">{o.id.substring(0, 8)}</div>
                   <div className="text-xs text-muted-foreground">{o.produto}</div>
                 </td>
@@ -184,8 +192,8 @@ const OperacoesTable = () => {
                 <td className="px-3 text-center font-display font-medium">{o.quantidade}</td>
                 <td className="px-3 text-center text-muted-foreground">{o.horario_inicio || '—'}</td>
                 <td className="px-3 text-center text-muted-foreground">{o.horario_fim || '—'}</td>
-                <td className="px-3 text-right text-muted-foreground">R$ {(o.valor_unitario || 0).toFixed(2).replace(".", ",")}</td>
-                <td className="px-3 text-right font-display font-semibold text-foreground">R$ {valorTotal.toLocaleString('pt-BR')}</td>
+                <td className="px-3 text-right text-muted-foreground">R$ {(o.valor_unitario || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                <td className="px-3 text-right font-display font-semibold text-foreground">R$ {valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                 <td className="px-3 text-center"><StatusChip status={o.status} /></td>
                 <td className="px-5" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-center gap-1">
@@ -202,7 +210,7 @@ const OperacoesTable = () => {
           })}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={10} className="p-8 text-center text-muted-foreground">Nenhuma operação lançada hoje.</td>
+              <td colSpan={10} className="p-12 text-center text-muted-foreground italic">Nenhuma operação lançada nesta data.</td>
             </tr>
           )}
         </tbody>

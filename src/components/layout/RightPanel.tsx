@@ -10,9 +10,12 @@ import { format } from "date-fns";
 export const RightPanel = () => {
   const { kind, id, clear } = useSelection();
 
-  if (kind === "colaborador" && id) return <ColaboradorPanel id={id} onClose={clear} />;
-  if (kind === "operacao" && id) return <OperacaoPanel id={id} onClose={clear} />;
-  return <DefaultPanel />;
+  if (!id) return null;
+
+  if (kind === "colaborador") return <ColaboradorPanel id={id} onClose={clear} />;
+  if (kind === "operacao") return <OperacaoPanel id={id} onClose={clear} />;
+
+  return <DefaultPanel onClose={clear} />;
 };
 
 const PanelShell = ({ children }: { children: React.ReactNode }) => (
@@ -51,7 +54,7 @@ const ColaboradorPanel = ({ id, onClose }: { id: string; onClose: () => void }) 
     return <PanelShell><div className="flex justify-center p-10"><Loader2 className="h-6 w-6 animate-spin" /></div></PanelShell>;
   }
 
-  if (!colab) return <DefaultPanel />;
+  if (!colab) return <DefaultPanel onClose={onClose} />;
 
   return (
     <PanelShell>
@@ -62,7 +65,7 @@ const ColaboradorPanel = ({ id, onClose }: { id: string; onClose: () => void }) 
           </div>
           <div className="leading-tight min-w-0">
             <div className="font-display font-semibold text-foreground text-sm truncate">{colab.nome}</div>
-            <div className="text-[11px] text-muted-foreground truncate">{colab.cargo} · Mat. {colab.matricula || 'N/A'}</div>
+            <div className="text-[11px] text-muted-foreground truncate">{colab.cargo} · {colab.matricula || 'Mat. N/A'}</div>
           </div>
         </div>
         <button onClick={onClose} className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground">
@@ -89,12 +92,12 @@ const ColaboradorPanel = ({ id, onClose }: { id: string; onClose: () => void }) 
               <KV label="Saída" value={pontoRecord.saida || '—'} />
               <KV label="Saída almoço" value={pontoRecord.saida_almoco || '—'} />
               <KV label="Retorno almoço" value={pontoRecord.retorno_almoco || '—'} />
-              <KV label="Horas" value="N/A" />
-              <KV label="Extras" value="—" />
+              <KV label="Horas" value={pontoRecord.horas_trabalhadas || '0h00'} />
+              <KV label="Extras" value={pontoRecord.horas_extras || '—'} />
             </div>
             <div className="flex items-center justify-between pt-2 border-t border-border">
               <span className="text-muted-foreground">Valor do dia</span>
-              <span className="font-display font-semibold text-foreground">R$ 0,00</span>
+              <span className="font-display font-semibold text-foreground">R$ {Number(pontoRecord.valor_dia || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Status</span>
@@ -102,7 +105,7 @@ const ColaboradorPanel = ({ id, onClose }: { id: string; onClose: () => void }) 
             </div>
           </div>
         ) : (
-          <p className="text-xs text-muted-foreground">Sem registro de ponto hoje.</p>
+          <p className="text-xs text-muted-foreground italic bg-secondary/20 rounded-md p-3 text-center">Sem registro de ponto hoje.</p>
         )}
       </section>
 
@@ -112,30 +115,30 @@ const ColaboradorPanel = ({ id, onClose }: { id: string; onClose: () => void }) 
         </h3>
         <ul className="space-y-2">
           {colets.map((c: any) => (
-            <li key={c.id} className="flex items-start gap-2 p-2.5 rounded-md border border-border bg-background/50 text-xs">
-              <Cpu className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
+            <li key={c.id} className="flex items-start gap-2 p-2.5 rounded-md border border-border bg-background/50 text-xs text-secondary-glow">
+              <Cpu className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-foreground truncate">{c.serie} · {c.modelo}</div>
-                <div className="text-muted-foreground">Última Sync: {c.ultima_conexao ? format(new Date(c.ultima_conexao), "HH:mm") : '—'}</div>
+                <div className="text-[10px] text-muted-foreground">Última Sync: {c.ultima_conexao ? format(new Date(c.ultima_conexao), "HH:mm") : '—'}</div>
               </div>
               <span
-                className={`esc-chip ${c.status === "online"
-                    ? "bg-success-soft text-success-strong"
-                    : c.status === "erro"
-                      ? "bg-destructive-soft text-destructive-strong"
-                      : "bg-muted text-muted-foreground"
+                className={`esc-chip text-[10px] ${c.status === "online"
+                  ? "bg-success-soft text-success-strong"
+                  : c.status === "erro"
+                    ? "bg-destructive-soft text-destructive-strong"
+                    : "bg-muted text-muted-foreground"
                   }`}
               >
                 {c.status}
               </span>
             </li>
           ))}
-          {colets.length === 0 && <p className="text-xs text-muted-foreground">Nenhum coletor vinculado.</p>}
+          {colets.length === 0 && <p className="text-xs text-muted-foreground italic p-2.5 text-center bg-secondary/10 rounded-md">Nenhum coletor vinculado.</p>}
         </ul>
       </section>
 
-      <Button size="sm" className="w-full">
-        <Wand2 className="h-3.5 w-3.5 mr-1.5" /> Ações sobre colaborador
+      <Button size="sm" className="w-full font-display font-semibold">
+        <Wand2 className="h-3.5 w-3.5 mr-1.5" /> Ações do Assistente
       </Button>
     </PanelShell>
   );
@@ -157,7 +160,7 @@ const OperacaoPanel = ({ id, onClose }: { id: string; onClose: () => void }) => 
     return <PanelShell><div className="flex justify-center p-10"><Loader2 className="h-6 w-6 animate-spin" /></div></PanelShell>;
   }
 
-  if (!op) return <DefaultPanel />;
+  if (!op) return <DefaultPanel onClose={onClose} />;
 
   const valorTotal = Number(op.quantidade || 0) * Number(op.valor_unitario || 0);
 
@@ -214,8 +217,15 @@ const OperacaoPanel = ({ id, onClose }: { id: string; onClose: () => void }) => 
   );
 };
 
-const DefaultPanel = () => (
+const DefaultPanel = ({ onClose }: { onClose: () => void }) => (
   <PanelShell>
+    <header className="flex items-center justify-between mb-2">
+      <h3 className="font-display font-semibold text-sm text-foreground">Assistente Orbe</h3>
+      <button onClick={onClose} className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground">
+        <X className="h-4 w-4" />
+      </button>
+    </header>
+
     <section>
       <h3 className="font-display font-semibold text-sm text-foreground mb-2">Sincronização</h3>
       <div className="flex items-start gap-2 p-3 rounded-lg bg-success-soft">

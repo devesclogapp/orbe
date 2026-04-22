@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { EmpresaService, AIService, ColaboradorService, OperacaoService } from "@/services/base.service";
 import { AppShell } from "@/components/layout/AppShell";
@@ -8,55 +8,78 @@ import { PontoOperacoesBlock } from "@/components/painel/PontoOperacoesBlock";
 import { ResultadoBlock } from "@/components/painel/ResultadoBlock";
 import { StatusIABlock } from "@/components/painel/StatusIABlock";
 import { Button } from "@/components/ui/button";
-import { FilterPill } from "@/components/ui/FilterPill";
-import { Users, Boxes, Wallet, AlertTriangle, Calendar, Building2, PlayCircle, RefreshCw, Loader2 } from "lucide-react";
+import { Users, Boxes, Wallet, AlertTriangle, Calendar as CalendarIcon, Building2, PlayCircle, RefreshCw, Loader2, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 
 const Processamento = () => {
   const queryClient = useQueryClient();
   const [processingStage, setProcessingStage] = useState<"idle" | "sync" | "ai" | "save" | "done">("idle");
-  const today = new Date().toISOString().split('T')[0];
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [selectedEmpresaId, setSelectedEmpresaId] = useState<string>("");
 
-  // Busca a primeira empresa para o processamento (simplificação MVP)
-  const { data: empresas = [], isLoading: isLoadingEmpresas, isError: isErrorEmpresas } = useQuery({
+  const dateValue = format(selectedDate, "yyyy-MM-dd");
+
+  // Busca empresas para o filtro
+  const { data: empresas = [], isLoading: isLoadingEmpresas } = useQuery<any[]>({
     queryKey: ["empresas"],
     queryFn: () => EmpresaService.getAll(),
-    retry: 1
   });
 
-  const { data: cols = [], isLoading: isLoadingCols, isError: isErrorCols } = useQuery({
-    queryKey: ["colaboradores"],
-    queryFn: () => ColaboradorService.getAll(),
-    retry: 1
+  // Define a empresa inicial assim que os dados carregarem (Todas por padrão)
+  useMemo(() => {
+    if (empresas.length > 0 && !selectedEmpresaId) {
+      setSelectedEmpresaId("all");
+    }
+  }, [empresas, selectedEmpresaId]);
+
+  const { data: cols = [], isLoading: isLoadingCols } = useQuery<any[]>({
+    queryKey: ["colaboradores", selectedEmpresaId],
+    queryFn: () => ColaboradorService.getWithEmpresa(selectedEmpresaId === 'all' ? undefined : selectedEmpresaId),
+    enabled: !!selectedEmpresaId
   });
 
-  const { data: ops = [], isLoading: isLoadingOps, isError: isErrorOps } = useQuery({
-    queryKey: ["operacoes", today],
-    queryFn: () => OperacaoService.getByDate(today),
-    retry: 1
+  const { data: ops = [], isLoading: isLoadingOps } = useQuery<any[]>({
+    queryKey: ["operacoes", dateValue, selectedEmpresaId],
+    queryFn: () => OperacaoService.getByDate(dateValue, selectedEmpresaId === 'all' ? undefined : selectedEmpresaId),
+    enabled: !!selectedEmpresaId
   });
 
   const isLoading = isLoadingEmpresas || isLoadingCols || isLoadingOps;
-  const isError = isErrorEmpresas || isErrorCols || isErrorOps;
 
   const totalCalculado = ops.reduce((acc, op) => acc + (Number(op.quantidade) * Number(op.valor_unitario || 0)), 0);
   const inconsistencias = ops.filter(o => o.status === 'inconsistente').length;
 
   const mutation = useMutation({
-    mutationFn: (empresaId: string) => AIService.processDay(today, empresaId),
+    mutationFn: (empresaId: string) => AIService.processDay(dateValue, empresaId),
     onMutate: () => {
-      setProcessingStage("ai"); // Pula direto para o estágio de processamento
+      setProcessingStage("ai");
     },
     onSuccess: (res) => {
       setProcessingStage("done");
       toast.success("Dia processado!", {
         description: `Resultado: R$ ${res.resultado?.[0]?.valor_total_calculado?.toLocaleString('pt-BR') || '0,00'}`
       });
-      // Invalida as queries para atualizar os cards e tabelas
       queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       queryClient.invalidateQueries({ queryKey: ["ponto"] });
+      queryClient.invalidateQueries({ queryKey: ["resultados_mensais"] });
+      queryClient.invalidateQueries({ queryKey: ["resultados_processamento"] });
 
-      // Volta para idle após um tempo
       setTimeout(() => setProcessingStage("idle"), 3000);
     },
     onError: (err: any) => {
@@ -66,30 +89,78 @@ const Processamento = () => {
   });
 
   const handleProcessar = () => {
-    if (empresas.length === 0) {
-      toast.error("Nenhuma empresa encontrada");
+    if (!selectedEmpresaId || selectedEmpresaId === 'all') {
+      toast.warning("Selecione uma empresa específica", {
+        description: "O processamento precisa de uma unidade operacional definida."
+      });
       return;
     }
-    mutation.mutate(empresas[0].id);
+    mutation.mutate(selectedEmpresaId);
   };
+
+  const selectedEmpresaNome = useMemo(() =>
+    empresas.find(e => e.id === selectedEmpresaId)?.nome || "Selecionar empresa"
+    , [empresas, selectedEmpresaId]);
 
   return (
     <AppShell
       title="Painel de Processamento Operacional"
-      subtitle={`Validar e processar operações do dia · ${new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`}
+      subtitle={`Validar e processar operações do dia · ${format(selectedDate, "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })}`}
       rightPanel={<RightPanel />}
     >
       <div className="space-y-5">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-2">
-            <FilterPill icon={Calendar} label={new Date().toLocaleDateString('pt-BR')} />
-            <FilterPill icon={Building2} label={empresas[0]?.nome || "Carregando..."} />
+            {/* Filtro de Data */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "justify-start text-left font-normal h-10 px-4 esc-card-hover border-border border",
+                    !selectedDate && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
+                  {selectedDate ? format(selectedDate, "dd/MM/yyyy") : <span>Selecione a data</span>}
+                  <ChevronDown className="ml-2 h-4 w-4 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={(d) => d && setSelectedDate(d)}
+                  initialFocus
+                  locale={ptBR}
+                />
+              </PopoverContent>
+            </Popover>
+
+            {/* Filtro de Empresa */}
+            <Select value={selectedEmpresaId} onValueChange={setSelectedEmpresaId}>
+              <SelectTrigger className="w-[280px] h-10 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium">
+                <div className="flex items-center gap-2">
+                  <Building2 className="h-4 w-4 text-primary" />
+                  <SelectValue placeholder="Selecione a empresa" />
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas as empresas</SelectItem>
+                {empresas.map((emp) => (
+                  <SelectItem key={emp.id} value={emp.id}>
+                    {emp.nome}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
+
           <Button
             size="lg"
-            className="h-10 px-6 font-display font-semibold"
+            className="h-10 px-6 font-display font-semibold shadow-lg shadow-primary/20"
             onClick={handleProcessar}
-            disabled={mutation.isPending}
+            disabled={mutation.isPending || isLoading}
           >
             {mutation.isPending ? (
               <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
@@ -101,34 +172,21 @@ const Processamento = () => {
         </div>
 
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center p-12 esc-card">
+          <div className="flex flex-col items-center justify-center p-24 esc-card border-dashed">
             <Loader2 className="h-10 w-10 animate-spin text-primary mb-3" />
-            <p className="text-sm text-muted-foreground animate-pulse">Sincronizando dados operacionais...</p>
-          </div>
-        ) : isError ? (
-          <div className="flex flex-col items-center justify-center p-12 esc-card text-center">
-            <div className="h-14 w-14 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
-              <AlertTriangle className="h-7 w-7 text-destructive" />
-            </div>
-            <h2 className="text-lg font-display font-semibold text-foreground">Falha na sincronização</h2>
-            <p className="text-sm text-muted-foreground max-w-md mt-2 mb-6">
-              Ocorreu um erro ao carregar os dados do dia. Isso pode ser devido a políticas de segurança ou instabilidade na conexão.
-            </p>
-            <Button onClick={() => queryClient.invalidateQueries()} className="h-10 px-8">
-              Tentar novamente
-            </Button>
+            <p className="text-sm font-medium text-muted-foreground animate-pulse">Sincronizando dados operacionais...</p>
           </div>
         ) : (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <MetricCard label="Colaboradores" value={cols.length.toString()} icon={Users} />
               <MetricCard label="Operações" value={ops.length.toString()} icon={Boxes} />
-              <MetricCard label="Total do dia" value={`R$ ${totalCalculado.toLocaleString('pt-BR')}`} icon={Wallet} accent />
+              <MetricCard label="Total do dia" value={`R$ ${totalCalculado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} icon={Wallet} accent />
               <MetricCard label="Inconsistências" value={inconsistencias.toString()} icon={AlertTriangle} delta={{ value: inconsistencias > 0 ? "Atenção" : "OK", positive: inconsistencias === 0 }} />
             </div>
 
-            <PontoOperacoesBlock />
-            <ResultadoBlock />
+            <PontoOperacoesBlock date={dateValue} empresaId={selectedEmpresaId} />
+            <ResultadoBlock date={dateValue} empresaId={selectedEmpresaId} />
             <StatusIABlock stage={processingStage} />
           </>
         )}
@@ -138,6 +196,5 @@ const Processamento = () => {
     </AppShell>
   );
 };
-
 
 export default Processamento;

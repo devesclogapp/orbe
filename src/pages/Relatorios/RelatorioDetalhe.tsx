@@ -2,8 +2,11 @@ import { AppShell } from "@/components/layout/AppShell";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ReportService } from "@/services/report.service";
-import { OperacaoService } from "@/services/base.service";
+import { OperacaoService, ConsolidadoService } from "@/services/base.service";
+import { AuditoriaService } from "@/services/v4.service";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { format } from "date-fns";
 import {
     ArrowLeft,
     Download,
@@ -12,7 +15,8 @@ import {
     Filter,
     LayoutGrid,
     FileText,
-    Table as TableIcon
+    Table as TableIcon,
+    Loader2
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -29,20 +33,104 @@ const RelatorioDetalhe = () => {
     const { id } = useParams();
     const navigate = useNavigate();
 
-    const { data: report, isLoading: loadingCatalog } = useQuery({
+    const { data: report, isLoading: loadingCatalog, error: catalogError } = useQuery({
         queryKey: ["report_catalog_item", id],
-        queryFn: () => ReportService.getById(id!),
-        enabled: !!id,
+        queryFn: async () => {
+            if (!id || id === 'new') return null;
+            // Validação de UUID simples para evitar 400 do Supabase
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (!uuidRegex.test(id)) {
+                throw new Error("Identificador de relatório inválido");
+            }
+            return await ReportService.getById(id);
+        },
+        enabled: !!id && id !== 'new',
+        retry: false
     });
 
-    // Simulando carregamento de dados reais baseando-se no tipo de relatório
-    // No MVP usaremos operações recentes como dados genéricos para visualização
-    const { data: reportData = [], isLoading: loadingData } = useQuery({
-        queryKey: ["report_data_preview", id],
-        queryFn: () => OperacaoService.getAll(),
+    const { data: reportData = [] as any[], isLoading: loadingData } = useQuery({
+        queryKey: ["report_data_preview", id, report?.nome],
+        queryFn: async () => {
+            try {
+                if (!report) return [];
+
+                // Lógica de roteamento de dados por tipo de relatório
+                if (report.nome === "Log de Auditoria") {
+                    const logs = await AuditoriaService.getAll();
+                    return Array.isArray(logs) ? logs : [];
+                }
+                if (report.nome === "Inconsistências de Ponto") {
+                    const incs = await OperacaoService.getInconsistencies();
+                    return Array.isArray(incs) ? incs : [];
+                }
+                if (report.nome === "Faturamento por Cliente") {
+                    const currentMonth = format(new Date(), "yyyy-MM");
+                    const data = await ConsolidadoService.getByCompetencia(currentMonth);
+                    return (data as any)?.colaboradores || (data as any)?.clientes || [];
+                }
+
+                const ops = await OperacaoService.getAll();
+                return Array.isArray(ops) ? ops : [];
+            } catch (err) {
+                console.error("Report data fetch error:", err);
+                return [];
+            }
+        },
+        enabled: !!report
     });
 
-    if (loadingCatalog) return null;
+    const handleExport = (formatType: 'CSV' | 'Excel') => {
+        if (reportData.length === 0) {
+            toast.error("Não há dados para exportar");
+            return;
+        }
+
+        let headers: string[] = [];
+        let rows: any[] = [];
+
+        if (report?.nome === "Log de Auditoria") {
+            headers = ["Data", "Usuário", "Ação", "Módulo", "Impacto"];
+            rows = reportData.map((l: any) => [
+                format(new Date(l.created_at), "dd/MM/yyyy HH:mm"),
+                l.user_id || "Sistema",
+                l.acao,
+                l.modulo,
+                l.impacto
+            ]);
+        } else {
+            headers = ["ID", "Colaborador", "Data", "Serviço", "Valor"];
+            rows = reportData.map((row: any) => [
+                row.id,
+                row.transportadora || "N/A",
+                format(new Date(row.data), "dd/MM/yyyy"),
+                row.tipo_servico,
+                (Number(row.quantidade) * Number(row.valor_unitario || 0)).toFixed(2)
+            ]);
+        }
+
+        const content = [
+            headers.join(","),
+            ...rows.map(r => r.join(","))
+        ].join("\n");
+
+        const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `${report?.nome || 'relatorio'}-${format(new Date(), "yyyy-MM-dd")}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        toast.success(`Relatório exportado em ${formatType}`);
+    };
+
+    if (loadingCatalog || !report) return (
+        <AppShell title="Carregando..." subtitle="Preparando relatório">
+            <div className="flex items-center justify-center p-20">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+        </AppShell>
+    );
 
     return (
         <AppShell
@@ -61,14 +149,14 @@ const RelatorioDetalhe = () => {
                         </Button>
                     </div>
                     <div className="flex gap-2">
-                        <Button variant="outline" size="sm">
+                        <Button variant="outline" size="sm" onClick={() => window.print()}>
                             <Printer className="h-4 w-4 mr-2" /> Imprimir
                         </Button>
                         <div className="flex border rounded-lg overflow-hidden">
-                            <Button variant="ghost" size="sm" className="rounded-none border-r">
-                                <FileText className="h-4 w-4 mr-2" /> PDF
+                            <Button variant="ghost" size="sm" className="rounded-none border-r" onClick={() => handleExport('CSV')}>
+                                <FileText className="h-4 w-4 mr-2" /> PDF / CSV
                             </Button>
-                            <Button variant="ghost" size="sm" className="rounded-none">
+                            <Button variant="ghost" size="sm" className="rounded-none" onClick={() => handleExport('Excel')}>
                                 <Download className="h-4 w-4 mr-2" /> Excel
                             </Button>
                         </div>
@@ -95,13 +183,23 @@ const RelatorioDetalhe = () => {
                     <div className="overflow-x-auto">
                         <Table>
                             <TableHeader className="esc-table-header">
-                                <TableRow>
-                                    <TableHead className="px-5">Identificador</TableHead>
-                                    <TableHead>Colaborador</TableHead>
-                                    <TableHead>Data</TableHead>
-                                    <TableHead>Serviço</TableHead>
-                                    <TableHead className="text-right px-5">Valor</TableHead>
-                                </TableRow>
+                                {report?.nome === "Log de Auditoria" ? (
+                                    <TableRow>
+                                        <TableHead className="px-5">Data/Hora</TableHead>
+                                        <TableHead>Usuário</TableHead>
+                                        <TableHead>Módulo</TableHead>
+                                        <TableHead>Ação</TableHead>
+                                        <TableHead className="text-right px-5">Impacto</TableHead>
+                                    </TableRow>
+                                ) : (
+                                    <TableRow>
+                                        <TableHead className="px-5">Identificador</TableHead>
+                                        <TableHead>Colaborador</TableHead>
+                                        <TableHead>Data</TableHead>
+                                        <TableHead>Serviço</TableHead>
+                                        <TableHead className="text-right px-5">Valor</TableHead>
+                                    </TableRow>
+                                )}
                             </TableHeader>
                             <TableBody>
                                 {loadingData ? (
@@ -112,12 +210,30 @@ const RelatorioDetalhe = () => {
                                     ))
                                 ) : reportData.length > 0 ? (
                                     reportData.map((row: any) => (
-                                        <TableRow key={row.id} className="hover:bg-muted/30 transition-colors">
-                                            <TableCell className="px-5 font-mono text-xs text-muted-foreground">{row.id.substring(0, 8)}</TableCell>
-                                            <TableCell className="font-medium">{row.transportadora || "N/A"}</TableCell>
-                                            <TableCell>{new Date(row.data).toLocaleDateString('pt-BR')}</TableCell>
-                                            <TableCell><Badge variant="secondary" className="font-normal">{row.tipo_servico}</Badge></TableCell>
-                                            <TableCell className="text-right px-5 font-semibold">R$ {(Number(row.quantidade) * Number(row.valor_unitario || 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</TableCell>
+                                        <TableRow key={row.id} className="hover:bg-muted/30 transition-colors text-xs">
+                                            {report?.nome === "Log de Auditoria" ? (
+                                                <>
+                                                    <TableCell className="px-5 font-medium">{format(new Date(row.created_at), "dd/MM/yyyy HH:mm")}</TableCell>
+                                                    <TableCell>{row.user_id || "Sistema"}</TableCell>
+                                                    <TableCell><Badge variant="outline" className="text-[9px] uppercase">{row.modulo}</Badge></TableCell>
+                                                    <TableCell className="max-w-[200px] truncate" title={row.acao}>{row.acao}</TableCell>
+                                                    <TableCell className="text-right px-5">
+                                                        <Badge variant={row.impacto === 'critico' ? 'destructive' : row.impacto === 'medio' ? 'warning' : 'secondary'} className="h-5">
+                                                            {row.impacto}
+                                                        </Badge>
+                                                    </TableCell>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <TableCell className="px-5 font-mono text-muted-foreground">{row.id.substring(0, 8)}</TableCell>
+                                                    <TableCell className="font-medium">{row.transportadora || row.colaboradores?.nome || "N/A"}</TableCell>
+                                                    <TableCell>{format(new Date(row.data), "dd/MM/yyyy")}</TableCell>
+                                                    <TableCell><Badge variant="secondary" className="font-normal">{row.tipo_servico || row.status}</Badge></TableCell>
+                                                    <TableCell className="text-right px-5 font-semibold">
+                                                        R$ {(Number(row.quantidade || 0) * Number(row.valor_unitario || 0) || Number(row.valor_total || 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                    </TableCell>
+                                                </>
+                                            )}
                                         </TableRow>
                                     ))
                                 ) : (

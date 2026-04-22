@@ -34,7 +34,7 @@ const Empresas = () => {
     setEditingId(null);
   };
 
-  const { data: list = [], isLoading, isError, error: queryError } = useQuery({
+  const { data: list = [], isLoading, isFetching, isError, error: queryError } = useQuery({
     queryKey: ["empresas"],
     queryFn: () => EmpresaService.getWithCounts(),
     retry: 1
@@ -93,7 +93,7 @@ const Empresas = () => {
       <div className="space-y-4">
         <div className="flex justify-end gap-2">
           <Button variant="outline" size="icon" onClick={() => queryClient.invalidateQueries({ queryKey: ["empresas"] })}>
-            <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />
+            <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
           </Button>
           <Button onClick={() => setOpen(true)}>
             <Plus className="h-4 w-4 mr-1.5" /> Nova empresa

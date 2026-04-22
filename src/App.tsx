@@ -60,6 +60,7 @@ import ExtratoColaborador from "./pages/BancoHoras/ExtratoColaborador";
 import UsuariosGestao from "./pages/Governanca/Usuarios";
 import PerfisPermissoes from "./pages/Governanca/Perfis";
 import AuditoriaLogs from "./pages/Governanca/Auditoria";
+import DemoPage from "./pages/Simulacao/DemoPage";
 
 
 const queryClient = new QueryClient();
@@ -130,6 +131,7 @@ const App = () => (
 
                   {/* Development Tools */}
                   <Route path="/styleguide" element={<Styleguide />} />
+                  <Route path="/simulacao/demo" element={<AuthGuard><DemoPage /></AuthGuard>} />
 
                   <Route path="*" element={<NotFound />} />
                 </Routes>

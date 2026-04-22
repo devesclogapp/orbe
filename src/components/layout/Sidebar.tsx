@@ -1,8 +1,9 @@
-import { LayoutDashboard, ClipboardCheck, Users, Building2, Cpu, Download, AlertTriangle, CalendarCheck, BarChart3, Settings, FilePlus, UploadCloud, ExternalLink, Clock, UserCheck, Shield, ListChecks, Scale, Wallet, FileCheck, LogOut } from "lucide-react";
+import { LayoutDashboard, ClipboardCheck, Users, Building2, Cpu, Download, AlertTriangle, CalendarCheck, BarChart3, Settings, FilePlus, UploadCloud, ExternalLink, Clock, UserCheck, Shield, ListChecks, Scale, Wallet, FileCheck, LogOut, Database } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { Logo } from "@/components/ui/Logo";
+import { Button } from "@/components/ui/button";
 
 const mainItems = [
   { icon: LayoutDashboard, label: "Dashboard", to: "/", end: true },
@@ -40,6 +41,10 @@ const govItems = [
   { icon: UserCheck, label: "Gestão de Usuários", to: "/governanca/usuarios" },
   { icon: Shield, label: "Perfis e Permissões", to: "/governanca/perfis" },
   { icon: ListChecks, label: "Auditoria", to: "/governanca/auditoria" },
+];
+
+const simItems = [
+  { icon: Database, label: "Gerador de Demo", to: "/simulacao/demo" },
 ];
 
 export const Sidebar = () => {
@@ -89,28 +94,41 @@ export const Sidebar = () => {
           <h3 className="px-3 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Ambiente Externo</h3>
           {portalItems.map(renderItem)}
         </div>
+
+        <div>
+          <h3 className="px-3 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Desenvolvimento</h3>
+          {simItems.map(renderItem)}
+        </div>
       </nav>
 
       <div className="px-2 pt-2 border-t border-sidebar-border space-y-1">
         {renderItem({ icon: Settings, label: "Configurações", to: "/configuracoes" })}
-        <button
+        <Button
+          variant="ghost"
           onClick={handleSignOut}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors text-left text-red-500 hover:bg-red-50"
+          className="w-full justify-start gap-3 px-3 py-2 h-9 rounded-md text-sm font-medium transition-colors text-destructive hover:bg-destructive-soft hover:text-destructive-strong"
         >
           <LogOut className="h-4 w-4 shrink-0" strokeWidth={1.75} />
           <span>Sair do sistema</span>
-        </button>
+        </Button>
       </div>
 
-      <div className="m-3 p-3 rounded-lg bg-background flex items-center gap-3 border border-border">
-        <div className="h-9 w-9 rounded-full bg-secondary flex items-center justify-center font-display font-semibold text-foreground text-sm">
-          {userInitials}
+      <button
+        onClick={() => navigate("/configuracoes?tab=conta")}
+        className="m-3 p-3 rounded-lg bg-background flex items-center gap-3 border border-border hover:border-primary/30 hover:bg-muted/50 transition-all text-left outline-none group"
+      >
+        <div className="h-9 w-9 rounded-full bg-secondary flex items-center justify-center font-display font-semibold text-foreground text-sm group-hover:ring-2 group-hover:ring-primary/20 transition-all overflow-hidden border border-border">
+          {user?.user_metadata?.avatar_url ? (
+            <img src={user.user_metadata.avatar_url} alt="Profile" className="h-full w-full object-cover" />
+          ) : (
+            userInitials
+          )}
         </div>
         <div className="leading-tight min-w-0 flex-1">
-          <div className="font-display font-semibold text-foreground text-sm truncate">{userName}</div>
+          <div className="font-display font-semibold text-foreground text-sm truncate group-hover:text-primary transition-colors">{userName}</div>
           <div className="text-[11px] text-muted-foreground truncate">{user?.email}</div>
         </div>
-      </div>
+      </button>
 
       <div className="px-4 pb-3 text-[11px] text-muted-foreground">
         v4.1 — Relatórios & Integração

@@ -68,8 +68,24 @@ const RegrasBH = () => {
         }
         createMutation.mutate({
             ...form,
+            empresa_id: form.empresa_id === 'global' ? null : form.empresa_id,
             prazo_compensacao_dias: parseInt(form.prazo_compensacao_dias),
         });
+    };
+
+    const deleteMutation = useMutation({
+        mutationFn: (id: string) => BHRegraService.delete(id),
+        onSuccess: () => {
+            toast.success("Regra removida");
+            queryClient.invalidateQueries({ queryKey: ["bh_regras"] });
+        },
+        onError: (err: any) => toast.error("Erro ao remover regra", { description: err.message })
+    });
+
+    const handleDelete = (id: string) => {
+        if (confirm("Deseja realmente excluir esta regra?")) {
+            deleteMutation.mutate(id);
+        }
     };
 
     return (
@@ -112,7 +128,13 @@ const RegrasBH = () => {
                                             <StatusChip status={r.status === 'ativo' ? 'ok' : 'inconsistente'} label={r.status} />
                                         </td>
                                         <td className="px-5 text-right">
-                                            <Button variant="ghost" size="icon" className="text-error hover:text-error hover:bg-error/10">
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="text-error hover:text-error hover:bg-error/10"
+                                                onClick={() => handleDelete(r.id)}
+                                                disabled={deleteMutation.isPending}
+                                            >
                                                 <Trash2 className="h-4 w-4" />
                                             </Button>
                                         </td>
@@ -156,6 +178,7 @@ const RegrasBH = () => {
                             <Select value={form.empresa_id} onValueChange={(v) => setForm({ ...form, empresa_id: v })}>
                                 <SelectTrigger><SelectValue placeholder="Selecione a empresa" /></SelectTrigger>
                                 <SelectContent>
+                                    <SelectItem value="global">Todas as Empresas (Global)</SelectItem>
                                     {empresas.map((e) => (
                                         <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>
                                     ))}

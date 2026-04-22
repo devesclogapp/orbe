@@ -55,17 +55,17 @@ export const AIChat = () => {
   return (
     <>
       {/* Floating button */}
-      <button
+      <Button
         onClick={() => setOpen((o) => !o)}
         aria-label="Abrir assistente IA"
+        size="icon"
         className={cn(
-          "fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center transition-transform hover:scale-105",
-          open && "scale-95"
+          "fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full shadow-[0_10px_30px_hsl(var(--primary)/.3)] transition-transform hover:scale-105",
+          open && "scale-90"
         )}
-        style={{ boxShadow: "0 10px 30px hsl(var(--primary) / 0.35)" }}
       >
-        {open ? <X className="h-5 w-5" /> : <MessageCircle className="h-5 w-5" />}
-      </button>
+        {open ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}
+      </Button>
 
       {/* Chat panel */}
       {open && (
@@ -109,7 +109,7 @@ export const AIChat = () => {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && send()}
               placeholder="Pergunte sobre o dia..."
-              className="flex-1 h-9 px-3 rounded-md bg-background border border-input text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              className="flex-1 h-9 px-3 rounded-md bg-muted/50 border-input text-sm text-foreground focus:ring-1 focus:ring-primary focus:outline-none transition-all"
             />
             <Button size="sm" onClick={send} className="h-9 w-9 p-0">
               <Send className="h-4 w-4" />
