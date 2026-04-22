@@ -317,6 +317,24 @@ class ConsolidadoServiceClass {
     if (resC.error || resCol.error) throw resC.error || resCol.error;
     return { clientes: resC.data, colaboradores: resCol.data };
   }
+
+  async getClientConsolidadoById(id: string) {
+    const { data, error } = await supabase
+      .from('financeiro_consolidados_cliente')
+      .select('*, clientes(nome, empresa_id), empresas:empresa_id(nome)')
+      .eq('id', id)
+      .single();
+    if (error) throw error;
+    return data;
+  }
+
+  async approveBatch(ids: string[]) {
+    const { error } = await supabase
+      .from('financeiro_consolidados_cliente')
+      .update({ status: 'aprovado' })
+      .in('id', ids);
+    if (error) throw error;
+  }
 }
 export const ConsolidadoService = new ConsolidadoServiceClass();
 

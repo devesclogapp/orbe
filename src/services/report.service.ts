@@ -43,6 +43,11 @@ class ReportServiceClass extends BaseService<'relatorios_catalogo'> {
     return data;
   }
 
+  async createAgendamento(data: any) {
+    const { error } = await supabase.from('relatorios_agendamentos').insert(data);
+    if (error) throw error;
+  }
+
   async getLayouts() {
     const { data, error } = await supabase
       .from('relatorios_layouts_exportacao')

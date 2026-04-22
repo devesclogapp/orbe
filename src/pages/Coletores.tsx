@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { EmpresaService, ColetorService } from "@/services/base.service";
 import { Button } from "@/components/ui/button";
-import { Plus, Cpu, Wifi, WifiOff, AlertTriangle, Loader2, RefreshCw } from "lucide-react";
+import { Plus, Cpu, Wifi, WifiOff, AlertTriangle, Loader2, RefreshCw, LayoutGrid, List } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Dialog,
@@ -29,6 +29,7 @@ const statusMap = {
 const Coletores = () => {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
   const [form, setForm] = useState({
     modelo: "",
     serie: "",
@@ -67,21 +68,42 @@ const Coletores = () => {
   return (
     <AppShell title="Coletores REP" subtitle="Dispositivos de ponto eletrônico">
       <div className="space-y-4">
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" size="icon" onClick={() => queryClient.invalidateQueries({ queryKey: ["coletores"] })}>
-            <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />
-          </Button>
-          <Button onClick={() => setOpen(true)}>
-            <Plus className="h-4 w-4 mr-1.5" /> Cadastrar coletor
-          </Button>
+        <div className="flex justify-between items-center bg-background p-2 rounded-lg border border-border/50">
+          <div className="flex border rounded-lg overflow-hidden bg-background">
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn("h-9 w-9 rounded-none border-r transition-all", viewMode === 'grid' ? "bg-muted text-primary" : "text-muted-foreground hover:text-primary")}
+              onClick={() => setViewMode('grid')}
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn("h-9 w-9 rounded-none transition-all", viewMode === 'table' ? "bg-muted text-primary" : "text-muted-foreground hover:text-primary")}
+              onClick={() => setViewMode('table')}
+            >
+              <List className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => queryClient.invalidateQueries({ queryKey: ["coletores"] })}>
+              <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />
+            </Button>
+            <Button className="h-9 px-4 font-display font-semibold text-sm" onClick={() => setOpen(true)}>
+              <Plus className="h-4 w-4 mr-1.5" /> Cadastrar coletor
+            </Button>
+          </div>
         </div>
 
-        <section className="esc-card overflow-hidden">
+        <section className={cn(viewMode === 'table' ? "esc-card overflow-hidden" : "")}>
           {isLoading ? (
-            <div className="flex items-center justify-center p-20">
-              <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
+            <div className="flex flex-col items-center justify-center p-20 gap-3 text-center">
+              <Loader2 className="h-10 w-10 animate-spin text-primary" />
+              <p className="text-xs text-muted-foreground animate-pulse font-bold tracking-widest uppercase">Detectando hardware REP...</p>
             </div>
-          ) : (
+          ) : viewMode === 'table' ? (
             <table className="w-full text-sm">
               <thead className="esc-table-header">
                 <tr className="text-left">
@@ -122,15 +144,36 @@ const Coletores = () => {
                     </tr>
                   );
                 })}
-                {list.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="p-12 text-center text-muted-foreground italic">
-                      Nenhum coletor cadastrado ainda.
-                    </td>
-                  </tr>
-                )}
               </tbody>
             </table>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {list.map((c: any) => {
+                const s = statusMap[c.status as keyof typeof statusMap] || statusMap.offline;
+                const Icon = s.icon;
+                return (
+                  <article key={c.id} className="esc-card p-5 group flex flex-col justify-between">
+                    <div>
+                      <div className="flex justify-between items-start mb-4">
+                        <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center text-muted-foreground">
+                          <Cpu className="h-5 w-5" />
+                        </div>
+                        <span className={cn("px-2 py-0.5 rounded-full text-[10px] uppercase font-bold tracking-tight inline-flex items-center gap-1", s.cls)}>
+                          <Icon className="h-3 w-3" /> {s.label}
+                        </span>
+                      </div>
+                      <h3 className="font-display font-bold text-foreground mb-1">{c.modelo}</h3>
+                      <p className="text-[10px] font-mono text-muted-foreground uppercase">{c.serie}</p>
+                      <p className="text-xs text-muted-foreground mt-3 font-medium">{(c.empresas as any)?.nome || "Unidade não vinculada"}</p>
+                    </div>
+                    <div className="mt-6 pt-4 border-t border-border flex items-center justify-between text-[11px] text-muted-foreground">
+                      <span>Sync: {c.ultima_sync ? format(new Date(c.ultima_sync), "dd/MM/yy HH:mm") : "Nunca"}</span>
+                      <span className="font-mono opacity-50">#{c.id.substring(0, 5)}</span>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
           )}
         </section>
       </div>

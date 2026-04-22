@@ -40,6 +40,7 @@ import Inconsistencias from "./pages/Inconsistencias";
 import FinanceiroGeral from "./pages/Financeiro/FinanceiroGeral";
 import RegrasCalculo from "./pages/Financeiro/RegrasCalculo";
 import FaturamentoCliente from "./pages/Financeiro/FaturamentoCliente";
+import DetalhamentoCliente from "./pages/Financeiro/DetalhamentoCliente";
 import DetalhamentoColaborador from "./pages/Financeiro/DetalhamentoColaborador";
 import RemessaCNAB from "./pages/Financeiro/RemessaCNAB";
 import HistoricoRemessas from "./pages/Financeiro/HistoricoRemessas";
@@ -96,6 +97,7 @@ const App = () => (
                   <Route path="/financeiro" element={<AuthGuard><FinanceiroGeral /></AuthGuard>} />
                   <Route path="/financeiro/regras" element={<AuthGuard><RegrasCalculo /></AuthGuard>} />
                   <Route path="/financeiro/faturamento" element={<AuthGuard><FaturamentoCliente /></AuthGuard>} />
+                  <Route path="/financeiro/faturamento/:id" element={<AuthGuard><DetalhamentoCliente /></AuthGuard>} />
                   <Route path="/financeiro/colaborador/:id" element={<AuthGuard><DetalhamentoColaborador /></AuthGuard>} />
                   <Route path="/financeiro/remessa" element={<AuthGuard><RemessaCNAB /></AuthGuard>} />
                   <Route path="/financeiro/remessa/historico" element={<AuthGuard><HistoricoRemessas /></AuthGuard>} />

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { StatusChip } from "@/components/painel/StatusChip";
 import { Button } from "@/components/ui/button";
-import { Plus, RefreshCw, Loader2, Pencil, Trash2, MoreHorizontal, AlertTriangle } from "lucide-react";
+import { Plus, RefreshCw, Loader2, Pencil, Trash2, MoreHorizontal, AlertTriangle, LayoutGrid, List, User } from "lucide-react";
 import { ColaboradorService, EmpresaService } from "@/services/base.service";
 import {
   Dialog,
@@ -24,6 +24,7 @@ const Colaboradores = () => {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
 
   // Filter states
   const [searchText, setSearchText] = useState("");
@@ -167,6 +168,24 @@ const Colaboradores = () => {
           </div>
 
           <div className="flex items-center gap-2 w-full md:w-auto">
+            <div className="flex border rounded-lg overflow-hidden mr-2 bg-background">
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn("h-10 w-10 rounded-none border-r transition-all", viewMode === 'grid' ? "bg-muted text-primary" : "text-muted-foreground hover:text-primary")}
+                onClick={() => setViewMode('grid')}
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn("h-10 w-10 rounded-none transition-all", viewMode === 'table' ? "bg-muted text-primary" : "text-muted-foreground hover:text-primary")}
+                onClick={() => setViewMode('table')}
+              >
+                <List className="h-4 w-4" />
+              </Button>
+            </div>
             <Button variant="outline" size="icon" className="h-10 w-10 flex-shrink-0" onClick={() => queryClient.invalidateQueries({ queryKey: ["colaboradores_list"] })}>
               <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
             </Button>
@@ -176,7 +195,7 @@ const Colaboradores = () => {
           </div>
         </div>
 
-        <section className="esc-card overflow-hidden">
+        <section className={cn(viewMode === 'table' ? "esc-card overflow-hidden" : "")}>
           {isLoading ? (
             <div className="flex items-center justify-center p-12">
               <div className="flex flex-col items-center gap-2">
@@ -185,7 +204,8 @@ const Colaboradores = () => {
               </div>
             </div>
           ) : isError ? (
-            <div className="flex flex-col items-center justify-center p-12 text-center">
+            /* ... (keeping existing error state logic but it might be duplicated in target content if I'm not careful) ... */
+            <div className="flex flex-col items-center justify-center p-12 text-center esc-card">
               <div className="h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
                 <AlertTriangle className="h-6 w-6 text-destructive" />
               </div>
@@ -197,7 +217,7 @@ const Colaboradores = () => {
                 Tentar novamente
               </Button>
             </div>
-          ) : (
+          ) : viewMode === 'table' ? (
             <table className="w-full text-sm">
               <thead className="esc-table-header">
                 <tr className="text-left">
@@ -244,15 +264,48 @@ const Colaboradores = () => {
                     </td>
                   </tr>
                 ))}
-                {list.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="p-12 text-center text-muted-foreground italic">
-                      Nenhum colaborador cadastrado ainda.
-                    </td>
-                  </tr>
-                )}
               </tbody>
             </table>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {(list || []).filter((c: any) => {
+                const matchesSearch = (c.nome || "").toLowerCase().includes(searchText.toLowerCase()) ||
+                  (c.matricula || "").toLowerCase().includes(searchText.toLowerCase());
+                const matchesEmpresa = selectedEmpresa === "all" || c.empresa_id === selectedEmpresa;
+                const matchesContrato = selectedContrato === "all" || c.tipo_contrato === selectedContrato;
+                return matchesSearch && matchesEmpresa && matchesContrato;
+              }).map((c: any) => (
+                <article key={c.id} className="esc-card p-5 group flex flex-col justify-between">
+                  <div>
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="h-10 w-10 rounded-full bg-primary-soft flex items-center justify-center text-primary font-bold">
+                        {c.nome.substring(0, 1).toUpperCase()}
+                      </div>
+                      <StatusChip status={c.status} />
+                    </div>
+                    <h3 className="font-display font-bold text-lg text-foreground mb-1">{c.nome}</h3>
+                    <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-2"><User className="h-3 w-3" /> {c.cargo}</span>
+                      <span className="font-mono text-[10px]">MATRÍCULA {c.matricula}</span>
+                    </div>
+                  </div>
+                  <div className="mt-6 pt-4 border-t border-border flex items-center justify-between">
+                    <div className="text-xs">
+                      <div className="text-muted-foreground uppercase text-[9px] font-bold tracking-tight">Valor Base</div>
+                      <div className="font-bold text-foreground">R$ {(c.valor_base || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                    </div>
+                    <div className="flex gap-1 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-all">
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(c)}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10" onClick={() => handleDelete(c.id)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
           )}
         </section>
       </div>

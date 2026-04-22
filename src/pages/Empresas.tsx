@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { EmpresaService } from "@/services/base.service";
 import { Button } from "@/components/ui/button";
-import { Plus, Building2, MapPin, Users, Cpu, Loader2, RefreshCw, Pencil, Trash2, AlertTriangle } from "lucide-react";
+import { Plus, Building2, MapPin, Users, Cpu, Loader2, RefreshCw, Pencil, Trash2, AlertTriangle, LayoutGrid, List } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Dialog,
@@ -21,6 +21,7 @@ const Empresas = () => {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [form, setForm] = useState({
     nome: "",
     cnpj: "",
@@ -91,13 +92,33 @@ const Empresas = () => {
   return (
     <AppShell title="Empresas" subtitle="Cadastro de empresas e unidades operacionais">
       <div className="space-y-4">
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" size="icon" onClick={() => queryClient.invalidateQueries({ queryKey: ["empresas"] })}>
-            <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
-          </Button>
-          <Button onClick={() => setOpen(true)}>
-            <Plus className="h-4 w-4 mr-1.5" /> Nova empresa
-          </Button>
+        <div className="flex justify-between items-center bg-background p-2 rounded-lg border border-border/50">
+          <div className="flex border rounded-lg overflow-hidden bg-background">
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn("h-9 w-9 rounded-none border-r transition-all", viewMode === 'grid' ? "bg-muted text-primary" : "text-muted-foreground hover:text-primary")}
+              onClick={() => setViewMode('grid')}
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn("h-9 w-9 rounded-none transition-all", viewMode === 'table' ? "bg-muted text-primary" : "text-muted-foreground hover:text-primary")}
+              onClick={() => setViewMode('table')}
+            >
+              <List className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => queryClient.invalidateQueries({ queryKey: ["empresas"] })}>
+              <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
+            </Button>
+            <Button className="h-9 px-4 font-display font-semibold text-sm" onClick={() => setOpen(true)}>
+              <Plus className="h-4 w-4 mr-1.5" /> Nova empresa
+            </Button>
+          </div>
         </div>
 
         {isLoading ? (
@@ -126,7 +147,7 @@ const Empresas = () => {
               Cadastrar primeira empresa
             </Button>
           </div>
-        ) : (
+        ) : viewMode === 'grid' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {list.map((e: any) => (
               <article key={e.id} className="esc-card p-5 group relative">
@@ -165,6 +186,51 @@ const Empresas = () => {
               </article>
             ))}
           </div>
+        ) : (
+          <section className="esc-card overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="esc-table-header">
+                <tr className="text-left">
+                  <th className="px-5 h-11 font-medium">Empresa</th>
+                  <th className="px-3 h-11 font-medium">CNPJ</th>
+                  <th className="px-3 h-11 font-medium text-center">Colaboradores</th>
+                  <th className="px-3 h-11 font-medium text-center">Coletores</th>
+                  <th className="px-3 h-11 font-medium text-center">Status</th>
+                  <th className="px-5 h-11 font-medium text-right"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-muted">
+                {list.map((e: any) => (
+                  <tr key={e.id} className="hover:bg-background group">
+                    <td className="px-5 h-14">
+                      <div className="font-medium text-foreground">{e.nome}</div>
+                      <div className="text-xs text-muted-foreground">{e.unidade} — {e.cidade}/{e.estado}</div>
+                    </td>
+                    <td className="px-3 text-muted-foreground font-mono text-xs">{e.cnpj}</td>
+                    <td className="px-3 text-center font-bold text-primary">{e.total_colaboradores}</td>
+                    <td className="px-3 text-center">{e.total_coletores}</td>
+                    <td className="px-3 text-center">
+                      <span className={cn("px-2 py-0.5 rounded-full text-[10px] uppercase font-bold tracking-tight",
+                        e.status === 'ativa' ? 'bg-success-soft text-success-strong' : 'bg-muted text-muted-foreground'
+                      )}>
+                        {e.status}
+                      </span>
+                    </td>
+                    <td className="px-5 text-right">
+                      <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(e)}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10" onClick={() => handleDelete(e.id)}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
         )}
       </div>
 

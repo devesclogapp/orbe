@@ -1,5 +1,5 @@
 import { AppShell } from "@/components/layout/AppShell";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ReportService } from "@/services/report.service";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,8 +12,10 @@ import {
     Database,
     ArrowUpRight,
     Filter,
-    MoreVertical
+    MoreVertical,
+    Play
 } from "lucide-react";
+import { toast } from "sonner";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -24,16 +26,40 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 
 const RelatoriosHub = () => {
+    const queryClient = useQueryClient();
     const navigate = useNavigate();
     const [search, setSearch] = useState("");
+
+    // Mock userId for favorites (ideally from AuthContext)
+    const userId = "demo-user";
 
     const { data: reports = [], isLoading, error: reportError } = useQuery({
         queryKey: ["reports_catalog"],
         queryFn: () => ReportService.getAll(),
         retry: 1
     });
+
+    const { data: favorites = [] } = useQuery({
+        queryKey: ["reports_favorites"],
+        queryFn: () => ReportService.getFavorites(userId),
+    });
+
+    const favoriteIds = favorites.map((f: any) => f.relatorio_id);
+
+    const toggleFavoriteMutation = useMutation({
+        mutationFn: (reportId: string) => ReportService.toggleFavorite(userId, reportId),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["reports_favorites"] });
+        }
+    });
+
+    const handleToggleFavorite = (e: React.MouseEvent, reportId: string) => {
+        e.stopPropagation();
+        toggleFavoriteMutation.mutate(reportId);
+    };
 
     const categories = [
         { id: 'Operacional', icon: Clock },
@@ -126,9 +152,30 @@ const RelatoriosHub = () => {
                                                     {report.descricao}
                                                 </p>
                                             </div>
-                                            <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-warning h-8 w-8">
-                                                <Star className="h-4 w-4" />
-                                            </Button>
+                                            <div className="flex gap-1">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className={cn(
+                                                        "h-8 w-8 transition-colors",
+                                                        favoriteIds.includes(report.id) ? "text-warning fill-warning" : "text-muted-foreground hover:text-warning"
+                                                    )}
+                                                    onClick={(e) => handleToggleFavorite(e, report.id)}
+                                                >
+                                                    <Star className={cn("h-4 w-4", favoriteIds.includes(report.id) && "fill-current")} />
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-8 w-8 text-muted-foreground hover:text-primary"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        toast.success(`Relatório "${report.nome}" gerado com sucesso!`);
+                                                    }}
+                                                >
+                                                    <Play className="h-3.5 w-3.5" />
+                                                </Button>
+                                            </div>
                                         </div>
 
                                         <div className="mt-4 flex items-center justify-between pt-4 border-t border-border/50">

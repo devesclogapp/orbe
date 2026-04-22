@@ -262,3 +262,58 @@
     scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;
   }
 }
+
+/* Otimização de Impressão */
+@media print {
+  aside,
+  header,
+  nav,
+  button,
+  .no-print,
+  [role="button"] {
+    display: none !important;
+  }
+
+  main,
+  #root,
+  .flex-1 {
+    display: block !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .esc-card {
+    border: 1px solid #eee !important;
+    box-shadow: none !important;
+    background: white !important;
+    padding: 0 !important;
+  }
+
+  body {
+    background-color: white !important;
+    color: black !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
+  th, td {
+    border-bottom: 1px solid #eee !important;
+  }
+
+  .text-primary, .text-success, .text-warning, .text-destructive {
+    color: black !important;
+  }
+
+  @page {
+    margin: 1.5cm;
+    size: auto;
+  }
+}

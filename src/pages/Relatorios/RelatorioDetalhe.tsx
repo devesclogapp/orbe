@@ -1,9 +1,11 @@
-import { AppShell } from "@/components/layout/AppShell";
+import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { AppShell } from "@/components/layout/AppShell";
 import { ReportService } from "@/services/report.service";
 import { OperacaoService, ConsolidadoService } from "@/services/base.service";
 import { AuditoriaService } from "@/services/v4.service";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -16,7 +18,9 @@ import {
     LayoutGrid,
     FileText,
     Table as TableIcon,
-    Loader2
+    Loader2,
+    Clock,
+    Settings
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -32,6 +36,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 const RelatorioDetalhe = () => {
     const { id } = useParams();
     const navigate = useNavigate();
+    const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
 
     const { data: report, isLoading: loadingCatalog, error: catalogError } = useQuery({
         queryKey: ["report_catalog_item", id],
@@ -108,9 +113,10 @@ const RelatorioDetalhe = () => {
             ]);
         }
 
-        const content = [
-            headers.join(","),
-            ...rows.map(r => r.join(","))
+        // Use delimiter ; and UTF-8 BOM for Excel compatibility
+        const content = "\uFEFF" + [
+            headers.join(";"),
+            ...rows.map(r => r.join(";"))
         ].join("\n");
 
         const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
@@ -140,26 +146,38 @@ const RelatorioDetalhe = () => {
         >
             <div className="space-y-6">
                 {/* Cabeçalho de Ações e Filtros Aplicados */}
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <div className="flex flex-wrap gap-2">
-                        <Badge variant="outline" className="bg-background">Competência: Abril 2024</Badge>
-                        <Badge variant="outline" className="bg-background">Filtro: Todos os Colaboradores</Badge>
-                        <Button variant="ghost" size="sm" className="h-8 text-primary font-semibold">
-                            <Filter className="h-3 w-3 mr-2" /> Editar Filtros
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-muted/20 p-4 rounded-xl border border-border/50">
+                    <div className="flex flex-wrap gap-2 items-center">
+                        <Badge variant="outline" className="bg-background border-border/60 text-[10px] font-bold uppercase tracking-widest px-2 py-0.5">Abril 2024</Badge>
+                        <Badge variant="outline" className="bg-background border-border/60 text-[10px] font-bold uppercase tracking-widest px-2 py-0.5">Consolidado</Badge>
+                        <div className="h-4 w-px bg-border mx-1 hidden sm:block" />
+                        <Button variant="ghost" size="sm" className="h-8 text-muted-foreground hover:text-primary transition-colors">
+                            <Filter className="h-3.5 w-3.5 mr-2" /> Editar Filtros
                         </Button>
                     </div>
-                    <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => window.print()}>
-                            <Printer className="h-4 w-4 mr-2" /> Imprimir
+                    <div className="flex flex-wrap gap-2 w-full md:w-auto">
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            className="h-9 font-semibold bg-primary/10 text-primary hover:bg-primary/20 border-primary/20"
+                            onClick={() => navigate('/relatorios/agendamentos')}
+                        >
+                            <Clock className="h-4 w-4 mr-2" /> Agendar
                         </Button>
-                        <div className="flex border rounded-lg overflow-hidden">
-                            <Button variant="ghost" size="sm" className="rounded-none border-r" onClick={() => handleExport('CSV')}>
-                                <FileText className="h-4 w-4 mr-2" /> PDF / CSV
-                            </Button>
-                            <Button variant="ghost" size="sm" className="rounded-none" onClick={() => handleExport('Excel')}>
-                                <Download className="h-4 w-4 mr-2" /> Excel
-                            </Button>
-                        </div>
+                        <Button
+                            className="h-9 font-semibold shadow-lg shadow-primary/20 bg-primary hover:bg-primary/90"
+                            onClick={() => handleExport('Excel')}
+                        >
+                            <Download className="h-4 w-4 mr-2" /> Exportar EXCEL
+                        </Button>
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-9 w-9 text-muted-foreground"
+                            onClick={() => navigate('/relatorios/layouts')}
+                        >
+                            <Settings className="h-4 w-4" />
+                        </Button>
                     </div>
                 </div>
 
@@ -176,75 +194,126 @@ const RelatorioDetalhe = () => {
                     <header className="px-5 py-4 border-b border-border flex justify-between items-center bg-muted/20">
                         <h3 className="font-display font-semibold">Dataset Consolidado</h3>
                         <div className="flex gap-2">
-                            <Button variant="ghost" size="icon" className="h-8 w-8"><LayoutGrid className="h-4 w-4" /></Button>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 select-none bg-background border shadow-sm"><TableIcon className="h-4 w-4" /></Button>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className={cn("h-8 w-8 transition-all", viewMode === 'grid' ? "bg-background border shadow-sm text-primary" : "text-muted-foreground")}
+                                onClick={() => setViewMode('grid')}
+                            >
+                                <LayoutGrid className="h-4 w-4" />
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className={cn("h-8 w-8 transition-all", viewMode === 'table' ? "bg-background border shadow-sm text-primary" : "text-muted-foreground")}
+                                onClick={() => setViewMode('table')}
+                            >
+                                <TableIcon className="h-4 w-4" />
+                            </Button>
                         </div>
                     </header>
                     <div className="overflow-x-auto">
-                        <Table>
-                            <TableHeader className="esc-table-header">
-                                {report?.nome === "Log de Auditoria" ? (
-                                    <TableRow>
-                                        <TableHead className="px-5">Data/Hora</TableHead>
-                                        <TableHead>Usuário</TableHead>
-                                        <TableHead>Módulo</TableHead>
-                                        <TableHead>Ação</TableHead>
-                                        <TableHead className="text-right px-5">Impacto</TableHead>
-                                    </TableRow>
-                                ) : (
-                                    <TableRow>
-                                        <TableHead className="px-5">Identificador</TableHead>
-                                        <TableHead>Colaborador</TableHead>
-                                        <TableHead>Data</TableHead>
-                                        <TableHead>Serviço</TableHead>
-                                        <TableHead className="text-right px-5">Valor</TableHead>
-                                    </TableRow>
-                                )}
-                            </TableHeader>
-                            <TableBody>
+                        {viewMode === 'table' ? (
+                            <Table>
+                                <TableHeader className="esc-table-header">
+                                    {report?.nome === "Log de Auditoria" ? (
+                                        <TableRow>
+                                            <TableHead className="px-5">Data/Hora</TableHead>
+                                            <TableHead>Usuário</TableHead>
+                                            <TableHead>Módulo</TableHead>
+                                            <TableHead>Ação</TableHead>
+                                            <TableHead className="text-right px-5">Impacto</TableHead>
+                                        </TableRow>
+                                    ) : (
+                                        <TableRow>
+                                            <TableHead className="px-5">Identificador</TableHead>
+                                            <TableHead>Colaborador</TableHead>
+                                            <TableHead>Data</TableHead>
+                                            <TableHead>Serviço</TableHead>
+                                            <TableHead className="text-right px-5">Valor</TableHead>
+                                        </TableRow>
+                                    )}
+                                </TableHeader>
+                                <TableBody>
+                                    {loadingData ? (
+                                        Array.from({ length: 5 }).map((_, i) => (
+                                            <TableRow key={i}>
+                                                <TableCell colSpan={5}><Skeleton className="h-8 w-full" /></TableCell>
+                                            </TableRow>
+                                        ))
+                                    ) : reportData.length > 0 ? (
+                                        reportData.map((row: any) => (
+                                            <TableRow key={row.id} className="hover:bg-muted/30 transition-colors text-xs">
+                                                {report?.nome === "Log de Auditoria" ? (
+                                                    <>
+                                                        <TableCell className="px-5 font-medium">{format(new Date(row.created_at), "dd/MM/yyyy HH:mm")}</TableCell>
+                                                        <TableCell>{row.user_id || "Sistema"}</TableCell>
+                                                        <TableCell><Badge variant="outline" className="text-[9px] uppercase">{row.modulo}</Badge></TableCell>
+                                                        <TableCell className="max-w-[200px] truncate" title={row.acao}>{row.acao}</TableCell>
+                                                        <TableCell className="text-right px-5">
+                                                            <Badge variant={row.impacto === 'critico' ? 'destructive' : row.impacto === 'medio' ? 'warning' : 'secondary'} className="h-5">
+                                                                {row.impacto}
+                                                            </Badge>
+                                                        </TableCell>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <TableCell className="px-5 font-mono text-muted-foreground">{row.id.substring(0, 8)}</TableCell>
+                                                        <TableCell className="font-medium">{row.transportadora || row.colaboradores?.nome || "N/A"}</TableCell>
+                                                        <TableCell>{format(new Date(row.data), "dd/MM/yyyy")}</TableCell>
+                                                        <TableCell><Badge variant="secondary" className="font-normal">{row.tipo_servico || row.status}</Badge></TableCell>
+                                                        <TableCell className="text-right px-5 font-semibold">
+                                                            R$ {(Number(row.quantidade || 0) * Number(row.valor_unitario || 0) || Number(row.valor_total || 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                        </TableCell>
+                                                    </>
+                                                )}
+                                            </TableRow>
+                                        ))
+                                    ) : (
+                                        <TableRow>
+                                            <TableCell colSpan={5} className="h-32 text-center text-muted-foreground italic">
+                                                Nenhum dado encontrado para os filtros selecionados.
+                                            </TableCell>
+                                        </TableRow>
+                                    )}
+                                </TableBody>
+                            </Table>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-5">
                                 {loadingData ? (
-                                    Array.from({ length: 5 }).map((_, i) => (
-                                        <TableRow key={i}>
-                                            <TableCell colSpan={5}><Skeleton className="h-8 w-full" /></TableCell>
-                                        </TableRow>
-                                    ))
-                                ) : reportData.length > 0 ? (
-                                    reportData.map((row: any) => (
-                                        <TableRow key={row.id} className="hover:bg-muted/30 transition-colors text-xs">
-                                            {report?.nome === "Log de Auditoria" ? (
-                                                <>
-                                                    <TableCell className="px-5 font-medium">{format(new Date(row.created_at), "dd/MM/yyyy HH:mm")}</TableCell>
-                                                    <TableCell>{row.user_id || "Sistema"}</TableCell>
-                                                    <TableCell><Badge variant="outline" className="text-[9px] uppercase">{row.modulo}</Badge></TableCell>
-                                                    <TableCell className="max-w-[200px] truncate" title={row.acao}>{row.acao}</TableCell>
-                                                    <TableCell className="text-right px-5">
-                                                        <Badge variant={row.impacto === 'critico' ? 'destructive' : row.impacto === 'medio' ? 'warning' : 'secondary'} className="h-5">
-                                                            {row.impacto}
-                                                        </Badge>
-                                                    </TableCell>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <TableCell className="px-5 font-mono text-muted-foreground">{row.id.substring(0, 8)}</TableCell>
-                                                    <TableCell className="font-medium">{row.transportadora || row.colaboradores?.nome || "N/A"}</TableCell>
-                                                    <TableCell>{format(new Date(row.data), "dd/MM/yyyy")}</TableCell>
-                                                    <TableCell><Badge variant="secondary" className="font-normal">{row.tipo_servico || row.status}</Badge></TableCell>
-                                                    <TableCell className="text-right px-5 font-semibold">
-                                                        R$ {(Number(row.quantidade || 0) * Number(row.valor_unitario || 0) || Number(row.valor_total || 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                                    </TableCell>
-                                                </>
-                                            )}
-                                        </TableRow>
-                                    ))
-                                ) : (
-                                    <TableRow>
-                                        <TableCell colSpan={5} className="h-32 text-center text-muted-foreground italic">
-                                            Nenhum dado encontrado para os filtros selecionados.
-                                        </TableCell>
-                                    </TableRow>
-                                )}
-                            </TableBody>
-                        </Table>
+                                    Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />)
+                                ) : reportData.map((row: any) => (
+                                    <div key={row.id} className="p-4 rounded-xl border border-border/50 bg-muted/5 flex flex-col justify-between hover:border-primary/30 transition-all group">
+                                        <div>
+                                            <div className="flex justify-between items-start mb-2">
+                                                <Badge variant="outline" className="text-[9px] uppercase font-bold tracking-tighter opacity-70">
+                                                    #{row.id.substring(0, 8)}
+                                                </Badge>
+                                                <span className="text-[10px] text-muted-foreground font-medium">
+                                                    {format(new Date(row.data || row.created_at), "dd/MM/yyyy")}
+                                                </span>
+                                            </div>
+                                            <h4 className="font-semibold text-sm group-hover:text-primary transition-colors">
+                                                {row.transportadora || row.colaboradores?.nome || row.user_id || "Sistema"}
+                                            </h4>
+                                            <p className="text-[11px] text-muted-foreground mt-1 line-clamp-1">
+                                                {row.acao || row.tipo_servico || row.status || "Operação padrão"}
+                                            </p>
+                                        </div>
+                                        <div className="mt-4 pt-4 border-t border-border flex items-center justify-between">
+                                            <Badge variant={row.impacto === 'critico' ? 'destructive' : 'secondary'} className="h-4 text-[9px]">
+                                                {row.impacto || "Geral"}
+                                            </Badge>
+                                            <span className="font-display font-bold text-sm text-foreground">
+                                                {row.valor_total ?
+                                                    `R$ ${Number(row.valor_total).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` :
+                                                    "Snapshot"}
+                                            </span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                     <footer className="px-5 py-3 border-t border-border bg-muted/10 flex justify-between items-center text-xs text-muted-foreground uppercase tracking-widest font-medium">
                         <span>Snapshot em Tempo Real</span>

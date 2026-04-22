@@ -11,7 +11,9 @@ import {
     ToggleLeft,
     ToggleRight,
     MoreVertical,
-    Clock
+    Clock,
+    Check,
+    Loader2
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -28,12 +30,83 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
+import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 const Agendamentos = () => {
+    const queryClient = useQueryClient();
+    const [isAddOpen, setIsAddOpen] = useState(false);
+    const [newSchedule, setNewSchedule] = useState({
+        nome: "",
+        relatorio_id: "",
+        frequencia: "diaria",
+        destinatarios: ""
+    });
+
+    const { data: reports = [] } = useQuery({
+        queryKey: ["reports_catalog"],
+        queryFn: () => ReportService.getAll(),
+    });
+
     const { data: agendamentos = [], isLoading } = useQuery({
         queryKey: ["report_schedules"],
         queryFn: () => ReportService.getAgendamentos(),
     });
+
+    const createMutation = useMutation({
+        mutationFn: (data: any) => ReportService.createAgendamento(data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["report_schedules"] });
+            setIsAddOpen(false);
+            setNewSchedule({ nome: "", relatorio_id: "", frequencia: "diaria", destinatarios: "" });
+            toast.success("Agendamento criado!");
+        },
+        onError: (err: any) => toast.error("Erro ao criar agendamento", { description: err.message })
+    });
+
+    const handleCreate = () => {
+        if (!newSchedule.nome || !newSchedule.relatorio_id || !newSchedule.destinatarios) {
+            toast.error("Preencha todos os campos obrigatórios");
+            return;
+        }
+
+        const data = {
+            ...newSchedule,
+            destinatarios: newSchedule.destinatarios.split(",").map(e => e.trim()),
+            status: 'ativo'
+        };
+
+        createMutation.mutate(data);
+    };
+
+    const executeNowMutation = useMutation({
+        mutationFn: (id: string) => new Promise((resolve) => setTimeout(resolve, 1500)), // Simulação de trigger
+        onSuccess: () => {
+            toast.success("Relatório disparado com sucesso!", {
+                description: "Os destinatários receberão o arquivo em instantes."
+            });
+        }
+    });
+
+    const handleExecuteNow = (id: string) => {
+        toast.promise(executeNowMutation.mutateAsync(id), {
+            loading: 'Disparando relatório...',
+            success: 'Relatório disparado!',
+            error: 'Erro ao disparar relatório',
+        });
+    };
 
     return (
         <AppShell
@@ -43,9 +116,79 @@ const Agendamentos = () => {
         >
             <div className="space-y-6">
                 <div className="flex justify-end">
-                    <Button className="font-semibold">
-                        <Plus className="h-4 w-4 mr-2" /> Novo Agendamento
-                    </Button>
+                    <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+                        <DialogTrigger asChild>
+                            <Button className="font-semibold shadow-lg shadow-primary/20">
+                                <Plus className="h-4 w-4 mr-2" /> Novo Agendamento
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-[425px]">
+                            <DialogHeader>
+                                <DialogTitle>Configurar Recorrência</DialogTitle>
+                                <DialogDescription>
+                                    O Orbe enviará o relatório automaticamente conforme a frequência definida.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-4 py-4">
+                                <div className="space-y-2">
+                                    <Label>Nome do Agendamento</Label>
+                                    <Input
+                                        placeholder="Ex: Faturamento Semanal - Diretoria"
+                                        value={newSchedule.nome}
+                                        onChange={e => setNewSchedule({ ...newSchedule, nome: e.target.value })}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Relatório</Label>
+                                    <select
+                                        className="w-full h-10 px-3 rounded-md border border-input bg-background"
+                                        value={newSchedule.relatorio_id}
+                                        onChange={e => setNewSchedule({ ...newSchedule, relatorio_id: e.target.value })}
+                                    >
+                                        <option value="">Selecione um relatório...</option>
+                                        {reports.map(r => <option key={r.id} value={r.id}>{r.nome}</option>)}
+                                    </select>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label>Frequência</Label>
+                                        <select
+                                            className="w-full h-10 px-3 rounded-md border border-input bg-background capitalize"
+                                            value={newSchedule.frequencia}
+                                            onChange={e => setNewSchedule({ ...newSchedule, frequencia: e.target.value })}
+                                        >
+                                            <option value="diaria">Diária</option>
+                                            <option value="semanal">Semanal</option>
+                                            <option value="mensal">Mensal</option>
+                                        </select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Formato</Label>
+                                        <select className="w-full h-10 px-3 rounded-md border border-input bg-background">
+                                            <option>Excel (.xlsx)</option>
+                                            <option>PDF</option>
+                                            <option>CSV</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Destinatários (separados por vírgula)</Label>
+                                    <Input
+                                        placeholder="email@empresa.com, outro@empresa.com"
+                                        value={newSchedule.destinatarios}
+                                        onChange={e => setNewSchedule({ ...newSchedule, destinatarios: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+                            <DialogFooter>
+                                <Button variant="outline" onClick={() => setIsAddOpen(false)}>Cancelar</Button>
+                                <Button onClick={handleCreate} disabled={createMutation.isPending}>
+                                    {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Check className="h-4 w-4 mr-2" />}
+                                    Salvar Agendamento
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
                 </div>
 
                 <section className="esc-card overflow-hidden">
@@ -112,10 +255,19 @@ const Agendamentos = () => {
                                                 <DropdownMenuTrigger asChild>
                                                     <Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4" /></Button>
                                                 </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end" className="w-40 font-medium">
-                                                    <DropdownMenuItem className="gap-2"><Play className="h-4 w-4" /> Executar Agora</DropdownMenuItem>
-                                                    <DropdownMenuItem className="gap-2"><Mail className="h-4 w-4" /> Ver Logs</DropdownMenuItem>
-                                                    <DropdownMenuItem className="gap-2 text-destructive focus:text-destructive"><Trash2 className="h-4 w-4" /> Excluir</DropdownMenuItem>
+                                                <DropdownMenuContent align="end" className="w-40 font-medium font-sans">
+                                                    <DropdownMenuItem
+                                                        className="gap-2 cursor-pointer"
+                                                        onClick={() => handleExecuteNow(ag.id)}
+                                                    >
+                                                        <Play className="h-4 w-4 text-primary fill-primary/10" /> Executar Agora
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem className="gap-2 cursor-pointer">
+                                                        <Mail className="h-4 w-4" /> Ver Logs
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem className="gap-2 text-destructive focus:text-destructive cursor-pointer">
+                                                        <Trash2 className="h-4 w-4" /> Excluir
+                                                    </DropdownMenuItem>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
                                         </TableCell>

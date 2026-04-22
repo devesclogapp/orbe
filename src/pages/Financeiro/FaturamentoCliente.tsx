@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { CompetenciaService, ConsolidadoService } from "@/services/base.service";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
@@ -7,8 +8,11 @@ import { FileCheck, Search, Filter, Loader2, ExternalLink, Printer, Building2 } 
 import { EmpresaService } from "@/services/base.service";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 const FaturamentoCliente = () => {
+    const navigate = useNavigate();
+    const queryClient = useQueryClient();
     const [searchTerm, setSearchTerm] = useState("");
 
     const { data: empresas = [], isLoading: loadingEmps } = useQuery({
@@ -16,25 +20,27 @@ const FaturamentoCliente = () => {
         queryFn: () => EmpresaService.getAll(),
     });
 
-    const [selectedEmpresaId, setSelectedEmpresaId] = useState<string | null>(null);
-
-    // Seleciona a primeira empresa se nenhuma estiver selecionada
-    useEffect(() => {
-        if (empresas.length > 0 && !selectedEmpresaId) {
-            setSelectedEmpresaId(empresas[0].id);
-        }
-    }, [empresas, selectedEmpresaId]);
+    const [selectedEmpresaId, setSelectedEmpresaId] = useState<string>("all");
 
     const { data: comp } = useQuery({
         queryKey: ["competencia_atual", selectedEmpresaId],
         queryFn: () => CompetenciaService.getAtual(selectedEmpresaId!),
-        enabled: !!selectedEmpresaId,
+        enabled: !!selectedEmpresaId && selectedEmpresaId !== "all",
     });
 
     const { data: consolidado, isLoading: loadingCons } = useQuery({
         queryKey: ["consolidado", comp?.competencia, selectedEmpresaId],
-        queryFn: () => ConsolidadoService.getByCompetencia(comp!.competencia, selectedEmpresaId!),
-        enabled: !!comp?.competencia && !!selectedEmpresaId,
+        queryFn: () => {
+            const competenciaStr = selectedEmpresaId === "all"
+                ? new Date().toISOString().substring(0, 7) + "-01"
+                : (comp?.competencia || "");
+
+            return ConsolidadoService.getByCompetencia(
+                competenciaStr,
+                selectedEmpresaId === "all" ? undefined : selectedEmpresaId
+            );
+        },
+        enabled: selectedEmpresaId === "all" || !!comp?.competencia,
     });
 
     const isLoading = loadingCons || loadingEmps;
@@ -43,6 +49,34 @@ const FaturamentoCliente = () => {
     const filtered = list.filter((c: any) =>
         c.clientes?.nome.toLowerCase().includes(searchTerm.toLowerCase())
     );
+
+    const approveMutation = useMutation({
+        mutationFn: (ids: string[]) => ConsolidadoService.approveBatch(ids),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["consolidado"] });
+            toast.success("Lote aprovado com sucesso", {
+                description: "Todos os clientes selecionados foram marcados como aprovados."
+            });
+        },
+        onError: (err: any) => {
+            toast.error("Erro ao aprovar lote", { description: err.message });
+        }
+    });
+
+    const handleApproveBatch = () => {
+        const ids = filtered.map((c: any) => c.id);
+        if (ids.length === 0) {
+            toast.error("Nenhum item para aprovar");
+            return;
+        }
+        if (confirm(`Deseja aprovar ${ids.length} faturamentos?`)) {
+            approveMutation.mutate(ids);
+        }
+    };
+
+    const handlePrint = () => {
+        window.print();
+    };
 
     return (
         <AppShell title="Faturamento por Cliente" subtitle="Detalhamento e memória de cálculo por competência">
@@ -66,6 +100,7 @@ const FaturamentoCliente = () => {
                                     onChange={(e) => setSelectedEmpresaId(e.target.value)}
                                     className="h-10 pl-3 pr-8 rounded-md border border-border bg-card text-sm focus:outline-none focus:ring-1 focus:ring-primary appearance-none min-w-[200px]"
                                 >
+                                    <option value="all">Todas as empresas</option>
                                     {empresas.map(emp => (
                                         <option key={emp.id} value={emp.id}>{emp.nome}</option>
                                     ))}
@@ -73,8 +108,15 @@ const FaturamentoCliente = () => {
                                 <Building2 className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
                             </div>
                         )}
-                        <Button variant="outline" size="sm"><Printer className="h-4 w-4 mr-2" /> Imprimir Tudo</Button>
-                        <Button size="sm"><FileCheck className="h-4 w-4 mr-2" /> Aprovar Lote</Button>
+                        <Button variant="outline" size="sm" onClick={handlePrint}><Printer className="h-4 w-4 mr-2" /> Imprimir Tudo</Button>
+                        <Button
+                            size="sm"
+                            onClick={handleApproveBatch}
+                            disabled={approveMutation.isPending}
+                        >
+                            {approveMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileCheck className="h-4 w-4 mr-2" />}
+                            Aprovar Lote
+                        </Button>
                     </div>
                 </div>
 
@@ -113,7 +155,12 @@ const FaturamentoCliente = () => {
                                             </Badge>
                                         </td>
                                         <td className="px-5 text-right">
-                                            <Button variant="ghost" size="sm" className="h-8 text-primary hover:text-primary-strong">
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-8 text-primary hover:text-primary-strong"
+                                                onClick={() => navigate(`/financeiro/faturamento/${c.id}`)}
+                                            >
                                                 <ExternalLink className="h-4 w-4 mr-1" /> Memória
                                             </Button>
                                         </td>

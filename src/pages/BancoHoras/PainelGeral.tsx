@@ -51,7 +51,8 @@ const PainelGeral = () => {
             s.nome, s.matricula, s.empresa, s.saldo_minutos, s.status
         ]);
 
-        const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
+        // Use delimiter ; for better Excel compatibility in PT-BR
+        const csvContent = "\uFEFF" + [headers, ...rows].map(e => e.join(";")).join("\n");
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { StatusChip } from "@/components/painel/StatusChip";
 import { Button } from "@/components/ui/button";
-import { UserPlus, RefreshCw, Loader2, Shield, Pencil, Trash2 } from "lucide-react";
+import { UserPlus, RefreshCw, Loader2, Shield, Pencil, Trash2, LayoutGrid, List } from "lucide-react";
 import { UserProfileService, ProfileService } from "@/services/v4.service";
 import { EmpresaService } from "@/services/base.service";
 import {
@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 const UsuariosGestao = () => {
     const queryClient = useQueryClient();
     const [open, setOpen] = useState(false);
+    const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
 
     const { data: usuarios = [], isLoading, isFetching } = useQuery({
         queryKey: ["users_profiles"],
@@ -94,21 +95,42 @@ const UsuariosGestao = () => {
     return (
         <AppShell title="Gestão de Usuários" subtitle="Controle quem pode acessar cada módulo e empresa">
             <div className="space-y-4">
-                <div className="flex justify-end gap-2">
-                    <Button variant="outline" size="icon" onClick={() => queryClient.invalidateQueries({ queryKey: ["users_profiles"] })}>
-                        <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
-                    </Button>
-                    <Button onClick={() => setOpen(true)}>
-                        <UserPlus className="h-4 w-4 mr-1.5" /> Vincular Usuário
-                    </Button>
+                <div className="flex justify-between items-center bg-background p-2 rounded-lg border border-border/50">
+                    <div className="flex border rounded-lg overflow-hidden bg-background">
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className={cn("h-9 w-9 rounded-none border-r transition-all", viewMode === 'grid' ? "bg-muted text-primary" : "text-muted-foreground hover:text-primary")}
+                            onClick={() => setViewMode('grid')}
+                        >
+                            <LayoutGrid className="h-4 w-4" />
+                        </Button>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className={cn("h-9 w-9 rounded-none transition-all", viewMode === 'table' ? "bg-muted text-primary" : "text-muted-foreground hover:text-primary")}
+                            onClick={() => setViewMode('table')}
+                        >
+                            <List className="h-4 w-4" />
+                        </Button>
+                    </div>
+                    <div className="flex gap-2">
+                        <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => queryClient.invalidateQueries({ queryKey: ["users_profiles"] })}>
+                            <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
+                        </Button>
+                        <Button className="h-9 px-4 font-display font-semibold text-sm" onClick={() => setOpen(true)}>
+                            <UserPlus className="h-4 w-4 mr-1.5" /> Vincular Usuário
+                        </Button>
+                    </div>
                 </div>
 
-                <section className="esc-card overflow-hidden">
+                <section className={cn(viewMode === 'table' ? "esc-card overflow-hidden" : "")}>
                     {isLoading ? (
-                        <div className="flex items-center justify-center p-12">
-                            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                        <div className="flex items-center justify-center p-12 text-center flex-col gap-3">
+                            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                            <p className="text-xs text-muted-foreground animate-pulse font-medium uppercase tracking-widest">Sincronizando privilégios...</p>
                         </div>
-                    ) : (
+                    ) : viewMode === 'table' ? (
                         <table className="w-full text-sm">
                             <thead className="esc-table-header">
                                 <tr className="text-left">
@@ -121,7 +143,7 @@ const UsuariosGestao = () => {
                             </thead>
                             <tbody>
                                 {usuarios.map((u: any) => (
-                                    <tr key={u.id} className="border-t border-muted hover:bg-background">
+                                    <tr key={u.id} className="border-t border-muted hover:bg-background group">
                                         <td className="px-5 h-[52px]">
                                             <div className="font-medium text-foreground truncate w-40">{u.user_id}</div>
                                         </td>
@@ -136,7 +158,7 @@ const UsuariosGestao = () => {
                                             <StatusChip status={u.status === 'ativo' ? 'ok' : 'inconsistente'} label={u.status} />
                                         </td>
                                         <td className="px-5 text-right">
-                                            <div className="flex justify-end gap-1">
+                                            <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(u)}>
                                                     <Pencil className="h-3.5 w-3.5" />
                                                 </Button>
@@ -147,15 +169,33 @@ const UsuariosGestao = () => {
                                         </td>
                                     </tr>
                                 ))}
-                                {usuarios.length === 0 && (
-                                    <tr>
-                                        <td colSpan={5} className="p-12 text-center text-muted-foreground italic">
-                                            Nenhum usuário vinculado ainda.
-                                        </td>
-                                    </tr>
-                                )}
                             </tbody>
                         </table>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {usuarios.map((u: any) => (
+                                <article key={u.id} className="esc-card p-5 group flex flex-col justify-between">
+                                    <div>
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div className="h-10 w-10 rounded-lg bg-primary-soft flex items-center justify-center text-primary">
+                                                <Shield className="h-5 w-5" />
+                                            </div>
+                                            <StatusChip status={u.status === 'ativo' ? 'ok' : 'inconsistente'} label={u.status} />
+                                        </div>
+                                        <h3 className="font-display font-bold text-foreground mb-1 line-clamp-1" title={u.user_id}>{u.user_id}</h3>
+                                        <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                                            <span className="font-semibold uppercase text-primary">{(u.perfis as any)?.nome}</span>
+                                            <span className="opacity-30">|</span>
+                                            <span>{(u.empresas as any)?.nome || "Acesso Global"}</span>
+                                        </p>
+                                    </div>
+                                    <div className="mt-6 flex justify-end gap-1 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-all border-t pt-3">
+                                        <Button variant="ghost" size="sm" className="h-8" onClick={() => handleEdit(u)}>Editar</Button>
+                                        <Button variant="ghost" size="sm" className="h-8 text-destructive" onClick={() => handleDelete(u.id)}>Remover</Button>
+                                    </div>
+                                </article>
+                            ))}
+                        </div>
                     )}
                 </section>
             </div>
