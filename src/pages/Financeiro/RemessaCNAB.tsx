@@ -128,13 +128,13 @@ const RemessaCNAB = () => {
             <div className="max-w-[1200px] mx-auto space-y-6 animate-in fade-in duration-500">
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                     {/* Painel de Configurações */}
-                    <Card className="lg:col-span-5 p-8 space-y-6 shadow-sm border-white/40 bg-white/80 backdrop-blur-sm">
-                        <div className="flex items-center gap-3 border-b pb-4">
+                    <Card className="lg:col-span-5 p-8 space-y-6 shadow-sm border-border bg-card/50 backdrop-blur-sm">
+                        <div className="flex items-center gap-3 border-b border-border/50 pb-4">
                             <div className="p-2 bg-brand/10 rounded-lg text-brand">
                                 <Settings className="w-5 h-5" />
                             </div>
                             <div>
-                                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-tight">
+                                <h3 className="text-sm font-bold text-foreground uppercase tracking-tight">
                                     Configurações do Lote
                                 </h3>
                                 <p className="text-xs text-muted-foreground">Defina os parâmetros para a remessa bancária</p>
@@ -147,7 +147,7 @@ const RemessaCNAB = () => {
                                     <Calendar className="w-3 h-3" /> Competência
                                 </label>
                                 <Select value={competencia} onValueChange={(val) => { setCompetencia(val); setValidation(null); }}>
-                                    <SelectTrigger className="h-11 bg-gray-50/50">
+                                    <SelectTrigger className="h-11 bg-muted/20 border-border/50">
                                         <SelectValue placeholder={isLoadingComp ? "Carregando..." : "Selecione o mês"} />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -165,7 +165,7 @@ const RemessaCNAB = () => {
                                     <Building2 className="w-3 h-3" /> Empresa (Cliente)
                                 </label>
                                 <Select value={empresaId} onValueChange={(val) => { setEmpresaId(val); setValidation(null); setContaId(""); }}>
-                                    <SelectTrigger className="h-11 bg-gray-50/50">
+                                    <SelectTrigger className="h-11 bg-muted/20 border-border/50">
                                         <SelectValue placeholder={isLoadingEmpresas ? "Carregando..." : "Selecione o cliente"} />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -181,7 +181,7 @@ const RemessaCNAB = () => {
                                     <CreditCard className="w-3 h-3" /> Conta Bancária Origem
                                 </label>
                                 <Select value={contaId} onValueChange={setContaId} disabled={!empresaId}>
-                                    <SelectTrigger className="h-11 bg-gray-50/50">
+                                    <SelectTrigger className="h-11 bg-muted/20 border-border/50">
                                         <SelectValue placeholder={isLoadingContas ? "Carregando..." : "Selecione a conta"} />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -214,21 +214,21 @@ const RemessaCNAB = () => {
                     </Card>
 
                     {/* Painel de Resumo */}
-                    <Card className={`lg:col-span-7 p-8 shadow-sm transition-all duration-300 ${!validation ? 'bg-gray-50/50 border-dashed' :
+                    <Card className={`lg:col-span-7 p-8 shadow-sm transition-all duration-300 ${!validation ? 'bg-muted/10 border-dashed border-border' :
                         validation.isValid ? 'bg-success/5 border-success/20' :
                             'bg-destructive/5 border-destructive/20'
                         }`}>
-                        <div className="flex items-center gap-2 mb-8 border-b pb-4">
+                        <div className="flex items-center gap-2 mb-8 border-b border-border/50 pb-4">
                             <FileText className="w-5 h-5 text-muted-foreground" />
-                            <h3 className="text-sm font-bold text-gray-900 uppercase tracking-tight">
+                            <h3 className="text-sm font-bold text-foreground uppercase tracking-tight">
                                 Resumo e Validação
                             </h3>
                         </div>
 
                         {!validation ? (
                             <div className="flex flex-col items-center justify-center py-24 text-center">
-                                <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                                    <FileText className="w-10 h-10 text-gray-300" />
+                                <div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center mb-4">
+                                    <FileText className="w-10 h-10 text-muted-foreground/30" />
                                 </div>
                                 <p className="text-sm text-muted-foreground max-w-[280px]">
                                     Selecione os parâmetros e valide a remessa para processar os arquivos.
@@ -237,13 +237,13 @@ const RemessaCNAB = () => {
                         ) : (
                             <div className="space-y-8 animate-in slide-in-from-right-4 duration-300">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="bg-white p-5 rounded-xl border shadow-sm">
+                                    <div className="bg-card p-5 rounded-xl border border-border shadow-sm">
                                         <span className="text-[10px] font-black text-muted-foreground uppercase tracking-wider block mb-1">
                                             Quantidade de Títulos
                                         </span>
-                                        <span className="text-3xl font-extrabold text-slate-900">{validation.summary.totalItems}</span>
+                                        <span className="text-3xl font-extrabold text-foreground">{validation.summary.totalItems}</span>
                                     </div>
-                                    <div className="bg-white p-5 rounded-xl border shadow-sm">
+                                    <div className="bg-card p-5 rounded-xl border border-border shadow-sm">
                                         <span className="text-[10px] font-black text-muted-foreground uppercase tracking-wider block mb-1">
                                             Valor Total da Remessa
                                         </span>
@@ -254,12 +254,12 @@ const RemessaCNAB = () => {
                                 </div>
 
                                 <div className="space-y-4">
-                                    <h4 className="text-[11px] font-bold text-slate-500 uppercase flex items-center gap-2">
+                                    <h4 className="text-[11px] font-bold text-muted-foreground uppercase flex items-center gap-2">
                                         Checklist de Integridade
                                     </h4>
 
                                     {validation.isValid ? (
-                                        <div className="flex items-start gap-4 bg-white p-4 rounded-lg border border-success/20 shadow-sm shadow-success/5">
+                                        <div className="flex items-start gap-4 bg-card p-4 rounded-lg border border-success/20 shadow-sm shadow-success/5">
                                             <div className="p-2 bg-success/10 rounded-full">
                                                 <CheckCircle2 className="w-5 h-5 text-success" />
                                             </div>
@@ -271,7 +271,7 @@ const RemessaCNAB = () => {
                                     ) : (
                                         <div className="space-y-2">
                                             {validation.errors.map((err: string, i: number) => (
-                                                <div key={i} className="flex items-start gap-4 bg-white p-4 rounded-lg border border-destructive/20 shadow-sm shadow-destructive/5">
+                                                <div key={i} className="flex items-start gap-4 bg-card p-4 rounded-lg border border-destructive/20 shadow-sm shadow-destructive/5">
                                                     <div className="p-2 bg-destructive/10 rounded-full">
                                                         <AlertCircle className="w-5 h-5 text-destructive" />
                                                     </div>
@@ -286,8 +286,8 @@ const RemessaCNAB = () => {
                                 </div>
 
                                 {validation.isValid && (
-                                    <div className="pt-6 border-t border-dashed flex flex-col sm:flex-row items-center justify-between gap-4">
-                                        <div className="text-xs text-muted-foreground flex items-center gap-2 bg-white px-3 py-1.5 rounded-full border">
+                                    <div className="pt-6 border-t border-border border-dashed flex flex-col sm:flex-row items-center justify-between gap-4">
+                                        <div className="text-xs text-muted-foreground flex items-center gap-2 bg-card px-3 py-1.5 rounded-full border border-border">
                                             <div className="w-2 h-2 bg-success rounded-full animate-pulse" />
                                             Pronto para gerar arquivo
                                         </div>

@@ -86,11 +86,11 @@ const ClientReports = () => {
                         {destaques.map((c: any) => {
                             const st = statusLabel[c.status] || { label: c.status, variant: "secondary" as const };
                             return (
-                                <Card key={c.id} className="p-5 border-none shadow-sm shadow-gray-100 group hover:shadow-md transition-all">
-                                    <div className="w-12 h-12 bg-muted/30 text-muted-foreground rounded-xl flex items-center justify-center mb-4 group-hover:bg-primary/5 group-hover:text-brand transition-colors">
+                                <Card key={c.id} className="p-5 border-border bg-card shadow-sm group hover:shadow-md transition-all">
+                                    <div className="w-12 h-12 bg-muted text-muted-foreground rounded-xl flex items-center justify-center mb-4 group-hover:bg-primary/5 group-hover:text-brand transition-colors">
                                         <FileText className="w-6 h-6" />
                                     </div>
-                                    <h4 className="font-bold text-gray-900 text-sm mb-1">
+                                    <h4 className="font-bold text-foreground text-sm mb-1">
                                         Fechamento — {c.competencia}
                                     </h4>
                                     <p className="text-xs text-muted-foreground mb-4">
@@ -110,13 +110,13 @@ const ClientReports = () => {
 
                 {/* Tabela completa */}
                 {!isLoading && filtered.length > 0 && (
-                    <Card className="border-none shadow-sm shadow-gray-100 overflow-hidden">
+                    <Card className="border-border bg-card shadow-sm overflow-hidden">
                         <div className="p-6 border-b border-border/50">
-                            <h3 className="font-bold text-gray-900">Todos os Fechamentos</h3>
+                            <h3 className="font-bold text-foreground">Todos os Fechamentos</h3>
                         </div>
                         <Table>
                             <TableHeader className="bg-muted/30">
-                                <TableRow>
+                                <TableRow className="border-border hover:bg-transparent">
                                     <TableHead className="font-bold text-muted-foreground uppercase text-[10px]">Competência</TableHead>
                                     <TableHead className="font-bold text-muted-foreground uppercase text-[10px]">Valor Total</TableHead>
                                     <TableHead className="font-bold text-muted-foreground uppercase text-[10px]">Status</TableHead>
@@ -128,13 +128,13 @@ const ClientReports = () => {
                                 {filtered.map((c: any) => {
                                     const st = statusLabel[c.status] || { label: c.status, variant: "secondary" as const };
                                     return (
-                                        <TableRow key={c.id} className="hover:bg-muted/20">
+                                        <TableRow key={c.id} className="hover:bg-muted/20 border-border transition-colors">
                                             <TableCell>
                                                 <div className="flex items-center gap-3">
                                                     <div className="w-8 h-8 bg-muted text-muted-foreground rounded flex items-center justify-center">
                                                         <FileBox className="w-4 h-4" />
                                                     </div>
-                                                    <span className="font-bold text-gray-700 text-sm">
+                                                    <span className="font-bold text-foreground text-sm">
                                                         Fechamento {c.competencia}
                                                     </span>
                                                 </div>

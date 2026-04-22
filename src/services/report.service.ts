@@ -56,6 +56,21 @@ class ReportServiceClass extends BaseService<'relatorios_catalogo'> {
     if (error) throw error;
     return data;
   }
+
+  async updateAgendamento(id: string, data: any) {
+    const { error } = await supabase.from('relatorios_agendamentos').update(data).eq('id', id);
+    if (error) throw error;
+  }
+
+  async deleteAgendamento(id: string) {
+    const { error } = await supabase.from('relatorios_agendamentos').delete().eq('id', id);
+    if (error) throw error;
+  }
+
+  async deleteLayout(id: string) {
+    const { error } = await supabase.from('relatorios_layouts_exportacao').delete().eq('id', id);
+    if (error) throw error;
+  }
 }
 
 export const ReportService = new ReportServiceClass();

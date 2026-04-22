@@ -153,10 +153,10 @@ const Dashboard = () => {
         ) : (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <MetricCard label="Operações no mês" value={totalOperacoes.toLocaleString('pt-BR')} icon={Boxes} delta={{ value: results.length > 0 ? "Processado" : "Simulado", positive: results.length > 0 }} />
+              <MetricCard label="Operações no mês" value={totalOperacoes.toLocaleString('pt-BR')} icon={Boxes} />
               <MetricCard label="Colaboradores" value={cols.length.toString()} icon={Users} />
               <MetricCard label="Faturamento do mês" value={`R$ ${totalCalculado.toLocaleString('pt-BR')}`} icon={Wallet} accent />
-              <MetricCard label="Inconsistências (Preview)" value={inconsistencias.toString()} icon={AlertTriangle} delta={{ value: inconsistencias > 0 ? "Atenção" : "OK", positive: inconsistencias === 0 }} />
+              <MetricCard label="Inconsistências" value={inconsistencias.toString()} icon={AlertTriangle} delta={{ value: inconsistencias > 0 ? "Revisão Necessária" : "Consistente", positive: inconsistencias === 0 }} />
             </div>
 
             <section className="esc-card p-5">

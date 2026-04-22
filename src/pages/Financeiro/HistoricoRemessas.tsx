@@ -33,69 +33,72 @@ const HistoricoRemessas = () => {
     return (
         <AppShell title="Histórico de Remessas">
             <div className="space-y-4">
-                <Card className="p-4">
+                <Card className="p-4 border-border bg-card">
                     <div className="flex flex-wrap gap-4 items-center justify-between">
-                        <div className="flex items-center gap-2 bg-gray-100 px-3 py-2 rounded-md flex-1 max-w-md">
-                            <Search className="w-4 h-4 text-gray-400" />
+                        <div className="flex items-center gap-2 bg-muted/50 px-3 py-2 rounded-md flex-1 max-w-md border border-border">
+                            <Search className="w-4 h-4 text-muted-foreground" />
                             <input
                                 type="text"
                                 placeholder="Buscar por lote ou competência..."
-                                className="bg-transparent border-none outline-none text-sm w-full"
+                                className="bg-transparent border-none outline-none text-sm w-full text-foreground font-medium"
                             />
                         </div>
                         <div className="flex gap-2">
-                            <Button variant="outline" size="sm" className="gap-2">
+                            <Button variant="outline" size="sm" className="gap-2 border-border font-bold">
                                 <Filter className="w-4 h-4" /> Filtros
                             </Button>
                         </div>
                     </div>
                 </Card>
 
-                <Card className="overflow-hidden">
+                <Card className="overflow-hidden border-border bg-card shadow-sm">
                     <Table>
-                        <TableHeader className="bg-gray-50">
-                            <TableRow>
-                                <TableHead>Lote ID</TableHead>
-                                <TableHead>Competência</TableHead>
-                                <TableHead>Data Emissão</TableHead>
-                                <TableHead>Conta Origem</TableHead>
-                                <TableHead className="text-center">Títulos</TableHead>
-                                <TableHead className="text-right">Valor Total</TableHead>
-                                <TableHead className="text-center">Status</TableHead>
-                                <TableHead className="text-right">Ações</TableHead>
+                        <TableHeader className="bg-muted/50">
+                            <TableRow className="border-border hover:bg-transparent">
+                                <TableHead className="text-muted-foreground font-bold uppercase text-[10px]">Lote ID</TableHead>
+                                <TableHead className="text-muted-foreground font-bold uppercase text-[10px]">Competência</TableHead>
+                                <TableHead className="text-muted-foreground font-bold uppercase text-[10px]">Data Emissão</TableHead>
+                                <TableHead className="text-muted-foreground font-bold uppercase text-[10px]">Conta Origem</TableHead>
+                                <TableHead className="font-bold text-center text-muted-foreground uppercase text-[10px]">Títulos</TableHead>
+                                <TableHead className="text-right font-bold text-muted-foreground uppercase text-[10px]">Valor Total</TableHead>
+                                <TableHead className="text-center font-bold text-muted-foreground uppercase text-[10px]">Status</TableHead>
+                                <TableHead className="text-right font-bold text-muted-foreground uppercase text-[10px]">Ações</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {isLoading ? (
                                 <TableRow>
-                                    <TableCell colSpan={8} className="text-center py-10 text-gray-400">Carregando...</TableCell>
+                                    <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                                        <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2 opacity-50" />
+                                        Carregando histórico...
+                                    </TableCell>
                                 </TableRow>
                             ) : remessas?.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={8} className="text-center py-10 text-gray-400">Nenhuma remessa encontrada.</TableCell>
+                                    <TableCell colSpan={8} className="text-center py-12 text-muted-foreground italic">Nenhuma remessa encontrada.</TableCell>
                                 </TableRow>
                             ) : remessas?.map((rem) => (
-                                <TableRow key={rem.id} className="hover:bg-gray-50/50">
-                                    <TableCell className="font-mono text-xs text-gray-500">{rem.id.substring(0, 8)}...</TableCell>
-                                    <TableCell className="font-medium">{rem.competencia}</TableCell>
-                                    <TableCell>{new Date(rem.created_at!).toLocaleDateString('pt-BR')}</TableCell>
+                                <TableRow key={rem.id} className="hover:bg-muted/30 border-border transition-colors">
+                                    <TableCell className="font-mono text-xs text-muted-foreground/80">{rem.id.substring(0, 8)}...</TableCell>
+                                    <TableCell className="font-bold text-foreground">{rem.competencia}</TableCell>
+                                    <TableCell className="text-sm text-muted-foreground">{new Date(rem.created_at!).toLocaleDateString('pt-BR')}</TableCell>
                                     <TableCell>
                                         <div className="text-xs">
-                                            <p className="font-semibold">{(rem.contas_bancarias as any)?.banco}</p>
-                                            <p className="text-gray-400">Ag: {(rem.contas_bancarias as any)?.agencia} C: {(rem.contas_bancarias as any)?.conta}</p>
+                                            <p className="font-bold text-foreground">{(rem.contas_bancarias as any)?.banco}</p>
+                                            <p className="text-muted-foreground/70">Ag: {(rem.contas_bancarias as any)?.agencia} C: {(rem.contas_bancarias as any)?.conta}</p>
                                         </div>
                                     </TableCell>
-                                    <TableCell className="text-center">{rem.quantidade_titulos}</TableCell>
-                                    <TableCell className="text-right font-bold text-gray-900">
+                                    <TableCell className="text-center font-medium">{rem.quantidade_titulos}</TableCell>
+                                    <TableCell className="text-right font-black text-foreground">
                                         {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(rem.valor_total || 0)}
                                     </TableCell>
                                     <TableCell className="text-center">{getStatusBadge(rem.status || 'gerado')}</TableCell>
                                     <TableCell className="text-right">
                                         <div className="flex justify-end gap-1">
-                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-400 hover:text-brand">
+                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary transition-colors">
                                                 <Download className="w-4 h-4" />
                                             </Button>
-                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-400">
+                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
                                                 <Eye className="w-4 h-4" />
                                             </Button>
                                         </div>

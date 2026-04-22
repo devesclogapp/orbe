@@ -81,14 +81,14 @@ const ClientApprovals = () => {
                     {isLoading ? (
                         <div className="text-center py-20 text-muted-foreground text-sm">Carregando...</div>
                     ) : pendentes.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground bg-white rounded-2xl border border-dashed border-border/50">
+                        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground bg-muted/10 rounded-2xl border border-dashed border-border/50">
                             <CheckCircle2 className="w-16 h-16 mb-4 opacity-10" />
-                            <p className="font-bold">Nada para aprovar no momento!</p>
+                            <p className="font-bold text-foreground">Nada para aprovar no momento!</p>
                             <p className="text-sm">Você está em dia com suas validações.</p>
                         </div>
                     ) : (
                         pendentes.map((item: any) => (
-                            <Card key={item.id} className="p-8 border-none shadow-sm shadow-gray-100 overflow-hidden relative">
+                            <Card key={item.id} className="p-8 border-border bg-card shadow-sm overflow-hidden relative">
                                 <div className="absolute top-0 right-0 p-4">
                                     <Badge variant="warning" className="uppercase tracking-tighter text-[10px] font-bold">
                                         <Clock className="w-3 h-3 mr-1" /> Aguardando Você
@@ -97,7 +97,7 @@ const ClientApprovals = () => {
 
                                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                                     <div className="space-y-2">
-                                        <h3 className="text-xl font-bold text-gray-900">
+                                        <h3 className="text-xl font-bold text-foreground">
                                             Faturamento — {item.competencia}
                                         </h3>
                                         <p className="text-muted-foreground text-sm max-w-sm">
@@ -117,11 +117,11 @@ const ClientApprovals = () => {
                                         </div>
                                     </div>
 
-                                    <div className="bg-gray-50 p-6 rounded-2xl text-center min-w-[180px] border border-gray-100">
+                                    <div className="bg-muted/50 p-6 rounded-2xl text-center min-w-[180px] border border-border">
                                         <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest block mb-1">
                                             Valor Total
                                         </span>
-                                        <span className="text-2xl font-black text-gray-900">
+                                        <span className="text-2xl font-black text-foreground">
                                             {formatCurrency(Number(item.valor))}
                                         </span>
                                     </div>
@@ -154,7 +154,7 @@ const ClientApprovals = () => {
                                     </div>
                                 )}
 
-                                <div className="mt-8 pt-8 border-t border-gray-100 flex flex-wrap gap-3">
+                                <div className="mt-8 pt-8 border-t border-border flex flex-wrap gap-3">
                                     <Button
                                         className="bg-success-strong hover:bg-success-strong/90 gap-2 px-8 rounded-xl"
                                         onClick={() => aprovaMutation.mutate(item.id)}
@@ -183,18 +183,18 @@ const ClientApprovals = () => {
 
                 {/* Right: Info + Histórico */}
                 <div className="space-y-6">
-                    <Card className="p-6 border-none shadow-sm shadow-gray-100 bg-brand text-white">
+                    <Card className="p-6 border-border shadow-sm bg-brand text-brand-foreground">
                         <h4 className="font-bold mb-3 flex items-center gap-2">
                             <Info className="w-5 h-5" /> Importante
                         </h4>
-                        <p className="text-sm text-white/80 leading-relaxed">
+                        <p className="text-sm text-brand-foreground/80 leading-relaxed">
                             Ao clicar em <strong>Aprovar</strong>, você valida que todos os serviços prestados
                             estão em conformidade e libera o sistema para gerar a cobrança bancária oficial.
                         </p>
                     </Card>
 
-                    <Card className="p-6 border-none shadow-sm shadow-gray-100">
-                        <h4 className="font-bold text-gray-900 mb-6 flex items-center gap-2">
+                    <Card className="p-6 border-border shadow-sm bg-card">
+                        <h4 className="font-bold text-foreground mb-6 flex items-center gap-2">
                             <History className="w-5 h-5 text-muted-foreground" /> Histórico Recente
                         </h4>
                         {historico.length === 0 ? (
@@ -210,7 +210,7 @@ const ClientApprovals = () => {
                                             {statusIcon[h.status] || <ChevronRight className="w-3 h-3" />}
                                         </div>
                                         <div>
-                                            <p className="text-xs font-bold text-gray-900">
+                                            <p className="text-xs font-bold text-foreground">
                                                 Competência {h.competencia}
                                             </p>
                                             <p className="text-[10px] text-muted-foreground capitalize">

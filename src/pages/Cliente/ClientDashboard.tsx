@@ -61,7 +61,7 @@ const ClientDashboard = () => {
                 {/* KPIs */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     {kpis.map((kpi) => (
-                        <Card key={kpi.label} className="p-6 border-none shadow-sm shadow-gray-100">
+                        <Card key={kpi.label} className="p-6 border-border bg-card shadow-sm">
                             <div className="flex items-center justify-between mb-4">
                                 <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
                                     {kpi.label}
@@ -71,10 +71,10 @@ const ClientDashboard = () => {
                                 </div>
                             </div>
                             <div className="flex items-end justify-between">
-                                <h2 className="text-3xl font-black font-display text-gray-900">{kpi.value}</h2>
+                                <h2 className="text-3xl font-black font-display text-foreground">{kpi.value}</h2>
                                 {(kpi as any).cta && (
                                     <Link to={(kpi as any).cta}>
-                                        <Button size="sm" variant="outline" className="gap-1 rounded-xl text-xs font-bold">
+                                        <Button size="sm" variant="outline" className="gap-1 rounded-xl text-xs font-bold border-border">
                                             Ver <ArrowUpRight className="w-3 h-3" />
                                         </Button>
                                     </Link>
@@ -85,9 +85,9 @@ const ClientDashboard = () => {
                 </div>
 
                 {/* Histórico de Fechamentos */}
-                <Card className="border-none shadow-sm shadow-gray-100 overflow-hidden">
+                <Card className="border-border bg-card shadow-sm overflow-hidden">
                     <div className="p-6 border-b border-border/50 flex items-center justify-between">
-                        <h3 className="font-bold text-gray-900">Histórico de Fechamentos</h3>
+                        <h3 className="font-bold text-foreground">Histórico de Fechamentos</h3>
                         <Link to="/cliente/relatorios">
                             <Button variant="ghost" size="sm" className="text-brand gap-1 font-bold">
                                 Ver todos <ChevronRight className="w-4 h-4" />
@@ -107,7 +107,7 @@ const ClientDashboard = () => {
                             {consolidados.slice(0, 6).map((c: any) => (
                                 <div key={c.id} className="flex items-center justify-between px-6 py-4 hover:bg-muted/20 transition-colors">
                                     <div>
-                                        <p className="font-bold text-sm text-gray-900">
+                                        <p className="font-bold text-sm text-foreground">
                                             Competência {c.competencia}
                                         </p>
                                         <p className="text-xs text-muted-foreground">
@@ -115,7 +115,7 @@ const ClientDashboard = () => {
                                         </p>
                                     </div>
                                     <div className="flex items-center gap-4">
-                                        <span className="font-display font-bold text-gray-900">
+                                        <span className="font-display font-bold text-foreground">
                                             {formatCurrency(Number(c.valor_total || 0))}
                                         </span>
                                         <span className={`text-[10px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full ${statusColors[c.status] || "bg-muted text-muted-foreground"}`}>
