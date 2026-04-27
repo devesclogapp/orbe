@@ -13,7 +13,8 @@ import {
     ArrowUpRight,
     Filter,
     MoreVertical,
-    Play
+    Play,
+    AlertTriangle
 } from "lucide-react";
 import { toast } from "sonner";
 import { useState } from "react";
@@ -27,14 +28,16 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 
 const RelatoriosHub = () => {
+
+    const { user } = useAuth();
     const queryClient = useQueryClient();
     const navigate = useNavigate();
     const [search, setSearch] = useState("");
 
-    // Mock userId for favorites (ideally from AuthContext)
-    const userId = "demo-user";
+    const userId = user?.id;
 
     const { data: reports = [], isLoading, error: reportError } = useQuery({
         queryKey: ["reports_catalog"],
@@ -43,8 +46,9 @@ const RelatoriosHub = () => {
     });
 
     const { data: favorites = [] } = useQuery({
-        queryKey: ["reports_favorites"],
-        queryFn: () => ReportService.getFavorites(userId),
+        queryKey: ["reports_favorites", userId],
+        queryFn: () => userId ? ReportService.getFavorites(userId) : Promise.resolve([]),
+        enabled: !!userId,
     });
 
     const favoriteIds = favorites.map((f: any) => f.relatorio_id);

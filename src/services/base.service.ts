@@ -111,6 +111,20 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
 }
 export const ColaboradorService = new ColaboradorServiceClass();
 
+class PerfilUsuarioServiceClass extends BaseService<'perfis_usuarios'> {
+  constructor() { super('perfis_usuarios'); }
+  async getByUserId(userId: string) {
+    const { data, error } = await supabase
+      .from('perfis_usuarios')
+      .select('*, empresas(nome, cidade, estado)')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  }
+}
+export const PerfilUsuarioService = new PerfilUsuarioServiceClass();
+
 class ColetorServiceClass extends BaseService<'coletores'> {
   constructor() { super('coletores'); }
   async getWithEmpresa() {

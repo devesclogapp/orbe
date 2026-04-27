@@ -23,7 +23,7 @@ const PortalShell = ({ children, title }: PortalShellProps) => {
     const location = useLocation();
     const navigate = useNavigate();
     const { signOut } = useAuth();
-    const { cliente } = useClient();
+    const { cliente, isInternalUser, userRole } = useClient();
 
     const menuItems = [
         { label: "Dashboard", icon: <BarChart3 className="w-5 h-5" />, path: "/cliente/dashboard" },
@@ -39,7 +39,10 @@ const PortalShell = ({ children, title }: PortalShellProps) => {
     // Iniciais do nome do cliente para o Avatar
     const initials = cliente?.nome
         ? cliente.nome.split(" ").slice(0, 2).map(w => w[0]).join("").toUpperCase()
-        : "CL";
+        : isInternalUser ? "AD" : "CL";
+
+    const displayName = cliente?.nome || (isInternalUser ? "Modo Administrativo" : "Carregando...");
+    const displaySubtitle = cliente ? "Portal do Cliente" : (userRole || "Acesso Interno");
 
     return (
         <div className="flex bg-background min-h-screen text-foreground font-sans">
@@ -53,14 +56,14 @@ const PortalShell = ({ children, title }: PortalShellProps) => {
                     {/* Identidade do cliente */}
                     <div className="bg-muted/30 p-3 rounded-xl mb-8 flex items-center gap-3 border border-border/50">
                         <Avatar className="w-10 h-10 border-2 border-background shadow-sm">
-                            <AvatarFallback className="text-sm font-bold bg-primary/10 text-primary">
+                            <AvatarFallback className={`text-sm font-bold ${isInternalUser ? 'bg-orange-500/10 text-orange-600' : 'bg-primary/10 text-primary'}`}>
                                 {initials}
                             </AvatarFallback>
                         </Avatar>
                         <div className="overflow-hidden">
-                            <p className="text-sm font-bold truncate">{cliente?.nome || "Carregando..."}</p>
+                            <p className="text-sm font-bold truncate">{displayName}</p>
                             <p className="text-xs text-muted-foreground truncate">
-                                Portal do Cliente
+                                {displaySubtitle}
                             </p>
                         </div>
                     </div>
@@ -116,7 +119,7 @@ const PortalShell = ({ children, title }: PortalShellProps) => {
                         <div className="flex items-center gap-3">
                             <Building2 className="w-4 h-4 text-muted-foreground" />
                             <span className="text-sm font-medium text-gray-600">
-                                {cliente?.nome || "—"}
+                                {cliente?.nome || (isInternalUser ? "Filtro: Global Admin" : "—")}
                             </span>
                         </div>
                     </div>

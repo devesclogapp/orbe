@@ -46,19 +46,31 @@ const UsuariosGestao = () => {
         perfil_id: "",
         empresa_id: "",
         status: "ativo" as "ativo" | "inativo",
+        codigo_acesso: "",
+        is_new_user: false,
+        email: "",
+        password: "",
     });
 
     const reset = () => {
-        setForm({ user_id: "", perfil_id: "", empresa_id: "", status: "ativo" });
+        setForm({ user_id: "", perfil_id: "", empresa_id: "", status: "ativo", codigo_acesso: "", is_new_user: false, email: "", password: "" });
         setEditingId(null);
     };
 
     const createMutation = useMutation({
-        mutationFn: (payload: any) => editingId
-            ? UserProfileService.update(editingId, payload)
-            : UserProfileService.create(payload),
+        mutationFn: (payload: any) => {
+            if (payload.is_new_user) {
+                return UserProfileService.manageUser({
+                    action: 'create',
+                    ...payload
+                });
+            }
+            return editingId
+                ? UserProfileService.update(editingId, payload)
+                : UserProfileService.create(payload);
+        },
         onSuccess: () => {
-            toast.success(editingId ? "Vínculo atualizado" : "Vínculo de usuário criado");
+            toast.success(editingId ? "Vínculo atualizado" : (form.is_new_user ? "Usuário criado e vinculado" : "Vínculo de usuário criado"));
             queryClient.invalidateQueries({ queryKey: ["users_profiles"] });
             setOpen(false);
             reset();
@@ -82,6 +94,10 @@ const UsuariosGestao = () => {
             perfil_id: u.perfil_id,
             empresa_id: u.empresa_id || "",
             status: u.status,
+            codigo_acesso: u.codigo_acesso || "",
+            is_new_user: false,
+            email: "",
+            password: "",
         });
         setOpen(true);
     };
@@ -137,6 +153,7 @@ const UsuariosGestao = () => {
                                     <th className="px-5 h-11 font-medium">Usuário (ID)</th>
                                     <th className="px-3 h-11 font-medium">Perfil</th>
                                     <th className="px-3 h-11 font-medium">Empresa/Unidade</th>
+                                    <th className="px-3 h-11 font-medium">Código</th>
                                     <th className="px-5 h-11 font-medium text-center">Status</th>
                                     <th className="px-5 h-11 font-medium text-right">Ações</th>
                                 </tr>
@@ -154,6 +171,7 @@ const UsuariosGestao = () => {
                                             </div>
                                         </td>
                                         <td className="px-3 text-muted-foreground">{(u.empresas as any)?.nome || "Acesso Global"}</td>
+                                        <td className="px-3 font-mono text-xs text-primary">{u.codigo_acesso || "---"}</td>
                                         <td className="px-5 text-center">
                                             <StatusChip status={u.status === 'ativo' ? 'ok' : 'inconsistente'} label={u.status} />
                                         </td>
@@ -187,6 +205,12 @@ const UsuariosGestao = () => {
                                             <span className="font-semibold uppercase text-primary">{(u.perfis as any)?.nome}</span>
                                             <span className="opacity-30">|</span>
                                             <span>{(u.empresas as any)?.nome || "Acesso Global"}</span>
+                                            {u.codigo_acesso && (
+                                                <>
+                                                    <span className="opacity-30">|</span>
+                                                    <span className="font-mono text-primary">{u.codigo_acesso}</span>
+                                                </>
+                                            )}
                                         </p>
                                     </div>
                                     <div className="mt-6 flex justify-end gap-1 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-all border-t pt-3">
@@ -209,25 +233,54 @@ const UsuariosGestao = () => {
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
-                        <div className="space-y-1.5">
-                            <Label>UUID do Usuário (Auth)</Label>
-                            <Input
-                                placeholder="00000000-0000-0000-0000-000000000000"
-                                value={form.user_id}
-                                onChange={(e) => setForm({ ...form, user_id: e.target.value })}
+                        <div className="flex items-center justify-between bg-muted/50 p-3 rounded-lg border border-border/50">
+                            <div className="space-y-0.5">
+                                <Label className="text-sm">Novo Usuário?</Label>
+                                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-tight">Criar conta no Supabase Auth</p>
+                            </div>
+                            <Button
+                                variant={form.is_new_user ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => setForm({ ...form, is_new_user: !form.is_new_user })}
                                 disabled={!!editingId}
-                            />
+                                className="h-7 text-[10px] font-bold"
+                            >
+                                {form.is_new_user ? "CRIAR NOVO" : "VINCULAR EXISTENTE"}
+                            </Button>
                         </div>
-                        <div className="space-y-1.5">
-                            <Label>Status</Label>
-                            <Select value={form.status} onValueChange={(v: "ativo" | "inativo") => setForm({ ...form, status: v })}>
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="ativo">Ativo</SelectItem>
-                                    <SelectItem value="inativo">Inativo</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
+
+                        {!form.is_new_user ? (
+                            <div className="space-y-1.5">
+                                <Label>UUID do Usuário (Auth)</Label>
+                                <Input
+                                    placeholder="00000000-0000-0000-0000-000000000000"
+                                    value={form.user_id}
+                                    onChange={(e) => setForm({ ...form, user_id: e.target.value })}
+                                    disabled={!!editingId}
+                                />
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1.5">
+                                    <Label>E-mail</Label>
+                                    <Input
+                                        placeholder="email@exemplo.com"
+                                        value={form.email}
+                                        onChange={(e) => setForm({ ...form, email: e.target.value })}
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label>Senha Temporária</Label>
+                                    <Input
+                                        type="password"
+                                        placeholder="******"
+                                        value={form.password}
+                                        onChange={(e) => setForm({ ...form, password: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+                        )}
+
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1.5">
                                 <Label>Perfil</Label>
@@ -247,6 +300,27 @@ const UsuariosGestao = () => {
                                         {empresas.map((e: any) => <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                                <Label>Status</Label>
+                                <Select value={form.status} onValueChange={(v: "ativo" | "inativo") => setForm({ ...form, status: v })}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="ativo">Ativo</SelectItem>
+                                        <SelectItem value="inativo">Inativo</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label>Código de Acesso (Login)</Label>
+                                <Input
+                                    placeholder="Ex: OP-01"
+                                    value={form.codigo_acesso}
+                                    onChange={(e) => setForm({ ...form, codigo_acesso: e.target.value })}
+                                />
                             </div>
                         </div>
                     </div>

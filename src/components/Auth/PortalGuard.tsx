@@ -15,7 +15,7 @@ interface PortalGuardProps {
  */
 export const PortalGuard: React.FC<PortalGuardProps> = ({ children }) => {
     const { session, loading: authLoading } = useAuth();
-    const { cliente, isLoading: clientLoading } = useClient();
+    const { cliente, isLoading: clientLoading, isInternalUser } = useClient();
     const location = useLocation();
 
     // Enquanto resolve auth ou dados do cliente
@@ -35,8 +35,9 @@ export const PortalGuard: React.FC<PortalGuardProps> = ({ children }) => {
         return <Navigate to="/login" state={{ from: location }} replace />;
     }
 
-    // Sessão existe mas sem cliente vinculado → usuário interno, não tem acesso ao portal
-    if (!cliente) {
+    // Sessão existe mas sem cliente vinculado
+    // Se não for cliente E não for usuário interno → não tem acesso ao portal
+    if (!cliente && !isInternalUser) {
         return <Navigate to="/" replace />;
     }
 

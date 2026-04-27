@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { BaseService } from './base.service';
 import { supabase } from '@/lib/supabase';
 
@@ -48,15 +49,6 @@ class ReportServiceClass extends BaseService<'relatorios_catalogo'> {
     if (error) throw error;
   }
 
-  async getLayouts() {
-    const { data, error } = await supabase
-      .from('relatorios_layouts_exportacao')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (error) throw error;
-    return data;
-  }
-
   async updateAgendamento(id: string, data: any) {
     const { error } = await supabase.from('relatorios_agendamentos').update(data).eq('id', id);
     if (error) throw error;
@@ -66,11 +58,18 @@ class ReportServiceClass extends BaseService<'relatorios_catalogo'> {
     const { error } = await supabase.from('relatorios_agendamentos').delete().eq('id', id);
     if (error) throw error;
   }
-
-  async deleteLayout(id: string) {
-    const { error } = await supabase.from('relatorios_layouts_exportacao').delete().eq('id', id);
-    if (error) throw error;
-  }
 }
 
 export const ReportService = new ReportServiceClass();
+
+class LayoutServiceClass extends BaseService<'relatorios_layouts_exportacao'> {
+  constructor() {
+    super('relatorios_layouts_exportacao');
+  }
+
+  async getLayouts() {
+    return this.getAll();
+  }
+}
+
+export const LayoutService = new LayoutServiceClass();

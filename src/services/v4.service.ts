@@ -18,12 +18,20 @@ export const BHRegraService = new BHRegraServiceClass();
 class BHEventoServiceClass extends BaseService<'banco_horas_eventos'> {
   constructor() { super('banco_horas_eventos'); }
 
-  async getByColaborador(collabId: string) {
-    const { data, error } = await supabase
+  async getByColaborador(collabId: string, startDate?: Date, endDate?: Date) {
+    let query = supabase
       .from('banco_horas_eventos')
       .select('*')
-      .eq('colaborador_id', collabId)
-      .order('data', { ascending: false });
+      .eq('colaborador_id', collabId);
+
+    if (startDate) {
+      query = query.gte('data', startDate.toISOString());
+    }
+    if (endDate) {
+      query = query.lte('data', endDate.toISOString());
+    }
+
+    const { data, error } = await query.order('data', { ascending: false });
     if (error) throw error;
     return data;
   }
@@ -34,7 +42,17 @@ class BHEventoServiceClass extends BaseService<'banco_horas_eventos'> {
     const { data, error } = await supabase.rpc('get_bh_saldos_gerais');
     if (error) throw error;
 
-    return (data || []).map((row: any) => ({
+    return (data || []).map((row: {
+      id: string;
+      nome: string;
+      matricula: string;
+      empresa_id: string;
+      empresa_nome: string;
+      saldo_minutos: number;
+      minutos_vencidos: number;
+      minutos_a_vencer_30d: number;
+      status: string;
+    }) => ({
       id: row.id,
       nome: row.nome,
       matricula: row.matricula,
@@ -76,13 +94,21 @@ class UserProfileServiceClass extends BaseService<'perfis_usuarios'> {
     if (error) throw error;
     return data;
   }
+
+  async manageUser(payload: any) {
+    const { data, error } = await supabase.functions.invoke('manage-user', {
+      body: payload
+    });
+    if (error) throw error;
+    return data;
+  }
 }
 export const UserProfileService = new UserProfileServiceClass();
 
 class AuditoriaServiceClass extends BaseService<'auditoria'> {
   constructor() { super('auditoria'); }
 
-  async log(acao: string, modulo: string, impacto: 'baixo' | 'medio' | 'critico', detalhes?: any) {
+  async log(acao: string, modulo: string, impacto: 'baixo' | 'medio' | 'critico', detalhes?: Record<string, unknown>) {
     const { data: { user } } = await supabase.auth.getUser();
     return this.create({
       acao,

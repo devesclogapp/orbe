@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -23,6 +24,7 @@ import {
     Settings
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
     Table,
     TableBody,
@@ -38,11 +40,14 @@ const RelatorioDetalhe = () => {
     const navigate = useNavigate();
     const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
 
+    // Estados de Filtro
+    const [competencia, setCompetencia] = useState(format(new Date(), "yyyy-MM"));
+    const [isFilterOpen, setIsModalFilterOpen] = useState(false);
+
     const { data: report, isLoading: loadingCatalog, error: catalogError } = useQuery({
         queryKey: ["report_catalog_item", id],
         queryFn: async () => {
             if (!id || id === 'new') return null;
-            // Validação de UUID simples para evitar 400 do Supabase
             const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
             if (!uuidRegex.test(id)) {
                 throw new Error("Identificador de relatório inválido");
@@ -53,8 +58,8 @@ const RelatorioDetalhe = () => {
         retry: false
     });
 
-    const { data: reportData = [] as any[], isLoading: loadingData } = useQuery({
-        queryKey: ["report_data_preview", id, report?.nome],
+    const { data: reportData = [] as any[], isLoading: loadingData, refetch } = useQuery({
+        queryKey: ["report_data_preview", id, report?.nome, competencia],
         queryFn: async () => {
             try {
                 if (!report) return [];
@@ -69,8 +74,7 @@ const RelatorioDetalhe = () => {
                     return Array.isArray(incs) ? incs : [];
                 }
                 if (report.nome === "Faturamento por Cliente") {
-                    const currentMonth = format(new Date(), "yyyy-MM");
-                    const data = await ConsolidadoService.getByCompetencia(currentMonth);
+                    const data = await ConsolidadoService.getByCompetencia(competencia);
                     return (data as any)?.colaboradores || (data as any)?.clientes || [];
                 }
 
@@ -113,7 +117,6 @@ const RelatorioDetalhe = () => {
             ]);
         }
 
-        // Use delimiter ; and UTF-8 BOM for Excel compatibility
         const content = "\uFEFF" + [
             headers.join(";"),
             ...rows.map(r => r.join(";"))
@@ -123,11 +126,11 @@ const RelatorioDetalhe = () => {
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.setAttribute("href", url);
-        link.setAttribute("download", `${report?.nome || 'relatorio'}-${format(new Date(), "yyyy-MM-dd")}.csv`);
+        link.setAttribute("download", `${report?.nome || 'relatorio'}-${competencia}.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        toast.success(`Relatório exportado em ${formatType}`);
+        toast.success(`Relatório exportado em ${formatType} para competencia ${competencia}`);
     };
 
     if (loadingCatalog || !report) return (
@@ -137,6 +140,14 @@ const RelatorioDetalhe = () => {
             </div>
         </AppShell>
     );
+
+    const meses = [
+        "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+        "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+    ];
+
+    const currentYear = new Date().getFullYear();
+    const anos = [currentYear - 1, currentYear, currentYear + 1];
 
     return (
         <AppShell
@@ -148,12 +159,59 @@ const RelatorioDetalhe = () => {
                 {/* Cabeçalho de Ações e Filtros Aplicados */}
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-muted/20 p-4 rounded-xl border border-border/50">
                     <div className="flex flex-wrap gap-2 items-center">
-                        <Badge variant="outline" className="bg-background border-border/60 text-[10px] font-bold uppercase tracking-widest px-2 py-0.5">Abril 2024</Badge>
+                        <Badge variant="outline" className="bg-background border-border/60 text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 capitalize">
+                            {meses[parseInt(competencia.split('-')[1]) - 1]} {competencia.split('-')[0]}
+                        </Badge>
                         <Badge variant="outline" className="bg-background border-border/60 text-[10px] font-bold uppercase tracking-widest px-2 py-0.5">Consolidado</Badge>
                         <div className="h-4 w-px bg-border mx-1 hidden sm:block" />
-                        <Button variant="ghost" size="sm" className="h-8 text-muted-foreground hover:text-primary transition-colors">
-                            <Filter className="h-3.5 w-3.5 mr-2" /> Editar Filtros
-                        </Button>
+
+                        <Popover open={isFilterOpen} onOpenChange={setIsModalFilterOpen}>
+                            <PopoverTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-8 text-muted-foreground hover:text-primary transition-colors">
+                                    <Filter className="h-3.5 w-3.5 mr-2" /> Editar Filtros
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-80 p-4" align="start">
+                                <div className="space-y-4">
+                                    <div className="space-y-2">
+                                        <h4 className="font-medium text-sm">Competência Financeira</h4>
+                                        <p className="text-[11px] text-muted-foreground leading-tight">Selecione o mês de referência para os dados.</p>
+                                        <div className="grid grid-cols-2 gap-2 mt-2">
+                                            <select
+                                                className="h-9 rounded-md border border-input bg-background px-3 text-xs"
+                                                value={competencia.split('-')[1]}
+                                                onChange={(e) => {
+                                                    const [y] = competencia.split('-');
+                                                    setCompetencia(`${y}-${e.target.value}`);
+                                                }}
+                                            >
+                                                {meses.map((m, i) => (
+                                                    <option key={m} value={String(i + 1).padStart(2, '0')}>{m}</option>
+                                                ))}
+                                            </select>
+                                            <select
+                                                className="h-9 rounded-md border border-input bg-background px-3 text-xs"
+                                                value={competencia.split('-')[0]}
+                                                onChange={(e) => {
+                                                    const [, m] = competencia.split('-');
+                                                    setCompetencia(`${e.target.value}-${m}`);
+                                                }}
+                                            >
+                                                {anos.map(a => (
+                                                    <option key={a} value={String(a)}>{a}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <Button
+                                        className="w-full text-xs font-bold h-9"
+                                        onClick={() => setIsModalFilterOpen(false)}
+                                    >
+                                        Aplicar Filtros
+                                    </Button>
+                                </div>
+                            </PopoverContent>
+                        </Popover>
                     </div>
                     <div className="flex flex-wrap gap-2 w-full md:w-auto">
                         <Button
@@ -184,9 +242,16 @@ const RelatorioDetalhe = () => {
                 {/* Indicadores do Relatório */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <Métrica label="Total de Registros" value={String(reportData.length)} />
-                    <Métrica label="Valor Consolidado" value="R$ 14.520,00" />
-                    <Métrica label="Inconsistências" value="0" status="success" />
-                    <Métrica label="Data da Geração" value="19/04/2024" />
+                    <Métrica
+                        label="Valor Consolidado"
+                        value={`R$ ${reportData.reduce((acc, curr) => acc + (Number(curr.valor_total || (curr.quantidade * curr.valor_unitario)) || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+                    />
+                    <Métrica
+                        label="Inconsistências"
+                        value={String(reportData.filter(r => r.status === 'inconsistente').length)}
+                        status={reportData.filter(r => r.status === 'inconsistente').length > 0 ? 'warning' : 'success'}
+                    />
+                    <Métrica label="Competência Ref." value={`${meses[parseInt(competencia.split('-')[1]) - 1]} / ${competencia.split('-')[0]}`} />
                 </div>
 
                 {/* Tabela Principal */}

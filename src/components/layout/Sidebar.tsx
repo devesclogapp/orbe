@@ -1,4 +1,4 @@
-import { LayoutDashboard, ClipboardCheck, Users, Building2, Cpu, Download, AlertTriangle, CalendarCheck, BarChart3, Settings, FilePlus, UploadCloud, ExternalLink, Clock, UserCheck, Shield, ListChecks, Scale, Wallet, FileCheck, LogOut, Database } from "lucide-react";
+import { LayoutDashboard, ClipboardCheck, Users, Building2, Cpu, Download, AlertTriangle, CalendarCheck, BarChart3, Settings, FilePlus, UploadCloud, ExternalLink, Clock, UserCheck, Shield, ListChecks, Scale, Wallet, FileCheck, LogOut, Database, Zap } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";

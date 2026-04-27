@@ -50,7 +50,7 @@ import ClientReports from "./pages/Cliente/ClientReports";
 import ClientApprovals from "./pages/Cliente/ClientApprovals";
 import Configuracoes from "./pages/Configuracoes";
 import Styleguide from "./pages/Styleguide";
-import NotFound from "./pages/NotFound.tsx";
+import NotFound from "./pages/NotFound";
 
 // V4 — Banco de Horas
 import PainelGeralBH from "./pages/BancoHoras/PainelGeral";
@@ -61,6 +61,8 @@ import ExtratoColaborador from "./pages/BancoHoras/ExtratoColaborador";
 import UsuariosGestao from "./pages/Governanca/Usuarios";
 import PerfisPermissoes from "./pages/Governanca/Perfis";
 import AuditoriaLogs from "./pages/Governanca/Auditoria";
+import LancamentoProducao from "./pages/LancamentoProducao";
+import LoginOperacional from "./pages/Auth/LoginOperacional";
 import DemoPage from "./pages/Simulacao/DemoPage";
 
 
@@ -79,6 +81,7 @@ const App = () => (
                 <Routes>
                   {/* Public Auth Routes */}
                   <Route path="/login" element={<Login />} />
+                  <Route path="/login/operacional" element={<LoginOperacional />} />
                   <Route path="/cadastro" element={<Cadastro />} />
                   <Route path="/esqueci-senha" element={<EsqueciSenha />} />
                   <Route path="/redefinir-senha" element={<RedefinirSenha />} />
@@ -86,6 +89,7 @@ const App = () => (
 
                   {/* Protected Routes */}
                   <Route path="/" element={<AuthGuard><Dashboard /></AuthGuard>} />
+                  <Route path="/producao" element={<AuthGuard><LancamentoProducao /></AuthGuard>} />
                   <Route path="/processamento" element={<AuthGuard><Processamento /></AuthGuard>} />
                   <Route path="/colaboradores" element={<AuthGuard><Colaboradores /></AuthGuard>} />
                   <Route path="/empresas" element={<AuthGuard><Empresas /></AuthGuard>} />
