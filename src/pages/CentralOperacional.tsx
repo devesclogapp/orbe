@@ -24,8 +24,6 @@ import { AppShell } from "@/components/layout/AppShell";
 import { RightPanel } from "@/components/layout/RightPanel";
 import { JustificationModal } from "@/components/modals/JustificationModal";
 import { MetricCard } from "@/components/painel/MetricCard";
-import { ResultadoBlock } from "@/components/painel/ResultadoBlock";
-import { StatusIABlock } from "@/components/painel/StatusIABlock";
 import { StatusChip } from "@/components/painel/StatusChip";
 import { PontoOperacoesBlock } from "@/components/painel/PontoOperacoesBlock";
 import { Badge } from "@/components/ui/badge";
@@ -65,7 +63,6 @@ const CentralOperacional = () => {
   const queryClient = useQueryClient();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [selectedEmpresaId, setSelectedEmpresaId] = useState<string>("");
-  const [processingStage, setProcessingStage] = useState<"idle" | "sync" | "ai" | "save" | "done">("idle");
 
   const dateValue = format(selectedDate, "yyyy-MM-dd");
 
@@ -152,11 +149,7 @@ const CentralOperacional = () => {
 
   const processMutation = useMutation({
     mutationFn: (empresaId: string) => AIService.processDay(dateValue, empresaId),
-    onMutate: () => {
-      setProcessingStage("ai");
-    },
     onSuccess: (res) => {
-      setProcessingStage("done");
       toast.success("Processamento concluído", {
         description: `Resultado consolidado: R$ ${res.resultado?.[0]?.valor_total_calculado?.toLocaleString("pt-BR") || "0,00"}`,
       });
@@ -166,10 +159,8 @@ const CentralOperacional = () => {
       queryClient.invalidateQueries({ queryKey: ["importacoes"] });
       queryClient.invalidateQueries({ queryKey: ["resultados_mensais"] });
       queryClient.invalidateQueries({ queryKey: ["resultados_processamento"] });
-      setTimeout(() => setProcessingStage("idle"), 3000);
     },
     onError: (err: any) => {
-      setProcessingStage("idle");
       toast.error("Erro ao processar", { description: err.message });
     },
   });
@@ -326,29 +317,22 @@ const CentralOperacional = () => {
               </TabsList>
 
               <TabsContent value="processamento" className="space-y-5">
-                <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)] gap-5">
-                  <section className="esc-card p-5">
-                    <div className="flex items-center justify-between gap-3 mb-4">
-                      <div>
-                        <h2 className="font-display font-semibold text-foreground">Resumo do dia operacional</h2>
-                        <p className="text-sm text-muted-foreground">
-                          Dados, processamento e resultado no mesmo contexto.
-                        </p>
-                      </div>
-                      {selectedEmpresaId === "all" && (
-                        <Badge className="bg-info-soft text-info-strong">
-                          Selecione uma empresa para processar
-                        </Badge>
-                      )}
+                <section className="esc-card p-5">
+                  <div className="flex items-center justify-between gap-3 mb-4">
+                    <div>
+                      <h2 className="font-display font-semibold text-foreground">Resumo do dia operacional</h2>
+                      <p className="text-sm text-muted-foreground">
+                        Dados operacionais na tela principal. Resultado consolidado e status inteligente aparecem ao selecionar um colaborador.
+                      </p>
                     </div>
-                    <PontoOperacoesBlock date={dateValue} empresaId={selectedEmpresaId} />
-                  </section>
-
-                  <div className="space-y-5">
-                    <ResultadoBlock date={dateValue} empresaId={selectedEmpresaId} />
-                    <StatusIABlock stage={processingStage} />
+                    {selectedEmpresaId === "all" && (
+                      <Badge className="bg-info-soft text-info-strong">
+                        Selecione uma empresa para processar
+                      </Badge>
+                    )}
                   </div>
-                </div>
+                  <PontoOperacoesBlock date={dateValue} empresaId={selectedEmpresaId} />
+                </section>
               </TabsContent>
 
               <TabsContent value="importacoes" className="space-y-4">

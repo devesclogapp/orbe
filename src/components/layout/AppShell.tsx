@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { CSSProperties, ReactNode } from "react";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 
@@ -13,7 +13,10 @@ interface AppShellProps {
 
 export const AppShell = ({ title, subtitle, backPath, rightPanel, children }: AppShellProps) => {
   return (
-    <div className="min-h-screen bg-background flex">
+    <div
+      className="min-h-screen bg-background flex"
+      style={{ "--app-topbar-height": "88px" } as CSSProperties}
+    >
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
         <Topbar title={title} subtitle={subtitle} backPath={backPath} />

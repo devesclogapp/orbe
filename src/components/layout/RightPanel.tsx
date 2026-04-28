@@ -1,11 +1,12 @@
-import { Sparkles, AlertTriangle, CheckCircle2, Clock, Wand2, X, Building2, Cpu, Wallet, User, Boxes } from "lucide-react";
+import { Sparkles, AlertTriangle, CheckCircle2, Clock, Wand2, X, Building2, Cpu, Wallet, User, Boxes, TrendingUp, LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSelection } from "@/contexts/SelectionContext";
 import { useQuery } from "@tanstack/react-query";
-import { ColaboradorService, PontoService, ColetorService, OperacaoService, EmpresaService } from "@/services/base.service";
+import { ColaboradorService, PontoService, ColetorService, OperacaoService, EmpresaService, ConsolidadoService } from "@/services/base.service";
 import { StatusChip } from "@/components/painel/StatusChip";
 import { Loader2 } from "lucide-react";
 import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 export const RightPanel = () => {
   const { kind, id, clear } = useSelection();
@@ -19,7 +20,7 @@ export const RightPanel = () => {
 };
 
 const PanelShell = ({ children }: { children: React.ReactNode }) => (
-  <aside className="w-[320px] shrink-0 bg-card border-l border-border h-[calc(100vh-64px)] sticky top-16 overflow-y-auto">
+  <aside className="w-[320px] shrink-0 bg-card border-l border-border h-[calc(100vh-var(--app-topbar-height))] sticky top-[var(--app-topbar-height)] overflow-y-auto">
     <div className="p-4 space-y-5">{children}</div>
   </aside>
 );
@@ -50,11 +51,39 @@ const ColaboradorPanel = ({ id, onClose }: { id: string; onClose: () => void }) 
     enabled: !!colab?.empresa_id
   });
 
-  if (loadingColab || loadingPonto || loadingEmpresa || loadingColets) {
+  const competencia = today.substring(0, 7);
+
+  const { data: consolidado, isLoading: loadingConsolidado } = useQuery({
+    queryKey: ["consolidado", competencia, colab?.empresa_id],
+    queryFn: () => ConsolidadoService.getByCompetencia(competencia, colab?.empresa_id),
+    enabled: !!colab?.empresa_id
+  });
+
+  const { data: inconsistencias = [], isLoading: loadingInconsistencias } = useQuery({
+    queryKey: ["inconsistencias-colaborador", id],
+    queryFn: () =>
+      OperacaoService.getInconsistencies().then((rows) =>
+        rows.filter(
+          (row: any) =>
+            row.responsavel_id === id ||
+            row.colaborador_id === id ||
+            row.colaboradores?.id === id
+        )
+      ),
+    enabled: !!id
+  });
+
+  if (loadingColab || loadingPonto || loadingEmpresa || loadingColets || loadingConsolidado || loadingInconsistencias) {
     return <PanelShell><div className="flex justify-center p-10"><Loader2 className="h-6 w-6 animate-spin" /></div></PanelShell>;
   }
 
   if (!colab) return <DefaultPanel onClose={onClose} />;
+
+  const consolidadoColaborador = consolidado?.colaboradores?.find((item: any) => item.colaborador_id === id);
+  const topClientes = (consolidado?.clientes || []).slice(0, 3);
+  const valorColaborador = Number(consolidadoColaborador?.valor_total || 0);
+  const totalClientes = (consolidado?.clientes || []).reduce((acc: number, item: any) => acc + Number(item.valor_total || 0), 0);
+  const resultadoProjetado = valorColaborador + totalClientes;
 
   return (
     <PanelShell>
@@ -140,6 +169,117 @@ const ColaboradorPanel = ({ id, onClose }: { id: string; onClose: () => void }) 
       <Button size="sm" className="w-full font-display font-semibold">
         <Wand2 className="h-3.5 w-3.5 mr-1.5" /> Ações do Assistente
       </Button>
+      <section className="space-y-2">
+        <div className="flex items-center gap-2">
+          <Wallet className="h-4 w-4 text-primary" />
+          <h3 className="font-display font-semibold text-sm text-foreground">Resultado consolidado</h3>
+        </div>
+        <div className="rounded-lg border border-border overflow-hidden bg-background/50">
+          <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-border bg-card/60">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">MÃªs {competencia}</span>
+            <span className="text-[11px] text-muted-foreground">CompetÃªncia ativa</span>
+          </div>
+
+          <div className="p-3 space-y-3">
+            <MiniTotal
+              label="Fechamento do colaborador"
+              value={`R$ ${valorColaborador.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+            />
+
+            <div className="rounded-md bg-secondary/30 p-3">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold mb-2">
+                Top clientes do mÃªs
+              </div>
+              {topClientes.length > 0 ? (
+                <ul className="space-y-2">
+                  {topClientes.map((cliente: any) => (
+                    <li key={cliente.id} className="flex items-center justify-between gap-3 text-xs">
+                      <span className="min-w-0 truncate text-foreground font-medium">{cliente.clientes?.nome}</span>
+                      <span className="shrink-0 text-muted-foreground">
+                        R$ {Number(cliente.valor_total || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-xs text-muted-foreground italic text-center py-2">Sem faturamento neste mÃªs.</p>
+              )}
+            </div>
+          </div>
+
+          <div className="border-t border-border px-3 py-3 grid grid-cols-1 gap-2 bg-secondary/20">
+            <MiniTotal
+              label="Receita bruta"
+              value={`R$ ${totalClientes.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+            />
+            <MiniTotal
+              label="Resultado projetado"
+              value={`R$ ${resultadoProjetado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+              highlight
+            />
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-2">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-info" />
+          <h3 className="font-display font-semibold text-sm text-foreground">Status inteligente</h3>
+          <span className="esc-chip bg-info-soft text-info text-[10px]">IA</span>
+        </div>
+
+        <div className="rounded-lg border border-border overflow-hidden bg-background/50">
+          <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-border">
+            <span className="inline-flex items-center gap-1 text-xs text-destructive-strong">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              {inconsistencias.length} alerta(s)
+            </span>
+            <span className="text-[11px] text-muted-foreground">Foco no colaborador</span>
+          </div>
+
+          <div className="divide-y divide-border">
+            {inconsistencias.length > 0 ? (
+              inconsistencias.slice(0, 3).map((item: any) => {
+                const valorEstimado = Number(item.quantidade || 0) * Number(item.valor_unitario || 0);
+                return (
+                  <div key={item.id} className="p-3">
+                    <div className="flex items-start gap-3">
+                      <div className="h-8 w-8 shrink-0 rounded-md flex items-center justify-center bg-destructive-soft text-destructive-strong">
+                        <AlertTriangle className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <span className="esc-chip bg-secondary text-foreground">{item.tipo_servico || "OperaÃ§Ã£o"}</span>
+                          <span className="font-display font-semibold text-sm text-foreground">
+                            {item.produto || item.transportadora || "InconsistÃªncia operacional"}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground leading-snug">
+                          {item.quantidade || 0} registro(s) com status <span className="font-medium text-foreground">{item.status}</span>.
+                          Valor estimado: R$ {valorEstimado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="p-3 flex items-center gap-2 text-xs text-success-strong bg-success-soft/60">
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+                Nenhuma inconsistÃªncia aberta para este colaborador.
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-border px-3 py-2.5 text-[11px] text-muted-foreground flex items-center justify-between">
+            <span className="inline-flex items-center gap-1.5">
+              <LoaderCircle className="h-3.5 w-3.5 text-info" />
+              AnÃ¡lise contextual ao abrir o colaborador
+            </span>
+            <span>Agora</span>
+          </div>
+        </div>
+      </section>
     </PanelShell>
   );
 };
@@ -313,5 +453,17 @@ const KV = ({ label, value }: { label: string; value: string }) => (
   <div>
     <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
     <div className="font-medium text-foreground">{value}</div>
+  </div>
+);
+
+const MiniTotal = ({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) => (
+  <div className={cn("rounded-md px-3 py-2", highlight && "bg-primary-soft/20")}>
+    <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold flex items-center gap-1.5">
+      {highlight && <TrendingUp className="h-3 w-3 text-primary" />}
+      {label}
+    </div>
+    <div className={cn("font-display font-bold text-base mt-1", highlight ? "text-primary" : "text-foreground")}>
+      {value}
+    </div>
   </div>
 );
