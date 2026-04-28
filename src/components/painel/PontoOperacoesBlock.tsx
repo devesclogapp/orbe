@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { StatusChip } from "./StatusChip";
-import { Clock, RefreshCw, Boxes, Plus, Pencil, Trash2, Loader2 } from "lucide-react";
+import { Clock, RefreshCw, Boxes, Plus, Pencil, Trash2, Loader2, User, LogIn, LogOut, UtensilsCrossed, Coffee, Timer, Zap, CalendarDays, DollarSign, CheckCircle2, Truck, Package, Hash, Hourglass, BadgeDollarSign, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { usePreferences } from "@/contexts/PreferencesContext";
@@ -85,16 +85,16 @@ const PontoTable = ({ date, empresaId }: { date: string; empresaId: string }) =>
       <table className="w-full text-sm">
         <thead className="esc-table-header">
           <tr className="text-left font-display">
-            <th className="px-5 font-semibold py-3">Colaborador</th>
-            <th className="px-3 font-semibold text-center">Entrada</th>
-            <th className="px-3 font-semibold text-center">Saída almoço</th>
-            <th className="px-3 font-semibold text-center">Retorno almoço</th>
-            <th className="px-3 font-semibold text-center">Saída</th>
-            <th className="px-3 font-semibold text-center">Horas</th>
-            <th className="px-3 font-semibold text-center">Extras</th>
-            <th className="px-3 font-semibold text-center">Tipo dia</th>
-            <th className="px-3 font-semibold text-right">Valor do dia</th>
-            <th className="px-5 font-semibold text-center">Status</th>
+            <th className="px-5 font-semibold py-3"><span className="inline-flex items-center gap-1.5"><User className="h-3.5 w-3.5 text-muted-foreground" />Colaborador</span></th>
+            <th className="px-3 font-semibold text-center"><span className="inline-flex items-center gap-1.5"><LogIn className="h-3.5 w-3.5 text-muted-foreground" />Entrada</span></th>
+            <th className="px-3 font-semibold text-center"><span className="inline-flex items-center gap-1.5"><UtensilsCrossed className="h-3.5 w-3.5 text-muted-foreground" />Saída almoço</span></th>
+            <th className="px-3 font-semibold text-center"><span className="inline-flex items-center gap-1.5"><Coffee className="h-3.5 w-3.5 text-muted-foreground" />Retorno almoço</span></th>
+            <th className="px-3 font-semibold text-center"><span className="inline-flex items-center gap-1.5"><LogOut className="h-3.5 w-3.5 text-muted-foreground" />Saída</span></th>
+            <th className="px-3 font-semibold text-center"><span className="inline-flex items-center gap-1.5"><Timer className="h-3.5 w-3.5 text-muted-foreground" />Horas</span></th>
+            <th className="px-3 font-semibold text-center"><span className="inline-flex items-center gap-1.5"><Zap className="h-3.5 w-3.5 text-muted-foreground" />Extras</span></th>
+            <th className="px-3 font-semibold text-center"><span className="inline-flex items-center gap-1.5"><CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />Tipo dia</span></th>
+            <th className="px-3 font-semibold text-right"><span className="inline-flex items-center gap-1.5"><DollarSign className="h-3.5 w-3.5 text-muted-foreground" />Valor do dia</span></th>
+            <th className="px-5 font-semibold text-center"><span className="inline-flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" />Status</span></th>
           </tr>
         </thead>
         <tbody>
@@ -157,16 +157,16 @@ const OperacoesTable = ({ date, empresaId }: { date: string; empresaId: string }
       <table className="w-full text-sm">
         <thead className="esc-table-header">
           <tr className="text-left font-display">
-            <th className="px-5 font-semibold py-3">Operação</th>
-            <th className="px-3 font-semibold">Transportadora</th>
-            <th className="px-3 font-semibold text-center">Serviço</th>
-            <th className="px-3 font-semibold text-center">Qtd</th>
-            <th className="px-3 font-semibold text-center">Início</th>
-            <th className="px-3 font-semibold text-center">Fim</th>
-            <th className="px-3 font-semibold text-right">Valor unit.</th>
-            <th className="px-3 font-semibold text-right">Valor do dia</th>
-            <th className="px-3 font-semibold text-center">Status</th>
-            <th className="px-5 font-semibold text-center">Ações</th>
+            <th className="px-5 font-semibold py-3"><span className="inline-flex items-center gap-1.5"><Package className="h-3.5 w-3.5 text-muted-foreground" />Operação</span></th>
+            <th className="px-3 font-semibold"><span className="inline-flex items-center gap-1.5"><Truck className="h-3.5 w-3.5 text-muted-foreground" />Transportadora</span></th>
+            <th className="px-3 font-semibold text-center"><span className="inline-flex items-center gap-1.5"><Settings2 className="h-3.5 w-3.5 text-muted-foreground" />Serviço</span></th>
+            <th className="px-3 font-semibold text-center"><span className="inline-flex items-center gap-1.5"><Hash className="h-3.5 w-3.5 text-muted-foreground" />Qtd</span></th>
+            <th className="px-3 font-semibold text-center"><span className="inline-flex items-center gap-1.5"><LogIn className="h-3.5 w-3.5 text-muted-foreground" />Início</span></th>
+            <th className="px-3 font-semibold text-center"><span className="inline-flex items-center gap-1.5"><LogOut className="h-3.5 w-3.5 text-muted-foreground" />Fim</span></th>
+            <th className="px-3 font-semibold text-right"><span className="inline-flex items-center gap-1.5"><DollarSign className="h-3.5 w-3.5 text-muted-foreground" />Valor unit.</span></th>
+            <th className="px-3 font-semibold text-right"><span className="inline-flex items-center gap-1.5"><BadgeDollarSign className="h-3.5 w-3.5 text-muted-foreground" />Valor do dia</span></th>
+            <th className="px-3 font-semibold text-center"><span className="inline-flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" />Status</span></th>
+            <th className="px-5 font-semibold text-center"><span className="inline-flex items-center gap-1.5"><Hourglass className="h-3.5 w-3.5 text-muted-foreground" />Ações</span></th>
           </tr>
         </thead>
         <tbody>

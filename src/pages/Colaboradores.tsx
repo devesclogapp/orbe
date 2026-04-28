@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { StatusChip } from "@/components/painel/StatusChip";
 import { Button } from "@/components/ui/button";
-import { Plus, RefreshCw, Loader2, Pencil, Trash2, MoreHorizontal, AlertTriangle, LayoutGrid, List, User } from "lucide-react";
+import { Plus, RefreshCw, Loader2, Pencil, Trash2, LayoutGrid, List, User, Briefcase, Building2, FileText, DollarSign, Receipt, CheckCircle2, MoreHorizontal, AlertTriangle } from "lucide-react";
 import { ColaboradorService, EmpresaService } from "@/services/base.service";
 import {
   Dialog,
@@ -221,13 +221,13 @@ const Colaboradores = () => {
             <table className="w-full text-sm">
               <thead className="esc-table-header">
                 <tr className="text-left">
-                  <th className="px-5 h-11 font-medium">Nome</th>
-                  <th className="px-3 h-11 font-medium">Cargo</th>
-                  <th className="px-3 h-11 font-medium">Empresa</th>
-                  <th className="px-3 h-11 font-medium text-center">Contrato</th>
-                  <th className="px-3 h-11 font-medium text-right">Valor base</th>
-                  <th className="px-3 h-11 font-medium text-center">Faturamento</th>
-                  <th className="px-5 h-11 font-medium text-center">Status</th>
+                  <th className="px-5 h-11 font-medium"><span className="inline-flex items-center gap-1.5"><User className="h-3.5 w-3.5 text-muted-foreground" />Nome</span></th>
+                  <th className="px-3 h-11 font-medium"><span className="inline-flex items-center gap-1.5"><Briefcase className="h-3.5 w-3.5 text-muted-foreground" />Cargo</span></th>
+                  <th className="px-3 h-11 font-medium"><span className="inline-flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5 text-muted-foreground" />Empresa</span></th>
+                  <th className="px-3 h-11 font-medium text-center"><span className="inline-flex items-center gap-1.5"><FileText className="h-3.5 w-3.5 text-muted-foreground" />Contrato</span></th>
+                  <th className="px-3 h-11 font-medium text-right"><span className="inline-flex items-center gap-1.5"><DollarSign className="h-3.5 w-3.5 text-muted-foreground" />Valor base</span></th>
+                  <th className="px-3 h-11 font-medium text-center"><span className="inline-flex items-center gap-1.5"><Receipt className="h-3.5 w-3.5 text-muted-foreground" />Faturamento</span></th>
+                  <th className="px-5 h-11 font-medium text-center"><span className="inline-flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" />Status</span></th>
                   <th className="px-5 h-11 font-medium text-right"></th>
                 </tr>
               </thead>
