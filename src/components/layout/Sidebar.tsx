@@ -1,4 +1,4 @@
-import { LayoutDashboard, ClipboardCheck, Users, Building2, Cpu, Download, AlertTriangle, CalendarCheck, BarChart3, Settings, FilePlus, UploadCloud, ExternalLink, Clock, UserCheck, Shield, ListChecks, Scale, Wallet, FileCheck, LogOut, Database, Zap } from "lucide-react";
+import { LayoutDashboard, ClipboardCheck, Users, BarChart3, Settings, FilePlus, ExternalLink, Clock, Shield, Wallet, LogOut, Database, Scale } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -7,25 +7,17 @@ import { Button } from "@/components/ui/button";
 
 const mainItems = [
   { icon: LayoutDashboard, label: "Dashboard", to: "/", end: true },
-  { icon: ClipboardCheck, label: "Processamento", to: "/processamento" },
-  { icon: Download, label: "Importações", to: "/importacoes" },
-  { icon: AlertTriangle, label: "Inconsistências", to: "/inconsistencias" },
+  { icon: ClipboardCheck, label: "Central Operacional", to: "/processamento" },
 ];
 
 const rhItems = [
-  { icon: Users, label: "Colaboradores", to: "/colaboradores" },
-  { icon: Building2, label: "Empresas", to: "/empresas" },
-  { icon: Cpu, label: "Coletores REP", to: "/coletores" },
+  { icon: Users, label: "Central de Cadastros", to: "/cadastros" },
 ];
 
 const finItems = [
-  { icon: Wallet, label: "Financeiro Geral", to: "/financeiro", end: true },
-  { icon: Scale, label: "Regras de Cálculo", to: "/financeiro/regras" },
-  { icon: FileCheck, label: "Faturamento", to: "/financeiro/faturamento" },
-  { icon: FilePlus, label: "Remessa CNAB", to: "/financeiro/remessa" },
-  { icon: UploadCloud, label: "Retorno Bancário", to: "/financeiro/retorno" },
-  { icon: CalendarCheck, label: "Fechamento Mensal", to: "/fechamento" },
-  { icon: BarChart3, label: "Relatórios", to: "/relatorios" },
+  { icon: Wallet, label: "Central Financeira", to: "/financeiro", end: true },
+  { icon: FilePlus, label: "Central Bancária", to: "/bancario" },
+  { icon: BarChart3, label: "Central de Relatórios", to: "/relatorios" },
 ];
 
 const portalItems = [
@@ -38,9 +30,7 @@ const bhItems = [
 ];
 
 const govItems = [
-  { icon: UserCheck, label: "Gestão de Usuários", to: "/governanca/usuarios" },
-  { icon: Shield, label: "Perfis e Permissões", to: "/governanca/perfis" },
-  { icon: ListChecks, label: "Auditoria", to: "/governanca/auditoria" },
+  { icon: Shield, label: "Central de Governança", to: "/governanca" },
 ];
 
 const simItems = [
@@ -75,7 +65,7 @@ export const Sidebar = () => {
         </div>
 
         <div>
-          <h3 className="px-3 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Recursos Humanos</h3>
+          <h3 className="px-3 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Pessoas e Cadastros</h3>
           {rhItems.map(renderItem)}
           {bhItems.map(renderItem)}
         </div>
@@ -102,7 +92,7 @@ export const Sidebar = () => {
       </nav>
 
       <div className="px-2 pt-2 border-t border-sidebar-border space-y-1">
-        {renderItem({ icon: Settings, label: "Configurações", to: "/configuracoes" })}
+        {renderItem({ icon: Settings, label: "Preferências", to: "/configuracoes?tab=preferencias" })}
         <Button
           variant="ghost"
           onClick={handleSignOut}
@@ -131,7 +121,7 @@ export const Sidebar = () => {
       </button>
 
       <div className="px-4 pb-3 text-[11px] text-muted-foreground">
-        v4.1 — Relatórios & Integração
+        v4.1 — Navegação por Objetivos
       </div>
     </aside>
   );

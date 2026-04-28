@@ -20,6 +20,9 @@ import VerificarEmail from "./pages/Auth/VerificarEmail";
 
 import Dashboard from "./pages/Dashboard";
 import Processamento from "./pages/Processamento";
+import CentralOperacional from "./pages/CentralOperacional";
+import CentralCadastros from "./pages/CentralCadastros";
+import CentralRelatoriosIntegracoes from "./pages/CentralRelatoriosIntegracoes";
 import Colaboradores from "./pages/Colaboradores";
 import Empresas from "./pages/Empresas";
 import Coletores from "./pages/Coletores";
@@ -38,6 +41,8 @@ import LogsIntegracao from "./pages/Relatorios/LogsIntegracao";
 import Inconsistencias from "./pages/Inconsistencias";
 
 import FinanceiroGeral from "./pages/Financeiro/FinanceiroGeral";
+import CentralFinanceira from "./pages/CentralFinanceira";
+import CentralBancaria from "./pages/CentralBancaria";
 import RegrasCalculo from "./pages/Financeiro/RegrasCalculo";
 import FaturamentoCliente from "./pages/Financeiro/FaturamentoCliente";
 import DetalhamentoCliente from "./pages/Financeiro/DetalhamentoCliente";
@@ -64,6 +69,7 @@ import AuditoriaLogs from "./pages/Governanca/Auditoria";
 import LancamentoProducao from "./pages/LancamentoProducao";
 import LoginOperacional from "./pages/Auth/LoginOperacional";
 import DemoPage from "./pages/Simulacao/DemoPage";
+import CentralGovernanca from "./pages/CentralGovernanca";
 
 
 const queryClient = new QueryClient();
@@ -90,7 +96,9 @@ const App = () => (
                   {/* Protected Routes */}
                   <Route path="/" element={<AuthGuard><Dashboard /></AuthGuard>} />
                   <Route path="/producao" element={<AuthGuard><LancamentoProducao /></AuthGuard>} />
-                  <Route path="/processamento" element={<AuthGuard><Processamento /></AuthGuard>} />
+                  <Route path="/processamento" element={<AuthGuard><CentralOperacional /></AuthGuard>} />
+                  <Route path="/processamento/legado" element={<AuthGuard><Processamento /></AuthGuard>} />
+                  <Route path="/cadastros" element={<AuthGuard><CentralCadastros /></AuthGuard>} />
                   <Route path="/colaboradores" element={<AuthGuard><Colaboradores /></AuthGuard>} />
                   <Route path="/empresas" element={<AuthGuard><Empresas /></AuthGuard>} />
                   <Route path="/coletores" element={<AuthGuard><Coletores /></AuthGuard>} />
@@ -98,7 +106,9 @@ const App = () => (
                   <Route path="/inconsistencias" element={<AuthGuard><Inconsistencias /></AuthGuard>} />
 
                   {/* Financeiro V3 */}
-                  <Route path="/financeiro" element={<AuthGuard><FinanceiroGeral /></AuthGuard>} />
+                  <Route path="/financeiro" element={<AuthGuard><CentralFinanceira /></AuthGuard>} />
+                  <Route path="/financeiro/legado" element={<AuthGuard><FinanceiroGeral /></AuthGuard>} />
+                  <Route path="/bancario" element={<AuthGuard><CentralBancaria /></AuthGuard>} />
                   <Route path="/financeiro/regras" element={<AuthGuard><RegrasCalculo /></AuthGuard>} />
                   <Route path="/financeiro/faturamento" element={<AuthGuard><FaturamentoCliente /></AuthGuard>} />
                   <Route path="/financeiro/faturamento/:id" element={<AuthGuard><DetalhamentoCliente /></AuthGuard>} />
@@ -115,7 +125,8 @@ const App = () => (
                   <Route path="/fechamento" element={<AuthGuard><Fechamento /></AuthGuard>} />
 
                   {/* Relatórios e Integração V4 */}
-                  <Route path="/relatorios" element={<AuthGuard><RelatoriosHub /></AuthGuard>} />
+                  <Route path="/relatorios" element={<AuthGuard><CentralRelatoriosIntegracoes /></AuthGuard>} />
+                  <Route path="/relatorios/legado" element={<AuthGuard><RelatoriosHub /></AuthGuard>} />
                   <Route path="/relatorios/detalhe/:id" element={<AuthGuard><RelatorioDetalhe /></AuthGuard>} />
                   <Route path="/relatorios/agendamentos" element={<AuthGuard><Agendamentos /></AuthGuard>} />
                   <Route path="/relatorios/layouts" element={<AuthGuard><LayoutsExportacao /></AuthGuard>} />
@@ -129,6 +140,7 @@ const App = () => (
                   <Route path="/banco-horas/extrato/:id" element={<AuthGuard><ExtratoColaborador /></AuthGuard>} />
 
                   {/* Governança V4 */}
+                  <Route path="/governanca" element={<AuthGuard><CentralGovernanca /></AuthGuard>} />
                   <Route path="/governanca/usuarios" element={<AuthGuard><UsuariosGestao /></AuthGuard>} />
                   <Route path="/governanca/perfis" element={<AuthGuard><PerfisPermissoes /></AuthGuard>} />
                   <Route path="/governanca/auditoria" element={<AuthGuard><AuditoriaLogs /></AuthGuard>} />

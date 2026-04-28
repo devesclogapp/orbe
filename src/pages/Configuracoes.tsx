@@ -42,7 +42,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useState, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ConfigTipoOperacaoService,
@@ -54,6 +54,7 @@ import {
 
 const Configuracoes = () => {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const queryTab = searchParams.get("tab");
   const queryClient = useQueryClient();
   const { theme, setTheme, defaultTab, setDefaultTab } = usePreferences();
@@ -66,6 +67,10 @@ const Configuracoes = () => {
 
   // Sync activeTab with queryTab when URL changes
   useEffect(() => {
+    if (queryTab === "minimas") {
+      setActiveTab("preferencias");
+      return;
+    }
     if (queryTab && queryTab !== activeTab) {
       setActiveTab(queryTab);
     }
@@ -215,14 +220,11 @@ const Configuracoes = () => {
   }
 
   return (
-    <AppShell title="Configurações" subtitle="Gerencie as diretrizes e preferências do ERP">
+    <AppShell title="Preferências e Conta" subtitle="Ajustes pessoais de uso e perfil do ERP">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className="bg-muted/50 p-1 rounded-xl border border-border/50">
           <TabsTrigger value="preferencias" className="px-6 rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm">
             <Settings2 className="h-4 w-4 mr-2" /> Preferências
-          </TabsTrigger>
-          <TabsTrigger value="minimas" className="px-6 rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm">
-            <Database className="h-4 w-4 mr-2" /> Configurações Mínimas
           </TabsTrigger>
           <TabsTrigger value="conta" className="px-6 rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm">
             <User className="h-4 w-4 mr-2" /> Meu Perfil
@@ -230,6 +232,18 @@ const Configuracoes = () => {
         </TabsList>
 
         <TabsContent value="preferencias" className="space-y-6 mt-6">
+          <section className="esc-card p-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="font-display font-semibold text-foreground">Administração operacional movida</h2>
+              <p className="text-sm text-muted-foreground">
+                Parâmetros básicos, tipos de operação, produtos e tipos de dia agora ficam na Central de Cadastros.
+              </p>
+            </div>
+            <Button variant="outline" onClick={() => navigate("/cadastros")}>
+              <Database className="h-4 w-4 mr-2" />
+              Abrir Central de Cadastros
+            </Button>
+          </section>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <section className="esc-card p-6">
               <h2 className="font-display font-bold text-foreground mb-1 flex items-center gap-2">

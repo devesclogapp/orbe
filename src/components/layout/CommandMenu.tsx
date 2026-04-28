@@ -2,14 +2,11 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
     Calculator,
-    Calendar,
     CreditCard,
     Settings,
-    Smile,
     User,
     Users,
     LayoutDashboard,
-    FileText,
     ShieldCheck,
     AlertCircle,
     FileBarChart,
@@ -59,21 +56,37 @@ export function CommandMenu({ open, setOpen }: { open: boolean; setOpen: (open: 
                         <LayoutDashboard className="mr-2 h-4 w-4" />
                         <span>Dashboard</span>
                     </CommandItem>
+                    <CommandItem onSelect={() => runCommand(() => navigate("/cadastros"))}>
+                        <Users className="mr-2 h-4 w-4" />
+                        <span>Central de Cadastros</span>
+                    </CommandItem>
+                    <CommandItem onSelect={() => runCommand(() => navigate("/processamento"))}>
+                        <Calculator className="mr-2 h-4 w-4" />
+                        <span>Central Operacional</span>
+                    </CommandItem>
+                    <CommandItem onSelect={() => runCommand(() => navigate("/financeiro"))}>
+                        <CreditCard className="mr-2 h-4 w-4" />
+                        <span>Central Financeira</span>
+                    </CommandItem>
+                    <CommandItem onSelect={() => runCommand(() => navigate("/bancario"))}>
+                        <Repeat className="mr-2 h-4 w-4" />
+                        <span>Central Bancária</span>
+                    </CommandItem>
+                    <CommandItem onSelect={() => runCommand(() => navigate("/relatorios"))}>
+                        <FileBarChart className="mr-2 h-4 w-4" />
+                        <span>Central de Relatórios</span>
+                    </CommandItem>
+                    <CommandItem onSelect={() => runCommand(() => navigate("/governanca"))}>
+                        <ShieldCheck className="mr-2 h-4 w-4" />
+                        <span>Central de Governança</span>
+                    </CommandItem>
+                </CommandGroup>
+                <CommandSeparator />
+                <CommandGroup heading="Acessos Diretos">
                     <CommandItem onSelect={() => runCommand(() => navigate("/colaboradores"))}>
                         <Users className="mr-2 h-4 w-4" />
                         <span>Colaboradores</span>
                     </CommandItem>
-                    <CommandItem onSelect={() => runCommand(() => navigate("/processamento"))}>
-                        <Calculator className="mr-2 h-4 w-4" />
-                        <span>Processamento</span>
-                    </CommandItem>
-                    <CommandItem onSelect={() => runCommand(() => navigate("/financeiro"))}>
-                        <CreditCard className="mr-2 h-4 w-4" />
-                        <span>Financeiro</span>
-                    </CommandItem>
-                </CommandGroup>
-                <CommandSeparator />
-                <CommandGroup heading="Operacional">
                     <CommandItem onSelect={() => runCommand(() => navigate("/inconsistencias"))}>
                         <AlertCircle className="mr-2 h-4 w-4" />
                         <span>Inconsistências</span>
@@ -81,10 +94,6 @@ export function CommandMenu({ open, setOpen }: { open: boolean; setOpen: (open: 
                     <CommandItem onSelect={() => runCommand(() => navigate("/fechamento"))}>
                         <ShieldCheck className="mr-2 h-4 w-4" />
                         <span>Fechamento</span>
-                    </CommandItem>
-                    <CommandItem onSelect={() => runCommand(() => navigate("/relatorios"))}>
-                        <FileBarChart className="mr-2 h-4 w-4" />
-                        <span>Relatórios</span>
                     </CommandItem>
                 </CommandGroup>
                 <CommandSeparator />
@@ -105,9 +114,9 @@ export function CommandMenu({ open, setOpen }: { open: boolean; setOpen: (open: 
                         <span>Meu Perfil</span>
                         <CommandShortcut>⌘P</CommandShortcut>
                     </CommandItem>
-                    <CommandItem onSelect={() => runCommand(() => navigate("/configuracoes"))}>
+                    <CommandItem onSelect={() => runCommand(() => navigate("/configuracoes?tab=preferencias"))}>
                         <Settings className="mr-2 h-4 w-4" />
-                        <span>Configurações do Sistema</span>
+                        <span>Preferências</span>
                         <CommandShortcut>⌘S</CommandShortcut>
                     </CommandItem>
                     <CommandItem onSelect={() => runCommand(() => navigate("/governanca/auditoria"))}>
