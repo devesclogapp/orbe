@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
     Calculator,
     CreditCard,
+    FilePlus,
     Settings,
     User,
     Users,
@@ -86,6 +87,10 @@ export function CommandMenu({ open, setOpen }: { open: boolean; setOpen: (open: 
                     <CommandItem onSelect={() => runCommand(() => navigate("/colaboradores"))}>
                         <Users className="mr-2 h-4 w-4" />
                         <span>Colaboradores</span>
+                    </CommandItem>
+                    <CommandItem onSelect={() => runCommand(() => navigate("/cadastros/regras-operacionais"))}>
+                        <FilePlus className="mr-2 h-4 w-4" />
+                        <span>Regras Operacionais</span>
                     </CommandItem>
                     <CommandItem onSelect={() => runCommand(() => navigate("/inconsistencias"))}>
                         <AlertCircle className="mr-2 h-4 w-4" />

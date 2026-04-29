@@ -1,7 +1,31 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { StatusChip } from "./StatusChip";
-import { Clock, RefreshCw, Boxes, Plus, Pencil, Trash2, Loader2, User, LogIn, LogOut, UtensilsCrossed, Coffee, Timer, Zap, CalendarDays, DollarSign, CheckCircle2, Truck, Package, Hash, Hourglass, BadgeDollarSign, Settings2 } from "lucide-react";
+import {
+  Clock,
+  RefreshCw,
+  Boxes,
+  Plus,
+  Pencil,
+  Trash2,
+  Loader2,
+  User,
+  LogIn,
+  LogOut,
+  UtensilsCrossed,
+  Coffee,
+  Timer,
+  Zap,
+  CalendarDays,
+  DollarSign,
+  CheckCircle2,
+  Truck,
+  Package,
+  Hash,
+  Hourglass,
+  BadgeDollarSign,
+  Settings2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { usePreferences } from "@/contexts/PreferencesContext";
@@ -72,13 +96,17 @@ const PontoTable = ({ date, empresaId }: { date: string; empresaId: string }) =>
 
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ["ponto", date, empresaId],
-    queryFn: () => PontoService.getByDate(date, empresaId === 'all' ? undefined : empresaId),
+    queryFn: () => PontoService.getByDate(date, empresaId === "all" ? undefined : empresaId),
   });
 
-  if (isLoading) return <div className="p-12 text-center text-muted-foreground min-h-[300px] flex flex-col items-center justify-center">
-    <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
-    Carregando registros de ponto...
-  </div>;
+  if (isLoading) {
+    return (
+      <div className="p-12 text-center text-muted-foreground min-h-[300px] flex flex-col items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
+        Carregando registros de ponto...
+      </div>
+    );
+  }
 
   return (
     <div className="overflow-x-auto">
@@ -106,7 +134,7 @@ const PontoTable = ({ date, empresaId }: { date: string; empresaId: string }) =>
                 onClick={() => select("colaborador", r.colaborador_id)}
                 className={cn(
                   "esc-table-row cursor-pointer transition-all",
-                  r.status === 'inconsistente' && "bg-rowAlert border-l-[3px] border-l-primary",
+                  r.status === "inconsistente" && "bg-rowAlert border-l-[3px] border-l-primary",
                   isSelected && "bg-primary-soft/40 border-l-[3px] border-l-primary"
                 )}
               >
@@ -114,15 +142,15 @@ const PontoTable = ({ date, empresaId }: { date: string; empresaId: string }) =>
                   <div className="font-medium text-foreground">{r.colaboradores?.nome}</div>
                   <div className="text-xs text-muted-foreground">{r.colaboradores?.cargo} · {r.colaboradores?.empresas?.nome}</div>
                 </td>
-                <td className="px-3 text-center text-foreground">{r.entrada || '—'}</td>
-                <td className="px-3 text-center text-muted-foreground">{r.saida_almoco || '—'}</td>
-                <td className="px-3 text-center text-muted-foreground">{r.retorno_almoco || '—'}</td>
-                <td className="px-3 text-center text-foreground">{r.saida || '—'}</td>
-                <td className="px-3 text-center font-display font-medium">{r.horas_trabalhadas || '0h00'}</td>
-                <td className="px-3 text-center text-muted-foreground">{r.horas_extras || '—'}</td>
+                <td className="px-3 text-center text-foreground">{r.entrada || "-"}</td>
+                <td className="px-3 text-center text-muted-foreground">{r.saida_almoco || "-"}</td>
+                <td className="px-3 text-center text-muted-foreground">{r.retorno_almoco || "-"}</td>
+                <td className="px-3 text-center text-foreground">{r.saida || "-"}</td>
+                <td className="px-3 text-center font-display font-medium">{r.horas_trabalhadas || "0h00"}</td>
+                <td className="px-3 text-center text-muted-foreground">{r.horas_extras || "-"}</td>
                 <td className="px-3 text-center text-muted-foreground">{r.tipo_dia}</td>
                 <td className="px-3 text-right font-display font-semibold text-foreground">
-                  R$ {Number(r.valor_dia || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  R$ {Number(r.valor_dia || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                 </td>
                 <td className="px-5 text-center"><StatusChip status={r.status} /></td>
               </tr>
@@ -144,13 +172,17 @@ const OperacoesTable = ({ date, empresaId }: { date: string; empresaId: string }
 
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ["operacoes", date, empresaId],
-    queryFn: () => OperacaoService.getByDate(date, empresaId === 'all' ? undefined : empresaId),
+    queryFn: () => OperacaoService.getPainelByDate(date, empresaId === "all" ? undefined : empresaId),
   });
 
-  if (isLoading) return <div className="p-12 text-center text-muted-foreground min-h-[300px] flex flex-col items-center justify-center">
-    <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
-    Carregando operações...
-  </div>;
+  if (isLoading) {
+    return (
+      <div className="p-12 text-center text-muted-foreground min-h-[300px] flex flex-col items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
+        Carregando operações...
+      </div>
+    );
+  }
 
   return (
     <div className="overflow-x-auto">
@@ -172,28 +204,33 @@ const OperacoesTable = ({ date, empresaId }: { date: string; empresaId: string }
         <tbody>
           {rows.map((o: any) => {
             const isSelected = kind === "operacao" && selectedId === o.id;
-            const valorTotal = Number(o.quantidade) * Number(o.valor_unitario || 0);
+            const valorTotal = Number(o.valor_total_label ?? (Number(o.quantidade) * Number(o.valor_unitario || 0)));
+
             return (
               <tr
                 key={o.id}
                 onClick={() => select("operacao", o.id)}
                 className={cn(
                   "esc-table-row cursor-pointer transition-all",
-                  o.status === 'inconsistente' && "bg-rowAlert border-l-[3px] border-l-primary",
+                  o.status === "inconsistente" && "bg-rowAlert border-l-[3px] border-l-primary",
                   isSelected && "bg-primary-soft/40 border-l-[3px] border-l-primary"
                 )}
               >
                 <td className="px-5 py-3">
                   <div className="font-medium text-foreground">{o.id.substring(0, 8)}</div>
-                  <div className="text-xs text-muted-foreground">{o.produto}</div>
+                  <div className="text-xs text-muted-foreground">{o.produto_label || o.produto || "Sem produto"}</div>
                 </td>
-                <td className="px-3 text-foreground">{o.transportadora}</td>
-                <td className="px-3 text-center text-muted-foreground">{o.tipo_servico}</td>
-                <td className="px-3 text-center font-display font-medium">{o.quantidade}</td>
-                <td className="px-3 text-center text-muted-foreground">{o.horario_inicio || '—'}</td>
-                <td className="px-3 text-center text-muted-foreground">{o.horario_fim || '—'}</td>
-                <td className="px-3 text-right text-muted-foreground">R$ {(o.valor_unitario || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                <td className="px-3 text-right font-display font-semibold text-foreground">R$ {valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                <td className="px-3 text-foreground">{o.transportadora_label || o.transportadora || "Sem transportadora"}</td>
+                <td className="px-3 text-center text-muted-foreground">{o.tipo_servico_label || o.tipo_servico || "Sem serviço"}</td>
+                <td className="px-3 text-center font-display font-medium">{o.quantidade_label ?? o.quantidade}</td>
+                <td className="px-3 text-center text-muted-foreground">{o.horario_inicio_label || o.horario_inicio || "-"}</td>
+                <td className="px-3 text-center text-muted-foreground">{o.horario_fim_label || o.horario_fim || "-"}</td>
+                <td className="px-3 text-right text-muted-foreground">
+                  R$ {Number(o.valor_unitario_label ?? o.valor_unitario ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                </td>
+                <td className="px-3 text-right font-display font-semibold text-foreground">
+                  R$ {valorTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                </td>
                 <td className="px-3 text-center"><StatusChip status={o.status} /></td>
                 <td className="px-5" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-center gap-1">

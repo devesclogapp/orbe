@@ -31,6 +31,7 @@ const routeMeta: RouteMeta[] = [
   { pattern: "/cliente/relatorios", label: "Relatorios do cliente", section: "Ambiente Externo", parentPath: "/cliente/dashboard" },
   { pattern: "/cliente/aprovacoes", label: "Aprovacoes do cliente", section: "Ambiente Externo", parentPath: "/cliente/dashboard" },
   { pattern: "/cadastros", label: "Central de cadastros", section: "Pessoas e Cadastros" },
+  { pattern: "/cadastros/regras-operacionais", label: "Regras operacionais", section: "Pessoas e Cadastros", parentPath: "/cadastros" },
   { pattern: "/colaboradores", label: "Colaboradores", section: "Pessoas e Cadastros", parentPath: "/cadastros" },
   { pattern: "/empresas", label: "Empresas", section: "Pessoas e Cadastros", parentPath: "/cadastros" },
   { pattern: "/coletores", label: "Coletores REP", section: "Pessoas e Cadastros", parentPath: "/cadastros" },

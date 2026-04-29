@@ -12,6 +12,7 @@ const mainItems = [
 
 const rhItems = [
   { icon: Users, label: "Central de Cadastros", to: "/cadastros" },
+  { icon: FilePlus, label: "Regras Operacionais", to: "/cadastros/regras-operacionais" },
 ];
 
 const finItems = [

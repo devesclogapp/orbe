@@ -85,7 +85,7 @@ const CentralOperacional = () => {
 
   const { data: operacoes = [], isLoading: isLoadingOps } = useQuery<any[]>({
     queryKey: ["operacoes", dateValue, selectedEmpresaId],
-    queryFn: () => OperacaoService.getByDate(dateValue, selectedEmpresaId === "all" ? undefined : selectedEmpresaId),
+    queryFn: () => OperacaoService.getPainelByDate(dateValue, selectedEmpresaId === "all" ? undefined : selectedEmpresaId),
     enabled: !!selectedEmpresaId,
   });
 
@@ -135,7 +135,7 @@ const CentralOperacional = () => {
   );
 
   const totalCalculado = operacoes.reduce(
-    (acc, op) => acc + Number(op.quantidade) * Number(op.valor_unitario || 0),
+    (acc, op) => acc + Number(op.valor_total_label ?? (Number(op.quantidade) * Number(op.valor_unitario || 0))),
     0
   );
 

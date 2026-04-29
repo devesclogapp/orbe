@@ -224,6 +224,56 @@ class OperacaoServiceClass extends BaseService<'operacoes'> {
     if (error) throw error;
     return data;
   }
+
+  async getPainelByDate(date: string, empresaId?: string) {
+    const [operacoesLegadas, operacoesProducao] = await Promise.all([
+      this.getByDate(date, empresaId),
+      OperacaoProducaoService.getByDate(date, empresaId).catch(() => []),
+    ]);
+
+    const legadasNormalizadas = (operacoesLegadas ?? []).map((item: any) => ({
+      ...item,
+      origem: 'operacoes',
+      data_referencia: item.data ?? date,
+      produto_label: item.produto ?? null,
+      transportadora_label: item.transportadora ?? null,
+      tipo_servico_label: item.tipo_servico ?? null,
+      quantidade_label: Number(item.quantidade || 0),
+      horario_inicio_label: item.horario_inicio ?? null,
+      horario_fim_label: item.horario_fim ?? null,
+      valor_unitario_label: Number(item.valor_unitario || 0),
+      valor_total_label: Number(item.quantidade || 0) * Number(item.valor_unitario || 0),
+      criado_em_label: item.created_at ?? item.data_criacao ?? null,
+    }));
+
+    const producaoNormalizada = (operacoesProducao ?? []).map((item: any) => ({
+      ...item,
+      origem: 'operacoes_producao',
+      data_referencia: item.data_operacao ?? date,
+      produto_label: item.produtos_carga?.nome ?? item.avaliacao_json?.contexto_operacional?.produto ?? null,
+      transportadora_label: item.transportadoras_clientes?.nome ?? null,
+      tipo_servico_label: item.tipos_servico_operacional?.nome ?? null,
+      quantidade_label: Number(
+        item.tipo_calculo_snapshot === 'colaborador'
+          ? item.quantidade_colaboradores
+            ?? item.avaliacao_json?.contexto_operacional?.quantidade_colaboradores
+            ?? item.quantidade
+            ?? 0
+          : item.quantidade ?? 0,
+      ),
+      horario_inicio_label: item.entrada_ponto ?? null,
+      horario_fim_label: item.saida_ponto ?? null,
+      valor_unitario_label: Number(item.valor_unitario_snapshot || 0),
+      valor_total_label: Number(item.valor_total || 0),
+      criado_em_label: item.criado_em ?? null,
+    }));
+
+    return [...producaoNormalizada, ...legadasNormalizadas].sort((a: any, b: any) => {
+      const aTime = new Date(a.criado_em_label ?? `${a.data_referencia}T${a.horario_inicio_label ?? '00:00:00'}`).getTime();
+      const bTime = new Date(b.criado_em_label ?? `${b.data_referencia}T${b.horario_inicio_label ?? '00:00:00'}`).getTime();
+      return bTime - aTime;
+    });
+  }
 }
 export const OperacaoService = new OperacaoServiceClass();
 
@@ -412,6 +462,390 @@ class ConfiguracaoOperacionalServiceClass extends BaseService<'configuracoes_ope
   }
 }
 export const ConfiguracaoOperacionalService = new ConfiguracaoOperacionalServiceClass();
+
+// SERVIÇOS OPERACIONAIS V2 (/producao)
+const operationalClient: any = supabase;
+
+class UnidadeOperacionalServiceClass {
+  async getByEmpresa(empresaId: string) {
+    const { data, error } = await operationalClient
+      .from('unidades')
+      .select('*')
+      .eq('empresa_id', empresaId)
+      .eq('ativo', true)
+      .order('nome', { ascending: true });
+
+    if (error) throw error;
+    return data ?? [];
+  }
+}
+export const UnidadeOperacionalService = new UnidadeOperacionalServiceClass();
+
+class TipoServicoOperacionalServiceClass {
+  async getAllActive() {
+    const { data, error } = await operationalClient
+      .from('tipos_servico_operacional')
+      .select('*')
+      .eq('ativo', true)
+      .order('nome', { ascending: true });
+
+    if (error) throw error;
+    return data ?? [];
+  }
+
+  async create(payload: Record<string, any>) {
+    const { data, error } = await operationalClient
+      .from('tipos_servico_operacional')
+      .insert(payload)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+}
+export const TipoServicoOperacionalService = new TipoServicoOperacionalServiceClass();
+
+class TransportadoraClienteServiceClass {
+  async getByEmpresa(empresaId?: string) {
+    let query = operationalClient
+      .from('transportadoras_clientes')
+      .select('*')
+      .eq('ativo', true)
+      .order('nome', { ascending: true });
+
+    if (empresaId) query = query.eq('empresa_id', empresaId);
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data ?? [];
+  }
+
+  async create(payload: Record<string, any>) {
+    const { data, error } = await operationalClient
+      .from('transportadoras_clientes')
+      .insert(payload)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+}
+export const TransportadoraClienteService = new TransportadoraClienteServiceClass();
+
+class FornecedorServiceClass {
+  async getByEmpresa(empresaId?: string) {
+    let query = operationalClient
+      .from('fornecedores')
+      .select('*')
+      .eq('ativo', true)
+      .order('nome', { ascending: true });
+
+    if (empresaId) query = query.eq('empresa_id', empresaId);
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data ?? [];
+  }
+
+  async create(payload: Record<string, any>) {
+    const { data, error } = await operationalClient
+      .from('fornecedores')
+      .insert(payload)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+}
+export const FornecedorService = new FornecedorServiceClass();
+
+class ProdutoCargaServiceClass {
+  async getByFornecedor(fornecedorId: string) {
+    const { data, error } = await operationalClient
+      .from('produtos_carga')
+      .select('*')
+      .eq('fornecedor_id', fornecedorId)
+      .eq('ativo', true)
+      .order('nome', { ascending: true });
+
+    if (error) throw error;
+    return data ?? [];
+  }
+
+  async create(payload: Record<string, any>) {
+    const { data, error } = await operationalClient
+      .from('produtos_carga')
+      .insert(payload)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+}
+export const ProdutoCargaService = new ProdutoCargaServiceClass();
+
+class FormaPagamentoOperacionalServiceClass {
+  async getAllActive() {
+    const { data, error } = await operationalClient
+      .from('formas_pagamento_operacional')
+      .select('*')
+      .eq('ativo', true)
+      .order('nome', { ascending: true });
+
+    if (error) throw error;
+    return data ?? [];
+  }
+
+  async create(payload: Record<string, any>) {
+    const { data, error } = await operationalClient
+      .from('formas_pagamento_operacional')
+      .insert(payload)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+}
+export const FormaPagamentoOperacionalService = new FormaPagamentoOperacionalServiceClass();
+
+class FornecedorValorServicoServiceClass {
+  async resolverValor(params: {
+    empresaId: string;
+    unidadeId?: string | null;
+    tipoServicoId: string;
+    fornecedorId: string;
+    transportadoraId?: string | null;
+    produtoCargaId?: string | null;
+    dataOperacao?: string;
+  }) {
+    const { data, error } = await operationalClient.rpc('resolver_valor_operacao', {
+      p_empresa_id: params.empresaId,
+      p_unidade_id: params.unidadeId ?? null,
+      p_tipo_servico_id: params.tipoServicoId,
+      p_fornecedor_id: params.fornecedorId,
+      p_transportadora_id: params.transportadoraId ?? null,
+      p_produto_carga_id: params.produtoCargaId ?? null,
+      p_data_operacao: params.dataOperacao ?? null,
+    });
+
+    if (error) throw error;
+    return Array.isArray(data) ? data[0] ?? null : data;
+  }
+}
+export const FornecedorValorServicoService = new FornecedorValorServicoServiceClass();
+
+class RegraOperacionalServiceClass {
+  async getAll(empresaId?: string) {
+    let query = operationalClient
+      .from('fornecedor_valores_servico')
+      .select(`
+        *,
+        empresas:empresa_id(nome),
+        tipos_servico_operacional:tipo_servico_id(nome),
+        transportadoras_clientes:transportadora_id(nome),
+        fornecedores:fornecedor_id(nome),
+        produtos_carga:produto_carga_id(nome),
+        formas_pagamento_operacional:forma_pagamento_id(nome)
+      `)
+      .order('ativo', { ascending: false })
+      .order('vigencia_inicio', { ascending: false })
+      .order('created_at', { ascending: false });
+
+    if (empresaId) query = query.eq('empresa_id', empresaId);
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data ?? [];
+  }
+
+  async create(payload: Record<string, any>) {
+    const { data, error } = await operationalClient
+      .from('fornecedor_valores_servico')
+      .insert(payload)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  async update(id: string, payload: Record<string, any>) {
+    const { data, error } = await operationalClient
+      .from('fornecedor_valores_servico')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  async inativar(id: string) {
+    return this.update(id, { ativo: false });
+  }
+
+  async hasActiveConflict(params: {
+    empresaId: string;
+    tipoServicoId: string;
+    fornecedorId: string;
+    transportadoraId?: string | null;
+    produtoCargaId?: string | null;
+    tipoCalculo: string;
+    vigenciaInicio: string;
+    vigenciaFim?: string | null;
+    excludeId?: string;
+  }) {
+    let query = operationalClient
+      .from('fornecedor_valores_servico')
+      .select('id, vigencia_inicio, vigencia_fim')
+      .eq('empresa_id', params.empresaId)
+      .eq('tipo_servico_id', params.tipoServicoId)
+      .eq('fornecedor_id', params.fornecedorId)
+      .eq('tipo_calculo', params.tipoCalculo)
+      .eq('ativo', true);
+
+    query = params.transportadoraId
+      ? query.eq('transportadora_id', params.transportadoraId)
+      : query.is('transportadora_id', null);
+
+    query = params.produtoCargaId
+      ? query.eq('produto_carga_id', params.produtoCargaId)
+      : query.is('produto_carga_id', null);
+
+    if (params.excludeId) query = query.neq('id', params.excludeId);
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    const inicioNovo = new Date(`${params.vigenciaInicio}T00:00:00`);
+    const fimNovo = params.vigenciaFim ? new Date(`${params.vigenciaFim}T23:59:59`) : null;
+
+    return (data ?? []).some((item: any) => {
+      const inicioExistente = new Date(`${item.vigencia_inicio}T00:00:00`);
+      const fimExistente = item.vigencia_fim ? new Date(`${item.vigencia_fim}T23:59:59`) : null;
+
+      const novoAntesDoFimExistente = !fimExistente || inicioNovo <= fimExistente;
+      const existenteAntesDoFimNovo = !fimNovo || inicioExistente <= fimNovo;
+
+      return novoAntesDoFimExistente && existenteAntesDoFimNovo;
+    });
+  }
+}
+export const RegraOperacionalService = new RegraOperacionalServiceClass();
+
+class OperacaoProducaoServiceClass {
+  async isAvailable() {
+    const { error } = await operationalClient
+      .from('operacoes_producao')
+      .select('id')
+      .limit(1);
+
+    return !error;
+  }
+
+  async create(payload: Record<string, any>) {
+    const { data, error } = await operationalClient
+      .from('operacoes_producao')
+      .insert(payload)
+      .select(`
+        *,
+        colaboradores:colaborador_id(nome, cargo),
+        tipos_servico_operacional:tipo_servico_id(nome),
+        transportadoras_clientes:transportadora_id(nome),
+        fornecedores:fornecedor_id(nome),
+        produtos_carga:produto_carga_id(nome),
+        formas_pagamento_operacional:forma_pagamento_id(nome)
+      `)
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  async createWithColaboradores(
+    payload: Record<string, any>,
+    colaboradores: Array<{
+      collaborator_id: string;
+      had_infraction: boolean;
+      infraction_type_id?: string | null;
+      infraction_notes?: string | null;
+    }>,
+  ) {
+    const registro = await this.create(payload);
+
+    if (colaboradores.length > 0) {
+      const { error } = await operationalClient
+        .from('production_entry_collaborators')
+        .insert(
+          colaboradores.map((item) => ({
+            production_entry_id: registro.id,
+            collaborator_id: item.collaborator_id,
+            had_infraction: item.had_infraction,
+            infraction_type_id: item.infraction_type_id ?? null,
+            infraction_notes: item.infraction_notes ?? null,
+          })),
+        );
+
+      if (error) throw error;
+    }
+
+    return registro;
+  }
+
+  async getByDate(date: string, empresaId?: string, unidadeId?: string | null) {
+    let query = operationalClient
+      .from('operacoes_producao')
+      .select(`
+        *,
+        colaboradores:colaborador_id(nome, cargo),
+        tipos_servico_operacional:tipo_servico_id(nome),
+        transportadoras_clientes:transportadora_id(nome),
+        fornecedores:fornecedor_id(nome),
+        produtos_carga:produto_carga_id(nome),
+        formas_pagamento_operacional:forma_pagamento_id(nome)
+      `)
+      .eq('data_operacao', date)
+      .order('criado_em', { ascending: false });
+
+    if (empresaId) query = query.eq('empresa_id', empresaId);
+    if (unidadeId) query = query.eq('unidade_id', unidadeId);
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data ?? [];
+  }
+
+  async delete(id: string) {
+    const { error } = await operationalClient
+      .from('operacoes_producao')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    return true;
+  }
+
+  async getResumoDoDia(date: string, empresaId?: string, unidadeId?: string | null) {
+    let query = operationalClient
+      .from('vw_operacoes_producao_resumo_dia')
+      .select('*')
+      .eq('data_operacao', date);
+
+    if (empresaId) query = query.eq('empresa_id', empresaId);
+    if (unidadeId) query = query.eq('unidade_id', unidadeId);
+
+    const { data, error } = await query.maybeSingle();
+    if (error) throw error;
+    return data;
+  }
+}
+export const OperacaoProducaoService = new OperacaoProducaoServiceClass();
 
 // STORAGE SERVICE
 export const StorageService = {

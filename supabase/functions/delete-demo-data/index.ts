@@ -27,6 +27,9 @@ serve(async (req: any) => {
     
     // Lista de tabelas para limpar (na ordem correta para FK)
     const tables = [
+      'operacoes_producao_colaboradores',
+      'production_entry_collaborators',
+      'operacoes_producao',
       'operacoes',
       'registros_ponto',
       'banco_horas_eventos',
@@ -45,6 +48,9 @@ serve(async (req: any) => {
       'lotes_remessa',
       'lotes_retorno',
       'auditoria',
+      'fornecedor_valores_servico',
+      'fornecedores',
+      'tipos_servico_operacionais',
       'config_tipos_operacao',
       'config_produtos',
       'config_tipos_dia',
@@ -55,9 +61,17 @@ serve(async (req: any) => {
     const totais_excluidos: any = {}
 
     for (const table of tables) {
-      const { count } = await supabase.from(table).select('*', { count: 'exact', head: true }).match(queryParams)
-      await supabase.from(table).delete().match(queryParams)
-      totais_excluidos[table] = count || 0
+      try {
+        const { count, error: countError } = await supabase.from(table).select('*', { count: 'exact', head: true }).match(queryParams)
+        if (countError) throw countError;
+
+        const { error: deleteError } = await supabase.from(table).delete().match(queryParams)
+        if (deleteError) throw deleteError;
+
+        totais_excluidos[table] = count || 0
+      } catch (err: any) {
+        console.warn(`[Delete Demo Data] Ignore error for table ${table}:`, err.message)
+      }
     }
 
     if (lote_id) {

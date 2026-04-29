@@ -1,5 +1,5 @@
 import { ReactNode } from "react";
-import { LogOut, Zap, User } from "lucide-react";
+import { LogOut, Zap } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,7 @@ export const OperationalShell = ({ children, title = "Coletor Orbe", unitName }:
     return (
         <div className="min-h-screen bg-background flex flex-col">
             {/* Topbar Simplificada */}
-            <header className="h-16 border-b border-border bg-card flex items-center justify-between px-6 sticky top-0 z-50 shadow-sm">
+            <header className="h-16 border-b border-border bg-card flex items-center justify-between px-4 sm:px-6 sticky top-0 z-50 shadow-sm">
                 <div className="flex items-center gap-3">
                     <div className="h-9 w-9 rounded-xl bg-brand flex items-center justify-center text-white shadow-lg shadow-brand/20">
                         <Zap className="h-5 w-5 fill-current" />
@@ -58,7 +58,7 @@ export const OperationalShell = ({ children, title = "Coletor Orbe", unitName }:
             </header>
 
             {/* Conteúdo Centralizado e Focado */}
-            <main className="flex-1 w-full max-w-5xl mx-auto p-4 md:p-8">
+            <main className="flex-1 w-full max-w-[1600px] mx-auto px-4 py-4 sm:px-6 lg:px-8 xl:px-10">
                 {children}
             </main>
 

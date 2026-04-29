@@ -70,6 +70,7 @@ import LancamentoProducao from "./pages/LancamentoProducao";
 import LoginOperacional from "./pages/Auth/LoginOperacional";
 import DemoPage from "./pages/Simulacao/DemoPage";
 import CentralGovernanca from "./pages/CentralGovernanca";
+import RegrasOperacionais from "./pages/RegrasOperacionais";
 
 
 const queryClient = new QueryClient();
@@ -99,6 +100,7 @@ const App = () => (
                   <Route path="/processamento" element={<AuthGuard><CentralOperacional /></AuthGuard>} />
                   <Route path="/processamento/legado" element={<AuthGuard><Processamento /></AuthGuard>} />
                   <Route path="/cadastros" element={<AuthGuard><CentralCadastros /></AuthGuard>} />
+                  <Route path="/cadastros/regras-operacionais" element={<AuthGuard><RegrasOperacionais /></AuthGuard>} />
                   <Route path="/colaboradores" element={<AuthGuard><Colaboradores /></AuthGuard>} />
                   <Route path="/empresas" element={<AuthGuard><Empresas /></AuthGuard>} />
                   <Route path="/coletores" element={<AuthGuard><Coletores /></AuthGuard>} />

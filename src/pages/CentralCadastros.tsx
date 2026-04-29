@@ -218,6 +218,10 @@ const CentralCadastros = () => {
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={() => navigate("/cadastros/regras-operacionais")}>
+                <ArrowRight className="h-4 w-4 mr-2" />
+                Regras operacionais
+              </Button>
               <Button variant="outline" size="sm" onClick={() => navigate("/configuracoes?tab=preferencias")}>
                 <Settings2 className="h-4 w-4 mr-2" />
                 Preferências pessoais
