@@ -16,8 +16,10 @@ import {
   Pencil,
   Settings2,
   Users,
+  Upload,
 } from "lucide-react";
 import { toast } from "sonner";
+import { SpreadsheetUploadModal } from "@/components/shared/SpreadsheetUploadModal";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { MetricCard } from "@/components/painel/MetricCard";
@@ -56,6 +58,7 @@ const CentralCadastros = () => {
   const empresaId = user?.user_metadata?.empresa_id;
 
   const [configModalOpen, setConfigModalOpen] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
   const [configType, setConfigType] = useState<"operacao" | "produto" | "dia">("operacao");
   const [editingConfig, setEditingConfig] = useState<any>(null);
   const [configForm, setConfigForm] = useState<any>({});
@@ -185,6 +188,56 @@ const CentralCadastros = () => {
     setConfigModalOpen(true);
   };
 
+  const handleImport = async (data: any[]) => {
+    let count = 0;
+    try {
+      for (const row of data) {
+        // Tenta descobrir o tipo de importação pelas colunas
+        const hasIcms = 'ICMS' in row || 'icms' in row;
+        const hasCategoria = 'Categoria' in row || 'categoria' in row;
+        const hasFator = 'Fator' in row || 'fator' in row;
+
+        if (hasIcms || hasCategoria) {
+          // Importa Produto
+          await ConfigProdutoService.create({
+            categoria: row['Categoria'] || row['categoria'] || 'Sem Categoria',
+            icms: Number(row['ICMS'] || row['icms'] || 0),
+            status: 'ativo',
+            empresa_id: empresaId
+          });
+        } else if (hasFator) {
+          // Importa Dia
+          await ConfigTipoDiaService.create({
+            nome: row['Nome'] || row['nome'] || row['Descrição'] || '',
+            fator: Number(row['Fator'] || row['fator'] || 1),
+            status: 'ativo',
+            empresa_id: empresaId
+          });
+        } else {
+          // Importa Operacao default
+          const nome = row['Nome'] || row['nome'] || row['Operação'] || '';
+          if (!nome) continue;
+          await ConfigTipoOperacaoService.create({
+            nome,
+            codigo: row['Código'] || row['codigo'] || '',
+            status: 'ativo',
+            empresa_id: empresaId
+          });
+        }
+        count++;
+      }
+      toast.success(`${count} registros importados com sucesso!`);
+      queryClient.invalidateQueries({ queryKey: ["config_tipos_operacao"] });
+      queryClient.invalidateQueries({ queryKey: ["config_produtos"] });
+      queryClient.invalidateQueries({ queryKey: ["config_tipos_dia"] });
+    } catch (e: any) {
+      toast.error("Erro parcial na importação. Alguns registros podem ter falhado.", { description: e.message });
+      queryClient.invalidateQueries({ queryKey: ["config_tipos_operacao"] });
+      queryClient.invalidateQueries({ queryKey: ["config_produtos"] });
+      queryClient.invalidateQueries({ queryKey: ["config_tipos_dia"] });
+    }
+  };
+
   const loading =
     loadingEmpresas ||
     loadingColaboradores ||
@@ -221,6 +274,10 @@ const CentralCadastros = () => {
               <Button variant="outline" size="sm" onClick={() => navigate("/cadastros/regras-operacionais")}>
                 <ArrowRight className="h-4 w-4 mr-2" />
                 Regras operacionais
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setImportModalOpen(true)}>
+                <Upload className="h-4 w-4 mr-2" />
+                Importar Planilha
               </Button>
               <Button variant="outline" size="sm" onClick={() => navigate("/configuracoes?tab=preferencias")}>
                 <Settings2 className="h-4 w-4 mr-2" />
@@ -654,6 +711,14 @@ const CentralCadastros = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <SpreadsheetUploadModal
+        open={importModalOpen}
+        onOpenChange={setImportModalOpen}
+        title="Importar Configurações Operacionais"
+        description="A importação classificará os registros automaticamente: Planilhas com colunas 'Categoria'/'ICMS' vão para Produtos. 'Fator' vão para Tipos de Dia. As demais vão para Tipos de Operação."
+        onUpload={handleImport}
+      />
     </AppShell>
   );
 };

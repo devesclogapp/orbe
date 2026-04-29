@@ -173,6 +173,81 @@ export const ResultadosService = new ResultadosServiceClass();
 
 class OperacaoServiceClass extends BaseService<'operacoes'> {
   constructor() { super('operacoes'); }
+  async getAllPainel(empresaId?: string) {
+    let operacoesQuery = supabase
+      .from('operacoes')
+      .select('*, colaboradores(nome, cargo, empresas(nome))');
+
+    if (empresaId) {
+      operacoesQuery = operacoesQuery.eq('empresa_id', empresaId);
+    }
+
+    const [operacoesLegadasRes, operacoesProducao] = await Promise.all([
+      operacoesQuery,
+      OperacaoProducaoService.getAll(empresaId).catch(() => []),
+    ]);
+
+    if (operacoesLegadasRes.error) throw operacoesLegadasRes.error;
+
+    const operacoesLegadas = operacoesLegadasRes.data ?? [];
+    const fallbackDate = new Date().toISOString().split('T')[0];
+
+    const legadasNormalizadas = operacoesLegadas.map((item: any) => ({
+      ...item,
+      origem: 'operacoes',
+      data_referencia: item.data ?? fallbackDate,
+      produto_label: item.produto ?? null,
+      transportadora_label: item.transportadora ?? null,
+      tipo_servico_label: item.tipo_servico ?? null,
+      quantidade_label: Number(item.quantidade || 0),
+      horario_inicio_label: item.horario_inicio ?? null,
+      horario_fim_label: item.horario_fim ?? null,
+      valor_unitario_label: Number(item.valor_unitario || 0),
+      valor_total_label: Number(item.quantidade || 0) * Number(item.valor_unitario || 0),
+      criado_em_label: item.created_at ?? item.data_criacao ?? null,
+    }));
+
+    const producaoNormalizada = (operacoesProducao ?? []).map((item: any) => ({
+      ...item,
+      origem: 'operacoes_producao',
+      data_referencia: item.data_operacao ?? fallbackDate,
+      data_operacao: item.data_operacao ?? fallbackDate,
+      quantidade_colaboradores: Number(item.quantidade_colaboradores ?? 1),
+      produto_label: item.produtos_carga?.nome ?? item.avaliacao_json?.contexto_operacional?.produto ?? null,
+      transportadora_label: item.transportadoras_clientes?.nome ?? null,
+      tipo_servico_label: item.tipos_servico_operacional?.nome ?? null,
+      quantidade_label: Number(
+        item.tipo_calculo_snapshot === 'colaborador'
+          ? item.quantidade_colaboradores
+            ?? item.avaliacao_json?.contexto_operacional?.quantidade_colaboradores
+            ?? item.quantidade
+            ?? 0
+          : item.quantidade ?? 0,
+      ),
+      horario_inicio_label: item.entrada_ponto ?? null,
+      horario_fim_label: item.saida_ponto ?? null,
+      valor_unitario_label: Number(item.valor_unitario_snapshot || 0),
+      valor_total_label: Number(item.valor_total || 0),
+      placa: item.placa ?? null,
+      nf_numero: item.nf_numero ?? null,
+      ctrc: item.ctrc ?? null,
+      percentual_iss: item.percentual_iss ? Number(item.percentual_iss) : null,
+      valor_descarga: item.valor_descarga ? Number(item.valor_descarga) : null,
+      custo_com_iss: item.custo_com_iss ? Number(item.custo_com_iss) : null,
+      valor_unitario_filme: item.valor_unitario_filme ? Number(item.valor_unitario_filme) : null,
+      quantidade_filme: item.quantidade_filme ? Number(item.quantidade_filme) : null,
+      valor_total_filme: item.valor_total_filme ? Number(item.valor_total_filme) : null,
+      valor_faturamento_nf: item.valor_faturamento_nf ? Number(item.valor_faturamento_nf) : null,
+      criado_em_label: item.criado_em ?? null,
+    }));
+
+    return [...producaoNormalizada, ...legadasNormalizadas].sort((a: any, b: any) => {
+      const aTime = new Date(a.criado_em_label ?? `${a.data_referencia}T${a.horario_inicio_label ?? '00:00:00'}`).getTime();
+      const bTime = new Date(b.criado_em_label ?? `${b.data_referencia}T${b.horario_inicio_label ?? '00:00:00'}`).getTime();
+      return bTime - aTime;
+    });
+  }
+
   async getByDate(date: string, empresaId?: string) {
     let query = supabase
       .from('operacoes')
@@ -250,6 +325,8 @@ class OperacaoServiceClass extends BaseService<'operacoes'> {
       ...item,
       origem: 'operacoes_producao',
       data_referencia: item.data_operacao ?? date,
+      data_operacao: item.data_operacao ?? date,  // garantido explicitamente
+      quantidade_colaboradores: Number(item.quantidade_colaboradores ?? 1),  // garantido explicitamente
       produto_label: item.produtos_carga?.nome ?? item.avaliacao_json?.contexto_operacional?.produto ?? null,
       transportadora_label: item.transportadoras_clientes?.nome ?? null,
       tipo_servico_label: item.tipos_servico_operacional?.nome ?? null,
@@ -265,6 +342,17 @@ class OperacaoServiceClass extends BaseService<'operacoes'> {
       horario_fim_label: item.saida_ponto ?? null,
       valor_unitario_label: Number(item.valor_unitario_snapshot || 0),
       valor_total_label: Number(item.valor_total || 0),
+      // Novas colunas mapeadas do Excel
+      placa: item.placa ?? null,
+      nf_numero: item.nf_numero ?? null,
+      ctrc: item.ctrc ?? null,
+      percentual_iss: item.percentual_iss ? Number(item.percentual_iss) : null,
+      valor_descarga: item.valor_descarga ? Number(item.valor_descarga) : null,
+      custo_com_iss: item.custo_com_iss ? Number(item.custo_com_iss) : null,
+      valor_unitario_filme: item.valor_unitario_filme ? Number(item.valor_unitario_filme) : null,
+      quantidade_filme: item.quantidade_filme ? Number(item.quantidade_filme) : null,
+      valor_total_filme: item.valor_total_filme ? Number(item.valor_total_filme) : null,
+      valor_faturamento_nf: item.valor_faturamento_nf ? Number(item.valor_faturamento_nf) : null,
       criado_em_label: item.criado_em ?? null,
     }));
 
@@ -821,6 +909,28 @@ class OperacaoProducaoServiceClass {
     return data ?? [];
   }
 
+  async getAll(empresaId?: string, unidadeId?: string | null) {
+    let query = operationalClient
+      .from('operacoes_producao')
+      .select(`
+        *,
+        colaboradores:colaborador_id(nome, cargo),
+        tipos_servico_operacional:tipo_servico_id(nome),
+        transportadoras_clientes:transportadora_id(nome),
+        fornecedores:fornecedor_id(nome),
+        produtos_carga:produto_carga_id(nome),
+        formas_pagamento_operacional:forma_pagamento_id(nome)
+      `)
+      .order('criado_em', { ascending: false });
+
+    if (empresaId) query = query.eq('empresa_id', empresaId);
+    if (unidadeId) query = query.eq('unidade_id', unidadeId);
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data ?? [];
+  }
+
   async delete(id: string) {
     const { error } = await operationalClient
       .from('operacoes_producao')
@@ -829,6 +939,50 @@ class OperacaoProducaoServiceClass {
 
     if (error) throw error;
     return true;
+  }
+
+  async deleteImported(empresaId?: string | null, dataInicio?: string, dataFim?: string) {
+    let query = operationalClient
+      .from('operacoes_producao')
+      .delete()
+      .select('id')
+      .eq('origem_dado', 'importacao');
+
+    if (empresaId) query = query.eq('empresa_id', empresaId);
+    if (dataInicio) query = query.gte('data_operacao', dataInicio);
+    if (dataFim)    query = query.lte('data_operacao', dataFim);
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data?.length ?? 0;
+  }
+
+  async deleteImportedByDates(datas: string[], empresaId?: string | null) {
+    const uniqueDates = Array.from(new Set(datas.filter(Boolean)));
+    if (uniqueDates.length === 0) return 0;
+
+    let query = operationalClient
+      .from('operacoes_producao')
+      .delete()
+      .select('id')
+      .eq('origem_dado', 'importacao')
+      .in('data_operacao', uniqueDates);
+
+    if (empresaId) query = query.eq('empresa_id', empresaId);
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data?.length ?? 0;
+  }
+
+  async replaceImportedBatch(empresaId: string, items: Record<string, unknown>[]) {
+    const { data, error } = await operationalClient.rpc('replace_imported_operacoes_producao', {
+      p_empresa_id: empresaId,
+      p_items: items,
+    });
+
+    if (error) throw error;
+    return Number(data ?? 0);
   }
 
   async getResumoDoDia(date: string, empresaId?: string, unidadeId?: string | null) {

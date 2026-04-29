@@ -3,7 +3,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { EmpresaService } from "@/services/base.service";
 import { Button } from "@/components/ui/button";
-import { Plus, Building2, MapPin, Users, Cpu, Loader2, RefreshCw, Pencil, Trash2, AlertTriangle, LayoutGrid, List } from "lucide-react";
+import { Plus, Building2, MapPin, Users, Cpu, Loader2, RefreshCw, Pencil, Trash2, AlertTriangle, LayoutGrid, List, Upload } from "lucide-react";
+import { SpreadsheetUploadModal } from "@/components/shared/SpreadsheetUploadModal";
 import { cn } from "@/lib/utils";
 import {
   Dialog,
@@ -20,6 +21,7 @@ import { toast } from "sonner";
 const Empresas = () => {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [form, setForm] = useState({
@@ -89,6 +91,32 @@ const Empresas = () => {
     createMutation.mutate(form);
   };
 
+  const handleImport = async (data: any[]) => {
+    let count = 0;
+    try {
+      // Importa as empresas processando as colunas comuns
+      for (const row of data) {
+        const nome = row['Nome'] || row['nome'] || row['NOME'];
+        if (!nome) continue; // Pula linhas sem nome
+
+        const cnpj = row['CNPJ'] || row['cnpj'] || '';
+        const unidade = row['Unidade'] || row['unidade'] || '';
+        const cidade = row['Cidade'] || row['cidade'] || '';
+        const estado = row['Estado'] || row['estado'] || '';
+
+        await EmpresaService.create({ nome, cnpj, unidade, cidade, estado });
+        count++;
+      }
+      toast.success(`${count} empresas importadas com sucesso!`);
+      queryClient.invalidateQueries({ queryKey: ["empresas"] });
+    } catch (e: any) {
+      toast.error("Erro parcial na importação. Algumas empresas podem não ter sido inseridas.", {
+        description: e.message
+      });
+      queryClient.invalidateQueries({ queryKey: ["empresas"] });
+    }
+  };
+
   return (
     <AppShell title="Empresas" subtitle="Cadastro de empresas e unidades operacionais">
       <div className="space-y-4">
@@ -114,6 +142,9 @@ const Empresas = () => {
           <div className="flex gap-2">
             <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => queryClient.invalidateQueries({ queryKey: ["empresas"] })}>
               <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
+            </Button>
+            <Button variant="outline" className="h-9 px-4 font-medium text-sm" onClick={() => setImportModalOpen(true)}>
+              <Upload className="h-4 w-4 mr-1.5" /> Planilha
             </Button>
             <Button className="h-9 px-4 font-display font-semibold text-sm" onClick={() => setOpen(true)}>
               <Plus className="h-4 w-4 mr-1.5" /> Nova empresa
@@ -274,6 +305,14 @@ const Empresas = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <SpreadsheetUploadModal
+        open={importModalOpen}
+        onOpenChange={setImportModalOpen}
+        title="Importar Empresas"
+        description="Envie uma planilha CSV ou Excel com as colunas: Nome, CNPJ, Unidade, Cidade, Estado."
+        onUpload={handleImport}
+      />
     </AppShell>
   );
 };
