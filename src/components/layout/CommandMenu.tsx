@@ -57,13 +57,21 @@ export function CommandMenu({ open, setOpen }: { open: boolean; setOpen: (open: 
                         <LayoutDashboard className="mr-2 h-4 w-4" />
                         <span>Dashboard</span>
                     </CommandItem>
+                    <CommandItem onSelect={() => runCommand(() => navigate("/operacional/pontos"))}>
+                        <Users className="mr-2 h-4 w-4" />
+                        <span>Pontos</span>
+                    </CommandItem>
+                    <CommandItem onSelect={() => runCommand(() => navigate("/operacional/operacoes"))}>
+                        <Calculator className="mr-2 h-4 w-4" />
+                        <span>Operações</span>
+                    </CommandItem>
                     <CommandItem onSelect={() => runCommand(() => navigate("/cadastros"))}>
                         <Users className="mr-2 h-4 w-4" />
                         <span>Central de Cadastros</span>
                     </CommandItem>
-                    <CommandItem onSelect={() => runCommand(() => navigate("/processamento"))}>
+                    <CommandItem onSelect={() => runCommand(() => navigate("/operacional/dashboard"))}>
                         <Calculator className="mr-2 h-4 w-4" />
-                        <span>Central Operacional</span>
+                        <span>Dashboard Operacional</span>
                     </CommandItem>
                     <CommandItem onSelect={() => runCommand(() => navigate("/financeiro"))}>
                         <CreditCard className="mr-2 h-4 w-4" />

@@ -6,8 +6,9 @@ import { Logo } from "@/components/ui/Logo";
 import { Button } from "@/components/ui/button";
 
 const mainItems = [
-  { icon: LayoutDashboard, label: "Dashboard", to: "/", end: true },
-  { icon: ClipboardCheck, label: "Central Operacional", to: "/processamento" },
+  { icon: LayoutDashboard, label: "Dashboard", to: "/operacional/dashboard" },
+  { icon: Clock, label: "Pontos", to: "/operacional/pontos" },
+  { icon: ClipboardCheck, label: "Operações", to: "/operacional/operacoes" },
 ];
 
 const rhItems = [

@@ -20,7 +20,8 @@ import VerificarEmail from "./pages/Auth/VerificarEmail";
 
 import Dashboard from "./pages/Dashboard";
 import Processamento from "./pages/Processamento";
-import CentralOperacional from "./pages/CentralOperacional";
+import Pontos from "./pages/Pontos";
+import Operacoes from "./pages/Operacoes";
 import CentralCadastros from "./pages/CentralCadastros";
 import CentralRelatoriosIntegracoes from "./pages/CentralRelatoriosIntegracoes";
 import Colaboradores from "./pages/Colaboradores";
@@ -96,8 +97,12 @@ const App = () => (
 
                   {/* Protected Routes */}
                   <Route path="/" element={<AuthGuard><Dashboard /></AuthGuard>} />
+                  <Route path="/operacional" element={<Navigate to="/operacional/dashboard" replace />} />
+                  <Route path="/operacional/dashboard" element={<AuthGuard><Dashboard /></AuthGuard>} />
+                  <Route path="/operacional/pontos" element={<AuthGuard><Pontos /></AuthGuard>} />
+                  <Route path="/operacional/operacoes" element={<AuthGuard><Operacoes /></AuthGuard>} />
                   <Route path="/producao" element={<AuthGuard><LancamentoProducao /></AuthGuard>} />
-                  <Route path="/processamento" element={<AuthGuard><CentralOperacional /></AuthGuard>} />
+                  <Route path="/processamento" element={<Navigate to="/operacional/operacoes" replace />} />
                   <Route path="/processamento/legado" element={<AuthGuard><Processamento /></AuthGuard>} />
                   <Route path="/cadastros" element={<AuthGuard><CentralCadastros /></AuthGuard>} />
                   <Route path="/cadastros/regras-operacionais" element={<AuthGuard><RegrasOperacionais /></AuthGuard>} />

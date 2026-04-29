@@ -257,7 +257,7 @@ const Dashboard = () => {
           </p>
           <div className="flex gap-2">
             <Button asChild>
-              <Link to="/processamento">Ir para processamento <ArrowRight className="h-4 w-4 ml-1" /></Link>
+              <Link to="/operacional/operacoes">Ir para operações <ArrowRight className="h-4 w-4 ml-1" /></Link>
             </Button>
             <Button variant="outline" asChild>
               <Link to="/inconsistencias">Ver inconsistências</Link>
