@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowDownAZ,
+  ArrowUpZA,
+  ChevronDown,
+  Lock,
+  Unlock,
   BadgeDollarSign,
   CalendarDays,
   CheckCircle2,
@@ -30,6 +35,7 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -368,7 +374,24 @@ export const OperacoesTableBlock = ({
   const [inlineValue, setInlineValue] = useState("");
   const tableScrollRef = useRef<HTMLDivElement>(null);
 
-  const STORAGE_KEY = "orbe_visibleCols_operacoes_v3";
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
+  const [lockedCols, setLockedCols] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem("orbe_lockedCols_operacoes_v1");
+      if (saved) return JSON.parse(saved);
+    } catch { }
+    return { data: true, idPlanilha: true, operacao: true };
+  });
+
+  const toggleLock = (colKey: string) => {
+    setLockedCols((prev) => {
+      const next = { ...prev, [colKey]: !prev[colKey] };
+      localStorage.setItem("orbe_lockedCols_operacoes_v1", JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const STORAGE_KEY = "orbe_visibleCols_operacoes_v4";
 
   const defaultCols = {
     data: true,
@@ -609,7 +632,7 @@ export const OperacoesTableBlock = ({
     },
   });
 
-  const filteredData = Array.isArray(rows) ? rows.filter((item: any) => {
+  const filteredData = Array.isArray(rows) ? [...rows].filter((item: any) => {
     const fornecedor = item.fornecedores?.nome || item.produto_label || "";
     const transportadora = item.transportadoras_clientes?.nome || item.transportadora_label || "";
     const servico = item.tipos_servico_operacional?.nome || item.tipo_servico_label || "";
@@ -622,6 +645,38 @@ export const OperacoesTableBlock = ({
     const statusMatch = statusFilter === "all" || item.status === statusFilter;
 
     return searchMatch && statusMatch;
+  }).sort((a: any, b: any) => {
+    if (sortConfig) {
+      let valA = a[sortConfig.key] ?? "";
+      let valB = b[sortConfig.key] ?? "";
+
+      if (sortConfig.key === "fornecedor") { valA = a.fornecedores?.nome || a.produto_label || ""; valB = b.fornecedores?.nome || b.produto_label || ""; }
+      else if (sortConfig.key === "servico") { valA = a.tipos_servico_operacional?.nome || a.tipo_servico_label || ""; valB = b.tipos_servico_operacional?.nome || b.tipo_servico_label || ""; }
+      else if (sortConfig.key === "transportadora") { valA = a.transportadoras_clientes?.nome || a.transportadora_label || ""; valB = b.transportadoras_clientes?.nome || b.transportadora_label || ""; }
+      else if (sortConfig.key === "status") { valA = a.status || ""; valB = b.status || ""; }
+      else if (sortConfig.key === "idPlanilha") { valA = a.created_at || a.id; valB = b.created_at || b.id; }
+      else if (sortConfig.key === "data") { valA = a.data_operacao || ""; valB = b.data_operacao || ""; }
+      else if (sortConfig.key === "operacao") { valA = `${a.fornecedores?.nome} ${a.tipos_servico_operacional?.nome}`; valB = `${b.fornecedores?.nome} ${b.tipos_servico_operacional?.nome}`; }
+
+      if (valA < valB) return sortConfig.direction === "asc" ? -1 : 1;
+      if (valA > valB) return sortConfig.direction === "asc" ? 1 : -1;
+      return 0;
+    }
+
+    // 1. Data de operacao (Crescente)
+    const dateA = a.data_operacao || "";
+    const dateB = b.data_operacao || "";
+    if (dateA !== dateB) return dateA.localeCompare(dateB);
+
+    // 2. Horario inicio (Crescente)
+    const timeA = (a.horario_inicio_label || a.entrada_ponto || "99:99").substring(0, 5);
+    const timeB = (b.horario_inicio_label || b.entrada_ponto || "99:99").substring(0, 5);
+    if (timeA !== timeB) return timeA.localeCompare(timeB);
+
+    // 3. Fallback estavel por ID para ancoragem quando todos empatam
+    const creatA = a.created_at || a.id || "";
+    const creatB = b.created_at || b.id || "";
+    return String(creatA).localeCompare(String(creatB));
   }) : [];
 
   const toggleCol = (col: keyof typeof visibleCols) => {
@@ -1006,166 +1061,268 @@ export const OperacoesTableBlock = ({
           <ChevronRight className="h-4 w-4" />
         </button>
 
-        <div ref={tableScrollRef} className="max-h-[70vh] overflow-auto rounded-xl border border-border">
-          <table className="w-full text-sm min-w-max">
-            <thead className="esc-table-header">
-              <tr className="text-center font-display">
-                {visibleCols.data && <th className="px-3 font-semibold py-3 text-center"><span className="inline-flex items-center justify-center gap-1.5 w-full"><CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />DATA</span></th>}
-                {visibleCols.idPlanilha && <th className="px-3 font-semibold text-center">ID</th>}
-                {visibleCols.operacao && <th className="px-5 font-semibold py-3 text-center sticky left-0 z-10 bg-muted/90 backdrop-blur-sm border-r border-border"><span className="inline-flex items-center justify-center gap-1.5 w-full"><Package className="h-3.5 w-3.5 text-muted-foreground" />OPERACAO</span></th>}
-                {visibleCols.fornecedor && <th className="px-3 font-semibold text-center">FORNECEDOR</th>}
-                {visibleCols.transportadora && <th className="px-3 font-semibold text-center"><span className="inline-flex items-center justify-center gap-1.5 w-full"><Truck className="h-3.5 w-3.5 text-muted-foreground" />TRANSPORTADORA</span></th>}
-                {visibleCols.placa && renderHeaderCell("placa", "PLACA")}
-                {visibleCols.servico && <th className="px-3 font-semibold text-center"><span className="inline-flex items-center justify-center gap-1.5 w-full"><Settings2 className="h-3.5 w-3.5 text-muted-foreground" />SERVICO</span></th>}
-                {visibleCols.qtdCol && renderHeaderCell("qtdCol", <span className="inline-flex items-center justify-center gap-1.5 w-full"><User className="h-3.5 w-3.5 text-muted-foreground" />QTD. COL.</span>)}
-                {visibleCols.empresaPlanilha && <th className="px-3 font-semibold text-center">EMPRESA PLANILHA</th>}
-                {visibleCols.formaPagamento && renderHeaderCell("formaPagamento", "FORMA PAGAMENTO")}
-                {visibleCols.nf && renderHeaderCell("nf", "NF")}
-                {visibleCols.ctrc && renderHeaderCell("ctrc", "CTRC")}
-                {visibleCols.observacao && renderHeaderCell("observacao", "OBSERVACAO")}
-                {visibleCols.percentualIss && renderRuleHeaderCell("percentualIss", "% ISS")}
-                {visibleCols.qtd && renderHeaderCell("qtd", <span className="inline-flex items-center justify-center gap-1.5 w-full"><Hash className="h-3.5 w-3.5 text-muted-foreground" />QTD</span>)}
-                {visibleCols.inicio && renderHeaderCell("inicio", <span className="inline-flex items-center justify-center gap-1.5 w-full"><LogIn className="h-3.5 w-3.5 text-muted-foreground" />INICIO</span>)}
-                {visibleCols.fim && renderHeaderCell("fim", <span className="inline-flex items-center justify-center gap-1.5 w-full"><LogOut className="h-3.5 w-3.5 text-muted-foreground" />FIM</span>)}
-                {visibleCols.valUnit && <th className="px-3 font-semibold text-center"><span className="inline-flex items-center justify-center gap-1.5 w-full"><DollarSign className="h-3.5 w-3.5 text-muted-foreground" />VAL. UNIT.</span></th>}
-                {visibleCols.valorDescarga && <th className="px-3 font-semibold text-center">VALOR DESCARGA</th>}
-                {visibleCols.custoIss && <th className="px-3 font-semibold text-center">CUSTO ISS</th>}
-                {visibleCols.valorUnitarioFilme && renderHeaderCell("valorUnitarioFilme", "UNIT. FILME")}
-                {visibleCols.quantidadeFilme && renderHeaderCell("quantidadeFilme", "QTD. FILME")}
-                {visibleCols.valorTotalFilme && <th className="px-3 font-semibold text-center">TOTAL FILME</th>}
-                {visibleCols.valorFaturamentoNf && renderHeaderCell("valorFaturamentoNf", "FATURAMENTO NF")}
-                {visibleCols.valDia && <th className="px-3 font-semibold text-center"><span className="inline-flex items-center justify-center gap-1.5 w-full"><BadgeDollarSign className="h-3.5 w-3.5 text-muted-foreground" />TOTAL DIA</span></th>}
-                {visibleCols.status && <th className="px-3 font-semibold text-center"><span className="inline-flex items-center justify-center gap-1.5 w-full"><CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" />STATUS</span></th>}
-                {visibleCols.acoes && <th className="px-5 font-semibold text-center"><span className="inline-flex items-center justify-center gap-1.5 w-full"><Hourglass className="h-3.5 w-3.5 text-muted-foreground" />ACOES</span></th>}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredData.map((item: any, index: number) => {
-                const isSelected = kind === "operacao" && selectedId === item.id;
-                const valorTotal = Number(item.valor_total_label ?? (Number(item.quantidade) * Number(item.valor_unitario || 0)));
-                const fornecedor = item.fornecedores?.nome || item.produto_label || "Sem fornecedor";
-                const servico = item.tipos_servico_operacional?.nome || item.tipo_servico_label || "Sem servico";
-                const operacaoNome = `${fornecedor} • ${servico}`;
-                const transportadora = item.transportadoras_clientes?.nome || item.transportadora_label || "—";
-                const placa = item.placa || "—";
-                const nf = item.nf_numero || "—";
-                const ctrc = item.ctrc || "—";
-                const iss = item.percentual_iss ? `${(Number(item.percentual_iss) * 100).toFixed(0)}%` : "—";
-                const idPlanilha = index + 1;
-                const empresaPlanilha = getLinhaOriginalValue(item, "EMPRESA") || "—";
-                const formaPagamento = getDisplayFormaPagamento(item);
-                const observacao = getDisplayObservacao(item);
-                const dataOp = item.data_operacao ? new Date(item.data_operacao + "T00:00:00").toLocaleDateString("pt-BR") : "—";
-                const qtdColaboradores = item.quantidade_colaboradores ?? 1;
-                let qtdText = String(item.quantidade_label || item.quantidade || 0);
-                if (item.tipo_calculo_snapshot === "volume") qtdText += " vol(s)";
-                else if (item.tipo_calculo_snapshot === "diaria") qtdText += " diaria(s)";
-                else if (item.tipo_calculo_snapshot === "operacao") qtdText = "1 op";
-                const inicio = item.horario_inicio_label ? String(item.horario_inicio_label).substring(0, 5) : "—";
-                const fim = item.horario_fim_label ? String(item.horario_fim_label).substring(0, 5) : "—";
-                const valUnitFormatter = (value: any) => Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-                const valUnit = valUnitFormatter(item.valor_unitario_label ?? item.valor_unitario ?? 0);
-                const valDia = valUnitFormatter(valorTotal);
-                const valorDescarga = valUnitFormatter(item.valor_descarga);
-                const custoIss = valUnitFormatter(item.custo_com_iss);
-                const unitFilme = valUnitFormatter(item.valor_unitario_filme);
-                const qtdFilme = item.quantidade_filme || "—";
-                const totFilme = valUnitFormatter(item.valor_total_filme);
-                const fatNf = valUnitFormatter(item.valor_faturamento_nf);
-                const statusCfg = getStatusConfig(item.status);
+        <div ref={tableScrollRef} className="max-h-[70vh] overflow-auto rounded-xl border border-border pb-[1px] bg-background">
+          {(() => {
+            const getStickyProps = (colKey: "data" | "idPlanilha" | "operacao", isHeader = false) => {
+              const baseThClass = "px-3 font-semibold py-2.5 bg-muted/95 backdrop-blur-sm";
+              const lockedThClass = "px-3 font-semibold py-2.5 bg-zinc-200/95 dark:bg-zinc-800/95 backdrop-blur-sm";
+              const baseTdClass = "px-3 text-center text-muted-foreground whitespace-nowrap bg-background";
+              const typeClasses = {
+                data: isHeader ? "" : "font-mono text-xs",
+                idPlanilha: "",
+                operacao: isHeader ? "px-5" : "font-medium text-foreground px-5 py-3"
+              };
 
-                return (
-                  <tr
-                    key={item.id}
-                    onClick={() => setSelectedOpDetails(item)}
-                    className={cn(
-                      "esc-table-row cursor-pointer transition-all border-b border-border last:border-0 hover:bg-muted/50",
-                      item.status === "inconsistente" && "bg-rowAlert border-l-[3px] border-l-primary",
-                      isSelected && "bg-primary-soft/40 border-l-[3px] border-l-primary"
+              if (!lockedCols[colKey]) {
+                return { className: cn(isHeader ? baseThClass : baseTdClass, typeClasses[colKey]) };
+              }
+
+              const widths = { data: 120, idPlanilha: 80, operacao: 280 };
+              let left = 0;
+              if (colKey === "idPlanilha") {
+                if (visibleCols.data && lockedCols.data) left += widths.data;
+              }
+              if (colKey === "operacao") {
+                if (visibleCols.data && lockedCols.data) left += widths.data;
+                if (visibleCols.idPlanilha && lockedCols.idPlanilha) left += widths.idPlanilha;
+              }
+
+              const activeSticky = [];
+              if (visibleCols.data && lockedCols.data) activeSticky.push("data");
+              if (visibleCols.idPlanilha && lockedCols.idPlanilha) activeSticky.push("idPlanilha");
+              if (visibleCols.operacao && lockedCols.operacao) activeSticky.push("operacao");
+              const isLast = activeSticky[activeSticky.length - 1] === colKey;
+
+              return {
+                style: {
+                  position: "sticky" as const,
+                  left: `${left}px`,
+                  top: isHeader ? 0 : undefined,
+                  zIndex: isHeader ? 40 : 10,
+                  minWidth: `${widths[colKey]}px`,
+                  maxWidth: `${widths[colKey]}px`
+                },
+                className: cn(
+                  isHeader ? lockedThClass : baseTdClass,
+                  typeClasses[colKey],
+                  "border-r border-border transition-all",
+                  isLast && "shadow-[6px_0_12px_-10px_hsl(var(--foreground)/0.25)]"
+                )
+              };
+            };
+
+            const renderInteractiveHeader = (colKey: string, label: React.ReactNode, Icon?: any) => {
+              const isLockable = ["data", "idPlanilha", "operacao"].includes(colKey);
+              const isLocked = lockedCols[colKey];
+
+              return (
+                <DropdownMenu>
+                  <DropdownMenuTrigger className="flex items-center justify-between gap-1.5 group w-full focus:outline-none transition-colors hover:text-foreground">
+                    <span className="inline-flex items-center gap-1.5 truncate">
+                      {Icon && <Icon className="h-3.5 w-3.5" />}
+                      {label}
+                      {isLockable && isLocked && <Lock className="h-3 w-3 text-primary ml-0.5" />}
+                    </span>
+                    <ChevronDown className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 text-muted-foreground flex-shrink-0" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-52">
+                    <DropdownMenuItem onClick={() => setSortConfig({ key: colKey, direction: 'asc' })}>
+                      <ArrowUpZA className="mr-2 h-4 w-4 text-muted-foreground" />
+                      Classificar crescente
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setSortConfig({ key: colKey, direction: 'desc' })}>
+                      <ArrowDownAZ className="mr-2 h-4 w-4 text-muted-foreground" />
+                      Classificar decrescente
+                    </DropdownMenuItem>
+                    {sortConfig?.key === colKey && (
+                      <DropdownMenuItem onClick={() => setSortConfig(null)}>
+                        <span className="mr-2 h-4 w-4 flex items-center justify-center font-bold text-muted-foreground">✕</span>
+                        Remover ordenação
+                      </DropdownMenuItem>
                     )}
-                  >
-                    {visibleCols.data && <td className="px-3 text-center text-muted-foreground whitespace-nowrap font-mono text-xs">{dataOp}</td>}
-                    {visibleCols.idPlanilha && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{String(idPlanilha)}</td>}
-                    {visibleCols.operacao && <td className="px-5 py-3 text-center font-medium whitespace-nowrap text-foreground sticky left-0 z-10 bg-background border-r border-border">{operacaoNome}</td>}
-                    {visibleCols.fornecedor && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{fornecedor}</td>}
-                    {visibleCols.transportadora && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{transportadora}</td>}
-                     {visibleCols.placa && renderInlineCell(item, "placa", placa)}
-                    {visibleCols.servico && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{servico}</td>}
-                     {visibleCols.qtdCol && renderInlineCell(item, "quantidade_colaboradores", qtdColaboradores, "text", "px-3 text-center font-display font-medium whitespace-nowrap")}
-                    {visibleCols.empresaPlanilha && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{String(empresaPlanilha)}</td>}
-                     {visibleCols.formaPagamento && renderInlineCell(item, "forma_pagamento", String(formaPagamento))}
-                     {visibleCols.nf && renderInlineCell(item, "nf_numero", nf)}
-                     {visibleCols.ctrc && renderInlineCell(item, "ctrc", ctrc)}
-                     {visibleCols.observacao && renderInlineCell(item, "observacao", String(observacao))}
-                    {visibleCols.percentualIss && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{iss}</td>}
-                     {visibleCols.qtd && renderInlineCell(item, "quantidade", qtdText, "text", "px-3 text-center font-display font-medium whitespace-nowrap")}
-                     {visibleCols.inicio && renderInlineCell(item, "entrada_ponto", inicio, "time")}
-                     {visibleCols.fim && renderInlineCell(item, "saida_ponto", fim, "time")}
-                    {visibleCols.valUnit && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{valUnit}</td>}
-                    {visibleCols.valorDescarga && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{valorDescarga}</td>}
-                    {visibleCols.custoIss && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{custoIss}</td>}
-                     {visibleCols.valorUnitarioFilme && renderInlineCell(item, "valor_unitario_filme", unitFilme)}
-                     {visibleCols.quantidadeFilme && renderInlineCell(item, "quantidade_filme", qtdFilme)}
-                    {visibleCols.valorTotalFilme && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{totFilme}</td>}
-                     {visibleCols.valorFaturamentoNf && renderInlineCell(item, "valor_faturamento_nf", fatNf)}
-                    {visibleCols.valDia && <td className="px-3 text-center font-display font-semibold text-foreground whitespace-nowrap">{valDia}</td>}
-                    {visibleCols.status && (
-                      <td className="px-3 text-center whitespace-nowrap">
-                        <Badge variant="outline" className={cn(statusCfg.className, "hover:bg-transparent font-medium border-0")}>
-                          {statusCfg.label}
-                        </Badge>
-                      </td>
-                    )}
-                    {visibleCols.acoes && (
-                      <td className="px-5" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-center gap-1">
-                          <button
-                            className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (isEditableOperation(item)) {
-                                openEditor(item);
-                                return;
-                              }
-                              navigate(`/producao?id=${item.id}`);
-                            }}
-                            title={isEditableOperation(item) ? "Editar nesta tela" : "Abrir lançamento"}
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
-                          {item.origem === "operacoes_producao" && (
-                            <button
-                              className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate("/cadastros/regras-operacionais");
-                              }}
-                              title="Abrir regras operacionais"
-                            >
-                              <ExternalLink className="h-3.5 w-3.5" />
-                            </button>
+
+                    {isLockable && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => toggleLock(colKey)}>
+                          {isLocked ? (
+                            <><Unlock className="mr-2 h-4 w-4 text-muted-foreground" /> Destravar coluna</>
+                          ) : (
+                            <><Lock className="mr-2 h-4 w-4 text-primary" /> Travar coluna (Fixar)</>
                           )}
-                          <button
-                            className="h-7 w-7 rounded-md hover:bg-destructive-soft flex items-center justify-center text-muted-foreground hover:text-destructive"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </td>
+                        </DropdownMenuItem>
+                      </>
                     )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              );
+            };
+
+            return (
+              <table className="w-full text-sm min-w-max">
+                <thead className="bg-muted/95 backdrop-blur-sm sticky top-0 z-20">
+                  <tr className="text-left font-display text-muted-foreground uppercase text-xs tracking-wide">
+                    {visibleCols.data && <th style={getStickyProps("data", true).style} className={getStickyProps("data", true).className}>{renderInteractiveHeader("data", "DATA", CalendarDays)}</th>}
+                    {visibleCols.idPlanilha && <th style={getStickyProps("idPlanilha", true).style} className={getStickyProps("idPlanilha", true).className}>{renderInteractiveHeader("idPlanilha", "ID")}</th>}
+                    {visibleCols.operacao && <th style={getStickyProps("operacao", true).style} className={getStickyProps("operacao", true).className}>{renderInteractiveHeader("operacao", "OPERACAO", Package)}</th>}
+                    {visibleCols.fornecedor && <th className="px-3 py-2.5 font-semibold ">{renderInteractiveHeader("fornecedor", "FORNECEDOR")}</th>}
+                    {visibleCols.transportadora && <th className="px-3 py-2.5 font-semibold ">{renderInteractiveHeader("transportadora", "TRANSPORTADORA", Truck)}</th>}
+                    {visibleCols.placa && renderHeaderCell("placa", "PLACA", "px-3 py-2.5 font-semibold text-center")}
+                    {visibleCols.servico && <th className="px-3 py-2.5 font-semibold ">{renderInteractiveHeader("servico", "SERVICO", Settings2)}</th>}
+                    {visibleCols.qtdCol && renderHeaderCell("qtdCol", <span className="inline-flex items-center justify-center gap-1.5 w-full"><User className="h-3.5 w-3.5 text-muted-foreground" />QTD. COL.</span>, "px-3 py-2.5 font-semibold text-center")}
+                    {visibleCols.empresaPlanilha && <th className="px-3 py-2.5 font-semibold text-center">EMPRESA PLANILHA</th>}
+                    {visibleCols.formaPagamento && renderHeaderCell("formaPagamento", "FORMA PAGAMENTO", "px-3 py-2.5 font-semibold text-center")}
+                    {visibleCols.nf && renderHeaderCell("nf", "NF", "px-3 py-2.5 font-semibold text-center")}
+                    {visibleCols.ctrc && renderHeaderCell("ctrc", "CTRC", "px-3 py-2.5 font-semibold text-center")}
+                    {visibleCols.observacao && renderHeaderCell("observacao", "OBSERVACAO", "px-3 py-2.5 font-semibold text-center")}
+                    {visibleCols.percentualIss && renderRuleHeaderCell("percentualIss", "% ISS", "px-3 py-2.5 font-semibold text-center")}
+                    {visibleCols.inicio && renderHeaderCell("inicio", <span className="inline-flex items-center justify-center gap-1.5 w-full"><LogIn className="h-3.5 w-3.5 text-muted-foreground" />INICIO</span>, "px-3 py-2.5 font-semibold text-center")}
+                    {visibleCols.fim && renderHeaderCell("fim", <span className="inline-flex items-center justify-center gap-1.5 w-full"><LogOut className="h-3.5 w-3.5 text-muted-foreground" />FIM</span>, "px-3 py-2.5 font-semibold text-center")}
+                    {visibleCols.valUnit && <th className="px-3 py-2.5 font-semibold text-center"><span className="inline-flex items-center justify-center gap-1.5 w-full"><DollarSign className="h-3.5 w-3.5 text-muted-foreground" />VAL. UNIT.</span></th>}
+                    {visibleCols.qtd && renderHeaderCell("qtd", <span className="inline-flex items-center justify-center gap-1.5 w-full"><Hash className="h-3.5 w-3.5 text-muted-foreground" />QTD</span>, "px-3 py-2.5 font-semibold text-center")}
+                    {visibleCols.valorDescarga && <th className="px-3 py-2.5 font-semibold text-center">VALOR DESCARGA</th>}
+                    {visibleCols.custoIss && <th className="px-3 py-2.5 font-semibold text-center">CUSTO ISS</th>}
+                    {visibleCols.valorUnitarioFilme && renderHeaderCell("valorUnitarioFilme", "UNIT. FILME", "px-3 py-2.5 font-semibold text-center")}
+                    {visibleCols.quantidadeFilme && renderHeaderCell("quantidadeFilme", "QTD. FILME", "px-3 py-2.5 font-semibold text-center")}
+                    {visibleCols.valorTotalFilme && <th className="px-3 py-2.5 font-semibold text-center">TOTAL FILME</th>}
+                    {visibleCols.valorFaturamentoNf && renderHeaderCell("valorFaturamentoNf", "FATURAMENTO NF", "px-3 py-2.5 font-semibold text-center")}
+                    {visibleCols.valDia && <th className="px-3 py-2.5 font-semibold text-center"><span className="inline-flex items-center justify-center gap-1.5 w-full"><BadgeDollarSign className="h-3.5 w-3.5 text-muted-foreground" />TOTAL DIA</span></th>}
+                    {visibleCols.status && <th className="px-3 py-2.5 font-semibold text-center"><span className="inline-flex items-center justify-center gap-1.5 w-full"><CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" />STATUS</span></th>}
+                    {visibleCols.acoes && <th className="px-5 py-2.5 font-semibold text-center"><span className="inline-flex items-center justify-center gap-1.5 w-full"><Hourglass className="h-3.5 w-3.5 text-muted-foreground" />ACOES</span></th>}
                   </tr>
-                );
-              })}
-              {filteredData.length === 0 && (
-                <tr>
-                  <td colSpan={22} className="p-12 text-center text-muted-foreground italic">
-                    {filterByDate ? "Nenhuma operacao atende aos filtros atuais nesta data." : "Nenhuma operacao atende aos filtros atuais."}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                </thead>
+                <tbody>
+                  {filteredData.map((item: any, index: number) => {
+                    const isSelected = kind === "operacao" && selectedId === item.id;
+                    const valDescarga = Number(item.valor_descarga ?? (Number(item.quantidade) * Number(item.valor_unitario || 0)));
+                    const custoComIss = Number(item.custo_com_iss || 0);
+                    const totalEFilme = Number(item.valor_total_filme || 0);
+                    const valorTotal = valDescarga + custoComIss + totalEFilme;
+                    const fornecedor = item.fornecedores?.nome || item.produto_label || "Sem fornecedor";
+                    const servico = item.tipos_servico_operacional?.nome || item.tipo_servico_label || "Sem servico";
+                    const operacaoNome = `${fornecedor} • ${servico}`;
+                    const transportadora = item.transportadoras_clientes?.nome || item.transportadora_label || "—";
+                    const placa = item.placa || "—";
+                    const nf = item.nf_numero || "—";
+                    const ctrc = item.ctrc || "—";
+                    const iss = item.percentual_iss ? `${(Number(item.percentual_iss) * 100).toFixed(0)}%` : "—";
+                    const idPlanilha = index + 1;
+                    const empresaPlanilha = getLinhaOriginalValue(item, "EMPRESA") || "—";
+                    const formaPagamento = getDisplayFormaPagamento(item);
+                    const observacao = getDisplayObservacao(item);
+                    const dataOp = item.data_operacao ? new Date(item.data_operacao + "T00:00:00").toLocaleDateString("pt-BR") : "—";
+                    const qtdColaboradores = item.quantidade_colaboradores ?? 1;
+                    let qtdText = String(item.quantidade_label || item.quantidade || 0);
+                    if (item.tipo_calculo_snapshot === "volume") qtdText += " vol(s)";
+                    else if (item.tipo_calculo_snapshot === "diaria") qtdText += " diaria(s)";
+                    else if (item.tipo_calculo_snapshot === "operacao") qtdText = "1 op";
+                    const inicio = item.horario_inicio_label ? String(item.horario_inicio_label).substring(0, 5) : "—";
+                    const fim = item.horario_fim_label ? String(item.horario_fim_label).substring(0, 5) : "—";
+                    const valUnitFormatter = (value: any) => Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+                    const valUnit = valUnitFormatter(item.valor_unitario_label ?? item.valor_unitario ?? 0);
+                    const valDia = valUnitFormatter(valorTotal);
+                    const valorDescarga = valUnitFormatter(item.valor_descarga);
+                    const custoIss = valUnitFormatter(item.custo_com_iss);
+                    const unitFilme = valUnitFormatter(item.valor_unitario_filme);
+                    const qtdFilme = item.quantidade_filme || "—";
+                    const totFilme = valUnitFormatter(item.valor_total_filme);
+                    const fatNf = valUnitFormatter(item.valor_faturamento_nf);
+                    const statusCfg = getStatusConfig(item.status);
+
+                    return (
+                      <tr
+                        key={item.id}
+                        onClick={() => setSelectedOpDetails(item)}
+                        className={cn(
+                          "esc-table-row cursor-pointer transition-all border-b border-border last:border-0 hover:bg-muted/50",
+                          item.status === "inconsistente" && "bg-rowAlert border-l-[3px] border-l-primary",
+                          isSelected && "bg-primary-soft/40 border-l-[3px] border-l-primary"
+                        )}
+                      >
+                        {visibleCols.data && <td style={getStickyProps("data", false).style} className={cn(getStickyProps("data", false).className, "px-3 text-center text-muted-foreground whitespace-nowrap font-mono text-xs")}>{dataOp}</td>}
+                        {visibleCols.idPlanilha && <td style={getStickyProps("idPlanilha", false).style} className={cn(getStickyProps("idPlanilha", false).className, "px-3 text-center text-muted-foreground whitespace-nowrap")}>{String(idPlanilha)}</td>}
+                        {visibleCols.operacao && <td style={getStickyProps("operacao", false).style} className={cn(getStickyProps("operacao", false).className, "px-5 py-3 text-center font-medium whitespace-nowrap text-foreground")}>{operacaoNome}</td>}
+                        {visibleCols.fornecedor && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{fornecedor}</td>}
+                        {visibleCols.transportadora && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{transportadora}</td>}
+                        {visibleCols.placa && renderInlineCell(item, "placa", placa)}
+                        {visibleCols.servico && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{servico}</td>}
+                        {visibleCols.qtdCol && renderInlineCell(item, "quantidade_colaboradores", qtdColaboradores, "text", "px-3 text-center font-display font-medium whitespace-nowrap")}
+                        {visibleCols.empresaPlanilha && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{String(empresaPlanilha)}</td>}
+                        {visibleCols.formaPagamento && renderInlineCell(item, "forma_pagamento", String(formaPagamento))}
+                        {visibleCols.nf && renderInlineCell(item, "nf_numero", nf)}
+                        {visibleCols.ctrc && renderInlineCell(item, "ctrc", ctrc)}
+                        {visibleCols.observacao && renderInlineCell(item, "observacao", String(observacao))}
+                        {visibleCols.percentualIss && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{iss}</td>}
+                        {visibleCols.inicio && renderInlineCell(item, "entrada_ponto", inicio, "time")}
+                        {visibleCols.fim && renderInlineCell(item, "saida_ponto", fim, "time")}
+                        {visibleCols.valUnit && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{valUnit}</td>}
+                        {visibleCols.qtd && renderInlineCell(item, "quantidade", qtdText, "text", "px-3 text-center font-display font-medium whitespace-nowrap")}
+                        {visibleCols.valorDescarga && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{valorDescarga}</td>}
+                        {visibleCols.custoIss && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{custoIss}</td>}
+                        {visibleCols.valorUnitarioFilme && renderInlineCell(item, "valor_unitario_filme", unitFilme)}
+                        {visibleCols.quantidadeFilme && renderInlineCell(item, "quantidade_filme", qtdFilme)}
+                        {visibleCols.valorTotalFilme && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{totFilme}</td>}
+                        {visibleCols.valorFaturamentoNf && renderInlineCell(item, "valor_faturamento_nf", fatNf)}
+                        {visibleCols.valDia && <td className="px-3 text-center font-display font-semibold text-foreground whitespace-nowrap">{valDia}</td>}
+                        {visibleCols.status && (
+                          <td className="px-3 text-center whitespace-nowrap">
+                            <Badge variant="outline" className={cn(statusCfg.className, "hover:bg-transparent font-medium border-0")}>
+                              {statusCfg.label}
+                            </Badge>
+                          </td>
+                        )}
+                        {visibleCols.acoes && (
+                          <td className="px-5" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (isEditableOperation(item)) {
+                                    openEditor(item);
+                                    return;
+                                  }
+                                  navigate(`/producao?id=${item.id}`);
+                                }}
+                                title={isEditableOperation(item) ? "Editar nesta tela" : "Abrir lançamento"}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              {item.origem === "operacoes_producao" && (
+                                <button
+                                  className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate("/cadastros/regras-operacionais");
+                                  }}
+                                  title="Abrir regras operacionais"
+                                >
+                                  <ExternalLink className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                              <button
+                                className="h-7 w-7 rounded-md hover:bg-destructive-soft flex items-center justify-center text-muted-foreground hover:text-destructive"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                  {filteredData.length === 0 && (
+                    <tr>
+                      <td colSpan={22} className="p-12 text-center text-muted-foreground italic">
+                        {filterByDate ? "Nenhuma operacao atende aos filtros atuais nesta data." : "Nenhuma operacao atende aos filtros atuais."}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            );
+          })()}
         </div>
       </div>
 
@@ -1338,11 +1495,11 @@ export const OperacoesTableBlock = ({
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-foreground">Forma de pagamento</p>
-                  <p className="text-sm text-muted-foreground">{getDisplayFormaPagamento(selectedOpDetails)}</p>
+                  <p className="text-sm text-muted-foreground">{String(getDisplayFormaPagamento(selectedOpDetails))}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-foreground">Observacao</p>
-                  <p className="text-sm text-muted-foreground">{getDisplayObservacao(selectedOpDetails)}</p>
+                  <p className="text-sm text-muted-foreground">{String(getDisplayObservacao(selectedOpDetails))}</p>
                 </div>
               </div>
 

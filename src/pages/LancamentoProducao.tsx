@@ -166,8 +166,8 @@ const calcularTotalPrevisto = ({
     tipoCalculo: TipoCalculo | null;
 }) => {
     if (!valorUnitario || !tipoCalculo) return 0;
+    // REGRA IMPORTANTE: Qtd Colaboradores NÃO influencia no valor, serve apenas para análise
     if (tipoCalculo === "operation") return valorUnitario;
-    if (tipoCalculo === "colaborador") return quantidadeColaboradores * valorUnitario;
     return quantidade * valorUnitario;
 };
 
@@ -449,13 +449,14 @@ const LancamentoProducao = () => {
     const valorUnitario = Number(form.valor_unitario || 0);
     const hasRegraFinanceira = !!regraValor;
     const tipoCalculoAtual = regraValor?.tipoCalculo ?? null;
-    const quantidadeConsiderada = tipoCalculoAtual === "colaborador" ? quantidadeColaboradores : quantidade;
-    const totalPrevisto = calcularTotalPrevisto({
-        quantidade,
-        quantidadeColaboradores,
-        valorUnitario,
-        tipoCalculo: tipoCalculoAtual,
-    });
+    const quantidadeConsiderada = tipoCalculoAtual === "operation" ? 1 : quantidade;
+
+    // Regras de Negócio do Novo Módulo:
+    const valorDescarga = quantidadeConsiderada * valorUnitario;
+    const custoIss = 0; // Preparado para ativação futura
+    const totalFilme = 0; // Placeholder
+    const totalFinal = valorDescarga + custoIss + totalFilme;
+
     const isDataRetroativa = form.data < today;
     const horarioInvalido = !!form.horario_inicio && !!form.horario_fim && form.horario_inicio > form.horario_fim;
 
@@ -672,7 +673,10 @@ const LancamentoProducao = () => {
                 forma_pagamento: formaPagamentoSelecionada?.nome ?? form.forma_pagamento,
                 quantidade_colaboradores: quantidadeColaboradores,
                 tipo_calculo: tipoCalculoAtual,
-                total_previsto: totalPrevisto,
+                total_previsto: totalFinal,
+                valor_descarga: valorDescarga,
+                custo_com_iss: custoIss,
+                total_e_filme: totalFilme,
                 justificativa_data: form.justificativa_data.trim() || null,
             },
         };
@@ -1191,43 +1195,40 @@ const LancamentoProducao = () => {
                                 </div>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div>
-                                        <p className="text-[11px] text-muted-foreground">Valor unitário</p>
+                                        <p className="text-[11px] text-muted-foreground">Valor de Descarga</p>
                                         <p className="text-lg font-black font-display">
-                                            {hasRegraFinanceira ? formatCurrency(valorUnitario) : "Não configurado"}
+                                            {formatCurrency(valorDescarga)}
                                         </p>
                                     </div>
                                     <div>
-                                        <p className="text-[11px] text-muted-foreground">Status da regra</p>
-                                        <p className={cn(
-                                            "text-sm font-black",
-                                            hasRegraFinanceira ? "text-success" : "text-destructive",
-                                        )}>
-                                            {hasRegraFinanceira ? "Regra ativa" : "Registro bloqueado"}
+                                        <p className="text-[11px] text-muted-foreground">Custo com ISS</p>
+                                        <p className="text-sm font-black text-muted-foreground">
+                                            {formatCurrency(custoIss)}
                                         </p>
                                     </div>
                                     <div>
-                                        <p className="text-[11px] text-muted-foreground">Total previsto</p>
+                                        <p className="text-[11px] text-muted-foreground">Total do Filme</p>
+                                        <p className="text-sm font-black text-muted-foreground">
+                                            {formatCurrency(totalFilme)}
+                                        </p>
+                                    </div>
+                                    <div className="bg-brand/10 p-2 rounded-lg -mx-2 px-2">
+                                        <p className="text-[11px] text-brand/80 font-bold uppercase">TOTAL FINAL</p>
                                         <p className="text-xl font-black font-display text-brand">
-                                            {formatCurrency(totalPrevisto)}
+                                            {formatCurrency(totalFinal)}
                                         </p>
                                     </div>
                                     <div>
-                                        <p className="text-[11px] text-muted-foreground">{getQuantidadeLabel(tipoCalculoAtual)}</p>
+                                        <p className="text-[11px] text-muted-foreground">Quantidade (QTD)</p>
                                         <p className="text-lg font-black font-display">{quantidadeConsiderada || 0}</p>
                                     </div>
                                     <div>
                                         <p className="text-[11px] text-muted-foreground">Base do cálculo</p>
                                         <p className="text-sm font-bold">
-                                            {tipoCalculoAtual === "colaborador"
-                                                ? `${quantidadeColaboradores || 0} colaborador(es) x ${formatCurrency(valorUnitario || 0)}`
-                                                : tipoCalculoAtual === "operation"
-                                                    ? "Valor fixo por operação"
-                                                    : `${quantidadeConsiderada || 0} x ${formatCurrency(valorUnitario || 0)}`}
+                                            {tipoCalculoAtual === "operation"
+                                                ? "1 operação x " + formatCurrency(valorUnitario || 0)
+                                                : `${quantidadeConsiderada || 0} x ${formatCurrency(valorUnitario || 0)}`}
                                         </p>
-                                    </div>
-                                    <div>
-                                        <p className="text-[11px] text-muted-foreground">Tipo de cálculo</p>
-                                        <p className="text-sm font-bold">{getTipoCalculoLabel(tipoCalculoAtual)}</p>
                                     </div>
                                 </div>
                             </div>
@@ -1556,109 +1557,109 @@ const LancamentoProducao = () => {
 
                                     <div className="hidden overflow-x-auto md:block">
                                         <Table>
-                                    <TableHeader>
-                                        <TableRow className="bg-muted/50 border-border hover:bg-muted/50">
-                                            <TableHead className="font-bold text-[10px] uppercase">Serviço</TableHead>
-                                            <TableHead className="font-bold text-[10px] uppercase">Vínculos</TableHead>
-                                            <TableHead className="font-bold text-[10px] uppercase">Quantidade</TableHead>
-                                            <TableHead className="font-bold text-[10px] uppercase text-right">Valor</TableHead>
-                                            <TableHead className="font-bold text-[10px] uppercase text-center">Status</TableHead>
-                                            <TableHead />
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {(historico as any[]).map((item: any) => {
-                                            const tipoServicoLabel = item.tipos_servico_operacional?.nome;
-                                            const colaboradorLabel = item.colaboradores?.nome;
-                                            const transportadoraLabel = item.transportadoras_clientes?.nome;
-                                            const fornecedorLabel = item.fornecedores?.nome;
-                                            const produtoLabel = item.produtos_carga?.nome;
-                                            const formaPagamentoLabel = item.formas_pagamento_operacional?.nome;
-                                            const quantidadeItem = Number(item.quantidade || 0);
-                                            const quantidadeColaboradoresItem = Number(
-                                                item.quantidade_colaboradores ??
-                                                item.avaliacao_json?.contexto_operacional?.quantidade_colaboradores ??
-                                                (item.tipo_calculo_snapshot === "colaborador" ? item.quantidade : 0) ??
-                                                0,
-                                            );
-                                            const unitarioItem = Number(item.valor_unitario_snapshot || 0);
-                                            const totalItem = Number(item.valor_total || 0);
-                                            const tipoCalculoItem = item.tipo_calculo_snapshot ?? null;
-                                            const quantidadeExibida = tipoCalculoItem === "colaborador" ? quantidadeColaboradoresItem : quantidadeItem;
-                                            const statusLabel = String(item.status ?? "Pendente")
-                                                .replace(/_/g, " ")
-                                                .replace(/\b\w/g, (char) => char.toUpperCase());
-                                            const placaLabel = item.placa;
-                                            const createdAt = item.criado_em;
-
-                                            return (
-                                                <TableRow key={item.id} className="border-border hover:bg-muted/30 group transition-colors">
-                                                    <TableCell>
-                                                        <div className="space-y-1">
-                                                            <span className="font-bold text-sm block">{tipoServicoLabel}</span>
-                                                            <span className="text-[10px] text-muted-foreground block">
-                                                                {createdAt ? format(new Date(createdAt), "HH:mm") : "—"}
-                                                            </span>
-                                                            {colaboradorLabel && (
-                                                                <span className="text-[11px] text-muted-foreground block">{colaboradorLabel}</span>
-                                                            )}
-                                                        </div>
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <div className="space-y-1">
-                                                            <span className="text-xs font-semibold block">{transportadoraLabel || "Sem transportadora"}</span>
-                                                            <span className="text-[11px] text-muted-foreground block">
-                                                                {fornecedorLabel || "Fornecedor não informado"} · {produtoLabel || "Produto não informado"}
-                                                            </span>
-                                                            <span className="text-[11px] text-muted-foreground block">
-                                                                {formaPagamentoLabel || "Forma não informada"}
-                                                                {placaLabel ? ` · ${placaLabel}` : ""}
-                                                            </span>
-                                                            <span className="text-[11px] text-muted-foreground block">
-                                                                {quantidadeColaboradoresItem > 0 ? `${quantidadeColaboradoresItem} colaborador(es)` : "Sem equipe informada"}
-                                                            </span>
-                                                        </div>
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <div className="text-sm font-black">{quantidadeExibida}</div>
-                                                        <div className="text-[11px] text-muted-foreground">
-                                                            {unitarioItem > 0 ? formatCurrency(unitarioItem) : "Sem valor"}
-                                                        </div>
-                                                    </TableCell>
-                                                    <TableCell className="text-right">
-                                                        <div className="font-display font-black text-sm">{formatCurrency(totalItem)}</div>
-                                                        <div className="text-[11px] text-muted-foreground">
-                                                            {getTipoCalculoLabel(tipoCalculoItem)}
-                                                        </div>
-                                                    </TableCell>
-                                                    <TableCell className="text-center">
-                                                        <Badge variant={getStatusVariant(statusLabel)}>
-                                                            {statusLabel}
-                                                        </Badge>
-                                                    </TableCell>
-                                                    <TableCell className="text-right">
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="h-8 w-8 text-muted-foreground hover:text-destructive transition-all"
-                                                            onClick={() => {
-                                                                if (confirm("Deseja remover este registro?")) {
-                                                                    OperacaoProducaoService.delete(item.id).then(() => {
-                                                                        toast.success("Registro removido");
-                                                                        queryClient.invalidateQueries({ queryKey: ["producao_recente"] });
-                                                                        queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
-                                                                    });
-                                                                }
-                                                            }}
-                                                        >
-                                                            <Trash2 className="w-4 h-4" />
-                                                        </Button>
-                                                    </TableCell>
+                                            <TableHeader>
+                                                <TableRow className="bg-muted/50 border-border hover:bg-muted/50">
+                                                    <TableHead className="font-bold text-[10px] uppercase">Serviço</TableHead>
+                                                    <TableHead className="font-bold text-[10px] uppercase">Vínculos</TableHead>
+                                                    <TableHead className="font-bold text-[10px] uppercase">Quantidade</TableHead>
+                                                    <TableHead className="font-bold text-[10px] uppercase text-right">Valor</TableHead>
+                                                    <TableHead className="font-bold text-[10px] uppercase text-center">Status</TableHead>
+                                                    <TableHead />
                                                 </TableRow>
-                                            );
-                                        })}
-                                    </TableBody>
-                                </Table>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {(historico as any[]).map((item: any) => {
+                                                    const tipoServicoLabel = item.tipos_servico_operacional?.nome;
+                                                    const colaboradorLabel = item.colaboradores?.nome;
+                                                    const transportadoraLabel = item.transportadoras_clientes?.nome;
+                                                    const fornecedorLabel = item.fornecedores?.nome;
+                                                    const produtoLabel = item.produtos_carga?.nome;
+                                                    const formaPagamentoLabel = item.formas_pagamento_operacional?.nome;
+                                                    const quantidadeItem = Number(item.quantidade || 0);
+                                                    const quantidadeColaboradoresItem = Number(
+                                                        item.quantidade_colaboradores ??
+                                                        item.avaliacao_json?.contexto_operacional?.quantidade_colaboradores ??
+                                                        (item.tipo_calculo_snapshot === "colaborador" ? item.quantidade : 0) ??
+                                                        0,
+                                                    );
+                                                    const unitarioItem = Number(item.valor_unitario_snapshot || 0);
+                                                    const totalItem = Number(item.valor_total || 0);
+                                                    const tipoCalculoItem = item.tipo_calculo_snapshot ?? null;
+                                                    const quantidadeExibida = tipoCalculoItem === "colaborador" ? quantidadeColaboradoresItem : quantidadeItem;
+                                                    const statusLabel = String(item.status ?? "Pendente")
+                                                        .replace(/_/g, " ")
+                                                        .replace(/\b\w/g, (char) => char.toUpperCase());
+                                                    const placaLabel = item.placa;
+                                                    const createdAt = item.criado_em;
+
+                                                    return (
+                                                        <TableRow key={item.id} className="border-border hover:bg-muted/30 group transition-colors">
+                                                            <TableCell>
+                                                                <div className="space-y-1">
+                                                                    <span className="font-bold text-sm block">{tipoServicoLabel}</span>
+                                                                    <span className="text-[10px] text-muted-foreground block">
+                                                                        {createdAt ? format(new Date(createdAt), "HH:mm") : "—"}
+                                                                    </span>
+                                                                    {colaboradorLabel && (
+                                                                        <span className="text-[11px] text-muted-foreground block">{colaboradorLabel}</span>
+                                                                    )}
+                                                                </div>
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <div className="space-y-1">
+                                                                    <span className="text-xs font-semibold block">{transportadoraLabel || "Sem transportadora"}</span>
+                                                                    <span className="text-[11px] text-muted-foreground block">
+                                                                        {fornecedorLabel || "Fornecedor não informado"} · {produtoLabel || "Produto não informado"}
+                                                                    </span>
+                                                                    <span className="text-[11px] text-muted-foreground block">
+                                                                        {formaPagamentoLabel || "Forma não informada"}
+                                                                        {placaLabel ? ` · ${placaLabel}` : ""}
+                                                                    </span>
+                                                                    <span className="text-[11px] text-muted-foreground block">
+                                                                        {quantidadeColaboradoresItem > 0 ? `${quantidadeColaboradoresItem} colaborador(es)` : "Sem equipe informada"}
+                                                                    </span>
+                                                                </div>
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <div className="text-sm font-black">{quantidadeExibida}</div>
+                                                                <div className="text-[11px] text-muted-foreground">
+                                                                    {unitarioItem > 0 ? formatCurrency(unitarioItem) : "Sem valor"}
+                                                                </div>
+                                                            </TableCell>
+                                                            <TableCell className="text-right">
+                                                                <div className="font-display font-black text-sm">{formatCurrency(totalItem)}</div>
+                                                                <div className="text-[11px] text-muted-foreground">
+                                                                    {getTipoCalculoLabel(tipoCalculoItem)}
+                                                                </div>
+                                                            </TableCell>
+                                                            <TableCell className="text-center">
+                                                                <Badge variant={getStatusVariant(statusLabel)}>
+                                                                    {statusLabel}
+                                                                </Badge>
+                                                            </TableCell>
+                                                            <TableCell className="text-right">
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-8 w-8 text-muted-foreground hover:text-destructive transition-all"
+                                                                    onClick={() => {
+                                                                        if (confirm("Deseja remover este registro?")) {
+                                                                            OperacaoProducaoService.delete(item.id).then(() => {
+                                                                                toast.success("Registro removido");
+                                                                                queryClient.invalidateQueries({ queryKey: ["producao_recente"] });
+                                                                                queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
+                                                                            });
+                                                                        }
+                                                                    }}
+                                                                >
+                                                                    <Trash2 className="w-4 h-4" />
+                                                                </Button>
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    );
+                                                })}
+                                            </TableBody>
+                                        </Table>
                                     </div>
                                 </>
                             )}
