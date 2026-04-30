@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDownAZ,
@@ -59,7 +59,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useSelection } from "@/contexts/SelectionContext";
 import { cn } from "@/lib/utils";
-import { OperacaoProducaoService, OperacaoService, RegraOperacionalService } from "@/services/base.service";
+import { OperacaoProducaoService, OperacaoService, RegraOperacionalService, EmpresaService } from "@/services/base.service";
+import { classificarFinanceiro, processarOperacao, getModalidadeLabel, ModalidadeFinanceira, StatusPagamento } from "@/utils/financeiro";
 
 type OperacoesTableBlockProps = {
   date: string;
@@ -85,6 +86,9 @@ type EditableOperationForm = {
   valor_faturamento_nf: string;
   forma_pagamento: string;
   observacao: string;
+  modalidade_financeira: string;
+  data_vencimento: string;
+  status_pagamento: string;
 };
 
 type BulkEditableField =
@@ -99,7 +103,10 @@ type BulkEditableField =
   | "quantidade_colaboradores"
   | "valor_unitario_filme"
   | "quantidade_filme"
-  | "valor_faturamento_nf";
+  | "valor_faturamento_nf"
+  | "modalidade_financeira"
+  | "data_vencimento"
+  | "status_pagamento";
 
 type InlineEditableField = BulkEditableField;
 
@@ -133,6 +140,40 @@ const BULK_FIELD_BY_COLUMN: Partial<Record<string, BulkEditableField>> = {
   valorFaturamentoNf: "valor_faturamento_nf",
   placa: "placa",
   qtdCol: "quantidade_colaboradores",
+};
+
+const MASS_EDITABLE_FIELDS: Array<{ value: BulkEditableField; label: string }> = [
+  { value: "forma_pagamento", label: "Forma de pagamento" },
+  { value: "observacao", label: "Observacao" },
+  { value: "nf_numero", label: "NF (SIM/NAO ou numero)" },
+  { value: "ctrc", label: "CTRC" },
+  { value: "placa", label: "Placa" },
+  { value: "entrada_ponto", label: "Inicio" },
+  { value: "saida_ponto", label: "Fim" },
+  { value: "quantidade", label: "Quantidade" },
+  { value: "quantidade_colaboradores", label: "Qtd. colaboradores" },
+  { value: "valor_unitario_filme", label: "Valor unitario filme" },
+  { value: "quantidade_filme", label: "Qtd. filme" },
+  { value: "modalidade_financeira", label: "Modalidade financeira" },
+  { value: "data_vencimento", label: "Data de vencimento" },
+  { value: "status_pagamento", label: "Status pgto" },
+];
+
+const MASS_FIELD_BY_COLUMN: Partial<Record<string, BulkEditableField>> = {
+  formaPagamento: "forma_pagamento",
+  nf: "nf_numero",
+  ctrc: "ctrc",
+  observacao: "observacao",
+  qtd: "quantidade",
+  inicio: "entrada_ponto",
+  fim: "saida_ponto",
+  valorUnitarioFilme: "valor_unitario_filme",
+  quantidadeFilme: "quantidade_filme",
+  placa: "placa",
+  qtdCol: "quantidade_colaboradores",
+  modalidadeFinanceira: "modalidade_financeira",
+  dataVencimento: "data_vencimento",
+  statusPagamento: "status_pagamento",
 };
 
 const RULE_COLUMN_CONFIG: Record<
@@ -234,6 +275,11 @@ const getDisplayObservacao = (item: Record<string, unknown>) =>
   getLinhaOriginalValue(item, "OBSERVACAO", "OBSERVAÇÃO") ??
   "—";
 
+const getDisplayStatusOriginal = (item: Record<string, unknown>) =>
+  getContextoImportacaoValue(item, "status_original_planilha") ??
+  getLinhaOriginalValue(item, "STATUS") ??
+  "—";
+
 const toInputValue = (value: unknown) => {
   if (value === null || value === undefined) return "";
   return String(value);
@@ -285,6 +331,9 @@ const buildEditableForm = (item: any): EditableOperationForm => {
     valor_faturamento_nf: toInputValue(item.valor_faturamento_nf),
     forma_pagamento: getContextoImportacaoValue(item, "forma_pagamento") ?? "",
     observacao: getContextoImportacaoValue(item, "observacao") ?? "",
+    modalidade_financeira: getContextoImportacaoValue(item, "modalidade_financeira_override") ?? "",
+    data_vencimento: getContextoImportacaoValue(item, "data_vencimento_override") ?? "",
+    status_pagamento: toInputValue(item.status_pagamento ?? item.statusPagamento ?? "PENDENTE"),
   };
 };
 
@@ -321,6 +370,8 @@ const buildOperationUpdatePayload = (editingItem: any, editForm: EditableOperati
       ...((editingItem.avaliacao_json?.contexto_importacao as Record<string, unknown> | undefined) ?? {}),
       forma_pagamento: editForm.forma_pagamento || null,
       observacao: editForm.observacao || null,
+      modalidade_financeira_override: editForm.modalidade_financeira || null,
+      data_vencimento_override: editForm.data_vencimento || null,
     },
   };
 
@@ -343,6 +394,10 @@ const buildOperationUpdatePayload = (editingItem: any, editForm: EditableOperati
     quantidade_filme: quantidadeFilmeCalculada,
     valor_total_filme: valorTotalFilmeCalculado,
     valor_faturamento_nf: parseLocaleNumber(editForm.valor_faturamento_nf),
+    status_pagamento: editForm.status_pagamento || null,
+    data_pagamento: editForm.status_pagamento === "RECEBIDO"
+      ? (editingItem.data_pagamento ?? new Date().toISOString().split("T")[0])
+      : null,
     avaliacao_json: nextAvaliacao,
     origem_dado: editingItem.origem_dado === "importacao" ? "ajuste" : editingItem.origem_dado,
   };
@@ -359,6 +414,7 @@ export const OperacoesTableBlock = ({
   const { id: selectedId, kind } = useSelection();
   const [filterText, setFilterText] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [modalidadeFilter, setModalidadeFilter] = useState("all");
   const [selectedOpDetails, setSelectedOpDetails] = useState<any>(null);
   const [editingItem, setEditingItem] = useState<any>(null);
   const [editForm, setEditForm] = useState<EditableOperationForm | null>(null);
@@ -391,16 +447,17 @@ export const OperacoesTableBlock = ({
     });
   };
 
-  const STORAGE_KEY = "orbe_visibleCols_operacoes_v4";
+  const STORAGE_KEY = "orbe_visibleCols_operacoes_v5";
 
   const defaultCols = {
     data: true,
     operacao: true, transportadora: true, servico: true, qtd: true,
-    inicio: false, fim: false, valUnit: true, valDia: true, status: true, acoes: true,
+    inicio: false, fim: false, valUnit: true, valDia: true, acoes: true,
     nf: false, ctrc: false, percentualIss: false, valorDescarga: false, custoIss: false,
     valorUnitarioFilme: false, quantidadeFilme: false, valorTotalFilme: false,
     valorFaturamentoNf: false, placa: false, fornecedor: false, qtdCol: true,
     idPlanilha: false, empresaPlanilha: false, formaPagamento: false, observacao: false,
+    modalidadeFinanceira: true, dataVencimento: true, statusPagamento: true,
   };
 
   const [visibleCols, setVisibleCols] = useState(() => {
@@ -435,6 +492,16 @@ export const OperacoesTableBlock = ({
     queryKey: ["regras_operacionais_grid", effectiveEmpresaId],
     queryFn: () => RegraOperacionalService.getAll(effectiveEmpresaId === "all" ? undefined : effectiveEmpresaId),
   });
+
+  const { data: empresas = [] } = useQuery({
+    queryKey: ["empresas"],
+    queryFn: () => EmpresaService.getAll(),
+  });
+
+  const processedRows = useMemo(() => {
+    if (!Array.isArray(rows)) return [];
+    return rows.map((item: any) => processarOperacao(item, empresas as any[]));
+  }, [rows, empresas]);
 
   const updateMutation = useMutation({
     mutationFn: async () => {
@@ -529,6 +596,77 @@ export const OperacoesTableBlock = ({
     onError: (error: unknown) => {
       const message = error instanceof Error ? error.message : "Não foi possível salvar a célula.";
       toast.error("Falha ao atualizar célula.", { description: message });
+    },
+  });
+
+  const applyStatusPagamentoToCache = (currentData: any, itemId: string, statusPagamento: StatusPagamento, dataPagamento: string | null) => {
+    if (!Array.isArray(currentData)) return currentData;
+
+    return currentData.map((row: any) =>
+      row?.id === itemId
+        ? {
+            ...row,
+            status_pagamento: statusPagamento,
+            data_pagamento: dataPagamento,
+          }
+        : row,
+    );
+  };
+
+  const updateStatusPagamentoMutation = useMutation({
+    mutationFn: async ({ item, statusPagamento }: { item: any; statusPagamento: StatusPagamento }) => {
+      if (!isEditableOperation(item)) {
+        throw new Error("Somente operacoes editaveis podem ter o status de pagamento alterado.");
+      }
+
+      const today = new Date().toISOString().split("T")[0];
+
+      return OperacaoProducaoService.update(item.id, {
+        status_pagamento: statusPagamento,
+        data_pagamento: statusPagamento === "RECEBIDO" ? today : null,
+      });
+    },
+    onMutate: async ({ item, statusPagamento }) => {
+      const dataPagamento = statusPagamento === "RECEBIDO" ? new Date().toISOString().split("T")[0] : null;
+
+      await queryClient.cancelQueries({ queryKey: ["operacoes"] });
+      await queryClient.cancelQueries({ queryKey: ["operacoes-grid"] });
+
+      const operacoesSnapshots = queryClient.getQueriesData({ queryKey: ["operacoes"] });
+      const operacoesGridSnapshots = queryClient.getQueriesData({ queryKey: ["operacoes-grid"] });
+
+      operacoesSnapshots.forEach(([queryKey, currentData]) => {
+        queryClient.setQueryData(queryKey, applyStatusPagamentoToCache(currentData, item.id, statusPagamento, dataPagamento));
+      });
+
+      operacoesGridSnapshots.forEach(([queryKey, currentData]) => {
+        queryClient.setQueryData(queryKey, applyStatusPagamentoToCache(currentData, item.id, statusPagamento, dataPagamento));
+      });
+
+      return { operacoesSnapshots, operacoesGridSnapshots };
+    },
+    onSuccess: (_data, variables) => {
+      const label =
+        variables.statusPagamento === "RECEBIDO"
+          ? "Recebido"
+          : variables.statusPagamento === "ATRASADO"
+            ? "Atrasado"
+            : "Pendente";
+      toast.success(`Status de pagamento atualizado para ${label}.`);
+      queryClient.invalidateQueries({ queryKey: ["operacoes"] });
+      queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
+    },
+    onError: (error: unknown, _variables, context) => {
+      context?.operacoesSnapshots?.forEach(([queryKey, snapshot]: [readonly unknown[], unknown]) => {
+        queryClient.setQueryData(queryKey, snapshot);
+      });
+
+      context?.operacoesGridSnapshots?.forEach(([queryKey, snapshot]: [readonly unknown[], unknown]) => {
+        queryClient.setQueryData(queryKey, snapshot);
+      });
+
+      const message = error instanceof Error ? error.message : "Nao foi possivel atualizar o status de pagamento.";
+      toast.error("Falha ao atualizar status de pagamento.", { description: message });
     },
   });
 
@@ -632,7 +770,7 @@ export const OperacoesTableBlock = ({
     },
   });
 
-  const filteredData = Array.isArray(rows) ? [...rows].filter((item: any) => {
+  const filteredData = [...processedRows].filter((item: any) => {
     const fornecedor = item.fornecedores?.nome || item.produto_label || "";
     const transportadora = item.transportadoras_clientes?.nome || item.transportadora_label || "";
     const servico = item.tipos_servico_operacional?.nome || item.tipo_servico_label || "";
@@ -642,9 +780,10 @@ export const OperacoesTableBlock = ({
       transportadora.toLowerCase().includes(filterText.toLowerCase()) ||
       servico.toLowerCase().includes(filterText.toLowerCase());
 
-    const statusMatch = statusFilter === "all" || item.status === statusFilter;
+    const statusMatch = statusFilter === "all" || item.statusPagamento === statusFilter;
+    const modalidadeMatch = modalidadeFilter === "all" || item.modalidadeFinanceira === modalidadeFilter;
 
-    return searchMatch && statusMatch;
+    return searchMatch && statusMatch && modalidadeMatch;
   }).sort((a: any, b: any) => {
     if (sortConfig) {
       let valA = a[sortConfig.key] ?? "";
@@ -653,7 +792,6 @@ export const OperacoesTableBlock = ({
       if (sortConfig.key === "fornecedor") { valA = a.fornecedores?.nome || a.produto_label || ""; valB = b.fornecedores?.nome || b.produto_label || ""; }
       else if (sortConfig.key === "servico") { valA = a.tipos_servico_operacional?.nome || a.tipo_servico_label || ""; valB = b.tipos_servico_operacional?.nome || b.tipo_servico_label || ""; }
       else if (sortConfig.key === "transportadora") { valA = a.transportadoras_clientes?.nome || a.transportadora_label || ""; valB = b.transportadoras_clientes?.nome || b.transportadora_label || ""; }
-      else if (sortConfig.key === "status") { valA = a.status || ""; valB = b.status || ""; }
       else if (sortConfig.key === "idPlanilha") { valA = a.created_at || a.id; valB = b.created_at || b.id; }
       else if (sortConfig.key === "data") { valA = a.data_operacao || ""; valB = b.data_operacao || ""; }
       else if (sortConfig.key === "operacao") { valA = `${a.fornecedores?.nome} ${a.tipos_servico_operacional?.nome}`; valB = `${b.fornecedores?.nome} ${b.tipos_servico_operacional?.nome}`; }
@@ -677,7 +815,7 @@ export const OperacoesTableBlock = ({
     const creatA = a.created_at || a.id || "";
     const creatB = b.created_at || b.id || "";
     return String(creatA).localeCompare(String(creatB));
-  }) : [];
+  });
 
   const toggleCol = (col: keyof typeof visibleCols) => {
     setVisibleCols((prev) => {
@@ -703,7 +841,7 @@ export const OperacoesTableBlock = ({
     const importantesCols = {
       data: true,
       operacao: true, transportadora: true, servico: true, qtd: true,
-      inicio: false, fim: false, valUnit: false, valDia: true, status: true, acoes: true,
+      inicio: false, fim: false, valUnit: false, valDia: true, acoes: true,
       nf: true, ctrc: false, percentualIss: false, valorDescarga: false, custoIss: false,
       valorUnitarioFilme: false, quantidadeFilme: false, valorTotalFilme: false,
       valorFaturamentoNf: false, placa: false, fornecedor: false, qtdCol: true,
@@ -734,7 +872,7 @@ export const OperacoesTableBlock = ({
   const openBulkEditForField = (field: BulkEditableField) => {
     setBulkField(field);
     setBulkValue("");
-    setBulkOnlyEmpty(true);
+    setBulkOnlyEmpty(field === "status_pagamento" ? false : true);
     setIsBulkEditOpen(true);
   };
 
@@ -781,8 +919,20 @@ export const OperacoesTableBlock = ({
     inlineUpdateMutation.mutate({ item, field, value: inlineValue });
   };
 
+  const getFinancePreviewForValue = (item: any, value: string) => {
+    if (!value) return null;
+    const empresa = (empresas as any[]).find((empresaItem: any) => empresaItem.id === item?.empresa_id) || {};
+    return classificarFinanceiro(
+      {
+        ...item,
+        forma_pagamento: value,
+      },
+      empresa,
+    );
+  };
+
   const renderHeaderCell = (columnKey: string, content: React.ReactNode, className = "px-3 font-semibold text-center") => {
-    const bulkFieldForColumn = BULK_FIELD_BY_COLUMN[columnKey];
+    const bulkFieldForColumn = MASS_FIELD_BY_COLUMN[columnKey];
 
     if (!bulkFieldForColumn) {
       return <th className={className}>{content}</th>;
@@ -879,6 +1029,9 @@ export const OperacoesTableBlock = ({
     className = "px-3 text-center text-muted-foreground whitespace-nowrap",
   ) => {
     const isActive = activeInlineCell?.rowId === item.id && activeInlineCell.field === field;
+    const inlineFinancePreview = field === "forma_pagamento" && isActive
+      ? getFinancePreviewForValue(item, inlineValue)
+      : null;
 
     return (
       <td
@@ -888,7 +1041,60 @@ export const OperacoesTableBlock = ({
           openInlineEdit(item, field);
         }}
       >
-        {isActive ? (
+        {isActive && field === "forma_pagamento" ? (
+          <div className="min-w-[250px] space-y-2 rounded-lg border border-border bg-background p-2 shadow-lg" onClick={(event) => event.stopPropagation()}>
+            <Select value={inlineValue || ""} onValueChange={setInlineValue}>
+              <SelectTrigger className="h-8">
+                <SelectValue placeholder="Selecione a forma de pagamento" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="DEPÃ“SITO">DepÃ³sito</SelectItem>
+                <SelectItem value="DEPOSITO MENSAL">Depósito Mensal</SelectItem>
+                <SelectItem value="PIX">PIX</SelectItem>
+                <SelectItem value="TRANSFERÃŠNCIA">TransferÃªncia</SelectItem>
+                <SelectItem value="BOLETO">Boleto</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {inlineFinancePreview && (
+              <div
+                className={cn(
+                  "flex items-center gap-2 rounded-md border px-2.5 py-2 text-xs font-medium",
+                  inlineFinancePreview.modalidade === "CAIXA_IMEDIATO" && "border-emerald-200 bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
+                  inlineFinancePreview.modalidade === "DUPLICATA_FORNECEDOR" && "border-orange-200 bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
+                  inlineFinancePreview.modalidade === "FECHAMENTO_MENSAL_EMPRESA" && "border-blue-200 bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
+                  inlineFinancePreview.modalidade === "TRANSBORDO_30D" && "border-purple-200 bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300",
+                  inlineFinancePreview.modalidade === "CUSTO_DESPESA" && "border-slate-200 bg-slate-100 text-slate-800 dark:bg-slate-900/40 dark:text-slate-300",
+                )}
+              >
+                <span className="uppercase tracking-wide opacity-70">Modalidade</span>
+                <span className="font-semibold">{getModalidadeLabel(inlineFinancePreview.modalidade)}</span>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2"
+                onClick={cancelInlineEdit}
+                disabled={inlineUpdateMutation.isPending}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="h-7 px-2"
+                onClick={() => submitInlineEdit(item, field)}
+                disabled={inlineUpdateMutation.isPending}
+              >
+                Salvar
+              </Button>
+            </div>
+          </div>
+        ) : isActive ? (
           <Input
             autoFocus
             type={inputType}
@@ -971,6 +1177,47 @@ export const OperacoesTableBlock = ({
     setSelectedEditIssRuleId(matchingRule?.id ?? "");
   }, [availableEditIssRules, editForm, editingItem]);
 
+  const editFinancePreview = useMemo(() => {
+    if (!editingItem || !editForm?.forma_pagamento) return null;
+
+    const empresa = (empresas as any[]).find((item: any) => item.id === editingItem.empresa_id) || {};
+    return classificarFinanceiro(
+      {
+        ...editingItem,
+        forma_pagamento: editForm.forma_pagamento,
+      },
+      empresa,
+    );
+  }, [editForm?.forma_pagamento, editingItem, empresas]);
+
+  const kpis = useMemo(() => {
+    let faturamento = 0, caixaImediato = 0, recebido = 0, atrasado = 0, pendente = 0, volume = 0, colabs = 0;
+
+    filteredData.forEach((op: any) => {
+      const val = Number(op.totalFinalCalculado || 0);
+      faturamento += val;
+
+      if (op.modalidadeFinanceira === "CAIXA_IMEDIATO") caixaImediato += val;
+      if (op.statusPagamento === "RECEBIDO") recebido += val;
+      if (op.statusPagamento === "ATRASADO") atrasado += val;
+      if (op.statusPagamento === "PENDENTE") pendente += val;
+
+      volume += Number(op.quantidade || 0);
+      colabs += Number(op.quantidade_colaboradores || 1);
+    });
+
+    return {
+      faturamento,
+      caixaImediato,
+      provisionado: pendente,
+      recebido,
+      atrasado,
+      pendente,
+      ticketMedio: filteredData.length ? faturamento / filteredData.length : 0,
+      produtividade: colabs ? volume / colabs : 0,
+    };
+  }, [filteredData]);
+
   if (isLoading) {
     return (
       <div className="p-12 text-center text-muted-foreground min-h-[300px] flex flex-col items-center justify-center">
@@ -982,25 +1229,64 @@ export const OperacoesTableBlock = ({
 
   return (
     <div className="space-y-4 p-5 pt-2">
+
+      {/* ─── KPI CARDS ─────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+        {[
+          { label: "Faturamento", value: kpis.faturamento, color: "text-foreground" },
+          { label: "Depósito", value: kpis.caixaImediato, color: "text-emerald-600 dark:text-emerald-400" },
+          { label: "Provisionado", value: kpis.provisionado, color: "text-blue-600 dark:text-blue-400" },
+          { label: "A Receber", value: kpis.pendente, color: "text-amber-600 dark:text-amber-400" },
+          { label: "Atrasado", value: kpis.atrasado, color: "text-destructive" },
+          { label: "Ticket Médio", value: kpis.ticketMedio, color: "text-muted-foreground" },
+          { label: "Produt. Vol/Col", value: kpis.produtividade, color: "text-muted-foreground", decimals: 1, prefix: "" },
+        ].map((kpi) => (
+          <div key={kpi.label} className="rounded-lg border border-border bg-card px-3 py-2.5 shadow-sm">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground truncate">{kpi.label}</p>
+            <p className={`text-sm font-black font-display mt-0.5 tabular-nums ${kpi.color}`}>
+              {kpi.label === "Produt. Vol/Col"
+                ? kpi.value.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+                : kpi.value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {/* ─── FILTROS ───────────────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row gap-3 justify-between">
-        <div className="flex gap-2 w-full sm:w-auto">
+        <div className="flex flex-wrap gap-2 w-full">
           <Input
-            placeholder="Buscar por fornecedor ou servico..."
-            className="w-full sm:w-80 h-9"
+            placeholder="Buscar por fornecedor ou serviço..."
+            className="w-full sm:w-72 h-9"
             value={filterText}
             onChange={(e) => setFilterText(e.target.value)}
           />
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-full sm:w-40 h-9">
-              <SelectValue placeholder="Status" />
+
+          {/* Filtro Modalidade Financeira */}
+          <Select value={modalidadeFilter} onValueChange={setModalidadeFilter}>
+            <SelectTrigger className="w-full sm:w-52 h-9">
+              <SelectValue placeholder="Modalidade" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todos os Status</SelectItem>
-              <SelectItem value="registrado">Registrado</SelectItem>
-              <SelectItem value="pendente">Pendente</SelectItem>
-              <SelectItem value="validado">Validado</SelectItem>
-              <SelectItem value="bloqueado">Bloqueado</SelectItem>
-              <SelectItem value="importado">Importado</SelectItem>
+              <SelectItem value="all">Todas as Modalidades</SelectItem>
+              <SelectItem value="CAIXA_IMEDIATO">⚡ Depósito</SelectItem>
+              <SelectItem value="DUPLICATA_FORNECEDOR">🧾 Boleto</SelectItem>
+              <SelectItem value="FECHAMENTO_MENSAL_EMPRESA">📅 Depósito (mensal)</SelectItem>
+              <SelectItem value="TRANSBORDO_30D">🔄 Transbordo (30 dias)</SelectItem>
+              <SelectItem value="CUSTO_DESPESA">Custo</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {/* Filtro Status Pagamento */}
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-full sm:w-40 h-9">
+              <SelectValue placeholder="Status pgto" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os Status Pgto</SelectItem>
+              <SelectItem value="PENDENTE">Pgto Pendente</SelectItem>
+              <SelectItem value="ATRASADO">Pgto Atrasado</SelectItem>
+              <SelectItem value="RECEBIDO">Pgto Recebido</SelectItem>
             </SelectContent>
           </Select>
 
@@ -1024,7 +1310,7 @@ export const OperacoesTableBlock = ({
                 {allSelected ? "DESMARCAR TODAS" : "MARCAR TODAS"}
               </DropdownMenuCheckboxItem>
               <DropdownMenuCheckboxItem
-                checked={visibleCols.operacao && visibleCols.transportadora && visibleCols.servico && visibleCols.qtd && visibleCols.valDia && visibleCols.status && visibleCols.acoes && visibleCols.nf}
+                checked={visibleCols.operacao && visibleCols.transportadora && visibleCols.servico && visibleCols.qtd && visibleCols.valDia && visibleCols.acoes && visibleCols.nf}
                 onCheckedChange={toggleImportantes}
                 className="font-bold mb-1 bg-primary/10 text-primary focus:bg-primary/20 focus:text-primary"
               >
@@ -1106,7 +1392,7 @@ export const OperacoesTableBlock = ({
                   isHeader ? lockedThClass : baseTdClass,
                   typeClasses[colKey],
                   "border-r border-border transition-all",
-                  isLast && "shadow-[6px_0_12px_-10px_hsl(var(--foreground)/0.25)]"
+                  isLast && "after:absolute after:top-0 after:bottom-0 after:-right-[10px] after:w-[10px] after:bg-gradient-to-r after:from-black/5 dark:after:from-black/20 after:to-transparent after:pointer-events-none"
                 )
               };
             };
@@ -1187,7 +1473,10 @@ export const OperacoesTableBlock = ({
                     {visibleCols.valorTotalFilme && <th className="px-3 py-2.5 font-semibold text-center">TOTAL FILME</th>}
                     {visibleCols.valorFaturamentoNf && renderHeaderCell("valorFaturamentoNf", "FATURAMENTO NF", "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.valDia && <th className="px-3 py-2.5 font-semibold text-center"><span className="inline-flex items-center justify-center gap-1.5 w-full"><BadgeDollarSign className="h-3.5 w-3.5 text-muted-foreground" />TOTAL DIA</span></th>}
-                    {visibleCols.status && <th className="px-3 py-2.5 font-semibold text-center"><span className="inline-flex items-center justify-center gap-1.5 w-full"><CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" />STATUS</span></th>}
+                    {visibleCols.modalidadeFinanceira && <th className="px-3 py-2.5 font-semibold text-center">MODALIDADE</th>}
+                    {visibleCols.dataVencimento && <th className="px-3 py-2.5 font-semibold text-center">VENCIMENTO</th>}
+                    {visibleCols.statusPagamento && <th className="px-3 py-2.5 font-semibold text-center">STATUS PGTO</th>}
+                    {false && <th className="px-3 py-2.5 font-semibold text-center"><span className="inline-flex items-center justify-center gap-1.5 w-full"><CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" />STATUS</span></th>}
                     {visibleCols.acoes && <th className="px-5 py-2.5 font-semibold text-center"><span className="inline-flex items-center justify-center gap-1.5 w-full"><Hourglass className="h-3.5 w-3.5 text-muted-foreground" />ACOES</span></th>}
                   </tr>
                 </thead>
@@ -1227,7 +1516,8 @@ export const OperacoesTableBlock = ({
                     const qtdFilme = item.quantidade_filme || "—";
                     const totFilme = valUnitFormatter(item.valor_total_filme);
                     const fatNf = valUnitFormatter(item.valor_faturamento_nf);
-                    const statusCfg = getStatusConfig(item.status);
+                    const statusOriginal = String(getDisplayStatusOriginal(item));
+                    const statusCfg = getStatusConfig(statusOriginal);
 
                     return (
                       <tr
@@ -1264,10 +1554,72 @@ export const OperacoesTableBlock = ({
                         {visibleCols.valorTotalFilme && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{totFilme}</td>}
                         {visibleCols.valorFaturamentoNf && renderInlineCell(item, "valor_faturamento_nf", fatNf)}
                         {visibleCols.valDia && <td className="px-3 text-center font-display font-semibold text-foreground whitespace-nowrap">{valDia}</td>}
-                        {visibleCols.status && (
+                        {visibleCols.modalidadeFinanceira && (
+                          <td className="px-3 text-center whitespace-nowrap">
+                            {item.modalidadeFinanceira ? (
+                              <Badge variant="outline" className={cn(
+                                "font-medium border-0 text-xs",
+                                item.modalidadeFinanceira === "CAIXA_IMEDIATO" && "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
+                                item.modalidadeFinanceira === "DUPLICATA_FORNECEDOR" && "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
+                                item.modalidadeFinanceira === "FECHAMENTO_MENSAL_EMPRESA" && "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
+                                item.modalidadeFinanceira === "TRANSBORDO_30D" && "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300",
+                                item.modalidadeFinanceira === "CUSTO_DESPESA" && "bg-slate-100 text-slate-800 dark:bg-slate-900/40 dark:text-slate-300",
+                              )}>
+                                {getModalidadeLabel(item.modalidadeFinanceira)}
+                              </Badge>
+                            ) : <span className="text-muted-foreground">—</span>}
+                          </td>
+                        )}
+                        {visibleCols.dataVencimento && (
+                          <td className="px-3 text-center text-muted-foreground whitespace-nowrap font-mono text-xs">
+                            {item.dataVencimento
+                              ? new Date(item.dataVencimento + "T12:00:00Z").toLocaleDateString("pt-BR")
+                              : "—"}
+                          </td>
+                        )}
+                        {visibleCols.statusPagamento && (
+                          <td className="px-3 text-center whitespace-nowrap">
+                            {item.statusPagamento ? (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild disabled={!isEditableOperation(item) || updateStatusPagamentoMutation.isPending}>
+                                  <button
+                                    type="button"
+                                    className="inline-flex"
+                                    onClick={(e) => e.stopPropagation()}
+                                    title={isEditableOperation(item) ? "Alterar status de pagamento" : "Status de pagamento"}
+                                  >
+                                    <Badge variant="outline" className={cn(
+                                      "font-medium border-0 text-xs",
+                                      isEditableOperation(item) && "cursor-pointer hover:opacity-85",
+                                      item.statusPagamento === "RECEBIDO" && "bg-success-soft text-success-strong",
+                                      item.statusPagamento === "PENDENTE" && "bg-muted text-muted-foreground",
+                                      item.statusPagamento === "ATRASADO" && "bg-destructive-soft text-destructive-strong",
+                                    )}>
+                                      {item.statusPagamento === "RECEBIDO" ? "Recebido" : item.statusPagamento === "ATRASADO" ? "Atrasado" : "Pendente"}
+                                    </Badge>
+                                  </button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="center" onClick={(e) => e.stopPropagation()}>
+                                  <DropdownMenuLabel>Status pgto</DropdownMenuLabel>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem onClick={() => updateStatusPagamentoMutation.mutate({ item, statusPagamento: "RECEBIDO" })}>
+                                    Recebido
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => updateStatusPagamentoMutation.mutate({ item, statusPagamento: "ATRASADO" })}>
+                                    Atrasado
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => updateStatusPagamentoMutation.mutate({ item, statusPagamento: "PENDENTE" })}>
+                                    Pendente
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            ) : <span className="text-muted-foreground">—</span>}
+                          </td>
+                        )}
+                        {false && (
                           <td className="px-3 text-center whitespace-nowrap">
                             <Badge variant="outline" className={cn(statusCfg.className, "hover:bg-transparent font-medium border-0")}>
-                              {statusCfg.label}
+                              {statusOriginal === "—" ? "—" : statusCfg.label}
                             </Badge>
                           </td>
                         )}
@@ -1299,6 +1651,32 @@ export const OperacoesTableBlock = ({
                                 >
                                   <ExternalLink className="h-3.5 w-3.5" />
                                 </button>
+                              )}
+                              {isEditableOperation(item) && (
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild disabled={updateStatusPagamentoMutation.isPending}>
+                                    <button
+                                      className="h-7 w-7 rounded-md hover:bg-success-soft flex items-center justify-center text-muted-foreground hover:text-success-strong"
+                                      onClick={(e) => e.stopPropagation()}
+                                      title="Alterar status de pagamento"
+                                    >
+                                      <CheckCircle2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                                    <DropdownMenuLabel>Status pgto</DropdownMenuLabel>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => updateStatusPagamentoMutation.mutate({ item, statusPagamento: "RECEBIDO" })}>
+                                      Recebido
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => updateStatusPagamentoMutation.mutate({ item, statusPagamento: "ATRASADO" })}>
+                                      Atrasado
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => updateStatusPagamentoMutation.mutate({ item, statusPagamento: "PENDENTE" })}>
+                                      Pendente
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
                               )}
                               <button
                                 className="h-7 w-7 rounded-md hover:bg-destructive-soft flex items-center justify-center text-muted-foreground hover:text-destructive"
@@ -1343,12 +1721,20 @@ export const OperacoesTableBlock = ({
             <div className="grid gap-4">
               <div className="space-y-2">
                 <Label>Coluna</Label>
-                <Select value={bulkField} onValueChange={(value) => setBulkField(value as BulkEditableField)}>
+                <Select
+                  value={bulkField}
+                  onValueChange={(value) => {
+                    const nextField = value as BulkEditableField;
+                    setBulkField(nextField);
+                    setBulkValue("");
+                    setBulkOnlyEmpty(nextField === "status_pagamento" ? false : true);
+                  }}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione a coluna" />
                   </SelectTrigger>
                   <SelectContent>
-                    {BULK_EDITABLE_FIELDS.map((field) => (
+                    {MASS_EDITABLE_FIELDS.map((field) => (
                       <SelectItem key={field.value} value={field.value}>
                         {field.label}
                       </SelectItem>
@@ -1366,12 +1752,70 @@ export const OperacoesTableBlock = ({
                     placeholder="Digite o valor que deve ser aplicado"
                     rows={4}
                   />
+                ) : bulkField === "forma_pagamento" ? (
+                  <Select value={bulkValue} onValueChange={setBulkValue}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione a forma de pagamento" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="DEPOSITO">Deposito</SelectItem>
+                      <SelectItem value="DEPOSITO MENSAL">Deposito Mensal</SelectItem>
+                      <SelectItem value="PIX">PIX</SelectItem>
+                      <SelectItem value="TRANSFERENCIA">Transferencia</SelectItem>
+                      <SelectItem value="BOLETO">Boleto</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : bulkField === "modalidade_financeira" ? (
+                  <Select value={bulkValue} onValueChange={setBulkValue}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione a modalidade" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="CAIXA_IMEDIATO">Deposito</SelectItem>
+                      <SelectItem value="DUPLICATA_FORNECEDOR">Boleto</SelectItem>
+                      <SelectItem value="FECHAMENTO_MENSAL_EMPRESA">Deposito (mensal)</SelectItem>
+                      <SelectItem value="TRANSBORDO_30D">Transbordo (30 dias)</SelectItem>
+                      <SelectItem value="CUSTO_DESPESA">Custo</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : bulkField === "status_pagamento" ? (
+                  <Select value={bulkValue} onValueChange={setBulkValue}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="PENDENTE">Pendente</SelectItem>
+                      <SelectItem value="ATRASADO">Atrasado</SelectItem>
+                      <SelectItem value="RECEBIDO">Recebido</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : bulkField === "data_vencimento" ? (
+                  <Input
+                    type="date"
+                    value={bulkValue}
+                    onChange={(event) => setBulkValue(event.target.value)}
+                  />
                 ) : (
                   <Input
                     value={bulkValue}
                     onChange={(event) => setBulkValue(event.target.value)}
                     placeholder="Digite o valor que deve ser aplicado"
                   />
+                )}
+                {bulkField === "modalidade_financeira" && (
+                  <p className="text-xs text-muted-foreground">
+                    Use apenas em excecoes. Sem override manual, a modalidade continua automatica pela origem da operacao.
+                  </p>
+                )}
+                {bulkField === "data_vencimento" && (
+                  <p className="text-xs text-muted-foreground">
+                    Campo pensado para ajustes pontuais. Quando vazio, o vencimento segue a regra financeira automatica.
+                  </p>
+                )}
+                {bulkField === "status_pagamento" && (
+                  <p className="text-xs text-muted-foreground">
+                    Alteracao em massa permitida para marcar varios registros como recebidos, atrasados ou pendentes.
+                  </p>
                 )}
               </div>
 
@@ -1581,8 +2025,16 @@ export const OperacoesTableBlock = ({
                   <Input id="placa" value={editForm.placa} onChange={(e) => updateField("placa", e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="nf_numero">NF (SIM/NÃO)</Label>
-                  <Input id="nf_numero" value={editForm.nf_numero} onChange={(e) => updateField("nf_numero", e.target.value)} placeholder="SIM ou NÃO" />
+                  <Label>NF (SIM/NÃO)</Label>
+                  <Select value={editForm.nf_numero || ""} onValueChange={(v) => updateField("nf_numero", v)}>
+                    <SelectTrigger id="nf_numero">
+                      <SelectValue placeholder="Selecione" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="SIM">SIM</SelectItem>
+                      <SelectItem value="NÃO">NÃO</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="ctrc">CTRC</Label>
@@ -1645,9 +2097,39 @@ export const OperacoesTableBlock = ({
                   <Input id="valor_faturamento_nf" value={editForm.valor_faturamento_nf} onChange={(e) => updateField("valor_faturamento_nf", e.target.value)} />
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="forma_pagamento">Forma de pagamento</Label>
-                  <Input id="forma_pagamento" value={editForm.forma_pagamento} onChange={(e) => updateField("forma_pagamento", e.target.value)} />
+                  <Label>Forma de pagamento</Label>
+                  <Select value={editForm.forma_pagamento || ""} onValueChange={(v) => updateField("forma_pagamento", v)}>
+                    <SelectTrigger id="forma_pagamento">
+                      <SelectValue placeholder="Selecione a forma de pagamento" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="DEPÓSITO">Depósito</SelectItem>
+                      <SelectItem value="DEPOSITO MENSAL">Depósito Mensal</SelectItem>
+                      <SelectItem value="PIX">PIX</SelectItem>
+                      <SelectItem value="TRANSFERÊNCIA">Transferência</SelectItem>
+                      <SelectItem value="BOLETO">Boleto</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {editFinancePreview && (
+                    <div
+                      className={cn(
+                        "mt-1.5 flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium",
+                        editFinancePreview.modalidade === "CAIXA_IMEDIATO" && "border-emerald-200 bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
+                        editFinancePreview.modalidade === "DUPLICATA_FORNECEDOR" && "border-orange-200 bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
+                        editFinancePreview.modalidade === "FECHAMENTO_MENSAL_EMPRESA" && "border-blue-200 bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
+                        editFinancePreview.modalidade === "TRANSBORDO_30D" && "border-purple-200 bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300",
+                        editFinancePreview.modalidade === "CUSTO_DESPESA" && "border-slate-200 bg-slate-100 text-slate-800 dark:bg-slate-900/40 dark:text-slate-300",
+                      )}
+                    >
+                      <span className="text-xs uppercase tracking-wide opacity-70">Modalidade resultante:</span>
+                      <span className="font-semibold">{getModalidadeLabel(editFinancePreview.modalidade)}</span>
+                      <span className="ml-auto text-xs opacity-60">
+                        Venc. {editFinancePreview.vencimento.toLocaleDateString("pt-BR")}
+                      </span>
+                    </div>
+                  )}
                 </div>
+
                 <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="observacao">Observacao</Label>
                   <Textarea id="observacao" className="min-h-[96px]" value={editForm.observacao} onChange={(e) => updateField("observacao", e.target.value)} />

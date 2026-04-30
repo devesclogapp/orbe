@@ -9,6 +9,11 @@ import * as XLSX from "xlsx";
 import Papa from "papaparse";
 import { toast } from "sonner";
 
+const SHEET_ORIGIN_FIELD = "origem_aba";
+
+const mapSheetArrayRowToRecord = (row: unknown[]) =>
+    Object.fromEntries(row.map((value, index) => [String(index), value]));
+
 interface SpreadsheetUploadModalProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
@@ -68,9 +73,18 @@ export function SpreadsheetUploadModal({
                 } else {
                     // Parse XLSX
                     const workbook = XLSX.read(data, { type: "binary" });
-                    const firstSheetName = workbook.SheetNames[0];
-                    const sheet = workbook.Sheets[firstSheetName];
-                    const results = XLSX.utils.sheet_to_json(sheet);
+                    const results = workbook.SheetNames.flatMap((sheetName) => {
+                        const sheet = workbook.Sheets[sheetName];
+                        const sheetRows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+                            header: 1,
+                            defval: null,
+                        });
+
+                        return sheetRows.map((row) => ({
+                            ...mapSheetArrayRowToRecord(row),
+                            [SHEET_ORIGIN_FIELD]: sheetName,
+                        }));
+                    });
                     setParsedData(results);
                     setIsParsing(false);
                 }

@@ -20,7 +20,6 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/layout/AppShell";
-import { MetricCard } from "@/components/painel/MetricCard";
 import { OperacoesTableBlock } from "@/components/operacoes/OperacoesTableBlock";
 import { SpreadsheetUploadModal } from "@/components/shared/SpreadsheetUploadModal";
 import { Badge } from "@/components/ui/badge";
@@ -64,6 +63,7 @@ type ProcessDayResponse = {
 
 type RowValue = string | number | boolean | null | undefined;
 type SpreadsheetRow = Record<string, RowValue>;
+const SHEET_ORIGIN_FIELD = "origem_aba";
 
 type NamedEntity = {
   id: string;
@@ -178,6 +178,173 @@ const parseNumericCell = (val: RowValue): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const isTimeRangeValid = (start: string | null, end: string | null) => {
+  if (!start || !end) return true;
+  return end >= start;
+};
+
+const normalizeLookupText = (value: unknown) =>
+  String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(":", "")
+    .trim();
+
+const getImportErrorMessage = (error: unknown) => {
+  if (error instanceof Error && error.message) return error.message;
+
+  if (error && typeof error === "object") {
+    const candidate = error as Record<string, unknown>;
+    const parts = [
+      candidate.message,
+      candidate.details,
+      candidate.hint,
+      candidate.code ? `codigo ${candidate.code}` : null,
+    ]
+      .map((part) => (typeof part === "string" ? part.trim() : ""))
+      .filter(Boolean);
+
+    if (parts.length > 0) return parts.join(" | ");
+
+    try {
+      return JSON.stringify(candidate);
+    } catch {
+      return "Falha ao processar a planilha.";
+    }
+  }
+
+  return "Falha ao processar a planilha.";
+};
+
+const detectOperationalHeader = (rows: SpreadsheetRow[]) => {
+  let headerRowIndex = -1;
+  const headerMap: Record<string, string> = {};
+
+  if (rows.length > 0) {
+    const keys = Object.keys(rows[0])
+      .filter((key) => key !== SHEET_ORIGIN_FIELD)
+      .map((key) => key.toUpperCase());
+
+    if (
+      keys.some((key) =>
+        key.includes("OPERA") ||
+        key.includes("SERVIC") ||
+        key.includes("DESCRI") ||
+        key.includes("TIPO") ||
+        key.includes("VISTORIA") ||
+        key.includes("DESCARGA"),
+      )
+    ) {
+      return { headerRowIndex: -2, headerMap };
+    }
+  }
+
+  for (let i = 0; i < Math.min(rows.length, 50); i++) {
+    const row = rows[i];
+    const values = Object.entries(row)
+      .filter(([key]) => key !== SHEET_ORIGIN_FIELD)
+      .map(([, value]) => String(value).toUpperCase().trim());
+
+    if (values.some((value) => value.includes("OPERA") || value.includes("SERVIC") || value.includes("DESCRI"))) {
+      headerRowIndex = i;
+      for (const key of Object.keys(row)) {
+        if (key === SHEET_ORIGIN_FIELD) continue;
+        if (row[key]) headerMap[key] = String(row[key]).toUpperCase().replace(":", "").trim();
+      }
+      break;
+    }
+  }
+
+  return { headerRowIndex, headerMap };
+};
+
+const normalizeImportedSheetRows = (rows: SpreadsheetRow[]) => {
+  const { headerRowIndex, headerMap } = detectOperationalHeader(rows);
+
+  if (headerRowIndex < 0) {
+    return headerRowIndex === -2 ? rows : rows;
+  }
+
+  const normalizedRows: SpreadsheetRow[] = [];
+  for (let i = headerRowIndex + 1; i < rows.length; i++) {
+    const currentRow = rows[i];
+    const nextRow: SpreadsheetRow = {};
+
+    for (const key of Object.keys(currentRow)) {
+      if (key === SHEET_ORIGIN_FIELD) {
+        nextRow[key] = currentRow[key];
+        continue;
+      }
+
+      const mappedKey = headerMap[key] || key;
+      nextRow[mappedKey] = currentRow[key];
+    }
+
+    normalizedRows.push(nextRow);
+  }
+
+  return normalizedRows;
+};
+
+type TopKpiCardProps = {
+  label: string;
+  value: string;
+  helper: string;
+  icon: typeof Wallet;
+  tone?: "default" | "accent" | "warning";
+};
+
+const topKpiToneClasses: Record<NonNullable<TopKpiCardProps["tone"]>, string> = {
+  default: "border-border/70 bg-card text-foreground",
+  accent: "border-primary/20 bg-primary/5 text-foreground",
+  warning: "border-warning/25 bg-warning-soft/50 text-foreground",
+};
+
+const topKpiIconClasses: Record<NonNullable<TopKpiCardProps["tone"]>, string> = {
+  default: "border-border/70 bg-background text-muted-foreground",
+  accent: "border-primary/20 bg-primary/10 text-primary",
+  warning: "border-warning/25 bg-background text-warning-strong",
+};
+
+const TopKpiCard = ({
+  label,
+  value,
+  helper,
+  icon: Icon,
+  tone = "default",
+}: TopKpiCardProps) => (
+  <div
+    className={cn(
+      "group relative overflow-hidden rounded-2xl border p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md",
+      topKpiToneClasses[tone],
+    )}
+  >
+    <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-foreground/15 to-transparent" />
+    <div className="flex items-start justify-between gap-3">
+      <div className="space-y-3">
+        <div className="text-[11px] font-bold uppercase tracking-[0.22em] text-muted-foreground">
+          {label}
+        </div>
+        <div className="font-display text-2xl font-black leading-none text-foreground sm:text-[1.75rem]">
+          {value}
+        </div>
+      </div>
+      <div
+        className={cn(
+          "flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border transition-colors",
+          topKpiIconClasses[tone],
+        )}
+      >
+        <Icon className="h-5 w-5" />
+      </div>
+    </div>
+    <div className="mt-4 text-xs font-medium text-muted-foreground">
+      {helper}
+    </div>
+  </div>
+);
+
 const Operacoes = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -258,6 +425,9 @@ const Operacoes = () => {
   );
 
   const ultimaImportacao = filteredLogs[0];
+  const ultimaSincronizacaoLabel = ultimaImportacao
+    ? new Date(ultimaImportacao.data).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+    : "Sem sync";
   const isLoading = isLoadingEmpresas || isLoadingOps || isLoadingLogs || isLoadingIssues;
 
   const clearMutation = useMutation({
@@ -341,65 +511,48 @@ const Operacoes = () => {
     }
 
     let ignoredRows = 0;
+    let adjustedTimeRows = 0;
 
     try {
-      let headerRowIndex = -1;
-      const headerMap: Record<string, string> = {};
+      const groupedBySheet = data.reduce<Record<string, SpreadsheetRow[]>>((acc, row) => {
+        const sheetName = String(row[SHEET_ORIGIN_FIELD] ?? "__DEFAULT__");
+        if (!acc[sheetName]) acc[sheetName] = [];
+        acc[sheetName].push(row);
+        return acc;
+      }, {});
 
-      if (data.length > 0) {
-        const keys = Object.keys(data[0]).map((k) => k.toUpperCase());
-        if (keys.some((k) => k.includes("OPERA") || k.includes("SERVIC") || k.includes("DESCRI") || k.includes("TIPO") || k.includes("VISTORIA") || k.includes("DESCARGA"))) {
-          headerRowIndex = -2;
-        }
-      }
-
-      if (headerRowIndex !== -2) {
-        for (let i = 0; i < Math.min(data.length, 50); i++) {
-          const row = data[i];
-          const values = Object.values(row).map((v) => String(v).toUpperCase().trim());
-          if (values.some((v) => v.includes("OPERA") || v.includes("SERVIC") || v.includes("DESCRI"))) {
-            headerRowIndex = i;
-            for (const key of Object.keys(row)) {
-              if (row[key]) headerMap[key] = String(row[key]).toUpperCase().replace(":", "").trim();
-            }
-            break;
-          }
-        }
-      }
-
-      let parsedData = data;
-      if (headerRowIndex >= 0) {
-        parsedData = [];
-        for (let i = headerRowIndex + 1; i < data.length; i++) {
-          const newRow: SpreadsheetRow = {};
-          for (const key of Object.keys(data[i])) {
-            const mappedKey = headerMap[key] || key;
-            newRow[mappedKey] = data[i][key];
-          }
-          parsedData.push(newRow);
-        }
-      }
+      const parsedData = Object.values(groupedBySheet).flatMap((sheetRows) => normalizeImportedSheetRows(sheetRows));
 
       const getVal = (row: SpreadsheetRow, ...aliases: string[]): RowValue => {
         const normRow = Object.keys(row).reduce<Record<string, RowValue>>((acc, key) => {
-          acc[key.toUpperCase().replace(":", "").trim()] = row[key];
+          acc[normalizeLookupText(key)] = row[key];
           return acc;
         }, {});
 
         for (const key of aliases) {
-          if (normRow[key.toUpperCase()] !== undefined && normRow[key.toUpperCase()] !== null) {
-            return normRow[key.toUpperCase()];
+          const normalizedKey = normalizeLookupText(key);
+          if (normRow[normalizedKey] !== undefined && normRow[normalizedKey] !== null) {
+            return normRow[normalizedKey];
           }
         }
 
         for (const key of aliases) {
-          const matchKey = Object.keys(normRow).find((rowKey) => rowKey.includes(key.toUpperCase()));
+          const normalizedKey = normalizeLookupText(key);
+          const matchKey = Object.keys(normRow).find((rowKey) => rowKey.includes(normalizedKey));
           if (matchKey && normRow[matchKey] !== undefined && normRow[matchKey] !== null) {
             return normRow[matchKey];
           }
         }
 
         return null;
+      };
+
+      const getSheetOrigin = (row: SpreadsheetRow) => {
+        const rawSheetName = row[SHEET_ORIGIN_FIELD];
+        if (rawSheetName === null || rawSheetName === undefined) return null;
+
+        const normalizedSheetName = String(rawSheetName).trim();
+        return normalizedSheetName || null;
       };
 
       const tiposServicoAtivos = await TipoServicoOperacionalService.getAllActive();
@@ -425,6 +578,7 @@ const Operacoes = () => {
       for (const row of parsedData) {
         const operacaoName = String(getVal(row, "DESCRIÇÃO", "DESCRICAO", "OPERAÇÃO", "OPERACA", "SERVIÇO", "SERVIC", "TIPO") || "");
         if (!operacaoName) continue;
+        const origemAba = getSheetOrigin(row);
 
         const fornecedorName = String(getVal(row, "FORNECEDOR", "PRODUTO", "CLIENTE") || "");
         const transportadoraName = String(getVal(row, "TRANSPORTADORA", "VIAÇÃO", "VIACAO") || "");
@@ -441,13 +595,16 @@ const Operacoes = () => {
 
         const inicioOperacao = parseExcelTime(getVal(row, "INICIO", "INÍCIO", "ENTRADA"));
         const terminoOperacao = parseExcelTime(getVal(row, "TERMINO", "TÉRMINO", "FIM", "SAIDA", "SAÍDA"));
+        const hasInvalidTimeRange = !isTimeRangeValid(inicioOperacao, terminoOperacao);
+        const terminoOperacaoFinal = hasInvalidTimeRange ? null : terminoOperacao;
+        if (hasInvalidTimeRange) adjustedTimeRows++;
         const qtdColaboradores = parseNumericCell(getVal(row, "COL", "COLABORADORES", "QTD COL", "NUM COL")) || 1;
         const valorUnitarioFilme = parseNumericCell(getVal(row, "UNIT. FILME", "UNIT FILME", "VALOR FILME", "VLR FILME"));
         const quantidadeFilme = parseNumericCell(getVal(row, "QTD. FILME", "QTD FILME", "QUANTIDADE FILME", "QTDE FILME"));
         const valorTotalFilme = valorUnitarioFilme * quantidadeFilme;
 
         const unitarioParsed = parseNumericCell(getVal(row, "VALOR UNITARIO", "VAL UNIT.", "VALOR UNIT.", "UNITARIO"));
-        const quantidadeParsed = Math.max(parseNumericCell(getVal(row, "QUANTITATIVO", "QTD", "QUANTIDADE", "VOLUMES")) || 1, 0);
+        const quantidadeParsed = Math.max(parseNumericCell(getVal(row, "QUANTITATIVO", "QUANTIATIVO", "QUANTI", "QTD", "QUANTIDADE", "VOLUMES")) || 1, 0);
 
         let nfRaw = String(getVal(row, "NF", "NOTA FISCAL") || "").toUpperCase().trim();
         if (nfRaw === "S" || nfRaw === "SIM") nfRaw = "SIM";
@@ -467,7 +624,7 @@ const Operacoes = () => {
           fornecedor_id: fornecedorId,
           transportadora_id: transportadoraId,
           entrada_ponto: inicioOperacao,
-          saida_ponto: terminoOperacao,
+          saida_ponto: terminoOperacaoFinal,
           tipo_calculo_snapshot: "volume",
           valor_unitario_snapshot: unitarioParsed,
           quantidade: quantidadeParsed,
@@ -489,6 +646,9 @@ const Operacoes = () => {
               id_planilha: getVal(row, "ID"),
               empresa_planilha: getVal(row, "EMPRESA"),
               forma_pagamento: getVal(row, "FORMA DE PAGAMENTO"),
+              status_original_planilha: getVal(row, "STATUS"),
+              origem_aba: origemAba,
+              horario_inconsistente: hasInvalidTimeRange ? true : null,
               observacao: getVal(row, "OBSERVAÇÃO", "OBSERVACAO"),
             },
             linha_original: normalizeSpreadsheetRow(row),
@@ -508,15 +668,16 @@ const Operacoes = () => {
       toast.success(`${replacedCount} registros operacionais importados com sucesso!`, {
         description:
           datasImportadas.length === 1
-            ? `${ignoredRows > 0 ? `${ignoredRows} linha(s) sem data valida foram ignoradas. ` : ""}Dados atualizados para ${format(new Date(`${datasImportadas[0]}T12:00:00`), "dd/MM/yyyy")}.`
-            : `${ignoredRows > 0 ? `${ignoredRows} linha(s) sem data valida foram ignoradas. ` : ""}Todas as linhas importadas ja estao disponiveis na base de Operacoes.`,
+            ? `${ignoredRows > 0 ? `${ignoredRows} linha(s) sem data valida foram ignoradas. ` : ""}${adjustedTimeRows > 0 ? `${adjustedTimeRows} linha(s) com fim menor que inicio foram ajustadas. ` : ""}Dados atualizados para ${format(new Date(`${datasImportadas[0]}T12:00:00`), "dd/MM/yyyy")}.`
+            : `${ignoredRows > 0 ? `${ignoredRows} linha(s) sem data valida foram ignoradas. ` : ""}${adjustedTimeRows > 0 ? `${adjustedTimeRows} linha(s) com fim menor que inicio foram ajustadas. ` : ""}Todas as linhas importadas ja estao disponiveis na base de Operacoes.`,
       });
       await queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       await queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
       await queryClient.invalidateQueries({ queryKey: ["importacoes"] });
       setImportModalOpen(false);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Falha ao processar a planilha.";
+      console.error("Erro ao processar importacao de planilha:", error);
+      const message = getImportErrorMessage(error);
       toast.error("Erro na importacao de planilha.", { description: message });
       queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
@@ -635,19 +796,45 @@ const Operacoes = () => {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
-              <MetricCard label="Colaboradores" value={totalColaboradores.toString()} icon={Building2} />
-              <MetricCard label="Operacoes" value={operacoes.length.toString()} icon={Boxes} />
-              <MetricCard
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+              <TopKpiCard
+                label="Colaboradores"
+                value={totalColaboradores.toString()}
+                helper={`${operacoes.length} operacao(oes) vinculadas na base do dia`}
+                icon={Building2}
+              />
+              <TopKpiCard
+                label="Operacoes"
+                value={operacoes.length.toString()}
+                helper="Registros operacionais carregados para os filtros atuais"
+                icon={Boxes}
+              />
+              <TopKpiCard
                 label="Total do dia"
                 value={`R$ ${totalCalculado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+                helper="Valor consolidado das operacoes exibidas"
                 icon={Wallet}
-                accent
+                tone="accent"
               />
-              <MetricCard label="Inconsistencias" value={filteredIssues.length.toString()} icon={AlertTriangle} />
-              <MetricCard
+              <TopKpiCard
+                label="Inconsistencias"
+                value={filteredIssues.length.toString()}
+                helper={
+                  filteredIssues.length > 0
+                    ? "Pendencias exigem validacao antes do fechamento"
+                    : "Nenhuma pendencia aberta para este recorte"
+                }
+                icon={AlertTriangle}
+                tone={filteredIssues.length > 0 ? "warning" : "default"}
+              />
+              <TopKpiCard
                 label="Ultima sincronizacao"
-                value={ultimaImportacao ? new Date(ultimaImportacao.data).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "Sem sync"}
+                value={ultimaSincronizacaoLabel}
+                helper={
+                  ultimaImportacao
+                    ? `${ultimaImportacao.origem || "Importacao manual"} registrada hoje`
+                    : "Nenhuma importacao registrada neste filtro"
+                }
                 icon={Upload}
               />
             </div>
