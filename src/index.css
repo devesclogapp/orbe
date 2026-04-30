@@ -222,6 +222,13 @@
     height: 44px;
   }
 
+  .esc-table-header th {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: hsl(var(--muted));
+  }
+
   .esc-table-row {
     @apply border-t border-muted transition-colors cursor-pointer;
     height: 52px;

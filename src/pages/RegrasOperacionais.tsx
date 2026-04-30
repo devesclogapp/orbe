@@ -16,6 +16,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Command,
   CommandEmpty,
@@ -62,6 +63,7 @@ import {
   RegraOperacionalService,
   TipoServicoOperacionalService,
   TransportadoraClienteService,
+  TipoRegraOperacionalService,
 } from "@/services/base.service";
 
 type LookupItem = {
@@ -76,6 +78,7 @@ type FormState = {
   transportadora_id: string;
   fornecedor_id: string;
   produto_carga_id: string;
+  tipo_regra_id: string;
   tipo_calculo: string;
   valor_unitario: string;
   forma_pagamento_id: string;
@@ -84,7 +87,7 @@ type FormState = {
   status: "ativo" | "inativo";
 };
 
-type QuickCreateType = "tipo_servico" | "transportadora" | "fornecedor" | "produto" | "forma_pagamento";
+type QuickCreateType = "tipo_servico" | "transportadora" | "fornecedor" | "produto" | "forma_pagamento" | "tipo_regra";
 
 type QuickCreateState = {
   type: QuickCreateType;
@@ -109,6 +112,7 @@ const EMPTY_FORM: FormState = {
   transportadora_id: "",
   fornecedor_id: "",
   produto_carga_id: "",
+  tipo_regra_id: "",
   tipo_calculo: "",
   valor_unitario: "",
   forma_pagamento_id: "",
@@ -140,6 +144,33 @@ const getTipoCalculoLabel = (tipo?: string | null) =>
   TIPOS_CALCULO.find((item) => item.value === tipo)?.label ?? "Não definido";
 
 const normalizeOptionalId = (value: string) => (value ? value : null);
+
+const isIssRuleDefinition = (rule?: { nome?: string | null; coluna_planilha?: string | null } | null) => {
+  if (!rule) return false;
+
+  const joined = `${rule.nome ?? ""} ${rule.coluna_planilha ?? ""}`
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase();
+
+  return joined.includes("ISS");
+};
+
+const buildRuleDedupKey = (item: any) =>
+  [
+    item.tipo_regra_id ?? "",
+    item.valor_unitario ?? "",
+    item.tipo_calculo ?? "",
+    item.vigencia_inicio ?? "",
+    item.vigencia_fim ?? "",
+    item.ativo ?? "",
+    item.forma_pagamento_id ?? "",
+    item.empresa_id ?? "",
+    item.tipo_servico_id ?? "",
+    item.fornecedor_id ?? "",
+    item.transportadora_id ?? "",
+    item.produto_carga_id ?? "",
+  ].join("|");
 
 const getSimilarItems = (items: LookupItem[], name: string) => {
   const normalizedTarget = normalizeText(name);
@@ -182,6 +213,16 @@ const QuickCreateLookup = ({
 }: QuickCreateLookupProps) => {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+
+  const selectValue = (nextValue: string) => {
+    onChange(nextValue);
+    setOpen(false);
+  };
+
+  const runCreate = (searchTerm: string) => {
+    onCreate(searchTerm);
+    setOpen(false);
+  };
 
   const normalizedSearch = normalizeText(search);
   const selectedItem = items.find((item) => item.id === value) ?? null;
@@ -243,10 +284,9 @@ const QuickCreateLookup = ({
                 <CommandGroup heading="Opções">
                   <CommandItem
                     value="__empty__"
-                    onSelect={() => {
-                      onChange("");
-                      setOpen(false);
-                    }}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => selectValue("")}
+                    onSelect={() => selectValue("")}
                   >
                     <Check className={cn("mr-2 h-4 w-4", value === "" ? "opacity-100" : "opacity-0")} />
                     {emptyOptionLabel}
@@ -259,10 +299,9 @@ const QuickCreateLookup = ({
                   <CommandItem
                     key={item.id}
                     value={item.id}
-                    onSelect={() => {
-                      onChange(item.id);
-                      setOpen(false);
-                    }}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => selectValue(item.id)}
+                    onSelect={() => selectValue(item.id)}
                   >
                     <Check className={cn("mr-2 h-4 w-4", value === item.id ? "opacity-100" : "opacity-0")} />
                     {item.nome}
@@ -278,10 +317,9 @@ const QuickCreateLookup = ({
                 <CommandGroup heading="Ação rápida">
                   <CommandItem
                     value={`create-${search}`}
-                    onSelect={() => {
-                      onCreate(search.trim());
-                      setOpen(false);
-                    }}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => runCreate(search.trim())}
+                    onSelect={() => runCreate(search.trim())}
                   >
                     <Plus className="mr-2 h-4 w-4" />
                     {`Cadastrar novo: ${search.trim()}`}
@@ -293,10 +331,9 @@ const QuickCreateLookup = ({
                 <CommandGroup heading="Ação rápida">
                   <CommandItem
                     value={`create-empty-${label}`}
-                    onSelect={() => {
-                      onCreate("");
-                      setOpen(false);
-                    }}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => runCreate("")}
+                    onSelect={() => runCreate("")}
                   >
                     <Plus className="mr-2 h-4 w-4" />
                     {createLabel ? `Cadastrar ${createLabel.toLowerCase()}` : "Cadastrar novo"}
@@ -319,6 +356,9 @@ const RegrasOperacionais = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [applyGlobally, setApplyGlobally] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [currentStep, setCurrentStep] = useState(1);
   const [quickCreate, setQuickCreate] = useState<QuickCreateState>(null);
   const [transportadoraDraft, setTransportadoraDraft] = useState({
     nome: "",
@@ -340,6 +380,11 @@ const RegrasOperacionais = () => {
   const [formaPagamentoDraft, setFormaPagamentoDraft] = useState({
     nome: "",
   });
+  const [tipoRegraDraft, setTipoRegraDraft] = useState({
+    nome: "",
+    unidade_medida: "monetario",
+    coluna_planilha: "",
+  });
 
   const canAccess = userRole === "Admin" || userRole === "Financeiro";
 
@@ -356,6 +401,7 @@ const RegrasOperacionais = () => {
   });
 
   useEffect(() => {
+    if (applyGlobally) return;
     if (form.empresa_id) return;
     if (perfil?.empresa_id) {
       setForm((prev) => ({ ...prev, empresa_id: perfil.empresa_id }));
@@ -364,7 +410,7 @@ const RegrasOperacionais = () => {
     if ((empresas as any[]).length > 0) {
       setForm((prev) => ({ ...prev, empresa_id: (empresas as any[])[0].id }));
     }
-  }, [empresas, form.empresa_id, perfil]);
+  }, [applyGlobally, empresas, form.empresa_id, perfil]);
 
   const { data: tiposServico = [] } = useQuery({
     queryKey: ["tipos_servico_operacional_regras"],
@@ -396,6 +442,12 @@ const RegrasOperacionais = () => {
     enabled: canAccess,
   });
 
+  const { data: tiposRegra = [] } = useQuery({
+    queryKey: ["tipos_regra_operacional_regras"],
+    queryFn: () => TipoRegraOperacionalService.getAllActive(),
+    enabled: canAccess,
+  });
+
   const { data: regras = [], isLoading: isLoadingRegras } = useQuery({
     queryKey: ["regras_operacionais", form.empresa_id || "all"],
     queryFn: () => RegraOperacionalService.getAll(form.empresa_id || undefined),
@@ -404,28 +456,65 @@ const RegrasOperacionais = () => {
 
   const filteredRules = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) return regras as any[];
+    const dedupedRules = (regras as any[]).filter((item, index, allItems) => {
+      const tr = (tiposRegra as any[]).find((tipo) => tipo.id === item.tipo_regra_id);
+      if (!isIssRuleDefinition(tr)) return true;
 
-    return (regras as any[]).filter((item) =>
+      const key = buildRuleDedupKey({
+        ...item,
+        empresa_id: null,
+        tipo_servico_id: null,
+        fornecedor_id: null,
+        transportadora_id: null,
+        produto_carga_id: null,
+      });
+
+      return index === allItems.findIndex((candidate) => {
+        const candidateTr = (tiposRegra as any[]).find((tipo) => tipo.id === candidate.tipo_regra_id);
+        if (!isIssRuleDefinition(candidateTr)) return false;
+
+        return buildRuleDedupKey({
+          ...candidate,
+          empresa_id: null,
+          tipo_servico_id: null,
+          fornecedor_id: null,
+          transportadora_id: null,
+          produto_carga_id: null,
+        }) === key;
+      });
+    });
+
+    if (!term) return dedupedRules;
+
+    return dedupedRules.filter((item) =>
       [
         item.empresas?.nome,
         item.tipos_servico_operacional?.nome,
         item.transportadoras_clientes?.nome,
         item.fornecedores?.nome,
         item.produtos_carga?.nome,
+        item.tipos_regra_operacional?.nome,
         getTipoCalculoLabel(item.tipo_calculo),
         item.formas_pagamento_operacional?.nome,
       ]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(term)),
     );
-  }, [regras, search]);
+  }, [regras, search, tiposRegra]);
 
   const tipoServicoItems = (tiposServico as any[]).map((item) => ({ ...item, nome: item.nome })) as LookupItem[];
   const transportadoraItems = (transportadoras as any[]).map((item) => ({ ...item, nome: item.nome })) as LookupItem[];
   const fornecedorItems = (fornecedores as any[]).map((item) => ({ ...item, nome: item.nome })) as LookupItem[];
   const produtoItems = (produtos as any[]).map((item) => ({ ...item, nome: item.nome })) as LookupItem[];
   const formaPagamentoItems = (formasPagamento as any[]).map((item) => ({ ...item, nome: item.nome })) as LookupItem[];
+  const tipoRegraSelecionado = useMemo(
+    () => (tiposRegra as any[]).find((item) => item.id === form.tipo_regra_id) ?? null,
+    [form.tipo_regra_id, tiposRegra],
+  );
+  const issRuleSelected = useMemo(
+    () => isIssRuleDefinition(tipoRegraSelecionado),
+    [tipoRegraSelecionado],
+  );
 
   const similarTiposServico = useMemo(
     () => getSimilarItems(tipoServicoItems, tipoServicoDraft.nome),
@@ -450,11 +539,28 @@ const RegrasOperacionais = () => {
 
   const resetForm = () => {
     setEditingId(null);
+    setApplyGlobally(false);
     setForm((prev) => ({
       ...EMPTY_FORM,
       empresa_id: perfil?.empresa_id ?? prev.empresa_id,
     }));
+    setCurrentStep(1);
+    setIsModalOpen(false);
   };
+
+  useEffect(() => {
+    if (!issRuleSelected || !!editingId) return;
+
+    setApplyGlobally(true);
+    setForm((prev) => ({
+      ...prev,
+      empresa_id: "",
+      tipo_servico_id: "",
+      transportadora_id: "",
+      fornecedor_id: "",
+      produto_carga_id: "",
+    }));
+  }, [editingId, issRuleSelected]);
 
   const openQuickCreate = (type: QuickCreateType, suggestedName = "") => {
     setQuickCreate({ type, suggestedName });
@@ -499,27 +605,144 @@ const RegrasOperacionais = () => {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (!form.empresa_id || !form.tipo_servico_id || !form.fornecedor_id || !form.tipo_calculo || !form.valor_unitario || !form.vigencia_inicio) {
-        throw new Error("Preencha empresa, tipo de serviço, fornecedor, tipo de cálculo, valor unitário e vigência inicial.");
+      const shouldApplyGlobally = applyGlobally || issRuleSelected;
+      if (!shouldApplyGlobally && (!form.empresa_id || !form.tipo_servico_id || !form.fornecedor_id)) {
+        throw new Error("Selecione empresa, tipo de serviço e fornecedor.");
+      }
+
+      if (!form.tipo_calculo || !form.valor_unitario || !form.vigencia_inicio) {
+        throw new Error("Preencha tipo de cálculo, valor unitário e vigência inicial.");
       }
 
       if (form.vigencia_fim && form.vigencia_fim < form.vigencia_inicio) {
         throw new Error("A vigência final não pode ser menor que a vigência inicial.");
       }
 
-      const hasConflict =
-        form.status === "ativo"
-          ? await RegraOperacionalService.hasActiveConflict({
-              empresaId: form.empresa_id,
-              tipoServicoId: form.tipo_servico_id,
-              fornecedorId: form.fornecedor_id,
-              transportadoraId: normalizeOptionalId(form.transportadora_id),
-              produtoCargaId: normalizeOptionalId(form.produto_carga_id),
+      if (issRuleSelected && !editingId) {
+        const hasConflict =
+          form.status === "ativo"
+            ? await RegraOperacionalService.hasActiveConflict({
+              empresaId: null,
+              tipoServicoId: null,
+              fornecedorId: null,
+              transportadoraId: null,
+              produtoCargaId: null,
+              tipoRegraId: form.tipo_regra_id,
               tipoCalculo: form.tipo_calculo,
               vigenciaInicio: form.vigencia_inicio,
               vigenciaFim: normalizeOptionalId(form.vigencia_fim),
-              excludeId: editingId ?? undefined,
             })
+            : false;
+
+        if (hasConflict) {
+          throw new Error("Ja existe uma regra global de ISS ativa dentro da vigencia informada.");
+        }
+
+        return RegraOperacionalService.create({
+          empresa_id: null,
+          unidade_id: null,
+          tipo_servico_id: null,
+          fornecedor_id: null,
+          transportadora_id: null,
+          produto_carga_id: null,
+          tipo_regra_id: form.tipo_regra_id,
+          tipo_calculo: form.tipo_calculo,
+          valor_unitario: Number(form.valor_unitario.replace(",", ".")),
+          forma_pagamento_id: normalizeOptionalId(form.forma_pagamento_id),
+          vigencia_inicio: form.vigencia_inicio,
+          vigencia_fim: normalizeOptionalId(form.vigencia_fim),
+          ativo: form.status === "ativo",
+        });
+      }
+
+      if (applyGlobally && !editingId) {
+        const basePayload = {
+          unidade_id: null,
+          transportadora_id: null,
+          produto_carga_id: null,
+          tipo_regra_id: form.tipo_regra_id,
+          tipo_calculo: form.tipo_calculo,
+          valor_unitario: Number(form.valor_unitario.replace(",", ".")),
+          forma_pagamento_id: normalizeOptionalId(form.forma_pagamento_id),
+          vigencia_inicio: form.vigencia_inicio,
+          vigencia_fim: normalizeOptionalId(form.vigencia_fim),
+          ativo: form.status === "ativo",
+        };
+
+        const [allTiposServico, allFornecedores] = await Promise.all([
+          TipoServicoOperacionalService.getAllActive(),
+          FornecedorService.getByEmpresa(),
+        ]);
+
+        if (allTiposServico.length === 0) {
+          throw new Error("NÃ£o existem tipos de serviÃ§o ativos para aplicaÃ§Ã£o global.");
+        }
+
+        if (allFornecedores.length === 0) {
+          throw new Error("NÃ£o existem fornecedores ativos para aplicaÃ§Ã£o global.");
+        }
+
+        const payloads = allFornecedores.flatMap((fornecedor: any) =>
+          allTiposServico.map((tipoServico: any) => ({
+            ...basePayload,
+            empresa_id: fornecedor.empresa_id,
+            fornecedor_id: fornecedor.id,
+            tipo_servico_id: tipoServico.id,
+          })),
+        );
+
+        const availablePayloads: Record<string, any>[] = [];
+        let skippedConflicts = 0;
+
+        for (const payload of payloads) {
+          const hasConflict =
+            payload.ativo
+              ? await RegraOperacionalService.hasActiveConflict({
+                empresaId: payload.empresa_id,
+                tipoServicoId: payload.tipo_servico_id,
+                fornecedorId: payload.fornecedor_id,
+                transportadoraId: null,
+                produtoCargaId: null,
+                tipoRegraId: payload.tipo_regra_id,
+                tipoCalculo: payload.tipo_calculo,
+                vigenciaInicio: payload.vigencia_inicio,
+                vigenciaFim: payload.vigencia_fim,
+              })
+              : false;
+
+          if (hasConflict) {
+            skippedConflicts += 1;
+            continue;
+          }
+
+          availablePayloads.push(payload);
+        }
+
+        if (availablePayloads.length === 0) {
+          throw new Error("Todas as combinaÃ§Ãµes globais jÃ¡ possuem regra ativa nessa vigÃªncia.");
+        }
+
+        const created = await RegraOperacionalService.createMany(availablePayloads);
+        return {
+          createdCount: created.length,
+          skippedConflicts,
+        };
+      }
+
+      const hasConflict =
+        form.status === "ativo"
+          ? await RegraOperacionalService.hasActiveConflict({
+            empresaId: issRuleSelected ? null : normalizeOptionalId(form.empresa_id),
+            tipoServicoId: issRuleSelected ? null : normalizeOptionalId(form.tipo_servico_id),
+            fornecedorId: issRuleSelected ? null : normalizeOptionalId(form.fornecedor_id),
+            transportadoraId: issRuleSelected ? null : normalizeOptionalId(form.transportadora_id),
+            produtoCargaId: issRuleSelected ? null : normalizeOptionalId(form.produto_carga_id),
+            tipoRegraId: form.tipo_regra_id,
+            tipoCalculo: form.tipo_calculo,
+            vigenciaInicio: form.vigencia_inicio,
+            vigenciaFim: normalizeOptionalId(form.vigencia_fim),
+            excludeId: editingId ?? undefined,
+          })
           : false;
 
       if (hasConflict) {
@@ -527,12 +750,13 @@ const RegrasOperacionais = () => {
       }
 
       const payload = {
-        empresa_id: form.empresa_id,
+        empresa_id: issRuleSelected ? null : normalizeOptionalId(form.empresa_id),
         unidade_id: null,
-        tipo_servico_id: form.tipo_servico_id,
-        fornecedor_id: form.fornecedor_id,
-        transportadora_id: normalizeOptionalId(form.transportadora_id),
-        produto_carga_id: normalizeOptionalId(form.produto_carga_id),
+        tipo_servico_id: issRuleSelected ? null : normalizeOptionalId(form.tipo_servico_id),
+        fornecedor_id: issRuleSelected ? null : normalizeOptionalId(form.fornecedor_id),
+        transportadora_id: issRuleSelected ? null : normalizeOptionalId(form.transportadora_id),
+        produto_carga_id: issRuleSelected ? null : normalizeOptionalId(form.produto_carga_id),
+        tipo_regra_id: form.tipo_regra_id,
         tipo_calculo: form.tipo_calculo,
         valor_unitario: Number(form.valor_unitario.replace(",", ".")),
         forma_pagamento_id: normalizeOptionalId(form.forma_pagamento_id),
@@ -545,9 +769,24 @@ const RegrasOperacionais = () => {
         ? RegraOperacionalService.update(editingId, payload)
         : RegraOperacionalService.create(payload);
     },
-    onSuccess: () => {
+    onSuccess: (result: any) => {
       queryClient.invalidateQueries({ queryKey: ["regras_operacionais"] });
-      toast.success(editingId ? "Regra operacional atualizada." : "Regra operacional cadastrada.");
+      if (editingId) {
+        toast.success("Regra operacional atualizada.");
+      } else if (applyGlobally) {
+        const createdCount = result?.createdCount ?? 0;
+        const skippedConflicts = result?.skippedConflicts ?? 0;
+        toast.success("Regras operacionais geradas em lote.", {
+          description:
+            skippedConflicts > 0
+              ? `${createdCount} regra(s) criadas e ${skippedConflicts} combinaÃ§Ã£o(Ãµes) jÃ¡ existentes foram ignoradas.`
+              : `${createdCount} regra(s) criadas com aplicaÃ§Ã£o global.`,
+        });
+      } else if (issRuleSelected) {
+        toast.success("Regra global de ISS cadastrada.");
+      } else {
+        toast.success("Regra operacional cadastrada.");
+      }
       resetForm();
     },
     onError: (error: any) => {
@@ -649,6 +888,29 @@ const RegrasOperacionais = () => {
         };
       }
 
+      if (quickCreate.type === "tipo_regra") {
+        if (!tipoRegraDraft.nome.trim()) {
+          throw new Error("Informe o nome do tipo de regra.");
+        }
+
+        const duplicate = (tiposRegra as any[]).find(
+          (item) => normalizeText(item.nome) === normalizeText(tipoRegraDraft.nome),
+        );
+        if (duplicate) {
+          throw new Error("Já existe um tipo de regra com nome equivalente.");
+        }
+
+        return {
+          type: quickCreate.type,
+          data: await TipoRegraOperacionalService.create({
+            nome: tipoRegraDraft.nome.trim(),
+            unidade_medida: tipoRegraDraft.unidade_medida,
+            coluna_planilha: tipoRegraDraft.coluna_planilha.trim() || null,
+            ativo: true,
+          }),
+        };
+      }
+
       if (!formaPagamentoDraft.nome.trim()) {
         throw new Error("Informe o nome da forma de pagamento.");
       }
@@ -698,6 +960,11 @@ const RegrasOperacionais = () => {
         setForm((prev) => ({ ...prev, forma_pagamento_id: result.data.id }));
       }
 
+      if (result.type === "tipo_regra") {
+        await queryClient.invalidateQueries({ queryKey: ["tipos_regra_operacional_regras"] });
+        setForm((prev) => ({ ...prev, tipo_regra_id: result.data.id }));
+      }
+
       toast.success("Cadastro rápido concluído.");
       closeQuickCreate();
     },
@@ -724,12 +991,14 @@ const RegrasOperacionais = () => {
 
   const handleEdit = (item: any) => {
     setEditingId(item.id);
+    setApplyGlobally(false);
     setForm({
       empresa_id: item.empresa_id ?? "",
       tipo_servico_id: item.tipo_servico_id ?? "",
       transportadora_id: item.transportadora_id ?? "",
       fornecedor_id: item.fornecedor_id ?? "",
       produto_carga_id: item.produto_carga_id ?? "",
+      tipo_regra_id: item.tipo_regra_id ?? "",
       tipo_calculo: item.tipo_calculo ?? "",
       valor_unitario: item.valor_unitario != null ? String(item.valor_unitario) : "",
       forma_pagamento_id: item.forma_pagamento_id ?? "",
@@ -737,6 +1006,8 @@ const RegrasOperacionais = () => {
       vigencia_fim: item.vigencia_fim ?? "",
       status: item.ativo ? "ativo" : "inativo",
     });
+    setCurrentStep(1);
+    setIsModalOpen(true);
   };
 
   useEffect(() => {
@@ -749,12 +1020,12 @@ const RegrasOperacionais = () => {
     quickCreate?.type === "tipo_servico"
       ? similarTiposServico
       : quickCreate?.type === "transportadora"
-      ? similarTransportadoras
-      : quickCreate?.type === "fornecedor"
-        ? similarFornecedores
-        : quickCreate?.type === "produto"
-          ? similarProdutos
-          : similarFormasPagamento;
+        ? similarTransportadoras
+        : quickCreate?.type === "fornecedor"
+          ? similarFornecedores
+          : quickCreate?.type === "produto"
+            ? similarProdutos
+            : similarFormasPagamento;
 
   const useExistingItem = (item: LookupItem) => {
     if (quickCreate?.type === "tipo_servico") {
@@ -814,190 +1085,6 @@ const RegrasOperacionais = () => {
       backPath="/cadastros"
     >
       <div className="space-y-6">
-        <Card className="p-5 border-amber-200 bg-amber-50/40">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 text-amber-600 mt-0.5" />
-            <div>
-              <p className="font-medium text-foreground">Dependência direta da tela `/producao`</p>
-              <p className="text-sm text-muted-foreground">
-                Sem uma regra operacional válida, o valor unitário não é localizado, o sistema exibe
-                “Fornecedor sem valor cadastrado” e o registro da produção permanece bloqueado.
-              </p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-5 space-y-5">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="font-semibold text-foreground">{editingId ? "Editar regra" : "Nova regra operacional"}</h2>
-              <p className="text-sm text-muted-foreground">
-                Empresa, serviço, fornecedor, cálculo e vigência definem a regra usada na produção.
-              </p>
-            </div>
-            {editingId && (
-              <Badge variant="secondary" className="px-3 py-1">
-                Editando
-              </Badge>
-            )}
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <div className="space-y-2">
-              <Label>Empresa / Unidade</Label>
-              <Select
-                value={form.empresa_id}
-                onValueChange={(value) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    empresa_id: value,
-                    transportadora_id: "",
-                    fornecedor_id: "",
-                    produto_carga_id: "",
-                  }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a empresa" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(empresas as any[]).map((empresa) => (
-                    <SelectItem key={empresa.id} value={empresa.id}>
-                      {empresa.nome}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <QuickCreateLookup
-              label="Tipo de serviço"
-              placeholder="Selecione o tipo de serviço"
-              value={form.tipo_servico_id}
-              items={tipoServicoItems}
-              createLabel="Novo tipo"
-              onChange={(value) => setForm((prev) => ({ ...prev, tipo_servico_id: value }))}
-              onCreate={(searchTerm) => openQuickCreate("tipo_servico", searchTerm)}
-            />
-
-            <QuickCreateLookup
-              label="Transportadora / Cliente"
-              placeholder="Selecione, se aplicável"
-              value={form.transportadora_id}
-              items={transportadoraItems}
-              disabled={!form.empresa_id}
-              emptyOptionLabel="Todos"
-              createLabel="Nova transportadora"
-              onChange={(value) => setForm((prev) => ({ ...prev, transportadora_id: value }))}
-              onCreate={(searchTerm) => openQuickCreate("transportadora", searchTerm)}
-            />
-
-            <QuickCreateLookup
-              label="Fornecedor"
-              placeholder="Selecione o fornecedor"
-              value={form.fornecedor_id}
-              items={fornecedorItems}
-              disabled={!form.empresa_id}
-              createLabel="Novo fornecedor"
-              onChange={(value) =>
-                setForm((prev) => ({
-                  ...prev,
-                  fornecedor_id: value,
-                  produto_carga_id: "",
-                }))
-              }
-              onCreate={(searchTerm) => openQuickCreate("fornecedor", searchTerm)}
-            />
-
-            <QuickCreateLookup
-              label="Produto / Carga"
-              placeholder={!form.fornecedor_id ? "Selecione o fornecedor antes" : "Selecione, se aplicável"}
-              value={form.produto_carga_id}
-              items={produtoItems}
-              disabled={!form.fornecedor_id}
-              emptyOptionLabel="Geral"
-              createLabel="Novo produto"
-              onChange={(value) => setForm((prev) => ({ ...prev, produto_carga_id: value }))}
-              onCreate={(searchTerm) => openQuickCreate("produto", searchTerm)}
-            />
-
-            <div className="space-y-2">
-              <Label>Tipo de cálculo</Label>
-              <Select value={form.tipo_calculo} onValueChange={(value) => setForm((prev) => ({ ...prev, tipo_calculo: value }))}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o cálculo" />
-                </SelectTrigger>
-                <SelectContent>
-                  {TIPOS_CALCULO.map((item) => (
-                    <SelectItem key={item.value} value={item.value}>
-                      {item.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Valor unitário</Label>
-              <Input
-                type="number"
-                min="0"
-                step="0.0001"
-                value={form.valor_unitario}
-                onChange={(event) => setForm((prev) => ({ ...prev, valor_unitario: event.target.value }))}
-                placeholder="0,3500"
-              />
-            </div>
-
-            <QuickCreateLookup
-              label="Forma de pagamento padrão"
-              placeholder="Opcional"
-              value={form.forma_pagamento_id}
-              items={formaPagamentoItems}
-              emptyOptionLabel="Não definir"
-              createLabel="Nova forma"
-              onChange={(value) => setForm((prev) => ({ ...prev, forma_pagamento_id: value }))}
-              onCreate={(searchTerm) => openQuickCreate("forma_pagamento", searchTerm)}
-            />
-
-            <div className="space-y-2">
-              <Label>Vigência inicial</Label>
-              <Input type="date" value={form.vigencia_inicio} onChange={(event) => setForm((prev) => ({ ...prev, vigencia_inicio: event.target.value }))} />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Vigência final</Label>
-              <Input type="date" value={form.vigencia_fim} onChange={(event) => setForm((prev) => ({ ...prev, vigencia_fim: event.target.value }))} />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Status</Label>
-              <Select value={form.status} onValueChange={(value: "ativo" | "inativo") => setForm((prev) => ({ ...prev, status: value }))}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {STATUS_OPTIONS.map((item) => (
-                    <SelectItem key={item.value} value={item.value}>
-                      {item.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
-              <Save className="h-4 w-4 mr-2" />
-              {editingId ? "Salvar alterações" : "Cadastrar regra"}
-            </Button>
-            <Button type="button" variant="outline" onClick={resetForm}>
-              Limpar formulário
-            </Button>
-          </div>
-        </Card>
-
         <Card className="p-5 space-y-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
@@ -1006,12 +1093,18 @@ const RegrasOperacionais = () => {
                 Edite valores ou inative regras para impedir novos lançamentos com essa configuração.
               </p>
             </div>
-            <Input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Buscar por empresa, serviço, fornecedor..."
-              className="md:max-w-sm"
-            />
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Buscar por empresa, serviço..."
+                className="md:max-w-sm"
+              />
+              <Button onClick={() => { setIsModalOpen(true); setCurrentStep(1); }}>
+                <Plus className="h-4 w-4 mr-2" />
+                Nova Regra
+              </Button>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -1024,7 +1117,7 @@ const RegrasOperacionais = () => {
                   <TableHead>Fornecedor</TableHead>
                   <TableHead>Produto / Carga</TableHead>
                   <TableHead>Tipo de cálculo</TableHead>
-                  <TableHead>Valor unitário</TableHead>
+                  <TableHead>Valor / Tipo de Regra</TableHead>
                   <TableHead>Vigência</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
@@ -1039,44 +1132,58 @@ const RegrasOperacionais = () => {
                   </TableRow>
                 )}
 
-                {filteredRules.map((item: any) => (
-                  <TableRow key={item.id}>
-                    <TableCell>{item.empresas?.nome ?? "-"}</TableCell>
-                    <TableCell>{item.tipos_servico_operacional?.nome ?? "-"}</TableCell>
-                    <TableCell>{item.transportadoras_clientes?.nome ?? "Todas"}</TableCell>
-                    <TableCell>{item.fornecedores?.nome ?? "-"}</TableCell>
-                    <TableCell>{item.produtos_carga?.nome ?? "Geral"}</TableCell>
-                    <TableCell>{getTipoCalculoLabel(item.tipo_calculo)}</TableCell>
-                    <TableCell>{formatCurrency(Number(item.valor_unitario || 0))}</TableCell>
-                    <TableCell>
-                      {formatDate(item.vigencia_inicio)}
-                      <span className="text-muted-foreground"> até {formatDate(item.vigencia_fim)}</span>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={cn(item.ativo ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100" : "bg-zinc-200 text-zinc-700 hover:bg-zinc-200")}>
-                        {item.ativo ? "Ativo" : "Inativo"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button type="button" size="sm" variant="outline" onClick={() => handleEdit(item)}>
-                          <Pencil className="h-4 w-4 mr-2" />
-                          Editar
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          disabled={!item.ativo || inactivateMutation.isPending}
-                          onClick={() => inactivateMutation.mutate(item.id)}
-                        >
-                          <Ban className="h-4 w-4 mr-2" />
-                          Inativar
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {filteredRules.map((item: any) => {
+                  const tr = (tiposRegra as any[]).find((t) => t.id === item.tipo_regra_id);
+                  const isPct = tr?.unidade_medida === "percentual";
+                  const isGlobalIssRule = isIssRuleDefinition(tr);
+                  return (
+                    <TableRow key={item.id}>
+                      <TableCell>{isGlobalIssRule ? "Global" : item.empresas?.nome ?? "-"}</TableCell>
+                      <TableCell>{isGlobalIssRule ? "Todos" : item.tipos_servico_operacional?.nome ?? "-"}</TableCell>
+                      <TableCell>{isGlobalIssRule ? "Todas" : item.transportadoras_clientes?.nome ?? "Todas"}</TableCell>
+                      <TableCell>{isGlobalIssRule ? "Todos" : item.fornecedores?.nome ?? "-"}</TableCell>
+                      <TableCell>{item.produtos_carga?.nome ?? "Geral"}</TableCell>
+                      <TableCell>{getTipoCalculoLabel(item.tipo_calculo)}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-1">
+                          <span className="font-medium">
+                            {isPct ? `${Number(item.valor_unitario)}%` : formatCurrency(Number(item.valor_unitario || 0))}
+                          </span>
+                          <Badge variant="outline" className="w-fit text-[10px] h-4">
+                            {tr?.nome ?? "Taxa Operacional"}
+                          </Badge>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {formatDate(item.vigencia_inicio)}
+                        <span className="text-muted-foreground"> até {formatDate(item.vigencia_fim)}</span>
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={cn(item.ativo ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100" : "bg-zinc-200 text-zinc-700 hover:bg-zinc-200")}>
+                          {item.ativo ? "Ativo" : "Inativo"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button type="button" size="sm" variant="outline" onClick={() => handleEdit(item)}>
+                            <Pencil className="h-4 w-4 mr-2" />
+                            Editar
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={!item.ativo || inactivateMutation.isPending}
+                            onClick={() => inactivateMutation.mutate(item.id)}
+                          >
+                            <Ban className="h-4 w-4 mr-2" />
+                            Inativar
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
@@ -1091,6 +1198,7 @@ const RegrasOperacionais = () => {
               {quickCreate?.type === "fornecedor" && "Cadastro rápido de fornecedor"}
               {quickCreate?.type === "produto" && "Cadastro rápido de produto / carga"}
               {quickCreate?.type === "forma_pagamento" && "Cadastro rápido de forma de pagamento"}
+              {quickCreate?.type === "tipo_regra" && "Cadastro rápido de tipo de regra"}
             </DialogTitle>
             <DialogDescription>
               O item salvo entra na base operacional, fica disponível nesta tela e também passa a aparecer em `/producao`.
@@ -1209,6 +1317,46 @@ const RegrasOperacionais = () => {
               </div>
             )}
 
+            {quickCreate?.type === "tipo_regra" && (
+              <>
+                <div className="space-y-2">
+                  <Label>Nome da Regra / Variável</Label>
+                  <Input
+                    value={tipoRegraDraft.nome}
+                    onChange={(event) => setTipoRegraDraft((prev) => ({ ...prev, nome: event.target.value }))}
+                    placeholder="Ex.: ISS, Adicional Noturno, etc."
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Tipo de Valor</Label>
+                  <Select
+                    value={tipoRegraDraft.unidade_medida}
+                    onValueChange={(value) => setTipoRegraDraft((prev) => ({ ...prev, unidade_medida: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="monetario">Monetário (R$)</SelectItem>
+                      <SelectItem value="percentual">Percentual (%)</SelectItem>
+                      <SelectItem value="quantidade">Quantidade (un)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Vincular a Coluna da Planilha</Label>
+                  <Input
+                    value={tipoRegraDraft.coluna_planilha}
+                    onChange={(event) => setTipoRegraDraft((prev) => ({ ...prev, coluna_planilha: event.target.value }))}
+                    placeholder="Ex.: % ISS (Nome exato da coluna)"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Ao realizar importação, o sistema tentará associar automaticamente a esta coluna.
+                  </p>
+                </div>
+              </>
+            )}
+
             {similarItemsForDialog.length > 0 && (
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
                 <div className="flex items-start gap-2 text-amber-900">
@@ -1239,6 +1387,295 @@ const RegrasOperacionais = () => {
               <Save className="h-4 w-4 mr-2" />
               Salvar cadastro rápido
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={isModalOpen} onOpenChange={(open) => { setIsModalOpen(open); if (!open) resetForm(); }}>
+        <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingId ? "Editar regra operacional" : "Nova regra operacional"}</DialogTitle>
+            <DialogDescription>
+              Preencha as informações guiadas para configurar o cálculo aplicado na produção.
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Stepper Wizard */}
+          <div className="flex items-center justify-between mb-2 mt-4 relative">
+            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-[2px] bg-border -z-10" />
+            {[1, 2, 3].map((step) => (
+              <div key={step} className="flex flex-col items-center gap-1 bg-background px-2">
+                <div className={cn("flex items-center justify-center h-8 w-8 rounded-full border-2 text-sm font-semibold transition-colors duration-200",
+                  currentStep === step ? "border-primary bg-primary text-primary-foreground" :
+                    currentStep > step ? "border-primary bg-primary/10 text-primary" : "border-muted-foreground/30 text-muted-foreground/50 bg-background")}>
+                  {currentStep > step ? <Check className="h-4 w-4" /> : step}
+                </div>
+                <span className={cn("text-xs font-medium", currentStep === step ? "text-foreground" : "text-muted-foreground/70")}>
+                  {step === 1 ? "Identificação" : step === 2 ? "Parâmetros" : "Validade"}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div className="py-2 min-h-[300px]">
+            {currentStep === 1 && (
+              <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="border-b pb-2 mb-4">
+                  <h3 className="text-sm font-medium tracking-tight text-foreground/80">
+                    1. Identificação Operacional
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Defina a quem e a quais serviços essa regra se aplica.
+                  </p>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="md:col-span-2 rounded-xl border border-dashed border-primary/30 bg-primary/5 p-4">
+                    <div className="flex items-start gap-3">
+                      <Checkbox
+                        id="apply-global"
+                        checked={applyGlobally || issRuleSelected}
+                        disabled={!!editingId || issRuleSelected}
+                        onCheckedChange={(checked) => {
+                          if (issRuleSelected) return;
+                          const enabled = checked === true;
+                          setApplyGlobally(enabled);
+
+                          if (enabled) {
+                            setForm((prev) => ({
+                              ...prev,
+                              empresa_id: "",
+                              tipo_servico_id: "",
+                              transportadora_id: "",
+                              fornecedor_id: "",
+                              produto_carga_id: "",
+                            }));
+                            return;
+                          }
+
+                          setForm((prev) => ({
+                            ...prev,
+                            empresa_id: perfil?.empresa_id ?? (empresas as any[])[0]?.id ?? "",
+                          }));
+                        }}
+                      />
+                      <div className="space-y-1">
+                        <Label htmlFor="apply-global" className="cursor-pointer text-sm font-medium">
+                          Aplicar globalmente
+                        </Label>
+                        <p className="text-xs text-muted-foreground">
+                          {issRuleSelected
+                            ? "Regras da coluna ISS sao sempre globais. O mesmo valor podera ser aplicado em todas as linhas da coluna, sem depender de fornecedor, fabricante ou TC."
+                            : "Gera automaticamente a regra para todas as empresas, todos os fornecedores e todos os tipos de serviÃ§o. Transportadora e produto ficam como regra geral."}
+                        </p>
+                        {!!editingId && !issRuleSelected && (
+                          <p className="text-xs text-muted-foreground">
+                            A aplicaÃ§Ã£o global fica disponÃ­vel apenas para novas regras.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Empresa / Unidade</Label>
+                    <Select
+                      value={form.empresa_id}
+                      disabled={applyGlobally}
+                      onValueChange={(value) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          empresa_id: value,
+                          transportadora_id: "",
+                          fornecedor_id: "",
+                          produto_carga_id: "",
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione a empresa" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(empresas as any[]).map((empresa) => (
+                          <SelectItem key={empresa.id} value={empresa.id}>
+                            {empresa.nome}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <QuickCreateLookup
+                    label="Tipo de serviço"
+                    placeholder="Selecione o tipo de serviço"
+                    value={form.tipo_servico_id}
+                    items={tipoServicoItems}
+                    disabled={applyGlobally}
+                    createLabel="Novo tipo"
+                    onChange={(value) => setForm((prev) => ({ ...prev, tipo_servico_id: value }))}
+                    onCreate={(searchTerm) => openQuickCreate("tipo_servico", searchTerm)}
+                  />
+
+                  <QuickCreateLookup
+                    label="Transportadora / Cliente"
+                    placeholder="Selecione, se aplicável"
+                    value={form.transportadora_id}
+                    items={transportadoraItems}
+                    disabled={applyGlobally || !form.empresa_id}
+                    emptyOptionLabel="Todos"
+                    createLabel="Nova transportadora"
+                    onChange={(value) => setForm((prev) => ({ ...prev, transportadora_id: value }))}
+                    onCreate={(searchTerm) => openQuickCreate("transportadora", searchTerm)}
+                  />
+
+                  <QuickCreateLookup
+                    label="Fornecedor"
+                    placeholder={applyGlobally ? "Todos os fornecedores" : "Selecione o fornecedor"}
+                    value={form.fornecedor_id}
+                    items={fornecedorItems}
+                    disabled={applyGlobally || !form.empresa_id}
+                    createLabel="Novo fornecedor"
+                    onChange={(value) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        fornecedor_id: value,
+                        produto_carga_id: "",
+                      }))
+                    }
+                    onCreate={(searchTerm) => openQuickCreate("fornecedor", searchTerm)}
+                  />
+
+                  <QuickCreateLookup
+                    label="Produto / Carga"
+                    placeholder={!form.fornecedor_id ? "Selecione o fornecedor antes" : "Selecione, se aplicável"}
+                    value={form.produto_carga_id}
+                    items={produtoItems}
+                    disabled={applyGlobally || !form.fornecedor_id}
+                    emptyOptionLabel="Geral"
+                    createLabel="Novo produto"
+                    onChange={(value) => setForm((prev) => ({ ...prev, produto_carga_id: value }))}
+                    onCreate={(searchTerm) => openQuickCreate("produto", searchTerm)}
+                  />
+                </div>
+              </div>
+            )}
+
+            {currentStep === 2 && (
+              <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="border-b pb-2 mb-4">
+                  <h3 className="text-sm font-medium tracking-tight text-foreground/80">
+                    2. Parâmetros da Regra
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Configure como o cálculo será realizado e o valor aplicado.
+                  </p>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Tipo de cálculo</Label>
+                    <Select value={form.tipo_calculo} onValueChange={(value) => setForm((prev) => ({ ...prev, tipo_calculo: value }))}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione o cálculo" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TIPOS_CALCULO.map((item) => (
+                          <SelectItem key={item.value} value={item.value}>
+                            {item.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <QuickCreateLookup
+                    label="Tipo de Regra / Variável"
+                    placeholder="Selecione o tipo de regra"
+                    value={form.tipo_regra_id}
+                    items={(tiposRegra as any[]).map(t => ({ id: t.id, nome: t.nome }))}
+                    createLabel="Nova regra"
+                    onChange={(value) => setForm((prev) => ({ ...prev, tipo_regra_id: value }))}
+                    onCreate={(searchTerm) => openQuickCreate("tipo_regra", searchTerm)}
+                  />
+
+                  <div className="space-y-2">
+                    <Label>Valor / Quantidade / Percentual</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.0001"
+                      value={form.valor_unitario}
+                      onChange={(event) => setForm((prev) => ({ ...prev, valor_unitario: event.target.value }))}
+                      placeholder="Ex: 5 ou 0,3500"
+                    />
+                  </div>
+
+                  <QuickCreateLookup
+                    label="Forma de pagamento padrão"
+                    placeholder="Opcional"
+                    value={form.forma_pagamento_id}
+                    items={formaPagamentoItems}
+                    emptyOptionLabel="Não definir"
+                    createLabel="Nova forma"
+                    onChange={(value) => setForm((prev) => ({ ...prev, forma_pagamento_id: value }))}
+                    onCreate={(searchTerm) => openQuickCreate("forma_pagamento", searchTerm)}
+                  />
+                </div>
+              </div>
+            )}
+
+            {currentStep === 3 && (
+              <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="border-b pb-2 mb-4">
+                  <h3 className="text-sm font-medium tracking-tight text-foreground/80">
+                    3. Validade e Situação
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Controle a partir de quando esta regra é válida.
+                  </p>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Vigência inicial</Label>
+                    <Input type="date" value={form.vigencia_inicio} onChange={(event) => setForm((prev) => ({ ...prev, vigencia_inicio: event.target.value }))} />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Vigência final</Label>
+                    <Input type="date" value={form.vigencia_fim} onChange={(event) => setForm((prev) => ({ ...prev, vigencia_fim: event.target.value }))} />
+                  </div>
+
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Status</Label>
+                    <Select value={form.status} onValueChange={(value: "ativo" | "inativo") => setForm((prev) => ({ ...prev, status: value }))}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {STATUS_OPTIONS.map((item) => (
+                          <SelectItem key={item.value} value={item.value}>
+                            {item.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="flex justify-between sm:justify-between w-full border-t pt-4">
+            <Button type="button" variant="outline" onClick={() => currentStep > 1 ? setCurrentStep(currentStep - 1) : setIsModalOpen(false)}>
+              {currentStep > 1 ? "Voltar" : "Cancelar"}
+            </Button>
+            {currentStep < 3 ? (
+              <Button type="button" onClick={() => setCurrentStep(currentStep + 1)}>
+                Avançar
+              </Button>
+            ) : (
+              <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+                <Save className="h-4 w-4 mr-2" />
+                {editingId ? "Salvar alterações" : "Cadastrar regra"}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

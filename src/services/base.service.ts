@@ -734,6 +734,7 @@ class RegraOperacionalServiceClass {
       .select(`
         *,
         empresas:empresa_id(nome),
+        tipos_regra_operacional:tipo_regra_id(nome, coluna_planilha, unidade_medida),
         tipos_servico_operacional:tipo_servico_id(nome),
         transportadoras_clientes:transportadora_id(nome),
         fornecedores:fornecedor_id(nome),
@@ -744,7 +745,7 @@ class RegraOperacionalServiceClass {
       .order('vigencia_inicio', { ascending: false })
       .order('created_at', { ascending: false });
 
-    if (empresaId) query = query.eq('empresa_id', empresaId);
+    if (empresaId) query = query.or(`empresa_id.eq.${empresaId},empresa_id.is.null`);
 
     const { data, error } = await query;
     if (error) throw error;
@@ -760,6 +761,18 @@ class RegraOperacionalServiceClass {
 
     if (error) throw error;
     return data;
+  }
+
+  async createMany(payloads: Record<string, any>[]) {
+    if (payloads.length === 0) return [];
+
+    const { data, error } = await operationalClient
+      .from('fornecedor_valores_servico')
+      .insert(payloads)
+      .select();
+
+    if (error) throw error;
+    return data ?? [];
   }
 
   async update(id: string, payload: Record<string, any>) {
@@ -779,11 +792,12 @@ class RegraOperacionalServiceClass {
   }
 
   async hasActiveConflict(params: {
-    empresaId: string;
-    tipoServicoId: string;
-    fornecedorId: string;
+    empresaId?: string | null;
+    tipoServicoId?: string | null;
+    fornecedorId?: string | null;
     transportadoraId?: string | null;
     produtoCargaId?: string | null;
+    tipoRegraId?: string;
     tipoCalculo: string;
     vigenciaInicio: string;
     vigenciaFim?: string | null;
@@ -792,11 +806,24 @@ class RegraOperacionalServiceClass {
     let query = operationalClient
       .from('fornecedor_valores_servico')
       .select('id, vigencia_inicio, vigencia_fim')
-      .eq('empresa_id', params.empresaId)
-      .eq('tipo_servico_id', params.tipoServicoId)
-      .eq('fornecedor_id', params.fornecedorId)
       .eq('tipo_calculo', params.tipoCalculo)
       .eq('ativo', true);
+
+    query = params.empresaId
+      ? query.eq('empresa_id', params.empresaId)
+      : query.is('empresa_id', null);
+
+    query = params.tipoServicoId
+      ? query.eq('tipo_servico_id', params.tipoServicoId)
+      : query.is('tipo_servico_id', null);
+
+    query = params.fornecedorId
+      ? query.eq('fornecedor_id', params.fornecedorId)
+      : query.is('fornecedor_id', null);
+
+    if (params.tipoRegraId) {
+      query = query.eq('tipo_regra_id', params.tipoRegraId);
+    }
 
     query = params.transportadoraId
       ? query.eq('transportadora_id', params.transportadoraId)
@@ -886,6 +913,26 @@ class OperacaoProducaoServiceClass {
     return registro;
   }
 
+  async update(id: string, payload: Record<string, any>) {
+    const { data, error } = await operationalClient
+      .from('operacoes_producao')
+      .update(payload)
+      .eq('id', id)
+      .select(`
+        *,
+        colaboradores:colaborador_id(nome, cargo),
+        tipos_servico_operacional:tipo_servico_id(nome),
+        transportadoras_clientes:transportadora_id(nome),
+        fornecedores:fornecedor_id(nome),
+        produtos_carga:produto_carga_id(nome),
+        formas_pagamento_operacional:forma_pagamento_id(nome)
+      `)
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
   async getByDate(date: string, empresaId?: string, unidadeId?: string | null) {
     let query = operationalClient
       .from('operacoes_producao')
@@ -946,7 +993,7 @@ class OperacaoProducaoServiceClass {
       .from('operacoes_producao')
       .delete()
       .select('id')
-      .eq('origem_dado', 'importacao');
+      .in('origem_dado', ['importacao', 'ajuste']);
 
     if (empresaId) query = query.eq('empresa_id', empresaId);
     if (dataInicio) query = query.gte('data_operacao', dataInicio);
@@ -1025,3 +1072,27 @@ export const AIService = {
     return res;
   }
 };
+
+export class TipoRegraOperacionalServiceClass {
+  async getAllActive() {
+    const { data, error } = await supabase
+      .from('tipos_regra_operacional' as any)
+      .select('*')
+      .eq('ativo', true)
+      .order('nome', { ascending: true });
+    if (error) throw error;
+    return data ?? [];
+  }
+
+  async create(payload: any) {
+    const { data, error } = await supabase
+      .from('tipos_regra_operacional' as any)
+      .insert(payload)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  }
+}
+
+export const TipoRegraOperacionalService = new TipoRegraOperacionalServiceClass();

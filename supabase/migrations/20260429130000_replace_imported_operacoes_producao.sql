@@ -74,21 +74,54 @@ BEGIN
     NULLIF(item->>'saida_ponto', '')::time,
     COALESCE(item->>'tipo_calculo_snapshot', 'volume'),
     COALESCE((item->>'valor_unitario_snapshot')::numeric, 0),
-    COALESCE((item->>'quantidade')::numeric, 0),
-    COALESCE((item->>'quantidade_colaboradores')::integer, 1),
-    COALESCE((item->>'valor_total')::numeric, 0),
+    GREATEST(COALESCE((item->>'quantidade')::numeric, 0), 0),
+    GREATEST(COALESCE((item->>'quantidade_colaboradores')::integer, 1), 1),
+    
+    -- Engine Matemático: Total = (Quantidade * Valor Unitario) + ISS
+    (COALESCE((item->>'quantidade')::numeric, 0) * COALESCE((item->>'valor_unitario_snapshot')::numeric, 0)) + 
+    ((COALESCE((item->>'quantidade')::numeric, 0) * COALESCE((item->>'valor_unitario_snapshot')::numeric, 0)) * (COALESCE((item->>'percentual_iss')::numeric, 0) / 100)),
+    
     NULLIF(item->>'placa', ''),
-    NULLIF(item->>'nf_numero', ''),
+    
+    -- Normalização NF
+    CASE 
+      WHEN UPPER(TRIM(item->>'nf_numero')) IN ('SIM', 'S') THEN 'SIM'
+      WHEN UPPER(TRIM(item->>'nf_numero')) IN ('NAO', 'NÃO', 'N') THEN 'NÃO'
+      ELSE NULL 
+    END,
     NULLIF(item->>'ctrc', ''),
-    COALESCE((item->>'percentual_iss')::numeric, 0),
-    COALESCE((item->>'valor_descarga')::numeric, 0),
-    COALESCE((item->>'custo_com_iss')::numeric, 0),
+    
+    -- Regra 2: ISS %
+    CASE 
+      WHEN UPPER(TRIM(item->>'nf_numero')) IN ('SIM', 'S') THEN 5.0
+      WHEN UPPER(TRIM(item->>'nf_numero')) IN ('NAO', 'NÃO', 'N') THEN 0.0
+      ELSE COALESCE((item->>'percentual_iss')::numeric, 0)
+    END,
+    
+    -- Regra 1: Descarga = QTD * Valor Unit.
+    (COALESCE((item->>'quantidade')::numeric, 0) * COALESCE((item->>'valor_unitario_snapshot')::numeric, 0)),
+    
+    -- Custo ISS
+    ((COALESCE((item->>'quantidade')::numeric, 0) * COALESCE((item->>'valor_unitario_snapshot')::numeric, 0)) * 
+    (
+      CASE 
+        WHEN UPPER(TRIM(item->>'nf_numero')) IN ('SIM', 'S') THEN 5.0
+        WHEN UPPER(TRIM(item->>'nf_numero')) IN ('NAO', 'NÃO', 'N') THEN 0.0
+        ELSE COALESCE((item->>'percentual_iss')::numeric, 0)
+      END
+    ) / 100),
+    
     COALESCE((item->>'valor_unitario_filme')::numeric, 0),
     COALESCE((item->>'quantidade_filme')::numeric, 0),
     COALESCE((item->>'valor_total_filme')::numeric, 0),
     COALESCE((item->>'valor_faturamento_nf')::numeric, 0),
     COALESCE(item->'avaliacao_json', '{}'::jsonb),
-    COALESCE(item->>'status', 'pendente'),
+    
+    -- Validação: Status Pendente se sem NF
+    CASE
+      WHEN item->>'nf_numero' IS NULL OR item->>'nf_numero' = '' THEN 'pendente'
+      ELSE COALESCE(item->>'status', 'pendente')
+    END,
     COALESCE(item->>'origem_dado', 'importacao')
   FROM jsonb_array_elements(p_items) AS item;
 

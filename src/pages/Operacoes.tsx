@@ -10,6 +10,7 @@ import {
   Building2,
   Calendar as CalendarIcon,
   ChevronDown,
+  ExternalLink,
   FileUp,
   Loader2,
   Upload,
@@ -165,6 +166,18 @@ const parseExcelDate = (val: RowValue): string | null => {
   return null;
 };
 
+const parseNumericCell = (val: RowValue): number => {
+  if (val === null || val === undefined || val === "") return 0;
+  if (typeof val === "number") return Number.isFinite(val) ? val : 0;
+
+  const normalized = String(val)
+    .replace(/[R$\sA-Za-z]/gi, "")
+    .replace(/\./g, "")
+    .replace(",", ".");
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 const Operacoes = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -249,9 +262,7 @@ const Operacoes = () => {
 
   const clearMutation = useMutation({
     mutationFn: () => OperacaoProducaoService.deleteImported(
-      selectedEmpresaId === "all" ? undefined : selectedEmpresaId,
-      dateValue,
-      dateValue
+      selectedEmpresaId === "all" ? undefined : selectedEmpresaId
     ),
     onSuccess: (deletedCount: number) => {
       if (deletedCount === 0) {
@@ -265,8 +276,8 @@ const Operacoes = () => {
       toast.success("Importacoes limpas com sucesso!", {
         description:
           selectedEmpresaId === "all"
-            ? `${deletedCount} registro(s) importado(s) de ${format(selectedDate, "dd/MM/yyyy")} foram removidos.`
-            : `${deletedCount} registro(s) importado(s) da empresa selecionada em ${format(selectedDate, "dd/MM/yyyy")} foram removidos.`,
+            ? `Todos os ${deletedCount} registros importados pendentes foram removidos desta visão.`
+            : `Todos os ${deletedCount} registros importados da empresa selecionada foram removidos.`,
       });
       queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
@@ -430,7 +441,24 @@ const Operacoes = () => {
 
         const inicioOperacao = parseExcelTime(getVal(row, "INICIO", "INÍCIO", "ENTRADA"));
         const terminoOperacao = parseExcelTime(getVal(row, "TERMINO", "TÉRMINO", "FIM", "SAIDA", "SAÍDA"));
-        const qtdColaboradores = Number(getVal(row, "COL", "COLABORADORES", "QTD COL", "NUM COL") || 1);
+        const qtdColaboradores = parseNumericCell(getVal(row, "COL", "COLABORADORES", "QTD COL", "NUM COL")) || 1;
+        const valorUnitarioFilme = parseNumericCell(getVal(row, "UNIT. FILME", "UNIT FILME", "VALOR FILME", "VLR FILME"));
+        const quantidadeFilme = parseNumericCell(getVal(row, "QTD. FILME", "QTD FILME", "QUANTIDADE FILME", "QTDE FILME"));
+        const valorTotalFilme = valorUnitarioFilme * quantidadeFilme;
+
+        const unitarioParsed = parseNumericCell(getVal(row, "VALOR UNITARIO", "VAL UNIT.", "VALOR UNIT.", "UNITARIO"));
+        const quantidadeParsed = Math.max(parseNumericCell(getVal(row, "QUANTITATIVO", "QTD", "QUANTIDADE", "VOLUMES")) || 1, 0);
+
+        let nfRaw = String(getVal(row, "NF", "NOTA FISCAL") || "").toUpperCase().trim();
+        if (nfRaw === "S" || nfRaw === "SIM") nfRaw = "SIM";
+        if (nfRaw === "N" || nfRaw === "NAO" || nfRaw === "NÃO") nfRaw = "NÃO";
+
+        const issRawValue = parseNumericCell(getVal(row, "LÍQUOTA DE ISS", "LIQUOTA DE ISS", "% ISS", "ISS"));
+        const pIssFinal = nfRaw === "SIM" ? 5 : (nfRaw === "NÃO" ? 0 : issRawValue);
+
+        const valorDescargaP = quantidadeParsed * unitarioParsed;
+        const custoIssP = valorDescargaP * (pIssFinal / 100);
+        const valorTotalP = valorDescargaP + custoIssP;
 
         importedOperations.push({
           data_operacao: dataFinal,
@@ -441,20 +469,20 @@ const Operacoes = () => {
           entrada_ponto: inicioOperacao,
           saida_ponto: terminoOperacao,
           tipo_calculo_snapshot: "volume",
-          valor_unitario_snapshot: Number(getVal(row, "VALOR UNITARIO", "VAL UNIT.", "VALOR UNIT.", "UNITARIO") || 0),
-          quantidade: Number(getVal(row, "QUANTITATIVO", "QTD", "QUANTIDADE", "VOLUMES") || 1),
+          valor_unitario_snapshot: unitarioParsed,
+          quantidade: quantidadeParsed,
           quantidade_colaboradores: qtdColaboradores,
-          valor_total: Number(getVal(row, "TOTAL", "VALOR TOTAL") || 0),
+          valor_total: valorTotalP,
           placa: getVal(row, "PLACA"),
-          nf_numero: getVal(row, "NF", "NOTA FISCAL"),
+          nf_numero: nfRaw || "",
           ctrc: getVal(row, "CTRC"),
-          percentual_iss: Number(getVal(row, "LÍQUOTA DE ISS", "LIQUOTA DE ISS", "% ISS", "ISS") || 0),
-          valor_descarga: Number(getVal(row, "VALOR DE DESCARGA", "VAL DESCARGA", "DESCARGA") || 0),
-          custo_com_iss: Number(getVal(row, "CUSTO COM ISS", "CUSTO ISS", "ISS TOTAL") || 0),
-          valor_unitario_filme: Number(getVal(row, "UNIT FILME", "VALOR FILME") || 0),
-          quantidade_filme: Number(getVal(row, "QTD FILME", "QUANTIDADE FILME") || 0),
-          valor_total_filme: Number(getVal(row, "TOTAL FILME", "CUSTO FILME") || 0),
-          valor_faturamento_nf: Number(getVal(row, "FATURAMENTO - NF", "FATURAMENTO", "LIQUIDO") || 0),
+          percentual_iss: pIssFinal,
+          valor_descarga: valorDescargaP,
+          custo_com_iss: custoIssP,
+          valor_unitario_filme: valorUnitarioFilme,
+          quantidade_filme: quantidadeFilme,
+          valor_total_filme: valorTotalFilme,
+          valor_faturamento_nf: parseNumericCell(getVal(row, "FATURAMENTO - NF", "FATURAMENTO", "LIQUIDO", "FATURAMENTO NF")),
           avaliacao_json: {
             origem_importacao: "planilha",
             contexto_importacao: {
@@ -562,6 +590,10 @@ const Operacoes = () => {
               <Button variant="outline" size="sm" onClick={() => navigate("/operacional/dashboard")}>
                 <Upload className="h-4 w-4 mr-2" />
                 Ver dashboard
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => navigate("/cadastros/regras-operacionais")}>
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Regras operacionais
               </Button>
               <Button
                 variant="outline"
