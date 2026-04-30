@@ -748,7 +748,14 @@ class RegraOperacionalServiceClass {
     if (empresaId) query = query.or(`empresa_id.eq.${empresaId},empresa_id.is.null`);
 
     const { data, error } = await query;
-    if (error) throw error;
+    if (error) {
+      const errorMessage = String((error as any)?.message ?? "");
+      const errorCode = String((error as any)?.code ?? "");
+      if (errorCode === 'PGRST205' || errorMessage.includes('custos_extras_operacionais')) {
+        throw new Error('A tabela de custos extras ainda nao existe no banco. Aplique a migration 20260430170000_custos_extras_operacionais.sql.');
+      }
+      throw error;
+    }
     return data ?? [];
   }
 
@@ -1000,7 +1007,14 @@ class OperacaoProducaoServiceClass {
     if (dataFim)    query = query.lte('data_operacao', dataFim);
 
     const { data, error } = await query;
-    if (error) throw error;
+    if (error) {
+      const errorMessage = String((error as any)?.message ?? "");
+      const errorCode = String((error as any)?.code ?? "");
+      if (errorCode === 'PGRST205' || errorMessage.includes('custos_extras_operacionais')) {
+        throw new Error('A tabela de custos extras ainda nao existe no banco. Aplique a migration 20260430170000_custos_extras_operacionais.sql.');
+      }
+      throw error;
+    }
     return data?.length ?? 0;
   }
 
@@ -1047,6 +1061,130 @@ class OperacaoProducaoServiceClass {
   }
 }
 export const OperacaoProducaoService = new OperacaoProducaoServiceClass();
+
+class CustoExtraOperacionalServiceClass {
+  async update(id: string, payload: Record<string, unknown>) {
+    const { data, error } = await operationalClient
+      .from('custos_extras_operacionais')
+      .update(payload)
+      .eq('id', id)
+      .select(`
+        *,
+        empresas:empresa_id(nome)
+      `)
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  async delete(id: string) {
+    const { error } = await operationalClient
+      .from('custos_extras_operacionais')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    return true;
+  }
+
+  async getByDate(date: string, empresaId?: string) {
+    let query = operationalClient
+      .from('custos_extras_operacionais')
+      .select(`
+        *,
+        empresas:empresa_id(nome)
+      `)
+      .eq('data', date)
+      .order('criado_em', { ascending: false });
+
+    if (empresaId) query = query.eq('empresa_id', empresaId);
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data ?? [];
+  }
+
+  async getAll(empresaId?: string) {
+    let query = operationalClient
+      .from('custos_extras_operacionais')
+      .select(`
+        *,
+        empresas:empresa_id(nome)
+      `)
+      .order('data', { ascending: false })
+      .order('criado_em', { ascending: false });
+
+    if (empresaId) query = query.eq('empresa_id', empresaId);
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data ?? [];
+  }
+
+  async deleteImported(empresaId?: string | null) {
+    let query = operationalClient
+      .from('custos_extras_operacionais')
+      .delete()
+      .select('id')
+      .eq('origem_dado', 'importacao');
+
+    if (empresaId) query = query.eq('empresa_id', empresaId);
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data?.length ?? 0;
+  }
+
+  async createMany(items: Record<string, unknown>[]) {
+    if (items.length === 0) return [];
+
+    const { data, error } = await operationalClient
+      .from('custos_extras_operacionais')
+      .insert(items)
+      .select('id');
+
+    if (error) throw error;
+    return data ?? [];
+  }
+
+  async replaceImportedBatch(empresaId: string, items: Record<string, unknown>[]) {
+    const { data, error } = await operationalClient.rpc('replace_imported_custos_extras_operacionais', {
+      p_empresa_id: empresaId,
+      p_items: items,
+    });
+
+    if (error) {
+      const errorMessage = String((error as any)?.message ?? "");
+      const errorCode = String((error as any)?.code ?? "");
+      const functionMissing =
+        errorCode === 'PGRST202' ||
+        errorMessage.includes('replace_imported_custos_extras_operacionais');
+
+      const tableMissing =
+        errorCode === 'PGRST205' ||
+        errorMessage.includes('custos_extras_operacionais');
+
+      if (tableMissing) {
+        throw new Error('A tabela de custos extras ainda nao existe no banco. Aplique a migration 20260430170000_custos_extras_operacionais.sql.');
+      }
+
+      if (!functionMissing) throw error;
+
+      await this.deleteImported(empresaId);
+      const inserted = await this.createMany(
+        items.map((item) => ({
+          ...item,
+          empresa_id: empresaId,
+        })),
+      );
+      return inserted.length;
+    }
+
+    return Number(data ?? 0);
+  }
+}
+export const CustoExtraOperacionalService = new CustoExtraOperacionalServiceClass();
 
 // STORAGE SERVICE
 export const StorageService = {
