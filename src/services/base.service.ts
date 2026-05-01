@@ -1490,6 +1490,17 @@ class LancamentoDiaristaServiceClass {
       .eq('id', id);
     if (error) throw error;
   }
+
+  async getByLoteId(loteId: string) {
+    const { data, error } = await (supabase as any)
+      .from('lancamentos_diaristas')
+      .select('*')
+      .eq('lote_fechamento_id', loteId)
+      .order('nome_colaborador', { ascending: true });
+    
+    if (error) throw error;
+    return data ?? [];
+  }
 }
 export const LancamentoDiaristaService = new LancamentoDiaristaServiceClass();
 
@@ -1552,6 +1563,17 @@ class LoteFechamentoDiaristaServiceClass {
 
     if (error) throw error;
     return data ?? [];
+  }
+
+  async getById(id: string) {
+    const { data, error } = await (supabase as any)
+      .from('lotes_fechamento_diaristas')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error) throw error;
+    return data;
   }
 
   async marcarComoPago(loteId: string) {

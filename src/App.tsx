@@ -77,6 +77,7 @@ import RegrasOperacionais from "./pages/RegrasOperacionais";
 import DiaristasLancamento from "./pages/Producao/DiaristasLancamento";
 import RhDiaristasPainel from "./pages/Rh/RhDiaristasPainel";
 import RhDiaristasGestao from "./pages/Rh/RhDiaristasGestao";
+import RhDiaristasLotes from "./pages/Rh/RhDiaristasLotes";
 
 const queryClient = new QueryClient();
 
@@ -109,6 +110,7 @@ const App = () => (
                   <Route path="/producao/diaristas" element={<AuthGuard><DiaristasLancamento /></AuthGuard>} />
                   <Route path="/rh/diaristas" element={<AuthGuard><RhDiaristasPainel /></AuthGuard>} />
                   <Route path="/rh/diaristas/cadastros" element={<AuthGuard><RhDiaristasGestao /></AuthGuard>} />
+                  <Route path="/rh/diaristas/lotes" element={<AuthGuard><RhDiaristasLotes /></AuthGuard>} />
                   <Route path="/processamento" element={<Navigate to="/operacional/operacoes" replace />} />
                   <Route path="/processamento/legado" element={<AuthGuard><Processamento /></AuthGuard>} />
                   <Route path="/cadastros" element={<AuthGuard><CentralCadastros /></AuthGuard>} />
