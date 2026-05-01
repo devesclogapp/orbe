@@ -99,7 +99,18 @@ class UserProfileServiceClass extends BaseService<'perfis_usuarios'> {
     const { data, error } = await supabase.functions.invoke('manage-user', {
       body: payload
     });
-    if (error) throw error;
+    if (error) {
+       let errorMsg = error.message;
+       // Tentar extrair o JSON real de erro do Edge Function se disponivel
+       try {
+         const jsonText = await error.context?.text?.();
+         if (jsonText) {
+             const json = JSON.parse(jsonText);
+             if (json.error) errorMsg = json.error;
+         }
+       } catch(e) {}
+       throw new Error(errorMsg);
+    }
     return data;
   }
 }

@@ -727,7 +727,7 @@ class FornecedorValorServicoServiceClass {
     empresaId: string;
     unidadeId?: string | null;
     tipoServicoId: string;
-    fornecedorId: string;
+    fornecedorId?: string | null;
     transportadoraId?: string | null;
     produtoCargaId?: string | null;
     dataOperacao?: string;
@@ -742,6 +742,20 @@ class FornecedorValorServicoServiceClass {
       p_data_operacao: params.dataOperacao ?? null,
     });
 
+    if (error) throw error;
+    return Array.isArray(data) ? data[0] ?? null : data;
+  }
+
+  async resolverIss(params: {
+    empresaId: string;
+    tipoServicoId?: string | null;
+    dataOperacao?: string;
+  }) {
+    const { data, error } = await operationalClient.rpc('resolver_iss_operacao', {
+      p_empresa_id: params.empresaId,
+      p_tipo_servico_id: params.tipoServicoId ?? null,
+      p_data_operacao: params.dataOperacao ?? null,
+    });
     if (error) throw error;
     return Array.isArray(data) ? data[0] ?? null : data;
   }

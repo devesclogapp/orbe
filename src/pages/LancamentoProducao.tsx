@@ -65,6 +65,7 @@ import {
     TransportadoraClienteService,
     UnidadeOperacionalService,
 } from "@/services/base.service";
+import { calcularValoresOperacao } from "@/utils/financeiro";
 import { toast } from "sonner";
 
 type RegraAvaliacao = { id: string; label: string; funcoes: string[] };
@@ -72,7 +73,7 @@ type TipoCalculo = "volume" | "daily" | "operation" | "colaborador";
 type StatusLancamento = "Processado" | "Pendente" | "Com alerta" | "Aguardando validação" | "Bloqueado";
 type LookupOption = { id: string; nome: string };
 type RuleLookupState = "idle" | "loading" | "found" | "missing" | "error" | "duplicate" | "needs_product";
-type EtapaFormulario = 1 | 2;
+type EtapaFormulario = 1 | 2 | 3;
 type CondutaColaborador = {
     selected: boolean;
     hadInfraction: boolean;
@@ -81,6 +82,7 @@ type CondutaColaborador = {
 };
 
 type FormState = {
+    tipo_lancamento: "caixa" | "duplicatas" | "diaria" | "custo_extra" | "";
     data: string;
     empresa_id: string;
     unidade_id: string;
@@ -96,6 +98,9 @@ type FormState = {
     horario_fim: string;
     placa_veiculo: string;
     justificativa_data: string;
+    nf_numero: string;
+    ctrc: string;
+    observacao: string;
 };
 
 const REGRAS_LOGISTICA: RegraAvaliacao[] = [
@@ -201,6 +206,7 @@ const LancamentoProducao = () => {
     const today = format(new Date(), "yyyy-MM-dd");
 
     const [form, setForm] = useState<FormState>({
+        tipo_lancamento: "",
         data: today,
         empresa_id: "",
         unidade_id: "",
@@ -216,6 +222,9 @@ const LancamentoProducao = () => {
         horario_fim: "",
         placa_veiculo: "",
         justificativa_data: "",
+        nf_numero: "",
+        ctrc: "",
+        observacao: "",
     });
     const [etapaAtual, setEtapaAtual] = useState<EtapaFormulario>(1);
     const [condutaColaboradores, setCondutaColaboradores] = useState<Record<string, CondutaColaborador>>({});
@@ -368,7 +377,8 @@ const LancamentoProducao = () => {
         [formaPagamentoOptions, form.forma_pagamento],
     );
 
-    const regraLookupHabilitada = !!form.empresa_id && !!form.data && !!form.tipo_servico && !!form.transportadora && !!form.fornecedor;
+    // Regra pode ser vinculada apenas à transportadora (sem fornecedor obrigatório)
+    const regraLookupHabilitada = !!form.empresa_id && !!form.data && !!form.tipo_servico && !!form.transportadora;
 
     const {
         data: regraValorRpc = null,
@@ -382,7 +392,7 @@ const LancamentoProducao = () => {
                 empresaId: form.empresa_id,
                 unidadeId: form.unidade_id || null,
                 tipoServicoId: form.tipo_servico,
-                fornecedorId: form.fornecedor,
+                fornecedorId: form.fornecedor || null,
                 transportadoraId: form.transportadora || null,
                 produtoCargaId: form.produto || null,
                 dataOperacao: form.data,
@@ -391,6 +401,23 @@ const LancamentoProducao = () => {
         enabled: schemaDisponivel && regraLookupHabilitada,
         retry: false,
     });
+
+    // Lookup separado para ISS (regra global ou por empresa/serviço)
+    const { data: regraIssRpc = null } = useQuery({
+        queryKey: ["resolver_iss_operacao", form.empresa_id, form.tipo_servico, form.data],
+        queryFn: async () => {
+            if (!form.empresa_id) return null;
+            return FornecedorValorServicoService.resolverIss({
+                empresaId: form.empresa_id,
+                tipoServicoId: form.tipo_servico || null,
+                dataOperacao: form.data,
+            });
+        },
+        enabled: schemaDisponivel && !!form.empresa_id,
+        retry: false,
+    });
+
+    const percentualIss = regraIssRpc?.regra_encontrada ? Number(regraIssRpc.percentual_iss || 0) : 0;
 
     const regraValor = useMemo(() => {
         if (!regraValorRpc || !regraValorRpc.regra_encontrada) return null;
@@ -401,13 +428,13 @@ const LancamentoProducao = () => {
     }, [regraValorRpc]);
 
     const ruleLookupState = useMemo<RuleLookupState>(() => {
-        if (!form.fornecedor) return "idle";
+        if (!form.transportadora) return "idle";
         if (isBuscandoRegra) return "loading";
         if (erroRegraLookup) return "error";
         const statusRegra = regraValorRpc?.status_regra as RuleLookupState | undefined;
         if (statusRegra) return statusRegra;
         return regraValorRpc?.regra_encontrada ? "found" : "missing";
-    }, [erroRegraLookup, form.fornecedor, isBuscandoRegra, regraValor, regraValorRpc]);
+    }, [erroRegraLookup, form.transportadora, isBuscandoRegra, regraValor, regraValorRpc]);
 
     const requiresProductSelection = Boolean(regraValorRpc?.produto_obrigatorio);
 
@@ -452,10 +479,33 @@ const LancamentoProducao = () => {
     const quantidadeConsiderada = tipoCalculoAtual === "operation" ? 1 : quantidade;
 
     // Regras de Negócio do Novo Módulo:
-    const valorDescarga = quantidadeConsiderada * valorUnitario;
-    const custoIss = 0; // Preparado para ativação futura
-    const totalFilme = 0; // Placeholder
-    const totalFinal = valorDescarga + custoIss + totalFilme;
+    const valoresCalculados = calcularValoresOperacao({
+        quantidade: quantidadeConsiderada,
+        valorUnitario: valorUnitario,
+        percentualIss: 0, // Encarregado não digita NF, mas se precisar a estrutura suporta
+        quantidadeFilme: 0,
+        valorUnitarioFilme: 0,
+        nfRaw: "NÃO",
+    });
+
+    const valoresCalculadosComIss = calcularValoresOperacao({
+        quantidade: quantidadeConsiderada,
+        valorUnitario: valorUnitario,
+        percentualIss: percentualIss,
+        quantidadeFilme: 0,
+        valorUnitarioFilme: 0,
+        nfRaw: String(form.nf_numero ?? "").toUpperCase().trim(),
+    });
+    valoresCalculados.percentualCalculado = valoresCalculadosComIss.percentualCalculado;
+    valoresCalculados.valorDescargaCalculado = valoresCalculadosComIss.valorDescargaCalculado;
+    valoresCalculados.custoIssCalculado = valoresCalculadosComIss.custoIssCalculado;
+    valoresCalculados.totalFilmeCalculado = valoresCalculadosComIss.totalFilmeCalculado;
+    valoresCalculados.totalFinalCalculado = valoresCalculadosComIss.totalFinalCalculado;
+
+    const valorDescarga = valoresCalculados.valorDescargaCalculado;
+    const custoIss = valoresCalculados.custoIssCalculado;
+    const totalFilme = valoresCalculados.totalFilmeCalculado;
+    const totalFinal = valoresCalculados.totalFinalCalculado;
 
     const isDataRetroativa = form.data < today;
     const horarioInvalido = !!form.horario_inicio && !!form.horario_fim && form.horario_inicio > form.horario_fim;
@@ -472,15 +522,21 @@ const LancamentoProducao = () => {
         return "";
     }, [regraValorRpc, ruleLookupState]);
 
-    const submissionBlockReason = useMemo(() => {
+    const etapaUmBlockReason = useMemo(() => {
+        if (!form.tipo_lancamento) return "Selecione o tipo de lançamento.";
+        return "";
+    }, [form.tipo_lancamento]);
+
+    const etapaDoisBlockReason = useMemo(() => {
         if (!form.empresa_id) return "Selecione a empresa.";
         if (!form.data) return "Selecione a data da operação.";
         if (!form.tipo_servico) return "Selecione o tipo de serviço.";
         if (!form.transportadora) return "Selecione a transportadora ou cliente.";
-        if (!form.fornecedor) return "Selecione o fornecedor.";
         if (requiresProductSelection && !form.produto) return REGRA_MENSAGEM_PRODUTO;
         if (!form.forma_pagamento) return "Selecione a forma de pagamento.";
         if (ruleLookupState === "loading") return "Buscando valor...";
+        // Fornecedor é obrigatório somente se a regra ainda não foi resolvida
+        if (!hasRegraFinanceira && !form.fornecedor) return "Selecione o fornecedor ou corrija a regra operacional.";
         if (ruleLookupState === "duplicate" || ruleLookupState === "needs_product" || ruleLookupState === "error" || ruleLookupState === "missing") {
             return mensagemRegra;
         }
@@ -511,7 +567,7 @@ const LancamentoProducao = () => {
         ruleLookupState,
     ]);
 
-    const etapaDoisBlockReason = useMemo(() => {
+    const etapaTresBlockReason = useMemo(() => {
         const quantidadeInformada = Number(form.quantidade_colaboradores || 0);
         if (quantidadeSelecionada !== quantidadeInformada) {
             return `Você informou ${quantidadeInformada} colaboradores envolvidos, mas selecionou ${quantidadeSelecionada}. Selecione exatamente ${quantidadeInformada} colaboradores para continuar.`;
@@ -633,17 +689,25 @@ const LancamentoProducao = () => {
         e.preventDefault();
 
         if (etapaAtual === 1) {
-            if (submissionBlockReason) {
-                toast.error(submissionBlockReason);
+            if (etapaUmBlockReason) {
+                toast.error(etapaUmBlockReason);
                 return;
             }
-
             setEtapaAtual(2);
             return;
         }
 
-        if (submissionBlockReason || etapaDoisBlockReason) {
-            toast.error(submissionBlockReason || etapaDoisBlockReason);
+        if (etapaAtual === 2) {
+            if (etapaUmBlockReason || etapaDoisBlockReason) {
+                toast.error(etapaUmBlockReason || etapaDoisBlockReason);
+                return;
+            }
+            setEtapaAtual(3);
+            return;
+        }
+
+        if (etapaUmBlockReason || etapaDoisBlockReason || etapaTresBlockReason) {
+            toast.error(etapaUmBlockReason || etapaDoisBlockReason || etapaTresBlockReason);
             return;
         }
 
@@ -678,6 +742,10 @@ const LancamentoProducao = () => {
                 custo_com_iss: custoIss,
                 total_e_filme: totalFilme,
                 justificativa_data: form.justificativa_data.trim() || null,
+                aba_planilha: form.tipo_lancamento,
+                nf_numero: form.nf_numero.trim() || null,
+                ctrc: form.ctrc.trim() || null,
+                observacao: form.observacao.trim() || null,
             },
         };
 
@@ -703,9 +771,17 @@ const LancamentoProducao = () => {
                 forma_pagamento_id: form.forma_pagamento || null,
                 placa: form.placa_veiculo || null,
                 status: status.toLowerCase().replace(/\s+/g, "_"),
+                percentual_iss: percentualIss,
+                valor_descarga: valorDescarga,
+                custo_com_iss: custoIss,
+                valor_total_filme: totalFilme,
+                valor_total: totalFinal,
                 avaliacao_json: avaliacaoJson,
                 justificativa_retroativa: form.justificativa_data.trim() || null,
                 origem_dado: "manual",
+                // Passing the extra fields natively if the schema allows, otherwise rely on avaliacao_json since it will be passed to Operations Table
+                nf_numero: form.nf_numero.trim() || null,
+                ctrc: form.ctrc.trim() || null,
             },
             colaboradores: colaboradoresSelecionados.map((colaborador: any) => {
                 const conduta = condutaColaboradores[colaborador.id];
@@ -798,443 +874,537 @@ const LancamentoProducao = () => {
                         <div className="mb-4 rounded-xl border border-border bg-muted/20 p-3 flex items-center justify-between gap-3">
                             <div>
                                 <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                                    {etapaAtual === 1 ? "Etapa 1 de 2" : "Etapa 2 de 2"}
+                                    {etapaAtual === 1 ? "Etapa 1 de 3" : etapaAtual === 2 ? "Etapa 2 de 3" : "Etapa 3 de 3"}
                                 </p>
                                 <p className="text-sm font-semibold text-foreground">
-                                    {etapaAtual === 1 ? "Dados da operação" : "Colaboradores e conduta"}
+                                    {etapaAtual === 1 ? "Tipo de Lançamento" : etapaAtual === 2 ? "Dados da operação" : "Colaboradores e conduta"}
                                 </p>
                             </div>
-                            {etapaAtual === 2 && (
-                                <Button type="button" variant="outline" size="sm" onClick={() => setEtapaAtual(1)}>
+                            {etapaAtual > 1 && (
+                                <Button type="button" variant="outline" size="sm" onClick={() => setEtapaAtual((prev) => (prev - 1) as EtapaFormulario)}>
                                     Voltar
                                 </Button>
                             )}
                         </div>
 
                         <form onSubmit={handleSubmit} className="space-y-4">
-                            <div className="space-y-1.5">
-                                <Label className="flex items-center gap-1.5">
-                                    <Building2 className="w-3.5 h-3.5" />
-                                    Empresa
-                                </Label>
-                                <Select
-                                    value={form.empresa_id}
-                                    onValueChange={(value) =>
-                                        setForm((prev) => ({
-                                            ...prev,
-                                            empresa_id: value,
-                                            unidade_id: "",
-                                            tipo_servico: "",
-                                            transportadora: "",
-                                            fornecedor: "",
-                                            produto: "",
-                                            forma_pagamento: "",
-                                        }))
-                                    }
-                                    disabled={unitLocked}
-                                >
-                                    <SelectTrigger className="h-11 rounded-xl">
-                                        <SelectValue placeholder="Selecione a empresa" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {(empresas as any[]).map((empresa: any) => (
-                                            <SelectItem key={empresa.id} value={empresa.id}>
-                                                {empresa.nome}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-
-                            {(unidadesDb as any[]).length > 0 && (
-                                <div className="space-y-1.5">
-                                    <Label className="flex items-center gap-1.5">
-                                        <Building2 className="w-3.5 h-3.5" />
-                                        Unidade
-                                    </Label>
-                                    <Select
-                                        value={form.unidade_id}
-                                        onValueChange={(value) => setForm((prev) => ({ ...prev, unidade_id: value }))}
-                                    >
-                                        <SelectTrigger className="h-11 rounded-xl">
-                                            <SelectValue placeholder="Selecione a unidade" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {(unidadesDb as any[]).map((unidade: any) => (
-                                                <SelectItem key={unidade.id} value={unidade.id}>
-                                                    {unidade.nome}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            )}
-
-                            <div className="grid grid-cols-1 gap-4">
-                                <div className="space-y-1.5">
-                                    <Label>Data</Label>
-                                    <Input
-                                        type="date"
-                                        value={form.data}
-                                        onChange={(e) => setForm((prev) => ({ ...prev, data: e.target.value }))}
-                                        className="h-11 rounded-xl"
-                                    />
-                                </div>
-
-                                <div className="space-y-1.5">
-                                    <Label>
-                                        Tipo de Serviço <span className="text-destructive">*</span>
-                                    </Label>
-                                    <Select
-                                        value={form.tipo_servico}
-                                        onValueChange={(value) =>
-                                            setForm((prev) => ({
-                                                ...prev,
-                                                tipo_servico: value,
-                                                transportadora: "",
-                                                fornecedor: "",
-                                                produto: "",
-                                                quantidade: "",
-                                                quantidade_colaboradores: "1",
-                                                valor_unitario: "",
-                                            }))
-                                        }
-                                    >
-                                        <SelectTrigger className="h-11 rounded-xl">
-                                            <SelectValue placeholder="Selecione" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {tipoServicoOptions.map((tipo) => (
-                                                <SelectItem key={tipo.id} value={tipo.id}>
-                                                    {tipo.nome}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </div>
-
-                            {isDataRetroativa && (
-                                <div className="rounded-xl border border-warning/20 bg-warning-soft/40 p-4 space-y-2">
-                                    <div className="flex items-center gap-2 text-warning-strong">
-                                        <ShieldAlert className="w-4 h-4" />
-                                        <span className="text-sm font-bold">Data retroativa detectada</span>
-                                    </div>
-                                    <Textarea
-                                        placeholder="Informe a justificativa para o lançamento retroativo"
-                                        value={form.justificativa_data}
-                                        onChange={(e) => setForm((prev) => ({ ...prev, justificativa_data: e.target.value }))}
-                                        className="rounded-xl min-h-[84px]"
-                                    />
-                                </div>
-                            )}
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="space-y-1.5">
-                                    <Label className="flex items-center gap-1.5">
-                                        <Clock className="w-3.5 h-3.5" />
-                                        Entrada (ponto)
-                                    </Label>
-                                    <Input
-                                        type="time"
-                                        value={form.horario_inicio}
-                                        onChange={(e) => setForm((prev) => ({ ...prev, horario_inicio: e.target.value }))}
-                                        className="h-11 rounded-xl"
-                                    />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <Label className="flex items-center gap-1.5">
-                                        <Clock className="w-3.5 h-3.5" />
-                                        Saída (ponto)
-                                    </Label>
-                                    <Input
-                                        type="time"
-                                        value={form.horario_fim}
-                                        onChange={(e) => setForm((prev) => ({ ...prev, horario_fim: e.target.value }))}
-                                        className="h-11 rounded-xl"
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="space-y-1.5">
-                                <Label className="flex items-center gap-1.5">
-                                    <Truck className="w-3.5 h-3.5" />
-                                    Transportadora / Cliente <span className="text-destructive">*</span>
-                                </Label>
-                                <Select
-                                    value={form.transportadora}
-                                    onValueChange={(value) =>
-                                        setForm((prev) => ({
-                                            ...prev,
-                                            transportadora: value,
-                                            fornecedor: "",
-                                            produto: "",
-                                            quantidade: "",
-                                            quantidade_colaboradores: "1",
-                                            valor_unitario: "",
-                                        }))
-                                    }
-                                    disabled={!form.tipo_servico}
-                                >
-                                    <SelectTrigger className="h-11 rounded-xl">
-                                        <SelectValue placeholder={!form.tipo_servico ? "Selecione o tipo de serviço antes" : "Selecione a transportadora"} />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {transportadorasDisponiveis.map((transportadora) => (
-                                            <SelectItem key={transportadora.id} value={transportadora.id}>
-                                                {transportadora.nome}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="space-y-1.5">
-                                    <Label className="flex items-center gap-1.5">
-                                        <Package className="w-3.5 h-3.5" />
-                                        Fornecedor <span className="text-destructive">*</span>
-                                    </Label>
-                                    <Select
-                                        value={form.fornecedor}
-                                        onValueChange={(value) =>
-                                            setForm((prev) => ({
-                                                ...prev,
-                                                fornecedor: value,
-                                                produto: "",
-                                                quantidade: "",
-                                                quantidade_colaboradores: "1",
-                                            }))
-                                        }
-                                        disabled={!form.tipo_servico || !form.transportadora}
-                                    >
-                                        <SelectTrigger className="h-11 rounded-xl">
-                                            <SelectValue
-                                                placeholder={
-                                                    !form.tipo_servico
-                                                        ? "Selecione o tipo antes"
-                                                        : !form.transportadora
-                                                            ? "Selecione a transportadora antes"
-                                                            : "Selecione o fornecedor"
-                                                }
-                                            />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {fornecedoresDisponiveis.map((fornecedor) => (
-                                                <SelectItem key={fornecedor.id} value={fornecedor.id}>
-                                                    {fornecedor.nome}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-
-                                <div className="space-y-1.5">
-                                    <div className="flex items-center justify-between gap-3">
-                                        <Label className="flex items-center gap-1.5">
-                                            <Package className="w-3.5 h-3.5" />
-                                            Produto / Carga {requiresProductSelection && <span className="text-destructive">*</span>}
-                                        </Label>
-                                        <Button
+                            {etapaAtual === 1 && (
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <button
                                             type="button"
-                                            variant="ghost"
-                                            size="sm"
-                                            className="h-7 px-2 text-xs"
-                                            disabled={!form.fornecedor}
-                                            onClick={() => {
-                                                setProdutoDraft({ nome: "", categoria: "" });
-                                                setProdutoDialogOpen(true);
-                                            }}
+                                            onClick={() => setForm(prev => ({ ...prev, tipo_lancamento: "caixa" }))}
+                                            className={cn("p-4 rounded-xl border flex flex-col items-start gap-2 text-left transition-all", form.tipo_lancamento === "caixa" ? "border-brand bg-brand/5 ring-2 ring-brand/20" : "border-border hover:border-brand/40 bg-background")}
                                         >
-                                            <Plus className="mr-1 h-3.5 w-3.5" />
-                                            Novo
-                                        </Button>
+                                            <Wallet className={cn("w-6 h-6", form.tipo_lancamento === "caixa" ? "text-brand" : "text-muted-foreground")} />
+                                            <div>
+                                                <p className="font-bold text-foreground">Caixa Imediato</p>
+                                                <p className="text-xs text-muted-foreground mt-0.5">Operações recebidas no pix/depósito.</p>
+                                            </div>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setForm(prev => ({ ...prev, tipo_lancamento: "duplicatas" }))}
+                                            className={cn("p-4 rounded-xl border flex flex-col items-start gap-2 text-left transition-all", form.tipo_lancamento === "duplicatas" ? "border-brand bg-brand/5 ring-2 ring-brand/20" : "border-border hover:border-brand/40 bg-background")}
+                                        >
+                                            <ListChecks className={cn("w-6 h-6", form.tipo_lancamento === "duplicatas" ? "text-brand" : "text-muted-foreground")} />
+                                            <div>
+                                                <p className="font-bold text-foreground">Operação Faturada</p>
+                                                <p className="text-xs text-muted-foreground mt-0.5">Aba Duplicatas a volume ou Fornecedor.</p>
+                                            </div>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setForm(prev => ({ ...prev, tipo_lancamento: "diaria" }))}
+                                            className={cn("p-4 rounded-xl border flex flex-col items-start gap-2 text-left transition-all", form.tipo_lancamento === "diaria" ? "border-brand bg-brand/5 ring-2 ring-brand/20" : "border-border hover:border-brand/40 bg-background")}
+                                        >
+                                            <Clock className={cn("w-6 h-6", form.tipo_lancamento === "diaria" ? "text-brand" : "text-muted-foreground")} />
+                                            <div>
+                                                <p className="font-bold text-foreground">Diárias</p>
+                                                <p className="text-xs text-muted-foreground mt-0.5">Operações pagas por diária (Diaristas).</p>
+                                            </div>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setForm(prev => ({ ...prev, tipo_lancamento: "custo_extra" }))}
+                                            className={cn("p-4 rounded-xl border flex flex-col items-start gap-2 text-left transition-all", form.tipo_lancamento === "custo_extra" ? "border-brand bg-brand/5 ring-2 ring-brand/20" : "border-border hover:border-brand/40 bg-background")}
+                                        >
+                                            <Zap className={cn("w-6 h-6", form.tipo_lancamento === "custo_extra" ? "text-brand" : "text-muted-foreground")} />
+                                            <div>
+                                                <p className="font-bold text-foreground">Custo Extra</p>
+                                                <p className="text-xs text-muted-foreground mt-0.5">Lançamento de custos adicionais (Aba Custos Extras).</p>
+                                            </div>
+                                        </button>
                                     </div>
-                                    <Select
-                                        value={form.produto}
-                                        onValueChange={(value) => setForm((prev) => ({ ...prev, produto: value }))}
-                                        disabled={!form.fornecedor}
-                                    >
-                                        <SelectTrigger className="h-11 rounded-xl">
-                                            <SelectValue placeholder={!form.fornecedor ? "Selecione o fornecedor antes" : "Selecione o produto, se aplicável"} />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {produtoOptions.map((produto) => (
-                                                <SelectItem key={produto.id} value={produto.id}>
-                                                    {produto.nome}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </div>
-
-                            {requiresProductSelection && !form.produto && (
-                                <div className="rounded-xl border border-warning/20 bg-warning-soft/40 p-3 text-sm text-warning-strong">
-                                    {REGRA_MENSAGEM_PRODUTO}
+                                    {etapaUmBlockReason && (
+                                        <div className="rounded-xl border border-warning/20 bg-warning-soft/40 p-3 text-sm text-warning-strong">
+                                            {etapaUmBlockReason}
+                                        </div>
+                                    )}
                                 </div>
                             )}
-
-                            <div className="space-y-1.5">
-                                <Label>Quantidade da operação <span className="text-destructive">*</span></Label>
-                                <Input
-                                    type="number"
-                                    min="0"
-                                    step="1"
-                                    placeholder={getQuantidadePlaceholder(tipoCalculoAtual)}
-                                    value={form.quantidade}
-                                    onChange={(e) => setForm((prev) => ({ ...prev, quantidade: e.target.value }))}
-                                    disabled={!hasRegraFinanceira || ruleLookupState === "loading" || tipoCalculoAtual === "operation"}
-                                    className={cn(
-                                        "h-11 rounded-xl text-center font-black text-lg",
-                                        (!hasRegraFinanceira || ruleLookupState === "loading" || tipoCalculoAtual === "operation") && "opacity-70",
-                                    )}
-                                />
-                                <p className="text-[11px] text-muted-foreground">
-                                    {tipoCalculoAtual === "operation"
-                                        ? "Registros por operação usam quantidade automática de 1."
-                                        : !hasRegraFinanceira
-                                            ? "A quantidade será liberada assim que uma regra válida for encontrada."
-                                            : "Informe a quantidade considerada no cálculo previsto."}
-                                </p>
-                            </div>
-
-                            <div className="space-y-1.5">
-                                <Label>Quantidade de colaboradores envolvidos <span className="text-destructive">*</span></Label>
-                                <Input
-                                    type="number"
-                                    min="1"
-                                    step="1"
-                                    inputMode="numeric"
-                                    value={form.quantidade_colaboradores}
-                                    onChange={(e) => setForm((prev) => ({ ...prev, quantidade_colaboradores: e.target.value.replace(/[^\d]/g, "") }))}
-                                    className="h-11 rounded-xl text-center font-black text-lg"
-                                />
-                                <p className="text-[11px] text-muted-foreground">
-                                    Informe a quantidade total de colaboradores envolvidos para liberar a etapa 2.
-                                </p>
-                            </div>
-
-                            <div className="space-y-1.5">
-                                <div className="flex items-center justify-between">
-                                    <Label>Valor Unitário</Label>
-                                    <Badge variant="info" className="font-bold">Automático</Badge>
-                                </div>
-                                <Input
-                                    value={
-                                        ruleLookupState === "loading"
-                                            ? "Buscando valor..."
-                                            : hasRegraFinanceira
-                                                ? `${formatCurrency(valorUnitario)} por ${getUnidadeRegraLabel(tipoCalculoAtual)}`
-                                                : ruleLookupState === "missing" || ruleLookupState === "duplicate" || ruleLookupState === "needs_product" || ruleLookupState === "error"
-                                                    ? "Fornecedor sem valor cadastrado"
-                                                    : "Aguardando regra"
-                                    }
-                                    readOnly
-                                    placeholder="Aguardando regra"
-                                    className={cn(
-                                        "h-11 rounded-xl text-right font-display font-bold",
-                                        ruleLookupState === "found" && "border-success text-success",
-                                        (ruleLookupState === "missing" || ruleLookupState === "duplicate" || ruleLookupState === "needs_product" || ruleLookupState === "error") && "border-destructive text-destructive",
-                                    )}
-                                />
-                            </div>
-
-                            {!!mensagemRegra && form.fornecedor && ruleLookupState !== "loading" && (
-                                <div className="rounded-xl border border-destructive/20 bg-destructive-soft/40 p-4 text-sm text-destructive-strong">
-                                    {mensagemRegra}
-                                </div>
-                            )}
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="space-y-1.5">
-                                    <Label className="flex items-center gap-1.5">
-                                        <Wallet className="w-3.5 h-3.5" />
-                                        Forma de pagamento <span className="text-destructive">*</span>
-                                    </Label>
-                                    <Select
-                                        value={form.forma_pagamento}
-                                        onValueChange={(value) => setForm((prev) => ({ ...prev, forma_pagamento: value }))}
-                                    >
-                                        <SelectTrigger className="h-11 rounded-xl">
-                                            <SelectValue placeholder="Selecione" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {formaPagamentoOptions.map((forma) => (
-                                                <SelectItem key={forma.id} value={forma.id}>
-                                                    {forma.nome}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-
-                                <div className="space-y-1.5">
-                                    <Label className="flex items-center gap-1.5">
-                                        <Car className="w-3.5 h-3.5" />
-                                        Placa do veículo
-                                    </Label>
-                                    <Input
-                                        placeholder={exibirPlaca ? "Ex: ABC-1D23" : "Opcional"}
-                                        value={form.placa_veiculo}
-                                        onChange={(e) => setForm((prev) => ({ ...prev, placa_veiculo: e.target.value.toUpperCase() }))}
-                                        className="h-11 rounded-xl font-mono uppercase"
-                                        maxLength={10}
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="rounded-2xl border border-border bg-muted/20 p-4 space-y-3">
-                                <div className="flex items-center justify-between gap-3">
-                                    <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
-                                        Preview de cálculo
-                                    </span>
-                                    <Badge variant={hasRegraFinanceira ? "success" : "warning"}>
-                                        {getTipoCalculoLabel(tipoCalculoAtual)}
-                                    </Badge>
-                                </div>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <div>
-                                        <p className="text-[11px] text-muted-foreground">Valor de Descarga</p>
-                                        <p className="text-lg font-black font-display">
-                                            {formatCurrency(valorDescarga)}
-                                        </p>
-                                    </div>
-                                    <div>
-                                        <p className="text-[11px] text-muted-foreground">Custo com ISS</p>
-                                        <p className="text-sm font-black text-muted-foreground">
-                                            {formatCurrency(custoIss)}
-                                        </p>
-                                    </div>
-                                    <div>
-                                        <p className="text-[11px] text-muted-foreground">Total do Filme</p>
-                                        <p className="text-sm font-black text-muted-foreground">
-                                            {formatCurrency(totalFilme)}
-                                        </p>
-                                    </div>
-                                    <div className="bg-brand/10 p-2 rounded-lg -mx-2 px-2">
-                                        <p className="text-[11px] text-brand/80 font-bold uppercase">TOTAL FINAL</p>
-                                        <p className="text-xl font-black font-display text-brand">
-                                            {formatCurrency(totalFinal)}
-                                        </p>
-                                    </div>
-                                    <div>
-                                        <p className="text-[11px] text-muted-foreground">Quantidade (QTD)</p>
-                                        <p className="text-lg font-black font-display">{quantidadeConsiderada || 0}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-[11px] text-muted-foreground">Base do cálculo</p>
-                                        <p className="text-sm font-bold">
-                                            {tipoCalculoAtual === "operation"
-                                                ? "1 operação x " + formatCurrency(valorUnitario || 0)
-                                                : `${quantidadeConsiderada || 0} x ${formatCurrency(valorUnitario || 0)}`}
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
 
                             {etapaAtual === 2 && (
-                                <div className="rounded-xl border border-border bg-background p-4 space-y-4">
+                                <div className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
+                                    <div className="space-y-1.5">
+                                        <Label className="flex items-center gap-1.5">
+                                            <Building2 className="w-3.5 h-3.5" />
+                                            Empresa
+                                        </Label>
+                                        <Select
+                                            value={form.empresa_id}
+                                            onValueChange={(value) =>
+                                                setForm((prev) => ({
+                                                    ...prev,
+                                                    empresa_id: value,
+                                                    unidade_id: "",
+                                                    tipo_servico: "",
+                                                    transportadora: "",
+                                                    fornecedor: "",
+                                                    produto: "",
+                                                    forma_pagamento: "",
+                                                }))
+                                            }
+                                            disabled={unitLocked}
+                                        >
+                                            <SelectTrigger className="h-11 rounded-xl">
+                                                <SelectValue placeholder="Selecione a empresa" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {(empresas as any[]).map((empresa: any) => (
+                                                    <SelectItem key={empresa.id} value={empresa.id}>
+                                                        {empresa.nome}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    {(unidadesDb as any[]).length > 0 && (
+                                        <div className="space-y-1.5">
+                                            <Label className="flex items-center gap-1.5">
+                                                <Building2 className="w-3.5 h-3.5" />
+                                                Unidade
+                                            </Label>
+                                            <Select
+                                                value={form.unidade_id}
+                                                onValueChange={(value) => setForm((prev) => ({ ...prev, unidade_id: value }))}
+                                            >
+                                                <SelectTrigger className="h-11 rounded-xl">
+                                                    <SelectValue placeholder="Selecione a unidade" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {(unidadesDb as any[]).map((unidade: any) => (
+                                                        <SelectItem key={unidade.id} value={unidade.id}>
+                                                            {unidade.nome}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    )}
+
+                                    <div className="grid grid-cols-1 gap-4">
+                                        <div className="space-y-1.5">
+                                            <Label>Data</Label>
+                                            <Input
+                                                type="date"
+                                                value={form.data}
+                                                onChange={(e) => setForm((prev) => ({ ...prev, data: e.target.value }))}
+                                                className="h-11 rounded-xl"
+                                            />
+                                        </div>
+
+                                        <div className="space-y-1.5">
+                                            <Label>
+                                                Tipo de Serviço <span className="text-destructive">*</span>
+                                            </Label>
+                                            <Select
+                                                value={form.tipo_servico}
+                                                onValueChange={(value) =>
+                                                    setForm((prev) => ({
+                                                        ...prev,
+                                                        tipo_servico: value,
+                                                        transportadora: "",
+                                                        fornecedor: "",
+                                                        produto: "",
+                                                        quantidade: "",
+                                                        quantidade_colaboradores: "1",
+                                                        valor_unitario: "",
+                                                    }))
+                                                }
+                                            >
+                                                <SelectTrigger className="h-11 rounded-xl">
+                                                    <SelectValue placeholder="Selecione" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {tipoServicoOptions.map((tipo) => (
+                                                        <SelectItem key={tipo.id} value={tipo.id}>
+                                                            {tipo.nome}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+
+                                    {isDataRetroativa && (
+                                        <div className="rounded-xl border border-warning/20 bg-warning-soft/40 p-4 space-y-2">
+                                            <div className="flex items-center gap-2 text-warning-strong">
+                                                <ShieldAlert className="w-4 h-4" />
+                                                <span className="text-sm font-bold">Data retroativa detectada</span>
+                                            </div>
+                                            <Textarea
+                                                placeholder="Informe a justificativa para o lançamento retroativo"
+                                                value={form.justificativa_data}
+                                                onChange={(e) => setForm((prev) => ({ ...prev, justificativa_data: e.target.value }))}
+                                                className="rounded-xl min-h-[84px]"
+                                            />
+                                        </div>
+                                    )}
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="space-y-1.5">
+                                            <Label className="flex items-center gap-1.5">
+                                                <Clock className="w-3.5 h-3.5" />
+                                                Entrada (ponto)
+                                            </Label>
+                                            <Input
+                                                type="time"
+                                                value={form.horario_inicio}
+                                                onChange={(e) => setForm((prev) => ({ ...prev, horario_inicio: e.target.value }))}
+                                                className="h-11 rounded-xl"
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <Label className="flex items-center gap-1.5">
+                                                <Clock className="w-3.5 h-3.5" />
+                                                Saída (ponto)
+                                            </Label>
+                                            <Input
+                                                type="time"
+                                                value={form.horario_fim}
+                                                onChange={(e) => setForm((prev) => ({ ...prev, horario_fim: e.target.value }))}
+                                                className="h-11 rounded-xl"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <Label className="flex items-center gap-1.5">
+                                            <Truck className="w-3.5 h-3.5" />
+                                            Transportadora / Cliente <span className="text-destructive">*</span>
+                                        </Label>
+                                        <Select
+                                            value={form.transportadora}
+                                            onValueChange={(value) =>
+                                                setForm((prev) => ({
+                                                    ...prev,
+                                                    transportadora: value,
+                                                    fornecedor: "",
+                                                    produto: "",
+                                                    quantidade: "",
+                                                    quantidade_colaboradores: "1",
+                                                    valor_unitario: "",
+                                                }))
+                                            }
+                                            disabled={!form.tipo_servico}
+                                        >
+                                            <SelectTrigger className="h-11 rounded-xl">
+                                                <SelectValue placeholder={!form.tipo_servico ? "Selecione o tipo de serviço antes" : "Selecione a transportadora"} />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {transportadorasDisponiveis.map((transportadora) => (
+                                                    <SelectItem key={transportadora.id} value={transportadora.id}>
+                                                        {transportadora.nome}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="space-y-1.5">
+                                            <Label className="flex items-center gap-1.5">
+                                                <Package className="w-3.5 h-3.5" />
+                                                Fornecedor <span className="text-destructive">*</span>
+                                            </Label>
+                                            <Select
+                                                value={form.fornecedor}
+                                                onValueChange={(value) =>
+                                                    setForm((prev) => ({
+                                                        ...prev,
+                                                        fornecedor: value,
+                                                        produto: "",
+                                                        quantidade: "",
+                                                        quantidade_colaboradores: "1",
+                                                    }))
+                                                }
+                                                disabled={!form.tipo_servico || !form.transportadora}
+                                            >
+                                                <SelectTrigger className="h-11 rounded-xl">
+                                                    <SelectValue
+                                                        placeholder={
+                                                            !form.tipo_servico
+                                                                ? "Selecione o tipo antes"
+                                                                : !form.transportadora
+                                                                    ? "Selecione a transportadora antes"
+                                                                    : "Selecione o fornecedor"
+                                                        }
+                                                    />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {fornecedoresDisponiveis.map((fornecedor) => (
+                                                        <SelectItem key={fornecedor.id} value={fornecedor.id}>
+                                                            {fornecedor.nome}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+
+                                        <div className="space-y-1.5">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <Label className="flex items-center gap-1.5">
+                                                    <Package className="w-3.5 h-3.5" />
+                                                    Produto / Carga {requiresProductSelection && <span className="text-destructive">*</span>}
+                                                </Label>
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-7 px-2 text-xs"
+                                                    disabled={!form.fornecedor}
+                                                    onClick={() => {
+                                                        setProdutoDraft({ nome: "", categoria: "" });
+                                                        setProdutoDialogOpen(true);
+                                                    }}
+                                                >
+                                                    <Plus className="mr-1 h-3.5 w-3.5" />
+                                                    Novo
+                                                </Button>
+                                            </div>
+                                            <Select
+                                                value={form.produto}
+                                                onValueChange={(value) => setForm((prev) => ({ ...prev, produto: value }))}
+                                                disabled={!form.fornecedor}
+                                            >
+                                                <SelectTrigger className="h-11 rounded-xl">
+                                                    <SelectValue placeholder={!form.fornecedor ? "Selecione o fornecedor antes" : "Selecione o produto, se aplicável"} />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {produtoOptions.map((produto) => (
+                                                        <SelectItem key={produto.id} value={produto.id}>
+                                                            {produto.nome}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+
+                                    {requiresProductSelection && !form.produto && (
+                                        <div className="rounded-xl border border-warning/20 bg-warning-soft/40 p-3 text-sm text-warning-strong">
+                                            {REGRA_MENSAGEM_PRODUTO}
+                                        </div>
+                                    )}
+
+                                    <div className="space-y-1.5">
+                                        <Label>Quantidade de volumes <span className="text-destructive">*</span></Label>
+                                        <Input
+                                            type="number"
+                                            min="0"
+                                            step="1"
+                                            placeholder="0"
+                                            value={form.quantidade}
+                                            onChange={(e) => setForm((prev) => ({ ...prev, quantidade: e.target.value }))}
+                                            disabled={tipoCalculoAtual === "operation"}
+                                            className={cn(
+                                                "h-11 rounded-xl text-center font-black text-lg",
+                                                tipoCalculoAtual === "operation" && "opacity-70",
+                                            )}
+                                        />
+                                        <p className="text-[11px] text-muted-foreground">
+                                            {tipoCalculoAtual === "operation"
+                                                ? "Registros por operação usam quantidade automática de 1."
+                                                : "Informe a quantidade de volumes a serem descarregados."}
+                                        </p>
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <Label>Quantidade de colaboradores envolvidos <span className="text-destructive">*</span></Label>
+                                        <Input
+                                            type="number"
+                                            min="1"
+                                            step="1"
+                                            inputMode="numeric"
+                                            value={form.quantidade_colaboradores}
+                                            onChange={(e) => setForm((prev) => ({ ...prev, quantidade_colaboradores: e.target.value.replace(/[^\d]/g, "") }))}
+                                            className="h-11 rounded-xl text-center font-black text-lg"
+                                        />
+                                        <p className="text-[11px] text-muted-foreground">
+                                            Informe a quantidade total de colaboradores envolvidos para liberar a etapa seguinte.
+                                        </p>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="space-y-1.5">
+                                            <Label>NF</Label>
+                                            <Input
+                                                placeholder="Ex: SIM, N/A, ou #123"
+                                                value={form.nf_numero}
+                                                onChange={(e) => setForm((prev) => ({ ...prev, nf_numero: e.target.value.toUpperCase() }))}
+                                                className="h-11 rounded-xl"
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <Label>CTRC</Label>
+                                            <Input
+                                                placeholder="Conhecimento de Transporte"
+                                                value={form.ctrc}
+                                                onChange={(e) => setForm((prev) => ({ ...prev, ctrc: e.target.value.toUpperCase() }))}
+                                                className="h-11 rounded-xl"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="space-y-1.5">
+                                            <Label className="flex items-center gap-1.5">
+                                                <Wallet className="w-3.5 h-3.5" />
+                                                Forma de pagamento <span className="text-destructive">*</span>
+                                            </Label>
+                                            <Select
+                                                value={form.forma_pagamento}
+                                                onValueChange={(value) => setForm((prev) => ({ ...prev, forma_pagamento: value }))}
+                                            >
+                                                <SelectTrigger className="h-11 rounded-xl">
+                                                    <SelectValue placeholder="Selecione" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {formaPagamentoOptions.map((forma) => (
+                                                        <SelectItem key={forma.id} value={forma.id}>
+                                                            {forma.nome}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+
+                                        <div className="space-y-1.5">
+                                            <Label className="flex items-center gap-1.5">
+                                                <Car className="w-3.5 h-3.5" />
+                                                Placa do veículo
+                                            </Label>
+                                            <Input
+                                                placeholder={exibirPlaca ? "Ex: ABC-1D23" : "Opcional"}
+                                                value={form.placa_veiculo}
+                                                onChange={(e) => setForm((prev) => ({ ...prev, placa_veiculo: e.target.value.toUpperCase() }))}
+                                                className="h-11 rounded-xl font-mono uppercase"
+                                                maxLength={10}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <Label>Observação</Label>
+                                        <Textarea
+                                            placeholder="Detalhes adicionais sobre a operação..."
+                                            value={form.observacao}
+                                            onChange={(e) => setForm((prev) => ({ ...prev, observacao: e.target.value }))}
+                                            className="rounded-xl min-h-[64px]"
+                                        />
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <div className="flex items-center justify-between">
+                                            <Label>Valor Unitário</Label>
+                                            <Badge variant="info" className="font-bold">Automático</Badge>
+                                        </div>
+                                        <Input
+                                            value={
+                                                ruleLookupState === "loading"
+                                                    ? "Buscando valor..."
+                                                    : hasRegraFinanceira
+                                                        ? `${formatCurrency(valorUnitario)} por ${getUnidadeRegraLabel(tipoCalculoAtual)}`
+                                                        : ruleLookupState === "missing" || ruleLookupState === "duplicate" || ruleLookupState === "needs_product" || ruleLookupState === "error"
+                                                            ? "Fornecedor sem valor cadastrado"
+                                                            : "Aguardando regra"
+                                            }
+                                            readOnly
+                                            placeholder="Aguardando regra"
+                                            className={cn(
+                                                "h-11 rounded-xl text-right font-display font-bold",
+                                                ruleLookupState === "found" && "border-success text-success",
+                                                (ruleLookupState === "missing" || ruleLookupState === "duplicate" || ruleLookupState === "needs_product" || ruleLookupState === "error") && "border-destructive text-destructive",
+                                            )}
+                                        />
+                                    </div>
+
+                                    {!!mensagemRegra && form.transportadora && ruleLookupState !== "loading" && (
+                                        <div className="rounded-xl border border-destructive/20 bg-destructive-soft/40 p-4 text-sm text-destructive-strong">
+                                            {mensagemRegra}
+                                        </div>
+                                    )}
+
+                                    <div className="rounded-2xl border border-border bg-muted/20 p-4 space-y-3">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
+                                                Preview de cálculo
+                                            </span>
+                                            <Badge variant={hasRegraFinanceira ? "success" : "warning"}>
+                                                {getTipoCalculoLabel(tipoCalculoAtual)}
+                                            </Badge>
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <div>
+                                                <p className="text-[11px] text-muted-foreground">Valor de Descarga</p>
+                                                <p className="text-lg font-black font-display">
+                                                    {formatCurrency(valorDescarga)}
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[11px] text-muted-foreground">Custo com ISS</p>
+                                                <p className="text-sm font-black text-muted-foreground">
+                                                    {formatCurrency(custoIss)}
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[11px] text-muted-foreground">Total do Filme</p>
+                                                <p className="text-sm font-black text-muted-foreground">
+                                                    {formatCurrency(totalFilme)}
+                                                </p>
+                                            </div>
+                                            <div className="bg-brand/10 p-2 rounded-lg -mx-2 px-2">
+                                                <p className="text-[11px] text-brand/80 font-bold uppercase">TOTAL FINAL</p>
+                                                <p className="text-xl font-black font-display text-brand">
+                                                    {formatCurrency(totalFinal)}
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[11px] text-muted-foreground">Quantidade (QTD)</p>
+                                                <p className="text-lg font-black font-display">{quantidadeConsiderada || 0}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[11px] text-muted-foreground">Base do cálculo</p>
+                                                <p className="text-sm font-bold">
+                                                    {tipoCalculoAtual === "operation"
+                                                        ? "1 operação x " + formatCurrency(valorUnitario || 0)
+                                                        : `${quantidadeConsiderada || 0} x ${formatCurrency(valorUnitario || 0)}`}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {etapaDoisBlockReason && (
+                                        <div className="rounded-xl border border-warning/20 bg-warning-soft/40 p-3 text-sm text-warning-strong">
+                                            {etapaDoisBlockReason}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {etapaAtual === 3 && (
+                                <div className="rounded-xl border border-border bg-background p-4 space-y-4 animate-in fade-in zoom-in-95 duration-200">
                                     <div className="flex items-start justify-between gap-3">
                                         <div>
                                             <p className="text-sm font-bold text-foreground">Seleção da equipe</p>
@@ -1358,9 +1528,9 @@ const LancamentoProducao = () => {
                                         })}
                                     </div>
 
-                                    {etapaDoisBlockReason && (
+                                    {etapaTresBlockReason && (
                                         <div className="rounded-xl border border-warning/20 bg-warning-soft/40 p-3 text-sm text-warning-strong">
-                                            {etapaDoisBlockReason}
+                                            {etapaTresBlockReason}
                                         </div>
                                     )}
                                 </div>
@@ -1381,21 +1551,15 @@ const LancamentoProducao = () => {
                                 </div>
                             )}
 
-                            {submissionBlockReason && (
-                                <div className="rounded-xl border border-warning/20 bg-warning-soft/40 p-3 text-sm text-warning-strong">
-                                    {submissionBlockReason}
-                                </div>
-                            )}
-
                             <Button
                                 type="submit"
                                 className="w-full h-12 rounded-xl bg-brand hover:bg-brand/90 font-black text-lg shadow-lg shadow-brand/20 mt-2 gap-2 disabled:cursor-not-allowed disabled:opacity-60"
-                                disabled={mutation.isPending || !!submissionBlockReason || (etapaAtual === 2 && !!etapaDoisBlockReason)}
+                                disabled={mutation.isPending || (etapaAtual === 1 && !!etapaUmBlockReason) || (etapaAtual === 2 && !!etapaDoisBlockReason) || (etapaAtual === 3 && !!etapaTresBlockReason)}
                             >
                                 {mutation.isPending ? "Salvando..." : (
                                     <>
                                         <Save className="w-5 h-5" />
-                                        {etapaAtual === 1 ? "Continuar para colaboradores" : "Registrar Produção"}
+                                        {etapaAtual === 1 ? "Continuar para operação" : etapaAtual === 2 ? "Continuar para colaboradores" : "Registrar Produção"}
                                     </>
                                 )}
                             </Button>

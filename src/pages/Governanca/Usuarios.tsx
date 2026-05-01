@@ -326,10 +326,16 @@ const UsuariosGestao = () => {
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => { setOpen(false); reset(); }}>Cancelar</Button>
-                        <Button onClick={() => createMutation.mutate({
-                            ...form,
-                            empresa_id: form.empresa_id === "all" ? null : form.empresa_id
-                        })} disabled={createMutation.isPending}>
+                        <Button onClick={() => {
+                            if (!form.perfil_id) {
+                                toast.error("Selecione um perfil de acesso.");
+                                return;
+                            }
+                            createMutation.mutate({
+                                ...form,
+                                empresa_id: (form.empresa_id === "all" || form.empresa_id === "") ? null : form.empresa_id
+                            });
+                        }} disabled={createMutation.isPending}>
                             {createMutation.isPending ? "Salvando..." : editingId ? "Salvar alterações" : "Salvar Vínculo"}
                         </Button>
                     </DialogFooter>

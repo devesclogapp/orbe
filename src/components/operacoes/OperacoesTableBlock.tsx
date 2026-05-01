@@ -60,7 +60,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useSelection } from "@/contexts/SelectionContext";
 import { cn } from "@/lib/utils";
 import { OperacaoProducaoService, OperacaoService, RegraOperacionalService, EmpresaService } from "@/services/base.service";
-import { classificarFinanceiro, processarOperacao, getModalidadeLabel, ModalidadeFinanceira, StatusPagamento } from "@/utils/financeiro";
+import { classificarFinanceiro, processarOperacao, calcularValoresOperacao, getModalidadeLabel, ModalidadeFinanceira, StatusPagamento } from "@/utils/financeiro";
 
 type OperacoesTableBlockProps = {
   date: string;
@@ -376,9 +376,6 @@ const buildEditableForm = (item: any): EditableOperationForm => {
 const applyBusinessRulesToForm = (baseForm: EditableOperationForm, editingItem: any) => {
   const next = { ...baseForm };
 
-  const totalFilme = parseLocaleNumber(next.valor_unitario_filme) * parseLocaleNumber(next.quantidade_filme);
-  next.valor_total_filme = totalFilme ? formatDecimalInput(totalFilme) : "0,00";
-
   const unitario = next.valor_unitario !== undefined
     ? parseLocaleNumber(next.valor_unitario)
     : Number(editingItem?.valor_unitario_snapshot || editingItem?.valor_unitario_label || 0);
@@ -386,17 +383,21 @@ const applyBusinessRulesToForm = (baseForm: EditableOperationForm, editingItem: 
   let nfRaw = String(next.nf_numero).toUpperCase().trim();
   if (nfRaw === "S" || nfRaw === "SIM") nfRaw = "SIM";
   if (nfRaw === "N" || nfRaw === "NAO" || nfRaw === "NÃO") nfRaw = "NÃO";
-
-  const percentualCalculado = nfRaw === "SIM" ? 5 : (nfRaw === "NÃO" ? 0 : parseLocaleNumber(next.percentual_iss));
-
   next.nf_numero = nfRaw;
-  next.percentual_iss = percentualCalculado.toString();
 
-  const valDescargaCalculado = Math.max(parseLocaleNumber(next.quantidade), 0) * unitario;
-  const custoIssCalculado = valDescargaCalculado * (percentualCalculado / 100);
+  const valoresCalculados = calcularValoresOperacao({
+    quantidade: parseLocaleNumber(next.quantidade),
+    valorUnitario: unitario,
+    percentualIss: parseLocaleNumber(next.percentual_iss),
+    quantidadeFilme: parseLocaleNumber(next.quantidade_filme),
+    valorUnitarioFilme: parseLocaleNumber(next.valor_unitario_filme),
+    nfRaw,
+  });
 
-  next.valor_descarga = valDescargaCalculado ? formatDecimalInput(valDescargaCalculado) : "0,00";
-  next.custo_com_iss = custoIssCalculado ? formatDecimalInput(custoIssCalculado) : "0,00";
+  next.percentual_iss = valoresCalculados.percentualCalculado.toString();
+  next.valor_total_filme = valoresCalculados.totalFilmeCalculado ? formatDecimalInput(valoresCalculados.totalFilmeCalculado) : "0,00";
+  next.valor_descarga = valoresCalculados.valorDescargaCalculado ? formatDecimalInput(valoresCalculados.valorDescargaCalculado) : "0,00";
+  next.custo_com_iss = valoresCalculados.custoIssCalculado ? formatDecimalInput(valoresCalculados.custoIssCalculado) : "0,00";
 
   return next;
 };
