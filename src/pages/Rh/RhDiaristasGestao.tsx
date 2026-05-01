@@ -1,0 +1,302 @@
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AppShell } from "@/components/layout/AppShell";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import {
+    Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription,
+} from "@/components/ui/dialog";
+import { DiaristaService, EmpresaService, PerfilUsuarioService } from "@/services/base.service";
+import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+import { Pencil, Plus, RefreshCw, Trash2, Loader2, Users } from "lucide-react";
+import { useQuery as useQueryClient2 } from "@tanstack/react-query";
+
+const FUNCOES = ["Diarista", "Auxiliar de carga", "Ajudante", "Conferente", "Operador eventual", "Serviço extra"] as const;
+
+const emptyForm = {
+    nome: "",
+    cpf: "",
+    telefone: "",
+    funcao: "Diarista" as string,
+    valor_diaria: "",
+    status: "ativo" as "ativo" | "inativo",
+    empresa_id: "",
+    observacoes: "",
+};
+
+const RhDiaristasGestao = () => {
+    const { user } = useAuth();
+    const queryClient = useQueryClient();
+    const [open, setOpen] = useState(false);
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [form, setForm] = useState({ ...emptyForm });
+
+    const { data: perfil } = useQuery({
+        queryKey: ["perfil_usuario", user?.id],
+        queryFn: () => (user?.id ? PerfilUsuarioService.getByUserId(user.id) : Promise.resolve(null)),
+        enabled: !!user?.id,
+    });
+
+    const { data: empresas = [] } = useQuery({
+        queryKey: ["empresas"],
+        queryFn: () => EmpresaService.getAll(),
+    });
+
+    const empresaIdPadrao = perfil?.empresa_id ?? ((empresas as any[])[0]?.id ?? "");
+
+    const { data: diaristas = [], isLoading, isFetching } = useQuery({
+        queryKey: ["diaristas_gestao", empresaIdPadrao],
+        queryFn: () => DiaristaService.getByEmpresa(empresaIdPadrao, false),
+        enabled: !!empresaIdPadrao,
+    });
+
+    const reset = () => {
+        setForm({ ...emptyForm, empresa_id: empresaIdPadrao });
+        setEditingId(null);
+    };
+
+    const handleEdit = (d: any) => {
+        setEditingId(d.id);
+        setForm({
+            nome: d.nome,
+            cpf: d.cpf ?? "",
+            telefone: d.telefone ?? "",
+            funcao: d.funcao,
+            valor_diaria: String(d.valor_diaria ?? ""),
+            status: d.status,
+            empresa_id: d.empresa_id,
+            observacoes: d.observacoes ?? "",
+        });
+        setOpen(true);
+    };
+
+    const saveMutation = useMutation({
+        mutationFn: () => {
+            if (!form.nome.trim()) throw new Error("Informe o nome do diarista.");
+            if (!form.empresa_id) throw new Error("Selecione a empresa.");
+            const valor = Number(form.valor_diaria);
+            if (isNaN(valor) || valor < 0) throw new Error("Valor da diária inválido.");
+            const payload = {
+                nome: form.nome.trim(),
+                cpf: form.cpf.trim() || null,
+                telefone: form.telefone.trim() || null,
+                funcao: form.funcao,
+                valor_diaria: valor,
+                status: form.status,
+                empresa_id: form.empresa_id,
+                observacoes: form.observacoes.trim() || null,
+            };
+            return editingId
+                ? DiaristaService.update(editingId, payload)
+                : DiaristaService.create(payload);
+        },
+        onSuccess: () => {
+            toast.success(editingId ? "Diarista atualizado." : "Diarista cadastrado.");
+            queryClient.invalidateQueries({ queryKey: ["diaristas_gestao"] });
+            queryClient.invalidateQueries({ queryKey: ["diaristas_ativos"] });
+            queryClient.invalidateQueries({ queryKey: ["diaristas_lancamento"] });
+            setOpen(false);
+            reset();
+        },
+        onError: (err: any) => toast.error("Erro ao salvar.", { description: err.message }),
+    });
+
+    const toggleStatusMutation = useMutation({
+        mutationFn: ({ id, status }: { id: string; status: "ativo" | "inativo" }) =>
+            DiaristaService.toggleStatus(id, status),
+        onSuccess: () => {
+            toast.success("Status atualizado.");
+            queryClient.invalidateQueries({ queryKey: ["diaristas_gestao"] });
+            queryClient.invalidateQueries({ queryKey: ["diaristas_ativos"] });
+            queryClient.invalidateQueries({ queryKey: ["diaristas_lancamento"] });
+        },
+        onError: (err: any) => toast.error("Erro.", { description: err.message }),
+    });
+
+    const deleteMutation = useMutation({
+        mutationFn: (id: string) => DiaristaService.softDelete(id),
+        onSuccess: () => {
+            toast.success("Diarista removido.");
+            queryClient.invalidateQueries({ queryKey: ["diaristas_gestao"] });
+            queryClient.invalidateQueries({ queryKey: ["diaristas_ativos"] });
+            queryClient.invalidateQueries({ queryKey: ["diaristas_lancamento"] });
+        },
+        onError: (err: any) => toast.error("Erro.", { description: err.message }),
+    });
+
+    const diaristasArray = diaristas as any[];
+
+    return (
+        <AppShell title="Gestão de Diaristas" subtitle="Cadastre e gerencie os diaristas da empresa">
+            <div className="space-y-4">
+                <div className="flex justify-between items-center bg-background p-2 rounded-lg border border-border/50">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Users className="h-4 w-4" />
+                        <span>{diaristasArray.length} diarista(s) cadastrado(s)</span>
+                    </div>
+                    <div className="flex gap-2">
+                        <Button
+                            variant="outline" size="icon" className="h-9 w-9"
+                            onClick={() => queryClient.invalidateQueries({ queryKey: ["diaristas_gestao"] })}
+                        >
+                            <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
+                        </Button>
+                        <Button className="h-9 px-4 font-display font-semibold text-sm" onClick={() => { reset(); setOpen(true); }}>
+                            <Plus className="h-4 w-4 mr-1.5" /> Novo diarista
+                        </Button>
+                    </div>
+                </div>
+
+                <section className="esc-card overflow-hidden">
+                    {isLoading ? (
+                        <div className="flex flex-col items-center justify-center p-12 gap-3">
+                            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                            <p className="text-xs text-muted-foreground uppercase tracking-widest font-medium">Carregando...</p>
+                        </div>
+                    ) : diaristasArray.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center p-16 gap-3 text-center">
+                            <Users className="h-10 w-10 text-muted-foreground" />
+                            <p className="font-medium text-foreground">Nenhum diarista cadastrado</p>
+                            <p className="text-sm text-muted-foreground">Clique em "Novo diarista" para começar.</p>
+                        </div>
+                    ) : (
+                        <table className="w-full text-sm">
+                            <thead className="esc-table-header">
+                                <tr className="text-left">
+                                    <th className="px-5 h-11 font-medium">Nome</th>
+                                    <th className="px-3 h-11 font-medium">Função</th>
+                                    <th className="px-3 h-11 font-medium">CPF</th>
+                                    <th className="px-3 h-11 font-medium text-right">Diária</th>
+                                    <th className="px-5 h-11 font-medium text-center">Status</th>
+                                    <th className="px-5 h-11 font-medium text-right">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {diaristasArray.map((d: any) => (
+                                    <tr key={d.id} className="border-t border-muted hover:bg-background group">
+                                        <td className="px-5 h-[52px]">
+                                            <p className="font-medium text-foreground">{d.nome}</p>
+                                            {d.telefone && <p className="text-xs text-muted-foreground">{d.telefone}</p>}
+                                        </td>
+                                        <td className="px-3 text-muted-foreground">{d.funcao}</td>
+                                        <td className="px-3 font-mono text-xs text-muted-foreground">{d.cpf ?? "—"}</td>
+                                        <td className="px-3 text-right font-mono font-semibold text-foreground">
+                                            {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(d.valor_diaria))}
+                                        </td>
+                                        <td className="px-5 text-center">
+                                            <button
+                                                onClick={() => toggleStatusMutation.mutate({ id: d.id, status: d.status === "ativo" ? "inativo" : "ativo" })}
+                                                className={cn(
+                                                    "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold transition-all cursor-pointer",
+                                                    d.status === "ativo" ? "bg-emerald-500/15 text-emerald-700" : "bg-muted text-muted-foreground",
+                                                )}
+                                            >
+                                                {d.status === "ativo" ? "Ativo" : "Inativo"}
+                                            </button>
+                                        </td>
+                                        <td className="px-5 text-right">
+                                            <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(d)}>
+                                                    <Pencil className="h-3.5 w-3.5" />
+                                                </Button>
+                                                <Button
+                                                    variant="ghost" size="icon"
+                                                    className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                                    onClick={() => { if (confirm(`Remover ${d.nome}?`)) deleteMutation.mutate(d.id); }}
+                                                >
+                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                </Button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    )}
+                </section>
+            </div>
+
+            <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) reset(); }}>
+                <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>{editingId ? "Editar diarista" : "Novo diarista"}</DialogTitle>
+                        <DialogDescription>Preencha os dados do diarista. O valor da diária será usado nos cálculos automáticos.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                        <div className="space-y-1.5">
+                            <Label>Nome completo *</Label>
+                            <Input placeholder="Nome do diarista" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                                <Label>CPF</Label>
+                                <Input placeholder="000.000.000-00" value={form.cpf} onChange={(e) => setForm({ ...form, cpf: e.target.value })} />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label>Telefone</Label>
+                                <Input placeholder="(00) 00000-0000" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} />
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                                <Label>Função *</Label>
+                                <Select value={form.funcao} onValueChange={(v) => setForm({ ...form, funcao: v })}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        {FUNCOES.map((f) => <SelectItem key={f} value={f}>{f}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label>Valor da diária *</Label>
+                                <Input
+                                    type="number" step="0.01" min="0" placeholder="120.00"
+                                    value={form.valor_diaria}
+                                    onChange={(e) => setForm({ ...form, valor_diaria: e.target.value })}
+                                />
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                                <Label>Empresa *</Label>
+                                <Select value={form.empresa_id || empresaIdPadrao} onValueChange={(v) => setForm({ ...form, empresa_id: v })}>
+                                    <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                                    <SelectContent>
+                                        {(empresas as any[]).map((e: any) => <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label>Status</Label>
+                                <Select value={form.status} onValueChange={(v: "ativo" | "inativo") => setForm({ ...form, status: v })}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="ativo">Ativo</SelectItem>
+                                        <SelectItem value="inativo">Inativo</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                        <div className="space-y-1.5">
+                            <Label>Observações</Label>
+                            <Textarea rows={2} placeholder="Observações sobre o diarista..." value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => { setOpen(false); reset(); }}>Cancelar</Button>
+                        <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+                            {saveMutation.isPending ? "Salvando..." : editingId ? "Salvar alterações" : "Cadastrar"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </AppShell>
+    );
+};
+
+export default RhDiaristasGestao;

@@ -108,6 +108,35 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
     if (error) throw error;
     return data;
   }
+
+  /**
+   * Retorna colaboradores do tipo DIARISTA que têm lançamento operacional permitido.
+   * Usado pela tela /producao/diaristas (DiaristasLancamento) como fonte de dados.
+   */
+  async getDiaristas(empresaId: string, apenasAtivos = true) {
+    let query = (supabase as any)
+      .from('colaboradores')
+      .select('*')
+      .eq('empresa_id', empresaId)
+      .eq('tipo_colaborador', 'DIARISTA')
+      .eq('permitir_lancamento_operacional', true)
+      .order('nome', { ascending: true });
+
+    if (apenasAtivos) query = query.eq('status', 'ativo');
+
+    const { data, error } = await query;
+    if (error) throw error;
+    // Mapeia campos para o formato esperado pela tela de lançamento
+    return (data ?? []).map((c: any) => ({
+      id: c.id,
+      nome: c.nome,
+      cpf: c.cpf ?? null,
+      funcao: c.cargo ?? null,
+      valor_diaria: Number(c.valor_base ?? 0),
+      status: c.status,
+      empresa_id: c.empresa_id,
+    }));
+  }
 }
 export const ColaboradorService = new ColaboradorServiceClass();
 
@@ -1278,3 +1307,320 @@ export class TipoRegraOperacionalServiceClass {
 }
 
 export const TipoRegraOperacionalService = new TipoRegraOperacionalServiceClass();
+
+// ==================================================
+// MÓDULO DIARISTAS
+// ==================================================
+
+export type CodigoMarcacao = 'P' | 'MP' | 'AUSENTE';
+export type StatusLancamentoDiarista = 'em_aberto' | 'fechado_para_pagamento' | 'pago' | 'cancelado';
+
+export interface LancamentoDiaristaPayload {
+  empresa_id: string;
+  diarista_id: string;
+  nome_colaborador: string;
+  cpf_colaborador?: string | null;
+  funcao_colaborador?: string | null;
+  data_lancamento: string;
+  codigo_marcacao: CodigoMarcacao;
+  quantidade_diaria: number;
+  valor_diaria_base: number;
+  valor_calculado: number;
+  cliente_unidade?: string | null;
+  operacao_servico?: string | null;
+  encarregado_id?: string | null;
+  encarregado_nome?: string | null;
+  observacao?: string | null;
+}
+
+class DiaristaServiceClass {
+  async getByEmpresa(empresaId: string, apenasAtivos = true) {
+    // Diaristas estão na tabela 'colaboradores' com tipo_colaborador = 'DIARISTA'
+    let query = supabase
+      .from('colaboradores')
+      .select('id, nome, cpf, telefone, cargo, valor_base, status, empresa_id, permitir_lancamento_operacional, deleted_at')
+      .eq('empresa_id', empresaId)
+      .eq('tipo_colaborador', 'DIARISTA')
+      .eq('permitir_lancamento_operacional', true)
+      .is('deleted_at', null)
+      .order('nome', { ascending: true });
+
+    if (apenasAtivos) query = query.eq('status', 'ativo');
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    // Mapear campos para o formato esperado pelo componente
+    return (data ?? []).map((c: any) => ({
+      ...c,
+      funcao: c.cargo ?? '—',
+      valor_diaria: Number(c.valor_base ?? 0),
+    }));
+  }
+
+  async create(payload: Record<string, any>) {
+    // Criar diarista na tabela colaboradores
+    const mapped = {
+      nome: payload.nome,
+      cpf: payload.cpf ?? null,
+      telefone: payload.telefone ?? null,
+      cargo: payload.funcao ?? payload.cargo ?? null,
+      valor_base: payload.valor_diaria ?? payload.valor_base ?? 0,
+      status: payload.status ?? 'ativo',
+      empresa_id: payload.empresa_id,
+      tipo_colaborador: 'DIARISTA',
+      permitir_lancamento_operacional: payload.permitir_lancamento_operacional ?? true,
+    };
+    const { data, error } = await supabase
+      .from('colaboradores')
+      .insert(mapped)
+      .select()
+      .single();
+    if (error) throw error;
+    return { ...data, funcao: data.cargo, valor_diaria: Number(data.valor_base ?? 0) };
+  }
+
+  async update(id: string, payload: Record<string, any>) {
+    // Mapear campos de volta para colaboradores
+    const mapped: Record<string, any> = { updated_at: new Date().toISOString() };
+    if (payload.nome !== undefined)      mapped.nome = payload.nome;
+    if (payload.cpf !== undefined)       mapped.cpf = payload.cpf;
+    if (payload.telefone !== undefined)  mapped.telefone = payload.telefone;
+    if (payload.funcao !== undefined)    mapped.cargo = payload.funcao;
+    if (payload.cargo !== undefined)     mapped.cargo = payload.cargo;
+    if (payload.valor_diaria !== undefined) mapped.valor_base = payload.valor_diaria;
+    if (payload.valor_base !== undefined)   mapped.valor_base = payload.valor_base;
+    if (payload.status !== undefined)    mapped.status = payload.status;
+    if (payload.deleted_at !== undefined) mapped.deleted_at = payload.deleted_at;
+    if (payload.permitir_lancamento_operacional !== undefined)
+      mapped.permitir_lancamento_operacional = payload.permitir_lancamento_operacional;
+
+    const { data, error } = await supabase
+      .from('colaboradores')
+      .update(mapped)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return { ...data, funcao: data.cargo, valor_diaria: Number(data.valor_base ?? 0) };
+  }
+
+  async softDelete(id: string) {
+    return this.update(id, { deleted_at: new Date().toISOString(), status: 'inativo' });
+  }
+
+  async toggleStatus(id: string, status: 'ativo' | 'inativo') {
+    return this.update(id, { status });
+  }
+}
+export const DiaristaService = new DiaristaServiceClass();
+
+class LancamentoDiaristaServiceClass {
+  async getByPeriodo(
+    empresaId: string,
+    inicio: string,
+    fim: string,
+    filtros?: {
+      diarista_nome?: string;
+      funcao?: string;
+      status?: StatusLancamentoDiarista;
+      cliente_unidade?: string;
+      encarregado_id?: string;
+    },
+  ) {
+    let query = (supabase as any)
+      .from('lancamentos_diaristas')
+      .select('*')
+      .eq('empresa_id', empresaId)
+      .gte('data_lancamento', inicio)
+      .lte('data_lancamento', fim)
+      .order('data_lancamento', { ascending: false })
+      .order('nome_colaborador', { ascending: true });
+
+    if (filtros?.status) query = query.eq('status', filtros.status);
+    if (filtros?.funcao) query = query.eq('funcao_colaborador', filtros.funcao);
+    if (filtros?.encarregado_id) query = query.eq('encarregado_id', filtros.encarregado_id);
+    if (filtros?.cliente_unidade) query = query.ilike('cliente_unidade', `%${filtros.cliente_unidade}%`);
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data ?? [];
+  }
+
+  async getByData(empresaId: string, data: string) {
+    const { data: result, error } = await (supabase as any)
+      .from('lancamentos_diaristas')
+      .select('*')
+      .eq('empresa_id', empresaId)
+      .eq('data_lancamento', data)
+      .order('nome_colaborador', { ascending: true });
+
+    if (error) throw error;
+    return result ?? [];
+  }
+
+  async createBatch(registros: LancamentoDiaristaPayload[]) {
+    if (registros.length === 0) return [];
+    const { data, error } = await (supabase as any)
+      .from('lancamentos_diaristas')
+      .insert(registros)
+      .select();
+    if (error) throw error;
+    return data ?? [];
+  }
+
+  async updateStatus(ids: string[], status: StatusLancamentoDiarista, loteId?: string) {
+    const payload: Record<string, any> = {
+      status,
+      updated_at: new Date().toISOString(),
+    };
+    if (loteId) payload.lote_fechamento_id = loteId;
+
+    const { error } = await (supabase as any)
+      .from('lancamentos_diaristas')
+      .update(payload)
+      .in('id', ids);
+    if (error) throw error;
+  }
+
+  async cancelar(id: string) {
+    const { error } = await (supabase as any)
+      .from('lancamentos_diaristas')
+      .update({ status: 'cancelado', updated_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) throw error;
+  }
+}
+export const LancamentoDiaristaService = new LancamentoDiaristaServiceClass();
+
+class LoteFechamentoDiaristaServiceClass {
+  async fecharPeriodo(params: {
+    empresaId: string;
+    periodoInicio: string;
+    periodoFim: string;
+    fechadoPor: string;
+    observacoes?: string;
+  }) {
+    // 1. Buscar os registros em aberto no período
+    const { data: registros, error: errBusca } = await (supabase as any)
+      .from('lancamentos_diaristas')
+      .select('id, valor_calculado')
+      .eq('empresa_id', params.empresaId)
+      .eq('status', 'em_aberto')
+      .gte('data_lancamento', params.periodoInicio)
+      .lte('data_lancamento', params.periodoFim);
+
+    if (errBusca) throw errBusca;
+    if (!registros || registros.length === 0) {
+      throw new Error('Nenhum registro em aberto encontrado para o período selecionado.');
+    }
+
+    const valorTotal = registros.reduce((acc: number, r: any) => acc + Number(r.valor_calculado || 0), 0);
+
+    // 2. Criar o lote de fechamento
+    const { data: lote, error: errLote } = await (supabase as any)
+      .from('lotes_fechamento_diaristas')
+      .insert({
+        empresa_id: params.empresaId,
+        periodo_inicio: params.periodoInicio,
+        periodo_fim: params.periodoFim,
+        total_registros: registros.length,
+        valor_total: valorTotal,
+        status: 'fechado',
+        fechado_por: params.fechadoPor,
+        fechado_em: new Date().toISOString(),
+        observacoes: params.observacoes ?? null,
+      })
+      .select()
+      .single();
+
+    if (errLote) throw errLote;
+
+    // 3. Atualizar status dos registros
+    const ids = registros.map((r: any) => r.id);
+    await LancamentoDiaristaService.updateStatus(ids, 'fechado_para_pagamento', lote.id);
+
+    return lote;
+  }
+
+  async getByEmpresa(empresaId: string) {
+    const { data, error } = await (supabase as any)
+      .from('lotes_fechamento_diaristas')
+      .select('*')
+      .eq('empresa_id', empresaId)
+      .order('fechado_em', { ascending: false });
+
+    if (error) throw error;
+    return data ?? [];
+  }
+
+  async marcarComoPago(loteId: string) {
+    const { error } = await (supabase as any)
+      .from('lotes_fechamento_diaristas')
+      .update({ status: 'pago' })
+      .eq('id', loteId);
+    if (error) throw error;
+
+    // atualizar registros vinculados
+    const { error: errLanc } = await (supabase as any)
+      .from('lancamentos_diaristas')
+      .update({ status: 'pago', updated_at: new Date().toISOString() })
+      .eq('lote_fechamento_id', loteId);
+    if (errLanc) throw errLanc;
+  }
+}
+export const LoteFechamentoDiaristaService = new LoteFechamentoDiaristaServiceClass();
+
+export interface RegraMarcacaoDiaristaPayload {
+  empresa_id: string | null;
+  codigo: string;
+  descricao: string;
+  multiplicador: number;
+  ativo: boolean;
+}
+
+class RegraMarcacaoDiaristaServiceClass {
+  async getByEmpresa(empresaId: string | null) {
+    let query = (supabase as any).from("regras_marcacao_diaristas").select("*").order("ativo", { ascending: false }).order("codigo", { ascending: true });
+    if (empresaId) {
+      query = query.or(`empresa_id.eq.${empresaId},empresa_id.is.null`);
+    } else {
+      query = query.is("empresa_id", null);
+    }
+    const { data, error } = await query;
+    if (error) throw error;
+    return data || [];
+  }
+
+  async getAll() {
+    const { data, error } = await (supabase as any).from("regras_marcacao_diaristas").select(`
+      *,
+      empresas (nome)
+    `).order("codigo", { ascending: true });
+    if (error) throw error;
+    return data || [];
+  }
+
+  async create(payload: RegraMarcacaoDiaristaPayload) {
+    const { data, error } = await (supabase as any).from("regras_marcacao_diaristas").insert([payload]).select().single();
+    if (error) throw error;
+    return data;
+  }
+
+  async update(id: string, payload: Partial<RegraMarcacaoDiaristaPayload>) {
+    const { data, error } = await (supabase as any)
+      .from("regras_marcacao_diaristas")
+      .update({ ...payload, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  }
+
+  async delete(id: string) {
+    const { error } = await (supabase as any).from("regras_marcacao_diaristas").delete().eq("id", id);
+    if (error) throw error;
+  }
+}
+export const RegraMarcacaoDiaristaService = new RegraMarcacaoDiaristaServiceClass();

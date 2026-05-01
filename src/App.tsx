@@ -73,6 +73,10 @@ import DemoPage from "./pages/Simulacao/DemoPage";
 import CentralGovernanca from "./pages/CentralGovernanca";
 import RegrasOperacionais from "./pages/RegrasOperacionais";
 
+// Módulo Diaristas
+import DiaristasLancamento from "./pages/Producao/DiaristasLancamento";
+import RhDiaristasPainel from "./pages/Rh/RhDiaristasPainel";
+import RhDiaristasGestao from "./pages/Rh/RhDiaristasGestao";
 
 const queryClient = new QueryClient();
 
@@ -102,6 +106,9 @@ const App = () => (
                   <Route path="/operacional/pontos" element={<AuthGuard><Pontos /></AuthGuard>} />
                   <Route path="/operacional/operacoes" element={<AuthGuard><Operacoes /></AuthGuard>} />
                   <Route path="/producao" element={<AuthGuard><LancamentoProducao /></AuthGuard>} />
+                  <Route path="/producao/diaristas" element={<AuthGuard><DiaristasLancamento /></AuthGuard>} />
+                  <Route path="/rh/diaristas" element={<AuthGuard><RhDiaristasPainel /></AuthGuard>} />
+                  <Route path="/rh/diaristas/cadastros" element={<AuthGuard><RhDiaristasGestao /></AuthGuard>} />
                   <Route path="/processamento" element={<Navigate to="/operacional/operacoes" replace />} />
                   <Route path="/processamento/legado" element={<AuthGuard><Processamento /></AuthGuard>} />
                   <Route path="/cadastros" element={<AuthGuard><CentralCadastros /></AuthGuard>} />

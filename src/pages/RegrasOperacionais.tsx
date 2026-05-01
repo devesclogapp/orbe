@@ -12,6 +12,8 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TabRegrasDiaristas } from "@/pages/Rh/TabRegrasDiaristas";
 
 import { AppShell } from "@/components/layout/AppShell";
 import {
@@ -1249,124 +1251,145 @@ const RegrasOperacionais = () => {
   return (
     <AppShell
       title="Regras Operacionais"
-      subtitle="Cadastre o valor unitário que será aplicado automaticamente na produção"
+      subtitle="Gerencie valores unitários de produção e multiplicadores para diaristas"
       backPath="/cadastros"
     >
-      <div className="space-y-6">
-        <Card className="p-5 space-y-4">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h2 className="font-semibold text-foreground">Regras cadastradas</h2>
-              <p className="text-sm text-muted-foreground">
-                Edite valores ou inative regras para impedir novos lançamentos com essa configuração.
-              </p>
-            </div>
-            <div className="flex w-full md:w-auto items-center gap-2">
-              <Input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Buscar por empresa, serviço..."
-                className="flex-1 md:w-64"
-              />
-              <Button className="shrink-0" onClick={() => { setIsModalOpen(true); setCurrentStep(1); }}>
-                <Plus className="h-4 w-4 mr-2" />
-                Nova Regra
-              </Button>
-            </div>
-          </div>
+      <Tabs defaultValue="operacional" className="space-y-6">
+        <TabsList className="bg-white border text-muted-foreground w-full flex-wrap h-auto md:w-auto md:inline-flex md:h-10 mb-2">
+          <TabsTrigger value="operacional">Operacional</TabsTrigger>
+          <TabsTrigger value="diaristas">Diaristas</TabsTrigger>
+          <TabsTrigger value="personalizada">Nova Aba P/ Regras</TabsTrigger>
+        </TabsList>
+        <TabsContent value="operacional" className="m-0">
+          <div className="space-y-6">
+            <Card className="p-5 space-y-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h2 className="font-semibold text-foreground">Regras cadastradas</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Edite valores ou inative regras para impedir novos lançamentos com essa configuração.
+                  </p>
+                </div>
+                <div className="flex w-full md:w-auto items-center gap-2">
+                  <Input
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Buscar por empresa, serviço..."
+                    className="flex-1 md:w-64"
+                  />
+                  <Button className="shrink-0" onClick={() => { setIsModalOpen(true); setCurrentStep(1); }}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Nova Regra
+                  </Button>
+                </div>
+              </div>
 
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Empresa</TableHead>
-                  <TableHead>Tipo de serviço</TableHead>
-                  <TableHead>Transportadora</TableHead>
-                  <TableHead>Fornecedor</TableHead>
-                  <TableHead>Produto / Carga</TableHead>
-                  <TableHead>Tipo de cálculo</TableHead>
-                  <TableHead>Valor / Tipo de Regra</TableHead>
-                  <TableHead>Vigência</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {!isLoadingRegras && filteredRules.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={10} className="h-24 text-center text-muted-foreground">
-                      Nenhuma regra operacional encontrada.
-                    </TableCell>
-                  </TableRow>
-                )}
-
-                {filteredRules.map((item: any) => {
-                  const tr = (tiposRegra as any[]).find((t) => t.id === item.tipo_regra_id);
-                  const isPct = tr?.unidade_medida === "percentual";
-                  const isGlobalIssRule = isIssRuleDefinition(tr);
-                  return (
-                    <TableRow key={item.id}>
-                      <TableCell>{isGlobalIssRule ? "Global" : item.empresas?.nome ?? "-"}</TableCell>
-                      <TableCell>{isGlobalIssRule ? "Todos" : item.tipos_servico_operacional?.nome ?? "-"}</TableCell>
-                      <TableCell>{isGlobalIssRule ? "Todas" : item.transportadoras_clientes?.nome ?? "Todas"}</TableCell>
-                      <TableCell>{isGlobalIssRule ? "Todos" : item.fornecedores?.nome ?? "-"}</TableCell>
-                      <TableCell>{item.produtos_carga?.nome ?? "Geral"}</TableCell>
-                      <TableCell>{getTipoCalculoLabel(item.tipo_calculo)}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-col gap-1">
-                          <span className="font-medium">
-                            {isPct ? `${Number(item.valor_unitario)}%` : formatCurrency(Number(item.valor_unitario || 0))}
-                          </span>
-                          <Badge variant="outline" className="w-fit text-[10px] h-4">
-                            {tr?.nome ?? "Taxa Operacional"}
-                          </Badge>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {formatDate(item.vigencia_inicio)}
-                        <span className="text-muted-foreground"> até {formatDate(item.vigencia_fim)}</span>
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={cn(item.ativo ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100" : "bg-zinc-200 text-zinc-700 hover:bg-zinc-200")}>
-                          {item.ativo ? "Ativo" : "Inativo"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button type="button" size="sm" variant="outline" onClick={() => handleEdit(item)}>
-                            <Pencil className="h-4 w-4 mr-2" />
-                            Editar
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            disabled={deleteMutation.isPending}
-                            onClick={() => setRuleToDelete(item)}
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Excluir
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            disabled={!item.ativo || inactivateMutation.isPending || deleteMutation.isPending}
-                            onClick={() => inactivateMutation.mutate(item.id)}
-                          >
-                            <Ban className="h-4 w-4 mr-2" />
-                            Inativar
-                          </Button>
-                        </div>
-                      </TableCell>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Empresa</TableHead>
+                      <TableHead>Tipo de serviço</TableHead>
+                      <TableHead>Transportadora</TableHead>
+                      <TableHead>Fornecedor</TableHead>
+                      <TableHead>Produto / Carga</TableHead>
+                      <TableHead>Tipo de cálculo</TableHead>
+                      <TableHead>Valor / Tipo de Regra</TableHead>
+                      <TableHead>Vigência</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
                     </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {!isLoadingRegras && filteredRules.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={10} className="h-24 text-center text-muted-foreground">
+                          Nenhuma regra operacional encontrada.
+                        </TableCell>
+                      </TableRow>
+                    )}
+
+                    {filteredRules.map((item: any) => {
+                      const tr = (tiposRegra as any[]).find((t) => t.id === item.tipo_regra_id);
+                      const isPct = tr?.unidade_medida === "percentual";
+                      const isGlobalIssRule = isIssRuleDefinition(tr);
+                      return (
+                        <TableRow key={item.id}>
+                          <TableCell>{isGlobalIssRule ? "Global" : item.empresas?.nome ?? "-"}</TableCell>
+                          <TableCell>{isGlobalIssRule ? "Todos" : item.tipos_servico_operacional?.nome ?? "-"}</TableCell>
+                          <TableCell>{isGlobalIssRule ? "Todas" : item.transportadoras_clientes?.nome ?? "Todas"}</TableCell>
+                          <TableCell>{isGlobalIssRule ? "Todos" : item.fornecedores?.nome ?? "-"}</TableCell>
+                          <TableCell>{item.produtos_carga?.nome ?? "Geral"}</TableCell>
+                          <TableCell>{getTipoCalculoLabel(item.tipo_calculo)}</TableCell>
+                          <TableCell>
+                            <div className="flex flex-col gap-1">
+                              <span className="font-medium">
+                                {isPct ? `${Number(item.valor_unitario)}%` : formatCurrency(Number(item.valor_unitario || 0))}
+                              </span>
+                              <Badge variant="outline" className="w-fit text-[10px] h-4">
+                                {tr?.nome ?? "Taxa Operacional"}
+                              </Badge>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {formatDate(item.vigencia_inicio)}
+                            <span className="text-muted-foreground"> até {formatDate(item.vigencia_fim)}</span>
+                          </TableCell>
+                          <TableCell>
+                            <Badge className={cn(item.ativo ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100" : "bg-zinc-200 text-zinc-700 hover:bg-zinc-200")}>
+                              {item.ativo ? "Ativo" : "Inativo"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              <Button type="button" size="sm" variant="outline" onClick={() => handleEdit(item)}>
+                                <Pencil className="h-4 w-4 mr-2" />
+                                Editar
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                disabled={deleteMutation.isPending}
+                                onClick={() => setRuleToDelete(item)}
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Excluir
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                disabled={!item.ativo || inactivateMutation.isPending || deleteMutation.isPending}
+                                onClick={() => inactivateMutation.mutate(item.id)}
+                              >
+                                <Ban className="h-4 w-4 mr-2" />
+                                Inativar
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </Card>
           </div>
-        </Card>
-      </div>
+        </TabsContent>
+
+        <TabsContent value="diaristas" className="m-0">
+          <Card className="p-5 space-y-4">
+            <TabRegrasDiaristas />
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="personalizada" className="m-0">
+          <Card className="p-5 space-y-4 text-center text-muted-foreground">
+            <p className="text-sm">Espaço reservado para cadastro de regras personalizadas.</p>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       <AlertDialog open={!!ruleToDelete} onOpenChange={(open) => !open && setRuleToDelete(null)}>
         <AlertDialogContent>

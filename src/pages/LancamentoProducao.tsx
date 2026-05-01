@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
+import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
     AlertCircle,
@@ -18,6 +19,7 @@ import {
     Truck,
     Wallet,
     Zap,
+    Users,
 } from "lucide-react";
 
 import { OperationalShell } from "@/components/layout/OperationalShell";
@@ -74,6 +76,8 @@ type StatusLancamento = "Processado" | "Pendente" | "Com alerta" | "Aguardando v
 type LookupOption = { id: string; nome: string };
 type RuleLookupState = "idle" | "loading" | "found" | "missing" | "error" | "duplicate" | "needs_product";
 type EtapaFormulario = 1 | 2 | 3;
+type TipoLancamento = "operacao_padrao" | "transbordo_servico_extra" | "custos_extras";
+type ModalidadeFinanceiraForm = "CAIXA_IMEDIATO" | "DUPLICATA_FORNECEDOR" | "FECHAMENTO_MENSAL_EMPRESA" | "CUSTO_DESPESA";
 type CondutaColaborador = {
     selected: boolean;
     hadInfraction: boolean;
@@ -82,17 +86,21 @@ type CondutaColaborador = {
 };
 
 type FormState = {
-    tipo_lancamento: "caixa" | "duplicatas" | "diaria" | "custo_extra" | "";
+    tipo_lancamento: TipoLancamento | "";
+    modalidade_financeira: ModalidadeFinanceiraForm | "";
     data: string;
     empresa_id: string;
     unidade_id: string;
     tipo_servico: string;
+    descricao_servico: string;
     quantidade_colaboradores: string;
     transportadora: string;
     fornecedor: string;
     produto: string;
     quantidade: string;
     valor_unitario: string;
+    valor_unitario_filme: string;
+    quantidade_filme: string;
     forma_pagamento: string;
     horario_inicio: string;
     horario_fim: string;
@@ -159,6 +167,101 @@ const getUnidadeRegraLabel = (tipo: TipoCalculo | null) => {
     return "volume";
 };
 
+const LANCAMENTO_PRESETS: Array<{
+    id: string;
+    tipo_lancamento: TipoLancamento;
+    modalidade_financeira: ModalidadeFinanceiraForm;
+    title: string;
+    description: string;
+    icon: typeof Wallet;
+}> = [
+        {
+            id: "preset_caixa",
+            tipo_lancamento: "operacao_padrao",
+            modalidade_financeira: "CAIXA_IMEDIATO",
+            title: "Descarga pgto. imediato (CAIXA)",
+            description: "Para pagamentos diários via depósito imediato aos colaboradores.",
+            icon: Wallet,
+        },
+        {
+            id: "preset_boleto",
+            tipo_lancamento: "operacao_padrao",
+            modalidade_financeira: "DUPLICATA_FORNECEDOR",
+            title: "Descarga corporativa (BOLETO)",
+            description: "Ex: Nestlé e Ambev, pagas na fábrica e controladas por boleto.",
+            icon: ListChecks,
+        },
+        {
+            id: "preset_dismelo",
+            tipo_lancamento: "operacao_padrao",
+            modalidade_financeira: "FECHAMENTO_MENSAL_EMPRESA",
+            title: "Operações com a DISMELO",
+            description: "Fechamentos mensais por nota fiscal e deduções diretas.",
+            icon: Wallet,
+        },
+        {
+            id: "preset_transbordo",
+            tipo_lancamento: "transbordo_servico_extra",
+            modalidade_financeira: "CAIXA_IMEDIATO",
+            title: "Transbordo e Serviço Extra",
+            description: "Conserto de paletes, ajudas avulsas, carretas de transferência.",
+            icon: Truck,
+        },
+        {
+            id: "preset_custos_mensais",
+            tipo_lancamento: "custos_extras",
+            modalidade_financeira: "CUSTO_DESPESA",
+            title: "Custos (CLT)",
+            description: "Para equipes de carteira assinada ou despesas fixas.",
+            icon: Users,
+        },
+        {
+            id: "preset_diaristas",
+            tipo_lancamento: "custos_extras",
+            modalidade_financeira: "CUSTO_DESPESA",
+            title: "Diaristas",
+            description: "Lançamento de diárias eventuais ou extras.",
+            icon: Zap,
+        },
+    ];
+
+const FINALIDADES_LANCAMENTO: Array<{
+    id: TipoLancamento;
+    title: string;
+    description: string;
+    helper: string;
+}> = [
+        {
+            id: "operacao_padrao",
+            title: "Operação padrão",
+            description: "Carga, descarga e movimentações da operação principal.",
+            helper: "Substitui Caixa, Duplicata Fornecedores e Duplicata a Volume Dismelo.",
+        },
+        {
+            id: "transbordo_servico_extra",
+            title: "Transbordo e serviço extra",
+            description: "Serviços extras ligados a transbordo e apoio operacional.",
+            helper: "Liquidação em depósito imediato.",
+        },
+        {
+            id: "custos_extras",
+            title: "Custos extras e equipe",
+            description: "Diaristas, carteira assinada e despesas complementares.",
+            helper: "Fluxo dedicado para custos fora da operação padrão.",
+        },
+    ];
+
+const getFinalidadeMeta = (tipo: TipoLancamento | "") =>
+    FINALIDADES_LANCAMENTO.find((item) => item.id === tipo) ?? null;
+
+const getModalidadeFinanceiraLabel = (modalidade: ModalidadeFinanceiraForm | "") => {
+    if (modalidade === "CAIXA_IMEDIATO") return "Depósito imediato";
+    if (modalidade === "DUPLICATA_FORNECEDOR") return "Boleto fornecedor";
+    if (modalidade === "FECHAMENTO_MENSAL_EMPRESA") return "Depósito fim do mês";
+    if (modalidade === "CUSTO_DESPESA") return "Custo ou despesa operacional";
+    return "Não definido";
+};
+
 const calcularTotalPrevisto = ({
     quantidade,
     quantidadeColaboradores,
@@ -200,23 +303,39 @@ const normalizeText = (value: string) =>
         .trim()
         .replace(/\s+/g, " ");
 
+// Presets permitidos por perfil: lista vazia = todos liberados
+const PRESETS_PERMITIDOS_POR_PERFIL: Record<string, string[]> = {
+    encarregado_diaristas: ["preset_diaristas"],
+};
+
+// Presets que redirecionam para rota própria
+const PRESET_ROTAS: Record<string, string> = {
+    preset_diaristas: "/producao/diaristas",
+};
+
 const LancamentoProducao = () => {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const queryClient = useQueryClient();
     const today = format(new Date(), "yyyy-MM-dd");
 
-    const [form, setForm] = useState<FormState>({
+    const [form, setForm] = useState<FormState & { preset_id: string }>({
+        preset_id: "",
         tipo_lancamento: "",
+        modalidade_financeira: "",
         data: today,
         empresa_id: "",
         unidade_id: "",
         tipo_servico: "",
+        descricao_servico: "",
         quantidade_colaboradores: "1",
         transportadora: "",
         fornecedor: "",
         produto: "",
         quantidade: "",
         valor_unitario: "",
+        valor_unitario_filme: "",
+        quantidade_filme: "",
         forma_pagamento: "",
         horario_inicio: "",
         horario_fim: "",
@@ -376,8 +495,37 @@ const LancamentoProducao = () => {
         () => formaPagamentoOptions.find((item) => item.id === form.forma_pagamento) ?? null,
         [formaPagamentoOptions, form.forma_pagamento],
     );
+    const finalidadeSelecionada = useMemo(
+        () => getFinalidadeMeta(form.tipo_lancamento),
+        [form.tipo_lancamento],
+    );
+    const modalidadeFinanceiraLabel = useMemo(
+        () => getModalidadeFinanceiraLabel(form.modalidade_financeira),
+        [form.modalidade_financeira],
+    );
+    const isOperacaoPadrao = form.tipo_lancamento === "operacao_padrao";
+    const isTransbordoServicoExtra = form.tipo_lancamento === "transbordo_servico_extra";
+    const isCustosMensaisCLT = form.preset_id === "preset_custos_mensais";
+    const isDiaristas = form.preset_id === "preset_diaristas";
+    const isQualquerCusto = isCustosMensaisCLT || isDiaristas;
+    const isFluxoSemEquipe = isTransbordoServicoExtra;
+    const deveExigirModalidadeManual = isOperacaoPadrao;
 
     // Regra pode ser vinculada apenas à transportadora (sem fornecedor obrigatório)
+    useEffect(() => {
+        if (form.tipo_lancamento === "transbordo_servico_extra" && form.modalidade_financeira !== "CAIXA_IMEDIATO") {
+            setForm((prev) => ({ ...prev, modalidade_financeira: "CAIXA_IMEDIATO" }));
+            return;
+        }
+        if (form.tipo_lancamento === "custos_extras" && form.modalidade_financeira !== "CUSTO_DESPESA") {
+            setForm((prev) => ({ ...prev, modalidade_financeira: "CUSTO_DESPESA" }));
+            return;
+        }
+        if (form.tipo_lancamento === "" && form.modalidade_financeira !== "") {
+            setForm((prev) => ({ ...prev, modalidade_financeira: "" }));
+        }
+    }, [form.modalidade_financeira, form.tipo_lancamento]);
+
     const regraLookupHabilitada = !!form.empresa_id && !!form.data && !!form.tipo_servico && !!form.transportadora;
 
     const {
@@ -474,6 +622,8 @@ const LancamentoProducao = () => {
     const quantidade = Number(form.quantidade || 0);
     const quantidadeColaboradores = Number(form.quantidade_colaboradores || 0);
     const valorUnitario = Number(form.valor_unitario || 0);
+    const valorUnitarioFilme = Number(form.valor_unitario_filme || 0);
+    const quantidadeFilme = Number(form.quantidade_filme || 0);
     const hasRegraFinanceira = !!regraValor;
     const tipoCalculoAtual = regraValor?.tipoCalculo ?? null;
     const quantidadeConsiderada = tipoCalculoAtual === "operation" ? 1 : quantidade;
@@ -483,8 +633,8 @@ const LancamentoProducao = () => {
         quantidade: quantidadeConsiderada,
         valorUnitario: valorUnitario,
         percentualIss: 0, // Encarregado não digita NF, mas se precisar a estrutura suporta
-        quantidadeFilme: 0,
-        valorUnitarioFilme: 0,
+        quantidadeFilme: quantidadeFilme,
+        valorUnitarioFilme: valorUnitarioFilme,
         nfRaw: "NÃO",
     });
 
@@ -492,8 +642,8 @@ const LancamentoProducao = () => {
         quantidade: quantidadeConsiderada,
         valorUnitario: valorUnitario,
         percentualIss: percentualIss,
-        quantidadeFilme: 0,
-        valorUnitarioFilme: 0,
+        quantidadeFilme: quantidadeFilme,
+        valorUnitarioFilme: valorUnitarioFilme,
         nfRaw: String(form.nf_numero ?? "").toUpperCase().trim(),
     });
     valoresCalculados.percentualCalculado = valoresCalculadosComIss.percentualCalculado;
@@ -522,26 +672,42 @@ const LancamentoProducao = () => {
         return "";
     }, [regraValorRpc, ruleLookupState]);
 
-    const etapaUmBlockReason = useMemo(() => {
-        if (!form.tipo_lancamento) return "Selecione o tipo de lançamento.";
+    const etapaUmBlockReasonResolvido = useMemo(() => {
+        if (!form.tipo_lancamento) return "Selecione o tipo de lancamento.";
+        if (deveExigirModalidadeManual && !form.modalidade_financeira) return "Selecione como essa operacao sera liquidada no ERP.";
         return "";
-    }, [form.tipo_lancamento]);
+    }, [deveExigirModalidadeManual, form.modalidade_financeira, form.tipo_lancamento]);
 
     const etapaDoisBlockReason = useMemo(() => {
         if (!form.empresa_id) return "Selecione a empresa.";
         if (!form.data) return "Selecione a data da operação.";
         if (!form.tipo_servico) return "Selecione o tipo de serviço.";
-        if (!form.transportadora) return "Selecione a transportadora ou cliente.";
-        if (requiresProductSelection && !form.produto) return REGRA_MENSAGEM_PRODUTO;
-        if (!form.forma_pagamento) return "Selecione a forma de pagamento.";
+
+        if (isTransbordoServicoExtra && !form.descricao_servico.trim()) return "Informe a descrição do serviço conforme a aba de transbordo.";
+        if (isQualquerCusto && !form.descricao_servico.trim()) return "Informe a descrição do custo ou motivo do diária.";
+
+        if (!isQualquerCusto && !form.transportadora) return "Selecione a transportadora ou cliente.";
+        if (!isQualquerCusto && requiresProductSelection && !form.produto) return REGRA_MENSAGEM_PRODUTO;
+        if (!isCustosMensaisCLT && !form.forma_pagamento) return "Selecione a categoria operacional da regra.";
+
         if (ruleLookupState === "loading") return "Buscando valor...";
-        // Fornecedor é obrigatório somente se a regra ainda não foi resolvida
-        if (!hasRegraFinanceira && !form.fornecedor) return "Selecione o fornecedor ou corrija a regra operacional.";
-        if (ruleLookupState === "duplicate" || ruleLookupState === "needs_product" || ruleLookupState === "error" || ruleLookupState === "missing") {
-            return mensagemRegra;
+
+        // Regras flexíveis para Transbordo e Custos
+        if (!hasRegraFinanceira) {
+            if (isTransbordoServicoExtra || isQualquerCusto) {
+                if (!form.valor_unitario || Number(form.valor_unitario) <= 0) {
+                    return `Para ${isTransbordoServicoExtra ? 'transbordo' : 'lançamento'} sem regra sistêmica, informe o valor unitário manualmente.`;
+                }
+            } else {
+                if (!form.fornecedor) return "Selecione o fornecedor ou corrija a regra operacional.";
+                if (ruleLookupState === "duplicate" || ruleLookupState === "needs_product" || ruleLookupState === "error" || ruleLookupState === "missing") {
+                    return mensagemRegra;
+                }
+                return REGRA_MENSAGEM_SEM_CADASTRO;
+            }
         }
-        if (!hasRegraFinanceira) return REGRA_MENSAGEM_SEM_CADASTRO;
-        if (!Number.isInteger(Number(form.quantidade_colaboradores)) || Number(form.quantidade_colaboradores) <= 0) {
+
+        if (!isFluxoSemEquipe && (!Number.isInteger(Number(form.quantidade_colaboradores)) || Number(form.quantidade_colaboradores) <= 0)) {
             return "Informe uma quantidade inteira de colaboradores maior que zero.";
         }
         if (quantidadeConsiderada <= 0) return "Informe uma quantidade maior que zero.";
@@ -550,6 +716,7 @@ const LancamentoProducao = () => {
         return "";
     }, [
         form.data,
+        form.descricao_servico,
         form.empresa_id,
         form.fornecedor,
         form.forma_pagamento,
@@ -560,7 +727,9 @@ const LancamentoProducao = () => {
         form.transportadora,
         hasRegraFinanceira,
         horarioInvalido,
+        isFluxoSemEquipe,
         isDataRetroativa,
+        isTransbordoServicoExtra,
         mensagemRegra,
         quantidadeConsiderada,
         requiresProductSelection,
@@ -568,6 +737,7 @@ const LancamentoProducao = () => {
     ]);
 
     const etapaTresBlockReason = useMemo(() => {
+        if (isFluxoSemEquipe) return "";
         const quantidadeInformada = Number(form.quantidade_colaboradores || 0);
         if (quantidadeSelecionada !== quantidadeInformada) {
             return `Você informou ${quantidadeInformada} colaboradores envolvidos, mas selecionou ${quantidadeSelecionada}. Selecione exatamente ${quantidadeInformada} colaboradores para continuar.`;
@@ -583,7 +753,7 @@ const LancamentoProducao = () => {
         }
 
         return "";
-    }, [colaboradoresSelecionados, condutaColaboradores, form.quantidade_colaboradores, quantidadeSelecionada]);
+    }, [colaboradoresSelecionados, condutaColaboradores, form.quantidade_colaboradores, isFluxoSemEquipe, quantidadeSelecionada]);
 
     const { data: historico = [], isLoading: isLoadingHistory } = useQuery({
         queryKey: ["producao_recente", form.empresa_id, form.unidade_id, form.data],
@@ -668,11 +838,14 @@ const LancamentoProducao = () => {
             setForm((prev) => ({
                 ...prev,
                 quantidade_colaboradores: "1",
+                descricao_servico: "",
                 transportadora: "",
                 fornecedor: "",
                 produto: "",
                 quantidade: "",
                 valor_unitario: "",
+                valor_unitario_filme: "",
+                quantidade_filme: "",
                 forma_pagamento: "",
                 horario_inicio: "",
                 horario_fim: "",
@@ -689,8 +862,8 @@ const LancamentoProducao = () => {
         e.preventDefault();
 
         if (etapaAtual === 1) {
-            if (etapaUmBlockReason) {
-                toast.error(etapaUmBlockReason);
+            if (etapaUmBlockReasonResolvido) {
+                toast.error(etapaUmBlockReasonResolvido);
                 return;
             }
             setEtapaAtual(2);
@@ -698,16 +871,20 @@ const LancamentoProducao = () => {
         }
 
         if (etapaAtual === 2) {
-            if (etapaUmBlockReason || etapaDoisBlockReason) {
-                toast.error(etapaUmBlockReason || etapaDoisBlockReason);
+            if (etapaUmBlockReasonResolvido || etapaDoisBlockReason) {
+                toast.error(etapaUmBlockReasonResolvido || etapaDoisBlockReason);
                 return;
             }
-            setEtapaAtual(3);
-            return;
+            if (isFluxoSemEquipe) {
+                // Fluxos baseados em duplicata de transbordo encerram no próprio formulário operacional.
+            } else {
+                setEtapaAtual(3);
+                return;
+            }
         }
 
-        if (etapaUmBlockReason || etapaDoisBlockReason || etapaTresBlockReason) {
-            toast.error(etapaUmBlockReason || etapaDoisBlockReason || etapaTresBlockReason);
+        if (etapaUmBlockReasonResolvido || etapaDoisBlockReason || etapaTresBlockReason) {
+            toast.error(etapaUmBlockReasonResolvido || etapaDoisBlockReason || etapaTresBlockReason);
             return;
         }
 
@@ -732,11 +909,19 @@ const LancamentoProducao = () => {
             total_infracoes: infracoesCount,
             total_colaboradores_vinculados: quantidadeSelecionada,
             contexto_operacional: {
+                finalidade_lancamento: finalidadeSelecionada?.title ?? form.tipo_lancamento,
+                modalidade_financeira: form.modalidade_financeira,
+                modalidade_financeira_label: modalidadeFinanceiraLabel,
+                descricao_servico: form.descricao_servico.trim() || null,
                 fornecedor: fornecedorSelecionado?.nome ?? form.fornecedor,
                 produto: produtoSelecionado?.nome ?? form.produto,
                 forma_pagamento: formaPagamentoSelecionada?.nome ?? form.forma_pagamento,
                 quantidade_colaboradores: quantidadeColaboradores,
                 tipo_calculo: tipoCalculoAtual,
+                percentual_iss: percentualIss,
+                valor_unitario: valorUnitario,
+                valor_unitario_filme: valorUnitarioFilme,
+                quantidade_filme: quantidadeFilme,
                 total_previsto: totalFinal,
                 valor_descarga: valorDescarga,
                 custo_com_iss: custoIss,
@@ -746,6 +931,10 @@ const LancamentoProducao = () => {
                 nf_numero: form.nf_numero.trim() || null,
                 ctrc: form.ctrc.trim() || null,
                 observacao: form.observacao.trim() || null,
+            },
+            contexto_importacao: {
+                origem_aba: finalidadeSelecionada?.title ?? form.tipo_lancamento,
+                modalidade_financeira_override: form.modalidade_financeira || null,
             },
         };
 
@@ -774,6 +963,8 @@ const LancamentoProducao = () => {
                 percentual_iss: percentualIss,
                 valor_descarga: valorDescarga,
                 custo_com_iss: custoIss,
+                valor_unitario_filme: valorUnitarioFilme,
+                quantidade_filme: quantidadeFilme,
                 valor_total_filme: totalFilme,
                 valor_total: totalFinal,
                 avaliacao_json: avaliacaoJson,
@@ -874,7 +1065,15 @@ const LancamentoProducao = () => {
                         <div className="mb-4 rounded-xl border border-border bg-muted/20 p-3 flex items-center justify-between gap-3">
                             <div>
                                 <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                                    {etapaAtual === 1 ? "Etapa 1 de 3" : etapaAtual === 2 ? "Etapa 2 de 3" : "Etapa 3 de 3"}
+                                    {isFluxoSemEquipe
+                                        ? etapaAtual === 1
+                                            ? "Etapa 1 de 2"
+                                            : "Etapa 2 de 2"
+                                        : etapaAtual === 1
+                                            ? "Etapa 1 de 3"
+                                            : etapaAtual === 2
+                                                ? "Etapa 2 de 3"
+                                                : "Etapa 3 de 3"}
                                 </p>
                                 <p className="text-sm font-semibold text-foreground">
                                     {etapaAtual === 1 ? "Tipo de Lançamento" : etapaAtual === 2 ? "Dados da operação" : "Colaboradores e conduta"}
@@ -890,55 +1089,59 @@ const LancamentoProducao = () => {
                         <form onSubmit={handleSubmit} className="space-y-4">
                             {etapaAtual === 1 && (
                                 <div className="space-y-4">
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                        <button
-                                            type="button"
-                                            onClick={() => setForm(prev => ({ ...prev, tipo_lancamento: "caixa" }))}
-                                            className={cn("p-4 rounded-xl border flex flex-col items-start gap-2 text-left transition-all", form.tipo_lancamento === "caixa" ? "border-brand bg-brand/5 ring-2 ring-brand/20" : "border-border hover:border-brand/40 bg-background")}
-                                        >
-                                            <Wallet className={cn("w-6 h-6", form.tipo_lancamento === "caixa" ? "text-brand" : "text-muted-foreground")} />
-                                            <div>
-                                                <p className="font-bold text-foreground">Caixa Imediato</p>
-                                                <p className="text-xs text-muted-foreground mt-0.5">Operações recebidas no pix/depósito.</p>
-                                            </div>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setForm(prev => ({ ...prev, tipo_lancamento: "duplicatas" }))}
-                                            className={cn("p-4 rounded-xl border flex flex-col items-start gap-2 text-left transition-all", form.tipo_lancamento === "duplicatas" ? "border-brand bg-brand/5 ring-2 ring-brand/20" : "border-border hover:border-brand/40 bg-background")}
-                                        >
-                                            <ListChecks className={cn("w-6 h-6", form.tipo_lancamento === "duplicatas" ? "text-brand" : "text-muted-foreground")} />
-                                            <div>
-                                                <p className="font-bold text-foreground">Operação Faturada</p>
-                                                <p className="text-xs text-muted-foreground mt-0.5">Aba Duplicatas a volume ou Fornecedor.</p>
-                                            </div>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setForm(prev => ({ ...prev, tipo_lancamento: "diaria" }))}
-                                            className={cn("p-4 rounded-xl border flex flex-col items-start gap-2 text-left transition-all", form.tipo_lancamento === "diaria" ? "border-brand bg-brand/5 ring-2 ring-brand/20" : "border-border hover:border-brand/40 bg-background")}
-                                        >
-                                            <Clock className={cn("w-6 h-6", form.tipo_lancamento === "diaria" ? "text-brand" : "text-muted-foreground")} />
-                                            <div>
-                                                <p className="font-bold text-foreground">Diárias</p>
-                                                <p className="text-xs text-muted-foreground mt-0.5">Operações pagas por diária (Diaristas).</p>
-                                            </div>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setForm(prev => ({ ...prev, tipo_lancamento: "custo_extra" }))}
-                                            className={cn("p-4 rounded-xl border flex flex-col items-start gap-2 text-left transition-all", form.tipo_lancamento === "custo_extra" ? "border-brand bg-brand/5 ring-2 ring-brand/20" : "border-border hover:border-brand/40 bg-background")}
-                                        >
-                                            <Zap className={cn("w-6 h-6", form.tipo_lancamento === "custo_extra" ? "text-brand" : "text-muted-foreground")} />
-                                            <div>
-                                                <p className="font-bold text-foreground">Custo Extra</p>
-                                                <p className="text-xs text-muted-foreground mt-0.5">Lançamento de custos adicionais (Aba Custos Extras).</p>
-                                            </div>
-                                        </button>
+                                    <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                                        {LANCAMENTO_PRESETS.map((preset) => {
+                                            const Icon = preset.icon;
+                                            const isActive = form.preset_id === preset.id;
+                                            const perfilNome = (perfil as any)?.perfis?.nome ?? "";
+                                            const listaBloqueada = PRESETS_PERMITIDOS_POR_PERFIL[perfilNome] ?? [];
+                                            const isBloqueado = listaBloqueada.length > 0 && !listaBloqueada.includes(preset.id);
+                                            const rotaEspecifica = PRESET_ROTAS[preset.id];
+                                            return (
+                                                <button
+                                                    key={preset.id}
+                                                    type="button"
+                                                    disabled={isBloqueado}
+                                                    onClick={() => {
+                                                        if (isBloqueado) {
+                                                            toast.error("Você não tem permissão para acessar este lançamento.");
+                                                            return;
+                                                        }
+                                                        if (rotaEspecifica) {
+                                                            navigate(rotaEspecifica);
+                                                            return;
+                                                        }
+                                                        setForm((prev) => ({
+                                                            ...prev,
+                                                            preset_id: preset.id,
+                                                            tipo_lancamento: preset.tipo_lancamento,
+                                                            modalidade_financeira: preset.modalidade_financeira,
+                                                        }));
+                                                        setEtapaAtual(2);
+                                                        window.scrollTo({ top: 0, behavior: "smooth" });
+                                                    }}
+                                                    className={cn(
+                                                        "relative flex flex-col p-4 rounded-2xl border transition-all text-left group",
+                                                        isBloqueado && "opacity-40 cursor-not-allowed grayscale",
+                                                        !isBloqueado && isActive ? "border-brand bg-brand/5 ring-2 ring-brand/20 shadow-sm" : "",
+                                                        !isBloqueado && !isActive ? "border-border hover:border-brand/40 bg-background hover:bg-muted/30" : "",
+                                                    )}
+                                                >
+                                                    <div className={cn("w-10 h-10 mb-3 shrink-0 rounded-full flex items-center justify-center transition-colors", isActive && !isBloqueado ? "bg-brand text-primary-foreground shadow-md shadow-brand/20" : "bg-muted text-muted-foreground group-hover:bg-muted-foreground/10")}>
+                                                        <Icon className="w-5 h-5" />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <p className={cn("font-bold leading-tight", isActive && !isBloqueado ? "text-brand" : "text-foreground")}>{preset.title}</p>
+                                                        <p className="text-xs text-muted-foreground leading-relaxed">{preset.description}</p>
+                                                    </div>
+                                                </button>
+                                            );
+                                        })}
                                     </div>
-                                    {etapaUmBlockReason && (
+
+                                    {etapaUmBlockReasonResolvido && (
                                         <div className="rounded-xl border border-warning/20 bg-warning-soft/40 p-3 text-sm text-warning-strong">
-                                            {etapaUmBlockReason}
+                                            {etapaUmBlockReasonResolvido}
                                         </div>
                                     )}
                                 </div>
@@ -946,6 +1149,16 @@ const LancamentoProducao = () => {
 
                             {etapaAtual === 2 && (
                                 <div className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
+                                    {finalidadeSelecionada && (
+                                        <div className="rounded-2xl border border-border bg-muted/20 p-4 space-y-2">
+                                            <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Contexto do lancamento</p>
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <Badge variant="info" className="font-bold">{finalidadeSelecionada.title}</Badge>
+                                                <Badge variant="outline" className="font-bold">{modalidadeFinanceiraLabel}</Badge>
+                                            </div>
+                                            <p className="text-xs text-muted-foreground">{finalidadeSelecionada.description}</p>
+                                        </div>
+                                    )}
                                     <div className="space-y-1.5">
                                         <Label className="flex items-center gap-1.5">
                                             <Building2 className="w-3.5 h-3.5" />
@@ -1048,6 +1261,23 @@ const LancamentoProducao = () => {
                                         </div>
                                     </div>
 
+                                    {isTransbordoServicoExtra && (
+                                        <div className="space-y-1.5">
+                                            <Label>
+                                                Descrição do serviço <span className="text-destructive">*</span>
+                                            </Label>
+                                            <Input
+                                                placeholder="Ex.: CONS. DE PALETES, CARREG. DE PALETES"
+                                                value={form.descricao_servico}
+                                                onChange={(e) => setForm((prev) => ({ ...prev, descricao_servico: e.target.value.toUpperCase() }))}
+                                                className="h-11 rounded-xl"
+                                            />
+                                            <p className="text-[11px] text-muted-foreground">
+                                                Campo espelha a coluna DESCRIÇÃO da aba DUPLICATAS TRANSBORDO DESMÊLO.
+                                            </p>
+                                        </div>
+                                    )}
+
                                     {isDataRetroativa && (
                                         <div className="rounded-xl border border-warning/20 bg-warning-soft/40 p-4 space-y-2">
                                             <div className="flex items-center gap-2 text-warning-strong">
@@ -1063,247 +1293,269 @@ const LancamentoProducao = () => {
                                         </div>
                                     )}
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div className="space-y-1.5">
-                                            <Label className="flex items-center gap-1.5">
-                                                <Clock className="w-3.5 h-3.5" />
-                                                Entrada (ponto)
-                                            </Label>
-                                            <Input
-                                                type="time"
-                                                value={form.horario_inicio}
-                                                onChange={(e) => setForm((prev) => ({ ...prev, horario_inicio: e.target.value }))}
-                                                className="h-11 rounded-xl"
-                                            />
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <Label className="flex items-center gap-1.5">
-                                                <Clock className="w-3.5 h-3.5" />
-                                                Saída (ponto)
-                                            </Label>
-                                            <Input
-                                                type="time"
-                                                value={form.horario_fim}
-                                                onChange={(e) => setForm((prev) => ({ ...prev, horario_fim: e.target.value }))}
-                                                className="h-11 rounded-xl"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-1.5">
-                                        <Label className="flex items-center gap-1.5">
-                                            <Truck className="w-3.5 h-3.5" />
-                                            Transportadora / Cliente <span className="text-destructive">*</span>
-                                        </Label>
-                                        <Select
-                                            value={form.transportadora}
-                                            onValueChange={(value) =>
-                                                setForm((prev) => ({
-                                                    ...prev,
-                                                    transportadora: value,
-                                                    fornecedor: "",
-                                                    produto: "",
-                                                    quantidade: "",
-                                                    quantidade_colaboradores: "1",
-                                                    valor_unitario: "",
-                                                }))
-                                            }
-                                            disabled={!form.tipo_servico}
-                                        >
-                                            <SelectTrigger className="h-11 rounded-xl">
-                                                <SelectValue placeholder={!form.tipo_servico ? "Selecione o tipo de serviço antes" : "Selecione a transportadora"} />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {transportadorasDisponiveis.map((transportadora) => (
-                                                    <SelectItem key={transportadora.id} value={transportadora.id}>
-                                                        {transportadora.nome}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div className="space-y-1.5">
-                                            <Label className="flex items-center gap-1.5">
-                                                <Package className="w-3.5 h-3.5" />
-                                                Fornecedor <span className="text-destructive">*</span>
-                                            </Label>
-                                            <Select
-                                                value={form.fornecedor}
-                                                onValueChange={(value) =>
-                                                    setForm((prev) => ({
-                                                        ...prev,
-                                                        fornecedor: value,
-                                                        produto: "",
-                                                        quantidade: "",
-                                                        quantidade_colaboradores: "1",
-                                                    }))
-                                                }
-                                                disabled={!form.tipo_servico || !form.transportadora}
-                                            >
-                                                <SelectTrigger className="h-11 rounded-xl">
-                                                    <SelectValue
-                                                        placeholder={
-                                                            !form.tipo_servico
-                                                                ? "Selecione o tipo antes"
-                                                                : !form.transportadora
-                                                                    ? "Selecione a transportadora antes"
-                                                                    : "Selecione o fornecedor"
-                                                        }
-                                                    />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {fornecedoresDisponiveis.map((fornecedor) => (
-                                                        <SelectItem key={fornecedor.id} value={fornecedor.id}>
-                                                            {fornecedor.nome}
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-
-                                        <div className="space-y-1.5">
-                                            <div className="flex items-center justify-between gap-3">
+                                    {(!isTransbordoServicoExtra && !isQualquerCusto) && (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="space-y-1.5">
                                                 <Label className="flex items-center gap-1.5">
-                                                    <Package className="w-3.5 h-3.5" />
-                                                    Produto / Carga {requiresProductSelection && <span className="text-destructive">*</span>}
+                                                    <Clock className="w-3.5 h-3.5" />
+                                                    Entrada (ponto)
                                                 </Label>
-                                                <Button
-                                                    type="button"
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-7 px-2 text-xs"
-                                                    disabled={!form.fornecedor}
-                                                    onClick={() => {
-                                                        setProdutoDraft({ nome: "", categoria: "" });
-                                                        setProdutoDialogOpen(true);
-                                                    }}
-                                                >
-                                                    <Plus className="mr-1 h-3.5 w-3.5" />
-                                                    Novo
-                                                </Button>
+                                                <Input
+                                                    type="time"
+                                                    value={form.horario_inicio}
+                                                    onChange={(e) => setForm((prev) => ({ ...prev, horario_inicio: e.target.value }))}
+                                                    className="h-11 rounded-xl"
+                                                />
                                             </div>
-                                            <Select
-                                                value={form.produto}
-                                                onValueChange={(value) => setForm((prev) => ({ ...prev, produto: value }))}
-                                                disabled={!form.fornecedor}
-                                            >
-                                                <SelectTrigger className="h-11 rounded-xl">
-                                                    <SelectValue placeholder={!form.fornecedor ? "Selecione o fornecedor antes" : "Selecione o produto, se aplicável"} />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {produtoOptions.map((produto) => (
-                                                        <SelectItem key={produto.id} value={produto.id}>
-                                                            {produto.nome}
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                    </div>
-
-                                    {requiresProductSelection && !form.produto && (
-                                        <div className="rounded-xl border border-warning/20 bg-warning-soft/40 p-3 text-sm text-warning-strong">
-                                            {REGRA_MENSAGEM_PRODUTO}
+                                            <div className="space-y-1.5">
+                                                <Label className="flex items-center gap-1.5">
+                                                    <Clock className="w-3.5 h-3.5" />
+                                                    Saída (ponto)
+                                                </Label>
+                                                <Input
+                                                    type="time"
+                                                    value={form.horario_fim}
+                                                    onChange={(e) => setForm((prev) => ({ ...prev, horario_fim: e.target.value }))}
+                                                    className="h-11 rounded-xl"
+                                                />
+                                            </div>
                                         </div>
                                     )}
 
-                                    <div className="space-y-1.5">
-                                        <Label>Quantidade de volumes <span className="text-destructive">*</span></Label>
-                                        <Input
-                                            type="number"
-                                            min="0"
-                                            step="1"
-                                            placeholder="0"
-                                            value={form.quantidade}
-                                            onChange={(e) => setForm((prev) => ({ ...prev, quantidade: e.target.value }))}
-                                            disabled={tipoCalculoAtual === "operation"}
-                                            className={cn(
-                                                "h-11 rounded-xl text-center font-black text-lg",
-                                                tipoCalculoAtual === "operation" && "opacity-70",
-                                            )}
-                                        />
-                                        <p className="text-[11px] text-muted-foreground">
-                                            {tipoCalculoAtual === "operation"
-                                                ? "Registros por operação usam quantidade automática de 1."
-                                                : "Informe a quantidade de volumes a serem descarregados."}
-                                        </p>
-                                    </div>
-
-                                    <div className="space-y-1.5">
-                                        <Label>Quantidade de colaboradores envolvidos <span className="text-destructive">*</span></Label>
-                                        <Input
-                                            type="number"
-                                            min="1"
-                                            step="1"
-                                            inputMode="numeric"
-                                            value={form.quantidade_colaboradores}
-                                            onChange={(e) => setForm((prev) => ({ ...prev, quantidade_colaboradores: e.target.value.replace(/[^\d]/g, "") }))}
-                                            className="h-11 rounded-xl text-center font-black text-lg"
-                                        />
-                                        <p className="text-[11px] text-muted-foreground">
-                                            Informe a quantidade total de colaboradores envolvidos para liberar a etapa seguinte.
-                                        </p>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div className="space-y-1.5">
-                                            <Label>NF</Label>
-                                            <Input
-                                                placeholder="Ex: SIM, N/A, ou #123"
-                                                value={form.nf_numero}
-                                                onChange={(e) => setForm((prev) => ({ ...prev, nf_numero: e.target.value.toUpperCase() }))}
-                                                className="h-11 rounded-xl"
-                                            />
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <Label>CTRC</Label>
-                                            <Input
-                                                placeholder="Conhecimento de Transporte"
-                                                value={form.ctrc}
-                                                onChange={(e) => setForm((prev) => ({ ...prev, ctrc: e.target.value.toUpperCase() }))}
-                                                className="h-11 rounded-xl"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {!isQualquerCusto && (
                                         <div className="space-y-1.5">
                                             <Label className="flex items-center gap-1.5">
-                                                <Wallet className="w-3.5 h-3.5" />
-                                                Forma de pagamento <span className="text-destructive">*</span>
+                                                <Truck className="w-3.5 h-3.5" />
+                                                Transportadora / Cliente <span className="text-destructive">*</span>
                                             </Label>
                                             <Select
-                                                value={form.forma_pagamento}
-                                                onValueChange={(value) => setForm((prev) => ({ ...prev, forma_pagamento: value }))}
+                                                value={form.transportadora}
+                                                onValueChange={(value) =>
+                                                    setForm((prev) => ({
+                                                        ...prev,
+                                                        transportadora: value,
+                                                        fornecedor: "",
+                                                        produto: "",
+                                                        quantidade: "",
+                                                        quantidade_colaboradores: "1",
+                                                        valor_unitario: "",
+                                                    }))
+                                                }
+                                                disabled={!form.tipo_servico}
                                             >
                                                 <SelectTrigger className="h-11 rounded-xl">
-                                                    <SelectValue placeholder="Selecione" />
+                                                    <SelectValue placeholder={!form.tipo_servico ? "Selecione o tipo de serviço antes" : "Selecione a transportadora"} />
                                                 </SelectTrigger>
                                                 <SelectContent>
-                                                    {formaPagamentoOptions.map((forma) => (
-                                                        <SelectItem key={forma.id} value={forma.id}>
-                                                            {forma.nome}
+                                                    {transportadorasDisponiveis.map((transportadora) => (
+                                                        <SelectItem key={transportadora.id} value={transportadora.id}>
+                                                            {transportadora.nome}
                                                         </SelectItem>
                                                     ))}
                                                 </SelectContent>
                                             </Select>
                                         </div>
+                                    )}
 
+                                    {(!isTransbordoServicoExtra && !isQualquerCusto) && (
+                                        <>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div className="space-y-1.5">
+                                                    <Label className="flex items-center gap-1.5">
+                                                        <Package className="w-3.5 h-3.5" />
+                                                        Fornecedor <span className="text-destructive">*</span>
+                                                    </Label>
+                                                    <Select
+                                                        value={form.fornecedor}
+                                                        onValueChange={(value) =>
+                                                            setForm((prev) => ({
+                                                                ...prev,
+                                                                fornecedor: value,
+                                                                produto: "",
+                                                                quantidade: "",
+                                                                quantidade_colaboradores: "1",
+                                                            }))
+                                                        }
+                                                        disabled={!form.tipo_servico || !form.transportadora}
+                                                    >
+                                                        <SelectTrigger className="h-11 rounded-xl">
+                                                            <SelectValue
+                                                                placeholder={
+                                                                    !form.tipo_servico
+                                                                        ? "Selecione o tipo antes"
+                                                                        : !form.transportadora
+                                                                            ? "Selecione a transportadora antes"
+                                                                            : "Selecione o fornecedor"
+                                                                }
+                                                            />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {fornecedoresDisponiveis.map((fornecedor) => (
+                                                                <SelectItem key={fornecedor.id} value={fornecedor.id}>
+                                                                    {fornecedor.nome}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+
+                                                <div className="space-y-1.5">
+                                                    <div className="flex items-center justify-between gap-3">
+                                                        <Label className="flex items-center gap-1.5">
+                                                            <Package className="w-3.5 h-3.5" />
+                                                            Produto / Carga {requiresProductSelection && <span className="text-destructive">*</span>}
+                                                        </Label>
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-7 px-2 text-xs"
+                                                            disabled={!form.fornecedor}
+                                                            onClick={() => {
+                                                                setProdutoDraft({ nome: "", categoria: "" });
+                                                                setProdutoDialogOpen(true);
+                                                            }}
+                                                        >
+                                                            <Plus className="mr-1 h-3.5 w-3.5" />
+                                                            Novo
+                                                        </Button>
+                                                    </div>
+                                                    <Select
+                                                        value={form.produto}
+                                                        onValueChange={(value) => setForm((prev) => ({ ...prev, produto: value }))}
+                                                        disabled={!form.fornecedor}
+                                                    >
+                                                        <SelectTrigger className="h-11 rounded-xl">
+                                                            <SelectValue placeholder={!form.fornecedor ? "Selecione o fornecedor antes" : "Selecione o produto, se aplicável"} />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {produtoOptions.map((produto) => (
+                                                                <SelectItem key={produto.id} value={produto.id}>
+                                                                    {produto.nome}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                            </div>
+
+                                            {requiresProductSelection && !form.produto && (
+                                                <div className="rounded-xl border border-warning/20 bg-warning-soft/40 p-3 text-sm text-warning-strong">
+                                                    {REGRA_MENSAGEM_PRODUTO}
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
+
+                                    <div className={cn("grid gap-4", (isTransbordoServicoExtra || isQualquerCusto) ? "grid-cols-1" : "grid-cols-1 md:grid-cols-2")}>
                                         <div className="space-y-1.5">
-                                            <Label className="flex items-center gap-1.5">
-                                                <Car className="w-3.5 h-3.5" />
-                                                Placa do veículo
-                                            </Label>
+                                            <Label>{isTransbordoServicoExtra ? "Quantitativo" : isQualquerCusto ? "Quantidade" : "Quantidade de volumes"} <span className="text-destructive">*</span></Label>
                                             <Input
-                                                placeholder={exibirPlaca ? "Ex: ABC-1D23" : "Opcional"}
-                                                value={form.placa_veiculo}
-                                                onChange={(e) => setForm((prev) => ({ ...prev, placa_veiculo: e.target.value.toUpperCase() }))}
-                                                className="h-11 rounded-xl font-mono uppercase"
-                                                maxLength={10}
+                                                type="number"
+                                                min="0"
+                                                step="1"
+                                                placeholder="0"
+                                                value={form.quantidade}
+                                                onChange={(e) => setForm((prev) => ({ ...prev, quantidade: e.target.value }))}
+                                                disabled={tipoCalculoAtual === "operation"}
+                                                className={cn(
+                                                    "h-11 rounded-xl text-center font-black text-lg",
+                                                    tipoCalculoAtual === "operation" && "opacity-70",
+                                                )}
                                             />
+                                            <p className="text-[11px] text-muted-foreground">
+                                                {isTransbordoServicoExtra
+                                                    ? "Campo espelha a coluna QUANTITATIVO da aba de transbordo."
+                                                    : isQualquerCusto
+                                                        ? "Quantidade de dias ou itens a considerar neste lançamento."
+                                                        : tipoCalculoAtual === "operation"
+                                                            ? "Registros por operação usam quantidade automática de 1."
+                                                            : "Informe a quantidade de volumes a serem descarregados."}
+                                            </p>
                                         </div>
+
+                                        {(!isTransbordoServicoExtra && !isQualquerCusto) && (
+                                            <div className="space-y-1.5">
+                                                <Label>Quantidade Col. <span className="text-destructive">*</span></Label>
+                                                <Input
+                                                    type="number"
+                                                    min="1"
+                                                    step="1"
+                                                    inputMode="numeric"
+                                                    value={form.quantidade_colaboradores}
+                                                    onChange={(e) => setForm((prev) => ({ ...prev, quantidade_colaboradores: e.target.value.replace(/[^\d]/g, "") }))}
+                                                    className="h-11 rounded-xl text-center font-black text-lg"
+                                                />
+                                                <p className="text-[11px] text-muted-foreground">
+                                                    Informe a quantidade de colaboradores para liberar a etapa seguinte.
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {(!isTransbordoServicoExtra && !isQualquerCusto) && (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="space-y-1.5">
+                                                <Label>NF</Label>
+                                                <Input
+                                                    placeholder="Ex: SIM, N/A, ou #123"
+                                                    value={form.nf_numero}
+                                                    onChange={(e) => setForm((prev) => ({ ...prev, nf_numero: e.target.value.toUpperCase() }))}
+                                                    className="h-11 rounded-xl"
+                                                />
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <Label>CTRC</Label>
+                                                <Input
+                                                    placeholder="Conhecimento de Transporte"
+                                                    value={form.ctrc}
+                                                    onChange={(e) => setForm((prev) => ({ ...prev, ctrc: e.target.value.toUpperCase() }))}
+                                                    className="h-11 rounded-xl"
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {!isCustosMensaisCLT && (
+                                            <div className="space-y-1.5">
+                                                <Label className="flex items-center gap-1.5">
+                                                    <Wallet className="w-3.5 h-3.5" />
+                                                    Categoria / Forma Pgto <span className="text-destructive">*</span>
+                                                </Label>
+                                                <Select
+                                                    value={form.forma_pagamento}
+                                                    onValueChange={(value) => setForm((prev) => ({ ...prev, forma_pagamento: value }))}
+                                                >
+                                                    <SelectTrigger className="h-11 rounded-xl">
+                                                        <SelectValue placeholder="Selecione a categoria" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {formaPagamentoOptions.map((forma) => (
+                                                            <SelectItem key={forma.id} value={forma.id}>
+                                                                {forma.nome}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        )}
+
+                                        {!isQualquerCusto && (
+                                            <div className="space-y-1.5">
+                                                <Label className="flex items-center gap-1.5">
+                                                    <Car className="w-3.5 h-3.5" />
+                                                    Placa do veículo
+                                                </Label>
+                                                <Input
+                                                    placeholder={exibirPlaca ? "Ex: ABC-1D23" : "Opcional"}
+                                                    value={form.placa_veiculo}
+                                                    onChange={(e) => setForm((prev) => ({ ...prev, placa_veiculo: e.target.value.toUpperCase() }))}
+                                                    className="h-11 rounded-xl font-mono uppercase"
+                                                    maxLength={10}
+                                                />
+                                            </div>
+                                        )}
                                     </div>
 
                                     <div className="space-y-1.5">
@@ -1319,29 +1571,41 @@ const LancamentoProducao = () => {
                                     <div className="space-y-1.5">
                                         <div className="flex items-center justify-between">
                                             <Label>Valor Unitário</Label>
-                                            <Badge variant="info" className="font-bold">Automático</Badge>
+                                            <Badge variant="info" className="font-bold">{isTransbordoServicoExtra && !hasRegraFinanceira ? "Manual" : "Automático"}</Badge>
                                         </div>
-                                        <Input
-                                            value={
-                                                ruleLookupState === "loading"
-                                                    ? "Buscando valor..."
-                                                    : hasRegraFinanceira
-                                                        ? `${formatCurrency(valorUnitario)} por ${getUnidadeRegraLabel(tipoCalculoAtual)}`
-                                                        : ruleLookupState === "missing" || ruleLookupState === "duplicate" || ruleLookupState === "needs_product" || ruleLookupState === "error"
-                                                            ? "Fornecedor sem valor cadastrado"
-                                                            : "Aguardando regra"
-                                            }
-                                            readOnly
-                                            placeholder="Aguardando regra"
-                                            className={cn(
-                                                "h-11 rounded-xl text-right font-display font-bold",
-                                                ruleLookupState === "found" && "border-success text-success",
-                                                (ruleLookupState === "missing" || ruleLookupState === "duplicate" || ruleLookupState === "needs_product" || ruleLookupState === "error") && "border-destructive text-destructive",
-                                            )}
-                                        />
+                                        {isTransbordoServicoExtra && !hasRegraFinanceira ? (
+                                            <Input
+                                                type="number"
+                                                step="0.01"
+                                                min="0"
+                                                value={form.valor_unitario}
+                                                onChange={(e) => setForm((prev) => ({ ...prev, valor_unitario: e.target.value }))}
+                                                placeholder="0,00"
+                                                className="h-11 rounded-xl text-right font-display font-bold border-brand focus-visible:ring-brand"
+                                            />
+                                        ) : (
+                                            <Input
+                                                value={
+                                                    ruleLookupState === "loading"
+                                                        ? "Buscando valor..."
+                                                        : hasRegraFinanceira
+                                                            ? `${formatCurrency(valorUnitario)} por ${getUnidadeRegraLabel(tipoCalculoAtual)}`
+                                                            : ruleLookupState === "missing" || ruleLookupState === "duplicate" || ruleLookupState === "needs_product" || ruleLookupState === "error"
+                                                                ? "Fornecedor sem valor cadastrado"
+                                                                : "Aguardando regra"
+                                                }
+                                                readOnly
+                                                placeholder="Aguardando regra"
+                                                className={cn(
+                                                    "h-11 rounded-xl text-right font-display font-bold",
+                                                    ruleLookupState === "found" && "border-success text-success",
+                                                    (ruleLookupState === "missing" || ruleLookupState === "duplicate" || ruleLookupState === "needs_product" || ruleLookupState === "error") && "border-destructive text-destructive",
+                                                )}
+                                            />
+                                        )}
                                     </div>
 
-                                    {!!mensagemRegra && form.transportadora && ruleLookupState !== "loading" && (
+                                    {!!mensagemRegra && form.transportadora && ruleLookupState !== "loading" && !isTransbordoServicoExtra && (
                                         <div className="rounded-xl border border-destructive/20 bg-destructive-soft/40 p-4 text-sm text-destructive-strong">
                                             {mensagemRegra}
                                         </div>
@@ -1385,6 +1649,12 @@ const LancamentoProducao = () => {
                                                 <p className="text-[11px] text-muted-foreground">Quantidade (QTD)</p>
                                                 <p className="text-lg font-black font-display">{quantidadeConsiderada || 0}</p>
                                             </div>
+                                            {isTransbordoServicoExtra && (
+                                                <div>
+                                                    <p className="text-[11px] text-muted-foreground">Quantidade de filme</p>
+                                                    <p className="text-lg font-black font-display">{quantidadeFilme || 0}</p>
+                                                </div>
+                                            )}
                                             <div>
                                                 <p className="text-[11px] text-muted-foreground">Base do cálculo</p>
                                                 <p className="text-sm font-bold">
@@ -1393,6 +1663,12 @@ const LancamentoProducao = () => {
                                                         : `${quantidadeConsiderada || 0} x ${formatCurrency(valorUnitario || 0)}`}
                                                 </p>
                                             </div>
+                                            {isTransbordoServicoExtra && (
+                                                <div>
+                                                    <p className="text-[11px] text-muted-foreground">Descrição da aba</p>
+                                                    <p className="text-sm font-bold">{form.descricao_servico || "Não informada"}</p>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                     {etapaDoisBlockReason && (
@@ -1403,7 +1679,7 @@ const LancamentoProducao = () => {
                                 </div>
                             )}
 
-                            {etapaAtual === 3 && (
+                            {etapaAtual === 3 && !isFluxoSemEquipe && (
                                 <div className="rounded-xl border border-border bg-background p-4 space-y-4 animate-in fade-in zoom-in-95 duration-200">
                                     <div className="flex items-start justify-between gap-3">
                                         <div>
@@ -1551,18 +1827,24 @@ const LancamentoProducao = () => {
                                 </div>
                             )}
 
-                            <Button
-                                type="submit"
-                                className="w-full h-12 rounded-xl bg-brand hover:bg-brand/90 font-black text-lg shadow-lg shadow-brand/20 mt-2 gap-2 disabled:cursor-not-allowed disabled:opacity-60"
-                                disabled={mutation.isPending || (etapaAtual === 1 && !!etapaUmBlockReason) || (etapaAtual === 2 && !!etapaDoisBlockReason) || (etapaAtual === 3 && !!etapaTresBlockReason)}
-                            >
-                                {mutation.isPending ? "Salvando..." : (
-                                    <>
-                                        <Save className="w-5 h-5" />
-                                        {etapaAtual === 1 ? "Continuar para operação" : etapaAtual === 2 ? "Continuar para colaboradores" : "Registrar Produção"}
-                                    </>
-                                )}
-                            </Button>
+                            {etapaAtual > 1 && (
+                                <Button
+                                    type="submit"
+                                    className="w-full h-12 rounded-xl bg-brand hover:bg-brand/90 font-black text-lg shadow-lg shadow-brand/20 mt-2 gap-2 disabled:cursor-not-allowed disabled:opacity-60"
+                                    disabled={mutation.isPending || (etapaAtual === 2 && !!etapaDoisBlockReason) || (etapaAtual === 3 && !!etapaTresBlockReason)}
+                                >
+                                    {mutation.isPending ? "Salvando..." : (
+                                        <>
+                                            <Save className="w-5 h-5" />
+                                            {etapaAtual === 2
+                                                ? isFluxoSemEquipe
+                                                    ? "Registrar transbordo"
+                                                    : "Continuar para colaboradores"
+                                                : "Registrar Produção"}
+                                        </>
+                                    )}
+                                </Button>
+                            )}
                         </form>
                     </Card>
 
@@ -1672,9 +1954,9 @@ const LancamentoProducao = () => {
 
                                                     <div className="space-y-1 text-[11px] text-muted-foreground">
                                                         <p>{transportadoraLabel || "Sem transportadora"}</p>
-                                                        <p>{fornecedorLabel || "Fornecedor nÃ£o informado"} · {produtoLabel || "Produto nÃ£o informado"}</p>
+                                                        <p>{fornecedorLabel || "Fornecedor não informado"} · {produtoLabel || "Produto não informado"}</p>
                                                         <p>
-                                                            {formaPagamentoLabel || "Forma nÃ£o informada"}
+                                                            {formaPagamentoLabel || "Forma não informada"}
                                                             {placaLabel ? ` · ${placaLabel}` : ""}
                                                         </p>
                                                         <p>{quantidadeColaboradoresItem > 0 ? `${quantidadeColaboradoresItem} colaborador(es)` : "Sem equipe informada"}</p>

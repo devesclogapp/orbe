@@ -45,23 +45,33 @@ const Colaboradores = () => {
 
   const [form, setForm] = useState({
     nome: "",
+    cpf: "",
+    telefone: "",
     cargo: "",
     matricula: "",
     empresa_id: "",
     tipo_contrato: "Hora" as "Hora" | "Operação",
+    tipo_colaborador: "CLT",
     valor_base: "22",
     flag_faturamento: true,
+    permitir_lancamento_operacional: false,
+    status: "ativo",
   });
 
   const reset = () => {
     setForm({
       nome: "",
+      cpf: "",
+      telefone: "",
       cargo: "",
       matricula: "",
       empresa_id: empresaOptions[0]?.id ?? "",
       tipo_contrato: "Hora",
+      tipo_colaborador: "CLT",
       valor_base: "22",
       flag_faturamento: true,
+      permitir_lancamento_operacional: false,
+      status: "ativo",
     });
     setEditingId(null);
   };
@@ -92,13 +102,18 @@ const Colaboradores = () => {
   const handleEdit = (c: any) => {
     setEditingId(c.id);
     setForm({
-      nome: c.nome,
-      cargo: c.cargo,
-      matricula: c.matricula,
-      empresa_id: c.empresa_id,
-      tipo_contrato: c.tipo_contrato,
-      valor_base: String(c.valor_base),
-      flag_faturamento: c.flag_faturamento,
+      nome: c.nome || "",
+      cpf: c.cpf || "",
+      telefone: c.telefone || "",
+      cargo: c.cargo || "",
+      matricula: c.matricula || "",
+      empresa_id: c.empresa_id || "",
+      tipo_contrato: c.tipo_contrato || "Hora",
+      tipo_colaborador: c.tipo_colaborador || "CLT",
+      valor_base: String(c.valor_base || 0),
+      flag_faturamento: c.flag_faturamento ?? true,
+      permitir_lancamento_operacional: c.permitir_lancamento_operacional ?? false,
+      status: c.status || "ativo",
     });
     setOpen(true);
   };
@@ -110,19 +125,34 @@ const Colaboradores = () => {
   };
 
   const submit = () => {
-    if (!form.nome.trim() || !form.cargo.trim() || !form.matricula.trim()) {
-      toast.error("Preencha nome, cargo e matrícula");
+    if (!form.nome.trim()) {
+      toast.error("Preencha o nome do colaborador");
       return;
+    }
+    if (!form.empresa_id && !empresaOptions[0]?.id) {
+      toast.error("Selecione uma empresa");
+      return;
+    }
+    // Para tipos diferentes de DIARISTA, cargo e matrícula são obrigatórios
+    if (form.tipo_colaborador !== "DIARISTA") {
+      if (!form.cargo.trim()) {
+        toast.error("Preencha o cargo");
+        return;
+      }
     }
     createMutation.mutate({
       nome: form.nome.trim(),
-      cargo: form.cargo.trim(),
-      matricula: form.matricula.trim(),
+      cpf: form.cpf?.trim() || null,
+      telefone: form.telefone?.trim() || null,
+      cargo: form.cargo?.trim() || null,
+      matricula: form.matricula?.trim() || null,
       empresa_id: form.empresa_id || empresaOptions[0]?.id,
-      tipo_contrato: form.tipo_contrato,
+      tipo_contrato: form.tipo_colaborador === "DIARISTA" ? null : form.tipo_contrato,
+      tipo_colaborador: form.tipo_colaborador,
       valor_base: Number(form.valor_base) || 0,
-      flag_faturamento: form.flag_faturamento,
-      status: "pendente",
+      flag_faturamento: form.tipo_colaborador !== "DIARISTA" ? form.flag_faturamento : false,
+      permitir_lancamento_operacional: form.permitir_lancamento_operacional,
+      status: form.status,
     });
   };
 
@@ -156,13 +186,16 @@ const Colaboradores = () => {
             </Select>
 
             <Select value={selectedContrato} onValueChange={setSelectedContrato}>
-              <SelectTrigger className="w-[160px] h-10">
-                <SelectValue placeholder="Tipo contrato" />
+              <SelectTrigger className="w-[180px] h-10">
+                <SelectValue placeholder="Tipo" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos os tipos</SelectItem>
-                <SelectItem value="Hora">Por hora</SelectItem>
-                <SelectItem value="Operação">Por operação</SelectItem>
+                <SelectItem value="DIARISTA">Diarista</SelectItem>
+                <SelectItem value="CLT">CLT</SelectItem>
+                <SelectItem value="INTERMITENTE">Intermitente</SelectItem>
+                <SelectItem value="PRODUÇÃO">Produção</SelectItem>
+                <SelectItem value="TERCEIRIZADO">Terceirizado</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -224,7 +257,7 @@ const Colaboradores = () => {
                   <th className="px-5 h-11 font-medium"><span className="inline-flex items-center gap-1.5"><User className="h-3.5 w-3.5 text-muted-foreground" />Nome</span></th>
                   <th className="px-3 h-11 font-medium"><span className="inline-flex items-center gap-1.5"><Briefcase className="h-3.5 w-3.5 text-muted-foreground" />Cargo</span></th>
                   <th className="px-3 h-11 font-medium"><span className="inline-flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5 text-muted-foreground" />Empresa</span></th>
-                  <th className="px-3 h-11 font-medium text-center"><span className="inline-flex items-center gap-1.5"><FileText className="h-3.5 w-3.5 text-muted-foreground" />Contrato</span></th>
+                  <th className="px-3 h-11 font-medium text-center"><span className="inline-flex items-center gap-1.5"><FileText className="h-3.5 w-3.5 text-muted-foreground" />Tipo</span></th>
                   <th className="px-3 h-11 font-medium text-right"><span className="inline-flex items-center gap-1.5"><DollarSign className="h-3.5 w-3.5 text-muted-foreground" />Valor base</span></th>
                   <th className="px-3 h-11 font-medium text-center"><span className="inline-flex items-center gap-1.5"><Receipt className="h-3.5 w-3.5 text-muted-foreground" />Faturamento</span></th>
                   <th className="px-5 h-11 font-medium text-center"><span className="inline-flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" />Status</span></th>
@@ -234,9 +267,9 @@ const Colaboradores = () => {
               <tbody>
                 {(list || []).filter((c: any) => {
                   const matchesSearch = c.nome.toLowerCase().includes(searchText.toLowerCase()) ||
-                    c.matricula.toLowerCase().includes(searchText.toLowerCase());
+                    (c.matricula || "").toLowerCase().includes(searchText.toLowerCase());
                   const matchesEmpresa = selectedEmpresa === "all" || c.empresa_id === selectedEmpresa;
-                  const matchesContrato = selectedContrato === "all" || c.tipo_contrato === selectedContrato;
+                  const matchesContrato = selectedContrato === "all" || c.tipo_colaborador === selectedContrato;
                   return matchesSearch && matchesEmpresa && matchesContrato;
                 }).map((c: any) => (
                   <tr key={c.id} className="border-t border-muted hover:bg-background group">
@@ -246,7 +279,16 @@ const Colaboradores = () => {
                     </td>
                     <td className="px-3 text-muted-foreground">{c.cargo}</td>
                     <td className="px-3 text-muted-foreground">{c.empresas?.nome || "—"}</td>
-                    <td className="px-3 text-center">{c.tipo_contrato}</td>
+                    <td className="px-3 text-center">
+                      <span className={cn(
+                        "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide",
+                        c.tipo_colaborador === "DIARISTA"
+                          ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
+                          : "bg-muted text-muted-foreground"
+                      )}>
+                        {c.tipo_colaborador || c.tipo_contrato || "—"}
+                      </span>
+                    </td>
                     <td className="px-3 text-right font-display font-medium">
                       R$ {(c.valor_base || 0).toFixed(2).replace(".", ",")}
                     </td>
@@ -272,7 +314,7 @@ const Colaboradores = () => {
                 const matchesSearch = (c.nome || "").toLowerCase().includes(searchText.toLowerCase()) ||
                   (c.matricula || "").toLowerCase().includes(searchText.toLowerCase());
                 const matchesEmpresa = selectedEmpresa === "all" || c.empresa_id === selectedEmpresa;
-                const matchesContrato = selectedContrato === "all" || c.tipo_contrato === selectedContrato;
+                const matchesContrato = selectedContrato === "all" || c.tipo_colaborador === selectedContrato;
                 return matchesSearch && matchesEmpresa && matchesContrato;
               }).map((c: any) => (
                 <article key={c.id} className="esc-card p-5 group flex flex-col justify-between">
@@ -325,12 +367,12 @@ const Colaboradores = () => {
               <Input id="nome" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="cargo">Cargo</Label>
-              <Input id="cargo" value={form.cargo} onChange={(e) => setForm({ ...form, cargo: e.target.value })} />
+              <Label htmlFor="cpf">CPF</Label>
+              <Input id="cpf" value={form.cpf} onChange={(e) => setForm({ ...form, cpf: e.target.value })} />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="matricula">Matrícula</Label>
-              <Input id="matricula" value={form.matricula} onChange={(e) => setForm({ ...form, matricula: e.target.value })} />
+              <Label htmlFor="telefone">Telefone</Label>
+              <Input id="telefone" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} />
             </div>
             <div className="col-span-2 space-y-1.5">
               <Label>Empresa</Label>
@@ -344,33 +386,95 @@ const Colaboradores = () => {
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>Tipo de contrato</Label>
-              <Select value={form.tipo_contrato} onValueChange={(v: "Hora" | "Operação") => setForm({ ...form, tipo_contrato: v })}>
+              <Label>Tipo de colaborador</Label>
+              <Select value={form.tipo_colaborador} onValueChange={(v) => setForm({ ...form, tipo_colaborador: v, permitir_lancamento_operacional: v === "DIARISTA" ? true : form.permitir_lancamento_operacional })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Hora">Por hora</SelectItem>
-                  <SelectItem value="Operação">Por operação</SelectItem>
+                  <SelectItem value="DIARISTA">DIARISTA</SelectItem>
+                  <SelectItem value="CLT">CLT</SelectItem>
+                  <SelectItem value="INTERMITENTE">INTERMITENTE</SelectItem>
+                  <SelectItem value="PRODUÇÃO">PRODUÇÃO</SelectItem>
+                  <SelectItem value="TERCEIRIZADO">TERCEIRIZADO</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="valor">Valor base (R$)</Label>
-              <Input
-                id="valor"
-                type="number"
-                value={form.valor_base}
-                onChange={(e) => setForm({ ...form, valor_base: e.target.value })}
-              />
+              <Label>Status</Label>
+              <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ativo">Ativo</SelectItem>
+                  <SelectItem value="inativo">Inativo</SelectItem>
+                  <SelectItem value="pendente">Pendente</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <div className="col-span-2 flex items-center justify-between rounded-md border border-border p-3">
-              <div>
-                <Label htmlFor="fat" className="cursor-pointer">Gera faturamento</Label>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Se desligado, o colaborador não entra no cálculo financeiro do dia.
-                </p>
-              </div>
-              <Switch id="fat" checked={form.flag_faturamento} onCheckedChange={(v) => setForm({ ...form, flag_faturamento: v })} />
-            </div>
+
+            {form.tipo_colaborador === "DIARISTA" ? (
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor="valor">Valor da diária (R$)</Label>
+                  <Input
+                    id="valor"
+                    type="number"
+                    value={form.valor_base}
+                    onChange={(e) => setForm({ ...form, valor_base: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="cargo">Função operacional</Label>
+                  <Input id="cargo" value={form.cargo} onChange={(e) => setForm({ ...form, cargo: e.target.value })} />
+                </div>
+                <div className="col-span-2 flex items-center justify-between rounded-md border border-border p-3">
+                  <div>
+                    <Label htmlFor="lancamento" className="cursor-pointer">Permitir lançamento operacional</Label>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Diarista aparecerá na tela de lançamentos operacionais da produção.
+                    </p>
+                  </div>
+                  <Switch id="lancamento" checked={form.permitir_lancamento_operacional} onCheckedChange={(v) => setForm({ ...form, permitir_lancamento_operacional: v })} />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor="cargo">Cargo</Label>
+                  <Input id="cargo" value={form.cargo} onChange={(e) => setForm({ ...form, cargo: e.target.value })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="matricula">Matrícula</Label>
+                  <Input id="matricula" value={form.matricula} onChange={(e) => setForm({ ...form, matricula: e.target.value })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Tipo de contrato</Label>
+                  <Select value={form.tipo_contrato} onValueChange={(v: "Hora" | "Operação") => setForm({ ...form, tipo_contrato: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Hora">Por hora</SelectItem>
+                      <SelectItem value="Operação">Por operação</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="valor">Valor base (R$)</Label>
+                  <Input
+                    id="valor"
+                    type="number"
+                    value={form.valor_base}
+                    onChange={(e) => setForm({ ...form, valor_base: e.target.value })}
+                  />
+                </div>
+                <div className="col-span-2 flex items-center justify-between rounded-md border border-border p-3">
+                  <div>
+                    <Label htmlFor="fat" className="cursor-pointer">Gera faturamento</Label>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Se desligado, o colaborador não entra no cálculo financeiro do dia.
+                    </p>
+                  </div>
+                  <Switch id="fat" checked={form.flag_faturamento} onCheckedChange={(v) => setForm({ ...form, flag_faturamento: v })} />
+                </div>
+              </>
+            )}
           </div>
 
           <DialogFooter>
