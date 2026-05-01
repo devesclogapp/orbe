@@ -275,31 +275,6 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
 
   const editableFilteredCount = filteredData.length;
 
-  const kpis = useMemo(() => {
-    let total = 0;
-    let pendente = 0;
-    let atrasado = 0;
-    let recebido = 0;
-
-    filteredData.forEach((item) => {
-      const amount = Number(item.total ?? 0);
-      total += amount;
-
-      const status = String(item.status_pagamento ?? "").toUpperCase();
-      if (status === "PENDENTE") pendente += amount;
-      if (status === "ATRASADO") atrasado += amount;
-      if (status === "RECEBIDO") recebido += amount;
-    });
-
-    return {
-      total,
-      pendente,
-      atrasado,
-      recebido,
-      ticketMedio: filteredData.length ? total / filteredData.length : 0,
-    };
-  }, [filteredData]);
-
   const updateMutation = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) =>
       CustoExtraOperacionalService.update(id, payload),
@@ -450,7 +425,7 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
 
   const renderHeaderMenu = (key: string, label: ReactNode) => (
     <DropdownMenu>
-      <DropdownMenuTrigger className="flex items-center justify-between gap-1.5 group w-full focus:outline-none">
+      <DropdownMenuTrigger className="flex items-center justify-center gap-1.5 group w-full focus:outline-none">
         <span className="inline-flex items-center gap-1.5 truncate">
           {label}
           {lockableCols.includes(key as (typeof lockableCols)[number]) && lockedCols[key] && (
@@ -497,23 +472,6 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
 
   return (
     <div className="space-y-4 p-5 pt-2">
-      <div className="flex flex-wrap gap-2">
-        {[
-          { label: "Total", value: kpis.total, color: "text-foreground" },
-          { label: "Pendente", value: kpis.pendente, color: "text-amber-600 dark:text-amber-400" },
-          { label: "Atrasado", value: kpis.atrasado, color: "text-destructive" },
-          { label: "Recebido", value: kpis.recebido, color: "text-emerald-600 dark:text-emerald-400" },
-          { label: "Ticket Medio", value: kpis.ticketMedio, color: "text-muted-foreground" },
-        ].map((kpi) => (
-          <div key={kpi.label} className="min-w-[160px] flex-1 rounded-lg border border-border bg-card px-3 py-2.5 shadow-sm md:w-[180px] md:flex-none">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground truncate">{kpi.label}</p>
-            <p className={`text-sm font-black font-display mt-0.5 tabular-nums ${kpi.color}`}>
-              {currencyFormatter.format(kpi.value)}
-            </p>
-          </div>
-        ))}
-      </div>
-
       <div className="w-full overflow-x-auto">
         <div className="flex min-w-max flex-nowrap items-center gap-2">
           <Input
@@ -600,93 +558,93 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
         </button>
 
         <div ref={tableScrollRef} className="max-h-[70vh] overflow-auto rounded-xl border border-border bg-background pb-[1px]">
-        <table className="w-full text-sm min-w-max">
-          <thead className="bg-muted/95 backdrop-blur-sm sticky top-0 z-20">
-            <tr className="text-left font-display text-muted-foreground uppercase text-xs tracking-wide">
-              {visibleCols.data && <th style={getStickyProps("data", true).style} className={cn(getStickyProps("data", true).className, "text-center")}>{renderHeaderMenu("data", <span className="inline-flex items-center justify-center gap-1.5 w-full"><CalendarDays className="h-3.5 w-3.5" />DATA</span>)}</th>}
-              {visibleCols.empresa && <th style={getStickyProps("empresa", true).style} className={cn(getStickyProps("empresa", true).className, "text-center")}>{renderHeaderMenu("empresa", "EMPRESA")}</th>}
-              {visibleCols.categoria && <th className="px-3 py-2.5 font-semibold text-center">{renderHeaderMenu("categoria_custo", <span className="inline-flex items-center justify-center gap-1.5 w-full"><Tag className="h-3.5 w-3.5" />CATEGORIA</span>)}</th>}
-              {visibleCols.descricao && <th style={getStickyProps("descricao", true).style} className={cn(getStickyProps("descricao", true).className, "text-center")}>{renderHeaderMenu("descricao", <span className="inline-flex items-center justify-center gap-1.5 w-full"><FileText className="h-3.5 w-3.5" />DESCRICAO</span>)}</th>}
-              {visibleCols.valorUnitario && <th className="px-3 py-2.5 font-semibold text-center">{renderHeaderMenu("valor_unitario", "VAL. UNIT.")}</th>}
-              {visibleCols.quantidade && <th className="px-3 py-2.5 font-semibold text-center">{renderHeaderMenu("quantidade", "QTD")}</th>}
-              {visibleCols.total && <th className="px-3 py-2.5 font-semibold text-center">{renderHeaderMenu("total", <span className="inline-flex items-center justify-center gap-1.5 w-full"><BadgeDollarSign className="h-3.5 w-3.5" />TOTAL</span>)}</th>}
-              {visibleCols.formaPagamento && <th className="px-3 py-2.5 font-semibold text-center">FORMA PAGAMENTO</th>}
-              {visibleCols.vencimento && <th className="px-3 py-2.5 font-semibold text-center">VENCIMENTO</th>}
-              {visibleCols.status && <th className="px-3 py-2.5 font-semibold text-center">STATUS PGTO</th>}
-              {visibleCols.operacaoId && <th className="px-3 py-2.5 font-semibold text-center">OPERACAO ID</th>}
-              {visibleCols.acoes && <th className="px-5 py-2.5 font-semibold text-center">ACOES</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {filteredData.map((item) => (
-              <tr
-                key={item.id}
-                className="esc-table-row cursor-pointer transition-all border-b border-border last:border-0 hover:bg-muted/50"
-                onClick={() => setSelectedItem(item)}
-              >
-                {visibleCols.data && <td style={getStickyProps("data", false).style} className={cn(getStickyProps("data", false).className, "text-center text-muted-foreground whitespace-nowrap")}>{formatDate(item.data)}</td>}
-                {visibleCols.empresa && <td style={getStickyProps("empresa", false).style} className={cn(getStickyProps("empresa", false).className, "text-center text-muted-foreground whitespace-nowrap")}>{item.empresas?.nome || item.empresa_nome || "—"}</td>}
-                {visibleCols.categoria && <td className="px-3 py-3 text-center"><Badge variant="outline">{item.categoria_custo}</Badge></td>}
-                {visibleCols.descricao && <td style={getStickyProps("descricao", false).style} className={cn(getStickyProps("descricao", false).className, "text-left text-foreground whitespace-nowrap")}>{item.descricao}</td>}
-                {visibleCols.valorUnitario && <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{currencyFormatter.format(Number(item.valor_unitario ?? 0))}</td>}
-                {visibleCols.quantidade && <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap font-display font-medium">{Number(item.quantidade ?? 0).toLocaleString("pt-BR")}</td>}
-                {visibleCols.total && <td className="px-3 py-3 text-center text-foreground whitespace-nowrap font-display font-semibold">{currencyFormatter.format(Number(item.total ?? 0))}</td>}
-                {visibleCols.formaPagamento && <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{item.forma_pagamento || "—"}</td>}
-                {visibleCols.vencimento && <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{formatDate(item.data_vencimento)}</td>}
-                {visibleCols.status && (
-                  <td className="px-3 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild disabled={updateStatusMutation.isPending}>
-                        <button type="button" className="inline-flex">
-                          <Badge className={cn("border-0 font-medium", getStatusBadgeClass(item.status_pagamento))}>
-                            {item.status_pagamento || "—"}
-                          </Badge>
+          <table className="w-full text-sm min-w-max">
+            <thead className="bg-muted/95 backdrop-blur-sm sticky top-0 z-20">
+              <tr className="text-center font-display text-muted-foreground uppercase text-xs tracking-wide">
+                {visibleCols.data && <th style={getStickyProps("data", true).style} className={cn(getStickyProps("data", true).className, "text-center")}>{renderHeaderMenu("data", <span className="inline-flex items-center justify-center gap-1.5 w-full"><CalendarDays className="h-3.5 w-3.5" />DATA</span>)}</th>}
+                {visibleCols.empresa && <th style={getStickyProps("empresa", true).style} className={cn(getStickyProps("empresa", true).className, "text-center")}>{renderHeaderMenu("empresa", "EMPRESA")}</th>}
+                {visibleCols.categoria && <th className="px-3 py-2.5 font-semibold text-center">{renderHeaderMenu("categoria_custo", <span className="inline-flex items-center justify-center gap-1.5 w-full"><Tag className="h-3.5 w-3.5" />CATEGORIA</span>)}</th>}
+                {visibleCols.descricao && <th style={getStickyProps("descricao", true).style} className={cn(getStickyProps("descricao", true).className, "text-center")}>{renderHeaderMenu("descricao", <span className="inline-flex items-center justify-center gap-1.5 w-full"><FileText className="h-3.5 w-3.5" />DESCRICAO</span>)}</th>}
+                {visibleCols.valorUnitario && <th className="px-3 py-2.5 font-semibold text-center">{renderHeaderMenu("valor_unitario", "VAL. UNIT.")}</th>}
+                {visibleCols.quantidade && <th className="px-3 py-2.5 font-semibold text-center">{renderHeaderMenu("quantidade", "QTD")}</th>}
+                {visibleCols.total && <th className="px-3 py-2.5 font-semibold text-center">{renderHeaderMenu("total", <span className="inline-flex items-center justify-center gap-1.5 w-full"><BadgeDollarSign className="h-3.5 w-3.5" />TOTAL</span>)}</th>}
+                {visibleCols.formaPagamento && <th className="px-3 py-2.5 font-semibold text-center">FORMA PAGAMENTO</th>}
+                {visibleCols.vencimento && <th className="px-3 py-2.5 font-semibold text-center">VENCIMENTO</th>}
+                {visibleCols.status && <th className="px-3 py-2.5 font-semibold text-center">STATUS PGTO</th>}
+                {visibleCols.operacaoId && <th className="px-3 py-2.5 font-semibold text-center">OPERACAO ID</th>}
+                {visibleCols.acoes && <th className="px-5 py-2.5 font-semibold text-center">ACOES</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredData.map((item) => (
+                <tr
+                  key={item.id}
+                  className="esc-table-row cursor-pointer transition-all border-b border-border last:border-0 hover:bg-muted/50"
+                  onClick={() => setSelectedItem(item)}
+                >
+                  {visibleCols.data && <td style={getStickyProps("data", false).style} className={cn(getStickyProps("data", false).className, "text-center text-muted-foreground whitespace-nowrap")}>{formatDate(item.data)}</td>}
+                  {visibleCols.empresa && <td style={getStickyProps("empresa", false).style} className={cn(getStickyProps("empresa", false).className, "text-center text-muted-foreground whitespace-nowrap")}>{item.empresas?.nome || item.empresa_nome || "—"}</td>}
+                  {visibleCols.categoria && <td className="px-3 py-3 text-center"><Badge variant="outline">{item.categoria_custo}</Badge></td>}
+                  {visibleCols.descricao && <td style={getStickyProps("descricao", false).style} className={cn(getStickyProps("descricao", false).className, "text-center text-foreground whitespace-nowrap")}>{item.descricao}</td>}
+                  {visibleCols.valorUnitario && <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{currencyFormatter.format(Number(item.valor_unitario ?? 0))}</td>}
+                  {visibleCols.quantidade && <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap font-display font-medium">{Number(item.quantidade ?? 0).toLocaleString("pt-BR")}</td>}
+                  {visibleCols.total && <td className="px-3 py-3 text-center text-foreground whitespace-nowrap font-display font-semibold">{currencyFormatter.format(Number(item.total ?? 0))}</td>}
+                  {visibleCols.formaPagamento && <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{item.forma_pagamento || "—"}</td>}
+                  {visibleCols.vencimento && <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{formatDate(item.data_vencimento)}</td>}
+                  {visibleCols.status && (
+                    <td className="px-3 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild disabled={updateStatusMutation.isPending}>
+                          <button type="button" className="inline-flex">
+                            <Badge className={cn("border-0 font-medium", getStatusBadgeClass(item.status_pagamento))}>
+                              {item.status_pagamento || "—"}
+                            </Badge>
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="center">
+                          <DropdownMenuLabel>Status pgto</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          {statusOptions.map((status) => (
+                            <DropdownMenuItem key={status} onClick={() => updateStatusMutation.mutate({ item, status })}>
+                              {status}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </td>
+                  )}
+                  {visibleCols.operacaoId && <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{item.operacao_id || "—"}</td>}
+                  {visibleCols.acoes && (
+                    <td className="px-5 py-3" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
+                          onClick={() => openEditor(item)}
+                          title="Editar custo extra"
+                        >
+                          <Pencil className="h-4 w-4" />
                         </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="center">
-                        <DropdownMenuLabel>Status pgto</DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        {statusOptions.map((status) => (
-                          <DropdownMenuItem key={status} onClick={() => updateStatusMutation.mutate({ item, status })}>
-                            {status}
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                        <button
+                          className="h-7 w-7 rounded-md hover:bg-destructive-soft flex items-center justify-center text-muted-foreground hover:text-destructive"
+                          onClick={() => deleteMutation.mutate(item.id)}
+                          title="Excluir custo extra"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              ))}
+              {filteredData.length === 0 && (
+                <tr>
+                  <td colSpan={12} className="p-12 text-center text-muted-foreground italic">
+                    Nenhum custo extra atende aos filtros atuais.
                   </td>
-                )}
-                {visibleCols.operacaoId && <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{item.operacao_id || "—"}</td>}
-                {visibleCols.acoes && (
-                  <td className="px-5 py-3" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center justify-center gap-1">
-                      <button
-                        className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
-                        onClick={() => openEditor(item)}
-                        title="Editar custo extra"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      <button
-                        className="h-7 w-7 rounded-md hover:bg-destructive-soft flex items-center justify-center text-muted-foreground hover:text-destructive"
-                        onClick={() => deleteMutation.mutate(item.id)}
-                        title="Excluir custo extra"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </td>
-                )}
-              </tr>
-            ))}
-            {filteredData.length === 0 && (
-              <tr>
-                <td colSpan={12} className="p-12 text-center text-muted-foreground italic">
-                  Nenhum custo extra atende aos filtros atuais.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 

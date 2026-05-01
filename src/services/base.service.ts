@@ -381,6 +381,27 @@ class PontoServiceClass extends BaseService<'registros_ponto'> {
     if (error) throw error;
     return data;
   }
+  async getByMonth(month: string, empresaId?: string) {
+    const [year, mo] = month.split('-').map(Number);
+    const nextMonth = mo === 12 ? 1 : mo + 1;
+    const nextYear = mo === 12 ? year + 1 : year;
+    const nextMonthStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+
+    let query = supabase
+      .from('registros_ponto')
+      .select('*, colaboradores(nome, cargo, empresas(nome))')
+      .gte('data', `${month}-01`)
+      .lt('data', nextMonthStr)
+      .order('data', { ascending: false });
+
+    if (empresaId) {
+      query = query.eq('empresa_id', empresaId);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data;
+  }
   async getByCollaborator(collabId: string) {
     const { data, error } = await supabase.from('registros_ponto').select('*').eq('colaborador_id', collabId).order('data', { ascending: false });
     if (error) throw error;
@@ -796,6 +817,15 @@ class RegraOperacionalServiceClass {
 
   async inativar(id: string) {
     return this.update(id, { ativo: false });
+  }
+
+  async delete(id: string) {
+    const { error } = await operationalClient
+      .from('fornecedor_valores_servico')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
   }
 
   async hasActiveConflict(params: {

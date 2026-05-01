@@ -1,208 +1,543 @@
-import { AppShell } from "@/components/layout/AppShell";
-import { MetricCard } from "@/components/painel/MetricCard";
-import { Users, Boxes, Wallet, AlertTriangle, ArrowRight, Activity, LineChart as LineIcon, BarChart3, PieChart as PieIcon, Loader2, RefreshCw } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Link } from "react-router-dom";
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { addMonths, format, startOfMonth } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  BarChart,
+  Activity,
+  AlertTriangle,
+  ArrowRight,
+  BarChart3,
+  Boxes,
+  Calendar as CalendarIcon,
+  HandCoins,
+  LineChart as LineIcon,
+  Loader2,
+  Package2,
+  PieChart as PieIcon,
+  PiggyBank,
+  Receipt,
+  RefreshCw,
+  Scale,
+  TrendingDown,
+  TrendingUp,
+  Wallet,
+} from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
+import {
   Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
+  BarChart,
   CartesianGrid,
-  PieChart,
-  Pie,
   Cell,
   Legend,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from "recharts";
-import { useQuery } from "@tanstack/react-query";
-import { EmpresaService, ColaboradorService, OperacaoService, ResultadosService } from "@/services/base.service";
 
+import { AppShell } from "@/components/layout/AppShell";
+import { MetricCard } from "@/components/painel/MetricCard";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import {
+  CustoExtraOperacionalService,
+  OperacaoService,
+} from "@/services/base.service";
+import { processarOperacao } from "@/utils/financeiro";
 
-// Cores autorizadas pelo Orbe Design System
-const COLORS = [
-  "hsl(var(--primary))", // Brand Orange
-  "hsl(var(--info))",    // Interaction Blue
-  "hsl(var(--success))", // Status Green
-  "hsl(var(--warning))", // Alert Amber
-  "hsl(var(--gray-300))" // Neutral Gray
+const currencyFormatter = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "BRL",
+});
+
+const integerFormatter = new Intl.NumberFormat("pt-BR");
+
+const percentFormatter = new Intl.NumberFormat("pt-BR", {
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+});
+
+const formatCurrency = (value: number) =>
+  currencyFormatter.format(Number.isFinite(value) ? value : 0);
+
+const formatInteger = (value: number) =>
+  integerFormatter.format(Number.isFinite(value) ? value : 0);
+
+const formatPercent = (value: number) =>
+  `${percentFormatter.format(Number.isFinite(value) ? value : 0)}%`;
+
+const COLORS = {
+  receita: "hsl(var(--primary))",
+  custos: "hsl(var(--destructive))",
+  lucro: "hsl(var(--success))",
+  recebido: "hsl(var(--success))",
+  pendente: "hsl(var(--warning))",
+  atrasado: "hsl(var(--destructive))",
+  merenda: "hsl(var(--primary))",
+  administrativo: "hsl(var(--info))",
+  operacional: "hsl(var(--warning))",
+  fornecedor: "hsl(var(--success))",
+};
+
+const MONTH_NAME_OPTIONS = Array.from({ length: 12 }, (_, index) => {
+  const date = new Date(2026, index, 1);
+  const labelBase = format(date, "MMMM", { locale: ptBR });
+  return {
+    value: String(index + 1).padStart(2, "0"),
+    label: labelBase.charAt(0).toUpperCase() + labelBase.slice(1),
+  };
+});
+
+const MONTH_FILTER_OPTIONS = [
+  { value: "all", label: "Todos" },
+  ...MONTH_NAME_OPTIONS,
 ];
+
+const YEAR_OPTIONS = Array.from(
+  new Set(
+    Array.from({ length: 24 }, (_, index) =>
+      String(startOfMonth(addMonths(new Date(), -index)).getFullYear()),
+    ),
+  ),
+).sort((a, b) => Number(b) - Number(a));
 
 const Dashboard = () => {
   const [chartType, setChartType] = useState<"line" | "bar">("line");
-  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().substring(0, 7)); // YYYY-MM
+  const [selectedYear, setSelectedYear] = useState(
+    String(new Date().getFullYear()),
+  );
+  const [selectedMonthNumber, setSelectedMonthNumber] = useState(
+    "all",
+  );
+  const selectedMonth = `${selectedYear}-${selectedMonthNumber}`;
+  const matchesSelectedPeriod = (value: unknown) => {
+    const referencia = String(value ?? "");
+    if (!referencia.startsWith(selectedYear)) return false;
+    if (selectedMonthNumber === "all") return true;
+    return referencia.startsWith(`${selectedYear}-${selectedMonthNumber}`);
+  };
 
-  // Busca dados reais
-  const { data: cols = [], isLoading: isLoadingCols, isError: isErrorCols } = useQuery({
-    queryKey: ["colaboradores"],
-    queryFn: () => ColaboradorService.getAll(),
-    retry: 1
+  const {
+    data: operacoesBase = [],
+    isLoading: isLoadingOperacoes,
+    isError: isErrorOperacoes,
+  } = useQuery<any[]>({
+    queryKey: ["dashboard-operacoes", "all"],
+    queryFn: () => OperacaoService.getAllPainel(),
+    retry: 1,
   });
 
-  const { data: empresas = [], isLoading: isLoadingEmpresas, isError: isErrorEmpresas } = useQuery({
-    queryKey: ["empresas"],
-    queryFn: () => EmpresaService.getAll(),
-    retry: 1
+  const {
+    data: custosExtras = [],
+    isLoading: isLoadingCustos,
+    isError: isErrorCustos,
+  } = useQuery<any[]>({
+    queryKey: ["dashboard-custos-extras", "all"],
+    queryFn: () => CustoExtraOperacionalService.getAll(),
+    retry: 1,
   });
 
-  const { data: results = [], isLoading: isLoadingResults, isError: isErrorResults } = useQuery({
-    queryKey: ["resultados_mensais", selectedMonth],
-    queryFn: () => ResultadosService.getByMonth(selectedMonth),
-    retry: 1
+  const isLoading = isLoadingOperacoes || isLoadingCustos;
+  const isError = isErrorOperacoes || isErrorCustos;
+
+  const operacoesPeriodo = useMemo(
+    () =>
+      operacoesBase
+        .filter((item) => {
+          const referencia = String(
+            item.data_operacao ?? item.data_referencia ?? item.data ?? "",
+          );
+          return matchesSelectedPeriod(referencia);
+        })
+        .map((item) => processarOperacao(item)),
+    [operacoesBase, selectedMonthNumber, selectedYear],
+  );
+
+  const custosPeriodo = useMemo(
+    () =>
+      custosExtras.filter((item) =>
+        matchesSelectedPeriod(item.data),
+      ),
+    [custosExtras, selectedMonthNumber, selectedYear],
+  );
+
+  const dashboardKpis = useMemo(() => {
+    let faturamento = 0;
+    let caixaRecebidoOperacoes = 0;
+    let aReceber = 0;
+    let atrasado = 0;
+    let volumeTotal = 0;
+
+    operacoesPeriodo.forEach((item) => {
+      const totalLinha = Number(
+        item.totalFinalCalculado ?? item.valor_total_label ?? item.valor_total ?? 0,
+      );
+      const quantidade = Number(item.quantidade ?? item.quantidade_label ?? 0);
+      const statusPagamento = String(
+        item.statusPagamento ?? item.status_pagamento ?? "",
+      ).toUpperCase();
+
+      faturamento += Number.isFinite(totalLinha) ? totalLinha : 0;
+      volumeTotal += Number.isFinite(quantidade) ? quantidade : 0;
+
+      if (statusPagamento === "RECEBIDO") caixaRecebidoOperacoes += totalLinha;
+      if (statusPagamento === "PENDENTE") aReceber += totalLinha;
+      if (statusPagamento === "ATRASADO") atrasado += totalLinha;
+    });
+
+    let custosTotais = 0;
+    let custosRecebidos = 0;
+    let custosPendentes = 0;
+    let custosAtrasados = 0;
+    let merenda = 0;
+    let administrativo = 0;
+    let operacional = 0;
+    let fornecedor = 0;
+
+    custosPeriodo.forEach((item) => {
+      const total = Number(item.total ?? 0);
+      const status = String(item.status_pagamento ?? "").toUpperCase();
+      const categoria = String(item.categoria_custo ?? "").toUpperCase();
+
+      custosTotais += total;
+
+      if (status === "RECEBIDO") custosRecebidos += total;
+      if (status === "PENDENTE") custosPendentes += total;
+      if (status === "ATRASADO") custosAtrasados += total;
+
+      if (categoria === "MERENDA") merenda += total;
+      if (categoria === "ADMINISTRATIVO") administrativo += total;
+      if (categoria === "OPERACIONAL") operacional += total;
+      if (categoria === "FORNECEDOR") fornecedor += total;
+    });
+
+    const lucroReal = faturamento - custosTotais;
+    const margemLucro = faturamento > 0 ? (lucroReal / faturamento) * 100 : 0;
+    const caixaRecebido = caixaRecebidoOperacoes - custosRecebidos;
+
+    return {
+      faturamento,
+      custosTotais,
+      lucroReal,
+      caixaRecebido,
+      aReceber,
+      atrasado,
+      margemLucro,
+      volumeTotal,
+      totalOperacoes: operacoesPeriodo.length,
+      totalLancamentosCustos: custosPeriodo.length,
+      caixaRecebidoOperacoes,
+      custosRecebidos,
+      custosPendentes,
+      custosAtrasados,
+      categoriasCustos: {
+        merenda,
+        administrativo,
+        operacional,
+        fornecedor,
+      },
+    };
+  }, [custosPeriodo, operacoesPeriodo]);
+
+  const serieDiaria = useMemo(() => {
+    const dias = new Map<
+      string,
+      { dia: string; receita: number; custos: number; lucro: number }
+    >();
+
+    operacoesPeriodo.forEach((item) => {
+      const chave = String(
+        item.data_operacao ?? item.data_referencia ?? item.data ?? "",
+      ).slice(0, 10);
+      if (!chave) return;
+
+      const atual = dias.get(chave) ?? {
+        dia: chave.slice(8, 10),
+        receita: 0,
+        custos: 0,
+        lucro: 0,
+      };
+
+      atual.receita += Number(
+        item.totalFinalCalculado ?? item.valor_total_label ?? item.valor_total ?? 0,
+      );
+      atual.lucro = atual.receita - atual.custos;
+      dias.set(chave, atual);
+    });
+
+    custosPeriodo.forEach((item) => {
+      const chave = String(item.data ?? "").slice(0, 10);
+      if (!chave) return;
+
+      const atual = dias.get(chave) ?? {
+        dia: chave.slice(8, 10),
+        receita: 0,
+        custos: 0,
+        lucro: 0,
+      };
+
+      atual.custos += Number(item.total ?? 0);
+      atual.lucro = atual.receita - atual.custos;
+      dias.set(chave, atual);
+    });
+
+    return Array.from(dias.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([, value]) => value);
+  }, [custosPeriodo, operacoesPeriodo]);
+
+  const financeiroStatusData = useMemo(
+    () => [
+      {
+        name: "Caixa recebido",
+        value: Math.max(dashboardKpis.caixaRecebido, 0),
+        fill: COLORS.recebido,
+      },
+      {
+        name: "A receber",
+        value: dashboardKpis.aReceber,
+        fill: COLORS.pendente,
+      },
+      {
+        name: "Atrasado",
+        value: dashboardKpis.atrasado,
+        fill: COLORS.atrasado,
+      },
+    ].filter((item) => item.value > 0),
+    [dashboardKpis],
+  );
+
+  const categoriasCustosData = useMemo(
+    () => [
+      {
+        name: "Merenda",
+        value: dashboardKpis.categoriasCustos.merenda,
+        fill: COLORS.merenda,
+      },
+      {
+        name: "Administrativo",
+        value: dashboardKpis.categoriasCustos.administrativo,
+        fill: COLORS.administrativo,
+      },
+      {
+        name: "Operacional",
+        value: dashboardKpis.categoriasCustos.operacional,
+        fill: COLORS.operacional,
+      },
+      {
+        name: "Fornecedor",
+        value: dashboardKpis.categoriasCustos.fornecedor,
+        fill: COLORS.fornecedor,
+      },
+    ].filter((item) => item.value > 0),
+    [dashboardKpis],
+  );
+
+  const monthLabelCapitalized =
+    selectedMonthNumber === "all"
+      ? `Todos os meses de ${selectedYear}`
+      : new Date(`${selectedMonth}-01T12:00:00`).toLocaleDateString(
+          "pt-BR",
+          {
+            month: "long",
+            year: "numeric",
+          },
+        ).replace(/^\w/, (char) => char.toUpperCase());
+
+  const lastSync = new Date().toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
   });
-
-  const { data: rawOps = [], isLoading: isLoadingRawOps } = useQuery({
-    queryKey: ["operacoes_mensais", selectedMonth],
-    queryFn: () => OperacaoService.getByMonth(selectedMonth),
-    retry: 1
-  });
-
-  const isLoading = isLoadingCols || isLoadingEmpresas || isLoadingResults || isLoadingRawOps;
-  const isError = isErrorCols || isErrorEmpresas || isErrorResults;
-
-  const totalOperacoes = results.length > 0
-    ? results.reduce((acc, r) => acc + (r.total_operacoes || 0), 0)
-    : rawOps.length;
-
-  const totalCalculado = results.length > 0
-    ? results.reduce((acc, r) => acc + Number(r.valor_total_calculado || 0), 0)
-    : rawOps.reduce((acc, op) => acc + (Number(op.quantidade) * Number(op.valor_unitario || 0)), 0);
-
-  const inconsistencias = results.length > 0
-    ? results.reduce((acc, r) => acc + (r.contagem_inconsistencias || 0), 0)
-    : rawOps.filter(op => op.status === 'inconsistente').length;
-
-  // Se não houver histórico processado, gerar histórico baseado nas operações reais (modo preview)
-  const serieMensal = results.length > 0
-    ? (results || []).map(r => ({
-      dia: new Date(r.data).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
-      operacoes: r.total_operacoes || 0,
-      valor: Number(r.valor_total_calculado) || 0,
-      inconsistencias: r.contagem_inconsistencias || 0
-    }))
-    : Object.values(
-      rawOps.reduce((acc: any, op: any) => {
-        const dia = new Date(op.data).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-        if (!acc[dia]) acc[dia] = { dia, operacoes: 0, valor: 0, inconsistencias: 0 };
-        acc[dia].operacoes += 1;
-        acc[dia].valor += (Number(op.quantidade) * Number(op.valor_unitario || 0));
-        if (op.status === 'inconsistente') acc[dia].inconsistencias += 1;
-        return acc;
-      }, {})
-    );
-
-  // Distribuição por cargo
-  const distribCargo = Object.entries(
-    cols.reduce<Record<string, number>>((acc, c: any) => {
-      const cargo = c.cargo || "Sem cargo";
-      acc[cargo] = (acc[cargo] || 0) + 1;
-      return acc;
-    }, {})
-  ).map(([name, value]) => ({ name, value: Number(value) }));
-
-  // Distribuição por tipo de contrato (Ponto vs Operação)
-  const distribContrato = [
-    { name: "Por Hora (Ponto)", value: cols.filter((c: any) => c.tipo_contrato === "Hora").length },
-    { name: "Por Operação", value: cols.filter((c: any) => c.tipo_contrato === "Operação").length },
-  ];
-
-  const lastSync = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
   return (
-    <AppShell title="Dashboard" subtitle={`Visão consolidada · ${new Date(selectedMonth + "-01").toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}`}>
+    <AppShell
+      title="Dashboard"
+      subtitle={`Visao geral consolidada de operacoes + custos extras · ${monthLabelCapitalized}`}
+    >
       <div className="space-y-5">
-        <div className="flex items-center justify-between gap-4 flex-wrap bg-card border border-border p-3 rounded-xl">
-          <div className="flex items-center gap-3">
-            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Período de análise:</div>
-            <input
-              type="month"
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="h-9 px-3 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-primary transition-all font-bold text-foreground"
-            />
+        <section className="esc-card rounded-2xl border border-border p-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Periodo de analise
+              </div>
+              <Select value={selectedYear} onValueChange={setSelectedYear}>
+                <SelectTrigger className="w-[120px] h-10 shrink-0 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium">
+                  <div className="flex items-center gap-2">
+                    <CalendarIcon className="h-4 w-4 text-primary" />
+                    <SelectValue placeholder="Ano" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  {YEAR_OPTIONS.map((year) => (
+                    <SelectItem key={year} value={year}>
+                      {year}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={selectedMonthNumber} onValueChange={setSelectedMonthNumber}>
+                <SelectTrigger className="w-[180px] h-10 shrink-0 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium">
+                  <div className="flex items-center gap-2">
+                    <CalendarIcon className="h-4 w-4 text-primary" />
+                    <SelectValue placeholder="Mes" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  {MONTH_FILTER_OPTIONS.map((month) => (
+                    <SelectItem key={month.value} value={month.value}>
+                      {month.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <div className="h-2 w-2 rounded-full bg-success animate-pulse" />
+              Consolidacao atualizada em {lastSync}
+            </div>
           </div>
-          <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
-            <div className="h-2 w-2 rounded-full bg-success animate-pulse" />
-            Dados sincronizados em tempo real ({lastSync})
-          </div>
-        </div>
+        </section>
 
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center p-20 esc-card">
-            <Loader2 className="h-10 w-10 animate-spin text-primary mb-3" />
-            <p className="text-sm text-muted-foreground animate-pulse">Consolidando visão geral...</p>
+          <div className="esc-card flex flex-col items-center justify-center p-20 text-center">
+            <Loader2 className="mb-3 h-10 w-10 animate-spin text-primary" />
+            <p className="text-sm text-muted-foreground">
+              Consolidando receita, custos e lucro do periodo...
+            </p>
           </div>
         ) : isError ? (
-          <div className="flex flex-col items-center justify-center p-20 esc-card text-center">
-            <div className="h-14 w-14 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
+          <div className="esc-card flex flex-col items-center justify-center p-20 text-center">
+            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10">
               <AlertTriangle className="h-7 w-7 text-destructive" />
             </div>
-            <h2 className="text-lg font-display font-semibold text-foreground">Erro de conexão</h2>
-            <p className="text-sm text-muted-foreground max-w-md mt-2 mb-6">
-              Não foi possível carregar os indicadores do dashboard. Verifique sua permissão ou conexão com o servidor.
+            <h2 className="font-display text-lg font-semibold text-foreground">
+              Erro ao carregar o dashboard
+            </h2>
+            <p className="mt-2 mb-6 max-w-md text-sm text-muted-foreground">
+              Nao foi possivel consolidar operacoes e custos extras. Verifique a
+              conexao com o banco e se as migrations operacionais ja foram aplicadas.
             </p>
-            <Button onClick={() => window.location.reload()} className="h-10 px-8">
-              Recarregar sistema
+            <Button onClick={() => window.location.reload()}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Recarregar
             </Button>
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <MetricCard label="Operações no mês" value={totalOperacoes.toLocaleString('pt-BR')} icon={Boxes} />
-              <MetricCard label="Colaboradores" value={cols.length.toString()} icon={Users} />
-              <MetricCard label="Faturamento do mês" value={`R$ ${totalCalculado.toLocaleString('pt-BR')}`} icon={Wallet} accent />
-              <MetricCard label="Inconsistências" value={inconsistencias.toString()} icon={AlertTriangle} delta={{ value: inconsistencias > 0 ? "Revisão Necessária" : "Consistente", positive: inconsistencias === 0 }} />
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <MetricCard
+                  label="Lucro real"
+                  value={formatCurrency(dashboardKpis.lucroReal)}
+                  icon={PiggyBank}
+                  variant="solid"
+                  chartData={serieDiaria.map(d => ({ value: d.lucro }))}
+                />
+                <MetricCard
+                  label="Faturamento Total"
+                  value={formatCurrency(dashboardKpis.faturamento)}
+                  icon={Wallet}
+                  chartData={serieDiaria.map(d => ({ value: d.receita }))}
+                  chartColor={COLORS.receita}
+                />
+                <MetricCard
+                  label="Custos Totais"
+                  value={formatCurrency(dashboardKpis.custosTotais)}
+                  icon={TrendingDown}
+                  chartData={serieDiaria.map(d => ({ value: d.custos }))}
+                  chartColor={COLORS.custos}
+                />
+                <MetricCard
+                  label="Margem de Lucro"
+                  value={formatPercent(dashboardKpis.margemLucro)}
+                  icon={Scale}
+                  chartData={serieDiaria.map(d => ({ value: d.receita > 0 ? (d.lucro / d.receita) * 100 : 0 }))}
+                  chartColor={COLORS.lucro}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                <MetricCard
+                  label="Caixa Recebido"
+                  value={formatCurrency(dashboardKpis.caixaRecebido)}
+                  size="small"
+                />
+                <MetricCard
+                  label="A Receber"
+                  value={formatCurrency(dashboardKpis.aReceber)}
+                  size="small"
+                />
+                <MetricCard
+                  label="Atrasado"
+                  value={formatCurrency(dashboardKpis.atrasado)}
+                  size="small"
+                />
+                <MetricCard
+                  label="Volume Total"
+                  value={formatInteger(dashboardKpis.volumeTotal)}
+                  size="small"
+                />
+                <MetricCard
+                  label="Operações"
+                  value={formatInteger(dashboardKpis.totalOperacoes)}
+                  size="small"
+                />
+                <MetricCard
+                  label="Custos (Lançs.)"
+                  value={formatInteger(dashboardKpis.totalLancamentosCustos)}
+                  size="small"
+                />
+              </div>
             </div>
 
             <section className="esc-card p-5">
-              <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <Activity className="h-4 w-4 text-muted-foreground" />
-                  <h2 className="font-display font-semibold text-foreground">Operações e faturamento — histórico mensal</h2>
+                  <h2 className="font-display font-semibold text-foreground">
+                    Receita, custos e lucro por dia
+                  </h2>
                 </div>
-                {serieMensal.length > 0 && (
-                  <div className="inline-flex items-center bg-muted rounded-lg p-1">
-                    <ChartTabBtn active={chartType === "line"} onClick={() => setChartType("line")} icon={<LineIcon className="h-3.5 w-3.5" />}>
+                {serieDiaria.length > 0 && (
+                  <div className="inline-flex items-center rounded-lg bg-muted p-1">
+                    <ChartTabBtn
+                      active={chartType === "line"}
+                      onClick={() => setChartType("line")}
+                      icon={<LineIcon className="h-3.5 w-3.5" />}
+                    >
                       Linhas
                     </ChartTabBtn>
-                    <ChartTabBtn active={chartType === "bar"} onClick={() => setChartType("bar")} icon={<BarChart3 className="h-3.5 w-3.5" />}>
+                    <ChartTabBtn
+                      active={chartType === "bar"}
+                      onClick={() => setChartType("bar")}
+                      icon={<BarChart3 className="h-3.5 w-3.5" />}
+                    >
                       Colunas
                     </ChartTabBtn>
                   </div>
                 )}
               </div>
 
-              <div className="h-[280px] w-full">
-                {serieMensal.length > 0 ? (
+              <div className="h-[320px] w-full">
+                {serieDiaria.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     {chartType === "line" ? (
-                      <LineChart data={serieMensal} margin={{ top: 8, right: 16, left: -10, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                        <XAxis dataKey="dia" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                        <YAxis yAxisId="l" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                        <YAxis yAxisId="r" orientation="right" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                        <Tooltip
-                          contentStyle={{
-                            background: "hsl(var(--card))",
-                            border: "1px solid hsl(var(--border))",
-                            borderRadius: "8px",
-                            fontSize: "12px",
-                            fontFamily: "Inter, sans-serif"
-                          }}
-                          formatter={(v: number, n: string) => (n === "Faturamento (R$)" ? [`R$ ${v.toLocaleString("pt-BR")}`, n] : [v, n])}
-                        />
-                        <Legend wrapperStyle={{ fontSize: 12 }} />
-                        <Line yAxisId="l" type="monotone" dataKey="operacoes" name="Operações" stroke="hsl(var(--info))" strokeWidth={2.5} dot={{ r: 3 }} />
-                        <Line yAxisId="r" type="monotone" dataKey="valor" name="Faturamento (R$)" stroke="hsl(var(--primary))" strokeWidth={2.5} dot={{ r: 3 }} />
-                        <Line yAxisId="l" type="monotone" dataKey="inconsistencias" name="Inconsistências" stroke="hsl(var(--destructive))" strokeWidth={2} strokeDasharray="5 5" />
-                      </LineChart>
-                    ) : (
-                      <BarChart data={serieMensal} margin={{ top: 8, right: 16, left: -10, bottom: 0 }}>
+                      <LineChart
+                        data={serieDiaria}
+                        margin={{ top: 8, right: 16, left: -10, bottom: 0 }}
+                      >
                         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                         <XAxis dataKey="dia" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
                         <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
@@ -212,58 +547,118 @@ const Dashboard = () => {
                             border: "1px solid hsl(var(--border))",
                             borderRadius: "8px",
                             fontSize: "12px",
-                            fontFamily: "Inter, sans-serif"
                           }}
+                          formatter={(value: number, name: string) => [formatCurrency(value), name]}
                         />
                         <Legend wrapperStyle={{ fontSize: 12 }} />
-                        <Bar dataKey="operacoes" name="Operações" fill="hsl(var(--info))" radius={[4, 4, 0, 0]} />
-                        <Bar dataKey="valor" name="Faturamento" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                        <Bar dataKey="inconsistencias" name="Inconsistências" fill="hsl(var(--destructive))" radius={[4, 4, 0, 0]} />
+                        <Line type="monotone" dataKey="receita" name="Receita" stroke={COLORS.receita} strokeWidth={2.5} dot={{ r: 3 }} />
+                        <Line type="monotone" dataKey="custos" name="Custos" stroke={COLORS.custos} strokeWidth={2.5} dot={{ r: 3 }} />
+                        <Line type="monotone" dataKey="lucro" name="Lucro" stroke={COLORS.lucro} strokeWidth={2.5} dot={{ r: 3 }} />
+                      </LineChart>
+                    ) : (
+                      <BarChart
+                        data={serieDiaria}
+                        margin={{ top: 8, right: 12, left: -12, bottom: 0 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                        <XAxis dataKey="dia" stroke="hsl(var(--muted-foreground))" tickLine={false} axisLine={false} />
+                        <YAxis stroke="hsl(var(--muted-foreground))" tickLine={false} axisLine={false} />
+                        <Tooltip
+                          contentStyle={{
+                            background: "hsl(var(--card))",
+                            border: "1px solid hsl(var(--border))",
+                            borderRadius: "8px",
+                            fontSize: "12px",
+                          }}
+                          formatter={(value: number, name: string) => [formatCurrency(value), name]}
+                        />
+                        <Legend wrapperStyle={{ fontSize: 12 }} />
+                        <Bar dataKey="receita" name="Receita" fill={COLORS.receita} radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="custos" name="Custos" fill={COLORS.custos} radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="lucro" name="Lucro" fill={COLORS.lucro} radius={[4, 4, 0, 0]} />
                       </BarChart>
                     )}
                   </ResponsiveContainer>
                 ) : (
-                  <div className="h-full flex flex-col items-center justify-center text-muted-foreground bg-muted/20 rounded-lg border border-dashed border-border p-8 text-center">
-                    <LineIcon className="h-10 w-10 mb-2 opacity-20" />
-                    <p className="text-sm">Nenhum dado histórico disponível nos últimos 7 dias.</p>
-                    <p className="text-xs mt-1">Os dados aparecerão aqui após o processamento diário.</p>
-                  </div>
+                  <EmptyChartState text="Nenhum movimento encontrado no periodo selecionado." />
                 )}
               </div>
             </section>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <PieCard title="Colaboradores por cargo" icon={<PieIcon className="h-4 w-4 text-muted-foreground" />} data={distribCargo} />
-              <PieCard title="Distribuição: Ponto vs Operação" icon={<PieIcon className="h-4 w-4 text-muted-foreground" />} data={distribContrato} />
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <PieCard
+                title="Status financeiro da receita"
+                icon={<PieIcon className="h-4 w-4 text-muted-foreground" />}
+                data={financeiroStatusData}
+              />
+              <PieCard
+                title="Composicao dos custos extras"
+                icon={<PieIcon className="h-4 w-4 text-muted-foreground" />}
+                data={categoriasCustosData}
+              />
             </div>
+
+            <section className="esc-card p-5">
+              <div className="mb-4 flex items-center gap-2">
+                <Scale className="h-4 w-4 text-muted-foreground" />
+                <h2 className="font-display font-semibold text-foreground">
+                  Leitura consolidada do periodo
+                </h2>
+              </div>
+
+              <div className="space-y-3 text-sm">
+                <InsightRow
+                  label="Receita recebida"
+                  value={formatCurrency(dashboardKpis.caixaRecebidoOperacoes)}
+                />
+                <InsightRow
+                  label="Custos baixados"
+                  value={formatCurrency(dashboardKpis.custosRecebidos)}
+                />
+                <InsightRow
+                  label="Custos pendentes"
+                  value={formatCurrency(dashboardKpis.custosPendentes)}
+                />
+                <InsightRow
+                  label="Custos atrasados"
+                  value={formatCurrency(dashboardKpis.custosAtrasados)}
+                />
+              </div>
+
+              <div className="mt-5 rounded-2xl border border-border bg-muted/20 p-4">
+                <div
+                  className={cn(
+                    "inline-flex rounded-full px-2.5 py-1 text-xs font-semibold",
+                    dashboardKpis.lucroReal >= 0
+                      ? "bg-success-soft text-success-strong"
+                      : "bg-destructive-soft text-destructive-strong",
+                  )}
+                >
+                  {dashboardKpis.lucroReal >= 0
+                    ? "Periodo com lucro positivo"
+                    : "Periodo com lucro pressionado"}
+                </div>
+                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                  O dashboard cruza exclusivamente a receita das operacoes com os
+                  custos extras do mesmo mes para chegar ao lucro real. O KPI
+                  "Caixa recebido" mostra o saldo realizado no periodo entre
+                  recebimentos operacionais e custos extras ja baixados.
+                </p>
+              </div>
+
+              <div className="mt-5 flex gap-2">
+                <Button asChild>
+                  <Link to="/operacional/operacoes">
+                    Ir para operacoes <ArrowRight className="ml-1 h-4 w-4" />
+                  </Link>
+                </Button>
+                <Button variant="outline" asChild>
+                  <Link to="/inconsistencias">Ver inconsistencias</Link>
+                </Button>
+              </div>
+            </section>
           </>
         )}
-
-        <section className="esc-card p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Activity className="h-4 w-4 text-muted-foreground" />
-              <h2 className="font-display font-semibold text-foreground">Status do dia</h2>
-            </div>
-            <span className={cn(
-              "esc-chip",
-              inconsistencias > 0 ? "bg-warning-soft text-warning-strong" : "bg-success-soft text-success-strong"
-            )}>
-              {inconsistencias > 0 ? "Pendente de processamento" : "Pronto para fechamento"}
-            </span>
-          </div>
-          <p className="text-sm text-muted-foreground mb-4">
-            Última sincronização às {lastSync}. {inconsistencias > 0 ? `${inconsistencias} inconsistências aguardando revisão.` : "Todos os registros estão consistentes."}
-          </p>
-          <div className="flex gap-2">
-            <Button asChild>
-              <Link to="/operacional/operacoes">Ir para operações <ArrowRight className="h-4 w-4 ml-1" /></Link>
-            </Button>
-            <Button variant="outline" asChild>
-              <Link to="/inconsistencias">Ver inconsistências</Link>
-            </Button>
-          </div>
-        </section>
       </div>
     </AppShell>
   );
@@ -285,8 +680,10 @@ const ChartTabBtn = ({
     size="sm"
     onClick={onClick}
     className={cn(
-      "gap-1.5 h-7 px-3 text-[11px] font-bold uppercase tracking-wider transition-all",
-      active ? "bg-background text-foreground shadow-sm ring-1 ring-border" : "text-muted-foreground hover:text-foreground"
+      "h-7 gap-1.5 px-3 text-[11px] font-bold uppercase tracking-wider transition-all",
+      active
+        ? "bg-background text-foreground shadow-sm ring-1 ring-border"
+        : "text-muted-foreground hover:text-foreground",
     )}
   >
     {icon}
@@ -294,58 +691,81 @@ const ChartTabBtn = ({
   </Button>
 );
 
-const PieCard = ({ title, icon, data }: { title: string; icon: React.ReactNode; data: { name: string; value: number }[] }) => (
+const EmptyChartState = ({ text }: { text: string }) => (
+  <div className="flex h-full flex-col items-center justify-center rounded-lg border border-dashed border-border bg-muted/20 p-8 text-center text-muted-foreground">
+    <Activity className="mb-2 h-10 w-10 opacity-20" />
+    <p className="text-sm">{text}</p>
+  </div>
+);
+
+const PieCard = ({
+  title,
+  icon,
+  data,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  data: { name: string; value: number; fill: string }[];
+}) => (
   <section className="esc-card p-5">
-    <div className="flex items-center gap-2 mb-3">
+    <div className="mb-3 flex items-center gap-2">
       {icon}
-      <h3 className="font-display font-semibold text-foreground text-sm">{title}</h3>
+      <h3 className="font-display text-sm font-semibold text-foreground">{title}</h3>
     </div>
     <div className="h-[240px]">
-      <ResponsiveContainer width="100%" height="100%">
-        <PieChart>
-          <Pie
-            data={data}
-            dataKey="value"
-            nameKey="name"
-            cx="50%"
-            cy="50%"
-            innerRadius={60}
-            outerRadius={80}
-            paddingAngle={5}
-            stroke="none"
-          >
-            {data.map((_, i) => (
-              <Cell key={i} fill={COLORS[i % COLORS.length]} />
-            ))}
-          </Pie>
-          <Tooltip
-            contentStyle={{
-              background: "hsl(var(--card))",
-              border: "1px solid hsl(var(--border))",
-              borderRadius: "8px",
-              fontSize: "12px",
-              fontFamily: "Inter, sans-serif",
-              boxShadow: "0 4px 12px rgba(0,0,0,0.1)"
-            }}
-          />
-          <Legend
-            verticalAlign="bottom"
-            align="center"
-            iconType="circle"
-            wrapperStyle={{
-              paddingTop: "24px",
-              fontSize: "11px",
-              fontFamily: "Inter, sans-serif",
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
-              fontWeight: 600,
-              color: "hsl(var(--muted-foreground))"
-            }}
-          />
-        </PieChart>
-      </ResponsiveContainer>
+      {data.length > 0 ? (
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={data}
+              dataKey="value"
+              nameKey="name"
+              cx="50%"
+              cy="50%"
+              innerRadius={60}
+              outerRadius={80}
+              paddingAngle={5}
+              stroke="none"
+            >
+              {data.map((entry) => (
+                <Cell key={entry.name} fill={entry.fill} />
+              ))}
+            </Pie>
+            <Tooltip
+              contentStyle={{
+                background: "hsl(var(--card))",
+                border: "1px solid hsl(var(--border))",
+                borderRadius: "8px",
+                fontSize: "12px",
+              }}
+              formatter={(value: number) => [formatCurrency(value), "Valor"]}
+            />
+            <Legend
+              verticalAlign="bottom"
+              align="center"
+              iconType="circle"
+              wrapperStyle={{
+                paddingTop: "24px",
+                fontSize: "11px",
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+                fontWeight: 600,
+              }}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+      ) : (
+        <EmptyChartState text="Nenhum dado disponivel para este grafico." />
+      )}
     </div>
   </section>
+);
+
+const InsightRow = ({ label, value }: { label: string; value: string }) => (
+  <div className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2.5">
+    <span className="text-muted-foreground">{label}</span>
+    <span className="font-semibold text-foreground">{value}</span>
+  </div>
 );
 
 export default Dashboard;

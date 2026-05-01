@@ -9,10 +9,21 @@ import {
   Plus,
   Save,
   ShieldAlert,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/layout/AppShell";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -144,6 +155,87 @@ const getTipoCalculoLabel = (tipo?: string | null) =>
   TIPOS_CALCULO.find((item) => item.value === tipo)?.label ?? "Não definido";
 
 const normalizeOptionalId = (value: string) => (value ? value : null);
+
+type RuleContextProfile = {
+  mode: "default" | "descarga_volume" | "global" | "iss_global";
+  title: string;
+  description: string;
+  requireEmpresa: boolean;
+  requireTipoServico: boolean;
+  requireTipoCalculo: boolean;
+  requireTransportadora: boolean;
+  requireFornecedor: boolean;
+};
+
+const getRuleContextProfile = ({
+  applyGlobally,
+  issRuleSelected,
+  tipoServicoNome,
+  tipoCalculo,
+}: {
+  applyGlobally: boolean;
+  issRuleSelected: boolean;
+  tipoServicoNome?: string | null;
+  tipoCalculo?: string | null;
+}): RuleContextProfile => {
+  if (issRuleSelected) {
+    return {
+      mode: "iss_global",
+      title: "Regra global de ISS",
+      description:
+        "Essa regra sempre vale de forma global. Empresa, fornecedor, transportadora e produto nao sao exigidos.",
+      requireEmpresa: false,
+      requireTipoServico: false,
+      requireTipoCalculo: true,
+      requireTransportadora: false,
+      requireFornecedor: false,
+    };
+  }
+
+  if (applyGlobally) {
+    return {
+      mode: "global",
+      title: "Aplicacao global",
+      description:
+        "A regra será replicada para todas as empresas, todos os fornecedores e todos os tipos de serviço ativos.",
+      requireEmpresa: false,
+      requireTipoServico: false,
+      requireTipoCalculo: true,
+      requireTransportadora: false,
+      requireFornecedor: false,
+    };
+  }
+
+  const normalizedTipoServico = normalizeText(tipoServicoNome ?? "");
+  const isDescarga = normalizedTipoServico.includes("descarga");
+  const isVolume = tipoCalculo === "volume";
+
+  if (isDescarga && isVolume) {
+    return {
+      mode: "descarga_volume",
+      title: "Regra por transportadora",
+      description:
+        "Para descarga por volume, a transportadora passa a ser o principal identificador. Empresa e fornecedor ficam opcionais.",
+      requireEmpresa: false,
+      requireTipoServico: true,
+      requireTipoCalculo: true,
+      requireTransportadora: true,
+      requireFornecedor: false,
+    };
+  }
+
+  return {
+    mode: "default",
+    title: "Regra por empresa e fornecedor",
+    description:
+      "Neste tipo de cadastro, a regra continua vinculada principalmente à empresa, tipo de serviço e fornecedor.",
+    requireEmpresa: true,
+    requireTipoServico: true,
+    requireTipoCalculo: true,
+    requireTransportadora: false,
+    requireFornecedor: true,
+  };
+};
 
 const isIssRuleDefinition = (rule?: { nome?: string | null; coluna_planilha?: string | null } | null) => {
   if (!rule) return false;
@@ -360,6 +452,7 @@ const RegrasOperacionais = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [quickCreate, setQuickCreate] = useState<QuickCreateState>(null);
+  const [ruleToDelete, setRuleToDelete] = useState<any | null>(null);
   const [transportadoraDraft, setTransportadoraDraft] = useState({
     nome: "",
     tipo_cadastro: "transportadora",
@@ -419,15 +512,15 @@ const RegrasOperacionais = () => {
   });
 
   const { data: transportadoras = [] } = useQuery({
-    queryKey: ["transportadoras_regras_operacionais", form.empresa_id],
-    queryFn: () => TransportadoraClienteService.getByEmpresa(form.empresa_id),
-    enabled: canAccess && !!form.empresa_id,
+    queryKey: ["transportadoras_regras_operacionais", form.empresa_id || "all"],
+    queryFn: () => TransportadoraClienteService.getByEmpresa(form.empresa_id || undefined),
+    enabled: canAccess,
   });
 
   const { data: fornecedores = [] } = useQuery({
-    queryKey: ["fornecedores_regras_operacionais", form.empresa_id],
-    queryFn: () => FornecedorService.getByEmpresa(form.empresa_id),
-    enabled: canAccess && !!form.empresa_id,
+    queryKey: ["fornecedores_regras_operacionais", form.empresa_id || "all"],
+    queryFn: () => FornecedorService.getByEmpresa(form.empresa_id || undefined),
+    enabled: canAccess,
   });
 
   const { data: produtos = [] } = useQuery({
@@ -511,9 +604,23 @@ const RegrasOperacionais = () => {
     () => (tiposRegra as any[]).find((item) => item.id === form.tipo_regra_id) ?? null,
     [form.tipo_regra_id, tiposRegra],
   );
+  const tipoServicoSelecionado = useMemo(
+    () => (tiposServico as any[]).find((item) => item.id === form.tipo_servico_id) ?? null,
+    [form.tipo_servico_id, tiposServico],
+  );
   const issRuleSelected = useMemo(
     () => isIssRuleDefinition(tipoRegraSelecionado),
     [tipoRegraSelecionado],
+  );
+  const ruleContext = useMemo(
+    () =>
+      getRuleContextProfile({
+        applyGlobally,
+        issRuleSelected,
+        tipoServicoNome: tipoServicoSelecionado?.nome,
+        tipoCalculo: form.tipo_calculo,
+      }),
+    [applyGlobally, form.tipo_calculo, issRuleSelected, tipoServicoSelecionado],
   );
 
   const similarTiposServico = useMemo(
@@ -562,6 +669,34 @@ const RegrasOperacionais = () => {
     }));
   }, [editingId, issRuleSelected]);
 
+  const validateStep = (step: number) => {
+    if (step === 1) {
+      const missing: string[] = [];
+
+      if (ruleContext.requireTipoServico && !form.tipo_servico_id) missing.push("tipo de serviço");
+      if (ruleContext.requireTipoCalculo && !form.tipo_calculo) missing.push("tipo de cálculo");
+      if (ruleContext.requireEmpresa && !form.empresa_id) missing.push("empresa");
+      if (ruleContext.requireTransportadora && !form.transportadora_id) missing.push("transportadora");
+      if (ruleContext.requireFornecedor && !form.fornecedor_id) missing.push("fornecedor");
+
+      if (missing.length > 0) {
+        toast.error("Preencha os campos obrigatórios deste contexto.", {
+          description: `Faltando: ${missing.join(", ")}.`,
+        });
+        return false;
+      }
+    }
+
+    if (step === 2 && (!form.tipo_regra_id || !form.valor_unitario)) {
+      toast.error("Preencha os parâmetros da regra antes de avançar.", {
+        description: "Informe o tipo de regra e o valor unitário.",
+      });
+      return false;
+    }
+
+    return true;
+  };
+
   const openQuickCreate = (type: QuickCreateType, suggestedName = "") => {
     setQuickCreate({ type, suggestedName });
 
@@ -606,10 +741,18 @@ const RegrasOperacionais = () => {
   const saveMutation = useMutation({
     mutationFn: async () => {
       const shouldApplyGlobally = applyGlobally || issRuleSelected;
-      if (!shouldApplyGlobally && (!form.empresa_id || !form.tipo_servico_id || !form.fornecedor_id)) {
-        throw new Error("Selecione empresa, tipo de serviço e fornecedor.");
-      }
+      const missing: string[] = [];
 
+      if (!shouldApplyGlobally) {
+        if (ruleContext.requireEmpresa && !form.empresa_id) missing.push("empresa");
+        if (ruleContext.requireTipoServico && !form.tipo_servico_id) missing.push("tipo de serviço");
+        if (ruleContext.requireTransportadora && !form.transportadora_id) missing.push("transportadora");
+        if (ruleContext.requireFornecedor && !form.fornecedor_id) missing.push("fornecedor");
+
+        if (missing.length > 0) {
+          throw new Error(`Preencha os campos obrigatorios: ${missing.join(", ")}.`);
+        }
+      }
       if (!form.tipo_calculo || !form.valor_unitario || !form.vigencia_inicio) {
         throw new Error("Preencha tipo de cálculo, valor unitário e vigência inicial.");
       }
@@ -675,11 +818,11 @@ const RegrasOperacionais = () => {
         ]);
 
         if (allTiposServico.length === 0) {
-          throw new Error("NÃ£o existem tipos de serviÃ§o ativos para aplicaÃ§Ã£o global.");
+          throw new Error("N\u00E3o existem tipos de servi\u00E7o ativos para aplica\u00E7\u00E3o global.");
         }
 
         if (allFornecedores.length === 0) {
-          throw new Error("NÃ£o existem fornecedores ativos para aplicaÃ§Ã£o global.");
+          throw new Error("N\u00E3o existem fornecedores ativos para aplica\u00E7\u00E3o global.");
         }
 
         const payloads = allFornecedores.flatMap((fornecedor: any) =>
@@ -719,7 +862,7 @@ const RegrasOperacionais = () => {
         }
 
         if (availablePayloads.length === 0) {
-          throw new Error("Todas as combinaÃ§Ãµes globais jÃ¡ possuem regra ativa nessa vigÃªncia.");
+          throw new Error("Todas as combinações globais já possuem regra ativa nessa vigência.");
         }
 
         const created = await RegraOperacionalService.createMany(availablePayloads);
@@ -771,6 +914,7 @@ const RegrasOperacionais = () => {
     },
     onSuccess: (result: any) => {
       queryClient.invalidateQueries({ queryKey: ["regras_operacionais"] });
+      queryClient.invalidateQueries({ queryKey: ["regras_operacionais_grid"] });
       if (editingId) {
         toast.success("Regra operacional atualizada.");
       } else if (applyGlobally) {
@@ -779,8 +923,8 @@ const RegrasOperacionais = () => {
         toast.success("Regras operacionais geradas em lote.", {
           description:
             skippedConflicts > 0
-              ? `${createdCount} regra(s) criadas e ${skippedConflicts} combinaÃ§Ã£o(Ãµes) jÃ¡ existentes foram ignoradas.`
-              : `${createdCount} regra(s) criadas com aplicaÃ§Ã£o global.`,
+              ? `${createdCount} regra(s) criadas e ${skippedConflicts} combinação(ões) já existentes foram ignoradas.`
+              : `${createdCount} regra(s) criadas com aplicação global.`,
         });
       } else if (issRuleSelected) {
         toast.success("Regra global de ISS cadastrada.");
@@ -790,8 +934,15 @@ const RegrasOperacionais = () => {
       resetForm();
     },
     onError: (error: any) => {
+      const message = String(error?.message ?? "");
+      const missingNullableMigration =
+        message.includes('null value in column "fornecedor_id"') ||
+        message.includes('null value in column "empresa_id"') ||
+        message.includes("violates not-null constraint");
       toast.error("Não foi possível salvar a regra.", {
-        description: error.message,
+        description: missingNullableMigration
+          ? "O banco ainda não aceita regras contextuais sem empresa ou fornecedor. Aplique a migration 20260430183000_regras_operacionais_contexto_transportadora.sql."
+          : error.message,
       });
     },
   });
@@ -979,11 +1130,28 @@ const RegrasOperacionais = () => {
     mutationFn: (id: string) => RegraOperacionalService.inativar(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["regras_operacionais"] });
+      queryClient.invalidateQueries({ queryKey: ["regras_operacionais_grid"] });
       toast.success("Regra operacional inativada.");
       if (editingId) resetForm();
     },
     onError: (error: any) => {
       toast.error("Não foi possível inativar a regra.", {
+        description: error.message,
+      });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => RegraOperacionalService.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["regras_operacionais"] });
+      queryClient.invalidateQueries({ queryKey: ["regras_operacionais_grid"] });
+      setRuleToDelete(null);
+      toast.success("Regra operacional excluÃ­da.");
+      if (editingId) resetForm();
+    },
+    onError: (error: any) => {
+      toast.error("NÃ£o foi possÃ­vel excluir a regra.", {
         description: error.message,
       });
     },
@@ -1093,14 +1261,14 @@ const RegrasOperacionais = () => {
                 Edite valores ou inative regras para impedir novos lançamentos com essa configuração.
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex w-full md:w-auto items-center gap-2">
               <Input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Buscar por empresa, serviço..."
-                className="md:max-w-sm"
+                className="flex-1 md:w-64"
               />
-              <Button onClick={() => { setIsModalOpen(true); setCurrentStep(1); }}>
+              <Button className="shrink-0" onClick={() => { setIsModalOpen(true); setCurrentStep(1); }}>
                 <Plus className="h-4 w-4 mr-2" />
                 Nova Regra
               </Button>
@@ -1173,7 +1341,17 @@ const RegrasOperacionais = () => {
                             type="button"
                             size="sm"
                             variant="outline"
-                            disabled={!item.ativo || inactivateMutation.isPending}
+                            disabled={deleteMutation.isPending}
+                            onClick={() => setRuleToDelete(item)}
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Excluir
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={!item.ativo || inactivateMutation.isPending || deleteMutation.isPending}
                             onClick={() => inactivateMutation.mutate(item.id)}
                           >
                             <Ban className="h-4 w-4 mr-2" />
@@ -1189,6 +1367,38 @@ const RegrasOperacionais = () => {
           </div>
         </Card>
       </div>
+
+      <AlertDialog open={!!ruleToDelete} onOpenChange={(open) => !open && setRuleToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir regra operacional?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Essa aÃ§Ã£o remove o registro definitivamente da base operacional e nÃ£o pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
+            {ruleToDelete && (
+              <>
+                {ruleToDelete.empresas?.nome ?? "Global"} • {ruleToDelete.tipos_servico_operacional?.nome ?? "Todos"} •{" "}
+                {ruleToDelete.fornecedores?.nome ?? "Todos"} • inÃ­cio em {formatDate(ruleToDelete.vigencia_inicio)}
+              </>
+            )}
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleteMutation.isPending || !ruleToDelete?.id}
+              onClick={(event) => {
+                event.preventDefault();
+                if (!ruleToDelete?.id) return;
+                deleteMutation.mutate(ruleToDelete.id);
+              }}
+            >
+              {deleteMutation.isPending ? "Excluindo..." : "Excluir"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={!!quickCreate} onOpenChange={(open) => !open && closeQuickCreate()}>
         <DialogContent className="sm:max-w-[520px]">
@@ -1463,20 +1673,63 @@ const RegrasOperacionais = () => {
                         </Label>
                         <p className="text-xs text-muted-foreground">
                           {issRuleSelected
-                            ? "Regras da coluna ISS sao sempre globais. O mesmo valor podera ser aplicado em todas as linhas da coluna, sem depender de fornecedor, fabricante ou TC."
-                            : "Gera automaticamente a regra para todas as empresas, todos os fornecedores e todos os tipos de serviÃ§o. Transportadora e produto ficam como regra geral."}
+                            ? "Regras da coluna ISS s\u00E3o sempre globais. O mesmo valor poder\u00E1 ser aplicado em todas as linhas da coluna, sem depender de fornecedor, fabricante ou TC."
+                            : "Gera automaticamente a regra para todas as empresas, todos os fornecedores e todos os tipos de servi\u00E7o. Transportadora e produto ficam como regra geral."}
                         </p>
                         {!!editingId && !issRuleSelected && (
                           <p className="text-xs text-muted-foreground">
-                            A aplicaÃ§Ã£o global fica disponÃ­vel apenas para novas regras.
+                            A aplica\u00E7\u00E3o global fica dispon\u00EDvel apenas para novas regras.
                           </p>
                         )}
                       </div>
                     </div>
                   </div>
 
+                  <div className="md:col-span-2 rounded-xl border bg-muted/30 p-4 space-y-3">
+                    <div>
+                      <h4 className="text-sm font-medium">O que voc\u00EA deseja cadastrar?</h4>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Escolha o servi\u00E7o e o tipo de c\u00E1lculo para que o modal ajuste os campos obrigat\u00F3rios.
+                      </p>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <QuickCreateLookup
+                        label={applyGlobally ? "Tipo de servi\u00E7o" : "Tipo de servi\u00E7o *"}
+                        placeholder={applyGlobally ? "Todos os tipos de servi\u00E7o" : "Selecione o tipo de servi\u00E7o"}
+                        value={form.tipo_servico_id}
+                        items={tipoServicoItems}
+                        disabled={applyGlobally}
+                        createLabel="Novo tipo"
+                        onChange={(value) => setForm((prev) => ({ ...prev, tipo_servico_id: value }))}
+                        onCreate={(searchTerm) => openQuickCreate("tipo_servico", searchTerm)}
+                      />
+
+                      <div className="space-y-2">
+                        <Label>Tipo de c\u00E1lculo *</Label>
+                        <Select value={form.tipo_calculo} onValueChange={(value) => setForm((prev) => ({ ...prev, tipo_calculo: value }))}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione o c\u00E1lculo" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {TIPOS_CALCULO.map((item) => (
+                              <SelectItem key={item.value} value={item.value}>
+                                {item.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="md:col-span-2 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                    <p className="text-sm font-medium text-amber-900">{ruleContext.title}</p>
+                    <p className="text-xs text-amber-800 mt-1">{ruleContext.description}</p>
+                  </div>
+
                   <div className="space-y-2">
-                    <Label>Empresa / Unidade</Label>
+                    <Label>{ruleContext.requireEmpresa ? "Empresa / Unidade *" : "Empresa / Unidade"}</Label>
                     <Select
                       value={form.empresa_id}
                       disabled={applyGlobally}
@@ -1491,7 +1744,7 @@ const RegrasOperacionais = () => {
                       }
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Selecione a empresa" />
+                        <SelectValue placeholder={ruleContext.requireEmpresa ? "Selecione a empresa" : "Opcional"} />
                       </SelectTrigger>
                       <SelectContent>
                         {(empresas as any[]).map((empresa) => (
@@ -1504,22 +1757,11 @@ const RegrasOperacionais = () => {
                   </div>
 
                   <QuickCreateLookup
-                    label="Tipo de serviço"
-                    placeholder="Selecione o tipo de serviço"
-                    value={form.tipo_servico_id}
-                    items={tipoServicoItems}
-                    disabled={applyGlobally}
-                    createLabel="Novo tipo"
-                    onChange={(value) => setForm((prev) => ({ ...prev, tipo_servico_id: value }))}
-                    onCreate={(searchTerm) => openQuickCreate("tipo_servico", searchTerm)}
-                  />
-
-                  <QuickCreateLookup
-                    label="Transportadora / Cliente"
-                    placeholder="Selecione, se aplicável"
+                    label={ruleContext.requireTransportadora ? "Transportadora / Cliente *" : "Transportadora / Cliente"}
+                    placeholder={ruleContext.requireTransportadora ? "Selecione a transportadora" : "Selecione, se aplic\u00E1vel"}
                     value={form.transportadora_id}
                     items={transportadoraItems}
-                    disabled={applyGlobally || !form.empresa_id}
+                    disabled={applyGlobally}
                     emptyOptionLabel="Todos"
                     createLabel="Nova transportadora"
                     onChange={(value) => setForm((prev) => ({ ...prev, transportadora_id: value }))}
@@ -1527,11 +1769,17 @@ const RegrasOperacionais = () => {
                   />
 
                   <QuickCreateLookup
-                    label="Fornecedor"
-                    placeholder={applyGlobally ? "Todos os fornecedores" : "Selecione o fornecedor"}
+                    label={ruleContext.requireFornecedor ? "Fornecedor *" : "Fornecedor"}
+                    placeholder={
+                      applyGlobally
+                        ? "Todos os fornecedores"
+                        : ruleContext.requireFornecedor
+                          ? "Selecione o fornecedor"
+                          : "Opcional"
+                    }
                     value={form.fornecedor_id}
                     items={fornecedorItems}
-                    disabled={applyGlobally || !form.empresa_id}
+                    disabled={applyGlobally}
                     createLabel="Novo fornecedor"
                     onChange={(value) =>
                       setForm((prev) => ({
@@ -1565,26 +1813,10 @@ const RegrasOperacionais = () => {
                     2. Parâmetros da Regra
                   </h3>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Configure como o cálculo será realizado e o valor aplicado.
+                    Defina a variável da regra, o valor unitário e a forma de pagamento padrão.
                   </p>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Tipo de cálculo</Label>
-                    <Select value={form.tipo_calculo} onValueChange={(value) => setForm((prev) => ({ ...prev, tipo_calculo: value }))}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione o cálculo" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {TIPOS_CALCULO.map((item) => (
-                          <SelectItem key={item.value} value={item.value}>
-                            {item.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
                   <QuickCreateLookup
                     label="Tipo de Regra / Variável"
                     placeholder="Selecione o tipo de regra"
@@ -1667,7 +1899,13 @@ const RegrasOperacionais = () => {
               {currentStep > 1 ? "Voltar" : "Cancelar"}
             </Button>
             {currentStep < 3 ? (
-              <Button type="button" onClick={() => setCurrentStep(currentStep + 1)}>
+              <Button
+                type="button"
+                onClick={() => {
+                  if (!validateStep(currentStep)) return;
+                  setCurrentStep(currentStep + 1);
+                }}
+              >
                 Avançar
               </Button>
             ) : (

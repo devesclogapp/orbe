@@ -1,19 +1,31 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { format } from "date-fns";
+import { addMonths, format, startOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   PlayCircle,
   RefreshCw,
   AlertTriangle,
-  Boxes,
+  BarChart3,
   Building2,
+  Calculator,
   Calendar as CalendarIcon,
-  ChevronDown,
+  CircleDollarSign,
   ExternalLink,
+  FileBadge2,
   FileUp,
+  HandCoins,
   Loader2,
+  LucideIcon,
+  Package2,
+  Receipt,
+  Scale,
+  Settings2,
+  ShoppingCart,
+  TrendingUp,
   Upload,
+  Users,
+  UtensilsCrossed,
   Wallet,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -25,12 +37,6 @@ import { OperacoesTableBlock } from "@/components/operacoes/OperacoesTableBlock"
 import { SpreadsheetUploadModal } from "@/components/shared/SpreadsheetUploadModal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -52,6 +58,7 @@ import {
   TipoServicoOperacionalService,
   TransportadoraClienteService,
 } from "@/services/base.service";
+import { processarOperacao } from "@/utils/financeiro";
 
 type EmpresaOption = {
   id: string;
@@ -434,57 +441,117 @@ const parseCustosExtrasImport = (rows: SpreadsheetRow[]) => {
 type TopKpiCardProps = {
   label: string;
   value: string;
-  helper: string;
-  icon: typeof Wallet;
-  tone?: "default" | "accent" | "warning";
+  helper?: string;
+  size?: "large" | "small" | "xs";
+  variant?: "default" | "primary" | "warning" | "success" | "muted" | "info";
+  icon?: LucideIcon;
 };
 
-const topKpiToneClasses: Record<NonNullable<TopKpiCardProps["tone"]>, string> = {
-  default: "border-border/70 bg-card text-foreground",
-  accent: "border-primary/20 bg-primary/5 text-foreground",
-  warning: "border-warning/25 bg-warning-soft/50 text-foreground",
-};
+const currencyFormatter = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "BRL",
+});
 
-const topKpiIconClasses: Record<NonNullable<TopKpiCardProps["tone"]>, string> = {
-  default: "border-border/70 bg-background text-muted-foreground",
-  accent: "border-primary/20 bg-primary/10 text-primary",
-  warning: "border-warning/25 bg-background text-warning-strong",
+const decimalFormatter = new Intl.NumberFormat("pt-BR", {
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+});
+
+const integerFormatter = new Intl.NumberFormat("pt-BR");
+
+const percentFormatter = new Intl.NumberFormat("pt-BR", {
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+});
+
+const formatCurrency = (value: number) => currencyFormatter.format(Number.isFinite(value) ? value : 0);
+const formatInteger = (value: number) => integerFormatter.format(Number.isFinite(value) ? value : 0);
+const formatDecimal = (value: number) => decimalFormatter.format(Number.isFinite(value) ? value : 0);
+const formatPercent = (value: number) => `${percentFormatter.format(Number.isFinite(value) ? value : 0)}%`;
+
+const MONTH_NAME_OPTIONS = Array.from({ length: 12 }, (_, index) => {
+  const date = new Date(2026, index, 1);
+  const labelBase = format(date, "MMMM", { locale: ptBR });
+  return {
+    value: String(index + 1).padStart(2, "0"),
+    label: labelBase.charAt(0).toUpperCase() + labelBase.slice(1),
+  };
+});
+
+const MONTH_FILTER_OPTIONS = [
+  { value: "all", label: "Todos" },
+  ...MONTH_NAME_OPTIONS,
+];
+
+const YEAR_OPTIONS = Array.from(
+  new Set(
+    Array.from({ length: 24 }, (_, index) =>
+      String(startOfMonth(addMonths(new Date(), -index)).getFullYear()),
+    ),
+  ),
+).sort((a, b) => Number(b) - Number(a));
+
+const topKpiCardClasses: Record<NonNullable<TopKpiCardProps["size"]>, string> = {
+  large: "p-5 min-h-[148px]",
+  small: "p-4 min-h-[108px]",
+  xs: "p-3 min-h-[80px]",
 };
 
 const TopKpiCard = ({
   label,
   value,
   helper,
+  size = "large",
+  variant = "default",
   icon: Icon,
-  tone = "default",
 }: TopKpiCardProps) => (
   <div
     className={cn(
-      "group relative overflow-hidden rounded-2xl border p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md",
-      topKpiToneClasses[tone],
+      "group relative overflow-hidden transition-all duration-200 hover:-translate-y-0.5",
+      variant === "primary" ? "esc-card bg-primary text-primary-foreground border-primary shadow-lg" :
+        variant === "muted" ? "bg-muted/30 border border-border rounded-xl" :
+          "esc-card shadow-sm hover:shadow-md",
+      topKpiCardClasses[size],
     )}
   >
-    <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-foreground/15 to-transparent" />
-    <div className="flex items-start justify-between gap-3">
-      <div className="space-y-3">
-        <div className="text-[11px] font-bold uppercase tracking-[0.22em] text-muted-foreground">
-          {label}
+    <div className="flex h-full flex-col justify-between gap-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className={cn("space-y-1.5", size === "xs" && "space-y-0.5")}>
+          <div className={cn(
+            "font-display font-medium",
+            size === "xs" ? "text-xs" : "text-sm",
+            variant === "primary" ? "text-primary-foreground/90" : "text-muted-foreground"
+          )}>
+            {label}
+          </div>
+          <div className={cn(
+            "font-display font-bold leading-none",
+            size === "large" ? "text-[28px]" : size === "small" ? "text-2xl" : "text-xl",
+            variant === "primary" ? "text-primary-foreground" : "text-foreground"
+          )}>
+            {value}
+          </div>
         </div>
-        <div className="font-display text-2xl font-black leading-none text-foreground sm:text-[1.75rem]">
-          {value}
-        </div>
-      </div>
-      <div
-        className={cn(
-          "flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border transition-colors",
-          topKpiIconClasses[tone],
+        {Icon && (
+          <div
+            className={cn(
+              "shrink-0 rounded-md flex items-center justify-center",
+              variant === "primary" ? "bg-white/20 text-white" : "bg-primary-soft text-primary",
+              size === "large" ? "h-10 w-10" : size === "small" ? "h-8 w-8" : "h-6 w-6",
+            )}
+          >
+            <Icon className={cn(size === "large" ? "h-5 w-5" : size === "small" ? "h-4 w-4" : "h-3 w-3")} />
+          </div>
         )}
-      >
-        <Icon className="h-5 w-5" />
       </div>
-    </div>
-    <div className="mt-4 text-xs font-medium text-muted-foreground">
-      {helper}
+      {size !== "xs" && helper && (
+        <div className={cn(
+          "truncate text-[13px] leading-snug",
+          variant === "primary" ? "text-primary-foreground/80" : "text-muted-foreground"
+        )}>
+          {helper}
+        </div>
+      )}
     </div>
   </div>
 );
@@ -492,13 +559,34 @@ const TopKpiCard = ({
 const Operacoes = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [selectedYear, setSelectedYear] = useState<string>(
+    String(new Date().getFullYear()),
+  );
+  const [selectedMonthNumber, setSelectedMonthNumber] = useState<string>(
+    "all",
+  );
   const [selectedEmpresaId, setSelectedEmpresaId] = useState<string>("");
   const [activeArea, setActiveArea] = useState<"operacoes" | "custos-extras">("operacoes");
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
 
+  const selectedMonth = `${selectedYear}-${selectedMonthNumber}`;
+  const isAllMonthsSelected = selectedMonthNumber === "all";
+  const selectedDate = useMemo(
+    () => new Date(`${selectedYear}-${isAllMonthsSelected ? "01" : selectedMonthNumber}-01T12:00:00`),
+    [isAllMonthsSelected, selectedMonthNumber, selectedYear],
+  );
   const dateValue = format(selectedDate, "yyyy-MM-dd");
+  const monthValue = selectedMonth;
+  const matchesSelectedPeriod = (value: unknown) => {
+    const referencia = String(value ?? "");
+    if (!referencia.startsWith(selectedYear)) return false;
+    if (isAllMonthsSelected) return true;
+    return referencia.startsWith(monthValue);
+  };
+  const monthLabelCapitalized = isAllMonthsSelected
+    ? `Todos os meses de ${selectedYear}`
+    : format(selectedDate, "MMMM/yyyy", { locale: ptBR }).replace(/^\w/, (char) => char.toUpperCase());
 
   const { data: empresas = [], isLoading: isLoadingEmpresas } = useQuery<EmpresaOption[]>({
     queryKey: ["empresas"],
@@ -513,11 +601,11 @@ const Operacoes = () => {
 
   useEffect(() => {
     setConfirmClear(false);
-  }, [selectedEmpresaId, selectedDate]);
+  }, [selectedEmpresaId, selectedMonth]);
 
-  const { data: operacoes = [], isLoading: isLoadingOps } = useQuery<any[]>({
-    queryKey: ["operacoes", dateValue, selectedEmpresaId],
-    queryFn: () => OperacaoService.getPainelByDate(dateValue, selectedEmpresaId === "all" ? undefined : selectedEmpresaId),
+  const { data: operacoesBase = [], isLoading: isLoadingOperacoesBase } = useQuery<any[]>({
+    queryKey: ["operacoes-base", selectedEmpresaId],
+    queryFn: () => OperacaoService.getAllPainel(selectedEmpresaId === "all" ? undefined : selectedEmpresaId),
     enabled: !!selectedEmpresaId,
   });
 
@@ -540,66 +628,144 @@ const Operacoes = () => {
   const filteredIssues = useMemo(
     () =>
       issues.filter((issue) => {
-        const sameDate = issue.data === dateValue;
+        const sameDate = matchesSelectedPeriod(issue.data);
         const sameEmpresa = selectedEmpresaId === "all" || issue.empresa_id === selectedEmpresaId;
         return sameDate && sameEmpresa;
       }),
-    [issues, dateValue, selectedEmpresaId]
+    [issues, selectedEmpresaId, selectedMonthNumber, selectedYear]
   );
 
   const filteredLogs = useMemo(
     () =>
       logsImportacao.filter((log) => {
-        const sameDate = String(log.data || "").startsWith(dateValue);
+        const sameDate = matchesSelectedPeriod(log.data);
         const sameEmpresa = selectedEmpresaId === "all" || log.empresa_id === selectedEmpresaId;
         return sameDate && sameEmpresa;
       }),
-    [logsImportacao, dateValue, selectedEmpresaId]
+    [logsImportacao, selectedEmpresaId, selectedMonthNumber, selectedYear]
   );
 
-  const totalColaboradores = useMemo(
+  const operacoesKpiDataset = useMemo(
     () =>
-      operacoes.reduce((acc, op) => {
-        const quantidadeColaboradores = Number(op.quantidade_colaboradores ?? 1);
-        return acc + (Number.isFinite(quantidadeColaboradores) ? quantidadeColaboradores : 1);
-      }, 0),
-    [operacoes]
+      operacoesBase.filter((item) => {
+        const sameDate = matchesSelectedPeriod(item.data_operacao);
+        const sameEmpresa = selectedEmpresaId === "all" || item.empresa_id === selectedEmpresaId;
+        return sameDate && sameEmpresa;
+      }),
+    [operacoesBase, selectedEmpresaId, selectedMonthNumber, selectedYear]
+  );
+
+  const operacoesTabela = useMemo(
+    () => operacoesKpiDataset.map((item) => processarOperacao(item, empresas as any[])),
+    [operacoesKpiDataset, empresas]
+  );
+
+  const custosExtrasKpiDataset = useMemo(
+    () =>
+      custosExtras.filter((item) => {
+        if (!item.data) return false;
+        return matchesSelectedPeriod(item.data);
+      }),
+    [custosExtras, selectedMonthNumber, selectedYear]
   );
 
   const totalCalculado = useMemo(
     () =>
-      operacoes.reduce(
-        (acc, op) => acc + Number(op.valor_total_label ?? (Number(op.quantidade) * Number(op.valor_unitario || 0))),
-        0
-      ),
-    [operacoes]
+      operacoesTabela.reduce((acc, op) => {
+        const totalLinha = Number(op.totalFinalCalculado ?? op.valor_total_label ?? op.valor_total ?? 0);
+        return acc + (Number.isFinite(totalLinha) ? totalLinha : 0);
+      }, 0),
+    [operacoesTabela]
   );
 
-  const ultimaImportacao = filteredLogs[0];
-  const ultimaSincronizacaoLabel = ultimaImportacao
-    ? new Date(ultimaImportacao.data).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
-    : "Sem sync";
   const totalCustosExtras = useMemo(
-    () => custosExtras.reduce((acc, item) => acc + Number(item.total ?? 0), 0),
-    [custosExtras]
+    () => custosExtrasKpiDataset.reduce((acc, item) => acc + Number(item.total ?? 0), 0),
+    [custosExtrasKpiDataset]
   );
 
-  const custosExtrasPendentes = useMemo(
-    () => custosExtras.filter((item) => String(item.status_pagamento ?? "").toUpperCase() === "PENDENTE").length,
-    [custosExtras]
-  );
+  const operacoesKpis = useMemo(() => {
+    let faturamento = 0;
+    let caixaReal = 0;
+    let exposicao = 0;
+    let volumeTotal = 0;
+    let colaboradores = 0;
+    let nfComRegistro = 0;
+    let recebidasCount = 0;
 
-  const custosExtrasAtrasados = useMemo(
-    () => custosExtras.filter((item) => String(item.status_pagamento ?? "").toUpperCase() === "ATRASADO").length,
-    [custosExtras]
-  );
+    operacoesTabela.forEach((item) => {
+      const totalLinha = Number(item.totalFinalCalculado ?? item.valor_total_label ?? item.valor_total ?? 0);
+      const quantidade = Number(item.quantidade ?? item.quantidade_label ?? 0);
+      const quantidadeColaboradores = Number(item.quantidade_colaboradores ?? 1);
+      const statusPagamento = String(item.statusPagamento ?? item.status_pagamento ?? "").toUpperCase();
+      const nfNumero = String(item.nf_numero ?? "").trim().toUpperCase();
 
-  const categoriasCustosAtivas = useMemo(
-    () => new Set(custosExtras.map((item) => item.categoria_custo).filter(Boolean)).size,
-    [custosExtras]
-  );
+      faturamento += Number.isFinite(totalLinha) ? totalLinha : 0;
+      volumeTotal += Number.isFinite(quantidade) ? quantidade : 0;
+      colaboradores += Number.isFinite(quantidadeColaboradores) ? quantidadeColaboradores : 0;
 
-  const isLoading = isLoadingEmpresas || isLoadingOps || isLoadingCustosExtras || isLoadingLogs || isLoadingIssues;
+      if (statusPagamento === "RECEBIDO") {
+        caixaReal += totalLinha;
+        recebidasCount += 1;
+      }
+      if (statusPagamento === "PENDENTE" || statusPagamento === "ATRASADO") exposicao += totalLinha;
+      if (nfNumero && nfNumero !== "NAO" && nfNumero !== "NÃO") nfComRegistro += 1;
+    });
+
+    const operacoesCount = operacoesTabela.length;
+
+    return {
+      faturamento,
+      caixaReal,
+      exposicao,
+      volumeTotal,
+      colaboradores,
+      operacoesCount,
+      ticketMedio: operacoesCount > 0 ? faturamento / operacoesCount : 0,
+      produtividade: colaboradores > 0 ? volumeTotal / colaboradores : 0,
+      nfPercentual: operacoesCount > 0 ? (nfComRegistro / operacoesCount) * 100 : 0,
+      caixaMedio: recebidasCount > 0 ? caixaReal / recebidasCount : 0,
+    };
+  }, [operacoesTabela]);
+
+  const custosExtrasKpis = useMemo(() => {
+    let maiorCusto = 0;
+    let totalCritico = 0;
+    let merenda = 0;
+    let administrativo = 0;
+    let operacional = 0;
+    let fornecedor = 0;
+    let recebido = 0;
+
+    custosExtrasKpiDataset.forEach((item) => {
+      const total = Number(item.total ?? 0);
+      const status = String(item.status_pagamento ?? "").toUpperCase();
+      const categoria = String(item.categoria_custo ?? "").toUpperCase();
+
+      maiorCusto = Math.max(maiorCusto, total);
+      if (status === "PENDENTE" || status === "ATRASADO") totalCritico += total;
+      if (status === "RECEBIDO") recebido += total;
+
+      if (categoria === "MERENDA") merenda += total;
+      if (categoria === "ADMINISTRATIVO") administrativo += total;
+      if (categoria === "OPERACIONAL") operacional += total;
+      if (categoria === "FORNECEDOR") fornecedor += total;
+    });
+
+    return {
+      total: totalCustosExtras,
+      maiorCusto,
+      custoCriticoPercentual: totalCustosExtras > 0 ? (totalCritico / totalCustosExtras) * 100 : 0,
+      lancamentos: custosExtrasKpiDataset.length,
+      recebido,
+      merenda,
+      administrativo,
+      operacional,
+      fornecedor,
+      custoMedio: custosExtrasKpiDataset.length > 0 ? totalCustosExtras / custosExtrasKpiDataset.length : 0,
+    };
+  }, [custosExtrasKpiDataset, totalCustosExtras]);
+
+  const isLoading = isLoadingEmpresas || isLoadingOperacoesBase || isLoadingCustosExtras || isLoadingLogs || isLoadingIssues;
 
   const clearMutation = useMutation({
     mutationFn: () =>
@@ -672,6 +838,12 @@ const Operacoes = () => {
     if (!selectedEmpresaId || selectedEmpresaId === "all") {
       toast.warning("Selecione uma empresa especifica", {
         description: "O processamento precisa de uma unidade operacional definida.",
+      });
+      return;
+    }
+    if (isAllMonthsSelected) {
+      toast.warning("Selecione um mes especifico", {
+        description: "O processamento diario precisa de um mes fechado para definir a data de referencia.",
       });
       return;
     }
@@ -838,7 +1010,9 @@ const Operacoes = () => {
       const datasImportadas = Array.from(new Set(importedOperations.map((item) => item.data_operacao))).sort();
 
       if (datasImportadas.length > 0) {
-        setSelectedDate(new Date(`${datasImportadas[0]}T12:00:00`));
+        const [importYear] = datasImportadas[0].split("-");
+        setSelectedYear(importYear);
+        setSelectedMonthNumber("all");
       }
 
       toast.success(`${replacedCount} registros operacionais importados com sucesso!`, {
@@ -898,7 +1072,7 @@ const Operacoes = () => {
   return (
     <AppShell
       title="Operacoes"
-      subtitle={`Base diaria de servicos por demanda · ${format(selectedDate, "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })}`}
+      subtitle={`Analise mensal de operacoes · ${monthLabelCapitalized}`}
     >
       <div className="space-y-6">
         <section className="esc-card p-4 md:p-5">
@@ -906,30 +1080,37 @@ const Operacoes = () => {
             <div className="flex flex-col gap-2">
               <div className="w-full overflow-x-auto">
                 <div className="flex min-w-max items-center gap-2">
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "justify-start text-left font-normal h-10 px-4 esc-card-hover border-border border shrink-0",
-                          !selectedDate && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
-                        {format(selectedDate, "dd/MM/yyyy")}
-                        <ChevronDown className="ml-2 h-4 w-4 opacity-50" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={selectedDate}
-                        onSelect={(date) => date && setSelectedDate(date)}
-                        initialFocus
-                        locale={ptBR}
-                      />
-                    </PopoverContent>
-                  </Popover>
+                  <Select value={selectedYear} onValueChange={setSelectedYear}>
+                    <SelectTrigger className="w-[120px] h-10 shrink-0 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium">
+                      <div className="flex items-center gap-2">
+                        <CalendarIcon className="h-4 w-4 text-primary" />
+                        <SelectValue placeholder="Ano" />
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {YEAR_OPTIONS.map((year) => (
+                        <SelectItem key={year} value={year}>
+                          {year}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Select value={selectedMonthNumber} onValueChange={setSelectedMonthNumber}>
+                    <SelectTrigger className="w-[180px] h-10 shrink-0 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium">
+                      <div className="flex items-center gap-2">
+                        <CalendarIcon className="h-4 w-4 text-primary" />
+                        <SelectValue placeholder="Mes" />
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MONTH_FILTER_OPTIONS.map((month) => (
+                        <SelectItem key={month.value} value={month.value}>
+                          {month.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
 
                   <Select value={selectedEmpresaId} onValueChange={setSelectedEmpresaId}>
                     <SelectTrigger className="w-[280px] h-10 shrink-0 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium">
@@ -967,16 +1148,16 @@ const Operacoes = () => {
             <div className="w-full overflow-x-auto">
               <Tabs value={activeArea} onValueChange={(value) => setActiveArea(value as "operacoes" | "custos-extras")}>
                 <div className="flex min-w-max items-center justify-end gap-2">
-                  <TabsList className="h-11 rounded-2xl border border-primary/30 bg-primary/10 p-1 shadow-sm shadow-primary/10">
+                  <TabsList className="h-11 rounded-2xl border border-[#E5E7EB] bg-[#F3F4F6] p-1 shadow-sm">
                     <TabsTrigger
                       value="operacoes"
-                      className="rounded-xl px-4 font-display font-semibold text-foreground/75 data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm"
+                      className="rounded-xl px-4 font-display font-semibold text-[#6B7280] data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-sm"
                     >
                       Operacoes
                     </TabsTrigger>
                     <TabsTrigger
                       value="custos-extras"
-                      className="rounded-xl px-4 font-display font-semibold text-foreground/75 data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm"
+                      className="rounded-xl px-4 font-display font-semibold text-[#6B7280] data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-sm"
                     >
                       Custos Extras
                     </TabsTrigger>
@@ -1019,25 +1200,23 @@ const Operacoes = () => {
                     </TooltipTrigger>
                     <TooltipContent>{activeArea === "operacoes" ? "Importar operacoes" : "Importar custos extras"}</TooltipContent>
                   </Tooltip>
-                  {activeArea === "operacoes" && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          size="icon"
-                          className="h-9 w-9 shrink-0 shadow-lg shadow-primary/20"
-                          onClick={handleProcessar}
-                          disabled={processMutation.isPending || isLoading}
-                        >
-                          {processMutation.isPending ? (
-                            <RefreshCw className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <PlayCircle className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>{processMutation.isPending ? "Processando..." : "Processar dia"}</TooltipContent>
-                    </Tooltip>
-                  )}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="icon"
+                        className="h-9 w-9 shrink-0 shadow-lg shadow-primary/20"
+                        onClick={handleProcessar}
+                        disabled={processMutation.isPending || isLoading}
+                      >
+                        {processMutation.isPending ? (
+                          <RefreshCw className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <PlayCircle className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>{processMutation.isPending ? "Processando..." : "Processar dia"}</TooltipContent>
+                  </Tooltip>
                 </div>
               </Tabs>
             </div>
@@ -1053,56 +1232,94 @@ const Operacoes = () => {
           </div>
         ) : activeArea === "operacoes" ? (
           <>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-              <TopKpiCard
-                label="Colaboradores"
-                value={totalColaboradores.toString()}
-                helper={`${operacoes.length} operacao(oes) vinculadas na base do dia`}
-                icon={Building2}
-              />
-              <TopKpiCard
-                label="Operacoes"
-                value={operacoes.length.toString()}
-                helper="Registros operacionais carregados para os filtros atuais"
-                icon={Boxes}
-              />
-              <TopKpiCard
-                label="Total do dia"
-                value={`R$ ${totalCalculado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
-                helper="Valor consolidado das operacoes exibidas"
-                icon={Wallet}
-                tone="accent"
-              />
-              <TopKpiCard
-                label="Inconsistencias"
-                value={filteredIssues.length.toString()}
-                helper={
-                  filteredIssues.length > 0
-                    ? "Pendencias exigem validacao antes do fechamento"
-                    : "Nenhuma pendencia aberta para este recorte"
-                }
-                icon={AlertTriangle}
-                tone={filteredIssues.length > 0 ? "warning" : "default"}
-              />
-              <TopKpiCard
-                label="Ultima sincronizacao"
-                value={ultimaSincronizacaoLabel}
-                helper={
-                  ultimaImportacao
-                    ? `${ultimaImportacao.origem || "Importacao manual"} registrada hoje`
-                    : "Nenhuma importacao registrada neste filtro"
-                }
-                icon={Upload}
-              />
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
+                <div className="xl:col-span-1">
+                  <TopKpiCard
+                    label="Faturamento"
+                    value={formatCurrency(operacoesKpis.faturamento)}
+                    helper="Valor bruto consolidado das operacoes"
+                    variant="primary"
+                    icon={Wallet}
+                  />
+                </div>
+                <div className="xl:col-span-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <TopKpiCard
+                    label="Caixa Real (Recebido)"
+                    value={formatCurrency(operacoesKpis.caixaReal)}
+                    helper="Ja convertido"
+                    size="small"
+                    variant="success"
+                    icon={HandCoins}
+                  />
+                  <TopKpiCard
+                    label="Exposicao (Pen+Atr)"
+                    value={formatCurrency(operacoesKpis.exposicao)}
+                    helper="Parcela exposta"
+                    size="small"
+                    variant="warning"
+                    icon={Scale}
+                  />
+                  <TopKpiCard
+                    label="Operacoes"
+                    value={formatInteger(operacoesKpis.operacoesCount)}
+                    helper="Qtd. registrada"
+                    size="small"
+                    icon={Receipt}
+                  />
+                  <TopKpiCard
+                    label="Volume Total"
+                    value={formatInteger(operacoesKpis.volumeTotal)}
+                    helper="Qtd. movimentada"
+                    size="small"
+                    icon={Package2}
+                  />
+                </div>
+              </div>
+
+              <div className="esc-card p-4 space-y-3">
+                <h3 className="font-display font-medium text-sm text-muted-foreground">Medias e Desempenho</h3>
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                  <TopKpiCard
+                    label="Colaboradores"
+                    value={formatInteger(operacoesKpis.colaboradores)}
+                    size="xs"
+                    variant="muted"
+                    icon={Users}
+                  />
+                  <TopKpiCard
+                    label="Ticket medio"
+                    value={formatCurrency(operacoesKpis.ticketMedio)}
+                    size="xs"
+                    variant="muted"
+                    icon={Calculator}
+                  />
+                  <TopKpiCard
+                    label="Produtividade"
+                    value={formatDecimal(operacoesKpis.produtividade)}
+                    size="xs"
+                    variant="muted"
+                    icon={TrendingUp}
+                  />
+                  <TopKpiCard
+                    label="NF (%)"
+                    value={formatPercent(operacoesKpis.nfPercentual)}
+                    size="xs"
+                    variant="muted"
+                    icon={FileBadge2}
+                  />
+                  <TopKpiCard
+                    label="Caixa medio"
+                    value={formatCurrency(operacoesKpis.caixaMedio)}
+                    size="xs"
+                    variant="muted"
+                    icon={CircleDollarSign}
+                  />
+                </div>
+              </div>
             </div>
 
             <Tabs defaultValue="base" className="space-y-4">
-              <TabsList className="bg-muted/50 p-1 rounded-xl border border-border/50 flex flex-wrap h-auto">
-                <TabsTrigger value="base">Base</TabsTrigger>
-                <TabsTrigger value="importacoes">Importacoes</TabsTrigger>
-                <TabsTrigger value="inconsistencias">Inconsistencias</TabsTrigger>
-              </TabsList>
-
               <TabsContent value="base" className="space-y-5">
                 <section className="esc-card p-5">
                   <div className="flex items-center justify-between gap-3 mb-4">
@@ -1119,8 +1336,7 @@ const Operacoes = () => {
                   <OperacoesTableBlock
                     date={dateValue}
                     empresaId={selectedEmpresaId}
-                    filterByDate={false}
-                    respectCompanyFilter={false}
+                    rowsData={operacoesBase}
                   />
                 </section>
               </TabsContent>
@@ -1225,33 +1441,91 @@ const Operacoes = () => {
           </>
         ) : (
           <>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <TopKpiCard
-                label="Despesas"
-                value={custosExtras.length.toString()}
-                helper="Linhas independentes importadas ou lancadas para a empresa selecionada"
-                icon={Boxes}
-              />
-              <TopKpiCard
-                label="Total"
-                value={`R$ ${totalCustosExtras.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
-                helper="Somatorio dos custos extras exibidos"
-                icon={Wallet}
-                tone="accent"
-              />
-              <TopKpiCard
-                label="Pendentes"
-                value={custosExtrasPendentes.toString()}
-                helper={`${custosExtrasAtrasados} registro(s) com pagamento em atraso`}
-                icon={AlertTriangle}
-                tone={custosExtrasAtrasados > 0 ? "warning" : "default"}
-              />
-              <TopKpiCard
-                label="Categorias"
-                value={categoriasCustosAtivas.toString()}
-                helper="MERENDA, ADMINISTRATIVO, OPERACIONAL e FORNECEDOR"
-                icon={Upload}
-              />
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
+                <div className="xl:col-span-1">
+                  <TopKpiCard
+                    label="Total de Custos"
+                    value={formatCurrency(custosExtrasKpis.total)}
+                    helper="Soma financeira do recorte"
+                    variant="primary"
+                    icon={Wallet}
+                  />
+                </div>
+                <div className="xl:col-span-4 grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <TopKpiCard
+                    label="Maior Custo"
+                    value={formatCurrency(custosExtrasKpis.maiorCusto)}
+                    helper="Lancamento maximo"
+                    size="small"
+                    icon={BarChart3}
+                  />
+                  <TopKpiCard
+                    label="Custo Critico (%)"
+                    value={formatPercent(custosExtrasKpis.custoCriticoPercentual)}
+                    helper="Valores pendentes"
+                    size="small"
+                    variant="warning"
+                    icon={AlertTriangle}
+                  />
+                  <TopKpiCard
+                    label="Recebido"
+                    value={formatCurrency(custosExtrasKpis.recebido)}
+                    helper="Custos pagos"
+                    size="small"
+                    variant="success"
+                    icon={HandCoins}
+                  />
+                  <TopKpiCard
+                    label="Lancamentos"
+                    value={formatInteger(custosExtrasKpis.lancamentos)}
+                    helper="Qtd. registrada"
+                    size="small"
+                    icon={Receipt}
+                  />
+                </div>
+              </div>
+
+              <div className="esc-card p-4 space-y-3">
+                <h3 className="font-display font-medium text-sm text-muted-foreground">Rateio por Categorias</h3>
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                  <TopKpiCard
+                    label="Merenda"
+                    value={formatCurrency(custosExtrasKpis.merenda)}
+                    size="xs"
+                    variant="muted"
+                    icon={UtensilsCrossed}
+                  />
+                  <TopKpiCard
+                    label="Administrativo"
+                    value={formatCurrency(custosExtrasKpis.administrativo)}
+                    size="xs"
+                    variant="muted"
+                    icon={FileBadge2}
+                  />
+                  <TopKpiCard
+                    label="Operacional"
+                    value={formatCurrency(custosExtrasKpis.operacional)}
+                    size="xs"
+                    variant="muted"
+                    icon={Settings2}
+                  />
+                  <TopKpiCard
+                    label="Fornecedor"
+                    value={formatCurrency(custosExtrasKpis.fornecedor)}
+                    size="xs"
+                    variant="muted"
+                    icon={ShoppingCart}
+                  />
+                  <TopKpiCard
+                    label="Custo medio"
+                    value={formatCurrency(custosExtrasKpis.custoMedio)}
+                    size="xs"
+                    variant="muted"
+                    icon={Calculator}
+                  />
+                </div>
+              </div>
             </div>
 
             <section className="esc-card p-5 space-y-4">

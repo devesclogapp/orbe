@@ -20,16 +20,17 @@ import { PontoService } from "@/services/base.service";
 import { StatusChip } from "../painel/StatusChip";
 
 type PontoTableBlockProps = {
-  date: string;
+  month: string;
+  monthLabel: string;
   empresaId: string;
 };
 
-export const PontoTableBlock = ({ date, empresaId }: PontoTableBlockProps) => {
+export const PontoTableBlock = ({ month, monthLabel, empresaId }: PontoTableBlockProps) => {
   const { id: selectedId, kind, select } = useSelection();
 
   const { data: rows = [], isLoading } = useQuery({
-    queryKey: ["ponto", date, empresaId],
-    queryFn: () => PontoService.getByDate(date, empresaId === "all" ? undefined : empresaId),
+    queryKey: ["ponto", month, empresaId],
+    queryFn: () => PontoService.getByMonth(month, empresaId === "all" ? undefined : empresaId),
   });
 
   if (isLoading) {
@@ -91,7 +92,7 @@ export const PontoTableBlock = ({ date, empresaId }: PontoTableBlockProps) => {
           })}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={10} className="p-12 text-center text-muted-foreground italic">Nenhum registro encontrado para {date}.</td>
+              <td colSpan={10} className="p-12 text-center text-muted-foreground italic">Nenhum registro encontrado para {monthLabel}.</td>
             </tr>
           )}
         </tbody>

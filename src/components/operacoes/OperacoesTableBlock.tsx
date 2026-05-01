@@ -67,6 +67,7 @@ type OperacoesTableBlockProps = {
   empresaId: string;
   filterByDate?: boolean;
   respectCompanyFilter?: boolean;
+  rowsData?: any[];
 };
 
 type EditableOperationForm = {
@@ -89,6 +90,7 @@ type EditableOperationForm = {
   modalidade_financeira: string;
   data_vencimento: string;
   status_pagamento: string;
+  valor_unitario?: string;
 };
 
 type BulkEditableField =
@@ -110,7 +112,7 @@ type BulkEditableField =
 
 type InlineEditableField = BulkEditableField;
 
-type RuleApplicableColumn = "percentualIss";
+type RuleApplicableColumn = "percentualIss" | "valUnit" | "qtd" | "qtdCol" | "valorUnitarioFilme" | "quantidadeFilme" | "valorFaturamentoNf" | "valorDescarga" | "custoIss" | "inicio" | "fim" | "nf" | "ctrc" | "placa" | "observacao" | "formaPagamento" | "valorTotalFilme";
 
 const BULK_EDITABLE_FIELDS: Array<{ value: BulkEditableField; label: string }> = [
   { value: "forma_pagamento", label: "Forma de pagamento" },
@@ -184,11 +186,23 @@ const RULE_COLUMN_CONFIG: Record<
     matches: string[];
   }
 > = {
-  percentualIss: {
-    field: "percentual_iss",
-    label: "% ISS",
-    matches: ["% ISS", "ISS", "LÍQUOTA DE ISS", "LIQUOTA DE ISS"],
-  },
+  percentualIss: { field: "percentual_iss", label: "% ISS", matches: ["% ISS", "ISS", "LÍQUOTA DE ISS"] },
+  valUnit: { field: "valor_unitario" as any, label: "VAL. UNIT.", matches: ["VAL. UNIT.", "UNITARIO", "VALOR UNITARIO", "UNIT.", "VALOR"] },
+  qtd: { field: "quantidade", label: "QTD", matches: ["QTD", "QUANTIDADE", "VOLUME"] },
+  qtdCol: { field: "quantidade_colaboradores", label: "QTD. COL.", matches: ["QTD COL", "COLABORADORES", "AJUDANTES"] },
+  valorUnitarioFilme: { field: "valor_unitario_filme", label: "UNIT. FILME", matches: ["UNIT. FILME", "VALOR FILME"] },
+  quantidadeFilme: { field: "quantidade_filme", label: "QTD. FILME", matches: ["QTD. FILME", "QTD FILME"] },
+  valorFaturamentoNf: { field: "valor_faturamento_nf", label: "FATURAMENTO NF", matches: ["FATURAMENTO NF", "VALOR NF", "FATURAMENTO"] },
+  valorDescarga: { field: "valor_descarga", label: "VALOR DESCARGA", matches: ["VALOR DESCARGA", "DESCARGA"] },
+  custoIss: { field: "custo_com_iss", label: "CUSTO ISS", matches: ["CUSTO ISS", "CUSTO"] },
+  inicio: { field: "entrada_ponto", label: "INICIO", matches: ["INICIO", "ENTRADA"] },
+  fim: { field: "saida_ponto", label: "FIM", matches: ["FIM", "SAIDA"] },
+  nf: { field: "nf_numero", label: "NF", matches: ["NF", "NOTA FISCAL", "NUMERO NF"] },
+  ctrc: { field: "ctrc", label: "CTRC", matches: ["CTRC"] },
+  placa: { field: "placa", label: "PLACA", matches: ["PLACA"] },
+  observacao: { field: "observacao", label: "OBSERVACAO", matches: ["OBS", "OBSERVACAO"] },
+  formaPagamento: { field: "forma_pagamento", label: "FORMA PAGAMENTO", matches: ["FORMA PAGAMENTO", "PAGAMENTO"] },
+  valorTotalFilme: { field: "valor_total_filme", label: "TOTAL FILME", matches: ["TOTAL FILME"] },
 };
 
 const normalizeRuleText = (value: string) =>
@@ -196,6 +210,18 @@ const normalizeRuleText = (value: string) =>
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toUpperCase();
+
+const normalizeEntityMatchText = (value: unknown) =>
+  String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .trim();
+
+const formatDiagnosticLabel = (value: unknown) => {
+  const text = String(value ?? "").trim();
+  return text || "vazio";
+};
 
 const isIssOperationalRule = (rule: any) => {
   const joined = normalizeRuleText(`${rule?.tipos_regra_operacional?.nome ?? ""} ${rule?.tipos_regra_operacional?.coluna_planilha ?? ""}`);
@@ -299,6 +325,15 @@ const formatDecimalInput = (value: number, fractionDigits = 2) =>
     maximumFractionDigits: fractionDigits,
   });
 
+const toNumericInputValue = (value: unknown, fractionDigits = 2) => {
+  if (value === null || value === undefined || value === "") return "";
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return String(value);
+
+  return formatDecimalInput(parsed, fractionDigits);
+};
+
 const toIssPercentageInput = (value: unknown) => {
   const numericValue = Number(value ?? 0);
   const normalizedValue = numericValue <= 1 ? numericValue * 100 : numericValue;
@@ -316,6 +351,7 @@ const buildEditableForm = (item: any): EditableOperationForm => {
 
   return {
     quantidade: toInputValue(item.quantidade),
+    valor_unitario: toNumericInputValue(item.valor_unitario ?? item.valor_unitario_label ?? item.valor_unitario_snapshot),
     quantidade_colaboradores: toInputValue(item.quantidade_colaboradores ?? 1),
     entrada_ponto: toInputValue(item.entrada_ponto ?? item.horario_inicio_label).slice(0, 5),
     saida_ponto: toInputValue(item.saida_ponto ?? item.horario_fim_label).slice(0, 5),
@@ -323,12 +359,12 @@ const buildEditableForm = (item: any): EditableOperationForm => {
     nf_numero: toInputValue(item.nf_numero),
     ctrc: toInputValue(item.ctrc),
     percentual_iss: toIssPercentageInput(item.percentual_iss),
-    valor_descarga: toInputValue(item.valor_descarga),
-    custo_com_iss: toInputValue(item.custo_com_iss),
-    valor_unitario_filme: toInputValue(item.valor_unitario_filme),
+    valor_descarga: toNumericInputValue(item.valor_descarga),
+    custo_com_iss: toNumericInputValue(item.custo_com_iss),
+    valor_unitario_filme: toNumericInputValue(item.valor_unitario_filme),
     quantidade_filme: toInputValue(item.quantidade_filme),
     valor_total_filme: formatDecimalInput(valorUnitarioFilme * quantidadeFilme),
-    valor_faturamento_nf: toInputValue(item.valor_faturamento_nf),
+    valor_faturamento_nf: toNumericInputValue(item.valor_faturamento_nf),
     forma_pagamento: getContextoImportacaoValue(item, "forma_pagamento") ?? "",
     observacao: getContextoImportacaoValue(item, "observacao") ?? "",
     modalidade_financeira: getContextoImportacaoValue(item, "modalidade_financeira_override") ?? "",
@@ -343,7 +379,9 @@ const applyBusinessRulesToForm = (baseForm: EditableOperationForm, editingItem: 
   const totalFilme = parseLocaleNumber(next.valor_unitario_filme) * parseLocaleNumber(next.quantidade_filme);
   next.valor_total_filme = totalFilme ? formatDecimalInput(totalFilme) : "0,00";
 
-  const unitario = Number(editingItem?.valor_unitario_snapshot || editingItem?.valor_unitario_label || 0);
+  const unitario = next.valor_unitario !== undefined
+    ? parseLocaleNumber(next.valor_unitario)
+    : Number(editingItem?.valor_unitario_snapshot || editingItem?.valor_unitario_label || 0);
 
   let nfRaw = String(next.nf_numero).toUpperCase().trim();
   if (nfRaw === "S" || nfRaw === "SIM") nfRaw = "SIM";
@@ -380,6 +418,7 @@ const buildOperationUpdatePayload = (editingItem: any, editForm: EditableOperati
   const valorTotalFilmeCalculado = valorUnitarioFilmeCalculado * quantidadeFilmeCalculada;
 
   return {
+    ...(editForm.valor_unitario ? { valor_unitario_snapshot: parseLocaleNumber(editForm.valor_unitario) } : {}),
     quantidade: parseLocaleNumber(editForm.quantidade),
     quantidade_colaboradores: parseLocaleNumber(editForm.quantidade_colaboradores),
     entrada_ponto: editForm.entrada_ponto || null,
@@ -408,6 +447,7 @@ export const OperacoesTableBlock = ({
   empresaId,
   filterByDate = true,
   respectCompanyFilter = true,
+  rowsData,
 }: OperacoesTableBlockProps) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -425,6 +465,7 @@ export const OperacoesTableBlock = ({
   const [isRuleApplyOpen, setIsRuleApplyOpen] = useState(false);
   const [selectedRuleColumn, setSelectedRuleColumn] = useState<RuleApplicableColumn>("percentualIss");
   const [selectedOperationalRuleId, setSelectedOperationalRuleId] = useState("");
+  const [selectedEditOperationalRuleId, setSelectedEditOperationalRuleId] = useState("");
   const [selectedEditIssRuleId, setSelectedEditIssRuleId] = useState("");
   const [activeInlineCell, setActiveInlineCell] = useState<{ rowId: string; field: InlineEditableField } | null>(null);
   const [inlineValue, setInlineValue] = useState("");
@@ -470,6 +511,22 @@ export const OperacoesTableBlock = ({
     return defaultCols;
   });
 
+  const [activeRuleCols, setActiveRuleCols] = useState<Record<RuleApplicableColumn, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem("orbe_activeRuleCols_operacoes_v1");
+      if (saved) return JSON.parse(saved);
+    } catch { }
+    return { percentualIss: true, valUnit: true } as Record<RuleApplicableColumn, boolean>;
+  });
+
+  const toggleRuleCol = (colKey: RuleApplicableColumn) => {
+    setActiveRuleCols((prev) => {
+      const next = { ...prev, [colKey]: !prev[colKey] };
+      localStorage.setItem("orbe_activeRuleCols_operacoes_v1", JSON.stringify(next));
+      return next;
+    });
+  };
+
   const scrollBy = useCallback((dir: "left" | "right") => {
     tableScrollRef.current?.scrollBy({ left: dir === "right" ? 220 : -220, behavior: "smooth" });
   }, []);
@@ -486,9 +543,10 @@ export const OperacoesTableBlock = ({
       filterByDate
         ? OperacaoService.getPainelByDate(date, effectiveEmpresaId === "all" ? undefined : effectiveEmpresaId)
         : OperacaoService.getAllPainel(effectiveEmpresaId === "all" ? undefined : effectiveEmpresaId),
+    enabled: !rowsData,
   });
 
-  const { data: regrasOperacionais = [] } = useQuery({
+  const { data: regrasOperacionais = [], refetch: refetchRegrasOperacionais } = useQuery({
     queryKey: ["regras_operacionais_grid", effectiveEmpresaId],
     queryFn: () => RegraOperacionalService.getAll(effectiveEmpresaId === "all" ? undefined : effectiveEmpresaId),
   });
@@ -499,9 +557,10 @@ export const OperacoesTableBlock = ({
   });
 
   const processedRows = useMemo(() => {
-    if (!Array.isArray(rows)) return [];
-    return rows.map((item: any) => processarOperacao(item, empresas as any[]));
-  }, [rows, empresas]);
+    const sourceRows = Array.isArray(rowsData) ? rowsData : rows;
+    if (!Array.isArray(sourceRows)) return [];
+    return sourceRows.map((item: any) => processarOperacao(item, empresas as any[]));
+  }, [rows, rowsData, empresas]);
 
   const updateMutation = useMutation({
     mutationFn: async () => {
@@ -605,10 +664,10 @@ export const OperacoesTableBlock = ({
     return currentData.map((row: any) =>
       row?.id === itemId
         ? {
-            ...row,
-            status_pagamento: statusPagamento,
-            data_pagamento: dataPagamento,
-          }
+          ...row,
+          status_pagamento: statusPagamento,
+          data_pagamento: dataPagamento,
+        }
         : row,
     );
   };
@@ -882,6 +941,37 @@ export const OperacoesTableBlock = ({
     setIsRuleApplyOpen(true);
   };
 
+  const matchesOptionalContext = ({
+    ruleId,
+    itemId,
+    ruleName,
+    itemName,
+  }: {
+    ruleId?: string | null;
+    itemId?: string | null;
+    ruleName?: string | null;
+    itemName?: string | null;
+  }) => {
+    if (!ruleId && !ruleName) return true;
+
+    if (ruleId && itemId) {
+      return ruleId === itemId;
+    }
+
+    const normalizedRuleName = normalizeEntityMatchText(ruleName);
+    const normalizedItemName = normalizeEntityMatchText(itemName);
+
+    if (normalizedRuleName && normalizedItemName) {
+      return (
+        normalizedRuleName === normalizedItemName ||
+        normalizedRuleName.includes(normalizedItemName) ||
+        normalizedItemName.includes(normalizedRuleName)
+      );
+    }
+
+    return false;
+  };
+
   const matchesOperationalRuleForItem = (item: any, rule: any, column: RuleApplicableColumn) => {
     const itemDate = item?.data_operacao ?? date;
     const isGlobalIssRule = column === "percentualIss" && isIssOperationalRule(rule);
@@ -891,15 +981,106 @@ export const OperacoesTableBlock = ({
     }
 
     return (
-      rule.empresa_id === item?.empresa_id &&
-      (!rule.unidade_id || rule.unidade_id === item?.unidade_id) &&
-      (!rule.fornecedor_id || rule.fornecedor_id === item?.fornecedor_id) &&
-      (!rule.tipo_servico_id || rule.tipo_servico_id === item?.tipo_servico_id) &&
-      (!rule.transportadora_id || rule.transportadora_id === item?.transportadora_id) &&
-      (!rule.produto_carga_id || rule.produto_carga_id === item?.produto_carga_id) &&
+      matchesOptionalContext({
+        ruleId: rule.empresa_id,
+        itemId: item?.empresa_id,
+        ruleName: rule.empresas?.nome,
+        itemName: item?.empresas?.nome,
+      }) &&
+      matchesOptionalContext({
+        ruleId: rule.unidade_id,
+        itemId: item?.unidade_id,
+      }) &&
+      matchesOptionalContext({
+        ruleId: rule.fornecedor_id,
+        itemId: item?.fornecedor_id,
+        ruleName: rule.fornecedores?.nome,
+        itemName: item?.fornecedores?.nome,
+      }) &&
+      matchesOptionalContext({
+        ruleId: rule.tipo_servico_id,
+        itemId: item?.tipo_servico_id,
+        ruleName: rule.tipos_servico_operacional?.nome,
+        itemName: item?.tipos_servico_operacional?.nome ?? item?.tipo_servico_label,
+      }) &&
+      matchesOptionalContext({
+        ruleId: rule.transportadora_id,
+        itemId: item?.transportadora_id,
+        ruleName: rule.transportadoras_clientes?.nome,
+        itemName: item?.transportadoras_clientes?.nome ?? item?.transportadora_label,
+      }) &&
+      matchesOptionalContext({
+        ruleId: rule.produto_carga_id,
+        itemId: item?.produto_carga_id,
+        ruleName: rule.produtos_carga?.nome,
+        itemName: item?.produtos_carga?.nome ?? item?.produto_label,
+      }) &&
       (!rule.vigencia_inicio || rule.vigencia_inicio <= itemDate) &&
       (!rule.vigencia_fim || rule.vigencia_fim >= itemDate)
     );
+  };
+
+  const explainOperationalRuleMismatch = (item: any, rule: any) => {
+    const itemDate = item?.data_operacao ?? date;
+    const reasons: string[] = [];
+
+    if (rule.ativo !== true) reasons.push("inativa");
+    if (isIssOperationalRule(rule)) reasons.push("regra de ISS");
+
+    if (!matchesOptionalContext({
+      ruleId: rule.empresa_id,
+      itemId: item?.empresa_id,
+      ruleName: rule.empresas?.nome,
+      itemName: item?.empresas?.nome,
+    })) {
+      reasons.push(`empresa: regra=${formatDiagnosticLabel(rule.empresas?.nome ?? rule.empresa_id)} linha=${formatDiagnosticLabel(item?.empresas?.nome ?? item?.empresa_id)}`);
+    }
+
+    if (!matchesOptionalContext({
+      ruleId: rule.fornecedor_id,
+      itemId: item?.fornecedor_id,
+      ruleName: rule.fornecedores?.nome,
+      itemName: item?.fornecedores?.nome,
+    })) {
+      reasons.push(`fornecedor: regra=${formatDiagnosticLabel(rule.fornecedores?.nome ?? rule.fornecedor_id)} linha=${formatDiagnosticLabel(item?.fornecedores?.nome ?? item?.fornecedor_id)}`);
+    }
+
+    if (!matchesOptionalContext({
+      ruleId: rule.tipo_servico_id,
+      itemId: item?.tipo_servico_id,
+      ruleName: rule.tipos_servico_operacional?.nome,
+      itemName: item?.tipos_servico_operacional?.nome ?? item?.tipo_servico_label,
+    })) {
+      reasons.push(`servico: regra=${formatDiagnosticLabel(rule.tipos_servico_operacional?.nome ?? rule.tipo_servico_id)} linha=${formatDiagnosticLabel(item?.tipos_servico_operacional?.nome ?? item?.tipo_servico_label ?? item?.tipo_servico_id)}`);
+    }
+
+    if (!matchesOptionalContext({
+      ruleId: rule.transportadora_id,
+      itemId: item?.transportadora_id,
+      ruleName: rule.transportadoras_clientes?.nome,
+      itemName: item?.transportadoras_clientes?.nome ?? item?.transportadora_label,
+    })) {
+      reasons.push(`transportadora: regra=${formatDiagnosticLabel(rule.transportadoras_clientes?.nome ?? rule.transportadora_id)} linha=${formatDiagnosticLabel(item?.transportadoras_clientes?.nome ?? item?.transportadora_label ?? item?.transportadora_id)}`);
+    }
+
+    if (!matchesOptionalContext({
+      ruleId: rule.produto_carga_id,
+      itemId: item?.produto_carga_id,
+      ruleName: rule.produtos_carga?.nome,
+      itemName: item?.produtos_carga?.nome ?? item?.produto_label,
+    })) {
+      reasons.push(`produto: regra=${formatDiagnosticLabel(rule.produtos_carga?.nome ?? rule.produto_carga_id)} linha=${formatDiagnosticLabel(item?.produtos_carga?.nome ?? item?.produto_label ?? item?.produto_carga_id)}`);
+    }
+
+    if (rule.vigencia_inicio && rule.vigencia_inicio > itemDate) {
+      reasons.push(`vigencia inicial: regra=${rule.vigencia_inicio} linha=${itemDate}`);
+    }
+
+    if (rule.vigencia_fim && rule.vigencia_fim < itemDate) {
+      reasons.push(`vigencia final: regra=${rule.vigencia_fim} linha=${itemDate}`);
+    }
+
+    return reasons;
   };
 
   const openInlineEdit = (item: any, field: InlineEditableField) => {
@@ -933,44 +1114,36 @@ export const OperacoesTableBlock = ({
 
   const renderHeaderCell = (columnKey: string, content: React.ReactNode, className = "px-3 font-semibold text-center") => {
     const bulkFieldForColumn = MASS_FIELD_BY_COLUMN[columnKey];
+    const isRuleCol = !!RULE_COLUMN_CONFIG[columnKey as RuleApplicableColumn];
+    const isActiveRule = isRuleCol && activeRuleCols[columnKey as RuleApplicableColumn];
 
-    if (!bulkFieldForColumn) {
-      return <th className={className}>{content}</th>;
-    }
+    let InnerContent = bulkFieldForColumn ? (
+      <button
+        type="button"
+        className="inline-flex flex-shrink-0 items-center justify-center gap-1.5 rounded-md px-1.5 py-1 transition-colors hover:bg-muted whitespace-nowrap"
+        onClick={() => openBulkEditForField(bulkFieldForColumn)}
+        title="Editar esta coluna em massa"
+        disabled={editableFilteredCount === 0}
+      >
+        {content}
+      </button>
+    ) : <span className="inline-flex items-center gap-1.5 whitespace-nowrap px-1">{content}</span>;
 
     return (
       <th className={className}>
-        <button
-          type="button"
-          className="inline-flex w-full items-center justify-center gap-1.5 rounded-md px-1 py-1 transition-colors hover:bg-muted"
-          onClick={() => openBulkEditForField(bulkFieldForColumn)}
-          title="Editar esta coluna em massa"
-          disabled={editableFilteredCount === 0}
-        >
-          {content}
-        </button>
-      </th>
-    );
-  };
-
-  const renderRuleHeaderCell = (
-    column: RuleApplicableColumn,
-    content: React.ReactNode,
-    className = "px-3 font-semibold text-center",
-  ) => {
-    return (
-      <th className={className}>
-        <div className="flex flex-col items-center gap-1">
-          <span>{content}</span>
-          <button
-            type="button"
-            className="rounded-full border border-primary/30 bg-primary/5 px-2 py-0.5 text-[10px] font-medium text-primary transition-colors hover:bg-primary/10"
-            onClick={() => openRuleApplyForColumn(column)}
-            disabled={editableFilteredCount === 0}
-            title="Aplicar regra salva nesta coluna"
-          >
-            Regra
-          </button>
+        <div className="flex flex-row items-center justify-center gap-2 w-full min-h-[32px]">
+          {InnerContent}
+          {isActiveRule && (
+            <button
+              type="button"
+              className="rounded-full flex-shrink-0 border border-primary/30 bg-primary/5 px-2 py-0.5 text-[10px] font-medium text-primary transition-colors hover:bg-primary/10"
+              onClick={() => openRuleApplyForColumn(columnKey as RuleApplicableColumn)}
+              disabled={editableFilteredCount === 0}
+              title="Aplicar regra salva nesta coluna"
+            >
+              Regra
+            </button>
+          )}
         </div>
       </th>
     );
@@ -1020,6 +1193,58 @@ export const OperacoesTableBlock = ({
         candidate.vigencia_fim ?? "",
       ].join("|") === key);
     });
+
+  const availableEditOperationalRules = (regrasOperacionais as any[])
+    .filter((rule) => rule.ativo === true && !isIssOperationalRule(rule))
+    .filter((rule) => !editingItem || matchesOperationalRuleForItem(editingItem, rule, "valUnit"))
+    .filter((rule: any, index: number, allRules: any[]) => {
+      const key = [
+        rule.tipos_regra_operacional?.id ?? rule.tipo_regra_id ?? "",
+        rule.valor_unitario ?? "",
+        rule.empresa_id ?? "",
+        rule.fornecedor_id ?? "",
+        rule.transportadora_id ?? "",
+        rule.tipo_servico_id ?? "",
+        rule.produto_carga_id ?? "",
+        rule.vigencia_inicio ?? "",
+        rule.vigencia_fim ?? "",
+      ].join("|");
+
+      return index === allRules.findIndex((candidate: any) => [
+        candidate.tipos_regra_operacional?.id ?? candidate.tipo_regra_id ?? "",
+        candidate.valor_unitario ?? "",
+        candidate.empresa_id ?? "",
+        candidate.fornecedor_id ?? "",
+        candidate.transportadora_id ?? "",
+        candidate.tipo_servico_id ?? "",
+        candidate.produto_carga_id ?? "",
+        candidate.vigencia_inicio ?? "",
+        candidate.vigencia_fim ?? "",
+      ].join("|") === key);
+    });
+
+  const editOperationalRuleDiagnostics = useMemo(() => {
+    if (!editingItem) return null;
+
+    const allRules = regrasOperacionais as any[];
+    const nonIssRules = allRules.filter((rule) => !isIssOperationalRule(rule));
+    const activeNonIssRules = nonIssRules.filter((rule) => rule.ativo === true);
+    const rejected = activeNonIssRules
+      .map((rule) => ({
+        id: rule.id,
+        label: `${rule.tipos_regra_operacional?.nome ?? "Regra"} · ${rule.transportadoras_clientes?.nome ?? rule.fornecedores?.nome ?? "Sem contexto"}`,
+        reasons: explainOperationalRuleMismatch(editingItem, rule),
+      }))
+      .filter((item) => item.reasons.length > 0);
+
+    return {
+      total: allRules.length,
+      nonIss: nonIssRules.length,
+      activeNonIss: activeNonIssRules.length,
+      matched: availableEditOperationalRules.length,
+      rejected: rejected.slice(0, 5),
+    };
+  }, [availableEditOperationalRules, editingItem, regrasOperacionais]);
 
   const renderInlineCell = (
     item: any,
@@ -1134,7 +1359,9 @@ export const OperacoesTableBlock = ({
       }
 
       // MOTOR INTELIGENTE - AUTO CÁLCULOS E REGRAS:
-      const unitario = Number(editingItem?.valor_unitario_snapshot || editingItem?.valor_unitario_label || 0);
+      const unitario = next.valor_unitario !== undefined
+        ? parseLocaleNumber(next.valor_unitario)
+        : Number(editingItem?.valor_unitario_snapshot || editingItem?.valor_unitario_label || 0);
 
       // Auto-Normalizar NF e Aplicar Regra de ISS (Regra 2)
       let nfRaw = String(next.nf_numero).toUpperCase().trim();
@@ -1168,6 +1395,17 @@ export const OperacoesTableBlock = ({
     updateField("percentual_iss", String(selectedRule.valor_unitario ?? ""));
   };
 
+  const applyEditOperationalRule = (ruleId: string) => {
+    setSelectedEditOperationalRuleId(ruleId);
+
+    if (!ruleId) return;
+
+    const selectedRule = availableEditOperationalRules.find((rule: any) => rule.id === ruleId);
+    if (!selectedRule) return;
+
+    updateField("valor_unitario", toNumericInputValue(selectedRule.valor_unitario));
+  };
+
   useEffect(() => {
     if (!editingItem || !editForm) return;
 
@@ -1176,6 +1414,22 @@ export const OperacoesTableBlock = ({
 
     setSelectedEditIssRuleId(matchingRule?.id ?? "");
   }, [availableEditIssRules, editForm, editingItem]);
+
+  useEffect(() => {
+    if (!editingItem || !editForm) return;
+
+    const currentUnitValue = parseLocaleNumber(editForm.valor_unitario ?? "");
+    const matchingRule = availableEditOperationalRules.find(
+      (rule: any) => Number(rule.valor_unitario ?? 0) === currentUnitValue,
+    );
+
+    setSelectedEditOperationalRuleId(matchingRule?.id ?? "");
+  }, [availableEditOperationalRules, editForm, editingItem]);
+
+  useEffect(() => {
+    if (!editingItem) return;
+    void refetchRegrasOperacionais();
+  }, [editingItem, refetchRegrasOperacionais]);
 
   const editFinancePreview = useMemo(() => {
     if (!editingItem || !editForm?.forma_pagamento) return null;
@@ -1190,35 +1444,7 @@ export const OperacoesTableBlock = ({
     );
   }, [editForm?.forma_pagamento, editingItem, empresas]);
 
-  const kpis = useMemo(() => {
-    let faturamento = 0, caixaImediato = 0, recebido = 0, atrasado = 0, pendente = 0, volume = 0, colabs = 0;
-
-    filteredData.forEach((op: any) => {
-      const val = Number(op.totalFinalCalculado || 0);
-      faturamento += val;
-
-      if (op.modalidadeFinanceira === "CAIXA_IMEDIATO") caixaImediato += val;
-      if (op.statusPagamento === "RECEBIDO") recebido += val;
-      if (op.statusPagamento === "ATRASADO") atrasado += val;
-      if (op.statusPagamento === "PENDENTE") pendente += val;
-
-      volume += Number(op.quantidade || 0);
-      colabs += Number(op.quantidade_colaboradores || 1);
-    });
-
-    return {
-      faturamento,
-      caixaImediato,
-      provisionado: pendente,
-      recebido,
-      atrasado,
-      pendente,
-      ticketMedio: filteredData.length ? faturamento / filteredData.length : 0,
-      produtividade: colabs ? volume / colabs : 0,
-    };
-  }, [filteredData]);
-
-  if (isLoading) {
+  if (!rowsData && isLoading) {
     return (
       <div className="p-12 text-center text-muted-foreground min-h-[300px] flex flex-col items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
@@ -1229,29 +1455,6 @@ export const OperacoesTableBlock = ({
 
   return (
     <div className="space-y-4 p-5 pt-2">
-
-      {/* ─── KPI CARDS ─────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
-        {[
-          { label: "Faturamento", value: kpis.faturamento, color: "text-foreground" },
-          { label: "Depósito", value: kpis.caixaImediato, color: "text-emerald-600 dark:text-emerald-400" },
-          { label: "Provisionado", value: kpis.provisionado, color: "text-blue-600 dark:text-blue-400" },
-          { label: "A Receber", value: kpis.pendente, color: "text-amber-600 dark:text-amber-400" },
-          { label: "Atrasado", value: kpis.atrasado, color: "text-destructive" },
-          { label: "Ticket Médio", value: kpis.ticketMedio, color: "text-muted-foreground" },
-          { label: "Produt. Vol/Col", value: kpis.produtividade, color: "text-muted-foreground", decimals: 1, prefix: "" },
-        ].map((kpi) => (
-          <div key={kpi.label} className="rounded-lg border border-border bg-card px-3 py-2.5 shadow-sm">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground truncate">{kpi.label}</p>
-            <p className={`text-sm font-black font-display mt-0.5 tabular-nums ${kpi.color}`}>
-              {kpi.label === "Produt. Vol/Col"
-                ? kpi.value.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })
-                : kpi.value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-            </p>
-          </div>
-        ))}
-      </div>
-
       {/* ─── FILTROS ───────────────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row gap-3 justify-between">
         <div className="flex flex-wrap gap-2 w-full">
@@ -1324,6 +1527,27 @@ export const OperacoesTableBlock = ({
                   onCheckedChange={() => toggleCol(key as keyof typeof visibleCols)}
                 >
                   {key.toUpperCase()}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon" className="h-9 w-9" title="Configurar Regras por Coluna">
+                <Settings2 className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>Regras por Coluna</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {(Object.keys(RULE_COLUMN_CONFIG) as RuleApplicableColumn[]).map((key) => (
+                <DropdownMenuCheckboxItem
+                  key={key}
+                  checked={activeRuleCols[key]}
+                  onCheckedChange={() => toggleRuleCol(key)}
+                >
+                  {RULE_COLUMN_CONFIG[key].label}
                 </DropdownMenuCheckboxItem>
               ))}
             </DropdownMenuContent>
@@ -1403,7 +1627,7 @@ export const OperacoesTableBlock = ({
 
               return (
                 <DropdownMenu>
-                  <DropdownMenuTrigger className="flex items-center justify-between gap-1.5 group w-full focus:outline-none transition-colors hover:text-foreground">
+                  <DropdownMenuTrigger className="flex items-center justify-center gap-1.5 group w-full focus:outline-none transition-colors hover:text-foreground">
                     <span className="inline-flex items-center gap-1.5 truncate">
                       {Icon && <Icon className="h-3.5 w-3.5" />}
                       {label}
@@ -1447,7 +1671,7 @@ export const OperacoesTableBlock = ({
             return (
               <table className="w-full text-sm min-w-max">
                 <thead className="bg-muted/95 backdrop-blur-sm sticky top-0 z-20">
-                  <tr className="text-left font-display text-muted-foreground uppercase text-xs tracking-wide">
+                  <tr className="text-center font-display text-muted-foreground uppercase text-xs tracking-wide">
                     {visibleCols.data && <th style={getStickyProps("data", true).style} className={getStickyProps("data", true).className}>{renderInteractiveHeader("data", "DATA", CalendarDays)}</th>}
                     {visibleCols.idPlanilha && <th style={getStickyProps("idPlanilha", true).style} className={getStickyProps("idPlanilha", true).className}>{renderInteractiveHeader("idPlanilha", "ID")}</th>}
                     {visibleCols.operacao && <th style={getStickyProps("operacao", true).style} className={getStickyProps("operacao", true).className}>{renderInteractiveHeader("operacao", "OPERACAO", Package)}</th>}
@@ -1461,18 +1685,18 @@ export const OperacoesTableBlock = ({
                     {visibleCols.nf && renderHeaderCell("nf", "NF", "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.ctrc && renderHeaderCell("ctrc", "CTRC", "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.observacao && renderHeaderCell("observacao", "OBSERVACAO", "px-3 py-2.5 font-semibold text-center")}
-                    {visibleCols.percentualIss && renderRuleHeaderCell("percentualIss", "% ISS", "px-3 py-2.5 font-semibold text-center")}
+                    {visibleCols.percentualIss && renderHeaderCell("percentualIss", "% ISS", "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.inicio && renderHeaderCell("inicio", <span className="inline-flex items-center justify-center gap-1.5 w-full"><LogIn className="h-3.5 w-3.5 text-muted-foreground" />INICIO</span>, "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.fim && renderHeaderCell("fim", <span className="inline-flex items-center justify-center gap-1.5 w-full"><LogOut className="h-3.5 w-3.5 text-muted-foreground" />FIM</span>, "px-3 py-2.5 font-semibold text-center")}
-                    {visibleCols.valUnit && <th className="px-3 py-2.5 font-semibold text-center"><span className="inline-flex items-center justify-center gap-1.5 w-full"><DollarSign className="h-3.5 w-3.5 text-muted-foreground" />VAL. UNIT.</span></th>}
+                    {visibleCols.valUnit && renderHeaderCell("valUnit", <span className="inline-flex items-center justify-center gap-1.5 w-full"><DollarSign className="h-3.5 w-3.5 text-muted-foreground" />VAL. UNIT.</span>, "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.qtd && renderHeaderCell("qtd", <span className="inline-flex items-center justify-center gap-1.5 w-full"><Hash className="h-3.5 w-3.5 text-muted-foreground" />QTD</span>, "px-3 py-2.5 font-semibold text-center")}
-                    {visibleCols.valorDescarga && <th className="px-3 py-2.5 font-semibold text-center">VALOR DESCARGA</th>}
-                    {visibleCols.custoIss && <th className="px-3 py-2.5 font-semibold text-center">CUSTO ISS</th>}
+                    {visibleCols.valorDescarga && renderHeaderCell("valorDescarga", "VALOR DESCARGA", "px-3 py-2.5 font-semibold text-center")}
+                    {visibleCols.custoIss && renderHeaderCell("custoIss", "CUSTO ISS", "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.valorUnitarioFilme && renderHeaderCell("valorUnitarioFilme", "UNIT. FILME", "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.quantidadeFilme && renderHeaderCell("quantidadeFilme", "QTD. FILME", "px-3 py-2.5 font-semibold text-center")}
-                    {visibleCols.valorTotalFilme && <th className="px-3 py-2.5 font-semibold text-center">TOTAL FILME</th>}
+                    {visibleCols.valorTotalFilme && renderHeaderCell("valorTotalFilme", "TOTAL FILME", "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.valorFaturamentoNf && renderHeaderCell("valorFaturamentoNf", "FATURAMENTO NF", "px-3 py-2.5 font-semibold text-center")}
-                    {visibleCols.valDia && <th className="px-3 py-2.5 font-semibold text-center"><span className="inline-flex items-center justify-center gap-1.5 w-full"><BadgeDollarSign className="h-3.5 w-3.5 text-muted-foreground" />TOTAL DIA</span></th>}
+                    {visibleCols.valDia && renderHeaderCell("conferido_final", <span className="inline-flex items-center justify-center gap-1.5 w-full"><BadgeDollarSign className="h-3.5 w-3.5 text-muted-foreground" />TOTAL DIA</span>, "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.modalidadeFinanceira && <th className="px-3 py-2.5 font-semibold text-center">MODALIDADE</th>}
                     {visibleCols.dataVencimento && <th className="px-3 py-2.5 font-semibold text-center">VENCIMENTO</th>}
                     {visibleCols.statusPagamento && <th className="px-3 py-2.5 font-semibold text-center">STATUS PGTO</th>}
@@ -2039,6 +2263,40 @@ export const OperacoesTableBlock = ({
                 <div className="space-y-2">
                   <Label htmlFor="ctrc">CTRC</Label>
                   <Input id="ctrc" value={editForm.ctrc} onChange={(e) => updateField("ctrc", e.target.value)} />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Regra operacional cadastrada</Label>
+                  <Select value={selectedEditOperationalRuleId} onValueChange={applyEditOperationalRule}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione uma regra registrada para atualizar o valor unitario" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableEditOperationalRules.map((rule: any) => (
+                        <SelectItem key={rule.id} value={rule.id}>
+                          {`${rule.tipos_regra_operacional?.nome ?? "Regra"} · ${Number(rule.valor_unitario ?? 0).toLocaleString("pt-BR")} · ${rule.fornecedores?.nome ?? rule.transportadoras_clientes?.nome ?? "Global"}`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-sm text-muted-foreground">
+                    Aqui aparecem as demais regras operacionais compatíveis com a linha, como descarga por volume. Ao selecionar uma regra, o valor unitário de origem é atualizado e os cálculos automáticos são refeitos.
+                  </p>
+                  {editOperationalRuleDiagnostics && (
+                    <div className="rounded-md border border-dashed border-border bg-muted/20 p-3 text-xs text-muted-foreground">
+                      <p>
+                        Diagnostico: carregadas {editOperationalRuleDiagnostics.total} regras no total, {editOperationalRuleDiagnostics.nonIss} nao-ISS, {editOperationalRuleDiagnostics.activeNonIss} ativas, {editOperationalRuleDiagnostics.matched} compativeis com esta linha.
+                      </p>
+                      {editOperationalRuleDiagnostics.rejected.length > 0 && (
+                        <div className="mt-2 space-y-1">
+                          {editOperationalRuleDiagnostics.rejected.map((item) => (
+                            <p key={item.id}>
+                              {item.label}: {item.reasons.join(" | ")}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-2 md:col-span-2">
                   <Label>Regra de ISS cadastrada</Label>
