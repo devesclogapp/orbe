@@ -114,6 +114,14 @@ export const CentralBancariaDiaristas = () => {
     const [cnabEmpresaConta, setCnabEmpresaConta] = useState("");
     const [cnabEmpresaDigito, setCnabEmpresaDigito] = useState("");
 
+    // ── C2: estado do modal de confirmação de pagamento ──
+    const [openConfirmPago, setOpenConfirmPago] = useState(false);
+    const [loteParaPagar, setLoteParaPagar] = useState<Lote | null>(null);
+
+    // ── paginação ──
+    const PAGE_SIZE = 10;
+    const [paginaAtual, setPaginaAtual] = useState(1);
+
     // ── perfil e empresas ──
     const { data: perfil } = useQuery({
         queryKey: ["perfil_usuario", user?.id],
@@ -126,16 +134,32 @@ export const CentralBancariaDiaristas = () => {
         queryFn: () => EmpresaService.getAll(),
     });
 
-    const empresaId = perfil?.empresa_id ?? ((empresas as any[])[0]?.id ?? "");
     const isAdmin = perfil?.papel === "Admin";
+    const isFinanceiro = perfil?.papel === "Financeiro";
+    const canAdjust = isAdmin || isFinanceiro;
     const userName = perfil?.nome_completo || user?.email || "";
+
+    // S2: Admin sem empresa_id pode ver todos os lotes (sem fallback indevido);
+    // perfis não-Admin devem ter empresa_id explícita. Evita que RH/Financeiro
+    // sem vínculo opere sobre a empresa errada.
+    const empresaId = isAdmin && !perfil?.empresa_id
+        ? ((empresas as any[])[0]?.id ?? "")
+        : (perfil?.empresa_id ?? "");
+    const empresaSemVinculo = !isAdmin && !!perfil && !perfil.empresa_id;
 
     // ── lotes ──
     const { data: lotes = [], isLoading } = useQuery({
         queryKey: ["lotes_fechamento", empresaId],
         queryFn: () => LoteFechamentoDiaristaService.getByEmpresaParaFinanceiro(empresaId),
-        enabled: !!empresaId,
+        enabled: !!empresaId && !empresaSemVinculo,
     });
+
+    // Lotes paginados
+    const totalPaginas = Math.ceil((lotes as Lote[]).length / PAGE_SIZE);
+    const lotesPaginados = useMemo(() => {
+        const inicio = (paginaAtual - 1) * PAGE_SIZE;
+        return (lotes as Lote[]).slice(inicio, inicio + PAGE_SIZE);
+    }, [lotes, paginaAtual]);
 
     // ── lançamentos do lote selecionado (inclui ajustes) ──
     const { data: lancamentosLote = [], isLoading: isLoadingLancamentos } = useQuery({
@@ -390,11 +414,11 @@ export const CentralBancariaDiaristas = () => {
             em_aberto: "bg-amber-500/15 text-amber-700",
         };
         const labels: Record<string, string> = {
-            fechado_para_pagamento: "Aguardando Pgto",
+            fechado_para_pagamento: "Aguardando Pagamento",
             cnab_gerado: "CNAB Gerado",
             pago: "Pago",
             cancelado: "Cancelado",
-            em_aberto: "Reaberto",
+            em_aberto: "Em Aberto",
         };
         return (
             <span className={cn("inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold", map[status] ?? "bg-muted text-muted-foreground")}>
@@ -409,7 +433,28 @@ export const CentralBancariaDiaristas = () => {
     return (
         <div>
             <div className="space-y-4">
+                {/* S2: Bloquear Financeiro/RH sem empresa vinculada */}
+                {empresaSemVinculo && (
+                    <div className="esc-card p-5 border-destructive/50 bg-destructive/5 flex items-start gap-3">
+                        <span className="text-2xl">⛔</span>
+                        <div>
+                            <p className="font-bold text-destructive">Perfil sem empresa vinculada</p>
+                            <p className="text-sm text-muted-foreground mt-1">
+                                Seu usuário não possui uma empresa associada. Solicite ao administrador que vincule
+                                sua conta a uma empresa antes de operar pagamentos.
+                            </p>
+                        </div>
+                    </div>
+                )}
                 <section className="esc-card overflow-hidden">
+                    {/* Legenda contextual para usuários leigos sobre CNAB */}
+                    <div className="px-5 py-3 bg-muted/30 border-b border-border/50 flex items-start gap-2">
+                        <Landmark className="h-4 w-4 text-indigo-500 mt-0.5 shrink-0" />
+                        <p className="text-xs text-muted-foreground">
+                            <strong className="text-foreground">CNAB240</strong> é o arquivo de remessa bancária padrão FEBRABAN.
+                            Gere-o para lotes aprovados, envie ao banco e marque como <strong>Pago</strong> após confirmação bancária.
+                        </p>
+                    </div>
                     {isLoading ? (
                         <div className="flex flex-col items-center justify-center p-12 gap-3">
                             <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -419,7 +464,7 @@ export const CentralBancariaDiaristas = () => {
                         <div className="flex flex-col items-center justify-center p-16 gap-3 text-center">
                             <Lock className="h-10 w-10 text-muted-foreground" />
                             <p className="font-medium text-foreground">Nenhum lote de fechamento encontrado</p>
-                            <p className="text-sm text-muted-foreground">Feche um período no painel para gerar um lote.</p>
+                            <p className="text-sm text-muted-foreground">Feche um período no painel RH para gerar um lote de pagamento.</p>
                         </div>
                     ) : (
                         <table className="w-full text-sm">
@@ -433,7 +478,7 @@ export const CentralBancariaDiaristas = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {(lotes as Lote[]).map((l) => (
+                                {lotesPaginados.map((l) => (
                                     <tr key={l.id} className="border-t border-muted hover:bg-background">
                                         <td className="px-5 h-14">
                                             <p className="font-mono text-xs text-muted-foreground mb-0.5">#{l.id.substring(0, 8)}</p>
@@ -460,24 +505,23 @@ export const CentralBancariaDiaristas = () => {
                                                 <Button variant="outline" size="sm" onClick={() => handleOpenDetalhe(l)}>
                                                     <Eye className="h-4 w-4 mr-1.5" /> Detalhes
                                                 </Button>
+                                                {/* O2 / C1: CNAB bloqueado para lotes já pagos ou se o arquivo já foi gerado uma vez */}
                                                 <Button
                                                     variant="outline"
                                                     size="sm"
-                                                    className="border-indigo-400 text-indigo-700 hover:bg-indigo-50"
+                                                    className="border-indigo-400 text-indigo-700 hover:bg-indigo-50 disabled:opacity-40 disabled:cursor-not-allowed"
                                                     onClick={() => handleAbrirCnab(l)}
-                                                    title="Gerar arquivo CNAB240"
+                                                    disabled={l.status === "pago" || l.status === "cnab_gerado"}
+                                                    title={l.status === "pago" ? "CNAB indisponível: lote já marcado como pago" : (l.status === "cnab_gerado" ? "Arquivo já gerado. Contate o admin se precisar reabrir." : "Gerar arquivo CNAB240")}
                                                 >
                                                     <FileCode2 className="h-4 w-4 mr-1.5" /> CNAB
                                                 </Button>
+                                                {/* C2: confirm() substituído por Dialog próprio */}
                                                 {l.status !== "pago" && (
                                                     <Button
                                                         size="sm"
                                                         className="bg-emerald-600 hover:bg-emerald-700"
-                                                        onClick={() => {
-                                                            if (confirm("Confirmar pagamento deste lote?")) {
-                                                                marcarPagoMutation.mutate(l.id);
-                                                            }
-                                                        }}
+                                                        onClick={() => { setLoteParaPagar(l); setOpenConfirmPago(true); }}
                                                     >
                                                         <CheckCircle2 className="h-4 w-4 mr-1.5" /> Pago
                                                     </Button>
@@ -488,6 +532,42 @@ export const CentralBancariaDiaristas = () => {
                                 ))}
                             </tbody>
                         </table>
+                    )}
+                    {/* Controles de paginação */}
+                    {totalPaginas > 1 && (
+                        <div className="flex items-center justify-between px-5 py-3 border-t border-border/50 bg-muted/20">
+                            <span className="text-xs text-muted-foreground">
+                                Página {paginaAtual} de {totalPaginas} · {(lotes as Lote[]).length} lotes
+                            </span>
+                            <div className="flex gap-1.5">
+                                <button
+                                    onClick={() => setPaginaAtual((p) => Math.max(1, p - 1))}
+                                    disabled={paginaAtual === 1}
+                                    className="h-7 w-7 rounded-md text-sm flex items-center justify-center border border-border hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                    ‹
+                                </button>
+                                {Array.from({ length: totalPaginas }, (_, i) => i + 1).map((p) => (
+                                    <button
+                                        key={p}
+                                        onClick={() => setPaginaAtual(p)}
+                                        className={`h-7 w-7 rounded-md text-xs flex items-center justify-center border transition-colors ${p === paginaAtual
+                                            ? "bg-primary text-primary-foreground border-primary font-bold"
+                                            : "border-border hover:bg-muted"
+                                            }`}
+                                    >
+                                        {p}
+                                    </button>
+                                ))}
+                                <button
+                                    onClick={() => setPaginaAtual((p) => Math.min(totalPaginas, p + 1))}
+                                    disabled={paginaAtual === totalPaginas}
+                                    className="h-7 w-7 rounded-md text-sm flex items-center justify-center border border-border hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                    ›
+                                </button>
+                            </div>
+                        </div>
                     )}
                 </section>
             </div>
@@ -500,8 +580,8 @@ export const CentralBancariaDiaristas = () => {
                     if (!v) { setSelectedLote(null); setExpandedIds(new Set()); }
                 }}
             >
-                <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-                    <DialogHeader>
+                <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
+                    <DialogHeader className="px-6 py-4 border-b bg-background z-10 shrink-0">
                         <DialogTitle className="flex items-center gap-2">
                             Detalhes do Lote
                             {selectedLote && statusBadge(selectedLote.status)}
@@ -524,151 +604,159 @@ export const CentralBancariaDiaristas = () => {
                         </DialogDescription>
                     </DialogHeader>
 
-                    {/* Barra de ações de governança (Admin only) */}
-                    {isAdmin && selectedLote && (["fechado_para_pagamento", "cnab_gerado", "pago"].includes(selectedLote.status)) && (
-                        <div className="flex items-center gap-2 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
-                            <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
-                            <p className="text-xs text-amber-700 flex-1">
-                                Ações administrativas. Qualquer operação aqui gera trilha de auditoria.
-                            </p>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="border-amber-500 text-amber-700 hover:bg-amber-500/10"
-                                onClick={() => setOpenReabrir(true)}
-                            >
-                                <UnlockKeyhole className="h-4 w-4 mr-1.5" /> Reabrir Período
-                            </Button>
-                        </div>
-                    )}
-
-                    <div className="py-2">
-                        {isLoadingLancamentos ? (
-                            <div className="flex justify-center p-8">
-                                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                            </div>
-                        ) : (
-                            <div className="border border-border/50 rounded-lg overflow-hidden">
-                                <table className="w-full text-sm">
-                                    <thead className="esc-table-header bg-muted/50">
-                                        <tr className="text-left">
-                                            <th className="px-4 py-2 font-medium">Diarista</th>
-                                            <th className="px-3 py-2 font-medium">Função</th>
-                                            <th className="px-3 py-2 font-medium text-center">Diárias</th>
-                                            <th className="px-4 py-2 font-medium text-right">Base</th>
-                                            <th className="px-4 py-2 font-medium text-right">Ajustes</th>
-                                            <th className="px-4 py-2 font-medium text-right">Total</th>
-                                            {isAdmin && <th className="px-2 py-2 font-medium text-right">Ação</th>}
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-border/50">
-                                        {dadosAgrupados.map((g) => {
-                                            const totalFinal = g.valorBase + g.valorAjustes;
-                                            const hasAjustes = g.ajustes.length > 0;
-                                            const expanded = expandedIds.has(g.diarista_id);
-                                            // Pega o primeiro lançamento normal para usar como referência no ajuste
-                                            const lancRef = g.lancamentosNormais[0] ?? null;
-
-                                            return (
-                                                <>
-                                                    <tr key={g.diarista_id} className="hover:bg-muted/30">
-                                                        <td className="px-4 py-2.5 font-medium">
-                                                            <div className="flex items-center gap-1">
-                                                                {hasAjustes && (
-                                                                    <button
-                                                                        onClick={() => toggleExpanded(g.diarista_id)}
-                                                                        className="text-muted-foreground hover:text-foreground"
-                                                                    >
-                                                                        {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                                                                    </button>
-                                                                )}
-                                                                {g.nome}
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-3 py-2.5 text-muted-foreground text-xs">{g.funcao}</td>
-                                                        <td className="px-3 py-2.5 text-center font-mono text-xs">{g.totalDiarias.toFixed(1)}</td>
-                                                        <td className="px-4 py-2.5 text-right font-mono text-sm">{formatCurrency(g.valorBase)}</td>
-                                                        <td className={cn(
-                                                            "px-4 py-2.5 text-right font-mono text-sm",
-                                                            g.valorAjustes > 0 && "text-emerald-600",
-                                                            g.valorAjustes < 0 && "text-red-600",
-                                                        )}>
-                                                            {g.valorAjustes !== 0 ? formatCurrency(g.valorAjustes) : "—"}
-                                                        </td>
-                                                        <td className="px-4 py-2.5 text-right font-mono font-semibold">{formatCurrency(totalFinal)}</td>
-                                                        {isAdmin && (
-                                                            <td className="px-2 py-2.5 text-right">
-                                                                {lancRef && (
-                                                                    <Button
-                                                                        variant="ghost"
-                                                                        size="sm"
-                                                                        className="h-7 text-xs px-2"
-                                                                        onClick={() => handleOpenAjuste(lancRef)}
-                                                                    >
-                                                                        <PlusCircle className="h-3.5 w-3.5 mr-1" /> Ajuste
-                                                                    </Button>
-                                                                )}
-                                                            </td>
-                                                        )}
-                                                    </tr>
-
-                                                    {/* Sub-linhas de ajuste */}
-                                                    {expanded && g.ajustes.map((aj) => (
-                                                        <tr key={aj.id} className="bg-amber-500/5 border-t border-amber-500/20">
-                                                            <td className="px-4 py-1.5 pl-8 text-xs text-amber-700" colSpan={2}>
-                                                                <span className="flex items-center gap-1">
-                                                                    <History className="w-3 h-3" />
-                                                                    {formatDate(aj.data_lancamento)} · {aj.motivo_ajuste ?? "Ajuste"}
-                                                                    {aj.adjusted_by_nome && (
-                                                                        <span className="text-muted-foreground ml-1">por {aj.adjusted_by_nome}</span>
-                                                                    )}
-                                                                </span>
-                                                            </td>
-                                                            <td className="px-3 py-1.5 text-center text-xs text-muted-foreground">—</td>
-                                                            <td className="px-4 py-1.5 text-right text-xs text-muted-foreground">—</td>
-                                                            <td className={cn(
-                                                                "px-4 py-1.5 text-right font-mono text-xs font-medium",
-                                                                Number(aj.valor_calculado) >= 0 ? "text-emerald-600" : "text-red-600",
-                                                            )}>
-                                                                {formatCurrency(Number(aj.valor_calculado))}
-                                                            </td>
-                                                            <td className="px-4 py-1.5" />
-                                                            {isAdmin && <td className="px-2 py-1.5" />}
-                                                        </tr>
-                                                    ))}
-                                                </>
-                                            );
-                                        })}
-                                    </tbody>
-                                    <tfoot className="bg-muted border-t border-border/50">
-                                        <tr>
-                                            <td colSpan={3} className="px-4 py-3 font-bold text-right text-sm">TOTAL GERAL:</td>
-                                            <td className="px-4 py-3 text-right font-mono font-bold text-sm">
-                                                {formatCurrency(dadosAgrupados.reduce((a, g) => a + g.valorBase, 0))}
-                                            </td>
-                                            <td className={cn(
-                                                "px-4 py-3 text-right font-mono font-bold text-sm",
-                                                dadosAgrupados.reduce((a, g) => a + g.valorAjustes, 0) >= 0 ? "text-emerald-600" : "text-red-600",
-                                            )}>
-                                                {formatCurrency(dadosAgrupados.reduce((a, g) => a + g.valorAjustes, 0))}
-                                            </td>
-                                            <td className="px-4 py-3 text-right font-mono font-bold text-lg text-emerald-600">
-                                                {formatCurrency(valorTotalComAjustes)}
-                                            </td>
-                                            {isAdmin && <td />}
-                                        </tr>
-                                    </tfoot>
-                                </table>
+                    <div className="flex-1 overflow-y-auto p-6 bg-muted/10">
+                        {/* Barra de ações de governança (Admin + Financeiro podem criar ajustes; só Admin pode reabrir) */}
+                        {canAdjust && selectedLote && (["fechado_para_pagamento", "cnab_gerado", "pago"].includes(selectedLote.status)) && (
+                            <div className="flex items-center gap-2 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+                                <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+                                <p className="text-xs text-amber-700 flex-1">
+                                    {isAdmin
+                                        ? "Ações de governança (Admin). Qualquer operação gera trilha de auditoria."
+                                        : "Crie ajustes pontuais se necessário — cada ajuste é auditado."}
+                                </p>
+                                {/* Reabrir é exclusivo do Admin — S3/S4 segregação */}
+                                {isAdmin && (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="border-amber-500 text-amber-700 hover:bg-amber-500/10"
+                                        onClick={() => setOpenReabrir(true)}
+                                    >
+                                        <UnlockKeyhole className="h-4 w-4 mr-1.5" /> Reabrir Período
+                                    </Button>
+                                )}
                             </div>
                         )}
+
+                        <div className="py-2">
+                            {isLoadingLancamentos ? (
+                                <div className="flex justify-center p-8">
+                                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                                </div>
+                            ) : (
+                                <div className="border border-border/50 rounded-lg overflow-hidden">
+                                    <table className="w-full text-sm">
+                                        <thead className="esc-table-header bg-muted/50">
+                                            <tr className="text-left">
+                                                <th className="px-4 py-2 font-medium">Diarista</th>
+                                                <th className="px-3 py-2 font-medium">Função</th>
+                                                <th className="px-3 py-2 font-medium text-center">Diárias</th>
+                                                <th className="px-4 py-2 font-medium text-right">Base</th>
+                                                <th className="px-4 py-2 font-medium text-right">Ajustes</th>
+                                                <th className="px-4 py-2 font-medium text-right">Total</th>
+                                                {canAdjust && <th className="px-2 py-2 font-medium text-right">Ação</th>}
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-border/50">
+                                            {dadosAgrupados.map((g) => {
+                                                const totalFinal = g.valorBase + g.valorAjustes;
+                                                const hasAjustes = g.ajustes.length > 0;
+                                                const expanded = expandedIds.has(g.diarista_id);
+                                                // Pega o primeiro lançamento normal para usar como referência no ajuste
+                                                const lancRef = g.lancamentosNormais[0] ?? null;
+
+                                                return (
+                                                    <>
+                                                        <tr key={g.diarista_id} className="hover:bg-muted/30">
+                                                            <td className="px-4 py-2.5 font-medium">
+                                                                <div className="flex items-center gap-1">
+                                                                    {hasAjustes && (
+                                                                        <button
+                                                                            onClick={() => toggleExpanded(g.diarista_id)}
+                                                                            className="text-muted-foreground hover:text-foreground"
+                                                                        >
+                                                                            {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                                                                        </button>
+                                                                    )}
+                                                                    {g.nome}
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-3 py-2.5 text-muted-foreground text-xs">{g.funcao}</td>
+                                                            <td className="px-3 py-2.5 text-center font-mono text-xs">{g.totalDiarias.toFixed(1)}</td>
+                                                            <td className="px-4 py-2.5 text-right font-mono text-sm">{formatCurrency(g.valorBase)}</td>
+                                                            <td className={cn(
+                                                                "px-4 py-2.5 text-right font-mono text-sm",
+                                                                g.valorAjustes > 0 && "text-emerald-600",
+                                                                g.valorAjustes < 0 && "text-red-600",
+                                                            )}>
+                                                                {g.valorAjustes !== 0 ? formatCurrency(g.valorAjustes) : "—"}
+                                                            </td>
+                                                            <td className="px-4 py-2.5 text-right font-mono font-semibold">{formatCurrency(totalFinal)}</td>
+                                                            {canAdjust && (
+                                                                <td className="px-2 py-2.5 text-right">
+                                                                    {lancRef && (
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="sm"
+                                                                            className="h-7 text-xs px-2"
+                                                                            onClick={() => handleOpenAjuste(lancRef)}
+                                                                        >
+                                                                            <PlusCircle className="h-3.5 w-3.5 mr-1" /> Ajuste
+                                                                        </Button>
+                                                                    )}
+                                                                </td>
+                                                            )}
+                                                        </tr>
+
+                                                        {/* Sub-linhas de ajuste */}
+                                                        {expanded && g.ajustes.map((aj) => (
+                                                            <tr key={aj.id} className="bg-amber-500/5 border-t border-amber-500/20">
+                                                                <td className="px-4 py-1.5 pl-8 text-xs text-amber-700" colSpan={2}>
+                                                                    <span className="flex items-center gap-1">
+                                                                        <History className="w-3 h-3" />
+                                                                        {formatDate(aj.data_lancamento)} · {aj.motivo_ajuste ?? "Ajuste"}
+                                                                        {aj.adjusted_by_nome && (
+                                                                            <span className="text-muted-foreground ml-1">por {aj.adjusted_by_nome}</span>
+                                                                        )}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="px-3 py-1.5 text-center text-xs text-muted-foreground">—</td>
+                                                                <td className="px-4 py-1.5 text-right text-xs text-muted-foreground">—</td>
+                                                                <td className={cn(
+                                                                    "px-4 py-1.5 text-right font-mono text-xs font-medium",
+                                                                    Number(aj.valor_calculado) >= 0 ? "text-emerald-600" : "text-red-600",
+                                                                )}>
+                                                                    {formatCurrency(Number(aj.valor_calculado))}
+                                                                </td>
+                                                                <td className="px-4 py-1.5" />
+                                                                {canAdjust && <td className="px-2 py-1.5" />}
+                                                            </tr>
+                                                        ))}
+                                                    </>
+                                                );
+                                            })}
+                                        </tbody>
+                                        <tfoot className="bg-muted border-t border-border/50">
+                                            <tr>
+                                                <td colSpan={3} className="px-4 py-3 font-bold text-right text-sm">TOTAL GERAL:</td>
+                                                <td className="px-4 py-3 text-right font-mono font-bold text-sm">
+                                                    {formatCurrency(dadosAgrupados.reduce((a, g) => a + g.valorBase, 0))}
+                                                </td>
+                                                <td className={cn(
+                                                    "px-4 py-3 text-right font-mono font-bold text-sm",
+                                                    dadosAgrupados.reduce((a, g) => a + g.valorAjustes, 0) >= 0 ? "text-emerald-600" : "text-red-600",
+                                                )}>
+                                                    {formatCurrency(dadosAgrupados.reduce((a, g) => a + g.valorAjustes, 0))}
+                                                </td>
+                                                <td className="px-4 py-3 text-right font-mono font-bold text-lg text-emerald-600">
+                                                    {formatCurrency(valorTotalComAjustes)}
+                                                </td>
+                                                {canAdjust && <td />}
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
                     </div>
 
-                    <DialogFooter className="flex items-center justify-between sm:justify-between w-full">
+                    <DialogFooter className="flex items-center justify-between sm:justify-between w-full px-6 py-4 border-t bg-background shrink-0">
                         <div className="flex gap-2">
                             <Button variant="outline" onClick={exportarXlsx}>
                                 <Download className="h-4 w-4 mr-2" /> Exportar Planilha
                             </Button>
-                            {selectedLote && (
+                            {/* O2 / C1: CNAB bloqueado para lote já pago ou se já foi gerado */}
+                            {selectedLote && selectedLote.status !== "pago" && selectedLote.status !== "cnab_gerado" && (
                                 <Button
                                     variant="outline"
                                     className="border-indigo-400 text-indigo-700 hover:bg-indigo-50"
@@ -683,14 +771,11 @@ export const CentralBancariaDiaristas = () => {
                         </div>
                         <div className="flex gap-2">
                             <Button variant="ghost" onClick={() => setOpenDetalhe(false)}>Fechar</Button>
+                            {/* C2: confirm() substituído por Dialog próprio */}
                             {selectedLote?.status !== "pago" && (
                                 <Button
                                     className="bg-emerald-600 hover:bg-emerald-700"
-                                    onClick={() => {
-                                        if (confirm("Confirmar pagamento deste lote?")) {
-                                            marcarPagoMutation.mutate(selectedLote!.id);
-                                        }
-                                    }}
+                                    onClick={() => { setLoteParaPagar(selectedLote); setOpenConfirmPago(true); }}
                                     disabled={marcarPagoMutation.isPending}
                                 >
                                     <CheckCircle2 className="h-4 w-4 mr-2" />
@@ -886,6 +971,62 @@ export const CentralBancariaDiaristas = () => {
                                 : <FileCode2 className="h-4 w-4 mr-2" />
                             }
                             {cnabMutation.isPending ? "Gerando..." : "Gerar e Baixar CNAB"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* ── C2: MODAL DE CONFIRMAÇÃO DE PAGAMENTO ── */}
+            <Dialog open={openConfirmPago} onOpenChange={(v) => { setOpenConfirmPago(v); if (!v) setLoteParaPagar(null); }}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-emerald-700">
+                            <CheckCircle2 className="h-5 w-5" />
+                            Confirmar Pagamento
+                        </DialogTitle>
+                        <DialogDescription>
+                            Revise os dados abaixo antes de confirmar. Esta ação é auditada e não pode ser desfeita sem intervenção do Admin.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {loteParaPagar && (
+                        <div className="space-y-3 py-2">
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="esc-card p-3">
+                                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Período</p>
+                                    <p className="font-mono font-semibold text-sm">
+                                        {formatDate(loteParaPagar.periodo_inicio)} → {formatDate(loteParaPagar.periodo_fim)}
+                                    </p>
+                                </div>
+                                <div className="esc-card p-3">
+                                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Registros</p>
+                                    <p className="font-mono font-semibold text-sm">{loteParaPagar.total_registros} diaristas</p>
+                                </div>
+                            </div>
+                            <div className="esc-card p-4 flex justify-between items-center border-2 border-emerald-500/30">
+                                <span className="text-sm font-medium text-muted-foreground">Valor total a pagar</span>
+                                <span className="font-mono font-bold text-xl text-emerald-700">
+                                    {formatCurrency(Number(loteParaPagar.valor_total))}
+                                </span>
+                            </div>
+                            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs text-amber-700">
+                                ⚠️ Após confirmar, o lote será marcado como <strong>pago</strong> e não poderá ser editado sem reabertura pelo Admin.
+                            </div>
+                        </div>
+                    )}
+
+                    <DialogFooter>
+                        <Button variant="ghost" onClick={() => setOpenConfirmPago(false)} disabled={marcarPagoMutation.isPending}>
+                            Cancelar
+                        </Button>
+                        <Button
+                            className="bg-emerald-600 hover:bg-emerald-700"
+                            disabled={marcarPagoMutation.isPending}
+                            onClick={() => { if (loteParaPagar) marcarPagoMutation.mutate(loteParaPagar.id); }}
+                        >
+                            {marcarPagoMutation.isPending
+                                ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Salvando...</>
+                                : <><CheckCircle2 className="h-4 w-4 mr-2" />Confirmar Pagamento</>}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

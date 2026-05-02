@@ -39,18 +39,6 @@ const FinanceiroGeral = () => {
         enabled: !!selectedEmpresaId,
     });
 
-    const reprocessMutation = useMutation({
-        mutationFn: () => AIService.processDay(`${selectedMonth}-01`, selectedEmpresaId!),
-        onSuccess: () => {
-            toast.success("Reprocessamento concluído", { description: "Os dados financeiros foram atualizados." });
-            queryClient.invalidateQueries({ queryKey: ["consolidado", selectedMonth, selectedEmpresaId] });
-            queryClient.invalidateQueries({ queryKey: ["competencia", selectedMonth, selectedEmpresaId] });
-        },
-        onError: (err: any) => {
-            toast.error("Erro ao reprocessar", { description: err.message });
-        }
-    });
-
     const consolidarMutation = useMutation({
         mutationFn: async () => {
             // Em cenários reais, aqui haveria uma lógica de fechamento de competência
@@ -114,21 +102,13 @@ const FinanceiroGeral = () => {
                     </div>
                     <div className="flex gap-2">
                         <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => reprocessMutation.mutate()}
-                            disabled={reprocessMutation.isPending}
-                        >
-                            {reprocessMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-                            Reprocessar competência
-                        </Button>
-                        <Button
                             size="sm"
                             onClick={() => consolidarMutation.mutate()}
-                            disabled={consolidarMutation.isPending}
+                            disabled={consolidarMutation.isPending || comp?.status === 'fechada'}
+                            title={comp?.status === 'fechada' ? "Competência fechada não pode ser reprocessada livremente." : "Processa os lançamentos do período"}
                         >
                             {consolidarMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Layers className="h-4 w-4 mr-2" />}
-                            Consolidar faturamento
+                            Consolidar Faturamento
                         </Button>
                     </div>
                 </div>

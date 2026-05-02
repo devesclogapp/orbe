@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,6 +39,7 @@ const emptyForm = {
 const RhDiaristasGestao = () => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
+    const navigate = useNavigate();
     const [open, setOpen] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [form, setForm] = useState({ ...emptyForm });
@@ -152,6 +154,12 @@ const RhDiaristasGestao = () => {
 
     return (
         <AppShell title="Gestão de Diaristas" subtitle="Cadastre e gerencie os diaristas da empresa">
+            <div className="flex justify-end mb-4">
+                <Button variant="outline" size="sm" onClick={() => navigate("/rh/diaristas")}>
+                    <Users className="h-4 w-4 mr-2" />
+                    Ir para o Painel
+                </Button>
+            </div>
             <div className="space-y-4">
                 <div className="flex justify-between items-center bg-background p-2 rounded-lg border border-border/50">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">

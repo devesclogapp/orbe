@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
-import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, subWeeks, addWeeks, eachDayOfInterval, isToday } from "date-fns";
+import { format, startOfWeek, endOfWeek, subWeeks, eachDayOfInterval, isToday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +20,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Download, Loader2, Lock, RefreshCw, Users, Calendar, Table as TableIcon } from "lucide-react";
+import { CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Download, ExternalLink, Loader2, Lock, RefreshCw, Users, Calendar, Table as TableIcon } from "lucide-react";
 
 const formatCurrency = (v: number) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
@@ -30,11 +31,12 @@ const formatDate = (d: string) =>
 type StatusFilter = "todos" | "em_aberto" | "fechado_para_pagamento" | "pago";
 
 type Visao = "diarista" | "data" | "grade_semanal";
-type PeriodoRapido = "semana_atual" | "semana_anterior" | "proxima_semana" | "personalizado";
+type PeriodoRapido = "semana_atual" | "semana_anterior" | "personalizado";
 
 const RhDiaristasPainel = () => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
+    const navigate = useNavigate();
 
     const [periodoRapido, setPeriodoRapido] = useState<PeriodoRapido>("semana_atual");
 
@@ -42,7 +44,7 @@ const RhDiaristasPainel = () => {
     const [inicio, setInicio] = useState(format(startOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd"));
     const [fim, setFim] = useState(format(endOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd"));
 
-    const [visao, setVisao] = useState<Visao>("diarista");
+    const [visao, setVisao] = useState<Visao>("grade_semanal");
     const [statusFiltro, setStatusFiltro] = useState<StatusFilter>("todos");
     const [nomeFiltro, setNomeFiltro] = useState("");
     const [funcaoFiltro, setFuncaoFiltro] = useState("todos");
@@ -62,7 +64,18 @@ const RhDiaristasPainel = () => {
         queryFn: () => EmpresaService.getAll(),
     });
 
-    const empresaId = perfil?.empresa_id ?? ((empresas as any[])[0]?.id ?? "");
+    // C4: Guard — Admin pode selecionar qualquer empresa; perfis com papel fixo
+    // usam SOMENTE sua empresa. Se o perfil está carregado e não tem empresa_id,
+    // bloqueamos a operação para evitar fechamento na empresa errada.
+    const isAdmin = perfil?.papel === "Admin";
+    const empresaId = isAdmin
+        ? perfil?.empresa_id ?? ((empresas as any[])[0]?.id ?? "")
+        : (perfil?.empresa_id ?? "");
+    const empresaSemVinculo = !isAdmin && !!perfil && !perfil.empresa_id;
+    const empresaNome = useMemo(
+        () => (empresas as any[]).find((e) => e.id === empresaId)?.nome ?? "",
+        [empresas, empresaId],
+    );
 
     const { data: lancamentos = [], isLoading, isFetching, refetch } = useQuery({
         queryKey: ["lancamentos_diaristas_painel", empresaId, inicio, fim, statusFiltro === "todos" ? undefined : statusFiltro],
@@ -73,13 +86,13 @@ const RhDiaristasPainel = () => {
                 fim,
                 statusFiltro !== "todos" ? { status: statusFiltro as any } : undefined,
             ),
-        enabled: !!empresaId,
+        enabled: !!empresaId && !empresaSemVinculo,
     });
 
     const { data: lotes = [], refetch: refetchLotes } = useQuery({
         queryKey: ["lotes_fechamento", empresaId],
         queryFn: () => LoteFechamentoDiaristaService.getByEmpresa(empresaId),
-        enabled: !!empresaId,
+        enabled: !!empresaId && !empresaSemVinculo,
     });
 
     // Agrupar lançamentos por diarista
@@ -172,12 +185,28 @@ const RhDiaristasPainel = () => {
             }));
     }, [lancamentos, nomeFiltro, funcaoFiltro]);
 
-    const totalGeral = useMemo(() => ({
-        valorTotal: dadosAgrupados.reduce((a, g) => a + g.valorTotal, 0),
-        totalDiaristas: dadosAgrupados.length,
-        totalRegistros: (lancamentos as any[]).length,
-        emAberto: (lancamentos as any[]).filter((l) => l.status === "em_aberto").length,
-    }), [dadosAgrupados, lancamentos]);
+    // KPIs baseados nos dados filtrados (reagem ao statusFiltro e filtros de nome/função)
+    const totalGeral = useMemo(() => {
+        // Para KPIs, usa os lancamentos filtrados por status (mas sem filtro de nome/função)
+        // para preservar a semântica: "total do que está visível no status selecionado"
+        const lancsFiltradosPorStatus = statusFiltro !== "todos"
+            ? (lancamentos as any[]).filter((l) => l.status === statusFiltro)
+            : (lancamentos as any[]);
+        return {
+            valorTotal: dadosAgrupados.reduce((a, g) => a + g.valorTotal, 0),
+            totalDiaristas: dadosAgrupados.length,
+            totalRegistros: lancsFiltradosPorStatus.length,
+            emAberto: (lancamentos as any[]).filter((l) => l.status === "em_aberto").length,
+        };
+    }, [dadosAgrupados, lancamentos, statusFiltro]);
+
+    // C5: rawEmAberto usa lancamentos SEM FILTRO para não bloquear o botão
+    // quando o usuário tem filtros de nome/função ativos
+    const rawEmAberto = useMemo(
+        () => (lancamentos as any[]).filter((l) => l.status === "em_aberto").length,
+        [lancamentos],
+    );
+    const temFiltroAtivo = nomeFiltro.trim() !== "" || funcaoFiltro !== "todos";
 
     const diasDaSemanaBase = useMemo(() => {
         try {
@@ -192,6 +221,13 @@ const RhDiaristasPainel = () => {
         return Array.from(set);
     }, [lancamentos]);
 
+    const possivelmenteIncompleto = useMemo(() => {
+        // Alerta O3: Verifica se algum diarista possui menos lançamentos de diárias do que dias úteis no período
+        const totalDiasUteis = diasDaSemanaBase.filter(d => d.getDay() !== 0 && d.getDay() !== 6).length;
+        if (totalDiasUteis <= 0) return false;
+        return dadosAgrupados.some((g) => g.lancamentos.length < totalDiasUteis);
+    }, [dadosAgrupados, diasDaSemanaBase]);
+
     const changePeriodoRapido = (periodo: PeriodoRapido) => {
         setPeriodoRapido(periodo);
         const hoje = new Date();
@@ -204,11 +240,6 @@ const RhDiaristasPainel = () => {
                 const semanaAnterior = subWeeks(hoje, 1);
                 setInicio(format(startOfWeek(semanaAnterior, { weekStartsOn: 1 }), "yyyy-MM-dd"));
                 setFim(format(endOfWeek(semanaAnterior, { weekStartsOn: 1 }), "yyyy-MM-dd"));
-                break;
-            case "proxima_semana":
-                const proximaSemana = addWeeks(hoje, 1);
-                setInicio(format(startOfWeek(proximaSemana, { weekStartsOn: 1 }), "yyyy-MM-dd"));
-                setFim(format(endOfWeek(proximaSemana, { weekStartsOn: 1 }), "yyyy-MM-dd"));
                 break;
             default:
                 break;
@@ -228,7 +259,14 @@ const RhDiaristasPainel = () => {
             });
         },
         onSuccess: (lote) => {
-            toast.success(`Período fechado. ${lote.total_registros} registros · ${formatCurrency(lote.valor_total)}`);
+            // M2: Toast com CTA para o Financeiro
+            toast.success(`Período fechado. ${lote.total_registros} registros · ${formatCurrency(lote.valor_total)}`, {
+                action: {
+                    label: "Ver no Bancário →",
+                    onClick: () => navigate("/bancario"),
+                },
+                duration: 8000,
+            });
             setOpenFechamento(false);
             setObsLote("");
             setConfirmText("");
@@ -271,15 +309,52 @@ const RhDiaristasPainel = () => {
 
     return (
         <AppShell title="Painel de Diaristas" subtitle="Acompanhamento consolidado · formato planilha">
+            <div className="flex justify-end mb-4">
+                <Button variant="outline" size="sm" onClick={() => navigate("/rh/diaristas/cadastros")}>
+                    <Users className="h-4 w-4 mr-2" />
+                    Gerenciar Cadastros
+                </Button>
+            </div>
             <div className="space-y-4">
 
-                {/* KPIs rápidos */}
+                {/* C4: Bloquear se RH não tem empresa vinculada */}
+                {empresaSemVinculo && (
+                    <div className="esc-card p-5 border-destructive/50 bg-destructive/5 flex items-start gap-3">
+                        <span className="text-2xl">⛔</span>
+                        <div>
+                            <p className="font-bold text-destructive">Perfil sem empresa vinculada</p>
+                            <p className="text-sm text-muted-foreground mt-1">
+                                Seu usuário não possui uma empresa associada. Solicite ao administrador que vincule
+                                sua conta a uma empresa antes de lançar ou fechar períodos.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
+                {/* Empresa atual em visão (orienta o usuário) */}
+                {empresaNome && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
+                        <span className="inline-flex items-center gap-1 bg-muted px-2 py-1 rounded-full">
+                            🏢 <span className="font-medium">{empresaNome}</span>
+                        </span>
+                    </div>
+                )}
+
+                {/* KPIs rápidos — reagem aos filtros ativos */}
+                {statusFiltro !== "todos" && (
+                    <div className="flex items-center gap-2 px-1">
+                        <span className="inline-flex items-center gap-1.5 bg-blue-500/10 text-blue-700 border border-blue-500/30 text-xs font-semibold px-2.5 py-1 rounded-full">
+                            <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+                            KPIs refletem o filtro: {statusFiltro === "em_aberto" ? "Em aberto" : statusFiltro === "fechado_para_pagamento" ? "Fechado / aguardando pagamento" : "Pago"}
+                        </span>
+                    </div>
+                )}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     {[
-                        { label: "Diaristas no período", value: totalGeral.totalDiaristas },
-                        { label: "Registros totais", value: totalGeral.totalRegistros },
+                        { label: "Diaristas", value: totalGeral.totalDiaristas },
+                        { label: statusFiltro !== "todos" ? `Registros (${statusFiltro === "em_aberto" ? "abertos" : statusFiltro === "pago" ? "pagos" : "fechados"})` : "Registros totais", value: totalGeral.totalRegistros },
                         { label: "Em aberto", value: totalGeral.emAberto, color: totalGeral.emAberto > 0 ? "text-amber-600" : "text-emerald-600" },
-                        { label: "Valor total", value: formatCurrency(totalGeral.valorTotal), large: true },
+                        { label: statusFiltro !== "todos" ? "Valor (filtrado)" : "Valor total", value: formatCurrency(totalGeral.valorTotal), large: true },
                     ].map((k) => (
                         <div key={k.label} className="esc-card p-4 text-center">
                             <p className="text-xs text-muted-foreground mb-1">{k.label}</p>
@@ -298,7 +373,6 @@ const RhDiaristasPainel = () => {
                                 <SelectContent>
                                     <SelectItem value="semana_atual">Semana atual</SelectItem>
                                     <SelectItem value="semana_anterior">Semana anterior</SelectItem>
-                                    <SelectItem value="proxima_semana">Próxima semana</SelectItem>
                                     <SelectItem value="personalizado">Personalizado</SelectItem>
                                 </SelectContent>
                             </Select>
@@ -344,9 +418,34 @@ const RhDiaristasPainel = () => {
                             <Button variant="outline" size="sm" className="h-8" onClick={exportarXlsx} disabled={dadosAgrupados.length === 0}>
                                 <Download className="h-3.5 w-3.5 mr-1" /> Exportar
                             </Button>
-                            <Button size="sm" className="h-8 font-bold bg-blue-600 hover:bg-blue-700" onClick={() => setOpenFechamento(true)} disabled={totalGeral.emAberto === 0}>
-                                <Lock className="h-3.5 w-3.5 mr-1" /> Fechar período
-                            </Button>
+                            {/* C5: desabilitado baseado no rawEmAberto (sem filtros) + hint de explicação */}
+                            {/* UX: cor amber/warning para diferenciar de ação primária comum */}
+                            <div className="relative group">
+                                <Button
+                                    size="sm"
+                                    className={cn(
+                                        "h-8 font-bold transition-colors",
+                                        rawEmAberto > 0 && !empresaSemVinculo
+                                            ? "bg-amber-600 hover:bg-amber-700 text-white"
+                                            : "bg-muted text-muted-foreground cursor-not-allowed"
+                                    )}
+                                    onClick={() => setOpenFechamento(true)}
+                                    disabled={rawEmAberto === 0 || empresaSemVinculo}
+                                >
+                                    <Lock className="h-3.5 w-3.5 mr-1" /> Fechar período
+                                    {rawEmAberto > 0 && (
+                                        <span className="ml-1.5 bg-white/20 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                                            {rawEmAberto}
+                                        </span>
+                                    )}
+                                </Button>
+                                {rawEmAberto === 0 && !empresaSemVinculo && (
+                                    <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block w-56 bg-popover border border-border rounded-lg shadow-lg p-2.5 text-xs text-muted-foreground z-50">
+                                        Nenhum lançamento <strong>em aberto</strong> no período selecionado.
+                                        {temFiltroAtivo && " (Você tem filtros ativos — limpe-os para ver todos.)"}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -357,9 +456,21 @@ const RhDiaristasPainel = () => {
                         <button
                             className={cn(
                                 "flex items-center px-4 py-1.5 text-sm font-medium rounded-md transition-colors",
+                                visao === "grade_semanal" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                            )}
+                            onClick={() => setVisao("grade_semanal")}
+                            title="Visão sugerida para conferência diária presencial"
+                        >
+                            <TableIcon className="h-4 w-4 mr-2" />
+                            Grade Semanal
+                        </button>
+                        <button
+                            className={cn(
+                                "flex items-center px-4 py-1.5 text-sm font-medium rounded-md transition-colors",
                                 visao === "diarista" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                             )}
                             onClick={() => setVisao("diarista")}
+                            title="Visão totalizadora por pessoa (útil para fechamento financeiro)"
                         >
                             <Users className="h-4 w-4 mr-2" />
                             Agrupar por Diarista
@@ -370,19 +481,10 @@ const RhDiaristasPainel = () => {
                                 visao === "data" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                             )}
                             onClick={() => setVisao("data")}
+                            title="Visão de custo diário isolado da operação"
                         >
                             <Calendar className="h-4 w-4 mr-2" />
                             Agrupar por Data
-                        </button>
-                        <button
-                            className={cn(
-                                "flex items-center px-4 py-1.5 text-sm font-medium rounded-md transition-colors",
-                                visao === "grade_semanal" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-                            )}
-                            onClick={() => setVisao("grade_semanal")}
-                        >
-                            <TableIcon className="h-4 w-4 mr-2" />
-                            Grade Semanal
                         </button>
                     </div>
 
@@ -704,50 +806,39 @@ const RhDiaristasPainel = () => {
                     )}
                 </section>
 
-                {/* Histórico de lotes */}
-                {(lotes as any[]).length > 0 && (
-                    <section className="esc-card overflow-hidden">
-                        <div className="p-4 border-b border-border flex items-center gap-2">
-                            <Lock className="h-4 w-4 text-muted-foreground" />
-                            <h3 className="font-display font-bold text-foreground">Histórico de fechamentos</h3>
-                        </div>
-                        <table className="w-full text-sm">
-                            <thead className="esc-table-header">
-                                <tr className="text-left">
-                                    <th className="px-5 h-10 font-medium">Período</th>
-                                    <th className="px-3 h-10 font-medium text-center">Registros</th>
-                                    <th className="px-3 h-10 font-medium text-right">Valor total</th>
-                                    <th className="px-3 h-10 font-medium">Fechado por</th>
-                                    <th className="px-5 h-10 font-medium text-center">Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {(lotes as any[]).map((l: any) => (
-                                    <tr key={l.id} className="border-t border-muted hover:bg-background">
-                                        <td className="px-5 h-12 font-mono text-xs text-muted-foreground">
-                                            {formatDate(l.periodo_inicio)} → {formatDate(l.periodo_fim)}
-                                        </td>
-                                        <td className="px-3 text-center font-mono">{l.total_registros}</td>
-                                        <td className="px-3 text-right font-mono font-semibold">{formatCurrency(Number(l.valor_total))}</td>
-                                        <td className="px-3 text-muted-foreground text-xs">{l.fechado_por_nome ?? l.fechado_por ?? "—"}</td>
-                                        <td className="px-5 text-center">
-                                            <span className={cn(
-                                                "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold",
-                                                l.status === "fechado_para_pagamento" && "bg-blue-500/15 text-blue-700",
-                                                l.status === "pago" && "bg-emerald-500/15 text-emerald-700",
-                                                l.status === "cancelado" && "bg-muted text-muted-foreground",
-                                            )}>
-                                                {l.status === "fechado_para_pagamento" && "Aguardando Pgto"}
-                                                {l.status === "pago" && "Pago"}
-                                                {l.status === "cancelado" && "Cancelado"}
-                                            </span>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </section>
-                )}
+                {/* M1: Banner compacto de lotes — RH não precisa ver dados financeiros detalhados */}
+                {(lotes as any[]).length > 0 && (() => {
+                    const pendentes = (lotes as any[]).filter((l) => l.status === "fechado_para_pagamento" || l.status === "cnab_gerado").length;
+                    const pagos = (lotes as any[]).filter((l) => l.status === "pago").length;
+                    return (
+                        <section className="border border-border/60 rounded-xl overflow-hidden">
+                            <div className="px-4 py-2.5 bg-muted/40 border-b border-border/40 flex items-center gap-2">
+                                <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Situação dos Lotes no Financeiro</span>
+                            </div>
+                            <div className="p-4 flex items-center justify-between gap-4 bg-card">
+                                <div className="flex items-center gap-3">
+                                    <div>
+                                        <p className="font-display font-bold text-sm text-foreground">Lotes já enviados ao Financeiro</p>
+                                        <p className="text-xs text-muted-foreground mt-0.5">
+                                            {pendentes > 0 && <span className="text-amber-600 font-semibold mr-2">{pendentes} aguardando pagamento</span>}
+                                            {pendentes === 0 && <span className="text-emerald-600 font-semibold mr-2">Nenhum lote pendente </span>}
+                                            {pagos > 0 && <span className="text-emerald-600 font-semibold">{pagos} já pago(s)</span>}
+                                        </p>
+                                    </div>
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="shrink-0 border-blue-400 text-blue-700 hover:bg-blue-50"
+                                    onClick={() => navigate("/bancario")}
+                                >
+                                    <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> Ver em Pagamentos
+                                </Button>
+                            </div>
+                        </section>
+                    );
+                })()}
             </div>
 
             {/* Dialog de fechamento */}
@@ -761,6 +852,11 @@ const RhDiaristasPainel = () => {
                             e alterar o status para <strong>fechado_para_pagamento</strong>.
                         </DialogDescription>
                     </DialogHeader>
+                    {possivelmenteIncompleto && (
+                        <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs text-amber-700 mt-2">
+                            ⚠️ <strong>Aviso de completude:</strong> Parece que há diaristas com menos lançamentos do que dias úteis no período selecionado. Verifique se não estão faltando dias (ex: faltas sem registro de "Ausente") antes de fechar.
+                        </div>
+                    )}
                     <div className="space-y-3 py-2">
                         <div className="esc-card p-4 flex justify-between items-center">
                             <span className="text-sm text-muted-foreground">Valor a fechar</span>

@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect } from "react";
-import { format } from "date-fns";
+import { format, subWeeks } from "date-fns";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, CalendarDays, CheckCircle2, Clock, Save, Users, XCircle } from "lucide-react";
+import { Building2, CalendarDays, CheckCircle2, Clock, Save, Users, XCircle, History } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 import { OperationalShell } from "@/components/layout/OperationalShell";
 import { Button } from "@/components/ui/button";
@@ -54,6 +55,7 @@ const DiaristasLancamento = () => {
     const [operacaoServico, setOperacaoServico] = useState("");
     const [observacoesGerais, setObservacoesGerais] = useState("");
     const [marcacoes, setMarcacoes] = useState<Record<string, ItemMarcacao>>({});
+    const [openHistorico, setOpenHistorico] = useState(false);
 
     const { data: perfil } = useQuery({
         queryKey: ["perfil_usuario", user?.id],
@@ -85,6 +87,13 @@ const DiaristasLancamento = () => {
         queryKey: ["lancamentos_diaristas_hoje", empresaIdParaBusca, data],
         queryFn: () => LancamentoDiaristaService.getByData(empresaIdParaBusca, data),
         enabled: !!empresaIdParaBusca,
+    });
+
+    const fourteenDaysAgo = format(subWeeks(new Date(), 2), "yyyy-MM-dd");
+    const { data: historicoRecente = [], isLoading: isLoadingHistorico } = useQuery({
+        queryKey: ["historico_recente_diaristas", empresaIdParaBusca],
+        queryFn: () => LancamentoDiaristaService.getByPeriodo(empresaIdParaBusca, fourteenDaysAgo, today, { encarregado_id: user?.id }),
+        enabled: !!empresaIdParaBusca && openHistorico,
     });
 
     const { data: regrasMarcacao = [], isLoading: isLoadingRegras } = useQuery({
@@ -185,16 +194,33 @@ const DiaristasLancamento = () => {
     const isDataRetroativa = data < today;
     const diaristasArray = diaristas as any[];
 
+    // Mapa de lançamentos já existentes para o dia selecionado, por diarista_id
+    const lancamentosHojeMap = useMemo(() => {
+        const map: Record<string, number> = {};
+        (lancamentosHoje as any[]).forEach((l: any) => {
+            map[l.diarista_id] = (map[l.diarista_id] || 0) + 1;
+        });
+        return map;
+    }, [lancamentosHoje]);
+
+    const totalDiaristasComLancamento = useMemo(
+        () => Object.keys(lancamentosHojeMap).length,
+        [lancamentosHojeMap]
+    );
+
     return (
         <OperationalShell title="Lançamento de Diaristas">
             <div className="max-w-4xl mx-auto space-y-6">
 
-                {/* Resumo de lançamentos do dia */}
+                {/* Alerta de lançamentos já registrados no dia */}
                 {(lancamentosHoje as any[]).length > 0 && (
                     <div className="esc-card p-4 border-l-4 border-l-emerald-500">
-                        <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-1">Já lançado hoje</p>
+                        <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-1">Já lançado nesta data</p>
                         <p className="text-sm text-foreground">
-                            <span className="font-semibold text-emerald-600">{(lancamentosHoje as any[]).length} registro(s)</span> já foram salvos para o dia <span className="font-mono">{format(new Date(data + "T12:00:00"), "dd/MM/yyyy")}</span>.
+                            <span className="font-semibold text-emerald-600">{(lancamentosHoje as any[]).length} registro(s)</span>{" "}
+                            para <span className="font-semibold text-emerald-600">{totalDiaristasComLancamento} diarista(s)</span>{" "}
+                            já foram salvos para <span className="font-mono">{format(new Date(data + "T12:00:00"), "dd/MM/yyyy")}</span>.
+                            {" "}<span className="text-amber-600 font-medium">Novos registros serão adicionados aos existentes.</span>
                         </p>
                     </div>
                 )}
@@ -331,7 +357,14 @@ const DiaristasLancamento = () => {
                                                     {d.nome?.substring(0, 1).toUpperCase()}
                                                 </div>
                                                 <div className="flex flex-col">
-                                                    <p className="font-display font-bold text-foreground text-sm truncate">{d.nome}</p>
+                                                    <div className="flex items-center gap-2">
+                                                        <p className="font-display font-bold text-foreground text-sm truncate">{d.nome}</p>
+                                                        {lancamentosHojeMap[d.id] > 0 && (
+                                                            <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-700 shrink-0">
+                                                                ⚠️ {lancamentosHojeMap[d.id]}x já lançado
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                     <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
                                                         <span className="font-medium bg-muted px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider text-foreground">{d.funcao}</span>
                                                         {d.cpf && <span className="font-mono">CPF {d.cpf}</span>}
@@ -435,8 +468,17 @@ const DiaristasLancamento = () => {
                     </section>
                 )}
 
-                {/* Botão de salvar */}
-                <div className="flex justify-end">
+                {/* Botões de Ação */}
+                <div className="flex justify-between items-center bg-background p-4 rounded-xl border border-border mt-4">
+                    <Button
+                        variant="outline"
+                        onClick={() => setOpenHistorico(true)}
+                        disabled={!empresaIdSelecionada}
+                    >
+                        <History className="h-4 w-4 mr-2" />
+                        Histórico recente (14 dias)
+                    </Button>
+
                     <Button
                         size="lg"
                         className="min-w-[180px] font-display font-bold"
@@ -448,6 +490,47 @@ const DiaristasLancamento = () => {
                     </Button>
                 </div>
             </div>
+
+            <Dialog open={openHistorico} onOpenChange={setOpenHistorico}>
+                <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>Meus Lançamentos (Últimos 14 dias)</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                        {isLoadingHistorico ? (
+                            <div className="text-center p-8 text-muted-foreground animate-pulse text-sm">Carregando histórico...</div>
+                        ) : (historicoRecente as any[]).length === 0 ? (
+                            <div className="text-center p-8 text-muted-foreground border border-dashed rounded-lg">Nenhum lançamento nos últimos 14 dias para esta empresa.</div>
+                        ) : (
+                            <div className="divide-y divide-border border rounded-lg overflow-hidden">
+                                {(historicoRecente as any[]).map((h: any) => (
+                                    <div key={h.id} className="p-4 bg-card flex items-center justify-between transition-colors hover:bg-muted/50">
+                                        <div>
+                                            <p className="font-bold text-sm text-foreground">{h.nome_colaborador}</p>
+                                            <div className="flex gap-2 text-xs text-muted-foreground mt-1">
+                                                <span>Data: <b className="text-foreground">{format(new Date(h.data_lancamento + "T12:00:00"), "dd/MM/yyyy")}</b></span>
+                                                <span>•</span>
+                                                <span>Serviço: <b className="text-foreground">{h.operacao_servico || "—"}</b></span>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <div className="text-right">
+                                                <span className={cn(
+                                                    "px-2 py-0.5 rounded text-xs font-bold",
+                                                    h.status === "em_aberto" ? "bg-amber-100 text-amber-700" :
+                                                        "bg-emerald-100 text-emerald-700"
+                                                )}>
+                                                    {h.status === "em_aberto" ? "Em Aberto" : "Processado"}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </DialogContent>
+            </Dialog>
         </OperationalShell>
     );
 };

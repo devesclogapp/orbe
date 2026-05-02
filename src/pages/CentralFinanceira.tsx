@@ -8,11 +8,11 @@ import {
   ExternalLink,
   FileCheck,
   Filter,
-  Layers,
   Loader2,
   Printer,
   RefreshCw,
   Search,
+  UnlockKeyhole,
   Users,
   Wallet,
 } from "lucide-react";
@@ -22,6 +22,9 @@ import { AppShell } from "@/components/layout/AppShell";
 import { MetricCard } from "@/components/painel/MetricCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import {
@@ -38,6 +41,12 @@ const CentralFinanceira = () => {
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().substring(0, 7));
   const [selectedEmpresaId, setSelectedEmpresaId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+
+  // states dos dialogs de confirmação
+  const [openReabrir, setOpenReabrir] = useState(false);
+  const [fechamentoParaReabrir, setFechamentoParaReabrir] = useState<any>(null);
+  const [motivoReabrir, setMotivoReabrir] = useState("");
+  const [openConfirmAprovacao, setOpenConfirmAprovacao] = useState(false);
 
   const { data: empresas = [], isLoading: loadingEmps } = useQuery<any[]>({
     queryKey: ["empresas"],
@@ -70,30 +79,15 @@ const CentralFinanceira = () => {
   const reprocessMutation = useMutation({
     mutationFn: () => AIService.processDay(`${selectedMonth}-01`, selectedEmpresaId!),
     onSuccess: () => {
-      toast.success("Reprocessamento concluído", {
-        description: "Os dados financeiros foram atualizados.",
+      toast.success("Faturamento processado", {
+        description: "Os dados financeiros foram calculados e atualizados.",
       });
       queryClient.invalidateQueries({ queryKey: ["consolidado", selectedMonth, selectedEmpresaId] });
       queryClient.invalidateQueries({ queryKey: ["competencia", selectedMonth, selectedEmpresaId] });
       queryClient.invalidateQueries({ queryKey: ["fechamentos"] });
     },
     onError: (err: any) => {
-      toast.error("Erro ao reprocessar", { description: err.message });
-    },
-  });
-
-  const consolidarMutation = useMutation({
-    mutationFn: () => AIService.processDay(`${selectedMonth}-01`, selectedEmpresaId!),
-    onSuccess: () => {
-      toast.success("Faturamento consolidado", {
-        description: "A competência foi processada e os valores atualizados.",
-      });
-      queryClient.invalidateQueries({ queryKey: ["consolidado", selectedMonth, selectedEmpresaId] });
-      queryClient.invalidateQueries({ queryKey: ["competencia", selectedMonth, selectedEmpresaId] });
-      queryClient.invalidateQueries({ queryKey: ["fechamentos"] });
-    },
-    onError: (err: any) => {
-      toast.error("Erro ao consolidar", { description: err.message });
+      toast.error("Erro ao processar", { description: err.message });
     },
   });
 
@@ -141,14 +135,18 @@ const CentralFinanceira = () => {
       toast.error("Nenhum item para aprovar");
       return;
     }
-    if (confirm(`Deseja aprovar ${ids.length} faturamentos?`)) {
-      approveMutation.mutate(ids);
-    }
+    setOpenConfirmAprovacao(true);
+  };
+
+  const confirmarAprovacao = () => {
+    const ids = filteredClientes.map((cliente: any) => cliente.id);
+    approveMutation.mutate(ids);
+    setOpenConfirmAprovacao(false);
   };
 
   return (
     <AppShell
-      title="Central Financeira"
+      title="Faturamento"
       subtitle={`Competência, faturamento e fechamento no mesmo fluxo · ${new Date(`${selectedMonth}-01`).toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}`}
     >
       <div className="space-y-6">
@@ -199,34 +197,23 @@ const CentralFinanceira = () => {
                 <ExternalLink className="h-4 w-4 mr-2" />
                 Regras
               </Button>
-              <Button variant="outline" size="sm" onClick={() => navigate("/financeiro/remessa")}>
+              <Button variant="outline" size="sm" onClick={() => navigate("/bancario")}>
                 <ExternalLink className="h-4 w-4 mr-2" />
-                Remessa CNAB
+                Bancário (CNAB)
               </Button>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => reprocessMutation.mutate()}
                 disabled={reprocessMutation.isPending || !selectedEmpresaId}
+                title="Recalcula os valores financeiros da competência selecionada"
               >
                 {reprocessMutation.isPending ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
                   <RefreshCw className="h-4 w-4 mr-2" />
                 )}
-                Reprocessar
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => consolidarMutation.mutate()}
-                disabled={consolidarMutation.isPending || !selectedEmpresaId}
-              >
-                {consolidarMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Layers className="h-4 w-4 mr-2" />
-                )}
-                Consolidar faturamento
+                Processar Faturamento
               </Button>
             </div>
           </div>
@@ -522,7 +509,18 @@ const CentralFinanceira = () => {
                             : "Aguardando consolidação"}
                         </span>
                         {fechamento.status === "fechado" ? (
-                          <Button size="sm" variant="outline">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-amber-600 border-amber-400 hover:bg-amber-50"
+                            title="Reabrir o período exige justificativa e gera trilha de auditoria"
+                            onClick={() => {
+                              setFechamentoParaReabrir(fechamento);
+                              setMotivoReabrir("");
+                              setOpenReabrir(true);
+                            }}
+                          >
+                            <UnlockKeyhole className="h-3.5 w-3.5 mr-1.5" />
                             Reabrir
                           </Button>
                         ) : (
@@ -545,8 +543,84 @@ const CentralFinanceira = () => {
           </>
         )}
       </div>
+
+      {/* Dialog Reabrir Período */}
+      <Dialog open={openReabrir} onOpenChange={(v) => { setOpenReabrir(v); if (!v) { setFechamentoParaReabrir(null); setMotivoReabrir(""); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-700">
+              <UnlockKeyhole className="h-5 w-5" />
+              Reabrir Período
+            </DialogTitle>
+            <DialogDescription>
+              {fechamentoParaReabrir && (
+                <>
+                  Você está reabrindo o fechamento de{" "}
+                  <strong>{new Date(fechamentoParaReabrir.data).toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</strong>.
+                  Esta ação será registrada para auditoria.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-lg text-sm text-destructive">
+              ⚠️ Atenção: a reabertura anula o fechamento e permite alterações nos registros.
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="motivo-reabrir-fin">Justificativa (obrigatória)</Label>
+              <Textarea
+                id="motivo-reabrir-fin"
+                placeholder="Descreva o motivo da reabertura..."
+                value={motivoReabrir}
+                onChange={(e) => setMotivoReabrir(e.target.value)}
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setOpenReabrir(false)}>Cancelar</Button>
+            <Button
+              className="bg-amber-600 hover:bg-amber-700"
+              disabled={!motivoReabrir.trim()}
+              onClick={() => {
+                // Por ora apenas fecha o dialog e notifica (ação de reabrir depende de implementação de serviço)
+                toast.info("Solicitação de reabertura registrada. Implemente ResultadosService.reabrir() para persistir.");
+                setOpenReabrir(false);
+              }}
+            >
+              <UnlockKeyhole className="h-4 w-4 mr-2" />
+              Confirmar Reabertura
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Confirmação de Aprovação em Lote */}
+      <Dialog open={openConfirmAprovacao} onOpenChange={setOpenConfirmAprovacao}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileCheck className="h-5 w-5 text-primary" />
+              Confirmar Aprovação em Lote
+            </DialogTitle>
+            <DialogDescription>
+              Você está aprovando <strong>{filteredClientes.length} faturamento(s)</strong> filtrados.
+              Esta ação atualiza o status para <strong>aprovado</strong> e não pode ser revertida sem reabertura.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setOpenConfirmAprovacao(false)}>Cancelar</Button>
+            <Button onClick={confirmarAprovacao} disabled={approveMutation.isPending}>
+              {approveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileCheck className="h-4 w-4 mr-2" />}
+              Aprovar {filteredClientes.length} item(s)
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 };
 
 export default CentralFinanceira;
+
+

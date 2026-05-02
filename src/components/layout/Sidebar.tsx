@@ -1,4 +1,4 @@
-import { LayoutDashboard, ClipboardCheck, Users, BarChart3, Settings, FilePlus, ExternalLink, Clock, Shield, Wallet, LogOut, Database, Scale } from "lucide-react";
+import { LayoutDashboard, ClipboardCheck, Users, BarChart3, Settings, FilePlus, ExternalLink, Clock, Shield, Wallet, LogOut, Database, Scale, Banknote, UserCheck, PenLine } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -9,27 +9,35 @@ const mainItems = [
   { icon: LayoutDashboard, label: "Dashboard", to: "/operacional/dashboard" },
   { icon: Clock, label: "Pontos", to: "/operacional/pontos" },
   { icon: ClipboardCheck, label: "Operações", to: "/operacional/operacoes" },
+  { icon: PenLine, label: "Lançamento de Diaristas", to: "/producao/diaristas" },
 ];
 
-const rhItems = [
+const cadastrosItems = [
   { icon: Users, label: "Central de Cadastros", to: "/cadastros" },
-  { icon: Users, label: "Painel de Diaristas", to: "/rh/diaristas" },
   { icon: FilePlus, label: "Regras Operacionais", to: "/cadastros/regras-operacionais" },
 ];
 
-const finItems = [
-  { icon: Wallet, label: "Central Financeira", to: "/financeiro", end: true },
-  { icon: FilePlus, label: "Central Bancária", to: "/bancario" },
-  { icon: BarChart3, label: "Central de Relatórios", to: "/relatorios" },
-];
-
-const portalItems = [
-  { icon: ExternalLink, label: "Portal do Cliente", to: "/cliente/dashboard" },
+const rhItems = [
+  { icon: UserCheck, label: "Painel de Diaristas", to: "/rh/diaristas" },
+  { icon: Users, label: "Cadastro de Diaristas", to: "/rh/diaristas/cadastros" },
 ];
 
 const bhItems = [
   { icon: Clock, label: "Banco de Horas", to: "/banco-horas", end: true },
   { icon: Scale, label: "Regras de Banco", to: "/banco-horas/regras" },
+];
+
+const faturamentoItems = [
+  { icon: Wallet, label: "Faturamento", to: "/financeiro", end: true },
+  { icon: BarChart3, label: "Central de Relatórios", to: "/relatorios" },
+];
+
+const pagamentosItems = [
+  { icon: Banknote, label: "Pagamentos e Remessas", to: "/bancario" },
+];
+
+const portalItems = [
+  { icon: ExternalLink, label: "Portal do Cliente", to: "/cliente/dashboard" },
 ];
 
 const govItems = [
@@ -68,14 +76,24 @@ export const Sidebar = () => {
         </div>
 
         <div>
-          <h3 className="px-3 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Pessoas e Cadastros</h3>
-          {rhItems.map(renderItem)}
+          <h3 className="px-3 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Cadastros</h3>
+          {cadastrosItems.map(renderItem)}
           {bhItems.map(renderItem)}
         </div>
 
         <div>
-          <h3 className="px-3 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Controladoria</h3>
-          {finItems.map(renderItem)}
+          <h3 className="px-3 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">RH</h3>
+          {rhItems.map(renderItem)}
+        </div>
+
+        <div>
+          <h3 className="px-3 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Faturamento</h3>
+          {faturamentoItems.map(renderItem)}
+        </div>
+
+        <div>
+          <h3 className="px-3 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Pagamentos e Remessas</h3>
+          {pagamentosItems.map(renderItem)}
         </div>
 
         <div>

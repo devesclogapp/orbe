@@ -19,7 +19,6 @@ import RedefinirSenha from "./pages/Auth/RedefinirSenha";
 import VerificarEmail from "./pages/Auth/VerificarEmail";
 
 import Dashboard from "./pages/Dashboard";
-import Processamento from "./pages/Processamento";
 import Pontos from "./pages/Pontos";
 import Operacoes from "./pages/Operacoes";
 import CentralCadastros from "./pages/CentralCadastros";
@@ -110,7 +109,7 @@ const App = () => (
                   <Route path="/rh/diaristas" element={<AuthGuard><RhDiaristasPainel /></AuthGuard>} />
                   <Route path="/rh/diaristas/cadastros" element={<AuthGuard><RhDiaristasGestao /></AuthGuard>} />
                   <Route path="/processamento" element={<Navigate to="/operacional/operacoes" replace />} />
-                  <Route path="/processamento/legado" element={<AuthGuard><Processamento /></AuthGuard>} />
+                  <Route path="/processamento/legado" element={<Navigate to="/operacional/operacoes" replace />} />
                   <Route path="/cadastros" element={<AuthGuard><CentralCadastros /></AuthGuard>} />
                   <Route path="/cadastros/regras-operacionais" element={<AuthGuard><RegrasOperacionais /></AuthGuard>} />
                   <Route path="/colaboradores" element={<AuthGuard><Colaboradores /></AuthGuard>} />

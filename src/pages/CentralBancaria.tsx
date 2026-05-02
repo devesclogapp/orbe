@@ -186,7 +186,7 @@ const CentralBancaria = () => {
 
   return (
     <AppShell
-      title="Central Bancária"
+      title="Pagamentos e Remessas"
       subtitle="Remessa, histórico e retorno no mesmo fluxo operacional"
     >
       <div className="space-y-6">
