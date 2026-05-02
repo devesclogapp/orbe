@@ -30,10 +30,23 @@ const Empresas = () => {
     unidade: "",
     cidade: "",
     estado: "",
+    banco_codigo: "",
+    agencia: "",
+    agencia_digito: "",
+    conta: "",
+    conta_digito: "",
+    convenio_bancario: "",
+    codigo_empresa_banco: "",
+    nome_empresa_banco: "",
   });
 
   const reset = () => {
-    setForm({ nome: "", cnpj: "", unidade: "", cidade: "", estado: "" });
+    setForm({
+      nome: "", cnpj: "", unidade: "", cidade: "", estado: "",
+      banco_codigo: "", agencia: "", agencia_digito: "", conta: "",
+      conta_digito: "", convenio_bancario: "", codigo_empresa_banco: "",
+      nome_empresa_banco: ""
+    });
     setEditingId(null);
   };
 
@@ -73,6 +86,14 @@ const Empresas = () => {
       unidade: e.unidade,
       cidade: e.cidade,
       estado: e.estado,
+      banco_codigo: e.banco_codigo || "",
+      agencia: e.agencia || "",
+      agencia_digito: e.agencia_digito || "",
+      conta: e.conta || "",
+      conta_digito: e.conta_digito || "",
+      convenio_bancario: e.convenio_bancario || "",
+      codigo_empresa_banco: e.codigo_empresa_banco || "",
+      nome_empresa_banco: e.nome_empresa_banco || "",
     });
     setOpen(true);
   };
@@ -295,6 +316,35 @@ const Empresas = () => {
             <div className="space-y-1.5">
               <Label htmlFor="estado">Estado (UF)</Label>
               <Input id="estado" value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value })} maxLength={2} />
+            </div>
+
+            {/* Secao Dados Bancarios */}
+            <div className="col-span-full border-t pt-4 mt-2">
+              <h4 className="text-sm font-semibold mb-3">Dados Bancários</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="banco_codigo">Cód. Banco</Label>
+                  <Input id="banco_codigo" value={form.banco_codigo} onChange={(e) => setForm({ ...form, banco_codigo: e.target.value })} placeholder="Ex: 341" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="agencia">Agência</Label>
+                  <div className="flex gap-2">
+                    <Input id="agencia" value={form.agencia} onChange={(e) => setForm({ ...form, agencia: e.target.value })} className="flex-1" />
+                    <Input id="agencia_digito" value={form.agencia_digito} onChange={(e) => setForm({ ...form, agencia_digito: e.target.value })} className="w-16" placeholder="Díg." />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="conta">Conta</Label>
+                  <div className="flex gap-2">
+                    <Input id="conta" value={form.conta} onChange={(e) => setForm({ ...form, conta: e.target.value })} className="flex-1" />
+                    <Input id="conta_digito" value={form.conta_digito} onChange={(e) => setForm({ ...form, conta_digito: e.target.value })} className="w-16" placeholder="Díg." />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="convenio_bancario">Convênio</Label>
+                  <Input id="convenio_bancario" value={form.convenio_bancario} onChange={(e) => setForm({ ...form, convenio_bancario: e.target.value })} />
+                </div>
+              </div>
             </div>
           </div>
           <DialogFooter>

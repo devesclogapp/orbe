@@ -13,7 +13,7 @@ const mainItems = [
 
 const rhItems = [
   { icon: Users, label: "Central de Cadastros", to: "/cadastros" },
-  { icon: Users, label: "Fechamento Diaristas", to: "/rh/diaristas" },
+  { icon: Users, label: "Painel de Diaristas", to: "/rh/diaristas" },
   { icon: FilePlus, label: "Regras Operacionais", to: "/cadastros/regras-operacionais" },
 ];
 

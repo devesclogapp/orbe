@@ -13,8 +13,7 @@ import { DiaristaService, EmpresaService, PerfilUsuarioService } from "@/service
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { Pencil, Plus, RefreshCw, Trash2, Loader2, Users } from "lucide-react";
-import { useQuery as useQueryClient2 } from "@tanstack/react-query";
+import { Pencil, Plus, RefreshCw, Trash2, Loader2, Users, Landmark, AlertCircle } from "lucide-react";
 
 const FUNCOES = ["Diarista", "Auxiliar de carga", "Ajudante", "Conferente", "Operador eventual", "Serviço extra"] as const;
 
@@ -27,6 +26,13 @@ const emptyForm = {
     status: "ativo" as "ativo" | "inativo",
     empresa_id: "",
     observacoes: "",
+    // Dados bancários
+    banco_codigo: "",
+    agencia: "",
+    conta: "",
+    digito_conta: "",
+    tipo_conta: "corrente" as "corrente" | "poupanca",
+    nome_completo: "",
 };
 
 const RhDiaristasGestao = () => {
@@ -71,6 +77,12 @@ const RhDiaristasGestao = () => {
             status: d.status,
             empresa_id: d.empresa_id,
             observacoes: d.observacoes ?? "",
+            banco_codigo: d.banco_codigo ?? "",
+            agencia: d.agencia ?? "",
+            conta: d.conta ?? "",
+            digito_conta: d.digito_conta ?? "",
+            tipo_conta: d.tipo_conta ?? "corrente",
+            nome_completo: d.nome_completo ?? "",
         });
         setOpen(true);
     };
@@ -90,6 +102,13 @@ const RhDiaristasGestao = () => {
                 status: form.status,
                 empresa_id: form.empresa_id,
                 observacoes: form.observacoes.trim() || null,
+                // Dados bancários
+                banco_codigo: form.banco_codigo.trim() || null,
+                agencia: form.agencia.trim() || null,
+                conta: form.conta.trim() || null,
+                digito_conta: form.digito_conta.trim() || null,
+                tipo_conta: form.tipo_conta || null,
+                nome_completo: form.nome_completo.trim() || null,
             };
             return editingId
                 ? DiaristaService.update(editingId, payload)
@@ -172,49 +191,59 @@ const RhDiaristasGestao = () => {
                                     <th className="px-3 h-11 font-medium">Função</th>
                                     <th className="px-3 h-11 font-medium">CPF</th>
                                     <th className="px-3 h-11 font-medium text-right">Diária</th>
+                                    <th className="px-3 h-11 font-medium text-center" title="Dados bancários">Banco</th>
                                     <th className="px-5 h-11 font-medium text-center">Status</th>
                                     <th className="px-5 h-11 font-medium text-right">Ações</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {diaristasArray.map((d: any) => (
-                                    <tr key={d.id} className="border-t border-muted hover:bg-background group">
-                                        <td className="px-5 h-[52px]">
-                                            <p className="font-medium text-foreground">{d.nome}</p>
-                                            {d.telefone && <p className="text-xs text-muted-foreground">{d.telefone}</p>}
-                                        </td>
-                                        <td className="px-3 text-muted-foreground">{d.funcao}</td>
-                                        <td className="px-3 font-mono text-xs text-muted-foreground">{d.cpf ?? "—"}</td>
-                                        <td className="px-3 text-right font-mono font-semibold text-foreground">
-                                            {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(d.valor_diaria))}
-                                        </td>
-                                        <td className="px-5 text-center">
-                                            <button
-                                                onClick={() => toggleStatusMutation.mutate({ id: d.id, status: d.status === "ativo" ? "inativo" : "ativo" })}
-                                                className={cn(
-                                                    "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold transition-all cursor-pointer",
-                                                    d.status === "ativo" ? "bg-emerald-500/15 text-emerald-700" : "bg-muted text-muted-foreground",
-                                                )}
-                                            >
-                                                {d.status === "ativo" ? "Ativo" : "Inativo"}
-                                            </button>
-                                        </td>
-                                        <td className="px-5 text-right">
-                                            <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(d)}>
-                                                    <Pencil className="h-3.5 w-3.5" />
-                                                </Button>
-                                                <Button
-                                                    variant="ghost" size="icon"
-                                                    className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                                    onClick={() => { if (confirm(`Remover ${d.nome}?`)) deleteMutation.mutate(d.id); }}
+                                {diaristasArray.map((d: any) => {
+                                    const temBanco = !!(d.banco_codigo && d.agencia && d.conta && d.digito_conta && d.cpf);
+                                    return (
+                                        <tr key={d.id} className="border-t border-muted hover:bg-background group">
+                                            <td className="px-5 h-[52px]">
+                                                <p className="font-medium text-foreground">{d.nome}</p>
+                                                {d.telefone && <p className="text-xs text-muted-foreground">{d.telefone}</p>}
+                                            </td>
+                                            <td className="px-3 text-muted-foreground">{d.funcao}</td>
+                                            <td className="px-3 font-mono text-xs text-muted-foreground">{d.cpf ?? "—"}</td>
+                                            <td className="px-3 text-right font-mono font-semibold text-foreground">
+                                                {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(d.valor_diaria))}
+                                            </td>
+                                            <td className="px-3 text-center">
+                                                {temBanco
+                                                    ? <span title="Dados bancários completos"><Landmark className="h-4 w-4 text-emerald-600 mx-auto" /></span>
+                                                    : <span title="Dados bancários incompletos"><AlertCircle className="h-4 w-4 text-amber-500 mx-auto" /></span>
+                                                }
+                                            </td>
+                                            <td className="px-5 text-center">
+                                                <button
+                                                    onClick={() => toggleStatusMutation.mutate({ id: d.id, status: d.status === "ativo" ? "inativo" : "ativo" })}
+                                                    className={cn(
+                                                        "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold transition-all cursor-pointer",
+                                                        d.status === "ativo" ? "bg-emerald-500/15 text-emerald-700" : "bg-muted text-muted-foreground",
+                                                    )}
                                                 >
-                                                    <Trash2 className="h-3.5 w-3.5" />
-                                                </Button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
+                                                    {d.status === "ativo" ? "Ativo" : "Inativo"}
+                                                </button>
+                                            </td>
+                                            <td className="px-5 text-right">
+                                                <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(d)}>
+                                                        <Pencil className="h-3.5 w-3.5" />
+                                                    </Button>
+                                                    <Button
+                                                        variant="ghost" size="icon"
+                                                        className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                                        onClick={() => { if (confirm(`Remover ${d.nome}?`)) deleteMutation.mutate(d.id); }}
+                                                    >
+                                                        <Trash2 className="h-3.5 w-3.5" />
+                                                    </Button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     )}
@@ -222,12 +251,14 @@ const RhDiaristasGestao = () => {
             </div>
 
             <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) reset(); }}>
-                <DialogContent className="max-w-lg">
+                <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>{editingId ? "Editar diarista" : "Novo diarista"}</DialogTitle>
-                        <DialogDescription>Preencha os dados do diarista. O valor da diária será usado nos cálculos automáticos.</DialogDescription>
+                        <DialogDescription>Preencha os dados do diarista. Os dados bancários são obrigatórios para geração de CNAB.</DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-2">
+
+                        {/* ── Dados pessoais ── */}
                         <div className="space-y-1.5">
                             <Label>Nome completo *</Label>
                             <Input placeholder="Nome do diarista" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
@@ -282,6 +313,74 @@ const RhDiaristasGestao = () => {
                                 </Select>
                             </div>
                         </div>
+
+                        {/* ── Dados bancários ── */}
+                        <div className="border-t border-border/50 pt-4">
+                            <p className="text-sm font-semibold text-foreground flex items-center gap-2 mb-3">
+                                <Landmark className="h-4 w-4 text-primary" />
+                                Dados Bancários
+                                <span className="text-xs font-normal text-muted-foreground ml-1">(necessário para CNAB)</span>
+                            </p>
+                            <div className="space-y-3">
+                                <div className="space-y-1.5">
+                                    <Label>Nome completo (bancário)</Label>
+                                    <Input
+                                        placeholder="Como consta na conta bancária"
+                                        value={form.nome_completo}
+                                        onChange={(e) => setForm({ ...form, nome_completo: e.target.value })}
+                                    />
+                                </div>
+                                <div className="grid grid-cols-3 gap-3">
+                                    <div className="space-y-1.5">
+                                        <Label>Banco (código)</Label>
+                                        <Input
+                                            placeholder="Ex: 341"
+                                            maxLength={3}
+                                            value={form.banco_codigo}
+                                            onChange={(e) => setForm({ ...form, banco_codigo: e.target.value.replace(/\D/g, '') })}
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label>Agência</Label>
+                                        <Input
+                                            placeholder="0001"
+                                            value={form.agencia}
+                                            onChange={(e) => setForm({ ...form, agencia: e.target.value.replace(/\D/g, '') })}
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label>Tipo de conta</Label>
+                                        <Select value={form.tipo_conta} onValueChange={(v: "corrente" | "poupanca") => setForm({ ...form, tipo_conta: v })}>
+                                            <SelectTrigger><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="corrente">Corrente</SelectItem>
+                                                <SelectItem value="poupanca">Poupança</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-3 gap-3">
+                                    <div className="col-span-2 space-y-1.5">
+                                        <Label>Conta</Label>
+                                        <Input
+                                            placeholder="00000000"
+                                            value={form.conta}
+                                            onChange={(e) => setForm({ ...form, conta: e.target.value.replace(/\D/g, '') })}
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label>Dígito</Label>
+                                        <Input
+                                            placeholder="0"
+                                            maxLength={2}
+                                            value={form.digito_conta}
+                                            onChange={(e) => setForm({ ...form, digito_conta: e.target.value.replace(/\D/g, '') })}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <div className="space-y-1.5">
                             <Label>Observações</Label>
                             <Textarea rows={2} placeholder="Observações sobre o diarista..." value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} />

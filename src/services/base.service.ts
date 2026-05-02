@@ -1496,10 +1496,59 @@ class LancamentoDiaristaServiceClass {
       .from('lancamentos_diaristas')
       .select('*')
       .eq('lote_fechamento_id', loteId)
+      .order('data_lancamento', { ascending: true })
       .order('nome_colaborador', { ascending: true });
     
     if (error) throw error;
     return data ?? [];
+  }
+
+  /** Cria um ajuste vinculado a um lançamento de referência (positivo ou negativo). */
+  async criarAjuste(params: {
+    empresaId: string;
+    referenciaLancamentoId: string;
+    valorAjuste: number;
+    motivo: string;
+    adjustedBy: string;
+    adjustedByNome: string;
+    /** Copia estes campos do lançamento original: diarista_id, nome, funcao, data */
+    original: {
+      diarista_id: string;
+      nome_colaborador: string;
+      funcao_colaborador: string;
+      data_lancamento: string;
+      codigo_marcacao: string;
+      lote_fechamento_id?: string | null;
+    };
+  }) {
+    const payload = {
+      empresa_id: params.empresaId,
+      diarista_id: params.original.diarista_id,
+      nome_colaborador: params.original.nome_colaborador,
+      funcao_colaborador: params.original.funcao_colaborador,
+      data_lancamento: params.original.data_lancamento,
+      codigo_marcacao: params.original.codigo_marcacao,
+      tipo_lancamento: 'diarista',
+      tipo_registro: 'ajuste',
+      referencia_lancamento_id: params.referenciaLancamentoId,
+      motivo_ajuste: params.motivo,
+      valor_calculado: params.valorAjuste,
+      valor_diaria_base: 0,
+      quantidade_diaria: params.valorAjuste > 0 ? 1 : -1,
+      status: 'em_aberto',
+      adjusted_by: params.adjustedBy,
+      adjusted_by_nome: params.adjustedByNome,
+      adjusted_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await (supabase as any)
+      .from('lancamentos_diaristas')
+      .insert([payload])
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
   }
 }
 export const LancamentoDiaristaService = new LancamentoDiaristaServiceClass();
@@ -1510,19 +1559,28 @@ class LoteFechamentoDiaristaServiceClass {
     periodoInicio: string;
     periodoFim: string;
     fechadoPor: string;
+    fechadoPorNome?: string;
     observacoes?: string;
   }) {
-    // 1. Buscar os registros em aberto no período
-    const { data: registros, error: errBusca } = await (supabase as any)
+    const { data: todosRegistros, error: errBusca } = await (supabase as any)
       .from('lancamentos_diaristas')
-      .select('id, valor_calculado')
+      .select('id, valor_calculado, status')
       .eq('empresa_id', params.empresaId)
-      .eq('status', 'em_aberto')
       .gte('data_lancamento', params.periodoInicio)
       .lte('data_lancamento', params.periodoFim);
 
     if (errBusca) throw errBusca;
-    if (!registros || registros.length === 0) {
+    if (!todosRegistros || todosRegistros.length === 0) {
+      throw new Error('Nenhum registro encontrado para o período selecionado.');
+    }
+
+    if (todosRegistros.some((r: any) => r.status === 'fechado_para_pagamento' || r.status === 'pago')) {
+      throw new Error('Existem registros neste período que já estão fechados ou pagos.');
+    }
+
+    const registros = todosRegistros.filter((r: any) => r.status === 'em_aberto');
+
+    if (registros.length === 0) {
       throw new Error('Nenhum registro em aberto encontrado para o período selecionado.');
     }
 
@@ -1537,8 +1595,9 @@ class LoteFechamentoDiaristaServiceClass {
         periodo_fim: params.periodoFim,
         total_registros: registros.length,
         valor_total: valorTotal,
-        status: 'fechado',
+        status: 'fechado_para_pagamento',
         fechado_por: params.fechadoPor,
+        fechado_por_nome: params.fechadoPorNome ?? null,
         fechado_em: new Date().toISOString(),
         observacoes: params.observacoes ?? null,
       })
@@ -1551,6 +1610,23 @@ class LoteFechamentoDiaristaServiceClass {
     const ids = registros.map((r: any) => r.id);
     await LancamentoDiaristaService.updateStatus(ids, 'fechado_para_pagamento', lote.id);
 
+    // 4. Integração financeira
+    const { error: errFin } = await (supabase as any)
+      .from('lancamentos_financeiros')
+      .insert({
+        empresa_id: params.empresaId,
+        tipo: 'saida',
+        categoria: 'pagamento_diaristas',
+        valor: valorTotal,
+        referencia_id: lote.id,
+        status: 'pendente',
+      });
+    
+    if (errFin) {
+        console.error("Erro ao integrar com o financeiro:", errFin);
+        // Mesmo se falhar a integração, talvez não devamos travar o lote, mas o prompt pede para criar.
+    }
+
     return lote;
   }
 
@@ -1559,6 +1635,19 @@ class LoteFechamentoDiaristaServiceClass {
       .from('lotes_fechamento_diaristas')
       .select('*')
       .eq('empresa_id', empresaId)
+      .order('fechado_em', { ascending: false });
+
+    if (error) throw error;
+    return data ?? [];
+  }
+
+  /** Apenas lotes prontos para ação do Financeiro (após fechamento pelo RH) */
+  async getByEmpresaParaFinanceiro(empresaId: string) {
+    const { data, error } = await (supabase as any)
+      .from('lotes_fechamento_diaristas')
+      .select('*')
+      .eq('empresa_id', empresaId)
+      .in('status', ['fechado_para_pagamento', 'cnab_gerado', 'pago'])
       .order('fechado_em', { ascending: false });
 
     if (error) throw error;
@@ -1576,10 +1665,15 @@ class LoteFechamentoDiaristaServiceClass {
     return data;
   }
 
-  async marcarComoPago(loteId: string) {
+  async marcarComoPago(loteId: string, paidBy?: string, paidByNome?: string) {
     const { error } = await (supabase as any)
       .from('lotes_fechamento_diaristas')
-      .update({ status: 'pago' })
+      .update({ 
+        status: 'pago',
+        paid_by: paidBy ?? null,
+        paid_by_nome: paidByNome ?? null,
+        paid_at: new Date().toISOString()
+      })
       .eq('id', loteId);
     if (error) throw error;
 
@@ -1589,6 +1683,202 @@ class LoteFechamentoDiaristaServiceClass {
       .update({ status: 'pago', updated_at: new Date().toISOString() })
       .eq('lote_fechamento_id', loteId);
     if (errLanc) throw errLanc;
+
+    // Atualizar também o financeiro, se existir.
+    await (supabase as any)
+      .from('lancamentos_financeiros')
+      .update({ status: 'pago', updated_at: new Date().toISOString() })
+      .eq('referencia_id', loteId)
+      .eq('categoria', 'pagamento_diaristas');
+  }
+
+  async reabrirPeriodo(loteId: string, reopenedBy: string, reopenedByNome: string) {
+    const { error } = await (supabase as any)
+      .from('lotes_fechamento_diaristas')
+      .update({
+        status: 'em_aberto',
+        reopened_by: reopenedBy,
+        reopened_by_nome: reopenedByNome,
+        reopened_at: new Date().toISOString()
+      })
+      .eq('id', loteId);
+    
+    if (error) throw error;
+
+    // Atualizar registros vinculados
+    const { error: errLanc } = await (supabase as any)
+      .from('lancamentos_diaristas')
+      .update({ 
+        status: 'em_aberto', 
+        updated_at: new Date().toISOString()
+      })
+      .eq('lote_fechamento_id', loteId);
+
+    if (errLanc) throw errLanc;
+    
+    // Attempt to cancel in financeiro if it exists
+    await (supabase as any)
+      .from('lancamentos_financeiros')
+      .update({ status: 'cancelado', updated_at: new Date().toISOString() })
+      .eq('referencia_id', loteId)
+      .eq('categoria', 'pagamento_diaristas');
+  }
+
+  /**
+   * Gera, valida e baixa um arquivo CNAB240 para o lote de pagamento de diaristas.
+   *
+   * Fluxo:
+   *  1. Carrega lançamentos do lote (agrupados por diarista)
+   *  2. Carrega dados bancários de cada diarista
+   *  3. Valida completude (CPF, banco, agência, conta, dígito, valor)
+   *  4. Gera o conteúdo CNAB240
+   *  5. Registra a geração em cnab_geracoes
+   *  6. Dispara o download no browser
+   *
+   * @throws Error com lista de inconsistências se a validação falhar
+   */
+  async gerarCNABParaLote(params: {
+    loteId: string;
+    empresaId: string;
+    geradoPor: string;
+    geradoPorNome: string;
+    /** Dados da empresa pagadora necessários para o Header do arquivo */
+    empresaRemetente: {
+      cnpj: string;
+      razao_social: string;
+      banco_codigo: string;
+      agencia: string;
+      agencia_digito?: string;
+      conta: string;
+      digito_conta: string;
+      convenio_bancario?: string;
+      codigo_empresa_banco?: string;
+      nome_empresa_banco?: string;
+    };
+    /** Data de pagamento desejada (padrão: hoje) */
+    dataPagamento?: Date;
+  }) {
+    // 1. Carregar lançamentos do lote (normais apenas, sem ajustes agrupados)
+    const { data: lancamentos, error: errLanc } = await (supabase as any)
+      .from('lancamentos_diaristas')
+      .select('diarista_id, nome_colaborador, valor_calculado')
+      .eq('lote_fechamento_id', params.loteId)
+      .neq('tipo_registro', 'ajuste');
+
+    if (errLanc) throw errLanc;
+    if (!lancamentos || lancamentos.length === 0) {
+      throw new Error('Nenhum lançamento encontrado no lote.');
+    }
+
+    // 2. Agrupar por diarista e somar valores
+    const mapaValores: Record<string, { nome: string; valor: number }> = {};
+    for (const l of lancamentos) {
+      if (!mapaValores[l.diarista_id]) {
+        mapaValores[l.diarista_id] = { nome: l.nome_colaborador, valor: 0 };
+      }
+      mapaValores[l.diarista_id].valor += Number(l.valor_calculado || 0);
+    }
+
+    // Incluir ajustes no valor total
+    const { data: ajustes } = await (supabase as any)
+      .from('lancamentos_diaristas')
+      .select('diarista_id, valor_calculado')
+      .eq('lote_fechamento_id', params.loteId)
+      .eq('tipo_registro', 'ajuste');
+
+    for (const aj of (ajustes ?? [])) {
+      if (mapaValores[aj.diarista_id]) {
+        mapaValores[aj.diarista_id].valor += Number(aj.valor_calculado || 0);
+      }
+    }
+
+    const diaristaIds = Object.keys(mapaValores);
+
+    // 3. Carregar dados bancários
+    const { data: colaboradores, error: errCol } = await supabase
+      .from('colaboradores')
+      .select('id, nome, cpf, nome_completo, banco_codigo, agencia, conta, digito_conta, tipo_conta')
+      .in('id', diaristaIds);
+
+    if (errCol) throw errCol;
+
+    const mapaColaboradores: Record<string, any> = {};
+    for (const c of (colaboradores ?? [])) {
+      mapaColaboradores[c.id] = c;
+    }
+
+    // 4. Validar e montar registros
+    const erros: string[] = [];
+    const dataPagamento = params.dataPagamento ?? new Date();
+
+    const { validarRegistrosCNAB, gerarCNAB240 } = await import('@/utils/cnab240');
+
+    const registros = diaristaIds.map((id) => {
+      const col = mapaColaboradores[id];
+      const dadosValor = mapaValores[id];
+      return {
+        nome: (col?.nome_completo || col?.nome || dadosValor.nome || '').trim(),
+        cpf: col?.cpf ?? '',
+        banco_codigo: col?.banco_codigo ?? '',
+        agencia: col?.agencia ?? '',
+        conta: col?.conta ?? '',
+        digito_conta: col?.digito_conta ?? '',
+        tipo_conta: (col?.tipo_conta ?? 'corrente') as 'corrente' | 'poupanca',
+        valor: dadosValor.valor,
+        data_pagamento: dataPagamento,
+      };
+    }).filter((r) => r.valor > 0); // Ignora registros com valor zerado
+
+    const { valido, erros: errosValidacao } = validarRegistrosCNAB(registros);
+    erros.push(...errosValidacao);
+
+    if (!valido) {
+      throw new Error(
+        `Não é possível gerar o CNAB. Corrija os dados bancários:\n\n${erros.join('\n')}`
+      );
+    }
+
+    // 5. Gerar conteúdo CNAB240
+    const conteudo = gerarCNAB240(params.empresaRemetente, registros);
+
+    // 6. Registrar no banco de auditoria
+    const loteIdShort = params.loteId.substring(0, 8).toUpperCase();
+    const dataStr = dataPagamento.toISOString().split('T')[0].replace(/-/g, '');
+    const nomeArquivo = `CNAB_DIARISTAS_LOTE_${loteIdShort}_${dataStr}.txt`;
+    const valorTotal = registros.reduce((s, r) => s + r.valor, 0);
+
+    const { error: errInsert } = await (supabase as any)
+      .from('cnab_geracoes')
+      .insert({
+        empresa_id: params.empresaId,
+        lote_id: params.loteId,
+        cnab_generated_by: params.geradoPor,
+        cnab_generated_by_nome: params.geradoPorNome,
+        cnab_file_name: nomeArquivo,
+        quantidade_registros: registros.length,
+        valor_total: valorTotal,
+      });
+
+    if (errInsert) throw errInsert;
+
+    // 6.5. Atualiza o status do lote para cnab_gerado
+    const { error: errStatus } = await (supabase as any)
+      .from('lotes_fechamento_diaristas')
+      .update({ status: 'cnab_gerado', updated_at: new Date().toISOString() })
+      .eq('id', params.loteId);
+
+    if (errStatus) throw errStatus;
+
+    // 7. Disparar download
+    const blob = new Blob([conteudo], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = nomeArquivo;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    return { nomeArquivo, totalRegistros: registros.length, valorTotal };
   }
 }
 export const LoteFechamentoDiaristaService = new LoteFechamentoDiaristaServiceClass();

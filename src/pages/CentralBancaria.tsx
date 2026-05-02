@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
+import { CentralBancariaDiaristas } from "./Financeiro/CentralBancariaDiaristas";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { MetricCard } from "@/components/painel/MetricCard";
@@ -227,6 +228,7 @@ const CentralBancaria = () => {
             <TabsTrigger value="remessa">Remessa</TabsTrigger>
             <TabsTrigger value="historico">Histórico</TabsTrigger>
             <TabsTrigger value="retorno">Retorno</TabsTrigger>
+            <TabsTrigger value="diaristas">Pgto Diaristas</TabsTrigger>
           </TabsList>
 
           <TabsContent value="remessa">
@@ -585,6 +587,12 @@ const CentralBancaria = () => {
                   )}
                 </Card>
               </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="diaristas">
+            <div className="bg-card text-card-foreground border border-border shadow-sm rounded-xl overflow-hidden">
+              <CentralBancariaDiaristas />
             </div>
           </TabsContent>
         </Tabs>

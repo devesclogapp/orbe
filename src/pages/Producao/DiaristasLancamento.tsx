@@ -1,7 +1,7 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { format } from "date-fns";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarDays, CheckCircle2, Clock, Save, Users, XCircle } from "lucide-react";
+import { Building2, CalendarDays, CheckCircle2, Clock, Save, Users, XCircle } from "lucide-react";
 
 import { OperationalShell } from "@/components/layout/OperationalShell";
 import { Button } from "@/components/ui/button";
@@ -61,10 +61,8 @@ const DiaristasLancamento = () => {
         enabled: !!user?.id,
     });
 
-    const empresaId = perfil?.empresa_id ?? "";
-
-    // Usa a empresa selecionada no dropdown; se não houver, usa a empresa do perfil do usuário
-    const empresaIdParaBusca = empresaIdSelecionada || empresaId;
+    // Busca apenas pela empresa explicitamente selecionada no dropdown
+    const empresaIdParaBusca = empresaIdSelecionada;
 
     const { data: diaristas = [], isLoading: isLoadingDiaristas } = useQuery({
         queryKey: ["diaristas_lancamento", empresaIdParaBusca],
@@ -95,26 +93,24 @@ const DiaristasLancamento = () => {
         enabled: !!empresaIdParaBusca,
     });
 
-    // Inicializar marcações quando diaristas carregam
-    useMemo(() => {
-        const inicial: Record<string, ItemMarcacao> = {};
-        (diaristas as any[]).forEach((d: any) => {
-            if (!marcacoes[d.id]) {
+    // Inicializar/reinicializar marcações quando a lista de diaristas mudar
+    useEffect(() => {
+        if (!diaristas || (diaristas as any[]).length === 0) return;
+        setMarcacoes(() => {
+            const inicial: Record<string, ItemMarcacao> = {};
+            (diaristas as any[]).forEach((d: any) => {
                 inicial[d.id] = {
                     diarista_id: d.id,
                     nome: d.nome,
                     cpf: d.cpf ?? null,
-                    // DiaristaService usa campo 'funcao', não 'cargo'
                     funcao: d.funcao ?? "—",
                     valor_diaria: Number(d.valor_diaria || 0),
                     marcacao: "AUSENTE",
                     observacao: "",
                 };
-            }
+            });
+            return inicial;
         });
-        if (Object.keys(inicial).length > 0) {
-            setMarcacoes((prev) => ({ ...inicial, ...prev }));
-        }
     }, [diaristas]);
 
     const setMarcacao = (id: string, marcacao: MarcacaoDiarista) => {
@@ -240,8 +236,7 @@ const DiaristasLancamento = () => {
                                     const empresa = (empresas as any[]).find((e: any) => e.nome === nome);
                                     setClienteUnidade(nome);
                                     setEmpresaIdSelecionada(empresa?.id ?? "");
-                                    // Limpa marcações ao trocar de empresa
-                                    setMarcacoes({});
+                                    // Não limpa marcações aqui — o useEffect reagirá quando os novos diaristas carregarem
                                 }}
                             >
                                 <SelectTrigger>
@@ -293,7 +288,15 @@ const DiaristasLancamento = () => {
                         <span className="ml-auto text-xs text-muted-foreground">{diaristasArray.length} cadastrado(s)</span>
                     </div>
 
-                    {isLoadingDiaristas ? (
+                    {!empresaIdSelecionada ? (
+                        <div className="p-12 text-center space-y-2">
+                            <Building2 className="h-8 w-8 text-muted-foreground mx-auto" />
+                            <p className="text-sm font-medium text-foreground">Selecione uma empresa</p>
+                            <p className="text-xs text-muted-foreground max-w-xs mx-auto">
+                                Escolha o <span className="font-semibold text-primary">Cliente / Empresa</span> acima para carregar a lista de diaristas disponíveis.
+                            </p>
+                        </div>
+                    ) : isLoadingDiaristas ? (
                         <div className="p-12 text-center text-muted-foreground text-sm animate-pulse">
                             Carregando diaristas...
                         </div>

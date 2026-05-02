@@ -56,6 +56,13 @@ const Colaboradores = () => {
     flag_faturamento: true,
     permitir_lancamento_operacional: false,
     status: "ativo",
+    nome_completo: "",
+    banco_codigo: "",
+    agencia: "",
+    agencia_digito: "",
+    conta: "",
+    conta_digito: "",
+    tipo_conta: "corrente",
   });
 
   const reset = () => {
@@ -72,6 +79,13 @@ const Colaboradores = () => {
       flag_faturamento: true,
       permitir_lancamento_operacional: false,
       status: "ativo",
+      nome_completo: "",
+      banco_codigo: "",
+      agencia: "",
+      agencia_digito: "",
+      conta: "",
+      conta_digito: "",
+      tipo_conta: "corrente",
     });
     setEditingId(null);
   };
@@ -114,6 +128,13 @@ const Colaboradores = () => {
       flag_faturamento: c.flag_faturamento ?? true,
       permitir_lancamento_operacional: c.permitir_lancamento_operacional ?? false,
       status: c.status || "ativo",
+      nome_completo: c.nome_completo || "",
+      banco_codigo: c.banco_codigo || "",
+      agencia: c.agencia || "",
+      agencia_digito: c.agencia_digito || "",
+      conta: c.conta || "",
+      conta_digito: c.conta_digito || "",
+      tipo_conta: c.tipo_conta || "corrente",
     });
     setOpen(true);
   };
@@ -153,6 +174,13 @@ const Colaboradores = () => {
       flag_faturamento: form.tipo_colaborador !== "DIARISTA" ? form.flag_faturamento : false,
       permitir_lancamento_operacional: form.permitir_lancamento_operacional,
       status: form.status,
+      nome_completo: form.nome_completo?.trim() || null,
+      banco_codigo: form.banco_codigo?.trim() || null,
+      agencia: form.agencia?.trim() || null,
+      agencia_digito: form.agencia_digito?.trim() || null,
+      conta: form.conta?.trim() || null,
+      conta_digito: form.conta_digito?.trim() || null,
+      tipo_conta: form.tipo_conta,
     });
   };
 
@@ -475,6 +503,45 @@ const Colaboradores = () => {
                 </div>
               </>
             )}
+
+            {/* Secao Dados Bancarios */}
+            <div className="col-span-2 border-t pt-4 mt-2">
+              <h4 className="text-sm font-semibold mb-3">Dados Bancários</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5 col-span-2">
+                  <Label htmlFor="nome_completo">Nome completo (como conta)</Label>
+                  <Input id="nome_completo" value={form.nome_completo} onChange={(e) => setForm({ ...form, nome_completo: e.target.value })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="banco_codigo">Cód. Banco</Label>
+                  <Input id="banco_codigo" value={form.banco_codigo} onChange={(e) => setForm({ ...form, banco_codigo: e.target.value })} placeholder="Ex: 341" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Tipo de Conta</Label>
+                  <Select value={form.tipo_conta} onValueChange={(v) => setForm({ ...form, tipo_conta: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="corrente">Corrente</SelectItem>
+                      <SelectItem value="poupanca">Poupança</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="agencia">Agência</Label>
+                  <div className="flex gap-2">
+                    <Input id="agencia" value={form.agencia} onChange={(e) => setForm({ ...form, agencia: e.target.value })} className="flex-1" />
+                    <Input id="agencia_digito" value={form.agencia_digito} onChange={(e) => setForm({ ...form, agencia_digito: e.target.value })} className="w-16" placeholder="Díg." />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="conta">Conta</Label>
+                  <div className="flex gap-2">
+                    <Input id="conta" value={form.conta} onChange={(e) => setForm({ ...form, conta: e.target.value })} className="flex-1" />
+                    <Input id="conta_digito" value={form.conta_digito} onChange={(e) => setForm({ ...form, conta_digito: e.target.value })} className="w-16" placeholder="Díg." />
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           <DialogFooter>
