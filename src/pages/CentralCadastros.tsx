@@ -279,10 +279,7 @@ const CentralCadastros = () => {
                 <Upload className="h-4 w-4 mr-2" />
                 Importar Planilha
               </Button>
-              <Button variant="outline" size="sm" onClick={() => navigate("/configuracoes?tab=preferencias")}>
-                <Settings2 className="h-4 w-4 mr-2" />
-                Preferências pessoais
-              </Button>
+
               <Button variant="outline" size="sm" onClick={() => navigate("/colaboradores")}>
                 <ExternalLink className="h-4 w-4 mr-2" />
                 Gestão detalhada
@@ -322,9 +319,7 @@ const CentralCadastros = () => {
                         Vínculo com empresa, contrato e impacto financeiro lado a lado.
                       </p>
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => navigate("/colaboradores")}>
-                      Abrir gestão completa <ChevronRight className="h-4 w-4 ml-1" />
-                    </Button>
+
                   </div>
                   <table className="w-full text-sm">
                     <thead className="esc-table-header">
@@ -392,11 +387,7 @@ const CentralCadastros = () => {
                     </article>
                   ))}
                 </section>
-                <div className="flex justify-end">
-                  <Button variant="outline" size="sm" onClick={() => navigate("/empresas")}>
-                    Abrir gestão completa <ArrowRight className="h-4 w-4 ml-1" />
-                  </Button>
-                </div>
+
               </TabsContent>
 
               <TabsContent value="coletores" className="space-y-4">
@@ -408,9 +399,7 @@ const CentralCadastros = () => {
                         Estado do dispositivo e vínculo com a unidade operacional.
                       </p>
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => navigate("/coletores")}>
-                      Abrir gestão completa <ChevronRight className="h-4 w-4 ml-1" />
-                    </Button>
+
                   </div>
                   <table className="w-full text-sm">
                     <thead className="esc-table-header">

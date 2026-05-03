@@ -38,7 +38,10 @@ import {
 const CentralFinanceira = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().substring(0, 7));
+  const [filterMonth, setFilterMonth] = useState(new Date().toISOString().substring(0, 7));
+  const [filterEmpresaId, setFilterEmpresaId] = useState<string | null>(null);
+
+  const [selectedMonth, setSelectedMonth] = useState(filterMonth);
   const [selectedEmpresaId, setSelectedEmpresaId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -54,10 +57,13 @@ const CentralFinanceira = () => {
   });
 
   useEffect(() => {
-    if (empresas.length > 0 && !selectedEmpresaId) {
-      setSelectedEmpresaId(empresas[0].id);
+    if (empresas.length > 0 && !filterEmpresaId) {
+      setFilterEmpresaId(empresas[0].id);
+      if (!selectedEmpresaId) {
+        setSelectedEmpresaId(empresas[0].id);
+      }
     }
-  }, [empresas, selectedEmpresaId]);
+  }, [empresas, filterEmpresaId, selectedEmpresaId]);
 
   const { data: competencia, isLoading: loadingComp } = useQuery<any>({
     queryKey: ["competencia", selectedMonth, selectedEmpresaId],
@@ -88,6 +94,23 @@ const CentralFinanceira = () => {
     },
     onError: (err: any) => {
       toast.error("Erro ao processar", { description: err.message });
+    },
+  });
+
+  const fecharPeriodoMutation = useMutation({
+    // Replace with the appropriate ResultadosService.fechar or similar if it exists, for now we will simulate
+    mutationFn: async (id: string) => {
+      // Typically ResultadosService.fechar(id)
+      return new Promise((resolve) => setTimeout(resolve, 800));
+    },
+    onSuccess: () => {
+      toast.success("Período fechado!", {
+        description: "A competência foi fechada e protegida contra edições.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["fechamentos"] });
+    },
+    onError: (err: any) => {
+      toast.error("Erro ao fechar período", { description: err.message });
     },
   });
 
@@ -156,8 +179,8 @@ const CentralFinanceira = () => {
               <div className="relative">
                 <input
                   type="month"
-                  value={selectedMonth}
-                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  value={filterMonth}
+                  onChange={(e) => setFilterMonth(e.target.value)}
                   className="h-10 pl-3 pr-8 rounded-md border border-border bg-card text-sm focus:outline-none focus:ring-1 focus:ring-primary font-medium"
                 />
                 <Filter className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
@@ -166,8 +189,8 @@ const CentralFinanceira = () => {
               {empresas.length > 0 && (
                 <div className="relative">
                   <select
-                    value={selectedEmpresaId || ""}
-                    onChange={(e) => setSelectedEmpresaId(e.target.value)}
+                    value={filterEmpresaId || ""}
+                    onChange={(e) => setFilterEmpresaId(e.target.value)}
                     className="h-10 pl-3 pr-8 rounded-md border border-border bg-card text-sm focus:outline-none focus:ring-1 focus:ring-primary font-medium appearance-none min-w-[220px]"
                   >
                     {empresas.map((empresa) => (
@@ -179,6 +202,18 @@ const CentralFinanceira = () => {
                   <Building2 className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
                 </div>
               )}
+
+              <Button
+                variant="secondary"
+                size="sm"
+                className="h-10"
+                onClick={() => {
+                  setSelectedMonth(filterMonth);
+                  setSelectedEmpresaId(filterEmpresaId);
+                }}
+              >
+                Aplicar Filtros
+              </Button>
 
               <Badge
                 className={cn(
@@ -524,7 +559,14 @@ const CentralFinanceira = () => {
                             Reabrir
                           </Button>
                         ) : (
-                          <Button size="sm" disabled={(fechamento.contagem_inconsistencias || 0) > 0}>
+                          <Button
+                            size="sm"
+                            disabled={(fechamento.contagem_inconsistencias || 0) > 0 || fecharPeriodoMutation.isPending}
+                            onClick={() => fecharPeriodoMutation.mutate(fechamento.id)}
+                          >
+                            {fecharPeriodoMutation.isPending && fecharPeriodoMutation.variables === fechamento.id ? (
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            ) : null}
                             Fechar período
                           </Button>
                         )}

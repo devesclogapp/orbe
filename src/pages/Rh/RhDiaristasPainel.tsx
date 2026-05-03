@@ -20,7 +20,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Download, ExternalLink, Loader2, Lock, RefreshCw, Users, Calendar, Table as TableIcon } from "lucide-react";
+import { CalendarDays, CheckCircle2, ChevronDown, ChevronRight, ArrowLeft, Download, ExternalLink, Loader2, Lock, RefreshCw, Users, Calendar, Table as TableIcon } from "lucide-react";
 
 const formatCurrency = (v: number) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
@@ -48,6 +48,8 @@ const RhDiaristasPainel = () => {
     const [statusFiltro, setStatusFiltro] = useState<StatusFilter>("todos");
     const [nomeFiltro, setNomeFiltro] = useState("");
     const [funcaoFiltro, setFuncaoFiltro] = useState("todos");
+    // Filtro de empresa — "todos" = visão consolidada de todas as empresas
+    const [empresaFiltroId, setEmpresaFiltroId] = useState<string>("todos");
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [openFechamento, setOpenFechamento] = useState(false);
     const [obsLote, setObsLote] = useState("");
@@ -64,41 +66,38 @@ const RhDiaristasPainel = () => {
         queryFn: () => EmpresaService.getAll(),
     });
 
-    // C4: Guard — Admin pode selecionar qualquer empresa; perfis com papel fixo
-    // usam SOMENTE sua empresa. Se o perfil está carregado e não tem empresa_id,
-    // bloqueamos a operação para evitar fechamento na empresa errada.
     const isAdmin = perfil?.papel === "Admin";
-    const empresaId = isAdmin
-        ? perfil?.empresa_id ?? ((empresas as any[])[0]?.id ?? "")
-        : (perfil?.empresa_id ?? "");
-    const empresaSemVinculo = !isAdmin && !!perfil && !perfil.empresa_id;
-    const empresaNome = useMemo(
-        () => (empresas as any[]).find((e) => e.id === empresaId)?.nome ?? "",
-        [empresas, empresaId],
-    );
+    // Empresa do usuário (usada apenas para o fechamento de período)
+    const empresaIdDoUsuario = perfil?.empresa_id ?? ((empresas as any[])[0]?.id ?? "");
 
+    // Visão consolidada: busca lançamentos sem filtro de empresa.
+    // O filtro de empresa da UI é aplicado client-side nos dados já carregados.
     const { data: lancamentos = [], isLoading, isFetching, refetch } = useQuery({
-        queryKey: ["lancamentos_diaristas_painel", empresaId, inicio, fim, statusFiltro === "todos" ? undefined : statusFiltro],
+        queryKey: ["lancamentos_diaristas_painel", inicio, fim, statusFiltro === "todos" ? undefined : statusFiltro],
         queryFn: () =>
             LancamentoDiaristaService.getByPeriodo(
-                empresaId,
+                null, // null = todas as empresas
                 inicio,
                 fim,
                 statusFiltro !== "todos" ? { status: statusFiltro as any } : undefined,
             ),
-        enabled: !!empresaId && !empresaSemVinculo,
+        enabled: true,
     });
 
     const { data: lotes = [], refetch: refetchLotes } = useQuery({
-        queryKey: ["lotes_fechamento", empresaId],
-        queryFn: () => LoteFechamentoDiaristaService.getByEmpresa(empresaId),
-        enabled: !!empresaId && !empresaSemVinculo,
+        queryKey: ["lotes_fechamento", empresaIdDoUsuario],
+        queryFn: () => LoteFechamentoDiaristaService.getByEmpresa(empresaIdDoUsuario),
+        enabled: !!empresaIdDoUsuario,
     });
 
     // Agrupar lançamentos por diarista
     const dadosAgrupados = useMemo(() => {
         let items = lancamentos as any[];
 
+        // Filtro de empresa (client-side)
+        if (empresaFiltroId !== "todos") {
+            items = items.filter((l) => l.empresa_id === empresaFiltroId);
+        }
         if (nomeFiltro) {
             const q = nomeFiltro.toLowerCase();
             items = items.filter((l) => l.nome_colaborador.toLowerCase().includes(q));
@@ -145,6 +144,10 @@ const RhDiaristasPainel = () => {
     const dadosAgrupadosPorData = useMemo(() => {
         let items = lancamentos as any[];
 
+        // Filtro de empresa (client-side)
+        if (empresaFiltroId !== "todos") {
+            items = items.filter((l) => l.empresa_id === empresaFiltroId);
+        }
         if (nomeFiltro) {
             const q = nomeFiltro.toLowerCase();
             items = items.filter((l) => l.nome_colaborador.toLowerCase().includes(q));
@@ -200,11 +203,10 @@ const RhDiaristasPainel = () => {
         };
     }, [dadosAgrupados, lancamentos, statusFiltro]);
 
-    // C5: rawEmAberto usa lancamentos SEM FILTRO para não bloquear o botão
-    // quando o usuário tem filtros de nome/função ativos
+    // rawEmAberto: conta apenas registros da empresa do usuário em aberto (para o fechamento)
     const rawEmAberto = useMemo(
-        () => (lancamentos as any[]).filter((l) => l.status === "em_aberto").length,
-        [lancamentos],
+        () => (lancamentos as any[]).filter((l) => l.status === "em_aberto" && l.empresa_id === empresaIdDoUsuario).length,
+        [lancamentos, empresaIdDoUsuario],
     );
     const temFiltroAtivo = nomeFiltro.trim() !== "" || funcaoFiltro !== "todos";
 
@@ -249,8 +251,9 @@ const RhDiaristasPainel = () => {
     const fecharMutation = useMutation({
         mutationFn: () => {
             if (!user?.id) throw new Error("Usuário não identificado.");
+            if (!empresaIdDoUsuario) throw new Error("Nenhuma empresa associada ao seu perfil.");
             return LoteFechamentoDiaristaService.fecharPeriodo({
-                empresaId: empresaId,
+                empresaId: empresaIdDoUsuario,
                 periodoInicio: inicio,
                 periodoFim: fim,
                 fechadoPor: user.id,
@@ -309,36 +312,17 @@ const RhDiaristasPainel = () => {
 
     return (
         <AppShell title="Painel de Diaristas" subtitle="Acompanhamento consolidado · formato planilha">
-            <div className="flex justify-end mb-4">
+            <div className="flex items-center justify-between mb-4">
+                <Button variant="ghost" size="sm" onClick={() => navigate(-1)} className="text-muted-foreground hover:text-foreground -ml-2">
+                    <ArrowLeft className="h-4 w-4 mr-2" />
+                    Voltar
+                </Button>
                 <Button variant="outline" size="sm" onClick={() => navigate("/rh/diaristas/cadastros")}>
                     <Users className="h-4 w-4 mr-2" />
                     Gerenciar Cadastros
                 </Button>
             </div>
             <div className="space-y-4">
-
-                {/* C4: Bloquear se RH não tem empresa vinculada */}
-                {empresaSemVinculo && (
-                    <div className="esc-card p-5 border-destructive/50 bg-destructive/5 flex items-start gap-3">
-                        <span className="text-2xl">⛔</span>
-                        <div>
-                            <p className="font-bold text-destructive">Perfil sem empresa vinculada</p>
-                            <p className="text-sm text-muted-foreground mt-1">
-                                Seu usuário não possui uma empresa associada. Solicite ao administrador que vincule
-                                sua conta a uma empresa antes de lançar ou fechar períodos.
-                            </p>
-                        </div>
-                    </div>
-                )}
-
-                {/* Empresa atual em visão (orienta o usuário) */}
-                {empresaNome && (
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
-                        <span className="inline-flex items-center gap-1 bg-muted px-2 py-1 rounded-full">
-                            🏢 <span className="font-medium">{empresaNome}</span>
-                        </span>
-                    </div>
-                )}
 
                 {/* KPIs rápidos — reagem aos filtros ativos */}
                 {statusFiltro !== "todos" && (
@@ -398,6 +382,18 @@ const RhDiaristasPainel = () => {
                             </Select>
                         </div>
                         <div className="space-y-1">
+                            <Label className="text-xs">Empresa</Label>
+                            <Select value={empresaFiltroId} onValueChange={setEmpresaFiltroId}>
+                                <SelectTrigger className="h-8 text-sm w-48"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="todos">Todas as empresas</SelectItem>
+                                    {(empresas as any[]).map((e) => (
+                                        <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-1">
                             <Label className="text-xs">Função</Label>
                             <Select value={funcaoFiltro} onValueChange={setFuncaoFiltro}>
                                 <SelectTrigger className="h-8 text-sm w-44"><SelectValue /></SelectTrigger>
@@ -425,12 +421,12 @@ const RhDiaristasPainel = () => {
                                     size="sm"
                                     className={cn(
                                         "h-8 font-bold transition-colors",
-                                        rawEmAberto > 0 && !empresaSemVinculo
+                                        rawEmAberto > 0
                                             ? "bg-amber-600 hover:bg-amber-700 text-white"
                                             : "bg-muted text-muted-foreground cursor-not-allowed"
                                     )}
                                     onClick={() => setOpenFechamento(true)}
-                                    disabled={rawEmAberto === 0 || empresaSemVinculo}
+                                    disabled={rawEmAberto === 0}
                                 >
                                     <Lock className="h-3.5 w-3.5 mr-1" /> Fechar período
                                     {rawEmAberto > 0 && (
@@ -439,7 +435,7 @@ const RhDiaristasPainel = () => {
                                         </span>
                                     )}
                                 </Button>
-                                {rawEmAberto === 0 && !empresaSemVinculo && (
+                                {rawEmAberto === 0 && (
                                     <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block w-56 bg-popover border border-border rounded-lg shadow-lg p-2.5 text-xs text-muted-foreground z-50">
                                         Nenhum lançamento <strong>em aberto</strong> no período selecionado.
                                         {temFiltroAtivo && " (Você tem filtros ativos — limpe-os para ver todos.)"}
@@ -525,17 +521,17 @@ const RhDiaristasPainel = () => {
                                     </tr>
                                 ) : visao === "grade_semanal" ? (
                                     <tr className="text-left">
-                                        <th className="px-5 h-11 font-medium min-w-[200px]">Diarista</th>
+                                        <th className="px-5 h-12 font-medium min-w-[220px] text-sm">Diarista</th>
                                         {diasDaSemanaBase.map((d) => (
-                                            <th key={d.toISOString()} className={cn("px-2 h-11 text-center whitespace-nowrap", isToday(d) && "bg-blue-50/50 border-b-2 border-b-blue-400")}>
+                                            <th key={d.toISOString()} className={cn("px-3 h-12 text-center whitespace-nowrap min-w-[64px]", isToday(d) && "bg-blue-50/50 border-b-2 border-b-blue-400")}>
                                                 <div className="flex flex-col items-center">
-                                                    <span className="text-[11px] font-bold uppercase text-muted-foreground tracking-wider">{format(d, "eeeeee", { locale: ptBR })}</span>
-                                                    <span className="font-mono text-[10px] text-foreground">{format(d, "dd/MM")}</span>
+                                                    <span className="text-xs font-bold uppercase text-muted-foreground tracking-wider">{format(d, "eeeeee", { locale: ptBR })}</span>
+                                                    <span className="font-mono text-xs text-foreground">{format(d, "dd/MM")}</span>
                                                 </div>
                                             </th>
                                         ))}
-                                        <th className="px-3 h-11 font-medium text-center">Diárias</th>
-                                        <th className="px-5 h-11 font-medium text-right">Valor</th>
+                                        <th className="px-3 h-12 font-medium text-center text-sm">Diárias</th>
+                                        <th className="px-5 h-12 font-medium text-right text-sm">Valor</th>
                                     </tr>
                                 ) : (
                                     <tr className="text-left">
@@ -629,10 +625,10 @@ const RhDiaristasPainel = () => {
                                 ) : visao === "grade_semanal" ? (
                                     dadosAgrupados.map((g) => (
                                         <tr key={g.diarista_id} className="border-t border-muted hover:bg-background">
-                                            <td className="px-5 h-12">
+                                            <td className="px-5 h-14">
                                                 <div className="flex flex-col">
-                                                    <span className="font-medium text-foreground truncate max-w-[200px]">{g.nome}</span>
-                                                    <span className="text-[10px] text-muted-foreground truncate max-w-[200px]">{g.funcao}</span>
+                                                    <span className="font-medium text-sm text-foreground truncate max-w-[220px]">{g.nome}</span>
+                                                    <span className="text-xs text-muted-foreground truncate max-w-[220px]">{g.funcao}</span>
                                                 </div>
                                             </td>
                                             {diasDaSemanaBase.map((d) => {
@@ -641,8 +637,8 @@ const RhDiaristasPainel = () => {
 
                                                 if (diaLancamentos.length === 0) {
                                                     return (
-                                                        <td key={d.toISOString()} className={cn("px-2 text-center text-muted-foreground/30 font-medium", isToday(d) && "bg-blue-50/50")}>
-                                                            -
+                                                        <td key={d.toISOString()} className={cn("px-3 text-center text-muted-foreground/40 font-medium text-sm", isToday(d) && "bg-blue-50/50")}>
+                                                            –
                                                         </td>
                                                     );
                                                 }
@@ -652,10 +648,10 @@ const RhDiaristasPainel = () => {
                                                 const tooltipVal = diaLancamentos.map((l: any) => `${l.quantidade_diaria}x ${l.codigo_marcacao} = ${formatCurrency(l.valor_calculado)}`).join(' | ');
 
                                                 return (
-                                                    <td key={d.toISOString()} className={cn("px-2 text-center", isToday(d) && "bg-blue-50/50")} title={tooltipVal}>
-                                                        <div className="flex flex-col items-center gap-0.5 mt-1 cursor-help">
+                                                    <td key={d.toISOString()} className={cn("px-3 text-center", isToday(d) && "bg-blue-50/50")} title={tooltipVal}>
+                                                        <div className="flex flex-col items-center gap-0.5 cursor-help">
                                                             <span className={cn(
-                                                                "text-[10px] uppercase font-bold px-1.5 py-0.5 rounded",
+                                                                "text-xs uppercase font-bold px-2 py-0.5 rounded",
                                                                 codes.includes("P") && "text-emerald-700 bg-emerald-500/15",
                                                                 codes.includes("MP") && "text-amber-700 bg-amber-500/15",
                                                                 (!codes.includes("P") && !codes.includes("MP")) && "bg-muted text-foreground"
@@ -666,10 +662,10 @@ const RhDiaristasPainel = () => {
                                                     </td>
                                                 );
                                             })}
-                                            <td className="px-3 text-center font-mono font-bold">
+                                            <td className="px-3 text-center font-mono font-bold text-sm">
                                                 {g.totalDiarias.toFixed(1)}
                                             </td>
-                                            <td className="px-5 text-right font-mono font-semibold text-foreground">
+                                            <td className="px-5 text-right font-mono font-semibold text-foreground text-sm">
                                                 {formatCurrency(g.valorTotal)}
                                             </td>
                                         </tr>
@@ -761,9 +757,9 @@ const RhDiaristasPainel = () => {
                                         </>
                                     ) : visao === "grade_semanal" ? (
                                         <>
-                                            <td className="px-5 h-11 font-bold text-foreground py-2 align-bottom">
-                                                <div className="flex flex-col gap-1">
-                                                    <span>Totais dia</span>
+                                            <td className="px-5 h-12 font-bold text-foreground py-2 align-middle">
+                                                <div className="flex flex-col gap-0.5">
+                                                    <span className="text-sm">Totais dia</span>
                                                     <span className="text-xs text-muted-foreground font-normal">Valor</span>
                                                 </div>
                                             </td>
@@ -773,12 +769,12 @@ const RhDiaristasPainel = () => {
                                                 const sumDia = dadosDoDia?.totalDiarias || 0;
                                                 const valorDia = dadosDoDia?.valorTotal || 0;
                                                 return (
-                                                    <td key={d.toISOString()} className={cn("px-2 text-center py-2 align-bottom", isToday(d) && "bg-blue-50/50")}>
-                                                        <div className="flex flex-col items-center gap-1">
-                                                            <span className="font-mono text-[10px] font-bold text-foreground">
+                                                    <td key={d.toISOString()} className={cn("px-3 text-center py-2 align-middle", isToday(d) && "bg-blue-50/50")}>
+                                                        <div className="flex flex-col items-center gap-0.5">
+                                                            <span className="font-mono text-xs font-bold text-foreground">
                                                                 {sumDia > 0 ? sumDia.toFixed(1) : "0"}
                                                             </span>
-                                                            <span className="font-mono text-[9px] text-muted-foreground whitespace-nowrap">
+                                                            <span className="font-mono text-[11px] text-muted-foreground whitespace-nowrap">
                                                                 {valorDia > 0 ? formatCurrency(valorDia) : "R$ 0,00"}
                                                             </span>
                                                         </div>

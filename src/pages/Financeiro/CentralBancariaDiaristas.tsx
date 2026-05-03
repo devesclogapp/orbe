@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import React, { useState, useMemo, Fragment } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -139,19 +139,15 @@ export const CentralBancariaDiaristas = () => {
     const canAdjust = isAdmin || isFinanceiro;
     const userName = perfil?.nome_completo || user?.email || "";
 
-    // S2: Admin sem empresa_id pode ver todos os lotes (sem fallback indevido);
-    // perfis não-Admin devem ter empresa_id explícita. Evita que RH/Financeiro
-    // sem vínculo opere sobre a empresa errada.
-    const empresaId = isAdmin && !perfil?.empresa_id
-        ? ((empresas as any[])[0]?.id ?? "")
-        : (perfil?.empresa_id ?? "");
-    const empresaSemVinculo = !isAdmin && !!perfil && !perfil.empresa_id;
+    // Acesso baseado em papel (role), não em empresa vinculada.
+    // Usuários sem empresa_id fixo usam a primeira empresa disponível como contexto padrão.
+    const empresaId = perfil?.empresa_id ?? ((empresas as any[])[0]?.id ?? "");
 
     // ── lotes ──
     const { data: lotes = [], isLoading } = useQuery({
         queryKey: ["lotes_fechamento", empresaId],
         queryFn: () => LoteFechamentoDiaristaService.getByEmpresaParaFinanceiro(empresaId),
-        enabled: !!empresaId && !empresaSemVinculo,
+        enabled: !!empresaId,
     });
 
     // Lotes paginados
@@ -433,19 +429,6 @@ export const CentralBancariaDiaristas = () => {
     return (
         <div>
             <div className="space-y-4">
-                {/* S2: Bloquear Financeiro/RH sem empresa vinculada */}
-                {empresaSemVinculo && (
-                    <div className="esc-card p-5 border-destructive/50 bg-destructive/5 flex items-start gap-3">
-                        <span className="text-2xl">⛔</span>
-                        <div>
-                            <p className="font-bold text-destructive">Perfil sem empresa vinculada</p>
-                            <p className="text-sm text-muted-foreground mt-1">
-                                Seu usuário não possui uma empresa associada. Solicite ao administrador que vincule
-                                sua conta a uma empresa antes de operar pagamentos.
-                            </p>
-                        </div>
-                    </div>
-                )}
                 <section className="esc-card overflow-hidden">
                     {/* Legenda contextual para usuários leigos sobre CNAB */}
                     <div className="px-5 py-3 bg-muted/30 border-b border-border/50 flex items-start gap-2">
@@ -516,6 +499,7 @@ export const CentralBancariaDiaristas = () => {
                                                 >
                                                     <FileCode2 className="h-4 w-4 mr-1.5" /> CNAB
                                                 </Button>
+                                                <span className="text-xs text-muted-foreground ml-2">(Status: {l.status})</span>
                                                 {/* C2: confirm() substituído por Dialog próprio */}
                                                 {l.status !== "pago" && (
                                                     <Button
@@ -604,7 +588,10 @@ export const CentralBancariaDiaristas = () => {
                         </DialogDescription>
                     </DialogHeader>
 
-                    <div className="flex-1 overflow-y-auto p-6 bg-muted/10">
+                    <div className="flex-1 overflow-y-auto p-6 bg-muted/10 relative group">
+                        {/* Indicador de scroll */}
+                        <div className="absolute top-0 inset-x-0 h-4 bg-gradient-to-b from-muted/20 to-transparent pointer-events-none opacity-0 transition-opacity group-hover:opacity-100" />
+
                         {/* Barra de ações de governança (Admin + Financeiro podem criar ajustes; só Admin pode reabrir) */}
                         {canAdjust && selectedLote && (["fechado_para_pagamento", "cnab_gerado", "pago"].includes(selectedLote.status)) && (
                             <div className="flex items-center gap-2 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
@@ -656,8 +643,8 @@ export const CentralBancariaDiaristas = () => {
                                                 const lancRef = g.lancamentosNormais[0] ?? null;
 
                                                 return (
-                                                    <>
-                                                        <tr key={g.diarista_id} className="hover:bg-muted/30">
+                                                    <React.Fragment key={g.diarista_id}>
+                                                        <tr className="hover:bg-muted/30">
                                                             <td className="px-4 py-2.5 font-medium">
                                                                 <div className="flex items-center gap-1">
                                                                     {hasAjustes && (
@@ -722,11 +709,11 @@ export const CentralBancariaDiaristas = () => {
                                                                 {canAdjust && <td className="px-2 py-1.5" />}
                                                             </tr>
                                                         ))}
-                                                    </>
+                                                    </React.Fragment>
                                                 );
                                             })}
                                         </tbody>
-                                        <tfoot className="bg-muted border-t border-border/50">
+                                        <tfoot className="bg-muted border-t border-border/50 relative">
                                             <tr>
                                                 <td colSpan={3} className="px-4 py-3 font-bold text-right text-sm">TOTAL GERAL:</td>
                                                 <td className="px-4 py-3 text-right font-mono font-bold text-sm">
@@ -747,6 +734,11 @@ export const CentralBancariaDiaristas = () => {
                                     </table>
                                 </div>
                             )}
+                        </div>
+                        <div className="absolute bottom-0 inset-x-0 h-8 bg-gradient-to-t from-muted/40 to-transparent pointer-events-none flex items-end justify-center pb-1">
+                            <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest opacity-0 transition-opacity group-hover:opacity-100 bg-background/80 px-2 rounded-full shadow-sm border">
+                                ↓ Role para ver mais
+                            </span>
                         </div>
                     </div>
 

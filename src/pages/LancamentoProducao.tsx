@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
     AlertCircle,
+    ArrowLeft,
     Building2,
     Car,
     CheckCircle2,
@@ -1016,16 +1017,16 @@ const LancamentoProducao = () => {
     if (!schemaDisponivel) {
         return (
             <OperationalShell title="PRODUÇÃO IN-LOCO" unitName={currentUnitName || "—"}>
-                <Card className="p-8 max-w-2xl mx-auto mt-12 text-center space-y-4 border-destructive/30">
-                    <div className="w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center mx-auto">
-                        <AlertCircle className="w-8 h-8 text-destructive" />
+                <Card className="p-8 max-w-2xl mx-auto mt-12 text-center space-y-4 esc-card border-l-4 border-l-red-500 shadow-sm">
+                    <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mx-auto">
+                        <AlertCircle className="w-8 h-8 text-red-500" />
                     </div>
                     <h2 className="text-xl font-black font-display text-foreground">Schema operacional não encontrado</h2>
                     <p className="text-sm text-muted-foreground">
                         As tabelas de produção (<code>operacoes_producao</code>, <code>tipos_servico_operacional</code>, etc.) não foram detectadas no banco de dados.
                         Execute a migration do módulo operacional antes de usar esta tela.
                     </p>
-                    <Badge variant="error" className="font-bold">Produção bloqueada</Badge>
+                    <Badge variant="error" className="font-bold bg-red-500">Produção bloqueada</Badge>
                 </Card>
             </OperationalShell>
         );
@@ -1033,21 +1034,27 @@ const LancamentoProducao = () => {
 
     return (
         <OperationalShell title="PRODUÇÃO IN-LOCO" unitName={currentUnitName || "Sincronizando..."}>
+            <div className="mb-4 flex items-center justify-between">
+                <Button variant="ghost" size="sm" onClick={() => navigate(-1)} className="text-muted-foreground hover:text-foreground -ml-2">
+                    <ArrowLeft className="w-4 h-4 mr-2" />
+                    Voltar
+                </Button>
+            </div>
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:gap-6 2xl:gap-8">
                 <div className="xl:col-span-12">
-                    <Card className="p-4 bg-info-soft/40 border-info/20 shadow-none">
-                        <div className="flex items-start gap-3 text-info-strong">
+                    <div className="esc-card p-4 border-l-4 border-l-blue-500 shadow-sm bg-card border-t border-r border-b">
+                        <div className="flex items-start gap-3 text-blue-800 dark:text-blue-200">
                             <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
                             <div>
-                                <p className="text-sm font-bold font-display uppercase tracking-tight">
+                                <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-1">
                                     Registro operacional em tempo real
                                 </p>
-                                <p className="text-sm">
+                                <p className="text-sm text-foreground">
                                     Registros imediatos de carga, descarga e movimentações. Preencha os dados da operação e depois vincule a equipe com a conduta de cada colaborador.
                                 </p>
                             </div>
                         </div>
-                    </Card>
+                    </div>
                 </div>
 
                 <div className="xl:col-span-5 2xl:col-span-4 space-y-4">
@@ -1140,7 +1147,7 @@ const LancamentoProducao = () => {
                                     </div>
 
                                     {etapaUmBlockReasonResolvido && (
-                                        <div className="rounded-xl border border-warning/20 bg-warning-soft/40 p-3 text-sm text-warning-strong">
+                                        <div className="esc-card p-3 border-l-4 border-l-amber-500 bg-amber-500/5 text-sm font-medium text-amber-800 dark:text-amber-200">
                                             {etapaUmBlockReasonResolvido}
                                         </div>
                                     )}
@@ -1279,8 +1286,8 @@ const LancamentoProducao = () => {
                                     )}
 
                                     {isDataRetroativa && (
-                                        <div className="rounded-xl border border-warning/20 bg-warning-soft/40 p-4 space-y-2">
-                                            <div className="flex items-center gap-2 text-warning-strong">
+                                        <div className="esc-card p-4 border-b border-t border-r border-l-4 border-l-amber-500 bg-amber-500/5 space-y-2">
+                                            <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200 font-medium">
                                                 <ShieldAlert className="w-4 h-4" />
                                                 <span className="text-sm font-bold">Data retroativa detectada</span>
                                             </div>
@@ -1288,7 +1295,7 @@ const LancamentoProducao = () => {
                                                 placeholder="Informe a justificativa para o lançamento retroativo"
                                                 value={form.justificativa_data}
                                                 onChange={(e) => setForm((prev) => ({ ...prev, justificativa_data: e.target.value }))}
-                                                className="rounded-xl min-h-[84px]"
+                                                className="rounded-xl min-h-[84px] bg-background/50 border-input"
                                             />
                                         </div>
                                     )}
@@ -1440,7 +1447,7 @@ const LancamentoProducao = () => {
                                             </div>
 
                                             {requiresProductSelection && !form.produto && (
-                                                <div className="rounded-xl border border-warning/20 bg-warning-soft/40 p-3 text-sm text-warning-strong">
+                                                <div className="esc-card p-3 border-l-4 border-l-amber-500 bg-amber-500/5 text-sm font-medium text-amber-800 dark:text-amber-200">
                                                     {REGRA_MENSAGEM_PRODUTO}
                                                 </div>
                                             )}
@@ -1606,7 +1613,7 @@ const LancamentoProducao = () => {
                                     </div>
 
                                     {!!mensagemRegra && form.transportadora && ruleLookupState !== "loading" && !isTransbordoServicoExtra && (
-                                        <div className="rounded-xl border border-destructive/20 bg-destructive-soft/40 p-4 text-sm text-destructive-strong">
+                                        <div className="esc-card p-4 border-l-4 border-l-red-500 bg-red-500/5 text-sm font-medium text-red-800 dark:text-red-400">
                                             {mensagemRegra}
                                         </div>
                                     )}
@@ -1672,7 +1679,7 @@ const LancamentoProducao = () => {
                                         </div>
                                     </div>
                                     {etapaDoisBlockReason && (
-                                        <div className="rounded-xl border border-warning/20 bg-warning-soft/40 p-3 text-sm text-warning-strong">
+                                        <div className="esc-card p-3 border-l-4 border-l-amber-500 bg-amber-500/5 text-sm font-medium text-amber-800 dark:text-amber-200">
                                             {etapaDoisBlockReason}
                                         </div>
                                     )}
@@ -1805,7 +1812,7 @@ const LancamentoProducao = () => {
                                     </div>
 
                                     {etapaTresBlockReason && (
-                                        <div className="rounded-xl border border-warning/20 bg-warning-soft/40 p-3 text-sm text-warning-strong">
+                                        <div className="esc-card p-3 border-l-4 border-l-amber-500 bg-amber-500/5 text-sm font-medium text-amber-800 dark:text-amber-200">
                                             {etapaTresBlockReason}
                                         </div>
                                     )}
@@ -1813,15 +1820,15 @@ const LancamentoProducao = () => {
                             )}
 
                             {cadastrosAusentes.length > 0 && (
-                                <div className="rounded-xl border border-destructive/20 bg-destructive-soft/40 p-4 space-y-2">
-                                    <div className="flex items-center gap-2 text-destructive-strong">
+                                <div className="esc-card p-4 border-l-4 border-l-red-500 bg-red-500/5 space-y-2">
+                                    <div className="flex items-center gap-2 text-red-700 dark:text-red-400 font-medium">
                                         <AlertCircle className="w-4 h-4" />
                                         <span className="text-sm font-bold">Cadastros base ausentes</span>
                                     </div>
-                                    <p className="text-sm text-destructive-strong">
+                                    <p className="text-sm text-red-700 dark:text-red-400">
                                         A produção está bloqueada. Os seguintes cadastros precisam ser criados antes de registrar operações:
                                     </p>
-                                    <ul className="list-disc list-inside text-sm text-destructive-strong space-y-0.5">
+                                    <ul className="list-disc list-inside text-sm text-red-700 dark:text-red-400 space-y-0.5">
                                         {cadastrosAusentes.map((c) => <li key={c}>{c}</li>)}
                                     </ul>
                                 </div>
@@ -2155,8 +2162,8 @@ const LancamentoProducao = () => {
                         </div>
 
                         {produtoSimilarOptions.length > 0 && (
-                            <div className="rounded-xl border border-warning/20 bg-warning-soft/40 p-3 space-y-3">
-                                <div className="text-sm text-warning-strong">
+                            <div className="esc-card p-3 border-l-4 border-l-amber-500 bg-amber-500/5 space-y-3">
+                                <div className="text-sm font-medium text-amber-800 dark:text-amber-200">
                                     Já existe um cadastro parecido. Deseja usar o item existente?
                                 </div>
                                 <div className="flex flex-wrap gap-2">

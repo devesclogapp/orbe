@@ -1,8 +1,9 @@
 import { useState, useMemo, useEffect } from "react";
-import { format, subWeeks } from "date-fns";
+import { format, subWeeks, parseISO } from "date-fns";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, CalendarDays, CheckCircle2, Clock, Save, Users, XCircle, History } from "lucide-react";
+import { Building2, CalendarDays, CheckCircle2, Clock, Save, Users, XCircle, History, ArrowLeft, AlertCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useNavigate } from "react-router-dom";
 
 import { OperationalShell } from "@/components/layout/OperationalShell";
 import { Button } from "@/components/ui/button";
@@ -47,6 +48,7 @@ const calcularValor = (marcacao: MarcacaoDiarista, valorDiaria: number, regras: 
 const DiaristasLancamento = () => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
+    const navigate = useNavigate();
     const today = format(new Date(), "yyyy-MM-dd");
 
     const [data, setData] = useState(today);
@@ -210,7 +212,14 @@ const DiaristasLancamento = () => {
 
     return (
         <OperationalShell title="Lançamento de Diaristas">
-            <div className="max-w-4xl mx-auto space-y-6">
+            <div className="max-w-4xl mx-auto space-y-6 pb-24">
+                {/* Header Actions */}
+                <div className="flex items-center justify-between">
+                    <Button variant="ghost" size="sm" onClick={() => navigate(-1)} className="text-muted-foreground hover:text-foreground">
+                        <ArrowLeft className="w-4 h-4 mr-2" />
+                        Voltar
+                    </Button>
+                </div>
 
                 {/* Alerta de lançamentos já registrados no dia */}
                 {(lancamentosHoje as any[]).length > 0 && (
@@ -219,7 +228,7 @@ const DiaristasLancamento = () => {
                         <p className="text-sm text-foreground">
                             <span className="font-semibold text-emerald-600">{(lancamentosHoje as any[]).length} registro(s)</span>{" "}
                             para <span className="font-semibold text-emerald-600">{totalDiaristasComLancamento} diarista(s)</span>{" "}
-                            já foram salvos para <span className="font-mono">{format(new Date(data + "T12:00:00"), "dd/MM/yyyy")}</span>.
+                            já foram salvos para <span className="font-mono">{format(parseISO(data), "dd/MM/yy")}</span>.
                             {" "}<span className="text-amber-600 font-medium">Novos registros serão adicionados aos existentes.</span>
                         </p>
                     </div>
@@ -250,7 +259,9 @@ const DiaristasLancamento = () => {
 
                         <div className="space-y-1.5">
                             <Label>Encarregado responsável</Label>
-                            <Input value={user?.email ?? "—"} disabled className="bg-muted/50" />
+                            <div className="flex h-10 items-center px-3 border border-border rounded-md bg-muted/50 text-sm font-medium text-muted-foreground truncate">
+                                {perfil?.nome || user?.email || "—"}
+                            </div>
                         </div>
 
                         <div className="space-y-1.5">
@@ -258,6 +269,14 @@ const DiaristasLancamento = () => {
                             <Select
                                 value={clienteUnidade}
                                 onValueChange={(nome) => {
+                                    // Verifica se há marcações ativas
+                                    const temMarcacoes = Object.values(marcacoes).some(m => m.marcacao !== "AUSENTE");
+                                    if (temMarcacoes) {
+                                        if (!window.confirm("Você tem marcações preenchidas. Trocar a empresa irá resetar os dados atuais. Deseja continuar?")) {
+                                            return;
+                                        }
+                                    }
+
                                     // Encontra a empresa pelo nome para obter o ID
                                     const empresa = (empresas as any[]).find((e: any) => e.nome === nome);
                                     setClienteUnidade(nome);
@@ -295,7 +314,10 @@ const DiaristasLancamento = () => {
                         </div>
 
                         <div className="space-y-1.5 md:col-span-2">
-                            <Label>Observações gerais</Label>
+                            <Label className="flex items-center gap-2">
+                                Observações gerais
+                                <span className="text-xs font-normal text-muted-foreground">(Aplicado aos diaristas sem observação individual)</span>
+                            </Label>
                             <Textarea
                                 placeholder="Observações do dia..."
                                 value={observacoesGerais}
@@ -384,7 +406,7 @@ const DiaristasLancamento = () => {
                                                 <div className="hidden md:block w-px h-8 bg-border"></div>
 
                                                 {/* Botões de marcação (Estilo Toggle Group Integrado) */}
-                                                <div className="flex rounded-lg border bg-muted/40 p-1 shrink-0 w-full md:w-auto overflow-x-auto scroolbar-hide">
+                                                <div className="flex rounded-lg border bg-muted/40 p-1 shrink-0 w-full md:w-auto overflow-x-auto scrollbar-hide">
                                                     {(regrasMarcacao as any[]).map((regra: any) => {
                                                         const isActive = item.marcacao === regra.codigo;
                                                         const isAusente = regra.codigo === 'AUSENTE';
@@ -444,50 +466,61 @@ const DiaristasLancamento = () => {
                     )}
                 </section>
 
-                {/* Resumo em tempo real */}
-                {diaristasArray.length > 0 && (
-                    <section className="esc-card p-4">
-                        <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3">Resumo do dia</h3>
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                            {[
-                                { label: "Total", value: resumo.total, color: "" },
-                                { label: "Ausentes", value: resumo["AUSENTE"] || 0, color: "text-muted-foreground" },
-                                ...Object.keys(resumo).filter(k => k !== "total" && k !== "valorTotal" && k !== "AUSENTE").map(k => ({
-                                    label: k, value: resumo[k], color: "text-primary"
-                                })),
-                                { label: "Valor total", value: formatCurrency(resumo.valorTotal), color: "text-primary", isMonetary: true },
-                            ].map((item) => (
-                                <div key={item.label} className="bg-muted/30 rounded-lg p-3 text-center">
-                                    <p className="text-xs text-muted-foreground mb-1">{item.label}</p>
-                                    <p className={cn("font-bold text-foreground", item.color, item.isMonetary ? "text-base font-mono" : "text-xl")}>
-                                        {item.value}
-                                    </p>
-                                </div>
-                            ))}
+                {/* Resumo em tempo real e Botões Fixados */}
+                <div className="sticky bottom-4 z-20 space-y-4">
+                    {diaristasArray.length > 0 && (
+                        <section className="esc-card p-4 shadow-lg border-primary/20 bg-card/95 backdrop-blur">
+                            <div className="flex items-center justify-between mb-3">
+                                <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Resumo do dia</h3>
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                                {[
+                                    { label: "Total", value: resumo.total, color: "" },
+                                    { label: "Ausentes", value: resumo["AUSENTE"] || 0, color: "text-muted-foreground" },
+                                    ...Object.keys(resumo).filter(k => k !== "total" && k !== "valorTotal" && k !== "AUSENTE").map(k => ({
+                                        label: k, value: resumo[k], color: "text-primary"
+                                    })),
+                                    { label: "Valor total", value: formatCurrency(resumo.valorTotal), color: "text-primary", isMonetary: true },
+                                ].map((item) => (
+                                    <div key={item.label} className="bg-muted/50 rounded-lg p-2 text-center flex flex-col justify-center">
+                                        <p className="text-[10px] uppercase text-muted-foreground mb-0.5">{item.label}</p>
+                                        <p className={cn("font-bold text-foreground leading-none", item.color, item.isMonetary ? "text-sm font-mono" : "text-base")}>
+                                            {item.value}
+                                        </p>
+                                    </div>
+                                ))}
+                            </div>
+                        </section>
+                    )}
+
+                    {/* Botões de Ação */}
+                    <div className="flex justify-between items-center bg-card/95 backdrop-blur p-4 rounded-xl border border-border shadow-lg">
+                        <Button
+                            variant="outline"
+                            onClick={() => setOpenHistorico(true)}
+                            disabled={!empresaIdSelecionada}
+                        >
+                            <History className="h-4 w-4 md:mr-2" />
+                            <span className="hidden md:inline">Histórico recente (14 dias)</span>
+                        </Button>
+
+                        <div className="flex items-center gap-3">
+                            {(!empresaIdSelecionada || !clienteUnidade || !data) && (
+                                <span className="text-xs text-amber-600 hidden md:flex items-center gap-1 font-medium">
+                                    <AlertCircle className="w-3 h-3" /> Preencha os campos obrigatórios
+                                </span>
+                            )}
+                            <Button
+                                size="lg"
+                                className="min-w-[140px] md:min-w-[180px] font-display font-bold border-2"
+                                onClick={() => salvarMutation.mutate()}
+                                disabled={salvarMutation.isPending || diaristasArray.length === 0 || !empresaIdSelecionada || !clienteUnidade || !data}
+                            >
+                                <Save className="h-4 w-4 mr-2" />
+                                {salvarMutation.isPending ? "Salvando..." : "Salvar lançamento"}
+                            </Button>
                         </div>
-                    </section>
-                )}
-
-                {/* Botões de Ação */}
-                <div className="flex justify-between items-center bg-background p-4 rounded-xl border border-border mt-4">
-                    <Button
-                        variant="outline"
-                        onClick={() => setOpenHistorico(true)}
-                        disabled={!empresaIdSelecionada}
-                    >
-                        <History className="h-4 w-4 mr-2" />
-                        Histórico recente (14 dias)
-                    </Button>
-
-                    <Button
-                        size="lg"
-                        className="min-w-[180px] font-display font-bold"
-                        onClick={() => salvarMutation.mutate()}
-                        disabled={salvarMutation.isPending || diaristasArray.length === 0}
-                    >
-                        <Save className="h-4 w-4 mr-2" />
-                        {salvarMutation.isPending ? "Salvando..." : "Salvar lançamento"}
-                    </Button>
+                    </div>
                 </div>
             </div>
 
@@ -508,7 +541,7 @@ const DiaristasLancamento = () => {
                                         <div>
                                             <p className="font-bold text-sm text-foreground">{h.nome_colaborador}</p>
                                             <div className="flex gap-2 text-xs text-muted-foreground mt-1">
-                                                <span>Data: <b className="text-foreground">{format(new Date(h.data_lancamento + "T12:00:00"), "dd/MM/yyyy")}</b></span>
+                                                <span>Data: <b className="text-foreground">{format(parseISO(h.data_lancamento), "dd/MM/yy")}</b></span>
                                                 <span>•</span>
                                                 <span>Serviço: <b className="text-foreground">{h.operacao_servico || "—"}</b></span>
                                             </div>

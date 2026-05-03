@@ -14,7 +14,7 @@ import { DiaristaService, EmpresaService, PerfilUsuarioService } from "@/service
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { Pencil, Plus, RefreshCw, Trash2, Loader2, Users, Landmark, AlertCircle } from "lucide-react";
+import { Pencil, Plus, RefreshCw, Trash2, Loader2, Users, Landmark, AlertCircle, ArrowLeft } from "lucide-react";
 
 const FUNCOES = ["Diarista", "Auxiliar de carga", "Ajudante", "Conferente", "Operador eventual", "Serviço extra"] as const;
 
@@ -154,7 +154,11 @@ const RhDiaristasGestao = () => {
 
     return (
         <AppShell title="Gestão de Diaristas" subtitle="Cadastre e gerencie os diaristas da empresa">
-            <div className="flex justify-end mb-4">
+            <div className="flex items-center justify-between mb-4">
+                <Button variant="ghost" size="sm" onClick={() => navigate(-1)} className="text-muted-foreground hover:text-foreground -ml-2">
+                    <ArrowLeft className="h-4 w-4 mr-2" />
+                    Voltar
+                </Button>
                 <Button variant="outline" size="sm" onClick={() => navigate("/rh/diaristas")}>
                     <Users className="h-4 w-4 mr-2" />
                     Ir para o Painel

@@ -1417,7 +1417,7 @@ export const DiaristaService = new DiaristaServiceClass();
 
 class LancamentoDiaristaServiceClass {
   async getByPeriodo(
-    empresaId: string,
+    empresaId: string | null | undefined,
     inicio: string,
     fim: string,
     filtros?: {
@@ -1431,11 +1431,13 @@ class LancamentoDiaristaServiceClass {
     let query = (supabase as any)
       .from('lancamentos_diaristas')
       .select('*')
-      .eq('empresa_id', empresaId)
       .gte('data_lancamento', inicio)
       .lte('data_lancamento', fim)
       .order('data_lancamento', { ascending: false })
       .order('nome_colaborador', { ascending: true });
+
+    // Filtro opcional: sem empresaId = todas as empresas (visão consolidada)
+    if (empresaId) query = query.eq('empresa_id', empresaId);
 
     if (filtros?.status) query = query.eq('status', filtros.status);
     if (filtros?.funcao) query = query.eq('funcao_colaborador', filtros.funcao);

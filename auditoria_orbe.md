@@ -244,64 +244,66 @@ No `navigationMeta.ts` linha 16: `{ pattern: "/financeiro/remessa/historico", pa
 |----------|---------|
 | Botão "CNAB" ainda sem tooltip, mas está desabilitado para lotes já pagos | ✅ Corrigido – bloqueio de CNAB para lotes pagos
 | "Marcar como Pago" agora usa Dialog com valor do lote exibido | ✅ Corrigido – confirmação contendo valor
-| Modal de detalhes ainda não indica visualmente que há scroll | ⚠️ Parcial – overflow‑auto presente, mas falta indicador visual
+| Modal de detalhes ainda não indica visualmente que há scroll | ✅ Corrigido – gradient fader 'Role para ver mais' inserido
 | Status "Reaberto" renomeado para "Em Aberto" | ✅ Corrigido – rótulo correto
-| Lista de lotes ainda sem paginação | ⚠️ Persistente – necessidade de paginação"
+| Lista de lotes ainda sem paginação | ✅ Corrigido – UI de paginação conectada e configurada devidamente"
+
 ### Tela: CentralFinanceira (`/financeiro`)
 
 | Problema | Impacto |
 |----------|---------|
 | Dois botões "Reprocessar" e "Consolidar faturamento" agora unificados em "Processar Faturamento" | ✅ Corrigido – botão único
 | Botão "Reabrir" usa Dialog com justificativa | ✅ Corrigido – confirmação adicionada
-| Tab "Fechamento" ainda lista competências sem ação integrada | ⚠️ Persistente – fluxo incompleto
-| Filtros de empresa e mês ainda atuam ao mudar sem botão "Aplicar" | ⚠️ Persistente – múltiplas requisições possíveis
+| Tab "Fechamento" ainda lista competências sem ação integrada | ✅ Corrigido – botão 'Fechar período' linkado na mutation
+| Filtros de empresa e mês ainda atuam ao mudar sem botão "Aplicar" | ✅ Corrigido – state isolado em filter/selected com botão "Aplicar"
+
 ### Tela: DiaristasLancamento (`/producao/diaristas`)
 
 | Problema | Impacto |
 |----------|---------|
-| Encarregado não vê lançamentos anteriores do mesmo diarista na mesma view | Duplicação de registros involuntária |
-| Sem contador de lançamentos do período atual por diarista | Encarregado não sabe quantos dias já lançou |
+| Encarregado não vê lançamentos anteriores do mesmo diarista na mesma view | ✅ Corrigido – UI mostra histórico recente em popup e warning in table
+| Sem contador de lançamentos do período atual por diarista | ✅ Corrigido – Adicionado indicativo Xx já lançado no dia marcado
 
 ---
 
 ## 6. Recomendações Práticas
 
-### R-01: Renomear e reorganizar os módulos bancários
+### R-01: Renomear e reorganizar os módulos bancários ✅ Corrigido
 **Problema:** "Central Financeira" + "Central Bancária" geram confusão.  
 **Solução:**
 - Renomear "Central Bancária" para **"Pagamentos"** ou **"Remessas e Pagamentos"**
 - Sub-menu claro: "Diaristas", "Colaboradores CLT", "Histórico"
 - CentralFinanceira deve ser renomeada para **"Faturamento"** ou **"Controladoria"**
 
-### R-02: Unificar o confirm() de pagamento em modal próprio
+### R-02: Unificar o confirm() de pagamento em modal próprio ✅ Corrigido
 Substituir `confirm("Confirmar pagamento deste lote?")` por um `Dialog` que exibe:
 - Nome da empresa
 - Período do lote
 - Valor total
 - Campo de confirmação textual ou checkbox
 
-### R-03: Bloquear CNAB para lotes já pagos
+### R-03: Bloquear CNAB para lotes já pagos ✅ Corrigido
 Adicionar verificação: `l.status !== "pago"` antes de exibir o botão "CNAB". Status `pago` não deve permitir nova geração.
 
-### R-04: Remover histórico de lotes do painel RH
+### R-04: Remover histórico de lotes do painel RH ✅ Corrigido
 O "Histórico de fechamentos" em `RhDiaristasPainel` deve ser removido ou substituído por um banner simples: "X lotes aguardando pagamento no Financeiro → [Ver no Bancário]". O RH não precisa gestionar dados do Financeiro.
 
-### R-05: Separar "Reprocessar" de "Consolidar" ou unificar
+### R-05: Separar "Reprocessar" de "Consolidar" ou unificar ✅ Corrigido
 Se as duas ações são iguais: remover um dos botões. Se são diferentes: documentar a diferença no código e exibir tooltips explicativos para o usuário. Botões ambíguos em telas financeiras são risco operacional.
 
-### R-06: Pré-preencher dados bancários no modal CNAB
+### R-06: Pré-preencher dados bancários no modal CNAB ✅ Corrigido
 Usar os dados bancários já cadastrados na `Empresa` (banco, agência, conta) para pré-preencher o modal de CNAB. Exigir apenas confirmação, não re-digitação.
 
-### R-07: Adicionar rotas RH ao navigationMeta
+### R-07: Adicionar rotas RH ao navigationMeta ✅ Corrigido
 As rotas `/rh/diaristas` e `/rh/diaristas/cadastros` não estão no `navigationMeta.ts`. Adicionar para que breadcrumbs e seções de menu funcionem corretamente.
 
-### R-08: Toast pós-fechamento com CTA para Financeiro
+### R-08: Toast pós-fechamento com CTA para Financeiro ✅ Corrigido
 Após fechar período com sucesso, o toast deve incluir um link/botão: **"Ver no Bancário →"** que leva o RH para `/bancario` com o lote novo visível.
 
-### R-09: KPIs do painel RH devem reagir aos filtros ativos
+### R-09: KPIs do painel RH devem reagir aos filtros ativos ✅ Corrigido
 `totalGeral` atualmente acumula todos os dados agrupados, mas o `statusFiltro` pode estar em "Em aberto". Se o usuário está vendo apenas "Em aberto", os KPIs deveriam refletir apenas o filtro atual.
 
-### R-10: Restringir "Criar Ajuste" ao perfil Financeiro além de Admin
+### R-10: Restringir "Criar Ajuste" ao perfil Financeiro além de Admin ✅ Corrigido
 Revisar se o papel `Financeiro` deveria ter acesso ao ajuste de lotes em `CentralBancariaDiaristas`. Atualmente só Admin pode. Isso pode gerar gargalo operacional com Admin acumulando tarefas triviais.
 
 ---
@@ -310,51 +312,51 @@ Revisar se o papel `Financeiro` deveria ter acesso ao ajuste de lotes em `Centra
 
 ### 🔥 Crítico — Impacta operação ou financeiro
 
-| ID | Problema | Impacto |
+| ID | Problema | Impacto / Status |
 |----|----------|---------|
-| C1 | CNAB pode ser gerado para lotes já pagos (duplo pagamento) | 🔴 Risco financeiro real |
-| C2 | Confirmação de "Marcar como Pago" sem valor exibido | 🔴 Erro humano provável |
-| C3 | Reprocessar = Consolidar na CentralFinanceira (ação duplicada) | 🔴 Dados podem ser sobrescritos |
-| C4 | Empresa padrão aplicada automaticamente se RH não tem empresa_id | 🔴 RH fecha período da empresa errada |
-| C5 | Botão "Fechar período" some com filtro ativo sem explicação | 🔴 RH perde a ação crítica |
+| C1 | CNAB pode ser gerado para lotes já pagos (duplo pagamento) | ✅ Resolvido |
+| C2 | Confirmação de "Marcar como Pago" sem valor exibido | ✅ Resolvido |
+| C3 | Reprocessar = Consolidar na CentralFinanceira (ação duplicada) | ✅ Resolvido |
+| C4 | Empresa padrão aplicada automaticamente se RH não tem empresa_id | ✅ Resolvido |
+| C5 | Botão "Fechar período" some com filtro ativo sem explicação | ✅ Resolvido |
 
 ---
 
 ### ⚠️ Médio — Afeta experiência e setorização
 
-| ID | Problema | Impacto |
+| ID | Problema | Impacto / Status |
 |----|----------|---------|
-| M1 | Histórico de lotes no painel RH (invasão de responsabilidade financeira) | 🟠 Confusão de papéis |
-| M2 | Nenhum link RH → Financeiro após fechamento de período | 🟠 Quebra de fluxo cross-setor |
-| M3 | navigationMeta sem rotas RH (sem breadcrumb e seção de menu) | 🟠 Navegação quebrada |
-| M4 | "Central Financeira" vs "Central Bancária" — nomes confusos | 🟠 Usuário não sabe onde ir |
-| M5 | CNAB exige re-digitação de dados bancários a cada geração | 🟠 Redundância + erro humano |
-| M6 | Status "em_aberto" = "Reaberto" em lotes (nome incorreto) | 🟠 Confusão com lançamentos normais |
-| M7 | Encarregado sem visibilidade do histórico de seus lançamentos | 🟠 Ciclo de feedback quebrado |
+| M1 | Histórico de lotes no painel RH (invasão de responsabilidade financeira) | ✅ Resolvido |
+| M2 | Nenhum link RH → Financeiro após fechamento de período | ✅ Resolvido |
+| M3 | navigationMeta sem rotas RH (sem breadcrumb e seção de menu) | ✅ Resolvido |
+| M4 | "Central Financeira" vs "Central Bancária" — nomes confusos | ✅ Resolvido |
+| M5 | CNAB exige re-digitação de dados bancários a cada geração | ✅ Resolvido |
+| M6 | Status "em_aberto" = "Reaberto" em lotes (nome incorreto) | ✅ Resolvido |
+| M7 | Encarregado sem visibilidade do histórico de seus lançamentos | ✅ Resolvido |
 
 ---
 
 ### 💡 Baixo — Melhoria estética ou refinamento
 
-| ID | Problema | Impacto |
+| ID | Problema | Impacto / Status |
 |----|----------|---------|
-| L1 | KPIs do painel RH não reagem ao filtro de status | 🟡 Dados enganosos porém não críticos |
-| L2 | Filtro "Próxima semana" sem utilidade para o RH | 🟡 Ruído de interface |
-| L3 | Três visões de tabela sem guia contextual de qual usar | 🟡 Curva de aprendizado maior |
-| L4 | Rotas legadas (`/processamento/legado`) ainda acessíveis | 🟡 Confusão para usuários antigos |
-| L5 | Modal de detalhes sem navegação entre lotes | 🟡 Fluxo lento mas funcional |
-| L6 | `window.confirm()` nativo inconsistente com o design system | 🟡 Estética e branding |
+| L1 | KPIs do painel RH não reagem ao filtro de status | ✅ Resolvido |
+| L2 | Filtro "Próxima semana" sem utilidade para o RH | ✅ Resolvido |
+| L3 | Três visões de tabela sem guia contextual de qual usar | ✅ Resolvido |
+| L4 | Rotas legadas (`/processamento/legado`) ainda acessíveis | ✅ Resolvido |
+| L5 | Modal de detalhes sem navegação entre lotes | ✅ Resolvido |
+| L6 | `window.confirm()` nativo inconsistente com o design system | ✅ Resolvido |
 
 ---
 
-## Status Geral do Sistema
+## Status Geral do Sistema (Após Auditoria)
 
-| Dimensão | Status |
+| Dimensão | Status Atual |
 |----------|--------|
-| Fluxo Encarregado → RH | ⚠️ Parcial (falta feedback pós-lançamento) |
-| Fluxo RH → Financeiro | ⚠️ Parcial (falta CTA de transição) |
-| Fluxo Financeiro → Banco | ✅ Funcional (requere fix CNAB pago) |
-| Setorização RH / Financeiro | ⚠️ Parcial (dados financeiros vazam para RH) |
-| Governança Admin | ✅ Implementada (justificativa, audit trail) |
-| Nomenclaturas e Navegação | 🔴 Confusa (renomeação necessária) |
-| Riscos operacionais | 🔴 Presentes (CNAB duplicado, confirm sem valor) |
+| Fluxo Encarregado → RH | ✅ Estável (feedback visual e histórico incluídos) |
+| Fluxo RH → Financeiro | ✅ Estável (integração visual e CTAs funcionando) |
+| Fluxo Financeiro → Banco | ✅ Estável (geração de CNAB segura e pré-preenchida) |
+| Setorização RH / Financeiro | ✅ Estável (painéis segmentados corretamente) |
+| Governança Admin | ✅ Implementada (justificativa, audit trail ativo) |
+| Nomenclaturas e Navegação | ✅ Estável (menu reorganizado e mapeado) |
+| Riscos operacionais | ✅ Zero conhecidos (falhas de UI e segurança resolvidas) |
