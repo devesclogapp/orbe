@@ -95,6 +95,26 @@ export default {
           600: "hsl(var(--gray-600))",
           900: "hsl(var(--gray-900))",
         },
+        purple: {
+          100: "#F3E8FF",
+          700: "#7E22CE",
+        },
+        orange: {
+          100: "#FFEDD5",
+          700: "#C2410C",
+        },
+        teal: {
+          100: "#CCFBF1",
+          700: "#0F766E",
+        },
+        blue: {
+          100: "#DBEAFE",
+          700: "#1D4ED8",
+        },
+        green: {
+          100: "#DCFCE7",
+          700: "#15803D",
+        },
       },
       spacing: {
         "1": "var(--space-1)",

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Eye, EyeOff, Loader2, Zap, Lock } from "lucide-react";
+import { Eye, EyeOff, Loader2, Zap, Lock, HelpCircle, Shield } from "lucide-react";
 import { Logo } from "@/components/ui/Logo";
 
 const loginSchema = z.object({
@@ -41,7 +41,6 @@ const LoginOperacional = () => {
 
             if (error) throw error;
 
-            // Verificar se o usuário tem o perfil adequado (Encarregado)
             const { data: perfil, error: perfilError } = await supabase
                 .from('perfis_usuarios')
                 .select('id, perfis!inner(nome)')
@@ -52,14 +51,13 @@ const LoginOperacional = () => {
             if (perfilError) throw perfilError;
 
             if (!perfil) {
-                // Se não for Encarregado, deslogar para garantir segurança e avisar
                 await supabase.auth.signOut();
                 toast.error("Acesso restrito: Este portal é exclusivo para Encarregados.");
                 return;
             }
 
             toast.success("Acesso operacional autorizado!");
-            navigate("/producao"); // Encaminha para o lançamento de produção
+            navigate("/producao");
         } catch (error) {
             toast.error(error instanceof Error ? error.message : "Erro ao realizar login");
         } finally {
@@ -68,82 +66,97 @@ const LoginOperacional = () => {
     };
 
     return (
-        <div className="min-h-screen bg-[#0F172A] flex flex-col items-center justify-center p-6 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]">
-            <div className="w-full max-w-[400px] space-y-8 animate-in fade-in zoom-in duration-500">
+        <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
+            <div className="w-full max-w-[380px] space-y-8">
                 <div className="flex flex-col items-center gap-4">
-                    <div className="h-16 w-16 rounded-2xl bg-brand flex items-center justify-center shadow-xl shadow-brand/20">
-                        <Zap className="h-8 w-8 text-white fill-current" />
+                    <div className="h-14 w-14 rounded-xl bg-brand flex items-center justify-center shadow-lg">
+                        <Zap className="h-7 w-7 text-white fill-current" />
                     </div>
                     <div className="text-center">
-                        <h1 className="text-2xl font-black text-white font-display tracking-tight uppercase">Coletor Orbe</h1>
-                        <p className="text-slate-400 text-sm font-medium">Acesso Exclusivo para Encarregados</p>
+                        <h1 className="text-2xl font-bold text-foreground font-display">Coletor Orbe</h1>
+                        <p className="text-sm text-muted-foreground mt-1">Acesso Exclusivo para Encarregados</p>
                     </div>
                 </div>
 
-                <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 p-8 rounded-3xl shadow-2xl space-y-6">
-                    <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+                <div className="bg-card border border-border p-6 rounded-2xl shadow-sm space-y-5">
+                    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                         <div className="space-y-2">
-                            <Label htmlFor="email" className="text-slate-300 text-[11px] font-bold uppercase tracking-widest ml-1">E-mail de Operação</Label>
+                            <Label htmlFor="email" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">E-mail</Label>
                             <Input
                                 id="email"
                                 type="email"
                                 placeholder="nome@empresa.com"
                                 {...register("email")}
-                                className="bg-slate-950 border-slate-800 text-white h-12 rounded-xl focus:border-brand transition-all"
+                                className="h-10 rounded-lg bg-background border-border text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-brand/30 focus:border-brand transition-all"
                             />
                             {errors.email && (
-                                <p className="text-[10px] text-red-400 font-bold ml-1 uppercase">{errors.email.message}</p>
+                                <p className="text-xs text-destructive font-medium">{errors.email.message}</p>
                             )}
                         </div>
 
                         <div className="space-y-2">
-                            <Label htmlFor="password" title="Senha" className="text-slate-300 text-[11px] font-bold uppercase tracking-widest ml-1" />
+                            <Label htmlFor="password" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Senha</Label>
                             <div className="relative">
                                 <Input
                                     id="password"
                                     type={showPassword ? "text" : "password"}
                                     placeholder="••••••••"
                                     {...register("password")}
-                                    className="bg-slate-950 border-slate-800 text-white h-12 rounded-xl focus:border-brand transition-all pr-12"
+                                    className="h-10 rounded-lg bg-background border-border pr-10 text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-brand/30 focus:border-brand transition-all"
                                 />
                                 <button
                                     type="button"
                                     onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                                 >
                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                 </button>
                             </div>
                             {errors.password && (
-                                <p className="text-[10px] text-red-400 font-bold ml-1 uppercase">{errors.password.message}</p>
+                                <p className="text-xs text-destructive font-medium">{errors.password.message}</p>
                             )}
                         </div>
 
                         <Button
                             type="submit"
-                            className="w-full h-12 rounded-xl bg-brand hover:bg-brand/90 text-white font-black text-lg shadow-lg shadow-brand/20 transition-all active:scale-[0.98]"
+                            className="w-full h-10 rounded-lg bg-brand hover:bg-brand/90 text-white font-semibold transition-all active:scale-[0.98]"
                             disabled={loading}
                         >
                             {loading ? (
                                 <Loader2 className="h-5 w-5 animate-spin" />
                             ) : (
-                                "CONECTAR AO CAMPO"
+                                "Entrar"
                             )}
                         </Button>
                     </form>
 
-                    <div className="pt-4 border-t border-white/5 flex items-center justify-center gap-2">
-                        <Lock className="w-3 h-3 text-slate-600" />
-                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Sessão Segura · Orbe ERP</span>
+                    <div className="flex items-center justify-center gap-2 pt-2">
+                        <Shield className="w-3 h-3 text-muted-foreground" />
+                        <span className="text-xs text-muted-foreground">Sessão Segura</span>
                     </div>
                 </div>
 
-                <div className="text-center">
-                    <button
+                <div className="grid grid-cols-2 gap-3">
+                    <button className="flex items-center gap-2 p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors text-left">
+                        <div className="h-8 w-8 rounded-md bg-info-soft flex items-center justify-center">
+                            <HelpCircle className="h-4 w-4 text-info-strong" />
+                        </div>
+                        <div>
+                            <p className="text-xs font-medium text-foreground">Precisa de ajuda?</p>
+                            <p className="text-[10px] text-muted-foreground">Fale com o admin</p>
+                        </div>
+                    </button>
+                    <button 
                         onClick={() => navigate("/login")}
-                        className="text-slate-500 text-[10px] font-bold hover:text-slate-300 transition-all uppercase tracking-tighter"
+                        className="flex items-center gap-2 p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors text-left"
                     >
-                        Voltar para Login Administrativo
+                        <div className="h-8 w-8 rounded-md bg-success-soft flex items-center justify-center">
+                            <Lock className="h-4 w-4 text-success-strong" />
+                        </div>
+                        <div>
+                            <p className="text-xs font-medium text-foreground">Admin</p>
+                            <p className="text-[10px] text-muted-foreground">Acesso gestor</p>
+                        </div>
                     </button>
                 </div>
             </div>

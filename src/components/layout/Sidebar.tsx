@@ -1,4 +1,4 @@
-import { LayoutDashboard, ClipboardCheck, Users, BarChart3, Settings, FilePlus, ExternalLink, Clock, Shield, Wallet, LogOut, Database, Scale, Banknote, UserCheck, PenLine } from "lucide-react";
+import { LayoutDashboard, ClipboardCheck, Users, BarChart3, Settings, FilePlus, ExternalLink, Clock, Shield, Wallet, LogOut, Database, Scale, Banknote, UserCheck } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -9,7 +9,6 @@ const mainItems = [
   { icon: LayoutDashboard, label: "Dashboard", to: "/operacional/dashboard" },
   { icon: Clock, label: "Pontos", to: "/operacional/pontos" },
   { icon: ClipboardCheck, label: "Operações", to: "/operacional/operacoes" },
-  { icon: PenLine, label: "Lançamento de Diaristas", to: "/producao/diaristas" },
 ];
 
 const cadastrosItems = [
@@ -119,7 +118,9 @@ export const Sidebar = () => {
           onClick={handleSignOut}
           className="w-full justify-start gap-3 px-3 py-2 h-9 rounded-md text-sm font-medium transition-colors text-destructive hover:bg-destructive-soft hover:text-destructive-strong"
         >
-          <LogOut className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+          <div className="h-4 w-4 shrink-0 flex items-center justify-center">
+            <LogOut className="h-4 w-4" strokeWidth={1.75} />
+          </div>
           <span>Sair do sistema</span>
         </Button>
       </div>
@@ -166,8 +167,10 @@ const renderItem = (it: any) => {
     >
       {({ isActive }) => (
         <>
-          {isActive && <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r bg-primary" />}
-          <Icon className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+          {isActive && <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r bg-brand" />}
+          <div className={cn("h-4 w-4 shrink-0 flex items-center justify-center", isActive ? "text-brand" : "text-muted-foreground")}>
+            <Icon className="h-4 w-4" strokeWidth={1.75} />
+          </div>
           <span className="truncate">{it.label}</span>
         </>
       )}

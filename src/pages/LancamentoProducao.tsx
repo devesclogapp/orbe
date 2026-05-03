@@ -175,6 +175,7 @@ const LANCAMENTO_PRESETS: Array<{
     title: string;
     description: string;
     icon: typeof Wallet;
+    iconColor?: string;
 }> = [
         {
             id: "preset_caixa",
@@ -183,6 +184,7 @@ const LANCAMENTO_PRESETS: Array<{
             title: "Descarga pgto. imediato (CAIXA)",
             description: "Para pagamentos diários via depósito imediato aos colaboradores.",
             icon: Wallet,
+            iconColor: "bg-success-soft text-success-strong",
         },
         {
             id: "preset_boleto",
@@ -191,6 +193,7 @@ const LANCAMENTO_PRESETS: Array<{
             title: "Descarga corporativa (BOLETO)",
             description: "Ex: Nestlé e Ambev, pagas na fábrica e controladas por boleto.",
             icon: ListChecks,
+            iconColor: "bg-info-soft text-info-strong",
         },
         {
             id: "preset_dismelo",
@@ -199,6 +202,7 @@ const LANCAMENTO_PRESETS: Array<{
             title: "Operações com a DISMELO",
             description: "Fechamentos mensais por nota fiscal e deduções diretas.",
             icon: Wallet,
+            iconColor: "bg-warning-soft text-warning-strong",
         },
         {
             id: "preset_transbordo",
@@ -207,6 +211,7 @@ const LANCAMENTO_PRESETS: Array<{
             title: "Transbordo e Serviço Extra",
             description: "Conserto de paletes, ajudas avulsas, carretas de transferência.",
             icon: Truck,
+            iconColor: "bg-purple-100 text-purple-700",
         },
         {
             id: "preset_custos_mensais",
@@ -215,6 +220,7 @@ const LANCAMENTO_PRESETS: Array<{
             title: "Custos (CLT)",
             description: "Para equipes de carteira assinada ou despesas fixas.",
             icon: Users,
+            iconColor: "bg-orange-100 text-orange-700",
         },
         {
             id: "preset_diaristas",
@@ -223,6 +229,7 @@ const LANCAMENTO_PRESETS: Array<{
             title: "Diaristas",
             description: "Lançamento de diárias eventuais ou extras.",
             icon: Zap,
+            iconColor: "bg-teal-100 text-teal-700",
         },
     ];
 
@@ -1125,7 +1132,9 @@ const LancamentoProducao = () => {
                                                             modalidade_financeira: preset.modalidade_financeira,
                                                         }));
                                                         setEtapaAtual(2);
-                                                        window.scrollTo({ top: 0, behavior: "smooth" });
+                                                        setTimeout(() => {
+                                                            window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+                                                        }, 100);
                                                     }}
                                                     className={cn(
                                                         "relative flex flex-col p-4 rounded-2xl border transition-all text-left group",
@@ -1134,7 +1143,10 @@ const LancamentoProducao = () => {
                                                         !isBloqueado && !isActive ? "border-border hover:border-brand/40 bg-background hover:bg-muted/30" : "",
                                                     )}
                                                 >
-                                                    <div className={cn("w-10 h-10 mb-3 shrink-0 rounded-full flex items-center justify-center transition-colors", isActive && !isBloqueado ? "bg-brand text-primary-foreground shadow-md shadow-brand/20" : "bg-muted text-muted-foreground group-hover:bg-muted-foreground/10")}>
+                                                    <div className={cn(
+                                                            "w-10 h-10 mb-3 shrink-0 rounded-full flex items-center justify-center transition-colors",
+                                                            isActive && !isBloqueado ? "bg-brand text-white shadow-md" : preset.iconColor || "bg-muted text-muted-foreground group-hover:bg-muted-foreground/10"
+                                                        )}>
                                                         <Icon className="w-5 h-5" />
                                                     </div>
                                                     <div className="space-y-1">
@@ -1860,30 +1872,30 @@ const LancamentoProducao = () => {
                             <TrendingUp className="w-4 h-4" />
                             Resumo de Hoje
                         </h4>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="bg-background p-4 rounded-xl border border-border">
+                        <div className="grid grid-cols-3 gap-3">
+                            <div className="bg-background p-3 rounded-lg border border-border">
                                 <span className="text-[10px] font-bold text-muted-foreground block mb-1">Lançamentos</span>
-                                <span className="text-2xl font-black text-foreground">{resumo.total_lancamentos}</span>
+                                <span className="text-xl font-black text-foreground">{resumo.total_lancamentos}</span>
                             </div>
-                            <div className="bg-background p-4 rounded-xl border border-border">
+                            <div className="bg-background p-3 rounded-lg border border-border">
                                 <span className="text-[10px] font-bold text-muted-foreground block mb-1">Colaboradores</span>
-                                <span className="text-2xl font-black text-foreground">{resumo.total_colaboradores}</span>
+                                <span className="text-xl font-black text-foreground">{resumo.total_colaboradores}</span>
                             </div>
-                            <div className="bg-background p-4 rounded-xl border border-border">
+                            <div className="bg-background p-3 rounded-lg border border-border">
                                 <span className="text-[10px] font-bold text-muted-foreground block mb-1">Quantidade</span>
-                                <span className="text-2xl font-black text-foreground">{Number(resumo.total_quantidade || 0)}</span>
+                                <span className="text-xl font-black text-foreground">{Number(resumo.total_quantidade || 0)}</span>
                             </div>
-                            <div className="bg-background p-4 rounded-xl border border-border">
+                            <div className="bg-background p-3 rounded-lg border border-border">
                                 <span className="text-[10px] font-bold text-muted-foreground block mb-1">Valor total</span>
-                                <span className="text-xl font-black text-brand">{formatCurrency(Number(resumo.valor_total_produzido || 0))}</span>
+                                <span className="text-lg font-black text-brand">{formatCurrency(Number(resumo.valor_total_produzido || 0))}</span>
                             </div>
-                            <div className="bg-background p-4 rounded-xl border border-border">
+                            <div className="bg-background p-3 rounded-lg border border-border">
                                 <span className="text-[10px] font-bold text-muted-foreground block mb-1">Pendências</span>
-                                <span className="text-2xl font-black text-info-strong">{resumo.pendencias}</span>
+                                <span className="text-xl font-black text-info-strong">{resumo.pendencias}</span>
                             </div>
-                            <div className="bg-background p-4 rounded-xl border border-border">
+                            <div className="bg-background p-3 rounded-lg border border-border">
                                 <span className="text-[10px] font-bold text-muted-foreground block mb-1">Alertas</span>
-                                <span className="text-2xl font-black text-warning-strong">{resumo.alertas}</span>
+                                <span className="text-xl font-black text-warning-strong">{resumo.alertas}</span>
                             </div>
                         </div>
                     </Card>

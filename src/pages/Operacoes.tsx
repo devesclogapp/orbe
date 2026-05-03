@@ -445,6 +445,7 @@ type TopKpiCardProps = {
   size?: "large" | "small" | "xs";
   variant?: "default" | "primary" | "warning" | "success" | "muted" | "info";
   icon?: LucideIcon;
+  iconColor?: string;
 };
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
@@ -504,6 +505,7 @@ const TopKpiCard = ({
   size = "large",
   variant = "default",
   icon: Icon,
+  iconColor = "bg-primary-soft text-primary",
 }: TopKpiCardProps) => (
   <div
     className={cn(
@@ -532,15 +534,15 @@ const TopKpiCard = ({
             {value}
           </div>
         </div>
-        {Icon && (
+{Icon && (
           <div
             className={cn(
               "shrink-0 rounded-md flex items-center justify-center",
-              variant === "primary" ? "bg-white/20 text-white" : "bg-primary-soft text-primary",
-              size === "large" ? "h-10 w-10" : size === "small" ? "h-8 w-8" : "h-6 w-6",
+              iconColor,
+              size === "xs" ? "h-8 w-8" : "h-10 w-10"
             )}
           >
-            <Icon className={cn(size === "large" ? "h-5 w-5" : size === "small" ? "h-4 w-4" : "h-3 w-3")} />
+            <Icon className={size === "xs" ? "h-4 w-4" : "h-5 w-5"} />
           </div>
         )}
       </div>
@@ -565,6 +567,10 @@ const Operacoes = () => {
   const [selectedMonthNumber, setSelectedMonthNumber] = useState<string>(
     "all",
   );
+  const [sheetYear, setSheetYear] = useState<string>(String(new Date().getFullYear()));
+  const [sheetMonthNumber, setSheetMonthNumber] = useState<string>("all");
+  const [custosYear, setCustosYear] = useState<string>(String(new Date().getFullYear()));
+  const [custosMonthNumber, setCustosMonthNumber] = useState<string>("all");
   const [selectedEmpresaId, setSelectedEmpresaId] = useState<string>("");
   const [activeArea, setActiveArea] = useState<"operacoes" | "custos-extras">("operacoes");
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -587,6 +593,28 @@ const Operacoes = () => {
   const monthLabelCapitalized = isAllMonthsSelected
     ? `Todos os meses de ${selectedYear}`
     : format(selectedDate, "MMMM/yyyy", { locale: ptBR }).replace(/^\w/, (char) => char.toUpperCase());
+
+  const sheetMonth = `${sheetYear}-${sheetMonthNumber}`;
+  const isAllSheetMonthsSelected = sheetMonthNumber === "all";
+  const sheetDateValue = useMemo(
+    () => new Date(`${sheetYear}-${isAllSheetMonthsSelected ? "01" : sheetMonthNumber}-01T12:00:00`),
+    [isAllSheetMonthsSelected, sheetMonthNumber, sheetYear],
+  );
+  const sheetMonthMatches = (value: unknown) => {
+    const referencia = String(value ?? "");
+    if (!referencia.startsWith(sheetYear)) return false;
+    if (isAllSheetMonthsSelected) return true;
+    return referencia.startsWith(sheetMonth);
+  };
+
+  const custosMonth = `${custosYear}-${custosMonthNumber}`;
+  const isAllCustosMonthsSelected = custosMonthNumber === "all";
+  const custosMonthMatches = (value: unknown) => {
+    const referencia = String(value ?? "");
+    if (!referencia.startsWith(custosYear)) return false;
+    if (isAllCustosMonthsSelected) return true;
+    return referencia.startsWith(custosMonth);
+  };
 
   const { data: empresas = [], isLoading: isLoadingEmpresas } = useQuery<EmpresaOption[]>({
     queryKey: ["empresas"],
@@ -655,7 +683,22 @@ const Operacoes = () => {
     [operacoesBase, selectedEmpresaId, selectedMonthNumber, selectedYear]
   );
 
+  const operacoesSheetDataset = useMemo(
+    () =>
+      operacoesBase.filter((item) => {
+        const sameDate = sheetMonthMatches(item.data_operacao);
+        const sameEmpresa = selectedEmpresaId === "all" || item.empresa_id === selectedEmpresaId;
+        return sameDate && sameEmpresa;
+      }),
+    [operacoesBase, selectedEmpresaId, sheetMonthNumber, sheetYear]
+  );
+
   const operacoesTabela = useMemo(
+    () => operacoesSheetDataset.map((item) => processarOperacao(item, empresas as any[])),
+    [operacoesSheetDataset, empresas]
+  );
+
+  const operacoesTabelaKpis = useMemo(
     () => operacoesKpiDataset.map((item) => processarOperacao(item, empresas as any[])),
     [operacoesKpiDataset, empresas]
   );
@@ -669,13 +712,22 @@ const Operacoes = () => {
     [custosExtras, selectedMonthNumber, selectedYear]
   );
 
+  const custosExtrasSheetDataset = useMemo(
+    () =>
+      custosExtras.filter((item) => {
+        if (!item.data) return false;
+        return custosMonthMatches(item.data);
+      }),
+    [custosExtras, custosMonthNumber, custosYear]
+  );
+
   const totalCalculado = useMemo(
     () =>
       operacoesTabela.reduce((acc, op) => {
         const totalLinha = Number(op.totalFinalCalculado ?? op.valor_total_label ?? op.valor_total ?? 0);
         return acc + (Number.isFinite(totalLinha) ? totalLinha : 0);
       }, 0),
-    [operacoesTabela]
+    [operacoesTabelaKpis]
   );
 
   const totalCustosExtras = useMemo(
@@ -692,7 +744,7 @@ const Operacoes = () => {
     let nfComRegistro = 0;
     let recebidasCount = 0;
 
-    operacoesTabela.forEach((item) => {
+    operacoesTabelaKpis.forEach((item) => {
       const totalLinha = Number(item.totalFinalCalculado ?? item.valor_total_label ?? item.valor_total ?? 0);
       const quantidade = Number(item.quantidade ?? item.quantidade_label ?? 0);
       const quantidadeColaboradores = Number(item.quantidade_colaboradores ?? 1);
@@ -711,7 +763,7 @@ const Operacoes = () => {
       if (nfNumero && nfNumero !== "NAO" && nfNumero !== "NÃO") nfComRegistro += 1;
     });
 
-    const operacoesCount = operacoesTabela.length;
+    const operacoesCount = operacoesTabelaKpis.length;
 
     return {
       faturamento,
@@ -725,7 +777,7 @@ const Operacoes = () => {
       nfPercentual: operacoesCount > 0 ? (nfComRegistro / operacoesCount) * 100 : 0,
       caixaMedio: recebidasCount > 0 ? caixaReal / recebidasCount : 0,
     };
-  }, [operacoesTabela]);
+  }, [operacoesTabelaKpis]);
 
   const custosExtrasKpis = useMemo(() => {
     let maiorCusto = 0;
@@ -1241,6 +1293,7 @@ const Operacoes = () => {
                     helper="Valor bruto consolidado das operacoes"
                     variant="primary"
                     icon={Wallet}
+                    iconColor="bg-white/20 text-white"
                   />
                 </div>
                 <div className="xl:col-span-4 grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -1251,6 +1304,7 @@ const Operacoes = () => {
                     size="small"
                     variant="success"
                     icon={HandCoins}
+                    iconColor="bg-success-soft text-success-strong"
                   />
                   <TopKpiCard
                     label="Exposicao (Pen+Atr)"
@@ -1259,6 +1313,7 @@ const Operacoes = () => {
                     size="small"
                     variant="warning"
                     icon={Scale}
+                    iconColor="bg-warning-soft text-warning-strong"
                   />
                   <TopKpiCard
                     label="Operacoes"
@@ -1266,6 +1321,7 @@ const Operacoes = () => {
                     helper="Qtd. registrada"
                     size="small"
                     icon={Receipt}
+                    iconColor="bg-info-soft text-info-strong"
                   />
                   <TopKpiCard
                     label="Volume Total"
@@ -1273,6 +1329,7 @@ const Operacoes = () => {
                     helper="Qtd. movimentada"
                     size="small"
                     icon={Package2}
+                    iconColor="bg-purple-100 text-purple-700"
                   />
                 </div>
               </div>
@@ -1286,6 +1343,7 @@ const Operacoes = () => {
                     size="xs"
                     variant="muted"
                     icon={Users}
+                    iconColor="bg-muted text-muted-foreground"
                   />
                   <TopKpiCard
                     label="Ticket medio"
@@ -1293,6 +1351,7 @@ const Operacoes = () => {
                     size="xs"
                     variant="muted"
                     icon={Calculator}
+                    iconColor="bg-blue-100 text-blue-700"
                   />
                   <TopKpiCard
                     label="Produtividade"
@@ -1300,6 +1359,7 @@ const Operacoes = () => {
                     size="xs"
                     variant="muted"
                     icon={TrendingUp}
+                    iconColor="bg-green-100 text-green-700"
                   />
                   <TopKpiCard
                     label="NF (%)"
@@ -1307,6 +1367,7 @@ const Operacoes = () => {
                     size="xs"
                     variant="muted"
                     icon={FileBadge2}
+                    iconColor="bg-orange-100 text-orange-700"
                   />
                   <TopKpiCard
                     label="Caixa medio"
@@ -1314,6 +1375,7 @@ const Operacoes = () => {
                     size="xs"
                     variant="muted"
                     icon={CircleDollarSign}
+                    iconColor="bg-teal-100 text-teal-700"
                   />
                 </div>
               </div>
@@ -1323,11 +1385,41 @@ const Operacoes = () => {
               <TabsContent value="base" className="space-y-5">
                 <section className="esc-card p-5">
                   <div className="flex items-center justify-between gap-3 mb-4">
-                    <div>
-                      <h2 className="font-display font-semibold text-foreground">Base diaria de operacoes</h2>
-                      <p className="text-sm text-muted-foreground">
-                        Planilha operacional que alimenta os demonstrativos e indicadores do dashboard.
-                      </p>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <h2 className="font-display font-semibold text-foreground">Base diaria de operacoes</h2>
+                          <p className="text-sm text-muted-foreground">
+                            Planilha operacional que alimenta os demonstrativos e indicadores do dashboard.
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Select value={sheetYear} onValueChange={setSheetYear}>
+                            <SelectTrigger className="w-[100px] h-8 shrink-0 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium text-xs">
+                              <SelectValue placeholder="Ano" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {YEAR_OPTIONS.map((year) => (
+                                <SelectItem key={year} value={year}>
+                                  {year}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Select value={sheetMonthNumber} onValueChange={setSheetMonthNumber}>
+                            <SelectTrigger className="w-[140px] h-8 shrink-0 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium text-xs">
+                              <SelectValue placeholder="Mes" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {MONTH_FILTER_OPTIONS.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
                     </div>
                     <Badge className="bg-info-soft text-info-strong">
                       Fluxo operacional ativo nesta tela
@@ -1336,7 +1428,7 @@ const Operacoes = () => {
                   <OperacoesTableBlock
                     date={dateValue}
                     empresaId={selectedEmpresaId}
-                    rowsData={operacoesBase}
+                    rowsData={operacoesSheetDataset}
                   />
                 </section>
               </TabsContent>
@@ -1450,6 +1542,7 @@ const Operacoes = () => {
                     helper="Soma financeira do recorte"
                     variant="primary"
                     icon={Wallet}
+                    iconColor="bg-white/20 text-white"
                   />
                 </div>
                 <div className="xl:col-span-4 grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1459,6 +1552,7 @@ const Operacoes = () => {
                     helper="Lancamento maximo"
                     size="small"
                     icon={BarChart3}
+                    iconColor="bg-purple-100 text-purple-700"
                   />
                   <TopKpiCard
                     label="Custo Critico (%)"
@@ -1466,7 +1560,7 @@ const Operacoes = () => {
                     helper="Valores pendentes"
                     size="small"
                     variant="warning"
-                    icon={AlertTriangle}
+                    iconColor="bg-warning-soft text-warning-strong"
                   />
                   <TopKpiCard
                     label="Recebido"
@@ -1475,6 +1569,7 @@ const Operacoes = () => {
                     size="small"
                     variant="success"
                     icon={HandCoins}
+                    iconColor="bg-success-soft text-success-strong"
                   />
                   <TopKpiCard
                     label="Lancamentos"
@@ -1482,6 +1577,7 @@ const Operacoes = () => {
                     helper="Qtd. registrada"
                     size="small"
                     icon={Receipt}
+                    iconColor="bg-blue-100 text-blue-700"
                   />
                 </div>
               </div>
@@ -1530,17 +1626,47 @@ const Operacoes = () => {
 
             <section className="esc-card p-5 space-y-4">
               <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="font-display font-semibold text-foreground">Custos Extras</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Tabela de despesas separada da base de faturamento, com importacao baseada nos blocos internos da planilha.
-                  </p>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h2 className="font-display font-semibold text-foreground">Custos Extras</h2>
+                      <p className="text-sm text-muted-foreground">
+                        Tabela de despesas separada da base de faturamento, com importacao baseada nos blocos internos da planilha.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Select value={custosYear} onValueChange={setCustosYear}>
+                        <SelectTrigger className="w-[100px] h-8 shrink-0 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium text-xs">
+                          <SelectValue placeholder="Ano" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {YEAR_OPTIONS.map((year) => (
+                            <SelectItem key={year} value={year}>
+                              {year}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select value={custosMonthNumber} onValueChange={setCustosMonthNumber}>
+                        <SelectTrigger className="w-[140px] h-8 shrink-0 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium text-xs">
+                          <SelectValue placeholder="Mes" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {MONTH_FILTER_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
                 </div>
                 <Badge className="bg-info-soft text-info-strong">
                   Tipo de lancamento: DESPESA
                 </Badge>
               </div>
-              <CustosExtrasTableBlock data={custosExtras} />
+              <CustosExtrasTableBlock data={custosExtrasSheetDataset} />
             </section>
           </>
         )}
