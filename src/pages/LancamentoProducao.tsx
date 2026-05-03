@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -363,6 +363,7 @@ const LancamentoProducao = () => {
     const [viewMode, setViewMode] = useState<"grid" | "carousel">("grid");
     const [carouselIndex, setCarouselIndex] = useState(0);
     const [bannerExpandido, setBannerExpandido] = useState(false);
+    const touchRef = useRef<{start: number | null; end: number | null}>({start: null, end: null});
 
     const { data: perfil } = useQuery({
         queryKey: ["perfil_usuario", user?.id],
@@ -1053,11 +1054,7 @@ const LancamentoProducao = () => {
 
     return (
         <OperationalShell title="PRODUÇÃO IN-LOCO" unitName={currentUnitName || "Sincronizando..."} showBack={false}>
-            <div className="mb-4 flex items-center justify-between">
-                <Button variant="ghost" size="sm" onClick={() => navigate(-1)} className="text-muted-foreground hover:text-foreground -ml-2">
-                    <ArrowLeft className="w-4 h-4 mr-2" />
-                    Voltar
-                </Button>
+            <div className="mb-4 flex items-center justify-end">
                 <div className="flex items-center gap-1 bg-muted/50 rounded-full px-1 py-0.5">
                     <button
                         type="button"
@@ -1206,7 +1203,30 @@ const LancamentoProducao = () => {
                                     </div>
                                 ) : (
                                     <div className="relative">
-                                        <div className="overflow-hidden">
+                                        <div 
+                                            className="overflow-hidden"
+                                            onTouchStart={(e) => {
+                                                touchRef.current.start = e.touches[0].clientX;
+                                                touchRef.current.end = null;
+                                            }}
+                                            onTouchMove={(e) => {
+                                                touchRef.current.end = e.touches[0].clientX;
+                                            }}
+                                            onTouchEnd={() => {
+                                                if (!touchRef.current.start || !touchRef.current.end) return;
+                                                const diff = touchRef.current.start - touchRef.current.end;
+                                                const threshold = 50;
+                                                if (Math.abs(diff) > threshold) {
+                                                    if (diff > 0 && carouselIndex < gridPresets.length - 1) {
+                                                        setCarouselIndex(carouselIndex + 1);
+                                                    } else if (diff < 0 && carouselIndex > 0) {
+                                                        setCarouselIndex(carouselIndex - 1);
+                                                    }
+                                                }
+                                                touchRef.current.start = null;
+                                                touchRef.current.end = null;
+                                            }}
+                                        >
                                             <div 
                                                 className="flex transition-transform duration-300 ease-in-out" 
                                                 style={{ 
@@ -2009,7 +2029,7 @@ const LancamentoProducao = () => {
                             <TrendingUp className="w-4 h-4" />
                             Resumo de Hoje
                         </h4>
-                        <div className="grid grid-cols-3 gap-3">
+                        <div className="grid grid-cols-2 gap-3">
                             <div className="bg-background p-3 rounded-lg border border-border">
                                 <span className="text-[10px] font-bold text-muted-foreground block mb-1">Lançamentos</span>
                                 <span className="text-xl font-black text-foreground">{resumo.total_lancamentos}</span>
@@ -2023,16 +2043,12 @@ const LancamentoProducao = () => {
                                 <span className="text-xl font-black text-foreground">{Number(resumo.total_quantidade || 0)}</span>
                             </div>
                             <div className="bg-background p-3 rounded-lg border border-border">
-                                <span className="text-[10px] font-bold text-muted-foreground block mb-1">Valor total</span>
-                                <span className="text-lg font-black text-brand">{formatCurrency(Number(resumo.valor_total_produzido || 0))}</span>
-                            </div>
-                            <div className="bg-background p-3 rounded-lg border border-border">
                                 <span className="text-[10px] font-bold text-muted-foreground block mb-1">Pendências</span>
                                 <span className="text-xl font-black text-info-strong">{resumo.pendencias}</span>
                             </div>
-                            <div className="bg-background p-3 rounded-lg border border-border">
-                                <span className="text-[10px] font-bold text-muted-foreground block mb-1">Alertas</span>
-                                <span className="text-xl font-black text-warning-strong">{resumo.alertas}</span>
+                            <div className="bg-background p-3 rounded-lg border border-border col-span-2">
+                                <span className="text-[10px] font-bold text-muted-foreground block mb-1">Valor total</span>
+                                <span className="text-lg font-black text-brand">{formatCurrency(Number(resumo.valor_total_produzido || 0))}</span>
                             </div>
                         </div>
                     </Card>
