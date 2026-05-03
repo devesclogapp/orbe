@@ -21,6 +21,9 @@ import {
     Wallet,
     Zap,
     Users,
+    LayoutGrid,
+    ChevronLeft,
+    ChevronRight,
 } from "lucide-react";
 
 import { OperationalShell } from "@/components/layout/OperationalShell";
@@ -357,12 +360,21 @@ const LancamentoProducao = () => {
     const [condutaColaboradores, setCondutaColaboradores] = useState<Record<string, CondutaColaborador>>({});
     const [produtoDialogOpen, setProdutoDialogOpen] = useState(false);
     const [produtoDraft, setProdutoDraft] = useState({ nome: "", categoria: "" });
+    const [viewMode, setViewMode] = useState<"grid" | "carousel">("grid");
+    const [carouselIndex, setCarouselIndex] = useState(0);
+    const [bannerExpandido, setBannerExpandido] = useState(false);
 
     const { data: perfil } = useQuery({
         queryKey: ["perfil_usuario", user?.id],
         queryFn: () => (user?.id ? PerfilUsuarioService.getByUserId(user.id) : Promise.resolve(null)),
         enabled: !!user?.id,
     });
+
+    const gridPresets = useMemo(() => LANCAMENTO_PRESETS.filter((preset) => {
+        const perfilNome = (perfil as any)?.perfis?.nome ?? "";
+        const listaBloqueada = PRESETS_PERMITIDOS_POR_PERFIL[perfilNome] ?? [];
+        return listaBloqueada.length === 0 || listaBloqueada.includes(preset.id);
+    }), [perfil]);
 
     const { data: empresas = [] } = useQuery({
         queryKey: ["empresas"],
@@ -1012,7 +1024,7 @@ const LancamentoProducao = () => {
 
     if (isCheckingSchema) {
         return (
-            <OperationalShell title="PRODUÇÃO IN-LOCO" unitName={currentUnitName || "Sincronizando..."}>
+<OperationalShell title="PRODUÇÃO IN-LOCO" unitName={currentUnitName || "Sincronizando..."} showBack={false}>
                 <div className="flex flex-col items-center justify-center p-24">
                     <Clock className="w-10 h-10 animate-pulse text-muted-foreground mb-4" />
                     <p className="text-sm font-medium text-muted-foreground">Verificando disponibilidade do schema operacional...</p>
@@ -1023,7 +1035,7 @@ const LancamentoProducao = () => {
 
     if (!schemaDisponivel) {
         return (
-            <OperationalShell title="PRODUÇÃO IN-LOCO" unitName={currentUnitName || "—"}>
+            <OperationalShell title="PRODUÇÃO IN-LOCO" unitName={currentUnitName || "—"} showBack={false}>
                 <Card className="p-8 max-w-2xl mx-auto mt-12 text-center space-y-4 esc-card border-l-4 border-l-red-500 shadow-sm">
                     <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mx-auto">
                         <AlertCircle className="w-8 h-8 text-red-500" />
@@ -1040,29 +1052,32 @@ const LancamentoProducao = () => {
     }
 
     return (
-        <OperationalShell title="PRODUÇÃO IN-LOCO" unitName={currentUnitName || "Sincronizando..."}>
+        <OperationalShell title="PRODUÇÃO IN-LOCO" unitName={currentUnitName || "Sincronizando..."} showBack={false}>
             <div className="mb-4 flex items-center justify-between">
                 <Button variant="ghost" size="sm" onClick={() => navigate(-1)} className="text-muted-foreground hover:text-foreground -ml-2">
                     <ArrowLeft className="w-4 h-4 mr-2" />
                     Voltar
                 </Button>
+                <div className="flex items-center gap-1 bg-muted/50 rounded-full px-1 py-0.5">
+                    <button
+                        type="button"
+                        onClick={() => setViewMode("grid")}
+                        className={`p-1.5 rounded-full transition-colors ${viewMode === "grid" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                    >
+                        <LayoutGrid className="w-4 h-4" />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => { setViewMode("carousel"); setCarouselIndex(0); }}
+                        className={`p-1.5 rounded-full transition-colors ${viewMode === "carousel" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                    >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                        </svg>
+                    </button>
+                </div>
             </div>
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:gap-6 2xl:gap-8">
-                <div className="xl:col-span-12">
-                    <div className="esc-card p-4 border-l-4 border-l-blue-500 shadow-sm bg-card border-t border-r border-b">
-                        <div className="flex items-start gap-3 text-blue-800 dark:text-blue-200">
-                            <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                            <div>
-                                <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-1">
-                                    Registro operacional em tempo real
-                                </p>
-                                <p className="text-sm text-foreground">
-                                    Registros imediatos de carga, descarga e movimentações. Preencha os dados da operação e depois vincule a equipe com a conduta de cada colaborador.
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
 
                 <div className="xl:col-span-5 2xl:col-span-4 space-y-4">
                     <Card className="p-6 border-border shadow-sm">
@@ -1103,8 +1118,40 @@ const LancamentoProducao = () => {
                         <form onSubmit={handleSubmit} className="space-y-4">
                             {etapaAtual === 1 && (
                                 <div className="space-y-4">
-                                    <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-                                        {LANCAMENTO_PRESETS.map((preset) => {
+                                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Novo Registro</p>
+                                    {viewMode === "carousel" && bannerExpandido && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setBannerExpandido(false)}
+                                            className="w-full esc-card p-4 border-l-4 border-l-blue-500 shadow-sm bg-card text-left"
+                                        >
+                                            <div className="flex items-start gap-3 text-blue-800 dark:text-blue-200">
+                                                <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                                <div>
+                                                    <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-1">
+                                                        Registro operacional em tempo real
+                                                    </p>
+                                                    <p className="text-sm text-foreground">
+                                                        Registros imediatos de carga, descarga e movimentações. Preencha os dados da operação e depois vincule a equipe com a conduta de cada colaborador.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </button>
+                                    )}
+                                    {viewMode === "carousel" && !bannerExpandido && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setBannerExpandido(true)}
+                                            className="w-full text-left text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                                        >
+                                            <AlertCircle className="w-3 h-3" />
+                                            Registro operacional em tempo real
+                                        </button>
+                                    )}
+
+                                    {viewMode === "grid" ? (
+                                        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                                            {LANCAMENTO_PRESETS.map((preset) => {
                                             const Icon = preset.icon;
                                             const isActive = form.preset_id === preset.id;
                                             const perfilNome = (perfil as any)?.perfis?.nome ?? "";
@@ -1157,6 +1204,96 @@ const LancamentoProducao = () => {
                                             );
                                         })}
                                     </div>
+                                ) : (
+                                    <div className="relative">
+                                        <div className="overflow-hidden">
+                                            <div 
+                                                className="flex transition-transform duration-300 ease-in-out" 
+                                                style={{ 
+                                                    width: `${gridPresets.length * 100}%`,
+                                                    transform: `translateX(-${carouselIndex * (100 / gridPresets.length)}%)`
+                                                }}
+                                            >
+                                                {gridPresets.map((preset) => {
+                                                    const Icon = preset.icon;
+                                                    const isActive = form.preset_id === preset.id;
+                                                    const listaBloqueada = PRESETS_PERMITIDOS_POR_PERFIL[(perfil as any)?.perfis?.nome ?? ""] ?? [];
+                                                    const isBloqueado = listaBloqueada.length > 0 && !listaBloqueada.includes(preset.id);
+                                                    const rotaEspecifica = PRESET_ROTAS[preset.id];
+                                                    return (
+                                                        <div key={preset.id} className="flex-shrink-0 px-1" style={{ width: `${100 / gridPresets.length}%` }}>
+                                                            <button
+                                                                type="button"
+                                                                disabled={isBloqueado}
+                                                                onClick={() => {
+                                                                    if (isBloqueado) {
+                                                                        toast.error("Você não tem permissão para acessar este lançamento.");
+                                                                        return;
+                                                                    }
+                                                                    if (rotaEspecifica) {
+                                                                        navigate(rotaEspecifica);
+                                                                        setTimeout(() => {
+                                                                            window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+                                                                        }, 100);
+                                                                        return;
+                                                                    }
+                                                                    setForm((prev) => ({
+                                                                        ...prev,
+                                                                        preset_id: preset.id,
+                                                                        tipo_lancamento: preset.tipo_lancamento,
+                                                                        modalidade_financeira: preset.modalidade_financeira,
+                                                                    }));
+                                                                    setEtapaAtual(2);
+                                                                    setTimeout(() => {
+                                                                        window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+                                                                    }, 100);
+                                                                }}
+                                                                className={cn(
+                                                                    "relative flex flex-col p-8 rounded-2xl border transition-all text-left w-full h-full min-h-[280px]",
+                                                                    isBloqueado && "opacity-40 cursor-not-allowed grayscale",
+                                                                    !isBloqueado && isActive ? "border-brand bg-brand/5 ring-2 ring-brand/20 shadow-sm" : "",
+                                                                    !isBloqueado && !isActive ? "border-border hover:border-brand/40 bg-background hover:bg-muted/30" : "",
+                                                                )}
+                                                            >
+                                                                <div className={cn(
+                                                                    "w-16 h-16 mb-5 shrink-0 rounded-full flex items-center justify-center transition-colors",
+                                                                    isActive && !isBloqueado ? "bg-brand text-white shadow-md" : preset.iconColor || "bg-muted text-muted-foreground"
+                                                                )}>
+                                                                    <Icon className="w-8 h-8" />
+                                                                </div>
+                                                                <div className="space-y-2">
+                                                                    <p className={cn("text-xl font-bold leading-tight", isActive && !isBloqueado ? "text-brand" : "text-foreground")}>{preset.title}</p>
+                                                                    <p className="text-base text-muted-foreground leading-relaxed">{preset.description}</p>
+                                                                </div>
+                                                            </button>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                        {gridPresets.length > 1 && (
+                                            <div className="flex items-center justify-between mt-4">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setCarouselIndex((prev) => Math.max(0, prev - 1))}
+                                                    disabled={carouselIndex === 0}
+                                                    className="p-2 rounded-lg border border-border hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
+                                                >
+                                                    <ChevronLeft className="w-5 h-5" />
+                                                </button>
+                                                <span className="text-sm text-muted-foreground">{carouselIndex + 1} / {gridPresets.length}</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setCarouselIndex((prev) => Math.min(gridPresets.length - 1, prev + 1))}
+                                                    disabled={carouselIndex === gridPresets.length - 1}
+                                                    className="p-2 rounded-lg border border-border hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
+                                                >
+                                                    <ChevronRight className="w-5 h-5" />
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
 
                                     {etapaUmBlockReasonResolvido && (
                                         <div className="esc-card p-3 border-l-4 border-l-amber-500 bg-amber-500/5 text-sm font-medium text-amber-800 dark:text-amber-200">

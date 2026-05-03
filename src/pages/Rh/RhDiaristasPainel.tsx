@@ -312,16 +312,6 @@ const RhDiaristasPainel = () => {
 
     return (
         <AppShell title="Painel de Diaristas" subtitle="Acompanhamento consolidado · formato planilha">
-            <div className="flex items-center justify-between mb-4">
-                <Button variant="ghost" size="sm" onClick={() => navigate(-1)} className="text-muted-foreground hover:text-foreground -ml-2">
-                    <ArrowLeft className="h-4 w-4 mr-2" />
-                    Voltar
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => navigate("/rh/diaristas/cadastros")}>
-                    <Users className="h-4 w-4 mr-2" />
-                    Gerenciar Cadastros
-                </Button>
-            </div>
             <div className="space-y-4">
 
                 {/* KPIs rápidos — reagem aos filtros ativos */}

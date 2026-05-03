@@ -210,17 +210,11 @@ const DiaristasLancamento = () => {
         [lancamentosHojeMap]
     );
 
-    return (
-        <OperationalShell title="Lançamento de Diaristas">
-            <div className="max-w-4xl mx-auto space-y-6 pb-24">
-                {/* Header Actions */}
-                <div className="flex items-center justify-between">
-                    <Button variant="ghost" size="sm" onClick={() => navigate(-1)} className="text-muted-foreground hover:text-foreground">
-                        <ArrowLeft className="w-4 h-4 mr-2" />
-                        Voltar
-                    </Button>
-                </div>
+    const hasData = empresaIdSelecionada && data;
 
+    return (
+        <OperationalShell title="Lançamento de Diaristas" showBack={hasData} onBack={() => navigate("/producao")}>
+            <div className="max-w-4xl mx-auto space-y-6 pb-24">
                 {/* Alerta de lançamentos já registrados no dia */}
                 {(lancamentosHoje as any[]).length > 0 && (
                     <div className="esc-card p-4 border-l-4 border-l-emerald-500">
