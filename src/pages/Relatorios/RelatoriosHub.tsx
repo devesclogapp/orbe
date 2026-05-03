@@ -12,19 +12,13 @@ import {
     Database,
     ArrowUpRight,
     Filter,
-    MoreVertical,
     Play,
-    AlertTriangle
+    AlertTriangle,
+    X
 } from "lucide-react";
 import { toast } from "sonner";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger
-} from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -36,6 +30,7 @@ const RelatoriosHub = () => {
     const queryClient = useQueryClient();
     const navigate = useNavigate();
     const [search, setSearch] = useState("");
+    const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
 
     const userId = user?.id;
 
@@ -74,10 +69,11 @@ const RelatoriosHub = () => {
         { id: 'Contábil/Fiscal', icon: FileSpreadsheet },
     ];
 
-    const filteredReports = reports.filter(r =>
-        r.nome.toLowerCase().includes(search.toLowerCase()) ||
-        r.categoria.toLowerCase().includes(search.toLowerCase())
-    );
+    const filteredReports = reports.filter(r => {
+        const matchesCategory = categoryFilter ? r.categoria === categoryFilter : true;
+        const matchesSearch = r.nome.toLowerCase().includes(search.toLowerCase());
+        return matchesCategory && matchesSearch;
+    });
 
     return (
         <AppShell title="Central de Relatórios" subtitle="Hub de inteligência e exportação de dados">
@@ -88,10 +84,18 @@ const RelatoriosHub = () => {
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
                             placeholder="Buscar relatório..."
-                            className="pl-9 bg-background border-border/60"
+                            className="pl-9 pr-9 bg-background border-border/60"
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                         />
+                        {search && (
+                            <button
+                                onClick={() => setSearch('')}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+                        )}
                     </div>
                     <div className="flex gap-2 w-full md:w-auto">
                         <Button variant="outline" size="sm" onClick={() => navigate('/relatorios/agendamentos')}>
@@ -110,12 +114,32 @@ const RelatoriosHub = () => {
                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
                     {/* Sidebar de Categorias */}
                     <div className="lg:col-span-1 space-y-1">
-                        <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground px-3 mb-2">Categorias</h3>
+                        <div className="flex items-center justify-between px-3 mb-2">
+                            <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Categorias</h3>
+                            {categoryFilter && (
+                                <button onClick={() => setCategoryFilter(null)} className="text-[10px] text-primary hover:underline">
+                                    Limpar
+                                </button>
+                            )}
+                        </div>
+                        <button
+                            onClick={() => setCategoryFilter(null)}
+                            className={cn(
+                                "w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg transition-colors",
+                                categoryFilter === null ? "bg-primary/10 text-primary" : "hover:bg-muted text-muted-foreground hover:text-foreground"
+                            )}
+                        >
+                            <Database className="h-4 w-4" />
+                            Todos
+                        </button>
                         {categories.map((cat) => (
                             <button
                                 key={cat.id}
-                                onClick={() => setSearch(cat.id)}
-                                className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                                onClick={() => setCategoryFilter(cat.id)}
+                                className={cn(
+                                    "w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg transition-colors",
+                                    categoryFilter === cat.id ? "bg-primary/10 text-primary" : "hover:bg-muted text-muted-foreground hover:text-foreground"
+                                )}
                             >
                                 <cat.icon className="h-4 w-4" />
                                 {cat.id}
@@ -174,7 +198,7 @@ const RelatoriosHub = () => {
                                                     className="h-8 w-8 text-muted-foreground hover:text-primary"
                                                     onClick={(e) => {
                                                         e.stopPropagation();
-                                                        toast.success(`Relatório "${report.nome}" gerado com sucesso!`);
+                                                        navigate(`/relatorios/detalhe/${report.id}`);
                                                     }}
                                                 >
                                                     <Play className="h-3.5 w-3.5" />
@@ -184,15 +208,19 @@ const RelatoriosHub = () => {
 
                                         <div className="mt-4 flex items-center justify-between pt-4 border-t border-border/50">
                                             <div className="flex gap-1">
-                                                {report.formatos_disponiveis?.map(f => (
+                                                {report.formatos_disponiveis?.map((f: string) => (
                                                     <Badge key={f} variant="secondary" className="text-[9px] uppercase h-5">
                                                         {f}
                                                     </Badge>
                                                 ))}
                                             </div>
                                             <div className="text-[10px] text-muted-foreground flex items-center gap-1">
-                                                <Clock className="h-3 w-3" />
-                                                Última geração: Hoje
+                                                {report.updated_at ? (
+                                                    <>
+                                                        <Clock className="h-3 w-3" />
+                                                        Atualizado
+                                                    </>
+                                                ) : null}
                                             </div>
                                         </div>
                                     </div>
@@ -201,8 +229,12 @@ const RelatoriosHub = () => {
                         ) : (
                             <div className="flex flex-col items-center justify-center p-20 border border-dashed rounded-xl border-border/60 text-muted-foreground">
                                 <Filter className="h-10 w-10 mb-4 opacity-20" />
-                                <p>Nenhum relatório encontrado para "{search}"</p>
-                                <Button variant="link" onClick={() => setSearch("")}>Limpar filtros</Button>
+                                <p className="mb-2">Nenhum relatório encontrado{(search || categoryFilter) ? ` para os filtros atuais` : ''}</p>
+                                {(search || categoryFilter) && (
+                                    <Button variant="link" onClick={() => { setSearch(""); setCategoryFilter(null); }}>
+                                        Limpar filtros
+                                    </Button>
+                                )}
                             </div>
                         )}
                     </div>

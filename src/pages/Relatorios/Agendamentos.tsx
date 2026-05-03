@@ -1,4 +1,4 @@
-import { AppShell } from "@/components/layout/AppShell";
+// Agendamentos Tab Component
 import { useQuery } from "@tanstack/react-query";
 import { ReportService } from "@/services/report.service";
 import { Button } from "@/components/ui/button";
@@ -109,11 +109,11 @@ const Agendamentos = () => {
     };
 
     return (
-        <AppShell
-            title="Agendamento de Relatórios"
-            subtitle="Gerencie a automação de envios recorrentes"
-            backPath="/relatorios"
-        >
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div>
+                <h2 className="text-2xl font-bold tracking-tight text-foreground">Agendamento de Relatórios</h2>
+                <p className="text-muted-foreground">Gerencie a automação de envios recorrentes</p>
+            </div>
             <div className="space-y-6">
                 <div className="flex justify-end">
                     <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
@@ -288,7 +288,7 @@ const Agendamentos = () => {
                     </Table>
                 </section>
             </div>
-        </AppShell>
+        </div>
     );
 };
 

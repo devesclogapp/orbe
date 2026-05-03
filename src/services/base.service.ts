@@ -211,10 +211,8 @@ class OperacaoServiceClass extends BaseService<'operacoes'> {
       operacoesQuery = operacoesQuery.eq('empresa_id', empresaId);
     }
 
-    const [operacoesLegadasRes, operacoesProducao] = await Promise.all([
-      operacoesQuery,
-      OperacaoProducaoService.getAll(empresaId).catch(() => []),
-    ]);
+    const operacoesLegadasRes = await operacoesQuery;
+    const operacoesProducao = await OperacaoProducaoService.getAll(empresaId).catch(() => []);
 
     if (operacoesLegadasRes.error) throw operacoesLegadasRes.error;
 

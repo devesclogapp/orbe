@@ -1,4 +1,4 @@
-import { AppShell } from "@/components/layout/AppShell";
+// Integracao Tab Component
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AccountingService } from "@/services/accounting.service";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
-const IntegracaoContabil = () => {
+const IntegracaoContabil = ({ onNavigateTab }: { onNavigateTab?: (tab: string) => void } = {}) => {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
 
@@ -37,11 +37,11 @@ const IntegracaoContabil = () => {
     });
 
     return (
-        <AppShell
-            title="Integração Contábil/Fiscal"
-            subtitle="Conectividade com sistemas externos e exportação de movimentações"
-            backPath="/relatorios"
-        >
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div>
+                <h2 className="text-2xl font-bold tracking-tight text-foreground">Integração Contábil/Fiscal</h2>
+                <p className="text-muted-foreground">Conectividade com sistemas externos e exportação de movimentações</p>
+            </div>
             <div className="space-y-6">
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     <div className="lg:col-span-2 space-y-6">
@@ -122,14 +122,14 @@ const IntegracaoContabil = () => {
                         <section className="esc-card p-5 border-l-4 border-l-info">
                             <h4 className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground mb-4">Relatórios de Apoio</h4>
                             <div className="space-y-2">
-                                <button onClick={() => navigate('/relatorios/mapeamento')} className="w-full flex items-center justify-between p-3 rounded-lg hover:bg-muted text-sm font-medium transition-all group">
+                                <button onClick={() => onNavigateTab ? onNavigateTab('mapeamento') : navigate('/relatorios/mapeamento')} className="w-full flex items-center justify-between p-3 rounded-lg hover:bg-muted text-sm font-medium transition-all group">
                                     <div className="flex items-center gap-3">
                                         <div className="p-2 bg-info/10 rounded-md text-info group-hover:bg-info group-hover:text-white transition-all"><Settings className="h-4 w-4" /></div>
                                         Mapeamento Contábil
                                     </div>
                                     <ChevronRight className="h-4 w-4 text-muted-foreground" />
                                 </button>
-                                <button onClick={() => navigate('/relatorios/integracao/logs')} className="w-full flex items-center justify-between p-3 rounded-lg hover:bg-muted text-sm font-medium transition-all group">
+                                <button onClick={() => onNavigateTab ? onNavigateTab('logs') : navigate('/relatorios/integracao/logs')} className="w-full flex items-center justify-between p-3 rounded-lg hover:bg-muted text-sm font-medium transition-all group">
                                     <div className="flex items-center gap-3">
                                         <div className="p-2 bg-info/10 rounded-md text-info group-hover:bg-info group-hover:text-white transition-all"><History className="h-4 w-4" /></div>
                                         Logs de Execução
@@ -151,7 +151,7 @@ const IntegracaoContabil = () => {
                     </div>
                 </div>
             </div>
-        </AppShell>
+        </div>
     );
 };
 

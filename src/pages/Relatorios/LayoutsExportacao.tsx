@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { AppShell } from "@/components/layout/AppShell";
+// Layouts Tab Component
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ReportService, LayoutService } from "@/services/report.service";
 import { Button } from "@/components/ui/button";
@@ -76,11 +76,11 @@ const LayoutsExportacao = () => {
     };
 
     return (
-        <AppShell
-            title="Layouts de Exportação"
-            subtitle="Defina o formato e colunas para exportações customizadas"
-            backPath="/relatorios"
-        >
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div>
+                <h2 className="text-2xl font-bold tracking-tight text-foreground">Layouts de Exportação</h2>
+                <p className="text-muted-foreground">Defina o formato e colunas para exportações customizadas</p>
+            </div>
             <div className="space-y-6">
                 <div className="flex justify-end">
                     <Button
@@ -196,7 +196,7 @@ const LayoutsExportacao = () => {
                 onSave={handleSave}
                 layout={editingLayout}
             />
-        </AppShell>
+        </div>
     );
 };
 

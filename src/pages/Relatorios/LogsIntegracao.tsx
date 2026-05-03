@@ -1,4 +1,4 @@
-import { AppShell } from "@/components/layout/AppShell";
+// Logs Tab Component
 import { useQuery } from "@tanstack/react-query";
 import { AccountingService } from "@/services/accounting.service";
 import {
@@ -29,11 +29,11 @@ const LogsIntegracao = () => {
     });
 
     return (
-        <AppShell
-            title="Logs de Integração"
-            subtitle="Histórico detalhado de comunicações com sistemas externos"
-            backPath="/relatorios/integracao"
-        >
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div>
+                <h2 className="text-2xl font-bold tracking-tight text-foreground">Logs de Integração</h2>
+                <p className="text-muted-foreground">Histórico detalhado de comunicações com sistemas externos</p>
+            </div>
             <div className="space-y-6">
                 {/* Sumário Rápido */}
                 <div className="flex gap-4 overflow-x-auto pb-2">
@@ -111,7 +111,7 @@ const LogsIntegracao = () => {
                     </Table>
                 </section>
             </div>
-        </AppShell>
+        </div>
     );
 };
 

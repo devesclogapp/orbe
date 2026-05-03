@@ -1,4 +1,4 @@
-import { AppShell } from "@/components/layout/AppShell";
+// Mapeamento Tab Component
 import { useQuery } from "@tanstack/react-query";
 import { AccountingService } from "@/services/accounting.service";
 import { EmpresaService } from "@/services/base.service";
@@ -34,11 +34,11 @@ const MapeamentoContabil = () => {
     });
 
     return (
-        <AppShell
-            title="Mapa de Lançamentos"
-            subtitle="Associação técnica entre tipos de operação e planos de contas"
-            backPath="/relatorios/integracao"
-        >
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div>
+                <h2 className="text-2xl font-bold tracking-tight text-foreground">Mapa de Lançamentos</h2>
+                <p className="text-muted-foreground">Associação técnica entre tipos de operação e planos de contas</p>
+            </div>
             <div className="space-y-6">
                 {/* Barra de Filtros */}
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -129,7 +129,7 @@ const MapeamentoContabil = () => {
                     </Table>
                 </section>
             </div>
-        </AppShell>
+        </div>
     );
 };
 
