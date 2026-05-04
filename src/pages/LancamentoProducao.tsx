@@ -61,6 +61,7 @@ import { cn } from "@/lib/utils";
 import {
     ColaboradorService,
     EmpresaService,
+    RegrasFinanceirasService,
     FormaPagamentoOperacionalService,
     FornecedorService,
     FornecedorValorServicoService,
@@ -81,7 +82,7 @@ type LookupOption = { id: string; nome: string };
 type RuleLookupState = "idle" | "loading" | "found" | "missing" | "error" | "duplicate" | "needs_product";
 type EtapaFormulario = 1 | 2 | 3;
 type TipoLancamento = "operacao_padrao" | "transbordo_servico_extra" | "custos_extras";
-type ModalidadeFinanceiraForm = "CAIXA_IMEDIATO" | "DUPLICATA_FORNECEDOR" | "FECHAMENTO_MENSAL_EMPRESA" | "CUSTO_DESPESA";
+type ModalidadeFinanceiraForm = "CAIXA_IMEDIATO" | "DUPLICATA" | "FATURAMENTO_MENSAL" | "CUSTO_DESPESA";
 type CondutaColaborador = {
     selected: boolean;
     hadInfraction: boolean;
@@ -192,7 +193,7 @@ const LANCAMENTO_PRESETS: Array<{
         {
             id: "preset_boleto",
             tipo_lancamento: "operacao_padrao",
-            modalidade_financeira: "DUPLICATA_FORNECEDOR",
+            modalidade_financeira: "DUPLICATA",
             title: "Pagamento a Prazo (Boleto)",
             description: "Operações com recebimento futuro via boleto.",
             icon: ListChecks,
@@ -201,7 +202,7 @@ const LANCAMENTO_PRESETS: Array<{
         {
             id: "preset_dismelo",
             tipo_lancamento: "operacao_padrao",
-            modalidade_financeira: "FECHAMENTO_MENSAL_EMPRESA",
+            modalidade_financeira: "FATURAMENTO_MENSAL",
             title: "Faturamento Mensal",
             description: "Operações consolidadas para pagamento no fechamento mensal, independentemente do volume ou frequência.",
             icon: Wallet,
@@ -265,11 +266,15 @@ const FINALIDADES_LANCAMENTO: Array<{
 const getFinalidadeMeta = (tipo: TipoLancamento | "") =>
     FINALIDADES_LANCAMENTO.find((item) => item.id === tipo) ?? null;
 
-const getModalidadeFinanceiraLabel = (modalidade: ModalidadeFinanceiraForm | "") => {
-    if (modalidade === "CAIXA_IMEDIATO") return "Depósito imediato";
-    if (modalidade === "DUPLICATA_FORNECEDOR") return "Boleto fornecedor";
-    if (modalidade === "FECHAMENTO_MENSAL_EMPRESA") return "Depósito fim do mês";
-    if (modalidade === "CUSTO_DESPESA") return "Custo ou despesa operacional";
+const getModalidadeFinanceiraLabel = (modalidade: ModalidadeFinanceiraForm | "", regras?: any[]) => {
+    if (regras && regras.length > 0) {
+        const regra = regras.find(r => r.modalidade_financeira === modalidade);
+        if (regra) return regra.nome;
+    }
+    if (modalidade === "CAIXA_IMEDIATO") return "Pagamento à Vista (Caixa)";
+    if (modalidade === "DUPLICATA") return "Pagamento a Prazo (Boleto)";
+    if (modalidade === "FATURAMENTO_MENSAL") return "Faturamento Mensal";
+    if (modalidade === "CUSTO_DESPESA") return "Lançamento de Custos";
     return "Não definido";
 };
 
@@ -448,6 +453,12 @@ const LancamentoProducao = () => {
         enabled: schemaDisponivel,
     });
 
+    const { data: regrasFinanceiras = [] } = useQuery({
+        queryKey: ["regras_financeiras"],
+        queryFn: () => RegrasFinanceirasService.getAllActive(),
+        enabled: schemaDisponivel,
+    });
+
     const colaboradoresFiltrados = useMemo(
         () =>
             (colaboradoresRaw as any[]).filter((colaborador: any) => {
@@ -509,17 +520,24 @@ const LancamentoProducao = () => {
     }, [produtoDraft.nome, produtoOptions]);
 
     const formaPagamentoOptions = useMemo(() => {
-        if (form.modalidade_financeira === "DUPLICATA_FORNECEDOR") {
-            return [
-                { id: "boleto_bancario", nome: "Boleto Bancário" },
-                { id: "duplicata", nome: "Duplicata" },
-            ];
+        if (!form.modalidade_financeira) {
+            return mapToLookupOptions(formasPagamentoDb as any[]);
         }
-        if (form.modalidade_financeira === "FECHAMENTO_MENSAL_EMPRESA") {
-            return [{ id: "faturamento_mensal", nome: "Faturamento Mensal" }];
+        const regra = regrasFinanceiras.find(r => r.modalidade_financeira === form.modalidade_financeira);
+        if (regra?.formas_pagamento_permitidas && formasPagamentoDb.length > 0) {
+            const formasPermitidas = regra.formas_pagamento_permitidas as string[];
+            return formasPermitidas.map((nomePermitido) => {
+                const formaDb = (formasPagamentoDb as any[]).find(
+                    (f: any) => f.nome?.toLowerCase() === nomePermitido.toLowerCase()
+                );
+                return {
+                    id: formaDb?.id || nomePermitido,
+                    nome: nomePermitido
+                };
+            });
         }
         return mapToLookupOptions(formasPagamentoDb as any[]);
-    }, [formasPagamentoDb, form.modalidade_financeira]);
+    }, [formasPagamentoDb, form.modalidade_financeira, regrasFinanceiras]);
 
     const formaPagamentoSelecionada = useMemo(
         () => formaPagamentoOptions.find((item) => item.id === form.forma_pagamento) ?? null,
@@ -530,7 +548,7 @@ const LancamentoProducao = () => {
         [form.tipo_lancamento],
     );
     const modalidadeFinanceiraLabel = useMemo(
-        () => getModalidadeFinanceiraLabel(form.modalidade_financeira),
+        () => getModalidadeFinanceiraLabel(form.modalidade_financeira, regrasFinanceiras),
         [form.modalidade_financeira],
     );
     const isOperacaoPadrao = form.tipo_lancamento === "operacao_padrao";
@@ -987,9 +1005,9 @@ const LancamentoProducao = () => {
                         : quantidade,
                 valor_unitario_snapshot: valorUnitario,
                 tipo_calculo_snapshot: regraValor?.tipoCalculo ?? "volume",
-                forma_pagamento_id: form.forma_pagamento || null,
+                forma_pagamento_id: form.forma_pagamento && form.forma_pagamento.includes('-') ? form.forma_pagamento : null,
                 placa: form.placa_veiculo || null,
-                status: status.toLowerCase().replace(/\s+/g, "_"),
+                status: status === "Com alerta" ? "com_alerta" : status === "Aguardando validação" ? "aguardando_validacao" : "pendente",
                 percentual_iss: Number(percentualIss) / 100,
                 valor_descarga: valorDescarga,
                 custo_com_iss: custoIss,

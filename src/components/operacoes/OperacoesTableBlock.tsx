@@ -59,8 +59,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useSelection } from "@/contexts/SelectionContext";
 import { cn } from "@/lib/utils";
-import { OperacaoProducaoService, OperacaoService, RegraOperacionalService, EmpresaService } from "@/services/base.service";
-import { classificarFinanceiro, processarOperacao, calcularValoresOperacao, getModalidadeLabel, ModalidadeFinanceira, StatusPagamento } from "@/utils/financeiro";
+import { OperacaoProducaoService, OperacaoService, RegraOperacionalService, EmpresaService, RegrasFinanceirasService } from "@/services/base.service";
+import { classificarFinanceiroSync, processarOperacao, calcularValoresOperacao, getModalidadeLabel, ModalidadeFinanceira, StatusPagamento } from "@/utils/financeiro";
 
 type OperacoesTableBlockProps = {
   date: string;
@@ -552,7 +552,12 @@ export const OperacoesTableBlock = ({
     queryFn: () => RegraOperacionalService.getAll(effectiveEmpresaId === "all" ? undefined : effectiveEmpresaId),
   });
 
-  const { data: empresas = [] } = useQuery({
+  const { data: regrasFinanceiras = [] } = useQuery({
+        queryKey: ["regras_financeiras_filter"],
+        queryFn: () => RegrasFinanceirasService.getAllActive(),
+    });
+
+    const { data: empresas = [] } = useQuery({
     queryKey: ["empresas"],
     queryFn: () => EmpresaService.getAll(),
   });
@@ -1104,7 +1109,7 @@ export const OperacoesTableBlock = ({
   const getFinancePreviewForValue = (item: any, value: string) => {
     if (!value) return null;
     const empresa = (empresas as any[]).find((empresaItem: any) => empresaItem.id === item?.empresa_id) || {};
-    return classificarFinanceiro(
+    return classificarFinanceiroSync(
       {
         ...item,
         forma_pagamento: value,
@@ -1436,7 +1441,7 @@ export const OperacoesTableBlock = ({
     if (!editingItem || !editForm?.forma_pagamento) return null;
 
     const empresa = (empresas as any[]).find((item: any) => item.id === editingItem.empresa_id) || {};
-    return classificarFinanceiro(
+    return classificarFinanceiroSync(
       {
         ...editingItem,
         forma_pagamento: editForm.forma_pagamento,
@@ -1473,11 +1478,11 @@ export const OperacoesTableBlock = ({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todas as Modalidades</SelectItem>
-              <SelectItem value="CAIXA_IMEDIATO">⚡ Depósito</SelectItem>
-              <SelectItem value="DUPLICATA_FORNECEDOR">🧾 Boleto</SelectItem>
-              <SelectItem value="FECHAMENTO_MENSAL_EMPRESA">📅 Depósito (mensal)</SelectItem>
-              <SelectItem value="TRANSBORDO_30D">🔄 Transbordo (30 dias)</SelectItem>
-              <SelectItem value="CUSTO_DESPESA">Custo</SelectItem>
+              {regrasFinanceiras.map((regra: any) => (
+                <SelectItem key={regra.modalidade_financeira} value={regra.modalidade_financeira}>
+                  {regra.nome}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
 

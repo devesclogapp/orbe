@@ -1,10 +1,10 @@
 import { addDays, endOfMonth, isAfter, startOfDay } from "date-fns";
+import { RegrasFinanceirasService } from "@/services/base.service";
 
 export type ModalidadeFinanceira =
   | "CAIXA_IMEDIATO"
-  | "DUPLICATA_FORNECEDOR"
-  | "FECHAMENTO_MENSAL_EMPRESA"
-  | "TRANSBORDO_30D"
+  | "DUPLICATA"
+  | "FATURAMENTO_MENSAL"
   | "CUSTO_DESPESA";
 
 export type StatusPagamento = "PENDENTE" | "RECEBIDO" | "ATRASADO";
@@ -12,9 +12,8 @@ export type StatusPagamento = "PENDENTE" | "RECEBIDO" | "ATRASADO";
 export function getModalidadeLabel(mod: ModalidadeFinanceira) {
   switch (mod) {
     case "CAIXA_IMEDIATO": return "Deposito";
-    case "DUPLICATA_FORNECEDOR": return "Boleto";
-    case "FECHAMENTO_MENSAL_EMPRESA": return "Deposito (mensal)";
-    case "TRANSBORDO_30D": return "Transbordo (30 dias)";
+    case "DUPLICATA": return "Boleto";
+    case "FATURAMENTO_MENSAL": return "Deposito (mensal)";
     case "CUSTO_DESPESA": return "Custo";
     default: return mod;
   }
@@ -30,62 +29,135 @@ const normalizeFinanceText = (value: unknown) =>
 const getContextoImportacao = (operacao: any) =>
   (operacao?.avaliacao_json?.contexto_importacao as Record<string, unknown> | undefined) ?? {};
 
-export function classificarFinanceiro(operacao: any, empresa: any = {}): { modalidade: ModalidadeFinanceira; vencimento: Date } {
+const getVencimentoPadrao = (modalidade: ModalidadeFinanceira, dataOp: Date): Date => {
+  switch (modalidade) {
+    case "DUPLICATA": return addDays(dataOp, 7);
+    case "FATURAMENTO_MENSAL": return endOfMonth(dataOp);
+    default: return dataOp;
+  }
+};
+
+export function classificarFinanceiroSync(operacao: any, empresa: any = {}): { modalidade: ModalidadeFinanceira; vencimento: Date; regra: any } {
   const contextoImportacao = getContextoImportacao(operacao);
   const modalidadeManual = normalizeFinanceText(contextoImportacao.modalidade_financeira_override);
   const vencimentoManualRaw = String(contextoImportacao.data_vencimento_override ?? "").trim();
   const dataOp = operacao.data_operacao ? new Date(`${operacao.data_operacao}T12:00:00Z`) : new Date();
   const vencimentoManual = vencimentoManualRaw ? new Date(`${vencimentoManualRaw}T12:00:00Z`) : null;
-  const meio_pagamento = normalizeFinanceText(
-    operacao.forma_pagamento?.nome ?? 
-    contextoImportacao.forma_pagamento ?? 
-    getLinhaOriginalValue(operacao, "FORMA DE PAGAMENTO") ?? ""
-  );
 
-  const finalizarFinanceiro = (modalidade: ModalidadeFinanceira, vencimentoPadrao: Date) => ({
-    modalidade,
-    vencimento:
-      vencimentoManual && !Number.isNaN(vencimentoManual.getTime())
-        ? vencimentoManual
-        : vencimentoPadrao,
-  });
+  let modalidade: ModalidadeFinanceira;
 
   if (
     modalidadeManual === "CAIXA_IMEDIATO" ||
-    modalidadeManual === "DUPLICATA_FORNECEDOR" ||
-    modalidadeManual === "FECHAMENTO_MENSAL_EMPRESA" ||
-    modalidadeManual === "TRANSBORDO_30D" ||
+    modalidadeManual === "DUPLICATA" ||
+    modalidadeManual === "FATURAMENTO_MENSAL" ||
     modalidadeManual === "CUSTO_DESPESA"
   ) {
-    return finalizarFinanceiro(modalidadeManual, dataOp);
+    modalidade = modalidadeManual;
+  } else {
+    const origemAba = normalizeFinanceText(contextoImportacao.origem_aba || operacao.origem_aba || "");
+    if (origemAba.includes("CUSTOS EXTRAS") || operacao.tipo_lancamento === "DESPESA") {
+      modalidade = "CUSTO_DESPESA";
+    } else {
+      const meio_pagamento = normalizeFinanceText(
+        operacao.forma_pagamento?.nome ??
+        contextoImportacao.forma_pagamento ??
+        getLinhaOriginalValue(operacao, "FORMA DE PAGAMENTO") ?? ""
+      );
+
+      if (meio_pagamento.includes("BOLETO")) {
+        modalidade = "DUPLICATA";
+      } else if (empresa.tem_fechamento_mensal === true && ["DEPOSITO", "PIX", "TRANSFERENCIA"].some(m => meio_pagamento.includes(m))) {
+        modalidade = "FATURAMENTO_MENSAL";
+      } else if (["DEPOSITO", "PIX", "TRANSFERENCIA"].some(mod => meio_pagamento.includes(mod))) {
+        modalidade = "CAIXA_IMEDIATO";
+      } else {
+        modalidade = "CAIXA_IMEDIATO";
+      }
+    }
   }
 
-  // Se houver uma origem explicita de Custos Extras no objeto avaliacao_json fallback
-  const origemAba = normalizeFinanceText(contextoImportacao.origem_aba || operacao.origem_aba || "");
-  if (origemAba.includes("CUSTOS EXTRAS") || operacao.tipo_lancamento === "DESPESA") {
-    return finalizarFinanceiro("CUSTO_DESPESA", dataOp);
+  const vencimento = vencimentoManual && !Number.isNaN(vencimentoManual.getTime())
+    ? vencimentoManual
+    : getVencimentoPadrao(modalidade, dataOp);
+
+  return { modalidade, vencimento, regra: null };
+}
+
+export async function classificarFinanceiro(operacao: any, empresa: any = {}): Promise<{ modalidade: ModalidadeFinanceira; vencimento: Date; regra: any }> {
+  const contextoImportacao = getContextoImportacao(operacao);
+  const modalidadeManual = normalizeFinanceText(contextoImportacao.modalidade_financeira_override);
+  const vencimentoManualRaw = String(contextoImportacao.data_vencimento_override ?? "").trim();
+  const dataOp = operacao.data_operacao ? new Date(`${operacao.data_operacao}T12:00:00Z`) : new Date();
+  const vencimentoManual = vencimentoManualRaw ? new Date(`${vencimentoManualRaw}T12:00:00Z`) : null;
+
+  let modalidade: ModalidadeFinanceira;
+  let regra: any = null;
+
+  if (
+    modalidadeManual === "CAIXA_IMEDIATO" ||
+    modalidadeManual === "DUPLICATA" ||
+    modalidadeManual === "FATURAMENTO_MENSAL" ||
+    modalidadeManual === "CUSTO_DESPESA"
+  ) {
+    modalidade = modalidadeManual;
+  } else {
+    const origemAba = normalizeFinanceText(contextoImportacao.origem_aba || operacao.origem_aba || "");
+    if (origemAba.includes("CUSTOS EXTRAS") || operacao.tipo_lancamento === "DESPESA") {
+      modalidade = "CUSTO_DESPESA";
+    } else {
+      const meio_pagamento = normalizeFinanceText(
+        operacao.forma_pagamento?.nome ??
+        contextoImportacao.forma_pagamento ??
+        getLinhaOriginalValue(operacao, "FORMA DE PAGAMENTO") ?? ""
+      );
+
+      if (meio_pagamento.includes("BOLETO")) {
+        modalidade = "DUPLICATA";
+      } else if (empresa.tem_fechamento_mensal === true && ["DEPOSITO", "PIX", "TRANSFERENCIA"].some(m => meio_pagamento.includes(m))) {
+        modalidade = "FATURAMENTO_MENSAL";
+      } else if (["DEPOSITO", "PIX", "TRANSFERENCIA"].some(mod => meio_pagamento.includes(mod))) {
+        modalidade = "CAIXA_IMEDIATO";
+      } else {
+        modalidade = "CAIXA_IMEDIATO";
+      }
+    }
   }
 
-  if (origemAba.includes("TRANSBORDO DISMELO")) {
-    return finalizarFinanceiro("TRANSBORDO_30D", addDays(dataOp, 30));
+  try {
+    const resultado = await RegrasFinanceirasService.classificarFinanceiro(
+      dataOp.toISOString().split('T')[0],
+      modalidade,
+      empresa.id
+    );
+    if (resultado && resultado.regra_encontrada) {
+      regra = resultado;
+      return {
+        modalidade,
+        vencimento: vencimentoManual && !Number.isNaN(vencimentoManual.getTime())
+          ? vencimentoManual
+          : resultado.data_vencimento ? new Date(resultado.data_vencimento + 'T12:00:00Z') : dataOp,
+        regra: resultado
+      };
+    }
+  } catch (e) {
+    console.warn('Erro ao buscar regras financeiras do banco, usando fallback:', e);
   }
 
-  if (meio_pagamento.includes("BOLETO")) {
-    // Media de 7 dias ou definido por uma regra financeira futura (5 a 10 dias)
-    return finalizarFinanceiro("DUPLICATA_FORNECEDOR", addDays(dataOp, 7));
-  }
+  const getVencimentoPadrao = (mod: ModalidadeFinanceira): Date => {
+    switch (mod) {
+      case "DUPLICATA": return addDays(dataOp, 7);
+      case "FATURAMENTO_MENSAL": return endOfMonth(dataOp);
+      default: return dataOp;
+    }
+  };
 
-  const isPagamentoImediato = ["DEPOSITO", "PIX", "TRANSFERENCIA"].some(mod => meio_pagamento.includes(mod));
-
-  if (empresa.tem_fechamento_mensal === true && isPagamentoImediato) {
-    return finalizarFinanceiro("FECHAMENTO_MENSAL_EMPRESA", endOfMonth(dataOp));
-  }
-
-  if (isPagamentoImediato) {
-    return finalizarFinanceiro("CAIXA_IMEDIATO", dataOp);
-  }
-
-  return finalizarFinanceiro("CAIXA_IMEDIATO", dataOp);
+  return {
+    modalidade,
+    vencimento: vencimentoManual && !Number.isNaN(vencimentoManual.getTime())
+      ? vencimentoManual
+      : getVencimentoPadrao(modalidade),
+    regra: null
+  };
 }
 
 const getLinhaOriginalValue = (item: Record<string, unknown>, key: string) => {
@@ -155,13 +227,17 @@ export function processarOperacao(operacao: any, empresas: any[] = []) {
 
   const empresa = empresas.find?.((e: any) => e.id === operacao.empresa_id) || {};
 
-  const financeiro = classificarFinanceiro(operacao, empresa);
+  const financeiro = classificarFinanceiroSync(operacao, empresa);
   const statusPagamentoRaw = String(operacao.status_pagamento ?? "").toUpperCase().trim();
+
+  const dataVencimento = financeiro.vencimento 
+    ? new Date(financeiro.vencimento) 
+    : new Date(operacao.data_operacao ? new Date(operacao.data_operacao + 'T12:00:00Z') : new Date());
 
   let status_pagamento: StatusPagamento = "PENDENTE";
   if (statusPagamentoRaw === "RECEBIDO" || statusPagamentoRaw === "ATRASADO" || statusPagamentoRaw === "PENDENTE") {
     status_pagamento = statusPagamentoRaw as StatusPagamento;
-  } else if (isAfter(startOfDay(new Date()), startOfDay(financeiro.vencimento))) {
+  } else if (isAfter(startOfDay(new Date()), startOfDay(dataVencimento))) {
     status_pagamento = "ATRASADO";
   }
 
@@ -170,7 +246,7 @@ export function processarOperacao(operacao: any, empresas: any[] = []) {
     valorDescargaCalculado: valor_descarga,
     totalFinalCalculado: total_final,
     modalidadeFinanceira: financeiro.modalidade,
-    dataVencimento: financeiro.vencimento.toISOString().split("T")[0],
+    dataVencimento: dataVencimento.toISOString().split("T")[0],
     statusPagamento: status_pagamento,
   };
 }

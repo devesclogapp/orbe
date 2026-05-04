@@ -485,6 +485,52 @@ class RegraCalculoServiceClass extends BaseService<'financeiro_regras'> {
 }
 export const RegraCalculoService = new RegraCalculoServiceClass();
 
+class RegrasFinanceirasServiceClass extends BaseService<'regras_financeiras'> {
+  constructor() { super('regras_financeiras'); }
+
+  async getAllActive() {
+    const { data, error } = await supabase
+      .from('regras_financeiras')
+      .select('*')
+      .eq('ativo', true)
+      .order('nome', { ascending: true });
+    if (error) throw error;
+    return data;
+  }
+
+  async getByModalidade(modalidade: string) {
+    const { data, error } = await supabase
+      .from('regras_financeiras')
+      .select('*')
+      .eq('modalidade_financeira', modalidade)
+      .eq('ativo', true)
+      .order('empresa_id', { ascending: false })
+      .limit(1);
+    if (error) throw error;
+    return data?.[0] ?? null;
+  }
+
+  async getFormasPermitidas(modalidade: string, empresaId?: string) {
+    const { data, error } = await supabase.rpc('get_formas_pagamento_permitidas', {
+      p_modalidade_financeira: modalidade,
+      p_empresa_id: empresaId ?? null
+    });
+    if (error) throw error;
+    return data;
+  }
+
+  async classificarFinanceiro(dataOperacao: string, modalidade: string, empresaId?: string) {
+    const { data, error } = await supabase.rpc('classificar_financeiro_operacao', {
+      p_data_operacao: dataOperacao,
+      p_modalidade_financeira: modalidade,
+      p_empresa_id: empresaId ?? null
+    });
+    if (error) throw error;
+    return data;
+  }
+}
+export const RegrasFinanceirasService = new RegrasFinanceirasServiceClass();
+
 class CompetenciaServiceClass extends BaseService<'financeiro_competencias'> {
   constructor() { super('financeiro_competencias'); }
   async getByMonth(month: string, empresaId: string) {
