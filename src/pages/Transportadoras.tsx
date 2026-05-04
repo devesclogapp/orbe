@@ -29,9 +29,9 @@ const Transportadoras = () => {
   });
 
   const { data: empresaOptions = [] } = useQuery({
-    queryKey: ["empresas_transportadoras"],
+    queryKey: ["empresas"],
     queryFn: () => EmpresaService.getAll(),
-    staleTime: 1000 * 60 * 5,
+    refetchOnMount: true,
   });
 
   const [form, setForm] = useState({
