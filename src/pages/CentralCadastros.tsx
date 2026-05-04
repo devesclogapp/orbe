@@ -637,7 +637,7 @@ const deleteFornecedorMutation = useMutation({
                         <Plus className="h-4 w-4 mr-1.5" /> Novo colaborador
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => navigate("/colaboradores")}>
-                        Gestão completa
+                        <Settings2 className="h-4 w-4 mr-1.5" /> Gestão completa
                       </Button>
                     </div>
                   </div>
@@ -708,7 +708,7 @@ const deleteFornecedorMutation = useMutation({
                         <Plus className="h-4 w-4 mr-1.5" /> Nova empresa
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => navigate("/empresas")}>
-                        Gestão completa
+                        <Settings2 className="h-4 w-4 mr-1.5" /> Gestão completa
                       </Button>
                     </div>
                   </div>
@@ -782,7 +782,7 @@ const deleteFornecedorMutation = useMutation({
                         <Plus className="h-4 w-4 mr-1.5" /> Novo coletor
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => navigate("/coletores")}>
-                        Gestão completa
+                        <Settings2 className="h-4 w-4 mr-1.5" /> Gestão completa
                       </Button>
                     </div>
                   </div>
@@ -847,6 +847,9 @@ const deleteFornecedorMutation = useMutation({
                     <div className="flex gap-2">
                       <Button size="sm" onClick={() => setTransportadoraModalOpen(true)}>
                         <Plus className="h-4 w-4 mr-1.5" /> Nova transportadora
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => navigate("/transportadoras")}>
+                        <Settings2 className="h-4 w-4 mr-1.5" /> Gestão completa
                       </Button>
                     </div>
                   </div>
@@ -916,6 +919,9 @@ const deleteFornecedorMutation = useMutation({
                       <Button size="sm" onClick={() => setFornecedorModalOpen(true)}>
                         <Plus className="h-4 w-4 mr-1.5" /> Novo fornecedor
                       </Button>
+                      <Button size="sm" variant="outline" onClick={() => navigate("/fornecedores")}>
+                        <Settings2 className="h-4 w-4 mr-1.5" /> Gestão completa
+                      </Button>
                     </div>
                   </div>
                   <table className="w-full text-sm">
@@ -983,6 +989,9 @@ const deleteFornecedorMutation = useMutation({
                     <div className="flex gap-2">
                       <Button size="sm" onClick={() => setServicoModalOpen(true)}>
                         <Plus className="h-4 w-4 mr-1.5" /> Novo tipo de serviço
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => navigate("/servicos")}>
+                        <Settings2 className="h-4 w-4 mr-1.5" /> Gestão completa
                       </Button>
                     </div>
                   </div>

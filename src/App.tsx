@@ -24,6 +24,9 @@ import Operacoes from "./pages/Operacoes";
 import CentralCadastros from "./pages/CentralCadastros";
 import CentralRelatoriosIntegracoes from "./pages/CentralRelatoriosIntegracoes";
 import Colaboradores from "./pages/Colaboradores";
+import Transportadoras from "./pages/Transportadoras";
+import Fornecedores from "./pages/Fornecedores";
+import Servicos from "./pages/Servicos";
 import Empresas from "./pages/Empresas";
 import Coletores from "./pages/Coletores";
 import Importacoes from "./pages/Importacoes";
@@ -113,6 +116,9 @@ const App = () => (
                   <Route path="/cadastros" element={<AuthGuard><CentralCadastros /></AuthGuard>} />
                   <Route path="/cadastros/regras-operacionais" element={<AuthGuard><RegrasOperacionais /></AuthGuard>} />
                   <Route path="/colaboradores" element={<AuthGuard><Colaboradores /></AuthGuard>} />
+                  <Route path="/transportadoras" element={<AuthGuard><Transportadoras /></AuthGuard>} />
+                  <Route path="/fornecedores" element={<AuthGuard><Fornecedores /></AuthGuard>} />
+                  <Route path="/servicos" element={<AuthGuard><Servicos /></AuthGuard>} />
                   <Route path="/empresas" element={<AuthGuard><Empresas /></AuthGuard>} />
                   <Route path="/coletores" element={<AuthGuard><Coletores /></AuthGuard>} />
                   <Route path="/importacoes" element={<AuthGuard><Importacoes /></AuthGuard>} />

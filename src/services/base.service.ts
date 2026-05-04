@@ -72,6 +72,15 @@ export class BaseService<T extends Table> {
 class EmpresaServiceClass extends BaseService<'empresas'> {
   constructor() { super('empresas'); }
 
+  async getAll() {
+    const { data, error, count } = await supabase
+      .from('empresas')
+      .select('*', { count: 'exact' });
+    console.log('EmpresaService.getAll:', { data, error, count });
+    if (error) throw error;
+    return data;
+  }
+
   async getWithCounts() {
     const { data, error } = await supabase
       .from('empresas')
@@ -79,7 +88,7 @@ class EmpresaServiceClass extends BaseService<'empresas'> {
         *,
         colaboradores:colaboradores(count),
         coletores:coletores(count)
-      `);
+      `);;
     if (error) throw error;
     
     return data.map(item => ({
@@ -618,6 +627,16 @@ class UnidadeOperacionalServiceClass {
 export const UnidadeOperacionalService = new UnidadeOperacionalServiceClass();
 
 class TipoServicoOperacionalServiceClass {
+  async getByEmpresa(empresaId?: string) {
+    const { data, error } = await operationalClient
+      .from('tipos_servico_operacional')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data ?? [];
+  }
+
   async getAllActive() {
     const { data, error } = await operationalClient
       .from('tipos_servico_operacional')

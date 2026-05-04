@@ -377,9 +377,10 @@ const LancamentoProducao = () => {
         return listaBloqueada.length === 0 || listaBloqueada.includes(preset.id);
     }), [perfil]);
 
-    const { data: empresas = [] } = useQuery({
+    const { data: empresas = [], isLoading: isLoadingEmpresas, error: empresasError } = useQuery({
         queryKey: ["empresas"],
         queryFn: () => EmpresaService.getAll(),
+        staleTime: 0,
     });
 
     const { data: schemaDisponivel = false, isLoading: isCheckingSchema } = useQuery({
@@ -1010,7 +1011,8 @@ const LancamentoProducao = () => {
     const currentEmpresa = (empresas as any[]).find((empresa: any) => empresa.id === form.empresa_id);
     const currentUnidade = (unidadesDb as any[]).find((unidade: any) => unidade.id === form.unidade_id);
     const currentUnitName = currentUnidade?.nome || currentEmpresa?.nome;
-    const unitLocked = !!perfil?.empresa_id;
+    const perfilNome = (perfil as any)?.perfis?.nome ?? "";
+    const unitLocked = !!perfil?.empresa_id && ["Admin", "RH", "Financeiro"].includes(perfilNome);
 
     // --- READINESS GATE ---
     const cadastrosAusentes: string[] = [];
@@ -1354,7 +1356,6 @@ const LancamentoProducao = () => {
                                                     forma_pagamento: "",
                                                 }))
                                             }
-                                            disabled={unitLocked}
                                         >
                                             <SelectTrigger className="h-11 rounded-xl">
                                                 <SelectValue placeholder="Selecione a empresa" />
