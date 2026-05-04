@@ -674,22 +674,30 @@ const RegrasOperacionais = () => {
   const validateStep = (step: number) => {
     if (step === 1) {
       const missing: string[] = [];
-
-      if (ruleContext.requireTipoServico && !form.tipo_servico_id) missing.push("tipo de serviço");
-      if (ruleContext.requireTipoCalculo && !form.tipo_calculo) missing.push("tipo de cálculo");
-      if (ruleContext.requireEmpresa && !form.empresa_id) missing.push("empresa");
-      if (ruleContext.requireTransportadora && !form.transportadora_id) missing.push("transportadora");
-      if (ruleContext.requireFornecedor && !form.fornecedor_id) missing.push("fornecedor");
-
+      if (ruleContext.requireEmpresa && !form.empresa_id && !applyGlobally) missing.push("empresa");
       if (missing.length > 0) {
-        toast.error("Preencha os campos obrigatórios deste contexto.", {
+        toast.error("Preencha os campos obrigatórios.", {
           description: `Faltando: ${missing.join(", ")}.`,
         });
         return false;
       }
     }
 
-    if (step === 2 && (!form.tipo_regra_id || !form.valor_unitario)) {
+    if (step === 2) {
+      const missing: string[] = [];
+      if (ruleContext.requireTipoServico && !form.tipo_servico_id && !applyGlobally) missing.push("tipo de serviço");
+      if (ruleContext.requireTipoCalculo && !form.tipo_calculo) missing.push("tipo de cálculo");
+      if (ruleContext.requireTransportadora && !form.transportadora_id && !applyGlobally) missing.push("transportadora");
+      if (ruleContext.requireFornecedor && !form.fornecedor_id && !applyGlobally) missing.push("fornecedor");
+      if (missing.length > 0) {
+        toast.error("Preencha os campos obrigatórios.", {
+          description: `Faltando: ${missing.join(", ")}.`,
+        });
+        return false;
+      }
+    }
+
+    if (step === 3 && (!form.tipo_regra_id || !form.valor_unitario)) {
       toast.error("Preencha os parâmetros da regra antes de avançar.", {
         description: "Informe o tipo de regra e o valor unitário.",
       });
@@ -1288,15 +1296,15 @@ const RegrasOperacionais = () => {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Empresa</TableHead>
-                      <TableHead>Tipo de serviço</TableHead>
-                      <TableHead>Transportadora</TableHead>
-                      <TableHead>Fornecedor</TableHead>
-                      <TableHead>Produto / Carga</TableHead>
-                      <TableHead>Tipo de cálculo</TableHead>
-                      <TableHead>Valor / Tipo de Regra</TableHead>
-                      <TableHead>Vigência</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableHead className="text-center">Empresa</TableHead>
+                      <TableHead className="text-center">Tipo de serviço</TableHead>
+                      <TableHead className="text-center">Transportadora</TableHead>
+                      <TableHead className="text-center">Fornecedor</TableHead>
+                      <TableHead className="text-center">Produto / Carga</TableHead>
+                      <TableHead className="text-center">Tipo de cálculo</TableHead>
+                      <TableHead className="text-center">Valor / Tipo de Regra</TableHead>
+                      <TableHead className="text-center">Vigência</TableHead>
+                      <TableHead className="text-center">Status</TableHead>
                       <TableHead className="text-right">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1315,14 +1323,14 @@ const RegrasOperacionais = () => {
                       const isGlobalIssRule = isIssRuleDefinition(tr);
                       return (
                         <TableRow key={item.id}>
-                          <TableCell>{isGlobalIssRule ? "Global" : item.empresas?.nome ?? "-"}</TableCell>
-                          <TableCell>{isGlobalIssRule ? "Todos" : item.tipos_servico_operacional?.nome ?? "-"}</TableCell>
-                          <TableCell>{isGlobalIssRule ? "Todas" : item.transportadoras_clientes?.nome ?? "Todas"}</TableCell>
-                          <TableCell>{isGlobalIssRule ? "Todos" : item.fornecedores?.nome ?? "-"}</TableCell>
-                          <TableCell>{item.produtos_carga?.nome ?? "Geral"}</TableCell>
-                          <TableCell>{getTipoCalculoLabel(item.tipo_calculo)}</TableCell>
-                          <TableCell>
-                            <div className="flex flex-col gap-1">
+                          <TableCell className="text-center">{isGlobalIssRule ? "Global" : item.empresas?.nome ?? "-"}</TableCell>
+                          <TableCell className="text-center">{isGlobalIssRule ? "Todos" : item.tipos_servico_operacional?.nome ?? "-"}</TableCell>
+                          <TableCell className="text-center">{isGlobalIssRule ? "Todas" : item.transportadoras_clientes?.nome ?? "Todas"}</TableCell>
+                          <TableCell className="text-center">{isGlobalIssRule ? "Todos" : item.fornecedores?.nome ?? "-"}</TableCell>
+                          <TableCell className="text-center">{item.produtos_carga?.nome ?? "Geral"}</TableCell>
+                          <TableCell className="text-center">{getTipoCalculoLabel(item.tipo_calculo)}</TableCell>
+                          <TableCell className="text-center">
+                            <div className="flex flex-col items-center gap-1">
                               <span className="font-medium">
                                 {isPct ? `${Number(item.valor_unitario)}%` : formatCurrency(Number(item.valor_unitario || 0))}
                               </span>
@@ -1331,14 +1339,18 @@ const RegrasOperacionais = () => {
                               </Badge>
                             </div>
                           </TableCell>
-                          <TableCell>
-                            {formatDate(item.vigencia_inicio)}
-                            <span className="text-muted-foreground"> até {formatDate(item.vigencia_fim)}</span>
+                          <TableCell className="text-center">
+                            <span className="block text-center">
+                              {formatDate(item.vigencia_inicio)}
+                              <span className="text-muted-foreground block text-center">até {formatDate(item.vigencia_fim)}</span>
+                            </span>
                           </TableCell>
-                          <TableCell>
-                            <Badge className={cn(item.ativo ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100" : "bg-zinc-200 text-zinc-700 hover:bg-zinc-200")}>
-                              {item.ativo ? "Ativo" : "Inativo"}
-                            </Badge>
+                          <TableCell className="text-center">
+                            <span className="flex justify-center">
+                              <Badge className={cn(item.ativo ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100" : "bg-zinc-200 text-zinc-700 hover:bg-zinc-200")}>
+                                {item.ativo ? "Ativo" : "Inativo"}
+                              </Badge>
+                            </span>
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
@@ -1635,7 +1647,7 @@ const RegrasOperacionais = () => {
           {/* Stepper Wizard */}
           <div className="flex items-center justify-between mb-2 mt-4 relative">
             <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-[2px] bg-border -z-10" />
-            {[1, 2, 3].map((step) => (
+            {[1, 2, 3, 4].map((step) => (
               <div key={step} className="flex flex-col items-center gap-1 bg-background px-2">
                 <div className={cn("flex items-center justify-center h-8 w-8 rounded-full border-2 text-sm font-semibold transition-colors duration-200",
                   currentStep === step ? "border-primary bg-primary text-primary-foreground" :
@@ -1643,7 +1655,7 @@ const RegrasOperacionais = () => {
                   {currentStep > step ? <Check className="h-4 w-4" /> : step}
                 </div>
                 <span className={cn("text-xs font-medium", currentStep === step ? "text-foreground" : "text-muted-foreground/70")}>
-                  {step === 1 ? "Identificação" : step === 2 ? "Parâmetros" : "Validade"}
+                  {step === 1 ? "Escopo" : step === 2 ? "Serviços" : step === 3 ? "Parâmetros" : "Validade"}
                 </span>
               </div>
             ))}
@@ -1654,13 +1666,13 @@ const RegrasOperacionais = () => {
               <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
                 <div className="border-b pb-2 mb-4">
                   <h3 className="text-sm font-medium tracking-tight text-foreground/80">
-                    1. Identificação Operacional
+                    1. Escopo e Empresa
                   </h3>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Defina a quem e a quais serviços essa regra se aplica.
+                    Defina o escopo de aplicação da regra.
                   </p>
                 </div>
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-4 md:grid-cols-2 items-start">
                   <div className="md:col-span-2 rounded-xl border border-dashed border-primary/30 bg-primary/5 p-4">
                     <div className="flex items-start gap-3">
                       <Checkbox
@@ -1696,59 +1708,16 @@ const RegrasOperacionais = () => {
                         </Label>
                         <p className="text-xs text-muted-foreground">
                           {issRuleSelected
-                            ? "Regras da coluna ISS s\u00E3o sempre globais. O mesmo valor poder\u00E1 ser aplicado em todas as linhas da coluna, sem depender de fornecedor, fabricante ou TC."
-                            : "Gera automaticamente a regra para todas as empresas, todos os fornecedores e todos os tipos de servi\u00E7o. Transportadora e produto ficam como regra geral."}
+                            ? "Regras da coluna ISS são sempre globais."
+                            : "Gera automaticamente a regra para todas as empresas, todos os fornecedores e todos os tipos de serviço."}
                         </p>
                         {!!editingId && !issRuleSelected && (
                           <p className="text-xs text-muted-foreground">
-                            A aplica\u00E7\u00E3o global fica dispon\u00EDvel apenas para novas regras.
+                            A aplicação global fica disponível apenas para novas regras.
                           </p>
                         )}
                       </div>
                     </div>
-                  </div>
-
-                  <div className="md:col-span-2 rounded-xl border bg-muted/30 p-4 space-y-3">
-                    <div>
-                      <h4 className="text-sm font-medium">O que voc\u00EA deseja cadastrar?</h4>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Escolha o servi\u00E7o e o tipo de c\u00E1lculo para que o modal ajuste os campos obrigat\u00F3rios.
-                      </p>
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <QuickCreateLookup
-                        label={applyGlobally ? "Tipo de servi\u00E7o" : "Tipo de servi\u00E7o *"}
-                        placeholder={applyGlobally ? "Todos os tipos de servi\u00E7o" : "Selecione o tipo de servi\u00E7o"}
-                        value={form.tipo_servico_id}
-                        items={tipoServicoItems}
-                        disabled={applyGlobally}
-                        createLabel="Novo tipo"
-                        onChange={(value) => setForm((prev) => ({ ...prev, tipo_servico_id: value }))}
-                        onCreate={(searchTerm) => openQuickCreate("tipo_servico", searchTerm)}
-                      />
-
-                      <div className="space-y-2">
-                        <Label>Tipo de c\u00E1lculo *</Label>
-                        <Select value={form.tipo_calculo} onValueChange={(value) => setForm((prev) => ({ ...prev, tipo_calculo: value }))}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecione o c\u00E1lculo" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {TIPOS_CALCULO.map((item) => (
-                              <SelectItem key={item.value} value={item.value}>
-                                {item.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="md:col-span-2 rounded-xl border border-amber-200 bg-amber-50 p-4">
-                    <p className="text-sm font-medium text-amber-900">{ruleContext.title}</p>
-                    <p className="text-xs text-amber-800 mt-1">{ruleContext.description}</p>
                   </div>
 
                   <div className="space-y-2">
@@ -1779,9 +1748,54 @@ const RegrasOperacionais = () => {
                     </Select>
                   </div>
 
+                  <div className="md:col-span-2 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                    <p className="text-sm font-medium text-amber-900">{ruleContext.title}</p>
+                    <p className="text-xs text-amber-800 mt-1">{ruleContext.description}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {currentStep === 2 && (
+              <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="border-b pb-2 mb-4">
+                  <h3 className="text-sm font-medium tracking-tight text-foreground/80">
+                    2. Serviços e Vinculações
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Defina os serviços e vínculos operacionais.
+                  </p>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2 items-start">
+                  <div className="space-y-2">
+                    <Label>{applyGlobally ? "Tipo de serviço" : "Tipo de serviço *"}</Label>
+                    <Select value={form.tipo_servico_id} onValueChange={(value) => setForm((prev) => ({ ...prev, tipo_servico_id: value }))} disabled={applyGlobally}>
+                      <SelectTrigger><SelectValue placeholder={applyGlobally ? "Todos os tipos de serviço" : "Selecione"} /></SelectTrigger>
+                      <SelectContent>
+                        {tipoServicoItems.map((t: any) => <SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Tipo de cálculo *</Label>
+                    <Select value={form.tipo_calculo} onValueChange={(value) => setForm((prev) => ({ ...prev, tipo_calculo: value }))}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione o cálculo" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TIPOS_CALCULO.map((item) => (
+                          <SelectItem key={item.value} value={item.value}>
+                            {item.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
                   <QuickCreateLookup
                     label={ruleContext.requireTransportadora ? "Transportadora / Cliente *" : "Transportadora / Cliente"}
-                    placeholder={ruleContext.requireTransportadora ? "Selecione a transportadora" : "Selecione, se aplic\u00E1vel"}
+                    placeholder={ruleContext.requireTransportadora ? "Selecione a transportadora" : "Selecione, se aplicável"}
                     value={form.transportadora_id}
                     items={transportadoraItems}
                     disabled={applyGlobally}
@@ -1829,26 +1843,26 @@ const RegrasOperacionais = () => {
               </div>
             )}
 
-            {currentStep === 2 && (
+            {currentStep === 3 && (
               <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
                 <div className="border-b pb-2 mb-4">
                   <h3 className="text-sm font-medium tracking-tight text-foreground/80">
-                    2. Parâmetros da Regra
+                    3. Parâmetros da Regra
                   </h3>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     Defina a variável da regra, o valor unitário e a forma de pagamento padrão.
                   </p>
                 </div>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <QuickCreateLookup
-                    label="Tipo de Regra / Variável"
-                    placeholder="Selecione o tipo de regra"
-                    value={form.tipo_regra_id}
-                    items={(tiposRegra as any[]).map(t => ({ id: t.id, nome: t.nome }))}
-                    createLabel="Nova regra"
-                    onChange={(value) => setForm((prev) => ({ ...prev, tipo_regra_id: value }))}
-                    onCreate={(searchTerm) => openQuickCreate("tipo_regra", searchTerm)}
-                  />
+                <div className="grid gap-4 md:grid-cols-2 items-start">
+                  <div className="space-y-2">
+                    <Label>Tipo de Regra / Variável</Label>
+                    <Select value={form.tipo_regra_id} onValueChange={(value) => setForm((prev) => ({ ...prev, tipo_regra_id: value }))}>
+                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                      <SelectContent>
+                        {(tiposRegra as any[]).map((t) => <SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
                   <div className="space-y-2">
                     <Label>Valor / Quantidade / Percentual</Label>
@@ -1876,17 +1890,17 @@ const RegrasOperacionais = () => {
               </div>
             )}
 
-            {currentStep === 3 && (
+            {currentStep === 4 && (
               <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
                 <div className="border-b pb-2 mb-4">
                   <h3 className="text-sm font-medium tracking-tight text-foreground/80">
-                    3. Validade e Situação
+                    4. Validade e Situação
                   </h3>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     Controle a partir de quando esta regra é válida.
                   </p>
                 </div>
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-4 md:grid-cols-2 items-start">
                   <div className="space-y-2">
                     <Label>Vigência inicial</Label>
                     <Input type="date" value={form.vigencia_inicio} onChange={(event) => setForm((prev) => ({ ...prev, vigencia_inicio: event.target.value }))} />
@@ -1921,7 +1935,7 @@ const RegrasOperacionais = () => {
             <Button type="button" variant="outline" onClick={() => currentStep > 1 ? setCurrentStep(currentStep - 1) : setIsModalOpen(false)}>
               {currentStep > 1 ? "Voltar" : "Cancelar"}
             </Button>
-            {currentStep < 3 ? (
+            {currentStep < 4 ? (
               <Button
                 type="button"
                 onClick={() => {

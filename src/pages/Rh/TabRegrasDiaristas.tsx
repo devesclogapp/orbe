@@ -110,37 +110,41 @@ export const TabRegrasDiaristas = () => {
                 <Table>
                     <TableHeader>
                         <TableRow>
-                            <TableHead>Código</TableHead>
-                            <TableHead>Descrição</TableHead>
-                            <TableHead>Multiplicador</TableHead>
-                            <TableHead>Escopo</TableHead>
-                            <TableHead>Status</TableHead>
+                            <TableHead className="text-center">Código</TableHead>
+                            <TableHead className="text-center">Descrição</TableHead>
+                            <TableHead className="text-center">Multiplicador</TableHead>
+                            <TableHead className="text-center">Escopo</TableHead>
+                            <TableHead className="text-center">Status</TableHead>
                             <TableHead className="text-right">Ações</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {(regras as any[]).map((r) => (
                             <TableRow key={r.id}>
-                                <TableCell className="font-semibold">{r.codigo}</TableCell>
-                                <TableCell>{r.descricao}</TableCell>
-                                <TableCell>
+                                <TableCell className="font-semibold text-center">{r.codigo}</TableCell>
+                                <TableCell className="text-center">{r.descricao}</TableCell>
+                                <TableCell className="text-center">
                                     <span className="font-mono bg-muted/50 px-2 py-0.5 rounded border text-muted-foreground">
                                         × {Number(r.multiplicador).toFixed(2)}
                                     </span>
                                 </TableCell>
-                                <TableCell>
-                                    {r.empresa_id ? <Badge variant="outline">{r.empresas?.nome || 'Unidade'}</Badge> : <Badge variant="secondary" className="bg-blue-100 text-blue-800">Global</Badge>}
+                                <TableCell className="text-center">
+                                    <span className="flex justify-center">
+                                        {r.empresa_id ? <Badge variant="outline">{r.empresas?.nome || 'Unidade'}</Badge> : <Badge variant="secondary" className="bg-blue-100 text-blue-800">Global</Badge>}
+                                    </span>
                                 </TableCell>
-                                <TableCell>
-                                    {r.ativo ? (
-                                        <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 border-0">
-                                            <CheckCircle2 className="h-3 w-3 mr-1" /> Ativo
-                                        </Badge>
-                                    ) : (
-                                        <Badge variant="outline" className="text-muted-foreground border-border">
-                                            <Ban className="h-3 w-3 mr-1" /> Inativo
-                                        </Badge>
-                                    )}
+                                <TableCell className="text-center">
+                                    <span className="flex justify-center">
+                                        {r.ativo ? (
+                                            <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 border-0">
+                                                <CheckCircle2 className="h-3 w-3 mr-1" /> Ativo
+                                            </Badge>
+                                        ) : (
+                                            <Badge variant="outline" className="text-muted-foreground border-border">
+                                                <Ban className="h-3 w-3 mr-1" /> Inativo
+                                            </Badge>
+                                        )}
+                                    </span>
                                 </TableCell>
                                 <TableCell className="text-right">
                                     <div className="flex justify-end gap-2">

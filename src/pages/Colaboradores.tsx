@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 const Colaboradores = () => {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [step, setStep] = useState(1);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
 
@@ -88,6 +89,7 @@ const Colaboradores = () => {
       tipo_conta: "corrente",
     });
     setEditingId(null);
+    setStep(1);
   };
 
   // Mutations
@@ -380,176 +382,346 @@ const Colaboradores = () => {
         </section>
       </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-[520px]">
+      <Dialog open={open} onOpenChange={(isOpen) => { setOpen(isOpen); if (!isOpen) setStep(1); }}>
+        <DialogContent className="sm:max-w-[520px] max-h-[90vh]">
           <DialogHeader>
             <DialogTitle>{editingId ? "Editar colaborador" : "Novo colaborador"}</DialogTitle>
             <DialogDescription>
-              {editingId ? "Atualize as informações do colaborador." : "Cadastre manualmente um colaborador. Vínculo com empresa define qual coletor REP recebe o ponto."}
+              {editingId 
+                ? "Atualize as informações do colaborador." 
+                : step === 1 
+                  ? "Dados pessoais e vínculo institucional." 
+                  : step === 2 
+                    ? "Dados contratuais e informações de pagamento." 
+                    : "Dados bancários para depósito."}
             </DialogDescription>
+            {!editingId && (
+              <div className="flex items-center gap-2 mt-2">
+                <div className={cn("h-1.5 flex-1 rounded-full transition-colors", step >= 1 ? "bg-primary" : "bg-muted")} />
+                <div className={cn("h-1.5 flex-1 rounded-full transition-colors", step >= 2 ? "bg-primary" : "bg-muted")} />
+                <div className={cn("h-1.5 flex-1 rounded-full transition-colors", step >= 3 ? "bg-primary" : "bg-muted")} />
+              </div>
+            )}
           </DialogHeader>
 
-          <div className="grid grid-cols-2 gap-4 py-2">
-            <div className="col-span-2 space-y-1.5">
-              <Label htmlFor="nome">Nome completo</Label>
-              <Input id="nome" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="cpf">CPF</Label>
-              <Input id="cpf" value={form.cpf} onChange={(e) => setForm({ ...form, cpf: e.target.value })} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="telefone">Telefone</Label>
-              <Input id="telefone" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} />
-            </div>
-            <div className="col-span-2 space-y-1.5">
-              <Label>Empresa</Label>
-              <Select value={form.empresa_id} onValueChange={(v) => setForm({ ...form, empresa_id: v })}>
-                <SelectTrigger><SelectValue placeholder="Selecione uma empresa" /></SelectTrigger>
-                <SelectContent>
-                  {empresaOptions.map((e) => (
-                    <SelectItem key={e.id} value={e.id}>{e.nome} — {e.cidade}/{e.estado}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Tipo de colaborador</Label>
-              <Select value={form.tipo_colaborador} onValueChange={(v) => setForm({ ...form, tipo_colaborador: v, permitir_lancamento_operacional: v === "DIARISTA" ? true : form.permitir_lancamento_operacional })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="DIARISTA">DIARISTA</SelectItem>
-                  <SelectItem value="CLT">CLT</SelectItem>
-                  <SelectItem value="INTERMITENTE">INTERMITENTE</SelectItem>
-                  <SelectItem value="PRODUÇÃO">PRODUÇÃO</SelectItem>
-                  <SelectItem value="TERCEIRIZADO">TERCEIRIZADO</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Status</Label>
-              <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ativo">Ativo</SelectItem>
-                  <SelectItem value="inativo">Inativo</SelectItem>
-                  <SelectItem value="pendente">Pendente</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {form.tipo_colaborador === "DIARISTA" ? (
+          <div className="overflow-y-auto max-h-[60vh]">
+            {!editingId ? (
               <>
-                <div className="space-y-1.5">
-                  <Label htmlFor="valor">Valor da diária (R$)</Label>
-                  <Input
-                    id="valor"
-                    type="number"
-                    value={form.valor_base}
-                    onChange={(e) => setForm({ ...form, valor_base: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="cargo">Função operacional</Label>
-                  <Input id="cargo" value={form.cargo} onChange={(e) => setForm({ ...form, cargo: e.target.value })} />
-                </div>
-                <div className="col-span-2 flex items-center justify-between rounded-md border border-border p-3">
-                  <div>
-                    <Label htmlFor="lancamento" className="cursor-pointer">Permitir lançamento operacional</Label>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Diarista aparecerá na tela de lançamentos operacionais da produção.
-                    </p>
+                {step === 1 && (
+                  <div className="grid grid-cols-2 gap-4 py-2">
+                    <div className="col-span-2 space-y-1.5">
+                      <Label htmlFor="nome">Nome completo</Label>
+                      <Input id="nome" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="cpf">CPF</Label>
+                      <Input id="cpf" value={form.cpf} onChange={(e) => setForm({ ...form, cpf: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="telefone">Telefone</Label>
+                      <Input id="telefone" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} />
+                    </div>
+                    <div className="col-span-2 space-y-1.5">
+                      <Label>Empresa</Label>
+                      <Select value={form.empresa_id} onValueChange={(v) => setForm({ ...form, empresa_id: v })}>
+                        <SelectTrigger><SelectValue placeholder="Selecione uma empresa" /></SelectTrigger>
+                        <SelectContent>
+                          {empresaOptions.map((e) => (
+                            <SelectItem key={e.id} value={e.id}>{e.nome} — {e.cidade}/{e.estado}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                  <Switch id="lancamento" checked={form.permitir_lancamento_operacional} onCheckedChange={(v) => setForm({ ...form, permitir_lancamento_operacional: v })} />
-                </div>
+                )}
+
+                {step === 2 && (
+                  <div className="grid grid-cols-2 gap-4 py-2">
+                    <div className="space-y-1.5">
+                      <Label>Tipo de colaborador</Label>
+                      <Select value={form.tipo_colaborador} onValueChange={(v) => setForm({ ...form, tipo_colaborador: v, permitir_lancamento_operacional: v === "DIARISTA" ? true : form.permitir_lancamento_operacional })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="DIARISTA">DIARISTA</SelectItem>
+                          <SelectItem value="CLT">CLT</SelectItem>
+                          <SelectItem value="INTERMITENTE">INTERMITENTE</SelectItem>
+                          <SelectItem value="PRODUÇÃO">PRODUÇÃO</SelectItem>
+                          <SelectItem value="TERCEIRIZADO">TERCEIRIZADO</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Status</Label>
+                      <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ativo">Ativo</SelectItem>
+                          <SelectItem value="inativo">Inativo</SelectItem>
+                          <SelectItem value="pendente">Pendente</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {form.tipo_colaborador === "DIARISTA" ? (
+                      <>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="valor">Valor da diária (R$)</Label>
+                          <Input id="valor" type="number" value={form.valor_base} onChange={(e) => setForm({ ...form, valor_base: e.target.value })} />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="cargo">Função operacional</Label>
+                          <Input id="cargo" value={form.cargo} onChange={(e) => setForm({ ...form, cargo: e.target.value })} />
+                        </div>
+                        <div className="col-span-2 flex items-center justify-between rounded-md border border-border p-3">
+                          <div>
+                            <Label className="cursor-pointer">Permitir lançamento operacional</Label>
+                            <p className="text-xs text-muted-foreground mt-0.5">Diarista aparecerá na tela de lançamentos.</p>
+                          </div>
+                          <Switch checked={form.permitir_lancamento_operacional} onCheckedChange={(v) => setForm({ ...form, permitir_lancamento_operacional: v })} />
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="cargo">Cargo</Label>
+                          <Input id="cargo" value={form.cargo} onChange={(e) => setForm({ ...form, cargo: e.target.value })} />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="matricula">Matrícula</Label>
+                          <Input id="matricula" value={form.matricula} onChange={(e) => setForm({ ...form, matricula: e.target.value })} />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label>Tipo de contrato</Label>
+                          <Select value={form.tipo_contrato} onValueChange={(v: "Hora" | "Operação") => setForm({ ...form, tipo_contrato: v })}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Hora">Por hora</SelectItem>
+                              <SelectItem value="Operação">Por operação</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="valor">Valor base (R$)</Label>
+                          <Input id="valor" type="number" value={form.valor_base} onChange={(e) => setForm({ ...form, valor_base: e.target.value })} />
+                        </div>
+                        <div className="col-span-2 flex items-center justify-between rounded-md border border-border p-3">
+                          <div>
+                            <Label className="cursor-pointer">Gera faturamento</Label>
+                            <p className="text-xs text-muted-foreground mt-0.5">Colaborador entra no cálculo financeiro.</p>
+                          </div>
+                          <Switch checked={form.flag_faturamento} onCheckedChange={(v) => setForm({ ...form, flag_faturamento: v })} />
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {step === 3 && (
+                  <div className="grid grid-cols-2 gap-4 py-2">
+                    <div className="col-span-2 space-y-1.5">
+                      <Label htmlFor="nome_completo">Nome completo (como conta)</Label>
+                      <Input id="nome_completo" value={form.nome_completo} onChange={(e) => setForm({ ...form, nome_completo: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="banco_codigo">Cód. Banco</Label>
+                      <Input id="banco_codigo" value={form.banco_codigo} onChange={(e) => setForm({ ...form, banco_codigo: e.target.value })} placeholder="Ex: 341" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Tipo de Conta</Label>
+                      <Select value={form.tipo_conta} onValueChange={(v) => setForm({ ...form, tipo_conta: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="corrente">Corrente</SelectItem>
+                          <SelectItem value="poupanca">Poupança</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="agencia">Agência</Label>
+                      <div className="flex gap-2">
+                        <Input id="agencia" value={form.agencia} onChange={(e) => setForm({ ...form, agencia: e.target.value })} className="flex-1" />
+                        <Input id="agencia_digito" value={form.agencia_digito} onChange={(e) => setForm({ ...form, agencia_digito: e.target.value })} className="w-16" placeholder="Díg." />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="conta">Conta</Label>
+                      <div className="flex gap-2">
+                        <Input id="conta" value={form.conta} onChange={(e) => setForm({ ...form, conta: e.target.value })} className="flex-1" />
+                        <Input id="conta_digito" value={form.conta_digito} onChange={(e) => setForm({ ...form, conta_digito: e.target.value })} className="w-16" placeholder="Díg." />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </>
             ) : (
-              <>
-                <div className="space-y-1.5">
-                  <Label htmlFor="cargo">Cargo</Label>
-                  <Input id="cargo" value={form.cargo} onChange={(e) => setForm({ ...form, cargo: e.target.value })} />
+              <div className="grid grid-cols-2 gap-4 py-2">
+                <div className="col-span-2 space-y-1.5">
+                  <Label htmlFor="nome">Nome completo</Label>
+                  <Input id="nome" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="matricula">Matrícula</Label>
-                  <Input id="matricula" value={form.matricula} onChange={(e) => setForm({ ...form, matricula: e.target.value })} />
+                  <Label htmlFor="cpf">CPF</Label>
+                  <Input id="cpf" value={form.cpf} onChange={(e) => setForm({ ...form, cpf: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Tipo de contrato</Label>
-                  <Select value={form.tipo_contrato} onValueChange={(v: "Hora" | "Operação") => setForm({ ...form, tipo_contrato: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                  <Label htmlFor="telefone">Telefone</Label>
+                  <Input id="telefone" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} />
+                </div>
+                <div className="col-span-2 space-y-1.5">
+                  <Label>Empresa</Label>
+                  <Select value={form.empresa_id} onValueChange={(v) => setForm({ ...form, empresa_id: v })}>
+                    <SelectTrigger><SelectValue placeholder="Selecione uma empresa" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Hora">Por hora</SelectItem>
-                      <SelectItem value="Operação">Por operação</SelectItem>
+                      {empresaOptions.map((e) => (
+                        <SelectItem key={e.id} value={e.id}>{e.nome} — {e.cidade}/{e.estado}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="valor">Valor base (R$)</Label>
-                  <Input
-                    id="valor"
-                    type="number"
-                    value={form.valor_base}
-                    onChange={(e) => setForm({ ...form, valor_base: e.target.value })}
-                  />
-                </div>
-                <div className="col-span-2 flex items-center justify-between rounded-md border border-border p-3">
-                  <div>
-                    <Label htmlFor="fat" className="cursor-pointer">Gera faturamento</Label>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Se desligado, o colaborador não entra no cálculo financeiro do dia.
-                    </p>
-                  </div>
-                  <Switch id="fat" checked={form.flag_faturamento} onCheckedChange={(v) => setForm({ ...form, flag_faturamento: v })} />
-                </div>
-              </>
-            )}
-
-            {/* Secao Dados Bancarios */}
-            <div className="col-span-2 border-t pt-4 mt-2">
-              <h4 className="text-sm font-semibold mb-3">Dados Bancários</h4>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5 col-span-2">
-                  <Label htmlFor="nome_completo">Nome completo (como conta)</Label>
-                  <Input id="nome_completo" value={form.nome_completo} onChange={(e) => setForm({ ...form, nome_completo: e.target.value })} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="banco_codigo">Cód. Banco</Label>
-                  <Input id="banco_codigo" value={form.banco_codigo} onChange={(e) => setForm({ ...form, banco_codigo: e.target.value })} placeholder="Ex: 341" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Tipo de Conta</Label>
-                  <Select value={form.tipo_conta} onValueChange={(v) => setForm({ ...form, tipo_conta: v })}>
+                  <Label>Tipo de colaborador</Label>
+                  <Select value={form.tipo_colaborador} onValueChange={(v) => setForm({ ...form, tipo_colaborador: v, permitir_lancamento_operacional: v === "DIARISTA" ? true : form.permitir_lancamento_operacional })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="corrente">Corrente</SelectItem>
-                      <SelectItem value="poupanca">Poupança</SelectItem>
+                      <SelectItem value="DIARISTA">DIARISTA</SelectItem>
+                      <SelectItem value="CLT">CLT</SelectItem>
+                      <SelectItem value="INTERMITENTE">INTERMITENTE</SelectItem>
+                      <SelectItem value="PRODUÇÃO">PRODUÇÃO</SelectItem>
+                      <SelectItem value="TERCEIRIZADO">TERCEIRIZADO</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="agencia">Agência</Label>
-                  <div className="flex gap-2">
-                    <Input id="agencia" value={form.agencia} onChange={(e) => setForm({ ...form, agencia: e.target.value })} className="flex-1" />
-                    <Input id="agencia_digito" value={form.agencia_digito} onChange={(e) => setForm({ ...form, agencia_digito: e.target.value })} className="w-16" placeholder="Díg." />
-                  </div>
+                  <Label>Status</Label>
+                  <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ativo">Ativo</SelectItem>
+                      <SelectItem value="inativo">Inativo</SelectItem>
+                      <SelectItem value="pendente">Pendente</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="conta">Conta</Label>
-                  <div className="flex gap-2">
-                    <Input id="conta" value={form.conta} onChange={(e) => setForm({ ...form, conta: e.target.value })} className="flex-1" />
-                    <Input id="conta_digito" value={form.conta_digito} onChange={(e) => setForm({ ...form, conta_digito: e.target.value })} className="w-16" placeholder="Díg." />
+                {form.tipo_colaborador === "DIARISTA" ? (
+                  <>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="valor">Valor da diária (R$)</Label>
+                      <Input id="valor" type="number" value={form.valor_base} onChange={(e) => setForm({ ...form, valor_base: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="cargo">Função operacional</Label>
+                      <Input id="cargo" value={form.cargo} onChange={(e) => setForm({ ...form, cargo: e.target.value })} />
+                    </div>
+                    <div className="col-span-2 flex items-center justify-between rounded-md border border-border p-3">
+                      <div>
+                        <Label className="cursor-pointer">Permitir lançamento operacional</Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">Diarista aparecerá na tela de lançamentos.</p>
+                      </div>
+                      <Switch checked={form.permitir_lancamento_operacional} onCheckedChange={(v) => setForm({ ...form, permitir_lancamento_operacional: v })} />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="cargo">Cargo</Label>
+                      <Input id="cargo" value={form.cargo} onChange={(e) => setForm({ ...form, cargo: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="matricula">Matrícula</Label>
+                      <Input id="matricula" value={form.matricula} onChange={(e) => setForm({ ...form, matricula: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Tipo de contrato</Label>
+                      <Select value={form.tipo_contrato} onValueChange={(v: "Hora" | "Operação") => setForm({ ...form, tipo_contrato: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Hora">Por hora</SelectItem>
+                          <SelectItem value="Operação">Por operação</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="valor">Valor base (R$)</Label>
+                      <Input id="valor" type="number" value={form.valor_base} onChange={(e) => setForm({ ...form, valor_base: e.target.value })} />
+                    </div>
+                    <div className="col-span-2 flex items-center justify-between rounded-md border border-border p-3">
+                      <div>
+                        <Label className="cursor-pointer">Gera faturamento</Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">Colaborador entra no cálculo financeiro.</p>
+                      </div>
+                      <Switch checked={form.flag_faturamento} onCheckedChange={(v) => setForm({ ...form, flag_faturamento: v })} />
+                    </div>
+                  </>
+                )}
+                <div className="col-span-2 border-t pt-4 mt-2">
+                  <h4 className="text-sm font-semibold mb-3">Dados Bancários</h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5 col-span-2">
+                      <Label htmlFor="nome_completo">Nome completo (como conta)</Label>
+                      <Input id="nome_completo" value={form.nome_completo} onChange={(e) => setForm({ ...form, nome_completo: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="banco_codigo">Cód. Banco</Label>
+                      <Input id="banco_codigo" value={form.banco_codigo} onChange={(e) => setForm({ ...form, banco_codigo: e.target.value })} placeholder="Ex: 341" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Tipo de Conta</Label>
+                      <Select value={form.tipo_conta} onValueChange={(v) => setForm({ ...form, tipo_conta: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="corrente">Corrente</SelectItem>
+                          <SelectItem value="poupanca">Poupança</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="agencia">Agência</Label>
+                      <div className="flex gap-2">
+                        <Input id="agencia" value={form.agencia} onChange={(e) => setForm({ ...form, agencia: e.target.value })} className="flex-1" />
+                        <Input id="agencia_digito" value={form.agencia_digito} onChange={(e) => setForm({ ...form, agencia_digito: e.target.value })} className="w-16" placeholder="Díg." />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="conta">Conta</Label>
+                      <div className="flex gap-2">
+                        <Input id="conta" value={form.conta} onChange={(e) => setForm({ ...form, conta: e.target.value })} className="flex-1" />
+                        <Input id="conta_digito" value={form.conta_digito} onChange={(e) => setForm({ ...form, conta_digito: e.target.value })} className="w-16" placeholder="Díg." />
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setOpen(false); reset(); }}>Cancelar</Button>
-            <Button onClick={submit} disabled={createMutation.isPending}>
-              {createMutation.isPending ? "Salvando..." : editingId ? "Salvar alterações" : "Cadastrar"}
-            </Button>
-          </DialogFooter>
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            {editingId ? (
+              <>
+                <Button variant="outline" onClick={() => { setOpen(false); reset(); }}>Cancelar</Button>
+                <Button onClick={submit} disabled={createMutation.isPending}>
+                  {createMutation.isPending ? "Salvando..." : "Salvar alterações"}
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => { setOpen(false); reset(); }}>Cancelar</Button>
+                {step === 1 && <Button onClick={() => setStep(2)}>Próximo</Button>}
+                {step === 2 && (
+                  <>
+                    <Button variant="outline" onClick={() => setStep(1)}>Voltar</Button>
+                    <Button onClick={() => setStep(3)}>Próximo</Button>
+                  </>
+                )}
+                {step === 3 && (
+                  <>
+                    <Button variant="outline" onClick={() => setStep(2)}>Voltar</Button>
+                    <Button onClick={submit} disabled={createMutation.isPending}>
+                      {createMutation.isPending ? "Salvando..." : "Cadastrar"}
+                    </Button>
+                  </>
+                )}
+              </>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </AppShell>

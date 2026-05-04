@@ -14,6 +14,7 @@ import {
   Globe,
   Loader2,
   Pencil,
+  Plus,
   Settings2,
   Users,
   Upload,
@@ -39,6 +40,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DialogDescription } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import {
   ColaboradorService,
@@ -64,6 +66,36 @@ const CentralCadastros = () => {
   const [configForm, setConfigForm] = useState<any>({});
   const [isEditingParams, setIsEditingParams] = useState(false);
   const [paramsForm, setParamsForm] = useState<any>({});
+
+  const [colaboradorModalOpen, setColaboradorModalOpen] = useState(false);
+  const [colaboradorStep, setColaboradorStep] = useState(1);
+  const [colaboradorForm, setColaboradorForm] = useState({
+    nome: "", cpf: "", telefone: "", cargo: "", matricula: "",
+    empresa_id: empresaId || "",
+    tipo_colaborador: "CLT",
+    tipo_contrato: "Hora" as "Hora" | "Operação",
+    valor_base: "22", flag_faturamento: true, permitir_lancamento_operacional: false,
+    status: "ativo",
+    nome_completo: "",
+    banco_codigo: "",
+    agencia: "",
+    agencia_digito: "",
+    conta: "",
+    conta_digito: "",
+    tipo_conta: "corrente",
+  });
+
+  const [empresaModalOpen, setEmpresaModalOpen] = useState(false);
+  const [empresaForm, setEmpresaForm] = useState({
+    nome: "", cnpj: "", unidade: "", cidade: "", estado: "",
+    banco_codigo: "", agencia: "", agencia_digito: "", conta: "", conta_digito: "",
+    convenios_bancario: "", codigo_empresa_banco: "", nome_empresa_banco: "",
+  });
+
+  const [coletorModalOpen, setColetorModalOpen] = useState(false);
+  const [coletorForm, setColetorForm] = useState({
+    modelo: "", serie: "", empresa_id: empresaId || "",
+  });
 
   const { data: empresas = [], isLoading: loadingEmpresas } = useQuery<any[]>({
     queryKey: ["empresas"],
@@ -166,6 +198,60 @@ const CentralCadastros = () => {
       });
       toast.success("Registro removido");
     },
+  });
+
+  const createColaboradorMutation = useMutation({
+    mutationFn: (payload: any) => ColaboradorService.create({
+      ...payload,
+      valor_base: Number(payload.valor_base) || 0,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["colaboradores_list"] });
+      toast.success("Colaborador cadastrado com sucesso");
+      setColaboradorModalOpen(false);
+      setColaboradorForm({
+        nome: "", cpf: "", telefone: "", cargo: "", matricula: "",
+        empresa_id: empresaId || "",
+        tipo_colaborador: "CLT",
+        tipo_contrato: "Hora",
+        valor_base: "22", flag_faturamento: true, permitir_lancamento_operacional: false,
+        status: "ativo",
+        nome_completo: "",
+        banco_codigo: "",
+        agencia: "",
+        agencia_digito: "",
+        conta: "",
+        conta_digito: "",
+        tipo_conta: "corrente",
+      });
+    },
+    onError: (err: any) => toast.error("Erro ao cadastrar", { description: err.message }),
+  });
+
+  const createEmpresaMutation = useMutation({
+    mutationFn: (payload: any) => EmpresaService.create(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["empresas"] });
+      toast.success("Empresa cadastrada com sucesso");
+      setEmpresaModalOpen(false);
+      setEmpresaForm({
+        nome: "", cnpj: "", unidade: "", cidade: "", estado: "",
+        banco_codigo: "", agencia: "", agencia_digito: "", conta: "", conta_digito: "",
+        convenios_bancario: "", codigo_empresa_banco: "", nome_empresa_banco: "",
+      });
+    },
+    onError: (err: any) => toast.error("Erro ao cadastrar", { description: err.message }),
+  });
+
+  const createColetorMutation = useMutation({
+    mutationFn: (payload: any) => ColetorService.create(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["coletores"] });
+      toast.success("Coletor cadastrado com sucesso");
+      setColetorModalOpen(false);
+      setColetorForm({ modelo: "", serie: "", empresa_id: empresaId || "" });
+    },
+    onError: (err: any) => toast.error("Erro ao cadastrar", { description: err.message }),
   });
 
   const handleAddConfig = (type: "operacao" | "produto" | "dia") => {
@@ -310,7 +396,7 @@ const CentralCadastros = () => {
                 <TabsTrigger value="parametros">Parâmetros operacionais</TabsTrigger>
               </TabsList>
 
-              <TabsContent value="colaboradores" className="space-y-4">
+              <TabsContent value="colaboradores" className="space-y-4 min-h-[400px]">
                 <section className="esc-card overflow-hidden">
                   <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-3">
                     <div>
@@ -319,7 +405,14 @@ const CentralCadastros = () => {
                         Vínculo com empresa, contrato e impacto financeiro lado a lado.
                       </p>
                     </div>
-
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={() => setColaboradorModalOpen(true)}>
+                        <Plus className="h-4 w-4 mr-1.5" /> Novo colaborador
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => navigate("/colaboradores")}>
+                        Gestão completa
+                      </Button>
+                    </div>
                   </div>
                   <table className="w-full text-sm">
                     <thead className="esc-table-header">
@@ -355,42 +448,60 @@ const CentralCadastros = () => {
                 </section>
               </TabsContent>
 
-              <TabsContent value="empresas" className="space-y-4">
-                <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                  {empresas.map((empresa) => (
-                    <article key={empresa.id} className="esc-card p-5">
-                      <div className="flex items-start justify-between gap-3 mb-3">
-                        <div>
-                          <h3 className="font-display font-semibold text-foreground">{empresa.nome}</h3>
-                          <p className="text-xs text-muted-foreground">{empresa.cnpj}</p>
-                        </div>
-                        <Badge className={cn(
-                          "font-semibold",
-                          empresa.status === "ativa" ? "bg-success-soft text-success-strong" : "bg-muted text-muted-foreground"
-                        )}>
-                          {empresa.status}
-                        </Badge>
-                      </div>
+              <TabsContent value="empresas" className="space-y-4 min-h-[400px]">
+                <section className="esc-card">
+                  <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-3">
+                    <div>
+                      <h2 className="font-display font-semibold text-foreground">Empresas cadastradas</h2>
                       <p className="text-sm text-muted-foreground">
-                        {empresa.unidade} · {empresa.cidade}/{empresa.estado}
+                        Unidades operacionais e seus vínculos.
                       </p>
-                      <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-border">
-                        <div>
-                          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Colaboradores</div>
-                          <div className="font-display font-semibold text-foreground">{empresa.total_colaboradores}</div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={() => setEmpresaModalOpen(true)}>
+                        <Plus className="h-4 w-4 mr-1.5" /> Nova empresa
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => navigate("/empresas")}>
+                        Gestão completa
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 p-5">
+                    {empresas.map((empresa) => (
+                      <article key={empresa.id} className="esc-card p-5">
+                        <div className="flex items-start justify-between gap-3 mb-3">
+                          <div>
+                            <h3 className="font-display font-semibold text-foreground">{empresa.nome}</h3>
+                            <p className="text-xs text-muted-foreground">{empresa.cnpj}</p>
+                          </div>
+                          <Badge className={cn(
+                            "font-semibold",
+                            empresa.status === "ativa" ? "bg-success-soft text-success-strong" : "bg-muted text-muted-foreground"
+                          )}>
+                            {empresa.status}
+                          </Badge>
                         </div>
-                        <div>
-                          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Coletores</div>
-                          <div className="font-display font-semibold text-foreground">{empresa.total_coletores}</div>
+                        <p className="text-sm text-muted-foreground">
+                          {empresa.unidade} · {empresa.cidade}/{empresa.estado}
+                        </p>
+                        <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-border">
+                          <div>
+                            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Colaboradores</div>
+                            <div className="font-display font-semibold text-foreground">{empresa.total_colaboradores}</div>
+                          </div>
+                          <div>
+                            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Coletores</div>
+                            <div className="font-display font-semibold text-foreground">{empresa.total_coletores}</div>
+                          </div>
                         </div>
-                      </div>
-                    </article>
-                  ))}
+                      </article>
+                    ))}
+                  </div>
                 </section>
 
               </TabsContent>
 
-              <TabsContent value="coletores" className="space-y-4">
+              <TabsContent value="coletores" className="space-y-4 min-h-[400px]">
                 <section className="esc-card overflow-hidden">
                   <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-3">
                     <div>
@@ -399,7 +510,14 @@ const CentralCadastros = () => {
                         Estado do dispositivo e vínculo com a unidade operacional.
                       </p>
                     </div>
-
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={() => setColetorModalOpen(true)}>
+                        <Plus className="h-4 w-4 mr-1.5" /> Novo coletor
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => navigate("/coletores")}>
+                        Gestão completa
+                      </Button>
+                    </div>
                   </div>
                   <table className="w-full text-sm">
                     <thead className="esc-table-header">
@@ -439,7 +557,7 @@ const CentralCadastros = () => {
                 </section>
               </TabsContent>
 
-              <TabsContent value="parametros" className="space-y-6">
+              <TabsContent value="parametros" className="space-y-6 min-h-[400px]">
                 <section className="esc-card p-5">
                   <div className="flex items-center justify-between gap-3 flex-wrap">
                     <div>
@@ -696,6 +814,294 @@ const CentralCadastros = () => {
             <Button variant="outline" onClick={() => setConfigModalOpen(false)}>Cancelar</Button>
             <Button onClick={() => configMutation.mutate(configForm)} disabled={configMutation.isPending}>
               {configMutation.isPending ? "Salvando..." : "Confirmar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={colaboradorModalOpen} onOpenChange={(open) => { setColaboradorModalOpen(open); if (!open) setColaboradorStep(1); }}>
+        <DialogContent className="sm:max-w-[520px] max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle>Novo colaborador</DialogTitle>
+            <DialogDescription>
+              {colaboradorStep === 1 ? "Dados pessoais e vínculo institucional." : colaboradorStep === 2 ? "Dados contratuais e informações de pagamento." : "Dados bancários para depósito."}
+            </DialogDescription>
+            <div className="flex items-center gap-2 mt-2">
+              <div className={cn("h-1.5 flex-1 rounded-full transition-colors", colaboradorStep >= 1 ? "bg-primary" : "bg-muted")} />
+              <div className={cn("h-1.5 flex-1 rounded-full transition-colors", colaboradorStep >= 2 ? "bg-primary" : "bg-muted")} />
+              <div className={cn("h-1.5 flex-1 rounded-full transition-colors", colaboradorStep >= 3 ? "bg-primary" : "bg-muted")} />
+            </div>
+          </DialogHeader>
+
+          <div className="overflow-y-auto max-h-[60vh]">
+          {colaboradorStep === 1 && (
+            <div className="grid grid-cols-2 gap-4 py-2">
+              <div className="col-span-2 space-y-1.5">
+                <Label htmlFor="colab_nome">Nome completo</Label>
+                <Input id="colab_nome" value={colaboradorForm.nome} onChange={(e) => setColaboradorForm({ ...colaboradorForm, nome: e.target.value })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="colab_cpf">CPF</Label>
+                <Input id="colab_cpf" value={colaboradorForm.cpf} onChange={(e) => setColaboradorForm({ ...colaboradorForm, cpf: e.target.value })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="colab_telefone">Telefone</Label>
+                <Input id="colab_telefone" value={colaboradorForm.telefone} onChange={(e) => setColaboradorForm({ ...colaboradorForm, telefone: e.target.value })} />
+              </div>
+              <div className="col-span-2 space-y-1.5">
+                <Label>Empresa</Label>
+                <Select value={colaboradorForm.empresa_id} onValueChange={(v) => setColaboradorForm({ ...colaboradorForm, empresa_id: v })}>
+                  <SelectTrigger><SelectValue placeholder="Selecione uma empresa" /></SelectTrigger>
+                  <SelectContent>
+                    {empresas.map((e) => (
+                      <SelectItem key={e.id} value={e.id}>{e.nome} — {e.cidade}/{e.estado}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+
+          {colaboradorStep === 2 && (
+            <div className="grid grid-cols-2 gap-4 py-2">
+              <div className="space-y-1.5">
+                <Label>Tipo de colaborador</Label>
+                <Select value={colaboradorForm.tipo_colaborador} onValueChange={(v) => setColaboradorForm({ ...colaboradorForm, tipo_colaborador: v, permitir_lancamento_operacional: v === "DIARISTA" ? true : colaboradorForm.permitir_lancamento_operacional })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="DIARISTA">DIARISTA</SelectItem>
+                    <SelectItem value="CLT">CLT</SelectItem>
+                    <SelectItem value="INTERMITENTE">INTERMITENTE</SelectItem>
+                    <SelectItem value="PRODUÇÃO">PRODUÇÃO</SelectItem>
+                    <SelectItem value="TERCEIRIZADO">TERCEIRIZADO</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Status</Label>
+                <Select value={colaboradorForm.status} onValueChange={(v) => setColaboradorForm({ ...colaboradorForm, status: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ativo">Ativo</SelectItem>
+                    <SelectItem value="inativo">Inativo</SelectItem>
+                    <SelectItem value="pendente">Pendente</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {colaboradorForm.tipo_colaborador === "DIARISTA" ? (
+                <>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="colab_valor">Valor da diária (R$)</Label>
+                    <Input id="colab_valor" type="number" value={colaboradorForm.valor_base} onChange={(e) => setColaboradorForm({ ...colaboradorForm, valor_base: e.target.value })} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="colab_cargo">Função operacional</Label>
+                    <Input id="colab_cargo" value={colaboradorForm.cargo} onChange={(e) => setColaboradorForm({ ...colaboradorForm, cargo: e.target.value })} />
+                  </div>
+                  <div className="col-span-2 flex items-center justify-between rounded-md border border-border p-3">
+                    <div>
+                      <Label className="cursor-pointer">Permitir lançamento operacional</Label>
+                      <p className="text-xs text-muted-foreground mt-0.5">Diarista aparecerá na tela de lançamentos.</p>
+                    </div>
+                    <Switch checked={colaboradorForm.permitir_lancamento_operacional} onCheckedChange={(v) => setColaboradorForm({ ...colaboradorForm, permitir_lancamento_operacional: v })} />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="colab_cargo">Cargo</Label>
+                    <Input id="colab_cargo" value={colaboradorForm.cargo} onChange={(e) => setColaboradorForm({ ...colaboradorForm, cargo: e.target.value })} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="colab_matricula">Matrícula</Label>
+                    <Input id="colab_matricula" value={colaboradorForm.matricula} onChange={(e) => setColaboradorForm({ ...colaboradorForm, matricula: e.target.value })} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Tipo de contrato</Label>
+                    <Select value={colaboradorForm.tipo_contrato} onValueChange={(v: "Hora" | "Operação") => setColaboradorForm({ ...colaboradorForm, tipo_contrato: v })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Hora">Por hora</SelectItem>
+                        <SelectItem value="Operação">Por operação</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="colab_valor">Valor base (R$)</Label>
+                    <Input id="colab_valor" type="number" value={colaboradorForm.valor_base} onChange={(e) => setColaboradorForm({ ...colaboradorForm, valor_base: e.target.value })} />
+                  </div>
+                  <div className="col-span-2 flex items-center justify-between rounded-md border border-border p-3">
+                    <div>
+                      <Label className="cursor-pointer">Gera faturamento</Label>
+                      <p className="text-xs text-muted-foreground mt-0.5">Colaborador entra no cálculo financeiro.</p>
+                    </div>
+                    <Switch checked={colaboradorForm.flag_faturamento} onCheckedChange={(v) => setColaboradorForm({ ...colaboradorForm, flag_faturamento: v })} />
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {colaboradorStep === 3 && (
+            <div className="grid grid-cols-2 gap-4 py-2">
+              <div className="col-span-2 space-y-1.5">
+                <Label htmlFor="nome_completo">Nome completo (como conta)</Label>
+                <Input id="nome_completo" value={colaboradorForm.nome_completo} onChange={(e) => setColaboradorForm({ ...colaboradorForm, nome_completo: e.target.value })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="banco_codigo">Cód. Banco</Label>
+                <Input id="banco_codigo" value={colaboradorForm.banco_codigo} onChange={(e) => setColaboradorForm({ ...colaboradorForm, banco_codigo: e.target.value })} placeholder="Ex: 341" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Tipo de Conta</Label>
+                <Select value={colaboradorForm.tipo_conta} onValueChange={(v) => setColaboradorForm({ ...colaboradorForm, tipo_conta: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="corrente">Corrente</SelectItem>
+                    <SelectItem value="poupanca">Poupança</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="agencia">Agência</Label>
+                <div className="flex gap-2">
+                  <Input id="agencia" value={colaboradorForm.agencia} onChange={(e) => setColaboradorForm({ ...colaboradorForm, agencia: e.target.value })} className="flex-1" />
+                  <Input id="agencia_digito" value={colaboradorForm.agencia_digito} onChange={(e) => setColaboradorForm({ ...colaboradorForm, agencia_digito: e.target.value })} className="w-16" placeholder="Díg." />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="conta">Conta</Label>
+                <div className="flex gap-2">
+                  <Input id="conta" value={colaboradorForm.conta} onChange={(e) => setColaboradorForm({ ...colaboradorForm, conta: e.target.value })} className="flex-1" />
+                  <Input id="conta_digito" value={colaboradorForm.conta_digito} onChange={(e) => setColaboradorForm({ ...colaboradorForm, conta_digito: e.target.value })} className="w-16" placeholder="Díg." />
+                </div>
+              </div>
+            </div>
+          )}
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button variant="outline" onClick={() => { setColaboradorModalOpen(false); setColaboradorStep(1); }}>Cancelar</Button>
+            {colaboradorStep === 1 && <Button onClick={() => setColaboradorStep(2)}>Próximo</Button>}
+            {colaboradorStep === 2 && (
+              <>
+                <Button variant="outline" onClick={() => setColaboradorStep(1)}>Voltar</Button>
+                <Button onClick={() => setColaboradorStep(3)}>Próximo</Button>
+              </>
+            )}
+            {colaboradorStep === 3 && (
+              <>
+                <Button variant="outline" onClick={() => setColaboradorStep(2)}>Voltar</Button>
+                <Button onClick={() => createColaboradorMutation.mutate(colaboradorForm)} disabled={createColaboradorMutation.isPending}>
+                  {createColaboradorMutation.isPending ? "Salvando..." : "Salvar"}
+                </Button>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={empresaModalOpen} onOpenChange={setEmpresaModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Nova Empresa</DialogTitle>
+            <DialogDescription>
+              Cadastre uma nova unidade operacional no sistema.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="emp_nome">Nome da Empresa</Label>
+              <Input id="emp_nome" value={empresaForm.nome} onChange={(e) => setEmpresaForm({ ...empresaForm, nome: e.target.value })} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="emp_cnpj">CNPJ</Label>
+              <Input id="emp_cnpj" value={empresaForm.cnpj} onChange={(e) => setEmpresaForm({ ...empresaForm, cnpj: e.target.value })} placeholder="00.000.000/0001-00" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="emp_unidade">Unidade (Filial)</Label>
+                <Input id="emp_unidade" value={empresaForm.unidade} onChange={(e) => setEmpresaForm({ ...empresaForm, unidade: e.target.value })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="emp_cidade">Cidade</Label>
+                <Input id="emp_cidade" value={empresaForm.cidade} onChange={(e) => setEmpresaForm({ ...empresaForm, cidade: e.target.value })} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="emp_estado">Estado (UF)</Label>
+              <Input id="emp_estado" value={empresaForm.estado} onChange={(e) => setEmpresaForm({ ...empresaForm, estado: e.target.value })} maxLength={2} />
+            </div>
+            <div className="col-span-full border-t pt-4 mt-2">
+              <h4 className="text-sm font-semibold mb-3">Dados Bancários</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="emp_banco">Cód. Banco</Label>
+                  <Input id="emp_banco" value={empresaForm.banco_codigo} onChange={(e) => setEmpresaForm({ ...empresaForm, banco_codigo: e.target.value })} placeholder="Ex: 341" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="emp_agencia">Agência</Label>
+                  <div className="flex gap-2">
+                    <Input id="emp_agencia" value={empresaForm.agencia} onChange={(e) => setEmpresaForm({ ...empresaForm, agencia: e.target.value })} className="flex-1" />
+                    <Input id="emp_agencia_digito" value={empresaForm.agencia_digito} onChange={(e) => setEmpresaForm({ ...empresaForm, agencia_digito: e.target.value })} className="w-16" placeholder="Díg." />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="emp_conta">Conta</Label>
+                  <div className="flex gap-2">
+                    <Input id="emp_conta" value={empresaForm.conta} onChange={(e) => setEmpresaForm({ ...empresaForm, conta: e.target.value })} className="flex-1" />
+                    <Input id="emp_conta_digito" value={empresaForm.conta_digito} onChange={(e) => setEmpresaForm({ ...empresaForm, conta_digito: e.target.value })} className="w-16" placeholder="Díg." />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="emp_convenio">Convênio</Label>
+                  <Input id="emp_convenio" value={empresaForm.convenios_bancario} onChange={(e) => setEmpresaForm({ ...empresaForm, convenios_bancario: e.target.value })} />
+                </div>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEmpresaModalOpen(false)}>Cancelar</Button>
+            <Button onClick={() => createEmpresaMutation.mutate(empresaForm)} disabled={createEmpresaMutation.isPending}>
+              {createEmpresaMutation.isPending ? "Salvando..." : "Salvar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={coletorModalOpen} onOpenChange={setColetorModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Novo Coletor</DialogTitle>
+            <DialogDescription>
+              Cadastre um novo dispositivo de ponto eletrônico REP.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="col_modelo">Modelo</Label>
+              <Input id="col_modelo" value={coletorForm.modelo} onChange={(e) => setColetorForm({ ...coletorForm, modelo: e.target.value })} placeholder="Ex: Rep-1000" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="col_serie">Número de Série</Label>
+              <Input id="col_serie" value={coletorForm.serie} onChange={(e) => setColetorForm({ ...coletorForm, serie: e.target.value })} placeholder="Ex: REP001234" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Empresa</Label>
+              <Select value={coletorForm.empresa_id} onValueChange={(v) => setColetorForm({ ...coletorForm, empresa_id: v })}>
+                <SelectTrigger><SelectValue placeholder="Selecione uma empresa" /></SelectTrigger>
+                <SelectContent>
+                  {empresas.map((e) => (
+                    <SelectItem key={e.id} value={e.id}>{e.nome} — {e.cidade}/{e.estado}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setColetorModalOpen(false)}>Cancelar</Button>
+            <Button onClick={() => createColetorMutation.mutate(coletorForm)} disabled={createColetorMutation.isPending}>
+              {createColetorMutation.isPending ? "Salvando..." : "Salvar"}
             </Button>
           </DialogFooter>
         </DialogContent>
