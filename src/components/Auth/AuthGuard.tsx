@@ -1,6 +1,7 @@
 import React from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { useClient } from "@/contexts/ClientContext";
 
 interface AuthGuardProps {
     children: React.ReactNode;
@@ -8,6 +9,7 @@ interface AuthGuardProps {
 
 export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
     const { session, loading } = useAuth();
+    const { userRole } = useClient();
     const location = useLocation();
 
     if (loading) {
@@ -20,6 +22,13 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
 
     if (!session) {
         return <Navigate to="/login" state={{ from: location }} replace />;
+    }
+
+    if (userRole === "Encarregado") {
+        const path = location.pathname;
+        if (!path.startsWith("/producao") && !path.startsWith("/operacional")) {
+            return <Navigate to="/producao" replace />;
+        }
     }
 
     return <>{children}</>;
