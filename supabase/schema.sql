@@ -107,3 +107,7 @@ DROP POLICY IF EXISTS "Leitura simplificada para usuários autenticados" ON empr
 CREATE POLICY "Leitura aberta para empresas" ON empresas FOR SELECT USING (true);
 
 -- Repetir para outras tabelas conforme necessário...
+
+-- Security policy for views
+DROP POLICY IF EXISTS "Leitura aberta para view operacoes_resumo" ON public.vw_operacoes_producao_resumo_dia;
+CREATE POLICY "Leitura aberta para view operacoes_resumo" ON public.vw_operacoes_producao_resumo_dia FOR SELECT USING (true);

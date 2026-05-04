@@ -151,18 +151,21 @@ const CentralCadastros = () => {
     queryKey: ["transportadoras"],
     queryFn: () => TransportadoraClienteService.getByEmpresa(empresaId),
     staleTime: 0,
+    select: (data) => data.filter((t: any) => t.ativo !== false),
   });
 
   const { data: fornecedores = [], isLoading: loadingFornecedores } = useQuery<any[]>({
     queryKey: ["fornecedores"],
     queryFn: () => FornecedorService.getByEmpresa(empresaId),
     staleTime: 0,
+    select: (data) => data.filter((f: any) => f.ativo !== false),
   });
 
   const { data: tiposServico = [], isLoading: loadingTiposServico } = useQuery<any[]>({
     queryKey: ["tipos_servico_operacional"],
     queryFn: () => TipoServicoOperacionalService.getAllActive(),
     staleTime: 0,
+    select: (data) => data.filter((s: any) => s.ativo !== false),
   });
 
   const { data: tiposOperacao = [], isLoading: loadingOps } = useQuery<any[]>({
@@ -416,14 +419,14 @@ const CentralCadastros = () => {
     onError: (err: any) => toast.error("Erro ao atualizar", { description: err.message }),
   });
 const deleteFornecedorMutation = useMutation({
-    mutationFn: (id: string) => FornecedorService.delete(id),
+    mutationFn: (id: string) => FornecedorService.update(id, { ativo: false }),
     onSuccess: async () => {
-      toast.success("Fornecedor excluído com sucesso");
+      toast.success("Fornecedor desativado com sucesso");
       await queryClient.cancelQueries({ queryKey: ["fornecedores"] });
       queryClient.removeQueries({ queryKey: ["fornecedores"] });
       await queryClient.invalidateQueries({ queryKey: ["fornecedores"] });
     },
-    onError: (err: any) => toast.error("Erro ao excluir", { description: err.message }),
+    onError: (err: any) => toast.error("Erro ao desativar", { description: err.message }),
   });
 
   const [editingTransportadora, setEditingTransportadora] = useState<any>(null);
@@ -439,14 +442,14 @@ const deleteFornecedorMutation = useMutation({
     onError: (err: any) => toast.error("Erro ao atualizar", { description: err.message }),
   });
   const deleteTransportadoraMutation = useMutation({
-    mutationFn: (id: string) => TransportadoraClienteService.delete(id),
+    mutationFn: (id: string) => TransportadoraClienteService.update(id, { ativo: false }),
     onSuccess: async () => {
-      toast.success("Transportadora excluída com sucesso");
+      toast.success("Transportadora desativada com sucesso");
       await queryClient.cancelQueries({ queryKey: ["transportadoras"] });
       queryClient.removeQueries({ queryKey: ["transportadoras"] });
       await queryClient.invalidateQueries({ queryKey: ["transportadoras"] });
     },
-    onError: (err: any) => toast.error("Erro ao excluir", { description: err.message }),
+    onError: (err: any) => toast.error("Erro ao desativar", { description: err.message }),
   });
 
   const [editingServico, setEditingServico] = useState<any>(null);
@@ -462,14 +465,14 @@ const deleteFornecedorMutation = useMutation({
     onError: (err: any) => toast.error("Erro ao atualizar", { description: err.message }),
   });
   const deleteServicoMutation = useMutation({
-    mutationFn: (id: string) => TipoServicoOperacionalService.delete(id),
+    mutationFn: (id: string) => TipoServicoOperacionalService.update(id, { ativo: false }),
     onSuccess: async () => {
-      toast.success("Tipo de serviço excluído com sucesso");
+      toast.success("Tipo de serviço desativado com sucesso");
       await queryClient.cancelQueries({ queryKey: ["tipos_servico_operacional"] });
       queryClient.removeQueries({ queryKey: ["tipos_servico_operacional"] });
       await queryClient.invalidateQueries({ queryKey: ["tipos_servico_operacional"] });
     },
-    onError: (err: any) => toast.error("Erro ao excluir", { description: err.message }),
+    onError: (err: any) => toast.error("Erro ao desativar", { description: err.message }),
   });
 
   const handleAddConfig = (type: "operacao" | "produto" | "dia") => {
@@ -893,7 +896,7 @@ const deleteFornecedorMutation = useMutation({
                                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingTransportadora(transportadora)}>
                                   <PencilLine className="h-4 w-4" />
                                 </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => { if (confirm("Confirmar exclusão?")) deleteTransportadoraMutation.mutate(transportadora.id) }}>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => { if (confirm("Confirmar desativação?")) deleteTransportadoraMutation.mutate(transportadora.id) }}>
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
                               </div>
@@ -964,7 +967,7 @@ const deleteFornecedorMutation = useMutation({
                                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingFornecedor(fornecedor)}>
                                   <PencilLine className="h-4 w-4" />
                                 </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => { if (confirm("Confirmar exclusão?")) deleteFornecedorMutation.mutate(fornecedor.id) }}>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => { if (confirm("Confirmar desativação?")) deleteFornecedorMutation.mutate(fornecedor.id) }}>
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
                               </div>
@@ -1029,7 +1032,7 @@ const deleteFornecedorMutation = useMutation({
                                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingServico(servico)}>
                                   <PencilLine className="h-4 w-4" />
                                 </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => { if (confirm("Confirmar exclusão?")) deleteServicoMutation.mutate(servico.id) }}>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => { if (confirm("Confirmar desativação?")) deleteServicoMutation.mutate(servico.id) }}>
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
                               </div>

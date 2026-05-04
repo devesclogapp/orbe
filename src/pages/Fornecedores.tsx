@@ -84,13 +84,13 @@ const Fornecedores = () => {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => FornecedorService.delete(id),
+    mutationFn: (id: string) => FornecedorService.update(id, { ativo: false }),
     onSuccess: () => {
-      toast.success("Fornecedor excluído com sucesso");
+      toast.success("Fornecedor desativado com sucesso");
       queryClient.invalidateQueries({ queryKey: ["fornecedores_list"] });
     },
     onError: (err: any) => {
-      toast.error(err?.message || "Erro ao excluir");
+      toast.error(err?.message || "Erro ao desativar");
     },
   });
 
@@ -103,6 +103,7 @@ const Fornecedores = () => {
   };
 
   const filteredList = list.filter((item: any) =>
+    item.ativo !== false &&
     (selectedEmpresa === "all" || item.empresa_id === selectedEmpresa) &&
     (item.nome?.toLowerCase().includes(searchText.toLowerCase()) ||
     item.documento?.toLowerCase().includes(searchText.toLowerCase()))
@@ -205,7 +206,7 @@ const Fornecedores = () => {
                         size="icon"
                         className="h-8 w-8 text-destructive hover:text-destructive"
                         onClick={() => {
-                          if (confirm("Confirmar exclusão?")) {
+                          if (confirm("Confirmar desativação?")) {
                             deleteMutation.mutate(item.id);
                           }
                         }}

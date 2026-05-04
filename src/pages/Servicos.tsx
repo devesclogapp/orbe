@@ -78,13 +78,13 @@ const Servicos = () => {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => TipoServicoOperacionalService.delete(id),
+    mutationFn: (id: string) => TipoServicoOperacionalService.update(id, { ativo: false }),
     onSuccess: () => {
-      toast.success("Tipo de serviço excluído com sucesso");
+      toast.success("Tipo de serviço desativado com sucesso");
       queryClient.invalidateQueries({ queryKey: ["tipos_servico_list"] });
     },
     onError: (err: any) => {
-      toast.error(err?.message || "Erro ao excluir");
+      toast.error(err?.message || "Erro ao desativar");
     },
   });
 
@@ -97,6 +97,7 @@ const Servicos = () => {
   };
 
   const filteredList = list.filter((item: any) =>
+    item.ativo !== false &&
     (selectedEmpresa === "all" || item.empresa_id === selectedEmpresa) &&
     (item.nome?.toLowerCase().includes(searchText.toLowerCase()) ||
     item.descricao?.toLowerCase().includes(searchText.toLowerCase()))
@@ -190,7 +191,7 @@ const Servicos = () => {
                         size="icon"
                         className="h-8 w-8 text-destructive hover:text-destructive"
                         onClick={() => {
-                          if (confirm("Confirmar exclusão?")) {
+                          if (confirm("Confirmar desativação?")) {
                             deleteMutation.mutate(item.id);
                           }
                         }}

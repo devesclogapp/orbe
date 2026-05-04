@@ -184,17 +184,17 @@ const LANCAMENTO_PRESETS: Array<{
             id: "preset_caixa",
             tipo_lancamento: "operacao_padrao",
             modalidade_financeira: "CAIXA_IMEDIATO",
-            title: "Descarga pgto. imediato (CAIXA)",
-            description: "Para pagamentos diários via depósito imediato aos colaboradores.",
-            icon: Wallet,
+            title: "Pagamento à Vista (Caixa)",
+            description: "Operações com recebimento imediato no momento da execução, independentemente do tipo de serviço realizado.",
+            icon: Truck,
             iconColor: "bg-success-soft text-success-strong",
         },
         {
             id: "preset_boleto",
             tipo_lancamento: "operacao_padrao",
             modalidade_financeira: "DUPLICATA_FORNECEDOR",
-            title: "Descarga corporativa (BOLETO)",
-            description: "Ex: Nestlé e Ambev, pagas na fábrica e controladas por boleto.",
+            title: "Pagamento a Prazo (Boleto)",
+            description: "Operações com recebimento futuro via boleto.",
             icon: ListChecks,
             iconColor: "bg-info-soft text-info-strong",
         },
@@ -202,8 +202,8 @@ const LANCAMENTO_PRESETS: Array<{
             id: "preset_dismelo",
             tipo_lancamento: "operacao_padrao",
             modalidade_financeira: "FECHAMENTO_MENSAL_EMPRESA",
-            title: "Operações com a DISMELO",
-            description: "Fechamentos mensais por nota fiscal e deduções diretas.",
+            title: "Faturamento Mensal",
+            description: "Operações consolidadas para pagamento no fechamento mensal, independentemente do volume ou frequência.",
             icon: Wallet,
             iconColor: "bg-warning-soft text-warning-strong",
         },
@@ -211,8 +211,8 @@ const LANCAMENTO_PRESETS: Array<{
             id: "preset_transbordo",
             tipo_lancamento: "transbordo_servico_extra",
             modalidade_financeira: "CAIXA_IMEDIATO",
-            title: "Transbordo e Serviço Extra",
-            description: "Conserto de paletes, ajudas avulsas, carretas de transferência.",
+            title: "Serviços Operacionais Extras",
+            description: "Registro de serviços adicionais vinculados à operação principal.",
             icon: Truck,
             iconColor: "bg-purple-100 text-purple-700",
         },
@@ -220,8 +220,8 @@ const LANCAMENTO_PRESETS: Array<{
             id: "preset_custos_mensais",
             tipo_lancamento: "custos_extras",
             modalidade_financeira: "CUSTO_DESPESA",
-            title: "Custos (CLT)",
-            description: "Para equipes de carteira assinada ou despesas fixas.",
+            title: "Lançamento de Custos",
+            description: "Registro de custos operacionais, administrativos e de fornecedores.",
             icon: Users,
             iconColor: "bg-orange-100 text-orange-700",
         },
@@ -508,10 +508,18 @@ const LancamentoProducao = () => {
         });
     }, [produtoDraft.nome, produtoOptions]);
 
-    const formaPagamentoOptions = useMemo(
-        () => mapToLookupOptions(formasPagamentoDb as any[]),
-        [formasPagamentoDb],
-    );
+    const formaPagamentoOptions = useMemo(() => {
+        if (form.modalidade_financeira === "DUPLICATA_FORNECEDOR") {
+            return [
+                { id: "boleto_bancario", nome: "Boleto Bancário" },
+                { id: "duplicata", nome: "Duplicata" },
+            ];
+        }
+        if (form.modalidade_financeira === "FECHAMENTO_MENSAL_EMPRESA") {
+            return [{ id: "faturamento_mensal", nome: "Faturamento Mensal" }];
+        }
+        return mapToLookupOptions(formasPagamentoDb as any[]);
+    }, [formasPagamentoDb, form.modalidade_financeira]);
 
     const formaPagamentoSelecionada = useMemo(
         () => formaPagamentoOptions.find((item) => item.id === form.forma_pagamento) ?? null,
