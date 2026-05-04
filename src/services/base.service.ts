@@ -622,8 +622,7 @@ class TipoServicoOperacionalServiceClass {
     const { data, error } = await operationalClient
       .from('tipos_servico_operacional')
       .select('*')
-      .eq('ativo', true)
-      .order('nome', { ascending: true });
+      .order('created_at', { ascending: false });
 
     if (error) throw error;
     return data ?? [];
@@ -639,20 +638,36 @@ class TipoServicoOperacionalServiceClass {
     if (error) throw error;
     return data;
   }
+
+  async update(id: string, payload: Record<string, any>) {
+    const { data, error } = await operationalClient
+      .from('tipos_servico_operacional')
+      .update(payload)
+      .eq('id', id)
+      .select();
+
+    if (error) throw error;
+    return data?.[0] ?? null;
+  }
+
+  async delete(id: string) {
+    const { error } = await operationalClient
+      .from('tipos_servico_operacional')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+  }
 }
 export const TipoServicoOperacionalService = new TipoServicoOperacionalServiceClass();
 
 class TransportadoraClienteServiceClass {
   async getByEmpresa(empresaId?: string) {
-    let query = operationalClient
+    const { data, error } = await operationalClient
       .from('transportadoras_clientes')
       .select('*')
-      .eq('ativo', true)
-      .order('nome', { ascending: true });
+      .order('created_at', { ascending: false });
 
-    if (empresaId) query = query.eq('empresa_id', empresaId);
-
-    const { data, error } = await query;
     if (error) throw error;
     return data ?? [];
   }
@@ -666,21 +681,37 @@ class TransportadoraClienteServiceClass {
 
     if (error) throw error;
     return data;
+  }
+
+  async update(id: string, payload: Record<string, any>) {
+    const { data, error } = await operationalClient
+      .from('transportadoras_clientes')
+      .update(payload)
+      .eq('id', id)
+      .select();
+
+    if (error) throw error;
+    return data?.[0] ?? null;
+  }
+
+  async delete(id: string) {
+    const { error } = await operationalClient
+      .from('transportadoras_clientes')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
   }
 }
 export const TransportadoraClienteService = new TransportadoraClienteServiceClass();
 
 class FornecedorServiceClass {
   async getByEmpresa(empresaId?: string) {
-    let query = operationalClient
+    const { data, error } = await operationalClient
       .from('fornecedores')
       .select('*')
-      .eq('ativo', true)
-      .order('nome', { ascending: true });
+      .order('created_at', { ascending: false });
 
-    if (empresaId) query = query.eq('empresa_id', empresaId);
-
-    const { data, error } = await query;
     if (error) throw error;
     return data ?? [];
   }
@@ -694,6 +725,26 @@ class FornecedorServiceClass {
 
     if (error) throw error;
     return data;
+  }
+
+  async update(id: string, payload: Record<string, any>) {
+    const { data, error } = await operationalClient
+      .from('fornecedores')
+      .update(payload)
+      .eq('id', id)
+      .select();
+
+    if (error) throw error;
+    return data?.[0] ?? null;
+  }
+
+  async delete(id: string) {
+    const { error } = await operationalClient
+      .from('fornecedores')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
   }
 }
 export const FornecedorService = new FornecedorServiceClass();
