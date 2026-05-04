@@ -103,6 +103,7 @@ CREATE TABLE resultados_processamento (
 
 -- Configurações de RLS (Row Level Security) - Inicialmente permitindo leitura para simplificar o MVP
 ALTER TABLE empresas ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Leitura simplificada para usuários autenticados" ON empresas FOR SELECT USING (auth.role() = 'authenticated');
+DROP POLICY IF EXISTS "Leitura simplificada para usuários autenticados" ON empresas;
+CREATE POLICY "Leitura aberta para empresas" ON empresas FOR SELECT USING (true);
 
 -- Repetir para outras tabelas conforme necessário...
