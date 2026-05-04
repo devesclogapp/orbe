@@ -29,8 +29,9 @@ const Fornecedores = () => {
   });
 
   const { data: empresaOptions = [] } = useQuery({
-    queryKey: ["empresas"],
+    queryKey: ["empresas_fornecedores"],
     queryFn: () => EmpresaService.getAll(),
+    staleTime: 1000 * 60 * 5,
   });
 
   const [form, setForm] = useState({
