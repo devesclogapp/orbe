@@ -20,11 +20,8 @@ export const MetricCard = ({ label, value, delta, icon: Icon, accent, variant = 
   const isSolid = variant === "solid";
   const isSmall = size === "small";
 
-  const Wrapper = onClick ? "button" : "div";
-
   return (
-    <Wrapper 
-      type={onClick ? "button" : undefined}
+    <div 
       onClick={onClick}
       className={cn(
         "group relative overflow-hidden transition-all duration-200 flex flex-col justify-between text-left w-full",

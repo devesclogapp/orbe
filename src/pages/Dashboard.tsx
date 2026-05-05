@@ -4,11 +4,14 @@ import { addMonths, format, startOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   Activity,
+  AlertCircle,
   AlertTriangle,
   ArrowRight,
   BarChart3,
   Boxes,
   Calendar as CalendarIcon,
+  Database,
+  FileText,
   HandCoins,
   LineChart as LineIcon,
   Loader2,
@@ -20,6 +23,7 @@ import {
   Scale,
   TrendingDown,
   TrendingUp,
+  Users,
   Wallet,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -42,6 +46,7 @@ import {
 
 import { AppShell } from "@/components/layout/AppShell";
 import { MetricCard } from "@/components/painel/MetricCard";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -50,11 +55,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import {
+  ConsolidadoService,
   CustoExtraOperacionalService,
   OperacaoService,
 } from "@/services/base.service";
+import { AuditoriaService } from "@/services/v4.service";
+import { ReportService } from "@/services/report.service";
 import { processarOperacao } from "@/utils/financeiro";
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
@@ -123,6 +139,53 @@ const Dashboard = () => {
     "all",
   );
   const selectedMonth = `${selectedYear}-${selectedMonthNumber}`;
+  
+  // Estado para filtro ativo nos KPIs
+  const [activeFilter, setActiveFilter] = useState<string | null>(null);
+  
+  // Estado para alertas
+  const [alertsExpanded, setAlertsExpanded] = useState(true);
+  
+  // Estado para controle de visualização da tabela
+  const [showDataTable, setShowDataTable] = useState(false);
+  
+  // Estado para filtros da tabela
+  const [tableFilters, setTableFilters] = useState({
+    tipo: 'operacoes', // operacoes, custos, diaristas
+    status: 'all',
+  });
+
+  const buildFilters = (extraFilters: Record<string, string> = {}) => {
+    const params = new URLSearchParams();
+    params.set("ano", selectedYear);
+    if (selectedMonthNumber !== "all") {
+      params.set("mes", selectedMonthNumber);
+    }
+    Object.entries(extraFilters).forEach(([key, value]) => {
+      if (value) params.set(key, value);
+    });
+    return params.toString();
+  };
+
+  const navigateToOperacoes = (filters: Record<string, string> = {}) => {
+    navigate(`/operacional/operacoes?${buildFilters(filters)}`);
+  };
+
+  const handleKpiClick = (filterType: string) => {
+    if (activeFilter === filterType) {
+      setActiveFilter(null);
+      setShowDataTable(false);
+    } else {
+      setActiveFilter(filterType);
+      setShowDataTable(true);
+    }
+  };
+
+  const clearFilter = () => {
+    setActiveFilter(null);
+    setShowDataTable(false);
+  };
+
   const matchesSelectedPeriod = (value: unknown) => {
     const referencia = String(value ?? "");
     if (!referencia.startsWith(selectedYear)) return false;
@@ -251,6 +314,62 @@ const Dashboard = () => {
       },
     };
   }, [custosPeriodo, operacoesPeriodo]);
+
+  const activeKpis = useMemo(() => {
+    if (!activeFilter) return dashboardKpis;
+    return dashboardKpis;
+  }, [activeFilter, dashboardKpis]);
+
+  const hasRegraOperacional = (op: any) => {
+    return op.tipo_calculo_snapshot || op.regra_financeira;
+  };
+
+  const alerts = useMemo(() => {
+    const result = [];
+    
+    const opSemRegra = operacoesPeriodo.filter(op => !hasRegraOperacional(op)).length;
+    if (opSemRegra > 0) {
+      result.push({
+        id: 'sem_regra',
+        tipo: 'warning',
+        titulo: `${opSemRegra} operação(ões) sem regra operacional`,
+        descricao: 'Verificar regras operacionais cadastradas',
+        onClick: () => navigateToOperacoes({ sem_regra: 'true' }),
+      });
+    }
+    
+    if (dashboardKpis.custosPendentes > 0) {
+      result.push({
+        id: 'custos_pendentes',
+        tipo: 'warning',
+        titulo: `${dashboardKpis.custosPendentes} custo(s) pendente(s)`,
+        descricao: 'Verificar status de pagamento',
+        onClick: () => navigateToOperacoes({ categoria_servico: 'CUSTO', status_pgto: 'PENDENTE' }),
+      });
+    }
+    
+    if (dashboardKpis.atrasado > 0) {
+      result.push({
+        id: 'atrasado',
+        tipo: 'error',
+        titulo: `${formatCurrency(dashboardKpis.atrasado)} em atraso`,
+        descricao: 'Verificar recebimentos atrasados',
+        onClick: () => navigateToOperacoes({ vencimento_atrasado: 'true' }),
+      });
+    }
+    
+    if (dashboardKpis.volumeTotal === 0) {
+      result.push({
+        id: 'sem_volume',
+        tipo: 'info',
+        titulo: 'Nenhum volume registrado no período',
+        descricao: 'Verificar lançamentos',
+        onClick: () => navigateToOperacoes({ categoria_servico: 'SERVICO_VOLUME' }),
+      });
+    }
+    
+    return result;
+  }, [operacoesPeriodo, dashboardKpis]);
 
   const serieDiaria = useMemo(() => {
     const dias = new Map<
@@ -453,6 +572,7 @@ const Dashboard = () => {
                   icon={Wallet}
                   chartData={serieDiaria.map(d => ({ value: d.receita }))}
                   chartColor={COLORS.receita}
+                  onClick={() => navigateToOperacoes({ categoria_servico: "SERVICO_VOLUME" })}
                 />
                 <MetricCard
                   label="Custos Totais"
@@ -460,6 +580,7 @@ const Dashboard = () => {
                   icon={TrendingDown}
                   chartData={serieDiaria.map(d => ({ value: d.custos }))}
                   chartColor={COLORS.custos}
+                  onClick={() => navigateToOperacoes({ categoria_servico: "CUSTO" })}
                 />
                 <MetricCard
                   label="Margem de Lucro"
@@ -475,32 +596,225 @@ const Dashboard = () => {
                   label="Caixa Recebido"
                   value={formatCurrency(dashboardKpis.caixaRecebido)}
                   size="small"
+                  onClick={() => navigateToOperacoes({ entra_caixa_imediato: "true" })}
                 />
                 <MetricCard
                   label="A Receber"
                   value={formatCurrency(dashboardKpis.aReceber)}
                   size="small"
+                  onClick={() => navigateToOperacoes({ gera_conta_receber: "true" })}
                 />
                 <MetricCard
                   label="Atrasado"
                   value={formatCurrency(dashboardKpis.atrasado)}
                   size="small"
+                  onClick={() => navigateToOperacoes({ vencimento_atrasado: "true" })}
                 />
                 <MetricCard
                   label="Volume Total"
                   value={formatInteger(dashboardKpis.volumeTotal)}
                   size="small"
+                  onClick={() => navigateToOperacoes({ categoria_servico: "SERVICO_VOLUME" })}
                 />
                 <MetricCard
                   label="Operações"
                   value={formatInteger(dashboardKpis.totalOperacoes)}
                   size="small"
+                  onClick={() => navigateToOperacoes()}
                 />
                 <MetricCard
                   label="Custos (Lançs.)"
                   value={formatInteger(dashboardKpis.totalLancamentosCustos)}
                   size="small"
+                  onClick={() => navigateToOperacoes({ categoria_servico: "CUSTO" })}
                 />
+              </div>
+            </div>
+
+            {/* Seção de Alertas Automáticos */}
+            {alerts.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-sm flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 text-amber-500" />
+                    Alertas do Período
+                  </h3>
+                  <Button variant="ghost" size="sm" onClick={() => setAlertsExpanded(!alertsExpanded)}>
+                    {alertsExpanded ? "Ocultar" : "Mostrar"}
+                  </Button>
+                </div>
+                
+                {alertsExpanded && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
+                    {alerts.map((alert) => (
+                      <button
+                        key={alert.id}
+                        onClick={alert.onClick}
+                        className={cn(
+                          "flex items-start gap-3 p-3 rounded-lg border text-left transition-all hover:shadow-md cursor-pointer",
+                          alert.tipo === 'error' ? "border-red-200 bg-red-50 hover:bg-red-100" :
+                          alert.tipo === 'warning' ? "border-amber-200 bg-amber-50 hover:bg-amber-100" :
+                          "border-blue-200 bg-blue-50 hover:bg-blue-100"
+                        )}
+                      >
+                        {alert.tipo === 'error' ? (
+                          <AlertTriangle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
+                        ) : alert.tipo === 'warning' ? (
+                          <AlertCircle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                        ) : (
+                          <Activity className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+                        )}
+                        <div>
+                          <p className="text-sm font-medium">{alert.titulo}</p>
+                          <p className="text-xs text-muted-foreground">{alert.descricao}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Filtro ativo exibido */}
+            {activeFilter && (
+              <div className="flex items-center gap-2 p-3 bg-primary/10 rounded-lg">
+                <span className="text-sm font-medium">Filtro ativo:</span>
+                <Badge variant="outline" className="bg-white">
+                  {activeFilter}
+                </Badge>
+                <Button variant="ghost" size="sm" onClick={clearFilter}>
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            )}
+
+            {/* Tabela de Dados Principais */}
+            <div className="esc-card overflow-hidden">
+              <div className="p-4 border-b flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-semibold">Dados do Período</h3>
+                  <Badge variant="outline">{operacoesPeriodo.length + custosPeriodo.length} registros</Badge>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Select value={tableFilters.tipo} onValueChange={(v) => setTableFilters(prev => ({ ...prev, tipo: v }))}>
+                    <SelectTrigger className="w-[140px] h-8">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="operacoes">Operações</SelectItem>
+                      <SelectItem value="custos">Custos</SelectItem>
+                      <SelectItem value="todos">Todos</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={tableFilters.status} onValueChange={(v) => setTableFilters(prev => ({ ...prev, status: v }))}>
+                    <SelectTrigger className="w-[140px] h-8">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      <SelectItem value="pendente">Pendente</SelectItem>
+                      <SelectItem value="recebido">Recebido</SelectItem>
+                      <SelectItem value="atrasado">Atrasado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[100px]">Data</TableHead>
+                      <TableHead>Empresa</TableHead>
+                      <TableHead>Serviço</TableHead>
+                      <TableHead>Quantidade</TableHead>
+                      <TableHead>Valor</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(() => {
+                      let rows: any[] = [];
+                      
+                      if (tableFilters.tipo === 'operacoes' || tableFilters.tipo === 'todos') {
+                        operacoesPeriodo.slice(0, 20).forEach(op => {
+                          const statusPg = op.status_pgto || op.status;
+                          if (tableFilters.status !== 'all' && statusPg?.toUpperCase() !== tableFilters.status.toUpperCase()) return;
+                          rows.push({
+                            data: op.data_operacao || op.data,
+                            empresa: op.empresas?.nome || '-',
+                            servico: op.tipos_servico_operacional?.nome || '-',
+                            quantidade: op.quantidade || 1,
+                            valor: op.valor_total || 0,
+                            status: statusPg,
+                            tipo: 'op',
+                            id: op.id,
+                          });
+                        });
+                      }
+                      
+                      if (tableFilters.tipo === 'custos' || tableFilters.tipo === 'todos') {
+                        custosPeriodo.slice(0, 20).forEach(c => {
+                          const statusPg = c.status;
+                          if (tableFilters.status !== 'all' && statusPg?.toUpperCase() !== tableFilters.status.toUpperCase()) return;
+                          rows.push({
+                            data: c.data,
+                            empresa: c.empresa?.nome || '-',
+                            servico: c.descricao || c.tipo_custo || '-',
+                            quantidade: 1,
+                            valor: c.total || 0,
+                            status: statusPg,
+                            tipo: 'custo',
+                            id: c.id,
+                          });
+                        });
+                      }
+                      
+                      rows = rows.slice(0, 50); // Limit to 50 rows
+                      
+                      if (rows.length === 0) {
+                        return (
+                          <TableRow>
+                            <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                              Nenhum registro encontrado para os filtros selecionados.
+                            </TableCell>
+                          </TableRow>
+                        );
+                      }
+                      
+                      return rows.map((row, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell className="whitespace-nowrap">{row.data ? format(new Date(row.data), 'dd/MM/yyyy') : '-'}</TableCell>
+                          <TableCell>{row.empresa}</TableCell>
+                          <TableCell>{row.servico}</TableCell>
+                          <TableCell className="text-center">{row.quantidade}</TableCell>
+                          <TableCell className="font-medium">{formatCurrency(row.valor)}</TableCell>
+                          <TableCell>
+                            <Badge variant={
+                              row.status?.toUpperCase() === 'RECEBIDO' || row.status?.toUpperCase() === 'PAGO' ? 'default' :
+                              row.status?.toUpperCase() === 'ATRASADO' ? 'destructive' : 'secondary'
+                            }>
+                              {row.status || 'Pendente'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button variant="ghost" size="sm" onClick={() => navigateToOperacoes()}>
+                              <ArrowRight className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ));
+                    })()}
+                  </TableBody>
+                </Table>
+              </div>
+              
+              <div className="p-3 border-t bg-muted/30 text-center">
+                <Button variant="outline" size="sm" onClick={() => navigateToOperacoes()}>
+                  Ver todos os registros
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
               </div>
             </div>
 
@@ -599,6 +913,8 @@ const Dashboard = () => {
                 data={categoriasCustosData}
               />
             </div>
+
+            <DashboardReportsSection navigate={navigate} selectedYear={selectedYear} selectedMonthNumber={selectedMonthNumber} />
 
             <section className="esc-card p-5">
               <div className="mb-4 flex items-center gap-2">
@@ -762,6 +1078,145 @@ const PieCard = ({
     </div>
   </section>
 );
+
+const QuickReportCard = ({
+  title,
+  subtitle,
+  icon: Icon,
+  stats,
+  onClick
+}: {
+  title: string;
+  subtitle: string;
+  icon: React.ElementType;
+  stats?: { label: string; value: string }[];
+  onClick: () => void;
+}) => (
+  <button
+    onClick={onClick}
+    className="esc-card p-4 text-left hover:border-primary/40 transition-all group w-full"
+  >
+    <div className="flex items-start gap-3">
+      <div className="h-10 w-10 rounded-lg bg-primary-soft/20 flex items-center justify-center shrink-0">
+        <Icon className="h-5 w-5 text-primary" />
+      </div>
+      <div className="min-w-0">
+        <h4 className="font-display font-semibold text-sm text-foreground">{title}</h4>
+        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{subtitle}</p>
+      </div>
+    </div>
+    {stats && stats.length > 0 && (
+      <div className="mt-3 flex flex-wrap gap-2">
+        {stats.map((stat, idx) => (
+          <div key={idx} className="bg-muted/50 rounded-md px-2 py-1">
+            <span className="text-[10px] text-muted-foreground uppercase">{stat.label}</span>
+            <div className="text-xs font-semibold text-foreground">{stat.value}</div>
+          </div>
+        ))}
+      </div>
+    )}
+    <div className="mt-3 flex items-center text-xs text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+      <span>Ver relatório completo</span>
+      <ArrowRight className="h-3 w-3 ml-1" />
+    </div>
+  </button>
+);
+
+const DashboardReportsSection = ({ navigate, selectedYear, selectedMonthNumber }: { navigate: (path: string) => void; selectedYear: string; selectedMonthNumber: string }) => {
+  const { data: consolidadoData } = useQuery({
+    queryKey: ["consolidado", selectedYear, selectedMonthNumber],
+    queryFn: () => ConsolidadoService.getByCompetencia(`${selectedYear}-${selectedMonthNumber}`),
+    enabled: !!selectedYear && !!selectedMonthNumber,
+  });
+
+  const { data: inconsistencias = [] } = useQuery({
+    queryKey: ["inconsistencias-ponto"],
+    queryFn: () => OperacaoService.getInconsistencies(),
+  });
+
+  const { data: auditoriaLogs = [] } = useQuery({
+    queryKey: ["auditoria-logs"],
+    queryFn: () => AuditoriaService.getAll(),
+  });
+
+  const { data: reports = [] } = useQuery({
+    queryKey: ["reports_catalog"],
+    queryFn: () => ReportService.getAll(),
+  });
+
+  const getReportId = (slug: string) => {
+    const report = reports.find((r: any) => r.slug === slug);
+    return report?.id || "";
+  };
+
+  const totalFaturamento = useMemo(() => {
+    if (!consolidadoData) return 0;
+    const data = consolidadoData as any;
+    return (data.colaboradores || data.clientes || []).reduce(
+      (acc: number, curr: any) => acc + Number(curr.valor_total || 0),
+      0
+    );
+  }, [consolidadoData]);
+
+  const totalInconsistencias = Array.isArray(inconsistencias) ? inconsistencias.length : 0;
+
+  const ultimosLogs = Array.isArray(auditoriaLogs) ? auditoriaLogs.slice(0, 3) : [];
+
+  const faturamentoId = getReportId("faturamento-cliente");
+  const inconsistenciasId = getReportId("inconsistencias-ponto");
+  const auditoriaId = getReportId("log-auditoria");
+
+  return (
+    <section className="esc-card p-5">
+      <div className="mb-4 flex items-center gap-2">
+        <FileText className="h-4 w-4 text-muted-foreground" />
+        <h2 className="font-display font-semibold text-foreground">Relatórios rápido</h2>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <QuickReportCard
+          title="Faturamento por Cliente"
+          subtitle="Receita consolidada por cliente"
+          icon={BarChart3}
+          stats={[
+            { label: "Total", value: formatCurrency(totalFaturamento) },
+            { label: "Clientes", value: String((consolidadoData as any)?.clientes?.length || 0) }
+          ]}
+          onClick={() => faturamentoId && navigate(`/relatorios/detalhe/${faturamentoId}`)}
+        />
+        <QuickReportCard
+          title="Inconsistências de Ponto"
+          subtitle="Registros com problemas de ponto"
+          icon={AlertCircle}
+          stats={[
+            { label: "Total", value: String(totalInconsistencias) },
+            { label: "Pendentes", value: String(totalInconsistencias) }
+          ]}
+          onClick={() => inconsistenciasId && navigate(`/relatorios/detalhe/${inconsistenciasId}`)}
+        />
+        <QuickReportCard
+          title="Log de Auditoria"
+          subtitle="Histórico de alterações no sistema"
+          icon={Database}
+          stats={[
+            { label: "Total", value: String(auditoriaLogs.length) },
+            { label: "Recentes", value: String(ultimosLogs.length) }
+          ]}
+          onClick={() => auditoriaId && navigate(`/relatorios/detalhe/${auditoriaId}`)}
+        />
+        <QuickReportCard
+          title="Diaristas"
+          subtitle="Controle de diaristas e ajustes"
+          icon={Users}
+          stats={[
+            { label: "Ativos", value: "-" },
+            { label: "Ajustes", value: "-" }
+          ]}
+          onClick={() => navigate("/rh/diaristas")}
+        />
+      </div>
+    </section>
+  );
+};
 
 const InsightRow = ({ label, value }: { label: string; value: string }) => (
   <div className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2.5">

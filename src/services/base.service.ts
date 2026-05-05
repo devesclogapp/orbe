@@ -1591,6 +1591,87 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
     if (error) throw error;
     return data;
   }
+
+  async fecharPeriodo({ empresaId, periodoInicio, periodoFim, fechadoPor, fechadoPorNome, observacoes }: {
+    empresaId: string;
+    periodoInicio: string;
+    periodoFim: string;
+    fechadoPor: string;
+    fechadoPorNome: string;
+    observacoes?: string;
+  }) {
+    const { data: lancamentos, error: errorLanc } = await this.supabase
+      .from('lancamentos_diaristas')
+      .select('*, diaristas(nome, cpf, valor_diaria, banco_codigo, agencia, conta)')
+      .eq('empresa_id', empresaId)
+      .gte('data_lancamento', periodoInicio)
+      .lte('data_lancamento', periodoFim)
+      .eq('status', 'ativo');
+
+    if (errorLanc) throw errorLanc;
+
+    const diaristasMap = new Map();
+    let totalRegistros = 0;
+    let valorTotal = 0;
+
+    (lancamentos || []).forEach((l: any) => {
+      const key = l.diarista_id;
+      if (!diaristasMap.has(key)) {
+        diaristasMap.set(key, {
+          diarista_id: key,
+          nome_colaborador: l.diarista?.nome || "Diarista",
+          cpf: l.diarista?.cpf,
+          banco: l.diarista?.banco_codigo,
+          agencia: l.diarista?.agencia,
+          conta: l.diarista?.conta,
+          quantidade_dias: 0,
+          valor_dia: l.diarista?.valor_diaria || 0,
+          valor_final: 0,
+        });
+      }
+      const entry = diaristasMap.get(key);
+      entry.quantidade_dias += 1;
+      entry.valor_final = entry.valor_dia * entry.quantidade_dias;
+      totalRegistros += 1;
+      valorTotal += entry.valor_dia;
+    });
+
+    const mesRef = periodoInicio.substring(0, 7);
+
+    const { data: lote, error: errorLote } = await this.supabase
+      .from('diaristas_lotes_fechamento')
+      .insert({
+        empresa_id: empresaId,
+        periodo_inicio: periodoInicio,
+        periodo_fim: periodoFim,
+        mes_referencia: mesRef,
+        total_registros: totalRegistros,
+        valor_total: valorTotal,
+        status: 'fechado_para_pagamento',
+        fechado_por: fechadoPor,
+        fechado_por_nome: fechadoPorNome,
+        fechado_em: new Date().toISOString(),
+        observacoes,
+      })
+      .select()
+      .single();
+
+    if (errorLote) throw errorLote;
+
+    await this.supabase
+      .from('lancamentos_diaristas')
+      .update({ status: 'fechado_para_pagamento' })
+      .eq('empresa_id', empresaId)
+      .gte('data_lancamento', periodoInicio)
+      .lte('data_lancamento', periodoFim)
+      .eq('status', 'ativo');
+
+    return {
+      ...lote,
+      total_registros: totalRegistros,
+      valor_total: valorTotal,
+    };
+  }
 }
 export const LoteFechamentoDiaristaService = new LoteFechamentoDiaristaServiceClass();
 
@@ -1834,3 +1915,237 @@ class RegraMarcacaoDiaristaServiceClass {
 }
 
 export const RegraMarcacaoDiaristaService = new RegraMarcacaoDiaristaServiceClass();
+
+// SERVIÇO DE CICLOS DE DIARISTAS
+class DiaristaCicloServiceClass {
+  async getRegraFechamento() {
+    const { data, error } = await supabase
+      .from('regras_fechamento')
+      .select('*')
+      .eq('ativo', true)
+      .limit(1)
+      .single();
+    if (error && error.code !== 'PGRST116') throw error;
+    return data;
+  }
+
+  async updateRegraFechamento(id: string, payload: any) {
+    const { data, error } = await supabase
+      .from('regras_fechamento')
+      .update({ ...payload, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  }
+
+  async getCicloAtual() {
+    const { data, error } = await supabase
+      .from('ciclos_diaristas')
+      .select('*')
+      .eq('status', 'aberto')
+      .order('data_inicio', { ascending: false })
+      .limit(1)
+      .single();
+    if (error && error.code !== 'PGRST116') throw error;
+    return data;
+  }
+
+  async getCiclos(limit = 10) {
+    const { data, error } = await supabase
+      .from('ciclos_diaristas')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (error) throw error;
+    return data ?? [];
+  }
+
+  async getCicloById(id: string) {
+    const { data, error } = await supabase
+      .from('ciclos_diaristas')
+      .select('*')
+      .eq('id', id)
+      .single();
+    if (error) throw error;
+    return data;
+  }
+
+  async criarCiclo(dataInicio: string, dataFim: string, regraId?: string) {
+    const regra = regraId ? { regra_fechamento_id: regraId } : {};
+    const { data, error } = await supabase
+      .from('ciclos_diaristas')
+      .insert({
+        data_inicio: dataInicio,
+        data_fim: dataFim,
+        status: 'aberto',
+        ...regra
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  }
+
+  async criarCicloSemanal(diaFechamento: number) {
+    const hoje = new Date();
+    const diaSemana = hoje.getDay();
+    const diasAteSexta = (5 - diaSemana + 7) % 7 || 7;
+    
+    const dataFim = new Date(hoje);
+    dataFim.setDate(hoje.getDate() + diasAteSexta);
+    
+    const dataInicio = new Date(dataFim);
+    dataInicio.setDate(dataFim.getDate() - 6);
+
+    return this.criarCiclo(
+      dataInicio.toISOString().split('T')[0],
+      dataFim.toISOString().split('T')[0]
+    );
+  }
+
+  async fecharCiclo(id: string, userId: string) {
+    const { data, error } = await supabase
+      .from('ciclos_diaristas')
+      .update({
+        status: 'fechado',
+        fechado_por: userId,
+        fechado_em: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  }
+
+  async enviarFinanceiro(id: string, userId: string) {
+    const { data, error } = await supabase
+      .from('ciclos_diaristas')
+      .update({
+        status: 'enviado',
+        enviado_por: userId,
+        enviado_em: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  }
+
+  async getLotes() {
+    const { data, error } = await supabase
+      .from('lote_pagamento_diaristas')
+      .select('*, ciclos:ciclo_id(data_inicio, data_fim)')
+      .order('gerado_em', { ascending: false });
+    if (error) throw error;
+    return data ?? [];
+  }
+
+  async getLoteByCiclo(cicloId: string) {
+    const { data, error } = await supabase
+      .from('lote_pagamento_diaristas')
+      .select('*, itens:lote_pagamento_itens(*)')
+      .eq('ciclo_id', cicloId)
+      .single();
+    if (error && error.code !== 'PGRST116') throw error;
+    return data;
+  }
+
+  async criarLote(cicloId: string, userId: string, itens: any[]) {
+    const valorTotal = itens.reduce((sum, item) => sum + Number(item.valor_final || 0), 0);
+
+    const { data: lote, error: errorLote } = await supabase
+      .from('lote_pagamento_diaristas')
+      .insert({
+        ciclo_id: cicloId,
+        quantidade_diaristas: itens.length,
+        valor_total: valorTotal,
+        status: 'pendente',
+        gerado_por: userId,
+        gerado_em: new Date().toISOString()
+      })
+      .select()
+      .single();
+    if (errorLote) throw errorLote;
+
+    const itensComLote = itens.map(item => ({
+      ...item,
+      lote_id: lote.id
+    }));
+
+    const { error: errorItens } = await supabase
+      .from('lote_pagamento_itens')
+      .insert(itensComLote);
+    if (errorItens) throw errorItens;
+
+    await supabase
+      .from('ciclos_diaristas')
+      .update({ valor_total: valorTotal, diaristas_count: itens.length })
+      .eq('id', cicloId);
+
+    return this.getLoteByCiclo(cicloId);
+  }
+
+  async marcarEnviadoFinanceiro(loteId: string) {
+    const { data, error } = await supabase
+      .from('lote_pagamento_diaristas')
+      .update({
+        enviado_financeiro: true,
+        enviado_em: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', loteId)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  }
+
+  async adicionarLancamento(cicloId: string, colaboradorId: string, tipo: string, valor: number, motivo: string, userId: string) {
+    const { data, error } = await supabase
+      .from('lancamentos_adicionais_diaristas')
+      .insert({
+        ciclo_id: cicloId,
+        colaborador_id: colaboradorId,
+        tipo,
+        valor,
+        motivo,
+        criado_por: userId
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  }
+
+  async getLancamentosByCiclo(cicloId: string) {
+    const { data, error } = await supabase
+      .from('lancamentos_adicionais_diaristas')
+      .select('*')
+      .eq('ciclo_id', cicloId);
+    if (error) throw error;
+    return data ?? [];
+  }
+
+  async verificarFechamentoAutomatico() {
+    const regra = await this.getRegraFechamento();
+    if (!regra || !regra.auto_fechar) return null;
+
+    const hoje = new Date();
+    const diaSemana = hoje.getDay();
+
+    if (diaSemana !== regra.dia_fechamento) return null;
+
+    const cicloAberto = await this.getCicloAtual();
+    if (!cicloAberto) return null;
+
+    return { cicloId: cicloAberto.id, regra };
+  }
+}
+
+export const DiaristaCicloService = new DiaristaCicloServiceClass();

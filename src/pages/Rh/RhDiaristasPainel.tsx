@@ -14,13 +14,14 @@ import {
 import {
     LancamentoDiaristaService,
     LoteFechamentoDiaristaService,
+    DiaristaCicloService,
     PerfilUsuarioService,
     EmpresaService,
 } from "@/services/base.service";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { CalendarDays, CheckCircle2, ChevronDown, ChevronRight, ArrowLeft, Download, ExternalLink, Loader2, Lock, RefreshCw, Users, Calendar, Table as TableIcon } from "lucide-react";
+import { CalendarDays, CheckCircle2, ChevronDown, ChevronRight, ArrowLeft, Download, ExternalLink, Loader2, Lock, RefreshCw, Users, Calendar, Table as TableIcon, Settings, Send, FileCheck, Plus, History } from "lucide-react";
 
 const formatCurrency = (v: number) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
@@ -878,7 +879,368 @@ const RhDiaristasPainel = () => {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <CycleManagementSection />
         </AppShell>
+    );
+};
+
+const CycleManagementSection = () => {
+    const { user } = useAuth();
+    const queryClient = useQueryClient();
+    const navigate = useNavigate();
+    const [activeTab, setActiveTab] = useState<"ciclos" | "lotes" | "config">("ciclos");
+
+    const { data: regraFechamento } = useQuery({
+        queryKey: ["regra_fechamento"],
+        queryFn: () => DiaristaCicloService.getRegraFechamento(),
+    });
+
+    const { data: ciclos = [] } = useQuery({
+        queryKey: ["ciclos_diaristas"],
+        queryFn: () => DiaristaCicloService.getCiclos(20),
+    });
+
+    const { data: lotes = [] } = useQuery({
+        queryKey: ["lotes_pagamento"],
+        queryFn: () => DiaristaCicloService.getLotes(),
+    });
+
+    const cicloAberto = ciclos.find((c: any) => c.status === "aberto");
+    const ciclosFechados = ciclos.filter((c: any) => c.status === "fechado" || c.status === "enviado");
+
+    const criarCicloMutation = useMutation({
+        mutationFn: () => DiaristaCicloService.criarCicloSemanal(5),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["ciclos_diaristas"] });
+            toast.success("Ciclo semanal criado com sucesso!");
+        },
+        onError: () => toast.error("Erro ao criar ciclo"),
+    });
+
+    const gerarLoteMutation = useMutation({
+        mutationFn: async () => {
+            if (!cicloAberto || !user?.id) return;
+            const lancamentos = await LancamentoDiaristaService.getByPeriodo(
+                null,
+                cicloAberto.data_inicio,
+                cicloAberto.data_fim
+            );
+            const diaristasMap = new Map();
+            (lancamentos as any[]).forEach((l: any) => {
+                const key = l.diarista_id;
+                if (!diaristasMap.has(key)) {
+                    diaristasMap.set(key, {
+                        colaborador_id: key,
+                        nome_colaborador: l.diarista?.nome || "Diarista",
+                        cpf: l.diarista?.cpf,
+                        banco: l.diarista?.banco_codigo,
+                        agencia: l.diarista?.agencia,
+                        conta: l.diarista?.conta,
+                        quantidade_dias: 0,
+                        valor_dia: l.diarista?.valor_diaria || 0,
+                        multiplicador: "P",
+                        valor_final: 0,
+                    });
+                }
+                const entry = diaristasMap.get(key);
+                entry.quantidade_dias += 1;
+                entry.valor_final = entry.valor_dia * entry.quantidade_dias;
+                if (l.status === "ausente") {
+                    entry.multiplicador = "AUSENTE";
+                    entry.valor_final = 0;
+                }
+            });
+            const itens = Array.from(diaristasMap.values());
+            return DiaristaCicloService.criarLote(cicloAberto.id, user.id, itens);
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["ciclos_diaristas"] });
+            queryClient.invalidateQueries({ queryKey: ["lotes_pagamento"] });
+            toast.success("Lote de pagamento gerado!");
+        },
+        onError: () => toast.error("Erro ao gerar lote"),
+    });
+
+    const fecharCicloMutation = useMutation({
+        mutationFn: async (cicloId: string) => {
+            if (!user?.id) return;
+            return DiaristaCicloService.fecharCiclo(cicloId, user.id);
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["ciclos_diaristas"] });
+            toast.success("Ciclo fechado!");
+        },
+    });
+
+    const enviarFinanceiroMutation = useMutation({
+        mutationFn: async (cicloId: string) => {
+            if (!user?.id) return;
+            return DiaristaCicloService.enviarFinanceiro(cicloId, user.id);
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["ciclos_diaristas"] });
+            toast.success("Enviado para financeiro!");
+            navigate("/bancario");
+        },
+    });
+
+    const updateRegraMutation = useMutation({
+        mutationFn: async (payload: any) => {
+            if (!regraFechamento?.id) return;
+            return DiaristaCicloService.updateRegraFechamento(regraFechamento.id, payload);
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["regra_fechamento"] });
+            toast.success("Configuração atualizada!");
+        },
+    });
+
+    const formatDate = (d: string) => format(new Date(d + "T12:00:00"), "dd/MM/yyyy");
+
+    const getStatusBadge = (status: string) => {
+        switch (status) {
+            case "aberto":
+                return <span className="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-800">Aberto</span>;
+            case "fechado":
+                return <span className="px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-800">Fechado</span>;
+            case "enviado":
+                return <span className="px-2 py-0.5 rounded-full text-xs bg-purple-100 text-purple-800">Enviado</span>;
+            default:
+                return <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-800">{status}</span>;
+        }
+    };
+
+    return (
+        <div className="border-t mt-8 pt-6">
+            <div className="flex items-center gap-2 mb-4">
+                <CalendarDays className="h-5 w-5 text-muted-foreground" />
+                <h2 className="font-display font-semibold text-lg">Ciclo de Fechamento</h2>
+            </div>
+
+            <div className="flex gap-2 mb-4">
+                <button
+                    onClick={() => setActiveTab("ciclos")}
+                    className={cn(
+                        "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+                        activeTab === "ciclos" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
+                    )}
+                >
+                    <History className="h-4 w-4 inline mr-1.5" />
+                    Ciclos
+                </button>
+                <button
+                    onClick={() => setActiveTab("lotes")}
+                    className={cn(
+                        "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+                        activeTab === "lotes" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
+                    )}
+                >
+                    <FileCheck className="h-4 w-4 inline mr-1.5" />
+                    Lotes
+                </button>
+                <button
+                    onClick={() => setActiveTab("config")}
+                    className={cn(
+                        "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+                        activeTab === "config" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
+                    )}
+                >
+                    <Settings className="h-4 w-4 inline mr-1.5" />
+                    Configuração
+                </button>
+            </div>
+
+            {activeTab === "ciclos" && (
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            {cicloAberto ? (
+                                <>
+                                    <div className="px-3 py-2 rounded-lg bg-green-50 border border-green-200">
+                                        <div className="text-xs text-green-600 font-medium">Ciclo Atual</div>
+                                        <div className="text-sm font-semibold">{formatDate(cicloAberto.data_inicio)} - {formatDate(cicloAberto.data_fim)}</div>
+                                    </div>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => gerarLoteMutation.mutate()}
+                                        disabled={gerarLoteMutation.isPending}
+                                    >
+                                        <Plus className="h-4 w-4 mr-1" />
+                                        Gerar Lote
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        onClick={() => cicloAberto && fecharCicloMutation.mutate(cicloAberto.id)}
+                                        disabled={fecharCicloMutation.isPending}
+                                        className="bg-blue-600"
+                                    >
+                                        <Lock className="h-4 w-4 mr-1" />
+                                        Fechar Ciclo
+                                    </Button>
+                                </>
+                            ) : (
+                                <Button size="sm" onClick={() => criarCicloMutation.mutate()} disabled={criarCicloMutation.isPending}>
+                                    <Plus className="h-4 w-4 mr-1" />
+                                    Novo Ciclo Semanal
+                                </Button>
+                            )}
+                        </div>
+                    </div>
+
+                    {ciclosFechados.length > 0 && (
+                        <div className="border rounded-lg overflow-hidden">
+                            <table className="w-full text-sm">
+                                <thead className="bg-muted/50">
+                                    <tr>
+                                        <th className="px-3 py-2 text-left font-medium">Período</th>
+                                        <th className="px-3 py-2 text-left font-medium">Diaristas</th>
+                                        <th className="px-3 py-2 text-right font-medium">Valor Total</th>
+                                        <th className="px-3 py-2 text-center font-medium">Status</th>
+                                        <th className="px-3 py-2 text-center font-medium">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {ciclosFechados.map((ciclo: any) => (
+                                        <tr key={ciclo.id} className="border-t">
+                                            <td className="px-3 py-2">{formatDate(ciclo.data_inicio)} - {formatDate(ciclo.data_fim)}</td>
+                                            <td className="px-3 py-2 text-center">{ciclo.diaristas_count || 0}</td>
+                                            <td className="px-3 py-2 text-right font-mono">{formatCurrency(Number(ciclo.valor_total || 0))}</td>
+                                            <td className="px-3 py-2 text-center">{getStatusBadge(ciclo.status)}</td>
+                                            <td className="px-3 py-2 text-center">
+                                                {ciclo.status === "fechado" && (
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={() => enviarFinanceiroMutation.mutate(ciclo.id)}
+                                                        disabled={enviarFinanceiroMutation.isPending}
+                                                    >
+                                                        <Send className="h-3 w-3 mr-1" />
+                                                        Enviar
+                                                    </Button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {activeTab === "lotes" && (
+                <div className="border rounded-lg overflow-hidden">
+                    <table className="w-full text-sm">
+                        <thead className="bg-muted/50">
+                            <tr>
+                                <th className="px-3 py-2 text-left font-medium">Ciclo</th>
+                                <th className="px-3 py-2 text-center font-medium">Diaristas</th>
+                                <th className="px-3 py-2 text-right font-medium">Valor Total</th>
+                                <th className="px-3 py-2 text-center font-medium">Status</th>
+                                <th className="px-3 py-2 text-center font-medium">Enviado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {lotes.length === 0 ? (
+                                <tr>
+                                    <td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">
+                                        Nenhum lote gerado ainda
+                                    </td>
+                                </tr>
+                            ) : (
+                                lotes.map((lote: any) => (
+                                    <tr key={lote.id} className="border-t">
+                                        <td className="px-3 py-2">
+                                            {lote.ciclos ? `${formatDate(lote.ciclos.data_inicio)} - ${formatDate(lote.ciclos.data_fim)}` : "-"}
+                                        </td>
+                                        <td className="px-3 py-2 text-center">{lote.quantidade_diaristas}</td>
+                                        <td className="px-3 py-2 text-right font-mono">{formatCurrency(Number(lote.valor_total || 0))}</td>
+                                        <td className="px-3 py-2 text-center">
+                                            <span className={cn(
+                                                "px-2 py-0.5 rounded-full text-xs",
+                                                lote.status === "pago" ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"
+                                            )}>
+                                                {lote.status}
+                                            </span>
+                                        </td>
+                                        <td className="px-3 py-2 text-center">
+                                            {lote.enviado_financeiro ? (
+                                                <CheckCircle2 className="h-4 w-4 text-green-600 inline" />
+                                            ) : (
+                                                <span className="text-muted-foreground">-</span>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            {activeTab === "config" && regraFechamento && (
+                <div className="esc-card p-4 space-y-4 max-w-md">
+                    <div className="space-y-2">
+                        <Label>Dia de Fechamento (0=Domingo, 5=Sexta)</Label>
+                        <Select
+                            value={String(regraFechamento.dia_fechamento)}
+                            onValueChange={(v) => updateRegraMutation.mutate({ dia_fechamento: parseInt(v) })}
+                        >
+                            <SelectTrigger>
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="0">Domingo</SelectItem>
+                                <SelectItem value="1">Segunda</SelectItem>
+                                <SelectItem value="2">Terça</SelectItem>
+                                <SelectItem value="3">Quarta</SelectItem>
+                                <SelectItem value="4">Quinta</SelectItem>
+                                <SelectItem value="5">Sexta</SelectItem>
+                                <SelectItem value="6">Sábado</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <Label>Fechamento Automático</Label>
+                            <p className="text-xs text-muted-foreground">Fecha automaticamente no dia definido</p>
+                        </div>
+                        <button
+                            onClick={() => updateRegraMutation.mutate({ auto_fechar: !regraFechamento.auto_fechar })}
+                            className={cn(
+                                "w-12 h-6 rounded-full transition-colors relative",
+                                regraFechamento.auto_fechar ? "bg-primary" : "bg-muted"
+                            )}
+                        >
+                            <span className={cn(
+                                "absolute top-1 w-4 h-4 rounded-full bg-white transition-transform",
+                                regraFechamento.auto_fechar ? "left-7" : "left-1"
+                            )} />
+                        </button>
+                    </div>
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <Label>Enviar para Financeiro</Label>
+                            <p className="text-xs text-muted-foreground">Envia automaticamente após fechar</p>
+                        </div>
+                        <button
+                            onClick={() => updateRegraMutation.mutate({ enviar_financeiro: !regraFechamento.enviar_financeiro })}
+                            className={cn(
+                                "w-12 h-6 rounded-full transition-colors relative",
+                                regraFechamento.enviar_financeiro ? "bg-primary" : "bg-muted"
+                            )}
+                        >
+                            <span className={cn(
+                                "absolute top-1 w-4 h-4 rounded-full bg-white transition-transform",
+                                regraFechamento.enviar_financeiro ? "left-7" : "left-1"
+                            )} />
+                        </button>
+                    </div>
+                </div>
+            )}
+        </div>
     );
 };
 
