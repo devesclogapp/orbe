@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { addMonths, format, startOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
@@ -113,6 +114,7 @@ const YEAR_OPTIONS = Array.from(
 ).sort((a, b) => Number(b) - Number(a));
 
 const Dashboard = () => {
+  const navigate = useNavigate();
   const [chartType, setChartType] = useState<"line" | "bar">("line");
   const [selectedYear, setSelectedYear] = useState(
     String(new Date().getFullYear()),

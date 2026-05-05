@@ -33,7 +33,6 @@ export class BaseService<T extends Table> {
   }
 
   async updateWithOverride(id: string, payload: Database['public']['Tables'][T]['Update'], justification: string) {
-    // 1. Definir a justificativa na variável de sessão via RPC
     const { error: rpcError } = await supabase.rpc('set_session_variable', {
       name: 'app.override_justification',
       value: justification
@@ -44,8 +43,6 @@ export class BaseService<T extends Table> {
       throw new Error('Falha ao registrar justificativa no servidor.');
     }
 
-    // 2. Executar o update normalmente
-    // A trigger no banco irá capturar a variável de sessão
     const { data, error } = await supabase
       .from(this.table)
       .update(payload)
@@ -53,11 +50,7 @@ export class BaseService<T extends Table> {
       .select()
       .single();
 
-    if (error) {
-      // Se houver erro de trigger (ex: falta de justificativa ou role), ele virá aqui
-      throw error;
-    }
-
+    if (error) throw error;
     return data;
   }
 
@@ -68,7 +61,10 @@ export class BaseService<T extends Table> {
   }
 }
 
+// ==================================================
 // SERVIÇOS ESPECÍFICOS
+// ==================================================
+
 class EmpresaServiceClass extends BaseService<'empresas'> {
   constructor() { super('empresas'); }
 
@@ -88,9 +84,9 @@ class EmpresaServiceClass extends BaseService<'empresas'> {
         *,
         colaboradores:colaboradores(count),
         coletores:coletores(count)
-      `);;
+      `);
     if (error) throw error;
-    
+
     return data.map(item => ({
       ...item,
       total_colaboradores: (item.colaboradores as any)?.[0]?.count || 0,
@@ -118,10 +114,6 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
     return data;
   }
 
-  /**
-   * Retorna colaboradores do tipo DIARISTA que têm lançamento operacional permitido.
-   * Usado pela tela /producao/diaristas (DiaristasLancamento) como fonte de dados.
-   */
   async getDiaristas(empresaId: string, apenasAtivos = true) {
     let query = (supabase as any)
       .from('colaboradores')
@@ -135,7 +127,6 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
 
     const { data, error } = await query;
     if (error) throw error;
-    // Mapeia campos para o formato esperado pela tela de lançamento
     return (data ?? []).map((c: any) => ({
       id: c.id,
       nome: c.nome,
@@ -185,13 +176,14 @@ export const LogSincronizacaoService = new LogSincronizacaoServiceClass();
 
 class ResultadosServiceClass extends BaseService<'resultados_processamento'> {
   constructor() { super('resultados_processamento'); }
+
   async getSummary() {
     const { data, error } = await supabase.from('resultados_processamento').select('*, empresas(nome)').order('data', { ascending: false });
     if (error) throw error;
     return data;
   }
+
   async getByMonth(month: string) {
-    // Calculando o próximo mês para o limite superior (exclusivo)
     const [year, mo] = month.split('-').map(Number);
     const nextMonth = mo === 12 ? 1 : mo + 1;
     const nextYear = mo === 12 ? year + 1 : year;
@@ -211,6 +203,7 @@ export const ResultadosService = new ResultadosServiceClass();
 
 class OperacaoServiceClass extends BaseService<'operacoes'> {
   constructor() { super('operacoes'); }
+
   async getAllPainel(empresaId?: string) {
     let operacoesQuery = supabase
       .from('operacoes')
@@ -289,17 +282,17 @@ class OperacaoServiceClass extends BaseService<'operacoes'> {
       .from('operacoes')
       .select('*, colaboradores(nome, cargo, empresas(nome))')
       .eq('data', date);
-    
+
     if (empresaId) {
       query = query.eq('empresa_id', empresaId);
     }
-    
+
     const { data, error } = await query;
     if (error) throw error;
     return data;
   }
+
   async getByMonth(month: string) {
-    // Calculando o próximo mês para o limite superior (exclusivo)
     const [year, mo] = month.split('-').map(Number);
     const nextMonth = mo === 12 ? 1 : mo + 1;
     const nextYear = mo === 12 ? year + 1 : year;
@@ -313,6 +306,7 @@ class OperacaoServiceClass extends BaseService<'operacoes'> {
     if (error) throw error;
     return data;
   }
+
   async getInconsistencies() {
     const { data, error } = await supabase
       .from('operacoes')
@@ -321,6 +315,7 @@ class OperacaoServiceClass extends BaseService<'operacoes'> {
     if (error) throw error;
     return data;
   }
+
   async getWeeklyHistory() {
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
@@ -331,9 +326,9 @@ class OperacaoServiceClass extends BaseService<'operacoes'> {
       .select('*')
       .gte('data', dateStr)
       .order('data', { ascending: true });
-    
+
     if (error) throw error;
-    return data;
+    return data ?? []; // FIX: era `result`, corrigido para `data`
   }
 
   async getPainelByDate(date: string, empresaId?: string) {
@@ -361,8 +356,8 @@ class OperacaoServiceClass extends BaseService<'operacoes'> {
       ...item,
       origem: 'operacoes_producao',
       data_referencia: item.data_operacao ?? date,
-      data_operacao: item.data_operacao ?? date,  // garantido explicitamente
-      quantidade_colaboradores: Number(item.quantidade_colaboradores ?? 1),  // garantido explicitamente
+      data_operacao: item.data_operacao ?? date,
+      quantidade_colaboradores: Number(item.quantidade_colaboradores ?? 1),
       produto_label: item.produtos_carga?.nome ?? item.avaliacao_json?.contexto_operacional?.produto ?? null,
       transportadora_label: item.transportadoras_clientes?.nome ?? null,
       tipo_servico_label: item.tipos_servico_operacional?.nome ?? null,
@@ -378,7 +373,6 @@ class OperacaoServiceClass extends BaseService<'operacoes'> {
       horario_fim_label: item.saida_ponto ?? null,
       valor_unitario_label: Number(item.valor_unitario_snapshot || 0),
       valor_total_label: Number(item.valor_total || 0),
-      // Novas colunas mapeadas do Excel
       placa: item.placa ?? null,
       nf_numero: item.nf_numero ?? null,
       ctrc: item.ctrc ?? null,
@@ -403,6 +397,7 @@ export const OperacaoService = new OperacaoServiceClass();
 
 class PontoServiceClass extends BaseService<'registros_ponto'> {
   constructor() { super('registros_ponto'); }
+
   async getByDate(date: string, empresaId?: string) {
     let query = supabase
       .from('registros_ponto')
@@ -417,6 +412,7 @@ class PontoServiceClass extends BaseService<'registros_ponto'> {
     if (error) throw error;
     return data;
   }
+
   async getByMonth(month: string, empresaId?: string) {
     const [year, mo] = month.split('-').map(Number);
     const nextMonth = mo === 12 ? 1 : mo + 1;
@@ -438,6 +434,7 @@ class PontoServiceClass extends BaseService<'registros_ponto'> {
     if (error) throw error;
     return data;
   }
+
   async getByCollaborator(collabId: string) {
     const { data, error } = await supabase.from('registros_ponto').select('*').eq('colaborador_id', collabId).order('data', { ascending: false });
     if (error) throw error;
@@ -533,6 +530,7 @@ export const RegrasFinanceirasService = new RegrasFinanceirasServiceClass();
 
 class CompetenciaServiceClass extends BaseService<'financeiro_competencias'> {
   constructor() { super('financeiro_competencias'); }
+
   async getByMonth(month: string, empresaId: string) {
     const dateStr = month.includes('-') ? `${month}-01` : month;
     const { data, error } = await supabase
@@ -544,6 +542,7 @@ class CompetenciaServiceClass extends BaseService<'financeiro_competencias'> {
     if (error) throw error;
     return data;
   }
+
   async getAtual(empresaId: string) {
     const month = new Date().toISOString().substring(0, 7);
     return this.getByMonth(month, empresaId);
@@ -557,18 +556,18 @@ class ConsolidadoServiceClass {
       .from('financeiro_consolidados_cliente')
       .select('*, clientes(nome)')
       .eq('competencia', competencia);
-    
+
     if (empresaId) qC = qC.eq('empresa_id', empresaId);
 
     let qCol = supabase
       .from('financeiro_consolidados_colaborador')
       .select('*, colaboradores(nome, cargo)')
       .eq('competencia', competencia);
-    
+
     if (empresaId) qCol = qCol.eq('empresa_id', empresaId);
 
     const [resC, resCol] = await Promise.all([qC, qCol]);
-    
+
     if (resC.error || resCol.error) throw resC.error || resCol.error;
     return { clientes: resC.data, colaboradores: resCol.data };
   }
@@ -633,6 +632,7 @@ export const ConfigTipoDiaService = new ConfigTipoDiaServiceClass();
 
 class ConfiguracaoOperacionalServiceClass extends BaseService<'configuracoes_operacionais'> {
   constructor() { super('configuracoes_operacionais'); }
+
   async getByEmpresa(empresaId: string) {
     const { data, error } = await supabase
       .from('configuracoes_operacionais')
@@ -642,6 +642,7 @@ class ConfiguracaoOperacionalServiceClass extends BaseService<'configuracoes_ope
     if (error) throw error;
     return data;
   }
+
   async upsert(payload: any) {
     const { data, error } = await supabase
       .from('configuracoes_operacionais')
@@ -654,7 +655,9 @@ class ConfiguracaoOperacionalServiceClass extends BaseService<'configuracoes_ope
 }
 export const ConfiguracaoOperacionalService = new ConfiguracaoOperacionalServiceClass();
 
+// ==================================================
 // SERVIÇOS OPERACIONAIS V2 (/producao)
+// ==================================================
 const operationalClient: any = supabase;
 
 class UnidadeOperacionalServiceClass {
@@ -1373,21 +1376,25 @@ class CustoExtraOperacionalServiceClass {
 }
 export const CustoExtraOperacionalService = new CustoExtraOperacionalServiceClass();
 
+// ==================================================
 // STORAGE SERVICE
+// ==================================================
 export const StorageService = {
   async uploadFile(bucket: string, path: string, file: File) {
     const { data, error } = await supabase.storage.from(bucket).upload(path, file);
     if (error) throw error;
     return data;
   },
-  
+
   async getPublicUrl(bucket: string, path: string) {
     const { data } = supabase.storage.from(bucket).getPublicUrl(path);
     return data.publicUrl;
   }
 };
 
+// ==================================================
 // AI SERVICE & EDGE FUNCTIONS
+// ==================================================
 export const AIService = {
   async processDay(data: string, empresaId: string) {
     const { data: res, error } = await supabase.functions.invoke('process-day', {
@@ -1419,7 +1426,6 @@ export class TipoRegraOperacionalServiceClass {
     return data;
   }
 }
-
 export const TipoRegraOperacionalService = new TipoRegraOperacionalServiceClass();
 
 // ==================================================
@@ -1449,7 +1455,6 @@ export interface LancamentoDiaristaPayload {
 
 class DiaristaServiceClass {
   async getByEmpresa(empresaId: string, apenasAtivos = true) {
-    // Diaristas estão na tabela 'colaboradores' com tipo_colaborador = 'DIARISTA'
     let query = supabase
       .from('colaboradores')
       .select('id, nome, cpf, telefone, cargo, valor_base, status, empresa_id, permitir_lancamento_operacional, deleted_at')
@@ -1464,7 +1469,6 @@ class DiaristaServiceClass {
     const { data, error } = await query;
     if (error) throw error;
 
-    // Mapear campos para o formato esperado pelo componente
     return (data ?? []).map((c: any) => ({
       ...c,
       funcao: c.cargo ?? '—',
@@ -1473,7 +1477,6 @@ class DiaristaServiceClass {
   }
 
   async create(payload: Record<string, any>) {
-    // Criar diarista na tabela colaboradores
     const mapped = {
       nome: payload.nome,
       cpf: payload.cpf ?? null,
@@ -1495,7 +1498,6 @@ class DiaristaServiceClass {
   }
 
   async update(id: string, payload: Record<string, any>) {
-    // Mapear campos de volta para colaboradores
     const mapped: Record<string, any> = { updated_at: new Date().toISOString() };
     if (payload.nome !== undefined)      mapped.nome = payload.nome;
     if (payload.cpf !== undefined)       mapped.cpf = payload.cpf;
@@ -1550,7 +1552,6 @@ class LancamentoDiaristaServiceClass {
       .order('data_lancamento', { ascending: false })
       .order('nome_colaborador', { ascending: true });
 
-    // Filtro opcional: sem empresaId = todas as empresas (visão consolidada)
     if (empresaId) query = query.eq('empresa_id', empresaId);
 
     if (filtros?.status) query = query.eq('status', filtros.status);
@@ -1566,438 +1567,231 @@ class LancamentoDiaristaServiceClass {
   async getByData(empresaId: string, data: string) {
     const { data: result, error } = await (supabase as any)
       .from('lancamentos_diaristas')
-      .select('*')
+      .select(`*`)
       .eq('empresa_id', empresaId)
-      .eq('data_lancamento', data)
-      .order('nome_colaborador', { ascending: true });
+      .eq('data_lancamento', data);
 
     if (error) throw error;
     return result ?? [];
   }
+}
+export const LancamentoDiaristaService = new LancamentoDiaristaServiceClass();
 
-  async createBatch(registros: LancamentoDiaristaPayload[]) {
-    if (registros.length === 0) return [];
-    const { data, error } = await (supabase as any)
-      .from('lancamentos_diaristas')
-      .insert(registros)
-      .select();
-    if (error) throw error;
-    return data ?? [];
+class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fechamento'> {
+  constructor() {
+    super('diaristas_lotes_fechamento');
   }
 
-  async updateStatus(ids: string[], status: StatusLancamentoDiarista, loteId?: string) {
-    const payload: Record<string, any> = {
-      status,
-      updated_at: new Date().toISOString(),
-    };
-    if (loteId) payload.lote_fechamento_id = loteId;
-
-    const { error } = await (supabase as any)
-      .from('lancamentos_diaristas')
-      .update(payload)
-      .in('id', ids);
+  async getLotes(empresaId: string, mes: string) {
+    const { data, error } = await this.supabase
+      .from('diaristas_lotes_fechamento')
+      .select('*')
+      .eq('empresa_id', empresaId)
+      .eq('mes_referencia', mes);
     if (error) throw error;
+    return data;
+  }
+}
+export const LoteFechamentoDiaristaService = new LoteFechamentoDiaristaServiceClass();
+
+// ==================================================
+// TIPOS PARA REGRAS DINÂMICAS
+// ==================================================
+
+export interface RegraModulo {
+  id: number;
+  nome: string;
+  slug: string;
+  descricao?: string;
+  ativo: boolean;
+}
+
+export interface RegraCampo {
+  id: number;
+  modulo_id: number;
+  nome: string;
+  tipo: string; // text, number, select, boolean, date
+  obrigatorio: boolean;
+  ordem?: number;
+  opcoes_json?: string;
+}
+
+export interface RegraDado {
+  id: number;
+  modulo_id: number;
+  dados: any; // JSONB
+}
+
+// ==================================================
+// SERVIÇOS PARA REGRAS DINÂMICAS
+// ==================================================
+
+class RegrasModulosServiceClass {
+  private readonly table = 'regras_modulos';
+
+  async listar(): Promise<RegraModulo[]> {
+    const { data, error } = await supabase
+      .from(this.table)
+      .select('*')
+      .order('nome', { ascending: true });
+    if (error) throw error;
+    return data as RegraModulo[];
   }
 
-  async cancelar(id: string) {
-    const { error } = await (supabase as any)
-      .from('lancamentos_diaristas')
-      .update({ status: 'cancelado', updated_at: new Date().toISOString() })
+  async buscarPorId(id: number): Promise<RegraModulo | null> {
+    const { data, error } = await supabase
+      .from(this.table)
+      .select('*')
+      .eq('id', id)
+      .single();
+    if (error) throw error;
+    return data as RegraModulo | null;
+  }
+
+  async criar(data: Omit<RegraModulo, 'id' | 'ativo'>): Promise<RegraModulo> {
+    const { data: result, error } = await supabase
+      .from(this.table)
+      .insert({ ...data, ativo: true })
+      .select('*')
+      .single();
+    if (error) throw error;
+    return result as RegraModulo;
+  }
+
+  async atualizar(id: number, data: Partial<Omit<RegraModulo, 'id' | 'ativo'>>): Promise<RegraModulo> {
+    const { data: result, error } = await supabase
+      .from(this.table)
+      .update(data)
+      .eq('id', id)
+      .select('*')
+      .single();
+    if (error) throw error;
+    return result as RegraModulo;
+  }
+
+  async inativar(id: number): Promise<void> {
+    const { error } = await supabase
+      .from(this.table)
+      .update({ ativo: false })
       .eq('id', id);
     if (error) throw error;
   }
 
-  async getByLoteId(loteId: string) {
-    const { data, error } = await (supabase as any)
-      .from('lancamentos_diaristas')
-      .select('*')
-      .eq('lote_fechamento_id', loteId)
-      .order('data_lancamento', { ascending: true })
-      .order('nome_colaborador', { ascending: true });
-    
+  async excluir(id: number): Promise<void> {
+    const { error } = await supabase
+      .from(this.table)
+      .delete()
+      .eq('id', id);
     if (error) throw error;
-    return data ?? [];
-  }
-
-  /** Cria um ajuste vinculado a um lançamento de referência (positivo ou negativo). */
-  async criarAjuste(params: {
-    empresaId: string;
-    referenciaLancamentoId: string;
-    valorAjuste: number;
-    motivo: string;
-    adjustedBy: string;
-    adjustedByNome: string;
-    /** Copia estes campos do lançamento original: diarista_id, nome, funcao, data */
-    original: {
-      diarista_id: string;
-      nome_colaborador: string;
-      funcao_colaborador: string;
-      data_lancamento: string;
-      codigo_marcacao: string;
-      lote_fechamento_id?: string | null;
-    };
-  }) {
-    const payload = {
-      empresa_id: params.empresaId,
-      diarista_id: params.original.diarista_id,
-      nome_colaborador: params.original.nome_colaborador,
-      funcao_colaborador: params.original.funcao_colaborador,
-      data_lancamento: params.original.data_lancamento,
-      codigo_marcacao: params.original.codigo_marcacao,
-      tipo_lancamento: 'diarista',
-      tipo_registro: 'ajuste',
-      referencia_lancamento_id: params.referenciaLancamentoId,
-      motivo_ajuste: params.motivo,
-      valor_calculado: params.valorAjuste,
-      valor_diaria_base: 0,
-      quantidade_diaria: params.valorAjuste > 0 ? 1 : -1,
-      status: 'em_aberto',
-      adjusted_by: params.adjustedBy,
-      adjusted_by_nome: params.adjustedByNome,
-      adjusted_at: new Date().toISOString(),
-    };
-
-    const { data, error } = await (supabase as any)
-      .from('lancamentos_diaristas')
-      .insert([payload])
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data;
   }
 }
-export const LancamentoDiaristaService = new LancamentoDiaristaServiceClass();
+export const RegrasModulosService = new RegrasModulosServiceClass();
 
-class LoteFechamentoDiaristaServiceClass {
-  async fecharPeriodo(params: {
-    empresaId: string;
-    periodoInicio: string;
-    periodoFim: string;
-    fechadoPor: string;
-    fechadoPorNome?: string;
-    observacoes?: string;
-  }) {
-    const { data: todosRegistros, error: errBusca } = await (supabase as any)
-      .from('lancamentos_diaristas')
-      .select('id, valor_calculado, status')
-      .eq('empresa_id', params.empresaId)
-      .gte('data_lancamento', params.periodoInicio)
-      .lte('data_lancamento', params.periodoFim);
+class RegrasCamposServiceClass {
+  private readonly table = 'regras_campos';
 
-    if (errBusca) throw errBusca;
-    if (!todosRegistros || todosRegistros.length === 0) {
-      throw new Error('Nenhum registro encontrado para o período selecionado.');
-    }
+  async listarPorModulo(moduloId: number): Promise<RegraCampo[]> {
+    const { data, error } = await supabase
+      .from(this.table)
+      .select('*')
+      .eq('modulo_id', moduloId)
+      .order('ordem', { ascending: true })
+      .order('nome', { ascending: true });
+    if (error) throw error;
+    return data as RegraCampo[];
+  }
 
-    if (todosRegistros.some((r: any) => r.status === 'fechado_para_pagamento' || r.status === 'pago')) {
-      throw new Error('Existem registros neste período que já estão fechados ou pagos.');
-    }
-
-    const registros = todosRegistros.filter((r: any) => r.status === 'em_aberto');
-
-    if (registros.length === 0) {
-      throw new Error('Nenhum registro em aberto encontrado para o período selecionado.');
-    }
-
-    const valorTotal = registros.reduce((acc: number, r: any) => acc + Number(r.valor_calculado || 0), 0);
-
-    // 2. Criar o lote de fechamento
-    const { data: lote, error: errLote } = await (supabase as any)
-      .from('lotes_fechamento_diaristas')
-      .insert({
-        empresa_id: params.empresaId,
-        periodo_inicio: params.periodoInicio,
-        periodo_fim: params.periodoFim,
-        total_registros: registros.length,
-        valor_total: valorTotal,
-        status: 'fechado_para_pagamento',
-        fechado_por: params.fechadoPor,
-        fechado_por_nome: params.fechadoPorNome ?? null,
-        fechado_em: new Date().toISOString(),
-        observacoes: params.observacoes ?? null,
-      })
-      .select()
+  async criar(data: Omit<RegraCampo, 'id'>): Promise<RegraCampo> {
+    const { data: result, error } = await supabase
+      .from(this.table)
+      .insert(data)
+      .select('*')
       .single();
-
-    if (errLote) throw errLote;
-
-    // 3. Atualizar status dos registros
-    const ids = registros.map((r: any) => r.id);
-    await LancamentoDiaristaService.updateStatus(ids, 'fechado_para_pagamento', lote.id);
-
-    // 4. Integração financeira
-    const { error: errFin } = await (supabase as any)
-      .from('lancamentos_financeiros')
-      .insert({
-        empresa_id: params.empresaId,
-        tipo: 'saida',
-        categoria: 'pagamento_diaristas',
-        valor: valorTotal,
-        referencia_id: lote.id,
-        status: 'pendente',
-      });
-    
-    if (errFin) {
-        console.error("Erro ao integrar com o financeiro:", errFin);
-        // Mesmo se falhar a integração, talvez não devamos travar o lote, mas o prompt pede para criar.
-    }
-
-    return lote;
-  }
-
-  async getByEmpresa(empresaId: string) {
-    const { data, error } = await (supabase as any)
-      .from('lotes_fechamento_diaristas')
-      .select('*')
-      .eq('empresa_id', empresaId)
-      .order('fechado_em', { ascending: false });
-
     if (error) throw error;
-    return data ?? [];
+    return result as RegraCampo;
   }
 
-  /** Apenas lotes prontos para ação do Financeiro (após fechamento pelo RH) */
-  async getByEmpresaParaFinanceiro(empresaId: string) {
-    const { data, error } = await (supabase as any)
-      .from('lotes_fechamento_diaristas')
-      .select('*')
-      .eq('empresa_id', empresaId)
-      .in('status', ['fechado_para_pagamento', 'cnab_gerado', 'pago'])
-      .order('fechado_em', { ascending: false });
-
-    if (error) throw error;
-    return data ?? [];
-  }
-
-  async getById(id: string) {
-    const { data, error } = await (supabase as any)
-      .from('lotes_fechamento_diaristas')
-      .select('*')
+  async atualizar(id: number, data: Partial<RegraCampo>): Promise<RegraCampo> {
+    const { data: result, error } = await supabase
+      .from(this.table)
+      .update(data)
       .eq('id', id)
+      .select('*')
       .single();
-
     if (error) throw error;
-    return data;
+    return result as RegraCampo;
   }
 
-  async marcarComoPago(loteId: string, paidBy?: string, paidByNome?: string) {
-    const { error } = await (supabase as any)
-      .from('lotes_fechamento_diaristas')
-      .update({ 
-        status: 'pago',
-        paid_by: paidBy ?? null,
-        paid_by_nome: paidByNome ?? null,
-        paid_at: new Date().toISOString()
-      })
-      .eq('id', loteId);
+  async excluir(id: number): Promise<void> {
+    const { error } = await supabase
+      .from(this.table)
+      .delete()
+      .eq('id', id);
     if (error) throw error;
-
-    // atualizar registros vinculados
-    const { error: errLanc } = await (supabase as any)
-      .from('lancamentos_diaristas')
-      .update({ status: 'pago', updated_at: new Date().toISOString() })
-      .eq('lote_fechamento_id', loteId);
-    if (errLanc) throw errLanc;
-
-    // Atualizar também o financeiro, se existir.
-    await (supabase as any)
-      .from('lancamentos_financeiros')
-      .update({ status: 'pago', updated_at: new Date().toISOString() })
-      .eq('referencia_id', loteId)
-      .eq('categoria', 'pagamento_diaristas');
-  }
-
-  async reabrirPeriodo(loteId: string, reopenedBy: string, reopenedByNome: string) {
-    const { error } = await (supabase as any)
-      .from('lotes_fechamento_diaristas')
-      .update({
-        status: 'em_aberto',
-        reopened_by: reopenedBy,
-        reopened_by_nome: reopenedByNome,
-        reopened_at: new Date().toISOString()
-      })
-      .eq('id', loteId);
-    
-    if (error) throw error;
-
-    // Atualizar registros vinculados
-    const { error: errLanc } = await (supabase as any)
-      .from('lancamentos_diaristas')
-      .update({ 
-        status: 'em_aberto', 
-        updated_at: new Date().toISOString()
-      })
-      .eq('lote_fechamento_id', loteId);
-
-    if (errLanc) throw errLanc;
-    
-    // Attempt to cancel in financeiro if it exists
-    await (supabase as any)
-      .from('lancamentos_financeiros')
-      .update({ status: 'cancelado', updated_at: new Date().toISOString() })
-      .eq('referencia_id', loteId)
-      .eq('categoria', 'pagamento_diaristas');
-  }
-
-  /**
-   * Gera, valida e baixa um arquivo CNAB240 para o lote de pagamento de diaristas.
-   *
-   * Fluxo:
-   *  1. Carrega lançamentos do lote (agrupados por diarista)
-   *  2. Carrega dados bancários de cada diarista
-   *  3. Valida completude (CPF, banco, agência, conta, dígito, valor)
-   *  4. Gera o conteúdo CNAB240
-   *  5. Registra a geração em cnab_geracoes
-   *  6. Dispara o download no browser
-   *
-   * @throws Error com lista de inconsistências se a validação falhar
-   */
-  async gerarCNABParaLote(params: {
-    loteId: string;
-    empresaId: string;
-    geradoPor: string;
-    geradoPorNome: string;
-    /** Dados da empresa pagadora necessários para o Header do arquivo */
-    empresaRemetente: {
-      cnpj: string;
-      razao_social: string;
-      banco_codigo: string;
-      agencia: string;
-      agencia_digito?: string;
-      conta: string;
-      digito_conta: string;
-      convenio_bancario?: string;
-      codigo_empresa_banco?: string;
-      nome_empresa_banco?: string;
-    };
-    /** Data de pagamento desejada (padrão: hoje) */
-    dataPagamento?: Date;
-  }) {
-    // 1. Carregar lançamentos do lote (normais apenas, sem ajustes agrupados)
-    const { data: lancamentos, error: errLanc } = await (supabase as any)
-      .from('lancamentos_diaristas')
-      .select('diarista_id, nome_colaborador, valor_calculado')
-      .eq('lote_fechamento_id', params.loteId)
-      .neq('tipo_registro', 'ajuste');
-
-    if (errLanc) throw errLanc;
-    if (!lancamentos || lancamentos.length === 0) {
-      throw new Error('Nenhum lançamento encontrado no lote.');
-    }
-
-    // 2. Agrupar por diarista e somar valores
-    const mapaValores: Record<string, { nome: string; valor: number }> = {};
-    for (const l of lancamentos) {
-      if (!mapaValores[l.diarista_id]) {
-        mapaValores[l.diarista_id] = { nome: l.nome_colaborador, valor: 0 };
-      }
-      mapaValores[l.diarista_id].valor += Number(l.valor_calculado || 0);
-    }
-
-    // Incluir ajustes no valor total
-    const { data: ajustes } = await (supabase as any)
-      .from('lancamentos_diaristas')
-      .select('diarista_id, valor_calculado')
-      .eq('lote_fechamento_id', params.loteId)
-      .eq('tipo_registro', 'ajuste');
-
-    for (const aj of (ajustes ?? [])) {
-      if (mapaValores[aj.diarista_id]) {
-        mapaValores[aj.diarista_id].valor += Number(aj.valor_calculado || 0);
-      }
-    }
-
-    const diaristaIds = Object.keys(mapaValores);
-
-    // 3. Carregar dados bancários
-    const { data: colaboradores, error: errCol } = await supabase
-      .from('colaboradores')
-      .select('id, nome, cpf, nome_completo, banco_codigo, agencia, conta, digito_conta, tipo_conta')
-      .in('id', diaristaIds);
-
-    if (errCol) throw errCol;
-
-    const mapaColaboradores: Record<string, any> = {};
-    for (const c of (colaboradores ?? [])) {
-      mapaColaboradores[c.id] = c;
-    }
-
-    // 4. Validar e montar registros
-    const erros: string[] = [];
-    const dataPagamento = params.dataPagamento ?? new Date();
-
-    const { validarRegistrosCNAB, gerarCNAB240 } = await import('@/utils/cnab240');
-
-    const registros = diaristaIds.map((id) => {
-      const col = mapaColaboradores[id];
-      const dadosValor = mapaValores[id];
-      return {
-        nome: (col?.nome_completo || col?.nome || dadosValor.nome || '').trim(),
-        cpf: col?.cpf ?? '',
-        banco_codigo: col?.banco_codigo ?? '',
-        agencia: col?.agencia ?? '',
-        conta: col?.conta ?? '',
-        digito_conta: col?.digito_conta ?? '',
-        tipo_conta: (col?.tipo_conta ?? 'corrente') as 'corrente' | 'poupanca',
-        valor: dadosValor.valor,
-        data_pagamento: dataPagamento,
-      };
-    }).filter((r) => r.valor > 0); // Ignora registros com valor zerado
-
-    const { valido, erros: errosValidacao } = validarRegistrosCNAB(registros);
-    erros.push(...errosValidacao);
-
-    if (!valido) {
-      throw new Error(
-        `Não é possível gerar o CNAB. Corrija os dados bancários:\n\n${erros.join('\n')}`
-      );
-    }
-
-    // 5. Gerar conteúdo CNAB240
-    const conteudo = gerarCNAB240(params.empresaRemetente, registros);
-
-    // 6. Registrar no banco de auditoria
-    const loteIdShort = params.loteId.substring(0, 8).toUpperCase();
-    const dataStr = dataPagamento.toISOString().split('T')[0].replace(/-/g, '');
-    const nomeArquivo = `CNAB_DIARISTAS_LOTE_${loteIdShort}_${dataStr}.txt`;
-    const valorTotal = registros.reduce((s, r) => s + r.valor, 0);
-
-    const { error: errInsert } = await (supabase as any)
-      .from('cnab_geracoes')
-      .insert({
-        empresa_id: params.empresaId,
-        lote_id: params.loteId,
-        cnab_generated_by: params.geradoPor,
-        cnab_generated_by_nome: params.geradoPorNome,
-        cnab_file_name: nomeArquivo,
-        quantidade_registros: registros.length,
-        valor_total: valorTotal,
-      });
-
-    if (errInsert) throw errInsert;
-
-    // 6.5. Atualiza o status do lote para cnab_gerado
-    const { error: errStatus } = await (supabase as any)
-      .from('lotes_fechamento_diaristas')
-      .update({ status: 'cnab_gerado', updated_at: new Date().toISOString() })
-      .eq('id', params.loteId);
-
-    if (errStatus) throw errStatus;
-
-    // 7. Disparar download
-    const blob = new Blob([conteudo], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = nomeArquivo;
-    a.click();
-    URL.revokeObjectURL(url);
-
-    return { nomeArquivo, totalRegistros: registros.length, valorTotal };
   }
 }
-export const LoteFechamentoDiaristaService = new LoteFechamentoDiaristaServiceClass();
+export const RegrasCamposService = new RegrasCamposServiceClass();
+
+class RegrasDadosServiceClass {
+  private readonly table = 'regras_dados';
+
+  async listarPorModulo(moduloId: number): Promise<RegraDado[]> {
+    const { data, error } = await supabase
+      .from(this.table)
+      .select('*')
+      .eq('modulo_id', moduloId);
+    if (error) throw error;
+    return data as RegraDado[];
+  }
+
+  async criar(data: Omit<RegraDado, 'id'>): Promise<RegraDado> {
+    const { data: result, error } = await supabase
+      .from(this.table)
+      .insert(data)
+      .select('*')
+      .single();
+    if (error) throw error;
+    return result as RegraDado;
+  }
+
+  async atualizar(id: number, data: Partial<RegraDado>): Promise<RegraDado> {
+    const { data: result, error } = await supabase
+      .from(this.table)
+      .update(data)
+      .eq('id', id)
+      .select('*')
+      .single();
+    if (error) throw error;
+    return result as RegraDado;
+  }
+
+  async buscarPorModalidadeEForma(modalidadeFinanceira: string, formaPagamento: string): Promise<RegraDado | null> {
+    const { data, error } = await supabase
+      .from(this.table)
+      .select('dados')
+      .contains('dados', { modalidade_financeira: modalidadeFinanceira, forma_pagamento: formaPagamento })
+      .limit(1)
+      .single();
+    if (error) {
+      if (error.code === 'PGRST116') return null; // No rows found
+      throw error;
+    }
+    return data as RegraDado | null;
+  }
+
+  async excluir(id: number): Promise<void> {
+    const { error } = await supabase
+      .from(this.table)
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
+  }
+}
+export const RegrasDadosService = new RegrasDadosServiceClass();
+
+// ==================================================
+// MÓDULO REGRAS DE MARCAÇÃO DE DIARISTAS
+// ==================================================
 
 export interface RegraMarcacaoDiaristaPayload {
   empresa_id: string | null;
@@ -2008,47 +1802,35 @@ export interface RegraMarcacaoDiaristaPayload {
 }
 
 class RegraMarcacaoDiaristaServiceClass {
-  async getByEmpresa(empresaId: string | null) {
-    let query = (supabase as any).from("regras_marcacao_diaristas").select("*").order("ativo", { ascending: false }).order("codigo", { ascending: true });
-    if (empresaId) {
-      query = query.or(`empresa_id.eq.${empresaId},empresa_id.is.null`);
-    } else {
-      query = query.is("empresa_id", null);
-    }
-    const { data, error } = await query;
-    if (error) throw error;
-    return data || [];
-  }
-
   async getAll() {
-    const { data, error } = await (supabase as any).from("regras_marcacao_diaristas").select(`
-      *,
-      empresas (nome)
-    `).order("codigo", { ascending: true });
+    const { data, error } = await supabase
+      .from('regras_marcacao_diaristas' as any)
+      .select('*, empresas:empresa_id(nome)')
+      .order('codigo', { ascending: true });
     if (error) throw error;
-    return data || [];
+    return data ?? [];
   }
 
   async create(payload: RegraMarcacaoDiaristaPayload) {
-    const { data, error } = await (supabase as any).from("regras_marcacao_diaristas").insert([payload]).select().single();
-    if (error) throw error;
-    return data;
-  }
-
-  async update(id: string, payload: Partial<RegraMarcacaoDiaristaPayload>) {
-    const { data, error } = await (supabase as any)
-      .from("regras_marcacao_diaristas")
-      .update({ ...payload, updated_at: new Date().toISOString() })
-      .eq("id", id)
-      .select()
+    const { data, error } = await supabase
+      .from('regras_marcacao_diaristas' as any)
+      .insert(payload)
+      .select('*, empresas:empresa_id(nome)')
       .single();
     if (error) throw error;
     return data;
   }
 
-  async delete(id: string) {
-    const { error } = await (supabase as any).from("regras_marcacao_diaristas").delete().eq("id", id);
+  async update(id: string, payload: Partial<RegraMarcacaoDiaristaPayload>) {
+    const { data, error } = await supabase
+      .from('regras_marcacao_diaristas' as any)
+      .update(payload)
+      .eq('id', id)
+      .select('*, empresas:empresa_id(nome)')
+      .single();
     if (error) throw error;
+    return data;
   }
 }
+
 export const RegraMarcacaoDiaristaService = new RegraMarcacaoDiaristaServiceClass();

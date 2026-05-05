@@ -727,7 +727,7 @@ const Operacoes = () => {
         const totalLinha = Number(op.totalFinalCalculado ?? op.valor_total_label ?? op.valor_total ?? 0);
         return acc + (Number.isFinite(totalLinha) ? totalLinha : 0);
       }, 0),
-    [operacoesTabelaKpis]
+    [operacoesTabela]
   );
 
   const totalCustosExtras = useMemo(

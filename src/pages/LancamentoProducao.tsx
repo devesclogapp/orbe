@@ -62,6 +62,7 @@ import {
     ColaboradorService,
     EmpresaService,
     RegrasFinanceirasService,
+    RegrasDadosService,
     FormaPagamentoOperacionalService,
     FornecedorService,
     FornecedorValorServicoService,
@@ -339,7 +340,19 @@ const LancamentoProducao = () => {
         preset_id: "",
         tipo_lancamento: "",
         modalidade_financeira: "",
+        categoria_servico: "",
         data: today,
+
+        // State para armazenar a regra financeira aplicada
+        regra_financeira: null as {
+            modalidade_financeira: string;
+            forma_pagamento: string;
+            prazo_dias: number;
+            tipo_liquidacao: string;
+            entra_caixa_imediato: boolean;
+            gera_conta_receber: boolean;
+            agrupa_faturamento: boolean;
+        } | null,
         empresa_id: "",
         unidade_id: "",
         tipo_servico: "",
@@ -559,6 +572,22 @@ const LancamentoProducao = () => {
     const isFluxoSemEquipe = isTransbordoServicoExtra;
     const deveExigirModalidadeManual = isOperacaoPadrao;
 
+    // Categorização do serviço baseada no tipo de lançamento
+    const categoriaServico = useMemo(() => {
+        if (isDiaristas) return "DIARISTA";
+        if (isQualquerCusto) return "CUSTO";
+        if (isTransbordoServicoExtra) return "SERVICO_EXTRA";
+        if (isOperacaoPadrao) return "SERVICO_VOLUME";
+        return "SERVICO_VOLUME";
+    }, [isDiaristas, isQualquerCusto, isTransbordoServicoExtra, isOperacaoPadrao]);
+
+    // Atualizar categoria_servico no form quando mudar
+    useEffect(() => {
+        if (categoriaServico && form.categoria_servico !== categoriaServico) {
+            setForm((prev) => ({ ...prev, categoria_servico: categoriaServico }));
+        }
+    }, [categoriaServico]);
+
     // Regra pode ser vinculada apenas à transportadora (sem fornecedor obrigatório)
     useEffect(() => {
         if (form.tipo_lancamento === "transbordo_servico_extra" && form.modalidade_financeira !== "CAIXA_IMEDIATO") {
@@ -573,6 +602,55 @@ const LancamentoProducao = () => {
             setForm((prev) => ({ ...prev, modalidade_financeira: "" }));
         }
     }, [form.modalidade_financeira, form.tipo_lancamento]);
+
+    // Buscar regra financeira das abas dinâmicas
+    useEffect(() => {
+        const buscarRegraFinanceira = async () => {
+            const modalidade = form.modalidade_financeira;
+            // Usar o nome da forma de pagamento se disponível, senão usar o ID
+            const formaPagamentoItem = formaPagamentoOptions.find(item => item.id === form.forma_pagamento);
+            const formaPagamento = formaPagamentoItem?.nome || form.forma_pagamento;
+            
+            if (!modalidade || !formaPagamento) {
+                setForm((prev) => ({ ...prev, regra_financeira: null }));
+                return;
+            }
+
+            console.log("Buscando regra financeira:", { modalidade, formaPagamento });
+
+            try {
+                const regra = await RegrasDadosService.buscarPorModalidadeEForma(modalidade, formaPagamento);
+                console.log("Regra encontrada:", regra);
+                if (regra?.dados) {
+                    const dados = regra.dados;
+                    const prazoDias = dados.prazo_dias !== undefined && dados.prazo_dias !== null ? Number(dados.prazo_dias) : 0;
+                    const hoje = new Date();
+                    const vencimento = new Date(hoje);
+                    vencimento.setDate(vencimento.getDate() + prazoDias);
+                    
+                    setForm((prev) => ({
+                        ...prev,
+                        regra_financeira: {
+                            modalidade_financeira: dados.modalidade_financeira,
+                            forma_pagamento: dados.forma_pagamento,
+                            prazo_dias: prazoDias,
+                            tipo_liquidacao: dados.tipo_liquidacao,
+                            entra_caixa_imediato: dados.entra_caixa_imediato,
+                            gera_conta_receber: dados.gera_conta_receber,
+                            agrupa_faturamento: dados.agrupa_faturamento,
+                        },
+                    }));
+                } else {
+                    setForm((prev) => ({ ...prev, regra_financeira: null }));
+                }
+            } catch (error) {
+                console.error("Erro ao buscar regra financeira:", error);
+                setForm((prev) => ({ ...prev, regra_financeira: null }));
+            }
+        };
+
+        buscarRegraFinanceira();
+    }, [form.modalidade_financeira, form.forma_pagamento]);
 
     const regraLookupHabilitada = !!form.empresa_id && !!form.data && !!form.tipo_servico && !!form.transportadora;
 
@@ -737,6 +815,9 @@ const LancamentoProducao = () => {
         if (!isQualquerCusto && !form.transportadora) return "Selecione a transportadora ou cliente.";
         if (!isQualquerCusto && requiresProductSelection && !form.produto) return REGRA_MENSAGEM_PRODUTO;
         if (!isCustosMensaisCLT && !form.forma_pagamento) return "Selecione a categoria operacional da regra.";
+
+        // Validar regra financeira das abas dinâmicas - apenas aviso, não bloqueia
+        // A regra será aplicada se existir, ou usará valores padrão se não existir
 
         if (ruleLookupState === "loading") return "Buscando valor...";
 
@@ -958,6 +1039,7 @@ const LancamentoProducao = () => {
             total_colaboradores_vinculados: quantidadeSelecionada,
             contexto_operacional: {
                 finalidade_lancamento: finalidadeSelecionada?.title ?? form.tipo_lancamento,
+                categoria_servico: categoriaServico,
                 modalidade_financeira: form.modalidade_financeira,
                 modalidade_financeira_label: modalidadeFinanceiraLabel,
                 descricao_servico: form.descricao_servico.trim() || null,
@@ -986,11 +1068,62 @@ const LancamentoProducao = () => {
             },
         };
 
-        mutation.mutate({
-            operacao: {
-                empresa_id: form.empresa_id,
-                unidade_id: form.unidade_id || null,
-                data_operacao: form.data,
+        // Buscar regra financeira baseada na modalidade e forma de pagamento
+        const buscarRegraFinanceira = async () => {
+            const modalidade = form.modalidade_financeira || avaliacaoJson.contexto_operacional?.modalidade_financeira;
+            const formaPagamento = formaPagamentoSelecionada?.nome || avaliacaoJson.contexto_operacional?.forma_pagamento || form.forma_pagamento;
+            
+            if (!modalidade || !formaPagamento) return null;
+
+            try {
+                const regra = await RegrasDadosService.buscarPorModalidadeEForma(modalidade, formaPagamento);
+                return regra?.dados || null;
+            } catch (error) {
+                console.error("Erro ao buscar regra financeira:", error);
+                return null;
+            }
+        };
+
+        // Aplicar regra financeira à operação
+        const aplicarRegraFinanceira = async () => {
+            const regra = await buscarRegraFinanceira();
+            if (!regra) return {};
+
+            const hoje = new Date();
+            let dataVencimento: string | null = null;
+
+            // Calcular data de vencimento baseada no prazo
+            if (regra.prazo_dias !== undefined && regra.prazo_dias !== null) {
+                const vencimento = new Date(hoje);
+                vencimento.setDate(vencimento.getDate() + Number(regra.prazo_dias));
+                dataVencimento = vencimento.toISOString().split('T')[0];
+            }
+
+            return {
+                regra_financeira: {
+                    modalidade_financeira: regra.modalidade_financeira,
+                    forma_pagamento: regra.forma_pagamento,
+                    prazo_dias: regra.prazo_dias,
+                    tipo_liquidacao: regra.tipo_liquidacao,
+                    entra_caixa_imediato: regra.entra_caixa_imediato,
+                    gera_conta_receber: regra.gera_conta_receber,
+                    agrupa_faturamento: regra.agrupa_faturamento,
+                    data_vencimento: dataVencimento,
+                },
+            };
+        };
+
+        // Executar mutation com a regra financeira
+        (async () => {
+            const regraFinanceira = await aplicarRegraFinanceira();
+
+            mutation.mutate({
+                operacao: {
+                    ...regraFinanceira,
+                    categoria_servico: categoriaServico,
+                    empresa_id: form.empresa_id,
+                    unidade_id: form.unidade_id || null,
+                    data_operacao: form.data,
                 tipo_servico_id: form.tipo_servico,
                 colaborador_id: null,
                 entrada_ponto: form.horario_inicio || null,
@@ -1031,7 +1164,8 @@ const LancamentoProducao = () => {
                     infraction_notes: conduta?.notes?.trim() || null,
                 };
             }),
-        });
+            });
+        })();
     };
 
     const currentEmpresa = (empresas as any[]).find((empresa: any) => empresa.id === form.empresa_id);
@@ -1874,6 +2008,34 @@ const LancamentoProducao = () => {
                                             )}
                                         </div>
                                     </div>
+                                    
+                                    {/* Preview da Regra Financeira */}
+                                    {form.regra_financeira && (
+                                        <div className="rounded-xl border border-green-500/30 bg-green-500/10 p-4 space-y-2">
+                                            <div className="flex items-center gap-2">
+                                                <Badge variant="success" className="text-xs">Regra Financeira Aplicada</Badge>
+                                            </div>
+                                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                                                <div>
+                                                    <p className="text-muted-foreground">Prazo</p>
+                                                    <p className="font-medium">{form.regra_financeira.prazo_dias} dias</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-muted-foreground">Liquidação</p>
+                                                    <p className="font-medium capitalize">{form.regra_financeira.tipo_liquidacao}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-muted-foreground">Entrada</p>
+                                                    <p className="font-medium">{form.regra_financeira.entra_caixa_imediato ? "Caixa Imediato" : "Conta a Receber"}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-muted-foreground">Faturamento</p>
+                                                    <p className="font-medium">{form.regra_financeira.agrupa_faturamento ? "Agrupa" : "Individual"}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {etapaDoisBlockReason && (
                                         <div className="esc-card p-3 border-l-4 border-l-amber-500 bg-amber-500/5 text-sm font-medium text-amber-800 dark:text-amber-200">
                                             {etapaDoisBlockReason}

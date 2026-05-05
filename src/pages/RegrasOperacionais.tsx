@@ -10,10 +10,12 @@ import {
   Save,
   ShieldAlert,
   Trash2,
+  MoreVertical,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TabRegrasDiaristas } from "@/pages/Rh/TabRegrasDiaristas";
+import DynamicRuleTabsContainer from "@/components/regras/DynamicRuleTabsContainer";
 
 import { AppShell } from "@/components/layout/AppShell";
 import {
@@ -46,6 +48,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -77,6 +85,10 @@ import {
   TipoServicoOperacionalService,
   TransportadoraClienteService,
   TipoRegraOperacionalService,
+  RegraModulo, // Nova importação
+  RegrasModulosService, // Nova importação
+  RegrasCamposService, // Nova importação
+  RegrasDadosService, // Nova importação
 } from "@/services/base.service";
 
 type LookupItem = {
@@ -448,6 +460,14 @@ const RegrasOperacionais = () => {
   const queryClient = useQueryClient();
 
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<string>("operacional");
+  const [isNewTabModalOpen, setIsNewTabModalOpen] = useState(false);
+  const [newTabForm, setNewTabForm] = useState<Partial<RegraModulo>>({
+    nome: "",
+    slug: "",
+    descricao: "",
+  });
+  const [editingModuleId, setEditingModuleId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [applyGlobally, setApplyGlobally] = useState(false);
@@ -546,6 +566,12 @@ const RegrasOperacionais = () => {
   const { data: regras = [], isLoading: isLoadingRegras } = useQuery({
     queryKey: ["regras_operacionais", form.empresa_id || "all"],
     queryFn: () => RegraOperacionalService.getAll(form.empresa_id || undefined),
+    enabled: canAccess,
+  });
+
+  const { data: dynamicModules = [], isLoading: isLoadingDynamicModules } = useQuery({
+    queryKey: ["regras_modulos"],
+    queryFn: () => RegrasModulosService.listar(),
     enabled: canAccess,
   });
 
@@ -957,6 +983,56 @@ const RegrasOperacionais = () => {
     },
   });
 
+  const createModuleMutation = useMutation({
+    mutationFn: async () => {
+      if (!newTabForm.nome?.trim()) throw new Error("Informe o nome da aba.");
+      if (!newTabForm.slug?.trim()) throw new Error("Informe o slug da aba.");
+      
+      if (editingModuleId) {
+        return RegrasModulosService.atualizar(editingModuleId, {
+          nome: newTabForm.nome.trim(),
+          slug: newTabForm.slug.trim().toLowerCase().replace(/\s+/g, "-"),
+          descricao: newTabForm.descricao?.trim() || "",
+        });
+      }
+      
+      return RegrasModulosService.criar({
+        nome: newTabForm.nome.trim(),
+        slug: newTabForm.slug.trim().toLowerCase().replace(/\s+/g, "-"),
+        descricao: newTabForm.descricao?.trim() || "",
+      });
+    },
+    onSuccess: (module) => {
+      queryClient.invalidateQueries({ queryKey: ["regras_modulos"] });
+      if (editingModuleId) {
+        toast.success("Aba dinâmica atualizada.");
+      } else {
+        toast.success("Aba dinâmica criada com sucesso.");
+        setActiveTab(module.slug);
+      }
+      setIsNewTabModalOpen(false);
+      setNewTabForm({ nome: "", slug: "", descricao: "" });
+      setEditingModuleId(null);
+    },
+    onError: (error: any) => {
+      toast.error("Não foi possível salvar a aba.", { description: error.message });
+    },
+  });
+
+  const deleteModuleMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return RegrasModulosService.excluir(id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["regras_modulos"] });
+      toast.success("Aba dinâmica excluída.");
+      setActiveTab("operacional");
+    },
+    onError: (error: any) => {
+      toast.error("Não foi possível excluir a aba.", { description: error.message });
+    },
+  });
+
   const quickCreateMutation = useMutation({
     mutationFn: async () => {
       if (!quickCreate) throw new Error("Cadastro rápido indisponível.");
@@ -1262,11 +1338,69 @@ const RegrasOperacionais = () => {
       subtitle="Gerencie valores unitários de produção e multiplicadores para diaristas"
       backPath="/cadastros"
     >
-      <Tabs defaultValue="operacional" className="space-y-6">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className="bg-white border text-muted-foreground w-full flex-wrap h-auto md:w-auto md:inline-flex md:h-10 mb-2">
-          <TabsTrigger value="operacional">Operacional</TabsTrigger>
-          <TabsTrigger value="diaristas">Diaristas</TabsTrigger>
-          <TabsTrigger value="personalizada">Nova Aba P/ Regras</TabsTrigger>
+          <TabsTrigger value="operacional">
+            Operacional
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-6 w-4 p-0 ml-1" onClick={(e) => e.stopPropagation()}>
+                  <MoreVertical className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem disabled>Abas fixas não podem ser editadas</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </TabsTrigger>
+          <TabsTrigger value="diaristas">
+            Diaristas
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-6 w-4 p-0 ml-1" onClick={(e) => e.stopPropagation()}>
+                  <MoreVertical className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem disabled>Abas fixas não podem ser editadas</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </TabsTrigger>
+          {dynamicModules.map((module) => (
+            <TabsTrigger key={module.slug} value={module.slug}>
+              {module.nome}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-6 w-4 p-0 ml-1" onClick={(e) => e.stopPropagation()}>
+                    <MoreVertical className="h-3 w-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem onClick={() => {
+                    setNewTabForm({ nome: module.nome, slug: module.slug, descricao: module.descricao || "" });
+                    setEditingModuleId(module.id);
+                    setIsNewTabModalOpen(true);
+                  }}>
+                    <Pencil className="h-4 w-4 mr-2" />
+                    Editar
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => {
+                    if (confirm(`Tem certeza que deseja excluir a aba "${module.nome}"?`)) {
+                      deleteModuleMutation.mutate(module.id);
+                    }
+                  }} className="text-red-600">
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Excluir
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </TabsTrigger>
+          ))}
+          {canAccess && (
+            <Button variant="outline" size="sm" onClick={() => setIsNewTabModalOpen(true)} className="ml-2">
+              <Plus className="h-4 w-4 mr-2" /> Nova Aba
+            </Button>
+          )}
         </TabsList>
         <TabsContent value="operacional" className="m-0">
           <div className="space-y-6">
@@ -1396,11 +1530,13 @@ const RegrasOperacionais = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="personalizada" className="m-0">
-          <Card className="p-5 space-y-4 text-center text-muted-foreground">
-            <p className="text-sm">Espaço reservado para cadastro de regras personalizadas.</p>
-          </Card>
-        </TabsContent>
+        <DynamicRuleTabsContainer
+          canAccess={canAccess}
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+        />
+
+
       </Tabs>
 
       <AlertDialog open={!!ruleToDelete} onOpenChange={(open) => !open && setRuleToDelete(null)}>
@@ -1951,6 +2087,64 @@ const RegrasOperacionais = () => {
                 {editingId ? "Salvar alterações" : "Cadastrar regra"}
               </Button>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isNewTabModalOpen} onOpenChange={(open) => {
+        setIsNewTabModalOpen(open);
+        if (!open) {
+          setNewTabForm({ nome: "", slug: "", descricao: "" });
+          setEditingModuleId(null);
+        }
+      }}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>{editingModuleId ? "Editar Aba Dinâmica" : "Nova Aba Dinâmica"}</DialogTitle>
+            <DialogDescription>
+              {editingModuleId ? "Edite os dados da aba dinâmica." : "Crie uma nova aba para cadastrar regras customizadas."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="tab-nome">Nome da Aba</Label>
+              <Input
+                id="tab-nome"
+                value={newTabForm.nome}
+                onChange={(e) => setNewTabForm((prev) => ({ ...prev, nome: e.target.value }))}
+                placeholder="Ex: Regras Especiais"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="tab-slug">Slug (identificador único)</Label>
+              <Input
+                id="tab-slug"
+                value={newTabForm.slug}
+                onChange={(e) => setNewTabForm((prev) => ({ ...prev, slug: e.target.value }))}
+                placeholder="Ex: regras-especiais"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="tab-descricao">Descrição (opcional)</Label>
+              <Input
+                id="tab-descricao"
+                value={newTabForm.descricao}
+                onChange={(e) => setNewTabForm((prev) => ({ ...prev, descricao: e.target.value }))}
+                placeholder="Ex: Regras específicas do cliente X"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setIsNewTabModalOpen(false);
+              setNewTabForm({ nome: "", slug: "", descricao: "" });
+            }}>
+              Cancelar
+            </Button>
+            <Button onClick={() => createModuleMutation.mutate()} disabled={createModuleMutation.isPending}>
+              <Save className="h-4 w-4 mr-2" />
+              {createModuleMutation.isPending ? "Salvando..." : editingModuleId ? "Salvar" : "Criar Aba"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

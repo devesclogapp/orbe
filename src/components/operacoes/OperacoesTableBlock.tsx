@@ -456,6 +456,7 @@ export const OperacoesTableBlock = ({
   const [filterText, setFilterText] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [modalidadeFilter, setModalidadeFilter] = useState("all");
+  const [formaPagamentoFilter, setFormaPagamentoFilter] = useState("all");
   const [selectedOpDetails, setSelectedOpDetails] = useState<any>(null);
   const [editingItem, setEditingItem] = useState<any>(null);
   const [editForm, setEditForm] = useState<EditableOperationForm | null>(null);
@@ -555,6 +556,14 @@ export const OperacoesTableBlock = ({
   const { data: regrasFinanceiras = [] } = useQuery({
         queryKey: ["regras_financeiras_filter"],
         queryFn: () => RegrasFinanceirasService.getAllActive(),
+    });
+
+    const { data: formasPagamentoDb = [] } = useQuery({
+        queryKey: ["formas_pagamento_operacional_filter"],
+        queryFn: () => {
+            const { FormaPagamentoOperacionalService } = require("@/services/base.service");
+            return FormaPagamentoOperacionalService.getAllActive();
+        },
     });
 
     const { data: empresas = [] } = useQuery({
@@ -847,8 +856,11 @@ export const OperacoesTableBlock = ({
 
     const statusMatch = statusFilter === "all" || item.statusPagamento === statusFilter;
     const modalidadeMatch = modalidadeFilter === "all" || item.modalidadeFinanceira === modalidadeFilter;
+    const formaPagamentoMatch = formaPagamentoFilter === "all" || 
+      (item.formaPagamento && item.formaPagamento.toLowerCase().includes(formaPagamentoFilter.toLowerCase())) ||
+      (item.formas_pagamento_operacional?.nome && item.formas_pagamento_operacional.nome.toLowerCase().includes(formaPagamentoFilter.toLowerCase()));
 
-    return searchMatch && statusMatch && modalidadeMatch;
+    return searchMatch && statusMatch && modalidadeMatch && formaPagamentoMatch;
   }).sort((a: any, b: any) => {
     if (sortConfig) {
       let valA = a[sortConfig.key] ?? "";
@@ -1483,6 +1495,32 @@ export const OperacoesTableBlock = ({
                   {regra.nome}
                 </SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+
+          {/* Filtro Forma de Pagamento */}
+          <Select value={formaPagamentoFilter} onValueChange={setFormaPagamentoFilter}>
+            <SelectTrigger className="w-full sm:w-52 h-9">
+              <SelectValue placeholder="Forma Pgto" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as Formas</SelectItem>
+              {(() => {
+                const regraSelecionada = regrasFinanceiras.find((r: any) => r.modalidade_financeira === modalidadeFilter);
+                const formasPermitidas = regraSelecionada?.formas_pagamento_permitidas as string[] | undefined;
+                if (modalidadeFilter !== "all" && formasPermitidas?.length > 0) {
+                  return formasPermitidas.map((nome) => (
+                    <SelectItem key={nome} value={nome}>
+                      {nome}
+                    </SelectItem>
+                  ));
+                }
+                return formasPagamentoDb.map((forma: any) => (
+                  <SelectItem key={forma.nome} value={forma.nome}>
+                    {forma.nome}
+                  </SelectItem>
+                ));
+              })()}
             </SelectContent>
           </Select>
 

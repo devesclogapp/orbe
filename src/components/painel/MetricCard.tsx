@@ -13,19 +13,27 @@ interface Props {
   chartData?: any[];
   chartColor?: string;
   className?: string;
+  onClick?: () => void;
 }
 
-export const MetricCard = ({ label, value, delta, icon: Icon, accent, variant = "default", size = "default", chartData, chartColor = "hsl(var(--primary))", className }: Props) => {
+export const MetricCard = ({ label, value, delta, icon: Icon, accent, variant = "default", size = "default", chartData, chartColor = "hsl(var(--primary))", className, onClick }: Props) => {
   const isSolid = variant === "solid";
   const isSmall = size === "small";
 
+  const Wrapper = onClick ? "button" : "div";
+
   return (
-    <div className={cn(
-      "group relative overflow-hidden transition-all duration-200 flex flex-col justify-between",
-      isSolid ? "esc-card bg-primary text-primary-foreground border-primary shadow-lg p-5" : "esc-card hover:shadow-md",
-      isSmall && !isSolid ? "p-4 min-h-[90px]" : !isSmall && !isSolid ? "p-5 min-h-[140px]" : "",
-      className
-    )}>
+    <Wrapper 
+      type={onClick ? "button" : undefined}
+      onClick={onClick}
+      className={cn(
+        "group relative overflow-hidden transition-all duration-200 flex flex-col justify-between text-left w-full",
+        isSolid ? "esc-card bg-primary text-primary-foreground border-primary shadow-lg p-5" : "esc-card hover:shadow-md hover:cursor-pointer",
+        isSmall && !isSolid ? "p-4 min-h-[90px]" : !isSmall && !isSolid ? "p-5 min-h-[140px]" : "",
+        onClick && "cursor-pointer",
+        className
+      )}
+    >
       <div className="flex items-start justify-between relative z-10 w-full shrink-0">
         <div className={cn(
           "uppercase tracking-wide font-medium",

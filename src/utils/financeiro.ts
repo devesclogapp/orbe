@@ -205,6 +205,7 @@ export function calcularValoresOperacao({
 export function processarOperacao(operacao: any, empresas: any[] = []) {
   const quantidade = Number(operacao.quantidade || 0);
   const valorUnitario = Number(operacao.valor_unitario_snapshot || operacao.valor_unitario_label || 0);
+  const contextoImportacao = getContextoImportacao(operacao);
   
   // Utilizar regras diretamente quando nao houver gravado, senao usar snapshot gravado
   const valoresCalculados = calcularValoresOperacao({
@@ -241,6 +242,10 @@ export function processarOperacao(operacao: any, empresas: any[] = []) {
     status_pagamento = "ATRASADO";
   }
 
+  const formaPagamentoValue = operacao.forma_pagamento?.nome ?? 
+    contextoImportacao.forma_pagamento ?? 
+    getLinhaOriginalValue(operacao, "FORMA DE PAGAMENTO") ?? "";
+
   return {
     ...operacao,
     valorDescargaCalculado: valor_descarga,
@@ -248,5 +253,6 @@ export function processarOperacao(operacao: any, empresas: any[] = []) {
     modalidadeFinanceira: financeiro.modalidade,
     dataVencimento: dataVencimento.toISOString().split("T")[0],
     statusPagamento: status_pagamento,
+    formaPagamento: formaPagamentoValue,
   };
 }
