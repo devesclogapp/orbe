@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
 import { EmpresaService } from "@/services/base.service";
 import { useTenant } from "@/contexts/TenantContext";
+import { useOnboardingCallback } from "@/hooks/useOnboardingCallback";
 import { Button } from "@/components/ui/button";
 import { Plus, Building2, MapPin, Users, Cpu, Loader2, RefreshCw, Pencil, Trash2, AlertTriangle, LayoutGrid, List, Upload } from "lucide-react";
 import { SpreadsheetUploadModal } from "@/components/shared/SpreadsheetUploadModal";
@@ -21,7 +23,9 @@ import { toast } from "sonner";
 
 const Empresas = () => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { tenantId } = useTenant();
+  const { isOnboardingReturn, handleOnboardingReturn } = useOnboardingCallback();
   const [open, setOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -63,12 +67,18 @@ const Empresas = () => {
   const createMutation = useMutation({
     mutationFn: (payload: any) => editingId
       ? EmpresaService.update(editingId, payload)
-      : EmpresaService.create(payload), // tenant_id populado pelo trigger do banco
+      : EmpresaService.create(payload),
     onSuccess: () => {
       toast.success(editingId ? "Empresa atualizada" : "Empresa cadastrada");
       queryClient.invalidateQueries({ queryKey: ["empresas"] });
       setOpen(false);
       reset();
+      
+      // Se veio do onboarding, redirecionar de volta
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("onboarding_return") === "true") {
+        window.location.href = "/onboarding";
+      }
     },
     onError: (err: any) => toast.error(editingId ? "Erro ao atualizar" : "Erro ao cadastrar", { description: err.message })
   });

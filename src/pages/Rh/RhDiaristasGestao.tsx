@@ -10,8 +10,9 @@ import { Textarea } from "@/components/ui/textarea";
 import {
     Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
-import { DiaristaService, EmpresaService, PerfilUsuarioService } from "@/services/base.service";
+import { DiaristaService, EmpresaService } from "@/services/base.service";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Pencil, Plus, RefreshCw, Trash2, Loader2, Users, Landmark, AlertCircle, ArrowLeft } from "lucide-react";
@@ -45,8 +46,12 @@ const RhDiaristasGestao = () => {
     const [form, setForm] = useState({ ...emptyForm });
 
     const { data: perfil } = useQuery({
-        queryKey: ["perfil_usuario", user?.id],
-        queryFn: () => (user?.id ? PerfilUsuarioService.getByUserId(user.id) : Promise.resolve(null)),
+        queryKey: ["profile_usuario", user?.id],
+        queryFn: async () => {
+            if (!user?.id) return null;
+            const { data } = await supabase.from("profiles").select("role, tenant_id").eq("user_id", user.id).maybeSingle();
+            return data;
+        },
         enabled: !!user?.id,
     });
 
@@ -55,7 +60,7 @@ const RhDiaristasGestao = () => {
         queryFn: () => EmpresaService.getAll(),
     });
 
-    const empresaIdPadrao = perfil?.empresa_id ?? ((empresas as any[])[0]?.id ?? "");
+    const empresaIdPadrao = (empresas as any[])[0]?.id ?? "";
 
     const { data: diaristas = [], isLoading, isFetching } = useQuery({
         queryKey: ["diaristas_gestao", empresaIdPadrao],

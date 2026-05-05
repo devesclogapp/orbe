@@ -73,7 +73,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAuth } from "@/contexts/AuthContext";
-import { useClient } from "@/contexts/ClientContext";
+import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import {
   EmpresaService,
@@ -456,7 +456,6 @@ const QuickCreateLookup = ({
 
 const RegrasOperacionais = () => {
   const { user } = useAuth();
-  const { userRole, isLoading: isLoadingRole } = useClient();
   const queryClient = useQueryClient();
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -501,13 +500,18 @@ const RegrasOperacionais = () => {
     coluna_planilha: "",
   });
 
-  const canAccess = userRole === "Admin" || userRole === "Financeiro";
-
-  const { data: perfil } = useQuery({
-    queryKey: ["perfil_usuario_regras_operacionais", user?.id],
-    queryFn: () => (user?.id ? PerfilUsuarioService.getByUserId(user.id) : Promise.resolve(null)),
+  const { data: perfil, isLoading: isLoadingPerfil } = useQuery({
+    queryKey: ["profile_regras_operacionais", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      const { data } = await supabase.from("profiles").select("role").eq("user_id", user.id).maybeSingle();
+      return data;
+    },
     enabled: !!user?.id,
   });
+
+  const role = perfil?.role?.toLowerCase();
+  const canAccess = role === "admin" || role === "financeiro";
 
   const { data: empresas = [] } = useQuery({
     queryKey: ["empresas_regras_operacionais"],
@@ -1306,7 +1310,7 @@ const RegrasOperacionais = () => {
     toast.success("Item existente selecionado.");
   };
 
-  if (isLoadingRole) {
+  if (isLoadingPerfil) {
     return (
       <AppShell title="Regras Operacionais" subtitle="Carregando permissões..." backPath="/cadastros">
         <div />

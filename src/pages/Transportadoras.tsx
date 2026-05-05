@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Plus, Pencil, Trash2, Search, Building2 } from "lucide-react";
+import { useOnboardingCallback } from "@/hooks/useOnboardingCallback";
 import { TransportadoraClienteService, EmpresaService } from "@/services/base.service";
 import {
   Dialog,
@@ -17,6 +19,8 @@ import { toast } from "sonner";
 
 const Transportadoras = () => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const { isOnboardingReturn, handleOnboardingReturn } = useOnboardingCallback();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
@@ -64,6 +68,10 @@ const Transportadoras = () => {
       queryClient.invalidateQueries({ queryKey: ["transportadoras_list"] });
       setOpen(false);
       reset();
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("onboarding_return") === "true") {
+        window.location.href = "/onboarding";
+      }
     },
     onError: (err: any) => {
       toast.error(err?.message || "Erro ao cadastrar");

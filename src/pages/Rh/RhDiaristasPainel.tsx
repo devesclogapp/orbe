@@ -19,6 +19,7 @@ import {
     EmpresaService,
 } from "@/services/base.service";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { CalendarDays, CheckCircle2, ChevronDown, ChevronRight, ArrowLeft, Download, ExternalLink, Loader2, Lock, RefreshCw, Users, Calendar, Table as TableIcon, Settings, Send, FileCheck, Plus, History } from "lucide-react";
@@ -57,8 +58,12 @@ const RhDiaristasPainel = () => {
     const [confirmText, setConfirmText] = useState("");
 
     const { data: perfil } = useQuery({
-        queryKey: ["perfil_usuario", user?.id],
-        queryFn: () => (user?.id ? PerfilUsuarioService.getByUserId(user.id) : Promise.resolve(null)),
+        queryKey: ["profile_usuario", user?.id],
+        queryFn: async () => {
+            if (!user?.id) return null;
+            const { data } = await supabase.from("profiles").select("role, tenant_id").eq("user_id", user.id).maybeSingle();
+            return data;
+        },
         enabled: !!user?.id,
     });
 
@@ -67,7 +72,8 @@ const RhDiaristasPainel = () => {
         queryFn: () => EmpresaService.getAll(),
     });
 
-    const isAdmin = perfil?.papel === "Admin";
+    const role = perfil?.role?.toLowerCase();
+    const isAdmin = role === "admin";
     // Empresa do usuário (usada apenas para o fechamento de período)
     const empresaIdDoUsuario = perfil?.empresa_id ?? ((empresas as any[])[0]?.id ?? "");
 

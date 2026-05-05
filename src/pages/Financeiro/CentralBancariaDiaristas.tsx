@@ -1,5 +1,6 @@
 import React, { useState, useMemo, Fragment } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabase";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -124,8 +125,12 @@ export const CentralBancariaDiaristas = () => {
 
     // ── perfil e empresas ──
     const { data: perfil } = useQuery({
-        queryKey: ["perfil_usuario", user?.id],
-        queryFn: () => (user?.id ? PerfilUsuarioService.getByUserId(user.id) : Promise.resolve(null)),
+        queryKey: ["profile_usuario", user?.id],
+        queryFn: async () => {
+            if (!user?.id) return null;
+            const { data } = await supabase.from("profiles").select("role, tenant_id").eq("user_id", user.id).maybeSingle();
+            return data;
+        },
         enabled: !!user?.id,
     });
 
@@ -134,14 +139,15 @@ export const CentralBancariaDiaristas = () => {
         queryFn: () => EmpresaService.getAll(),
     });
 
-    const isAdmin = perfil?.papel === "Admin";
-    const isFinanceiro = perfil?.papel === "Financeiro";
+    const role = perfil?.role?.toLowerCase();
+    const isAdmin = role === "admin";
+    const isFinanceiro = role === "financeiro";
     const canAdjust = isAdmin || isFinanceiro;
-    const userName = perfil?.nome_completo || user?.email || "";
+    const userName = user?.email || "";
 
     // Acesso baseado em papel (role), não em empresa vinculada.
     // Usuários sem empresa_id fixo usam a primeira empresa disponível como contexto padrão.
-    const empresaId = perfil?.empresa_id ?? ((empresas as any[])[0]?.id ?? "");
+    const empresaId = (empresas as any[])[0]?.id ?? "";
 
     // ── lotes ──
     const { data: lotes = [], isLoading } = useQuery({

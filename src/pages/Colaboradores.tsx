@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
+import { useOnboardingCallback } from "@/hooks/useOnboardingCallback";
 import { StatusChip } from "@/components/painel/StatusChip";
 import { Button } from "@/components/ui/button";
 import { Plus, RefreshCw, Loader2, Pencil, Trash2, LayoutGrid, List, User, Briefcase, Building2, FileText, DollarSign, Receipt, CheckCircle2, MoreHorizontal, AlertTriangle } from "lucide-react";
@@ -22,6 +24,8 @@ import { cn } from "@/lib/utils";
 
 const Colaboradores = () => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const { isOnboardingReturn, handleOnboardingReturn } = useOnboardingCallback();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(1);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -97,11 +101,15 @@ const Colaboradores = () => {
     mutationFn: (payload: any) => editingId
       ? ColaboradorService.update(editingId, payload)
       : ColaboradorService.create(payload),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success(editingId ? "Colaborador atualizado" : "Colaborador cadastrado");
       queryClient.invalidateQueries({ queryKey: ["colaboradores_list"] });
       setOpen(false);
       reset();
+      if (isOnboardingReturn) {
+        await handleOnboardingReturn();
+        navigate("/onboarding");
+      }
     },
     onError: (err: any) => toast.error(editingId ? "Erro ao atualizar" : "Erro ao cadastrar", { description: err.message })
   });

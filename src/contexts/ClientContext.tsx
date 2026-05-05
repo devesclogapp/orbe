@@ -54,8 +54,8 @@ export const ClientProvider = ({ children }: { children: ReactNode }) => {
     });
 
     const cliente = data?.cliente || null;
-    const userRole = data?.role || null;
-    const internalRoles = ["Admin", "RH", "Financeiro", "Encarregado"];
+    const userRole = data?.role?.toLowerCase() || null;
+    const internalRoles = ["admin", "rh", "financeiro", "encarregado"];
     const isInternalUser = !!userRole && internalRoles.includes(userRole);
 
     return (

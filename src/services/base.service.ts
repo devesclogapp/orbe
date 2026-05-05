@@ -3,6 +3,39 @@ import { Database } from '@/types/database';
 
 type Table = keyof Database['public']['Tables'];
 
+// Helper para limpar valores UUID
+function cleanUuid(value?: string | null): string | null {
+  if (!value) return null;
+  const v = value.trim();
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(v) ? v : null;
+}
+
+// Função helper para obter tenant_id de forma segura
+async function getCurrentTenantId(): Promise<string> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Usuário não autenticado');
+
+  const { data: profile, error } = await supabase
+    .from('profiles')
+    .select('tenant_id')
+    .eq('user_id', user.id)
+    .single();
+
+  if (error || !profile?.tenant_id || profile.tenant_id === '') {
+    console.error('Tenant não encontrado:', { profile, error });
+    throw new Error('Usuário sem tenant associado. Contate o administrador.');
+  }
+
+  // Validar formato UUID
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(profile.tenant_id)) {
+    throw new Error(`Tenant_id inválido: ${profile.tenant_id}`);
+  }
+
+  return profile.tenant_id;
+}
+
 // Função auxiliar para obter filtro de tenant
 export const getTenantQueryFilter = async (table: string) => {
   try {
@@ -135,11 +168,57 @@ class EmpresaServiceClass extends BaseService<'empresas'> {
       total_coletores: (item.coletores as any)?.[0]?.count || 0
     }));
   }
+
+  // Override do create para incluir tenant_id automaticamente
+  async create(payload: Record<string, any>) {
+    const tenantId = await getCurrentTenantId();
+    
+    const payloadWithTenant = {
+      ...payload,
+      tenant_id: tenantId
+    };
+
+    const { data, error } = await supabase
+      .from('empresas')
+      .insert(payloadWithTenant)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
 }
 export const EmpresaService = new EmpresaServiceClass();
 
 class ColaboradorServiceClass extends BaseService<'colaboradores'> {
   constructor() { super('colaboradores'); }
+
+  async create(payload: Record<string, any>) {
+    const tenantId = await getCurrentTenantId();
+    
+    // Validar empresa_id
+    const empresaIdClean = cleanUuid(payload.empresa_id);
+    if (!empresaIdClean) {
+      throw new Error('Selecione uma empresa válida.');
+    }
+
+    // Limpar campos UUID opcionais
+    const cleanedPayload = {
+      ...payload,
+      empresa_id: empresaIdClean,
+      unidade_id: cleanUuid(payload.unidade_id),
+      tenant_id: tenantId,
+    };
+
+    const { data, error } = await supabase
+      .from('colaboradores')
+      .insert(cleanedPayload)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
 
   async getWithEmpresa(empresaId?: string) {
     let query = supabase
@@ -752,6 +831,17 @@ class TipoServicoOperacionalServiceClass {
   }
 
   async create(payload: Record<string, any>) {
+    // Verificar se nome já existe
+    const { data: existing } = await operationalClient
+      .from('tipos_servico_operacional')
+      .select('id')
+      .ilike('nome', payload.nome)
+      .limit(1);
+    
+    if (existing && existing.length > 0) {
+      throw new Error(`Tipo de serviço "${payload.nome}" já existe.`);
+    }
+
     const { data, error } = await operationalClient
       .from('tipos_servico_operacional')
       .insert(payload)
@@ -796,9 +886,16 @@ class TransportadoraClienteServiceClass {
   }
 
   async create(payload: Record<string, any>) {
+    const tenantId = await getCurrentTenantId();
+    
+    const payloadWithTenant = {
+      ...payload,
+      tenant_id: tenantId
+    };
+
     const { data, error } = await operationalClient
       .from('transportadoras_clientes')
-      .insert(payload)
+      .insert(payloadWithTenant)
       .select()
       .single();
 
@@ -840,9 +937,16 @@ class FornecedorServiceClass {
   }
 
   async create(payload: Record<string, any>) {
+    const tenantId = await getCurrentTenantId();
+    
+    const payloadWithTenant = {
+      ...payload,
+      tenant_id: tenantId
+    };
+
     const { data, error } = await operationalClient
       .from('fornecedores')
-      .insert(payload)
+      .insert(payloadWithTenant)
       .select()
       .single();
 

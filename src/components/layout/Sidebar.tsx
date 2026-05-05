@@ -1,4 +1,4 @@
-import { LayoutDashboard, ClipboardCheck, Users, BarChart3, Settings, FilePlus, ExternalLink, Clock, Shield, Wallet, LogOut, Database, Scale, Banknote, UserCheck } from "lucide-react";
+import { LayoutDashboard, ClipboardCheck, Users, BarChart3, Settings, FilePlus, ExternalLink, Clock, Shield, Wallet, LogOut, Database, Scale, Banknote, UserCheck, Rocket } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -44,6 +44,7 @@ const govItems = [
 ];
 
 const simItems = [
+  { icon: Rocket, label: "Onboarding", to: "/onboarding" },
   { icon: Database, label: "Gerador de Demo", to: "/simulacao/demo" },
 ];
 

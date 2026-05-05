@@ -384,14 +384,18 @@ const LancamentoProducao = () => {
     const touchRef = useRef<{start: number | null; end: number | null}>({start: null, end: null});
 
     const { data: perfil } = useQuery({
-        queryKey: ["perfil_usuario", user?.id],
-        queryFn: () => (user?.id ? PerfilUsuarioService.getByUserId(user.id) : Promise.resolve(null)),
+        queryKey: ["profile_usuario", user?.id],
+        queryFn: async () => {
+            if (!user?.id) return null;
+            const { data } = await supabase.from("profiles").select("role").eq("user_id", user.id).maybeSingle();
+            return data;
+        },
         enabled: !!user?.id,
     });
 
     const gridPresets = useMemo(() => LANCAMENTO_PRESETS.filter((preset) => {
-        const perfilNome = (perfil as any)?.perfis?.nome ?? "";
-        const listaBloqueada = PRESETS_PERMITIDOS_POR_PERFIL[perfilNome] ?? [];
+        const perfilRole = perfil?.role?.toLowerCase() ?? "";
+        const listaBloqueada = PRESETS_PERMITIDOS_POR_PERFIL[perfilRole] ?? [];
         return listaBloqueada.length === 0 || listaBloqueada.includes(preset.id);
     }), [perfil]);
 
@@ -1171,8 +1175,8 @@ const LancamentoProducao = () => {
     const currentEmpresa = (empresas as any[]).find((empresa: any) => empresa.id === form.empresa_id);
     const currentUnidade = (unidadesDb as any[]).find((unidade: any) => unidade.id === form.unidade_id);
     const currentUnitName = currentUnidade?.nome || currentEmpresa?.nome;
-    const perfilNome = (perfil as any)?.perfis?.nome ?? "";
-    const unitLocked = !!perfil?.empresa_id && ["Admin", "RH", "Financeiro"].includes(perfilNome);
+    const perfilRole = perfil?.role?.toLowerCase() ?? "";
+    const unitLocked = false; // perfil não tem mais empresa_id
 
     // --- READINESS GATE ---
     const cadastrosAusentes: string[] = [];
@@ -1313,8 +1317,8 @@ const LancamentoProducao = () => {
                                             {LANCAMENTO_PRESETS.map((preset) => {
                                             const Icon = preset.icon;
                                             const isActive = form.preset_id === preset.id;
-                                            const perfilNome = (perfil as any)?.perfis?.nome ?? "";
-                                            const listaBloqueada = PRESETS_PERMITIDOS_POR_PERFIL[perfilNome] ?? [];
+                                            const perfilRole = perfil?.role?.toLowerCase() ?? "";
+                                            const listaBloqueada = PRESETS_PERMITIDOS_POR_PERFIL[perfilRole] ?? [];
                                             const isBloqueado = listaBloqueada.length > 0 && !listaBloqueada.includes(preset.id);
                                             const rotaEspecifica = PRESET_ROTAS[preset.id];
                                             return (
@@ -1399,7 +1403,7 @@ const LancamentoProducao = () => {
                                                 {gridPresets.map((preset) => {
                                                     const Icon = preset.icon;
                                                     const isActive = form.preset_id === preset.id;
-                                                    const listaBloqueada = PRESETS_PERMITIDOS_POR_PERFIL[(perfil as any)?.perfis?.nome ?? ""] ?? [];
+                                                    const listaBloqueada = PRESETS_PERMITIDOS_POR_PERFIL[perfil?.role?.toLowerCase() ?? ""] ?? [];
                                                     const isBloqueado = listaBloqueada.length > 0 && !listaBloqueada.includes(preset.id);
                                                     const rotaEspecifica = PRESET_ROTAS[preset.id];
                                                     return (

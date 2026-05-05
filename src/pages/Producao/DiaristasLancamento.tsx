@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
 import {
     DiaristaService,
     EmpresaService,
@@ -60,8 +61,12 @@ const DiaristasLancamento = () => {
     const [openHistorico, setOpenHistorico] = useState(false);
 
     const { data: perfil } = useQuery({
-        queryKey: ["perfil_usuario", user?.id],
-        queryFn: () => (user?.id ? PerfilUsuarioService.getByUserId(user.id) : Promise.resolve(null)),
+        queryKey: ["profile_usuario", user?.id],
+        queryFn: async () => {
+            if (!user?.id) return null;
+            const { data } = await supabase.from("profiles").select("full_name").eq("user_id", user.id).maybeSingle();
+            return data;
+        },
         enabled: !!user?.id,
     });
 
@@ -254,7 +259,7 @@ const DiaristasLancamento = () => {
                         <div className="space-y-1.5">
                             <Label>Encarregado responsável</Label>
                             <div className="flex h-10 items-center px-3 border border-border rounded-md bg-muted/50 text-sm font-medium text-muted-foreground truncate">
-                                {perfil?.nome || user?.email || "—"}
+                                {perfil?.full_name || user?.email || "—"}
                             </div>
                         </div>
 

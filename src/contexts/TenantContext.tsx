@@ -39,13 +39,16 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         .eq("user_id", user.id)
         .single();
 
+      console.log("[TenantContext] Profile carregado:", { profile, profileError, userId: user.id });
+      
       if (profileError || !profile?.tenant_id) {
-        console.warn("[TenantContext] Usuário sem tenant vinculado:", user.email);
+        console.warn("[TenantContext] Usuário sem tenant vinculado:", user.email, "Profile:", profile);
         setTenant(null);
         setRole(null);
         return;
       }
 
+      console.log("[TenantContext] Role definido:", profile.role);
       setRole(profile.role ?? null);
 
       const { data: tenantData, error: tenantError } = await supabase

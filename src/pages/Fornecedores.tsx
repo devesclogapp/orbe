@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Plus, Pencil, Trash2, Search } from "lucide-react";
+import { useOnboardingCallback } from "@/hooks/useOnboardingCallback";
 import { FornecedorService, EmpresaService } from "@/services/base.service";
 import {
   Dialog,
@@ -64,6 +66,10 @@ const Fornecedores = () => {
       queryClient.invalidateQueries({ queryKey: ["fornecedores_list"] });
       setOpen(false);
       reset();
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("onboarding_return") === "true") {
+        window.location.href = "/onboarding";
+      }
     },
     onError: (err: any) => {
       toast.error(err?.message || "Erro ao cadastrar");

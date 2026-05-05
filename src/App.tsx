@@ -8,6 +8,7 @@ import { SelectionProvider } from "@/contexts/SelectionContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { TenantProvider } from "@/contexts/TenantContext";
 import { ClientProvider } from "@/contexts/ClientContext";
+import { OnboardingProvider } from "@/contexts/OnboardingContext";
 import { AuthGuard } from "@/components/Auth/AuthGuard";
 import { PortalGuard } from "@/components/Auth/PortalGuard";
 import { AIChat } from "@/components/AIChat";
@@ -81,14 +82,18 @@ import DiaristasLancamento from "./pages/Producao/DiaristasLancamento";
 import RhDiaristasPainel from "./pages/Rh/RhDiaristasPainel";
 import RhDiaristasGestao from "./pages/Rh/RhDiaristasGestao";
 
+// Onboarding
+import Onboarding from "./pages/Onboarding";
+
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
       <TenantProvider>
-      <ClientProvider>
-        <PreferencesProvider>
+        <OnboardingProvider>
+          <ClientProvider>
+            <PreferencesProvider>
           <SelectionProvider>
             <TooltipProvider>
               <Toaster />
@@ -104,6 +109,7 @@ const App = () => (
                   <Route path="/verificar-email" element={<VerificarEmail />} />
 
                   {/* Protected Routes */}
+                  <Route path="/onboarding" element={<AuthGuard><Onboarding /></AuthGuard>} />
                   <Route path="/" element={<AuthGuard><Dashboard /></AuthGuard>} />
                   <Route path="/operacional" element={<Navigate to="/operacional/dashboard" replace />} />
                   <Route path="/operacional/dashboard" element={<AuthGuard><Dashboard /></AuthGuard>} />
@@ -178,8 +184,9 @@ const App = () => (
               </BrowserRouter>
             </TooltipProvider>
           </SelectionProvider>
-        </PreferencesProvider>
-      </ClientProvider>
+          </PreferencesProvider>
+        </ClientProvider>
+        </OnboardingProvider>
       </TenantProvider>
     </AuthProvider>
   </QueryClientProvider>

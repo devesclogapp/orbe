@@ -101,7 +101,7 @@ const PerfisPermissoes = () => {
     };
 
     const togglePermission = (moduloId: string, acaoId: string) => {
-        if (selectedPerfil.nome === "Admin") return;
+        if (selectedPerfil.nome?.toLowerCase() === "admin") return;
         const permKey = `${moduloId}.${acaoId}`;
         const wildcardKey = `${moduloId}.*`;
         let nextPerms = [...currentPerms];
@@ -128,7 +128,7 @@ const PerfisPermissoes = () => {
         mutationSave.mutate({ id: selectedPerfil.id, payload: { permissoes: currentPerms, updated_at: new Date().toISOString() } });
     };
 
-    const isAdmin = selectedPerfil?.nome === "Admin";
+    const isAdmin = selectedPerfil?.nome?.toLowerCase() === "admin";
 
     if (isLoading) return <AppShell title="Perfis"><div className="flex h-64 items-center justify-center animate-pulse text-muted-foreground font-medium">Carregando governança...</div></AppShell>;
 
@@ -153,7 +153,7 @@ const PerfisPermissoes = () => {
                                     )}
                                 >
                                     <div className="min-w-0 pr-2">
-                                        <div className={cn("text-sm font-bold truncate", selectedPerfil?.id === p.id ? "text-primary" : "text-foreground")}>{p.nome} {p.nome === "Admin" && "🔒"}</div>
+                                        <div className={cn("text-sm font-bold truncate", selectedPerfil?.id === p.id ? "text-primary" : "text-foreground")}>{p.nome} {p.nome?.toLowerCase() === "admin" && "🔒"}</div>
                                         <div className="text-[10px] text-muted-foreground truncate font-medium opacity-60">{p.descricao || "Perfil padrão"}</div>
                                     </div>
                                     <ShieldCheck className={cn("h-4 w-4 shrink-0 transition-opacity", selectedPerfil?.id === p.id ? "opacity-100 text-primary" : "opacity-0")} />

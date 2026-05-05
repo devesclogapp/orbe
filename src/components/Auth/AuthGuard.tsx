@@ -24,7 +24,7 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
         return <Navigate to="/login" state={{ from: location }} replace />;
     }
 
-    if (userRole === "Encarregado") {
+    if (userRole?.toLowerCase() === "encarregado") {
         const path = location.pathname;
         if (!path.startsWith("/producao") && !path.startsWith("/operacional")) {
             return <Navigate to="/producao" replace />;
