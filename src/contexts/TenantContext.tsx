@@ -9,8 +9,8 @@ interface Tenant {
 interface TenantContextType {
   tenant: Tenant | null;
   tenantId: string | null;
-  empresaIds: string[] | null;
   loading: boolean;
+  role: string | null;
   isAdmin: boolean;
   setTenant: (tenant: Tenant | null) => void;
   refetchTenant: () => Promise<void>;
@@ -20,41 +20,51 @@ const TenantContext = createContext<TenantContextType | undefined>(undefined);
 
 export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [tenant, setTenant] = useState<Tenant | null>(null);
+  const [role, setRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchTenant = async () => {
     try {
+      setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         setTenant(null);
-        setLoading(false);
+        setRole(null);
         return;
       }
 
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select("id, tenant_id, role, full_name")
+        .select("tenant_id, role")
         .eq("user_id", user.id)
         .single();
 
-      if (!profile?.tenant_id) {
+      if (profileError || !profile?.tenant_id) {
+        console.warn("[TenantContext] Usuário sem tenant vinculado:", user.email);
         setTenant(null);
-        setLoading(false);
+        setRole(null);
         return;
       }
 
-      const { data: tenantData } = await supabase
+      setRole(profile.role ?? null);
+
+      const { data: tenantData, error: tenantError } = await supabase
         .from("tenants")
         .select("id, name")
         .eq("id", profile.tenant_id)
         .single();
 
-      if (tenantData) {
-        setTenant(tenantData);
+      if (tenantError || !tenantData) {
+        console.warn("[TenantContext] Tenant não encontrado:", profile.tenant_id);
+        setTenant(null);
+        return;
       }
+
+      setTenant(tenantData);
     } catch (error) {
-      console.error("Erro ao buscar tenant:", error);
+      console.error("[TenantContext] Erro ao buscar tenant:", error);
       setTenant(null);
+      setRole(null);
     } finally {
       setLoading(false);
     }
@@ -62,17 +72,29 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   useEffect(() => {
     fetchTenant();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        fetchTenant();
+      } else {
+        setTenant(null);
+        setRole(null);
+        setLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const value = useMemo(() => ({
     tenant,
-    tenantId: tenant?.id || null,
-    empresaIds: null,
+    tenantId: tenant?.id ?? null,
     loading,
-    isAdmin: false,
+    role,
+    isAdmin: role === "admin",
     setTenant,
-    refetchTenant: fetchTenant
-  }), [tenant, loading]);
+    refetchTenant: fetchTenant,
+  }), [tenant, loading, role]);
 
   return (
     <TenantContext.Provider value={value}>
@@ -89,11 +111,11 @@ export const useTenant = () => {
   return context;
 };
 
+// Hook legado — mantido por compatibilidade mas simplificado
 export const useTenantFilter = () => {
-  const { tenantId, empresaIds } = useTenant();
-  
+  const { tenantId } = useTenant();
   return useMemo(() => {
     if (!tenantId) return {};
-    return { tenant_id: tenantId, empresa_ids: empresaIds };
-  }, [tenantId, empresaIds]);
+    return { tenant_id: tenantId };
+  }, [tenantId]);
 };

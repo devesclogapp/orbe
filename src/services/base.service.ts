@@ -106,38 +106,30 @@ export class BaseService<T extends Table> {
 class EmpresaServiceClass extends BaseService<'empresas'> {
   constructor() { super('empresas'); }
 
-  async getAll(tenantId?: string | null) {
-    let query = supabase
+  // RLS garante isolamento por tenant_id automaticamente.
+  // Não precisamos passar tenantId como parâmetro — o Supabase filtra pela session.
+  async getAll() {
+    const { data, error } = await supabase
       .from('empresas')
-      .select('*', { count: 'exact' });
-
-    if (tenantId) {
-      query = query.eq('tenant_id', tenantId);
-    }
-
-    const { data, error, count } = await query;
-    console.log('EmpresaService.getAll:', { data, error, count });
+      .select('*')
+      .order('nome', { ascending: true });
     if (error) throw error;
-    return data;
+    return data ?? [];
   }
 
-  async getWithCounts(tenantId?: string | null) {
-    let query = supabase
+  async getWithCounts() {
+    const { data, error } = await supabase
       .from('empresas')
       .select(`
         *,
         colaboradores:colaboradores(count),
         coletores:coletores(count)
-      `);
+      `)
+      .order('nome', { ascending: true });
 
-    if (tenantId) {
-      query = query.eq('tenant_id', tenantId);
-    }
-
-    const { data, error } = await query;
     if (error) throw error;
 
-    return data.map(item => ({
+    return (data ?? []).map(item => ({
       ...item,
       total_colaboradores: (item.colaboradores as any)?.[0]?.count || 0,
       total_coletores: (item.coletores as any)?.[0]?.count || 0

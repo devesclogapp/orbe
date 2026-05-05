@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { EmpresaService } from "@/services/base.service";
+import { useTenant } from "@/contexts/TenantContext";
 import { Button } from "@/components/ui/button";
 import { Plus, Building2, MapPin, Users, Cpu, Loader2, RefreshCw, Pencil, Trash2, AlertTriangle, LayoutGrid, List, Upload } from "lucide-react";
 import { SpreadsheetUploadModal } from "@/components/shared/SpreadsheetUploadModal";
@@ -20,6 +21,7 @@ import { toast } from "sonner";
 
 const Empresas = () => {
   const queryClient = useQueryClient();
+  const { tenantId } = useTenant();
   const [open, setOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -50,16 +52,18 @@ const Empresas = () => {
     setEditingId(null);
   };
 
+  // RLS garante que a query retorna apenas empresas do tenant logado
   const { data: list = [], isLoading, isFetching, isError, error: queryError } = useQuery({
-    queryKey: ["empresas"],
+    queryKey: ["empresas", tenantId],
     queryFn: () => EmpresaService.getWithCounts(),
-    retry: 1
+    retry: 1,
+    enabled: !!tenantId,
   });
 
   const createMutation = useMutation({
     mutationFn: (payload: any) => editingId
       ? EmpresaService.update(editingId, payload)
-      : EmpresaService.create(payload),
+      : EmpresaService.create(payload), // tenant_id populado pelo trigger do banco
     onSuccess: () => {
       toast.success(editingId ? "Empresa atualizada" : "Empresa cadastrada");
       queryClient.invalidateQueries({ queryKey: ["empresas"] });
