@@ -3,6 +3,44 @@ import { Database } from '@/types/database';
 
 type Table = keyof Database['public']['Tables'];
 
+// Função auxiliar para obter filtro de tenant
+export const getTenantQueryFilter = async (table: string) => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return {};
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('tenant_id')
+      .eq('user_id', user.id)
+      .single();
+
+    if (!profile?.tenant_id) return {};
+
+    const TABLES_WITH_EMPRESA_ID = [
+      'operacoes', 'operacoes_producao', 'custos_extras_operacionais',
+      'colaboradores', 'diaristas', 'registros_ponto', 'unidades',
+      'transportadoras_clientes', 'fornecedores', 'produtos_carga'
+    ];
+
+    if (TABLES_WITH_EMPRESA_ID.includes(table)) {
+      const { data: empresas } = await supabase
+        .from('empresas')
+        .select('id')
+        .eq('tenant_id', profile.tenant_id);
+      
+      if (empresas && empresas.length > 0) {
+        return { empresa_id: { in: empresas.map(e => e.id) } };
+      }
+      return { empresa_id: 'eq.none' };
+    }
+
+    return { tenant_id: profile.tenant_id };
+  } catch {
+    return {};
+  }
+};
+
 // SERVIÇO GENÉRICO DE CRUD
 export class BaseService<T extends Table> {
   public supabase = supabase;
@@ -11,7 +49,7 @@ export class BaseService<T extends Table> {
   async getAll() {
     const { data, error } = await supabase.from(this.table).select('*');
     if (error) throw error;
-    return data;
+    return data || [];
   }
 
   async getById(id: string) {
@@ -68,23 +106,35 @@ export class BaseService<T extends Table> {
 class EmpresaServiceClass extends BaseService<'empresas'> {
   constructor() { super('empresas'); }
 
-  async getAll() {
-    const { data, error, count } = await supabase
+  async getAll(tenantId?: string | null) {
+    let query = supabase
       .from('empresas')
       .select('*', { count: 'exact' });
+
+    if (tenantId) {
+      query = query.eq('tenant_id', tenantId);
+    }
+
+    const { data, error, count } = await query;
     console.log('EmpresaService.getAll:', { data, error, count });
     if (error) throw error;
     return data;
   }
 
-  async getWithCounts() {
-    const { data, error } = await supabase
+  async getWithCounts(tenantId?: string | null) {
+    let query = supabase
       .from('empresas')
       .select(`
         *,
         colaboradores:colaboradores(count),
         coletores:coletores(count)
       `);
+
+    if (tenantId) {
+      query = query.eq('tenant_id', tenantId);
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
 
     return data.map(item => ({
@@ -204,17 +254,30 @@ export const ResultadosService = new ResultadosServiceClass();
 class OperacaoServiceClass extends BaseService<'operacoes'> {
   constructor() { super('operacoes'); }
 
-  async getAllPainel(empresaId?: string) {
+  private async getEmpresaIdsFromTenant(tenantId: string | null): Promise<string[] | null> {
+    if (!tenantId) return null;
+    const { data } = await supabase.from('empresas').select('id').eq('tenant_id', tenantId);
+    return data?.map(e => e.id) || null;
+  }
+
+  async getAllPainel(empresaId?: string, tenantId?: string | null) {
+    let empresaIds = empresaId ? [empresaId] : undefined;
+    
+    if (!empresaId && tenantId) {
+      empresaIds = await this.getEmpresaIdsFromTenant(tenantId);
+      if (!empresaIds || empresaIds.length === 0) return [];
+    }
+
     let operacoesQuery = supabase
       .from('operacoes')
       .select('*, colaboradores(nome, cargo, empresas(nome))');
 
-    if (empresaId) {
-      operacoesQuery = operacoesQuery.eq('empresa_id', empresaId);
+    if (empresaIds && empresaIds.length > 0) {
+      operacoesQuery = operacoesQuery.in('empresa_id', empresaIds);
     }
 
     const operacoesLegadasRes = await operacoesQuery;
-    const operacoesProducao = await OperacaoProducaoService.getAll(empresaId).catch(() => []);
+    const operacoesProducao = await OperacaoProducaoService.getAll(empresaId, tenantId).catch(() => []);
 
     if (operacoesLegadasRes.error) throw operacoesLegadasRes.error;
 
@@ -1052,6 +1115,12 @@ class RegraOperacionalServiceClass {
 export const RegraOperacionalService = new RegraOperacionalServiceClass();
 
 class OperacaoProducaoServiceClass {
+  private async getEmpresaIdsFromTenant(tenantId: string | null): Promise<string[] | null> {
+    if (!tenantId) return null;
+    const { data } = await supabase.from('empresas').select('id').eq('tenant_id', tenantId);
+    return data?.map(e => e.id) || null;
+  }
+
   async isAvailable() {
     const { error } = await operationalClient
       .from('operacoes_producao')
@@ -1153,7 +1222,14 @@ class OperacaoProducaoServiceClass {
     return data ?? [];
   }
 
-  async getAll(empresaId?: string, unidadeId?: string | null) {
+  async getAll(empresaId?: string, tenantId?: string | null, unidadeId?: string | null) {
+    let empresaIds = empresaId ? [empresaId] : undefined;
+    
+    if (!empresaId && tenantId) {
+      empresaIds = await this.getEmpresaIdsFromTenant(tenantId);
+      if (!empresaIds || empresaIds.length === 0) return [];
+    }
+
     let query = operationalClient
       .from('operacoes_producao')
       .select(`
@@ -1167,7 +1243,11 @@ class OperacaoProducaoServiceClass {
       `)
       .order('criado_em', { ascending: false });
 
-    if (empresaId) query = query.eq('empresa_id', empresaId);
+    if (empresaIds && empresaIds.length > 0) {
+      query = query.in('empresa_id', empresaIds);
+    } else if (empresaId) {
+      query = query.eq('empresa_id', empresaId);
+    }
     if (unidadeId) query = query.eq('unidade_id', unidadeId);
 
     const { data, error } = await query;
@@ -1253,6 +1333,12 @@ class OperacaoProducaoServiceClass {
 export const OperacaoProducaoService = new OperacaoProducaoServiceClass();
 
 class CustoExtraOperacionalServiceClass {
+  private async getEmpresaIdsFromTenant(tenantId: string | null): Promise<string[] | null> {
+    if (!tenantId) return null;
+    const { data } = await supabase.from('empresas').select('id').eq('tenant_id', tenantId);
+    return data?.map(e => e.id) || null;
+  }
+
   async update(id: string, payload: Record<string, unknown>) {
     const { data, error } = await operationalClient
       .from('custos_extras_operacionais')
@@ -1295,7 +1381,14 @@ class CustoExtraOperacionalServiceClass {
     return data ?? [];
   }
 
-  async getAll(empresaId?: string) {
+  async getAll(empresaId?: string, tenantId?: string | null) {
+    let empresaIds = empresaId ? [empresaId] : undefined;
+    
+    if (!empresaId && tenantId) {
+      empresaIds = await this.getEmpresaIdsFromTenant(tenantId);
+      if (!empresaIds || empresaIds.length === 0) return [];
+    }
+
     let query = operationalClient
       .from('custos_extras_operacionais')
       .select(`
@@ -1305,7 +1398,11 @@ class CustoExtraOperacionalServiceClass {
       .order('data', { ascending: false })
       .order('criado_em', { ascending: false });
 
-    if (empresaId) query = query.eq('empresa_id', empresaId);
+    if (empresaIds && empresaIds.length > 0) {
+      query = query.in('empresa_id', empresaIds);
+    } else if (empresaId) {
+      query = query.eq('empresa_id', empresaId);
+    }
 
     const { data, error } = await query;
     if (error) throw error;

@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { PreferencesProvider } from "@/contexts/PreferencesContext";
 import { SelectionProvider } from "@/contexts/SelectionContext";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { TenantProvider } from "@/contexts/TenantContext";
 import { ClientProvider } from "@/contexts/ClientContext";
 import { AuthGuard } from "@/components/Auth/AuthGuard";
 import { PortalGuard } from "@/components/Auth/PortalGuard";
@@ -85,6 +86,7 @@ const queryClient = new QueryClient();
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
+      <TenantProvider>
       <ClientProvider>
         <PreferencesProvider>
           <SelectionProvider>
@@ -178,6 +180,7 @@ const App = () => (
           </SelectionProvider>
         </PreferencesProvider>
       </ClientProvider>
+      </TenantProvider>
     </AuthProvider>
   </QueryClientProvider>
 );

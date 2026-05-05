@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTenant } from "@/contexts/TenantContext";
 import { addMonths, format, startOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
@@ -131,6 +132,7 @@ const YEAR_OPTIONS = Array.from(
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const { tenantId } = useTenant();
   const [chartType, setChartType] = useState<"line" | "bar">("line");
   const [selectedYear, setSelectedYear] = useState(
     String(new Date().getFullYear()),
@@ -198,8 +200,8 @@ const Dashboard = () => {
     isLoading: isLoadingOperacoes,
     isError: isErrorOperacoes,
   } = useQuery<any[]>({
-    queryKey: ["dashboard-operacoes", "all"],
-    queryFn: () => OperacaoService.getAllPainel(),
+    queryKey: ["dashboard-operacoes", tenantId || "all"],
+    queryFn: () => OperacaoService.getAllPainel(undefined, tenantId),
     retry: 1,
   });
 
@@ -208,8 +210,8 @@ const Dashboard = () => {
     isLoading: isLoadingCustos,
     isError: isErrorCustos,
   } = useQuery<any[]>({
-    queryKey: ["dashboard-custos-extras", "all"],
-    queryFn: () => CustoExtraOperacionalService.getAll(),
+    queryKey: ["dashboard-custos-extras", tenantId || "all"],
+    queryFn: () => CustoExtraOperacionalService.getAll(undefined, tenantId),
     retry: 1,
   });
 
