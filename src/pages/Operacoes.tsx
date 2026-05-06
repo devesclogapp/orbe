@@ -10,6 +10,7 @@ import {
   Building2,
   Calculator,
   Calendar as CalendarIcon,
+  CalendarDays,
   CircleDollarSign,
   ExternalLink,
   FileBadge2,
@@ -739,6 +740,7 @@ const Operacoes = () => {
     let faturamento = 0;
     let caixaReal = 0;
     let exposicao = 0;
+    let faturamentoMensal = 0;
     let volumeTotal = 0;
     let colaboradores = 0;
     let nfComRegistro = 0;
@@ -749,6 +751,13 @@ const Operacoes = () => {
       const quantidade = Number(item.quantidade ?? item.quantidade_label ?? 0);
       const quantidadeColaboradores = Number(item.quantidade_colaboradores ?? 1);
       const statusPagamento = String(item.statusPagamento ?? item.status_pagamento ?? "").toUpperCase();
+      const modalidadeFinanceira = String(
+        item.modalidadeFinanceira ??
+        item.modalidade_financeira ??
+        item.avaliacao_json?.contexto_importacao?.modalidade_financeira_override ??
+        item.regra_financeira?.modalidade_financeira ??
+        ""
+      ).toUpperCase();
       const nfNumero = String(item.nf_numero ?? "").trim().toUpperCase();
 
       faturamento += Number.isFinite(totalLinha) ? totalLinha : 0;
@@ -760,6 +769,7 @@ const Operacoes = () => {
         recebidasCount += 1;
       }
       if (statusPagamento === "PENDENTE" || statusPagamento === "ATRASADO") exposicao += totalLinha;
+      if (modalidadeFinanceira === "FATURAMENTO_MENSAL") faturamentoMensal += totalLinha;
       if (nfNumero && nfNumero !== "NAO" && nfNumero !== "NÃO") nfComRegistro += 1;
     });
 
@@ -769,6 +779,7 @@ const Operacoes = () => {
       faturamento,
       caixaReal,
       exposicao,
+      faturamentoMensal,
       volumeTotal,
       colaboradores,
       operacoesCount,
@@ -1307,20 +1318,20 @@ const Operacoes = () => {
                     iconColor="bg-success-soft text-success-strong"
                   />
                   <TopKpiCard
-                    label="Exposicao (Pen+Atr)"
+                    label="Boleto a Receber"
                     value={formatCurrency(operacoesKpis.exposicao)}
-                    helper="Parcela exposta"
+                    helper="Faturado com compensacao futura"
                     size="small"
                     variant="warning"
                     icon={Scale}
                     iconColor="bg-warning-soft text-warning-strong"
                   />
                   <TopKpiCard
-                    label="Operacoes"
-                    value={formatInteger(operacoesKpis.operacoesCount)}
-                    helper="Qtd. registrada"
+                    label="Faturamento Mensal"
+                    value={formatCurrency(operacoesKpis.faturamentoMensal)}
+                    helper="Compensa no fechamento do mes"
                     size="small"
-                    icon={Receipt}
+                    icon={CalendarDays}
                     iconColor="bg-info-soft text-info-strong"
                   />
                   <TopKpiCard
@@ -1336,7 +1347,7 @@ const Operacoes = () => {
 
               <div className="esc-card p-4 space-y-3">
                 <h3 className="font-display font-medium text-sm text-muted-foreground">Medias e Desempenho</h3>
-                <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
                   <TopKpiCard
                     label="Colaboradores"
                     value={formatInteger(operacoesKpis.colaboradores)}
@@ -1376,6 +1387,14 @@ const Operacoes = () => {
                     variant="muted"
                     icon={CircleDollarSign}
                     iconColor="bg-teal-100 text-teal-700"
+                  />
+                  <TopKpiCard
+                    label="Operacoes"
+                    value={formatInteger(operacoesKpis.operacoesCount)}
+                    size="xs"
+                    variant="muted"
+                    icon={Receipt}
+                    iconColor="bg-blue-100 text-blue-700"
                   />
                 </div>
               </div>

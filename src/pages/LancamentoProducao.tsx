@@ -47,6 +47,8 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
     Table,
     TableBody,
@@ -69,6 +71,7 @@ import {
     OperacaoProducaoService,
     PerfilUsuarioService,
     ProdutoCargaService,
+    RegraOperacionalService,
     TipoServicoOperacionalService,
     TransportadoraClienteService,
     UnidadeOperacionalService,
@@ -141,7 +144,10 @@ const CARGOS_COM_VEICULO = ["Motorista", "Operador de Empilhadeira"];
 const formatCurrency = (value: number) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 
-const REGRA_MENSAGEM_SEM_CADASTRO = "Fornecedor sem valor cadastrado. Solicite ao Admin ou Financeiro o cadastro da regra operacional.";
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, "0"));
+const MINUTE_OPTIONS = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, "0"));
+
+const REGRA_MENSAGEM_SEM_CADASTRO = "Nenhuma regra operacional compatível foi encontrada. Solicite ao Admin ou Financeiro a revisão do cadastro.";
 const REGRA_MENSAGEM_DUPLICADA = "Existem regras duplicadas para esta combinação. Solicite revisão ao Financeiro.";
 const REGRA_MENSAGEM_PRODUTO = "Selecione o produto/carga para localizar a regra operacional.";
 const REGRA_MENSAGEM_ERRO = "Houve um erro na busca da regra operacional. Tente novamente.";
@@ -165,6 +171,132 @@ const getQuantidadeLabel = (tipo: TipoCalculo | null) => {
 };
 
 const getQuantidadePlaceholder = (tipo: TipoCalculo | null) => (tipo === "operation" ? "1" : "0");
+
+const matchesOptionalContext = (ruleValue?: string | null, formValue?: string | null) =>
+    !ruleValue || ruleValue === formValue;
+
+type TimePickerFieldProps = {
+    label: string;
+    value: string;
+    placeholder?: string;
+    onChange: (value: string) => void;
+};
+
+const TimePickerField = ({ label, value, placeholder = "--:--", onChange }: TimePickerFieldProps) => {
+    const [open, setOpen] = useState(false);
+
+    const [hourValue, minuteValue] = value?.includes(":") ? value.split(":") : ["", ""];
+
+    const applyTime = (nextHour: string, nextMinute: string) => {
+        if (!nextHour || !nextMinute) return;
+        onChange(`${nextHour}:${nextMinute}`);
+    };
+
+    const handleHourSelect = (nextHour: string) => {
+        if (minuteValue) {
+            applyTime(nextHour, minuteValue);
+            return;
+        }
+        onChange(`${nextHour}:00`);
+    };
+
+    const handleMinuteSelect = (nextMinute: string) => {
+        if (hourValue) {
+            applyTime(hourValue, nextMinute);
+            setOpen(false);
+            return;
+        }
+        onChange(`00:${nextMinute}`);
+        setOpen(false);
+    };
+
+    const handleNow = () => {
+        const now = new Date();
+        const nextValue = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+        onChange(nextValue);
+        setOpen(false);
+    };
+
+    return (
+        <div className="space-y-1.5">
+            <Label className="flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5" />
+                {label}
+            </Label>
+            <Popover open={open} onOpenChange={setOpen}>
+                <PopoverTrigger asChild>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        className="h-11 w-full rounded-xl justify-between px-3 font-mono text-base"
+                    >
+                        <span className={cn(!value && "text-muted-foreground")}>{value || placeholder}</span>
+                        <Clock className="w-4 h-4 text-muted-foreground" />
+                    </Button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-[280px] rounded-2xl p-0 overflow-hidden">
+                    <div className="border-b px-4 py-3">
+                        <p className="text-sm font-semibold text-foreground">{label}</p>
+                        <p className="text-xs text-muted-foreground">Escolha a hora e os minutos do ponto.</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-0">
+                        <div className="border-r">
+                            <div className="px-4 py-2 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
+                                Hora
+                            </div>
+                            <ScrollArea className="h-56">
+                                <div className="p-2 space-y-1">
+                                    {HOUR_OPTIONS.map((hour) => (
+                                        <Button
+                                            key={hour}
+                                            type="button"
+                                            variant={hourValue === hour ? "default" : "ghost"}
+                                            className="w-full justify-center rounded-lg font-mono"
+                                            onClick={() => handleHourSelect(hour)}
+                                        >
+                                            {hour}
+                                        </Button>
+                                    ))}
+                                </div>
+                            </ScrollArea>
+                        </div>
+
+                        <div>
+                            <div className="px-4 py-2 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
+                                Minuto
+                            </div>
+                            <ScrollArea className="h-56">
+                                <div className="p-2 space-y-1">
+                                    {MINUTE_OPTIONS.map((minute) => (
+                                        <Button
+                                            key={minute}
+                                            type="button"
+                                            variant={minuteValue === minute ? "default" : "ghost"}
+                                            className="w-full justify-center rounded-lg font-mono"
+                                            onClick={() => handleMinuteSelect(minute)}
+                                        >
+                                            {minute}
+                                        </Button>
+                                    ))}
+                                </div>
+                            </ScrollArea>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 border-t p-3">
+                        <Button type="button" variant="ghost" size="sm" onClick={() => onChange("")}>
+                            Limpar
+                        </Button>
+                        <Button type="button" variant="outline" size="sm" onClick={handleNow}>
+                            Agora
+                        </Button>
+                    </div>
+                </PopoverContent>
+            </Popover>
+        </div>
+    );
+};
 
 const getUnidadeRegraLabel = (tipo: TipoCalculo | null) => {
     if (tipo === "daily") return "diária";
@@ -446,13 +578,13 @@ const LancamentoProducao = () => {
         enabled: schemaDisponivel,
     });
 
-    const { data: transportadorasDb = [], isLoading: isLoadingTransp } = useQuery({
+    const { data: transportadorasDb = [] } = useQuery({
         queryKey: ["transportadoras_clientes", form.empresa_id],
         queryFn: () => TransportadoraClienteService.getByEmpresa(form.empresa_id),
         enabled: !!form.empresa_id && schemaDisponivel,
     });
 
-    const { data: fornecedoresDb = [], isLoading: isLoadingForn } = useQuery({
+    const { data: fornecedoresDb = [] } = useQuery({
         queryKey: ["fornecedores_operacionais", form.empresa_id],
         queryFn: () => FornecedorService.getByEmpresa(form.empresa_id),
         enabled: !!form.empresa_id && schemaDisponivel,
@@ -656,7 +788,7 @@ const LancamentoProducao = () => {
         buscarRegraFinanceira();
     }, [form.modalidade_financeira, form.forma_pagamento]);
 
-    const regraLookupHabilitada = !!form.empresa_id && !!form.data && !!form.tipo_servico && !!form.transportadora;
+    const regraLookupHabilitada = !!form.empresa_id && !!form.data && !!form.tipo_servico;
 
     const {
         data: regraValorRpc = null,
@@ -678,6 +810,12 @@ const LancamentoProducao = () => {
         },
         enabled: schemaDisponivel && regraLookupHabilitada,
         retry: false,
+    });
+
+    const { data: regrasOperacionaisDiagnostico = [] } = useQuery({
+        queryKey: ["regras_operacionais_diagnostico_encarregado", form.empresa_id],
+        queryFn: () => RegraOperacionalService.getAll(form.empresa_id),
+        enabled: schemaDisponivel && !!form.empresa_id,
     });
 
     // Lookup separado para ISS (regra global ou por empresa/serviço)
@@ -706,15 +844,52 @@ const LancamentoProducao = () => {
     }, [regraValorRpc]);
 
     const ruleLookupState = useMemo<RuleLookupState>(() => {
-        if (!form.transportadora) return "idle";
+        if (!regraLookupHabilitada) return "idle";
         if (isBuscandoRegra) return "loading";
         if (erroRegraLookup) return "error";
         const statusRegra = regraValorRpc?.status_regra as RuleLookupState | undefined;
         if (statusRegra) return statusRegra;
         return regraValorRpc?.regra_encontrada ? "found" : "missing";
-    }, [erroRegraLookup, form.transportadora, isBuscandoRegra, regraValor, regraValorRpc]);
+    }, [erroRegraLookup, isBuscandoRegra, regraLookupHabilitada, regraValorRpc]);
 
     const requiresProductSelection = Boolean(regraValorRpc?.produto_obrigatorio);
+    const hasInactiveCompatibleRule = useMemo(() => {
+        if (!regraLookupHabilitada || ruleLookupState !== "missing") return false;
+
+        const operationDate = form.data ? new Date(`${form.data}T12:00:00`) : null;
+        if (!operationDate) return false;
+
+        return (regrasOperacionaisDiagnostico as any[]).some((rule: any) => {
+            if (rule?.ativo === true) return false;
+
+            const startsAt = rule?.vigencia_inicio ? new Date(`${rule.vigencia_inicio}T00:00:00`) : null;
+            const endsAt = rule?.vigencia_fim ? new Date(`${rule.vigencia_fim}T23:59:59`) : null;
+            const withinDateRange =
+                (!startsAt || startsAt <= operationDate) &&
+                (!endsAt || endsAt >= operationDate);
+
+            return (
+                withinDateRange &&
+                matchesOptionalContext(rule?.empresa_id, form.empresa_id) &&
+                matchesOptionalContext(rule?.unidade_id, form.unidade_id || null) &&
+                matchesOptionalContext(rule?.tipo_servico_id, form.tipo_servico) &&
+                matchesOptionalContext(rule?.fornecedor_id, form.fornecedor || null) &&
+                matchesOptionalContext(rule?.transportadora_id, form.transportadora || null) &&
+                matchesOptionalContext(rule?.produto_carga_id, form.produto || null)
+            );
+        });
+    }, [
+        form.data,
+        form.empresa_id,
+        form.fornecedor,
+        form.produto,
+        form.tipo_servico,
+        form.transportadora,
+        form.unidade_id,
+        regraLookupHabilitada,
+        regrasOperacionaisDiagnostico,
+        ruleLookupState,
+    ]);
 
     useEffect(() => {
         setForm((prev) => ({
@@ -798,12 +973,15 @@ const LancamentoProducao = () => {
         if (ruleLookupState === "needs_product") return REGRA_MENSAGEM_PRODUTO;
         if (ruleLookupState === "error") return REGRA_MENSAGEM_ERRO;
         if (ruleLookupState === "missing") {
+            if (hasInactiveCompatibleRule) {
+                return "Existe uma regra operacional compatível para este contexto, mas ela está inativa. Solicite ao Admin ou Financeiro a reativação ou revisão do cadastro.";
+            }
             return regraValorRpc?.mensagem_bloqueio
                 ? String(regraValorRpc.mensagem_bloqueio)
                 : REGRA_MENSAGEM_SEM_CADASTRO;
         }
         return "";
-    }, [regraValorRpc, ruleLookupState]);
+    }, [hasInactiveCompatibleRule, regraValorRpc, ruleLookupState]);
 
     const etapaUmBlockReasonResolvido = useMemo(() => {
         if (!form.tipo_lancamento) return "Selecione o tipo de lancamento.";
@@ -818,8 +996,6 @@ const LancamentoProducao = () => {
 
         if (isTransbordoServicoExtra && !form.descricao_servico.trim()) return "Informe a descrição do serviço conforme a aba de transbordo.";
         if (isQualquerCusto && !form.descricao_servico.trim()) return "Informe a descrição do custo ou motivo do diária.";
-
-        if (!isQualquerCusto && !form.transportadora) return "Selecione a transportadora ou cliente.";
 
         if (horarioInvalido) return "O horário de saída não pode ser menor que o horário de entrada.";
         if (isDataRetroativa && !form.justificativa_data.trim()) return "Informe a justificativa para lançar uma data retroativa.";
@@ -849,7 +1025,6 @@ const LancamentoProducao = () => {
                     return `Para ${isTransbordoServicoExtra ? 'transbordo' : 'lançamento'} sem regra sistêmica, informe o valor unitário manualmente.`;
                 }
             } else {
-                if (!form.fornecedor) return "Selecione o fornecedor ou corrija a regra operacional.";
                 if (ruleLookupState === "duplicate" || ruleLookupState === "needs_product" || ruleLookupState === "error" || ruleLookupState === "missing") {
                     return mensagemRegra;
                 }
@@ -1201,8 +1376,6 @@ const LancamentoProducao = () => {
     const cadastrosAusentes: string[] = [];
     if ((empresas as any[]).length === 0) cadastrosAusentes.push("Empresas");
     if (schemaDisponivel && tipoServicoOptions.length === 0 && !isLoadingTipos) cadastrosAusentes.push("Tipos de Serviço");
-    if (schemaDisponivel && form.empresa_id && transportadorasDisponiveis.length === 0 && !isLoadingTransp) cadastrosAusentes.push("Transportadoras / Clientes");
-    if (schemaDisponivel && form.empresa_id && fornecedoresDisponiveis.length === 0 && !isLoadingForn) cadastrosAusentes.push("Fornecedores");
     if (schemaDisponivel && formaPagamentoOptions.length === 0 && !isLoadingFormas) cadastrosAusentes.push("Formas de Pagamento");
     if (form.empresa_id && colaboradoresFiltrados.length === 0) cadastrosAusentes.push("Colaboradores (Intermitente/Produção)");
 
@@ -1659,30 +1832,16 @@ const LancamentoProducao = () => {
 
                                     {(!isTransbordoServicoExtra && !isQualquerCusto) && (
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <div className="space-y-1.5">
-                                                <Label className="flex items-center gap-1.5">
-                                                    <Clock className="w-3.5 h-3.5" />
-                                                    Entrada (ponto)
-                                                </Label>
-                                                <Input
-                                                    type="time"
-                                                    value={form.horario_inicio}
-                                                    onChange={(e) => setForm((prev) => ({ ...prev, horario_inicio: e.target.value }))}
-                                                    className="h-11 rounded-xl"
-                                                />
-                                            </div>
-                                            <div className="space-y-1.5">
-                                                <Label className="flex items-center gap-1.5">
-                                                    <Clock className="w-3.5 h-3.5" />
-                                                    Saída (ponto)
-                                                </Label>
-                                                <Input
-                                                    type="time"
-                                                    value={form.horario_fim}
-                                                    onChange={(e) => setForm((prev) => ({ ...prev, horario_fim: e.target.value }))}
-                                                    className="h-11 rounded-xl"
-                                                />
-                                            </div>
+                                            <TimePickerField
+                                                label="Entrada (ponto)"
+                                                value={form.horario_inicio}
+                                                onChange={(value) => setForm((prev) => ({ ...prev, horario_inicio: value }))}
+                                            />
+                                            <TimePickerField
+                                                label="Saída (ponto)"
+                                                value={form.horario_fim}
+                                                onChange={(value) => setForm((prev) => ({ ...prev, horario_fim: value }))}
+                                            />
                                         </div>
                                     )}
 
@@ -1690,7 +1849,7 @@ const LancamentoProducao = () => {
                                         <div className="space-y-1.5">
                                             <Label className="flex items-center gap-1.5">
                                                 <Truck className="w-3.5 h-3.5" />
-                                                Transportadora / Cliente <span className="text-destructive">*</span>
+                                                Transportadora / Cliente
                                             </Label>
                                             <Select
                                                 value={form.transportadora}
@@ -1708,7 +1867,7 @@ const LancamentoProducao = () => {
                                                 disabled={!form.tipo_servico}
                                             >
                                                 <SelectTrigger className="h-11 rounded-xl">
-                                                    <SelectValue placeholder={!form.tipo_servico ? "Selecione o tipo de serviço antes" : "Selecione a transportadora"} />
+                                                    <SelectValue placeholder={!form.tipo_servico ? "Selecione o tipo de serviço antes" : "Selecione, se aplicável"} />
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                     {transportadorasDisponiveis.map((transportadora) => (
@@ -1718,6 +1877,9 @@ const LancamentoProducao = () => {
                                                     ))}
                                                 </SelectContent>
                                             </Select>
+                                            <p className="text-[11px] text-muted-foreground">
+                                                Preencha quando a regra operacional depender de transportadora ou cliente.
+                                            </p>
                                         </div>
                                     )}
 
@@ -1737,7 +1899,7 @@ const LancamentoProducao = () => {
                                                 <div className="space-y-1.5">
                                                     <Label className="flex items-center gap-1.5">
                                                         <Package className="w-3.5 h-3.5" />
-                                                        Fornecedor <span className="text-destructive">*</span>
+                                                        Fornecedor
                                                     </Label>
                                                     <Select
                                                         value={form.fornecedor}
@@ -1750,16 +1912,14 @@ const LancamentoProducao = () => {
                                                                 quantidade_colaboradores: "1",
                                                             }))
                                                         }
-                                                        disabled={!form.tipo_servico || !form.transportadora}
+                                                        disabled={!form.tipo_servico}
                                                     >
                                                         <SelectTrigger className="h-11 rounded-xl">
                                                             <SelectValue
                                                                 placeholder={
                                                                     !form.tipo_servico
                                                                         ? "Selecione o tipo antes"
-                                                                        : !form.transportadora
-                                                                            ? "Selecione a transportadora antes"
-                                                                            : "Selecione o fornecedor"
+                                                                        : "Selecione, se aplicável"
                                                                 }
                                                             />
                                                         </SelectTrigger>
@@ -1771,6 +1931,9 @@ const LancamentoProducao = () => {
                                                             ))}
                                                         </SelectContent>
                                                     </Select>
+                                                    <p className="text-[11px] text-muted-foreground">
+                                                        Preencha quando a regra operacional depender de fornecedor.
+                                                    </p>
                                                 </div>
 
                                                 <div className="space-y-1.5">
@@ -1961,7 +2124,9 @@ const LancamentoProducao = () => {
                                                         : hasRegraFinanceira
                                                             ? `${formatCurrency(valorUnitario)} por ${getUnidadeRegraLabel(tipoCalculoAtual)}`
                                                             : ruleLookupState === "missing" || ruleLookupState === "duplicate" || ruleLookupState === "needs_product" || ruleLookupState === "error"
-                                                                ? "Fornecedor sem valor cadastrado"
+                                                                ? hasInactiveCompatibleRule
+                                                                    ? "Regra compatível inativa"
+                                                                    : "Nenhuma regra operacional compatível"
                                                                 : "Aguardando regra"
                                                 }
                                                 readOnly
@@ -1975,7 +2140,7 @@ const LancamentoProducao = () => {
                                         )}
                                     </div>
 
-                                    {!!mensagemRegra && form.transportadora && ruleLookupState !== "loading" && !isTransbordoServicoExtra && (
+                                    {!!mensagemRegra && regraLookupHabilitada && ruleLookupState !== "loading" && !isTransbordoServicoExtra && (
                                         <div className="esc-card p-4 border-l-4 border-l-red-500 bg-red-500/5 text-sm font-medium text-red-800 dark:text-red-400">
                                             {mensagemRegra}
                                         </div>

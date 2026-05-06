@@ -1344,16 +1344,18 @@ class RegraOperacionalServiceClass {
 
     // Helper para adicionar campo UUID apenas se válido
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const tryAddUuid = (fieldName: string, obj: any, target: any) => {
+    const applyNullableUuid = (fieldName: string, obj: any, target: any) => {
+      if (!(fieldName in obj)) return;
+
       const val = obj[fieldName];
-      if (val !== undefined && val != null) {
-        const strVal = String(val).trim();
-        if (strVal !== '') {
-          const cleaned = cleanUuid(strVal);
-          if (cleaned) {
-            target[fieldName] = cleaned;
-          }
-        }
+      if (val == null || String(val).trim() === '') {
+        target[fieldName] = null;
+        return;
+      }
+
+      const cleaned = cleanUuid(String(val).trim());
+      if (cleaned) {
+        target[fieldName] = cleaned;
       }
     };
 
@@ -1365,7 +1367,7 @@ class RegraOperacionalServiceClass {
     const payloadCleaned: Record<string, unknown> = {};
     
     for (const field of uuidFields) {
-      tryAddUuid(field, payload, payloadCleaned);
+      applyNullableUuid(field, payload, payloadCleaned);
     }
     
     // Copiar campos não-UUID

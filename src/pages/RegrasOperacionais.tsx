@@ -5,6 +5,7 @@ import {
   Ban,
   Check,
   ChevronsUpDown,
+  Copy,
   Pencil,
   Plus,
   Save,
@@ -165,13 +166,29 @@ const formatDate = (value?: string | null) => {
   return `${day}/${month}/${year}`;
 };
 
+const addDaysToIsoDate = (value?: string | null, days = 1) => {
+  const baseDate = value ? new Date(`${value}T12:00:00`) : new Date();
+  baseDate.setDate(baseDate.getDate() + days);
+  return baseDate.toISOString().slice(0, 10);
+};
+
 const getTipoCalculoLabel = (tipo?: string | null) =>
   TIPOS_CALCULO.find((item) => item.value === tipo)?.label ?? "Não definido";
 
 const normalizeOptionalId = (value: string) => (value && value.trim() ? value : null);
 
 type RuleContextProfile = {
-  mode: "default" | "descarga_volume" | "global" | "iss_global";
+  mode:
+    | "default"
+    | "empresa_only"
+    | "fornecedor_only"
+    | "transportadora_only"
+    | "empresa_transportadora"
+    | "fornecedor_transportadora"
+    | "empresa_fornecedor_transportadora"
+    | "descarga_volume"
+    | "global"
+    | "iss_global";
   title: string;
   description: string;
   requireEmpresa: boolean;
@@ -181,17 +198,52 @@ type RuleContextProfile = {
   requireFornecedor: boolean;
 };
 
+type RuleBindingMode =
+  | "empresa_fornecedor"
+  | "empresa"
+  | "fornecedor"
+  | "transportadora"
+  | "empresa_transportadora"
+  | "fornecedor_transportadora"
+  | "empresa_fornecedor_transportadora";
+
+const getBindingRequirements = (bindingMode: RuleBindingMode) => ({
+  requireEmpresa: bindingMode.includes("empresa"),
+  requireFornecedor: bindingMode.includes("fornecedor"),
+  requireTransportadora: bindingMode.includes("transportadora"),
+});
+
+const getInitialBindingMode = (item?: {
+  empresa_id?: string | null;
+  fornecedor_id?: string | null;
+  transportadora_id?: string | null;
+  produto_carga_id?: string | null;
+} | null): RuleBindingMode => {
+  if (!item) return "empresa_fornecedor";
+  if (item.empresa_id && item.fornecedor_id && item.transportadora_id) return "empresa_fornecedor_transportadora";
+  if (item.empresa_id && item.transportadora_id) return "empresa_transportadora";
+  if (item.fornecedor_id && item.transportadora_id) return "fornecedor_transportadora";
+  if (item.transportadora_id) return "transportadora";
+  if (item.empresa_id && !item.fornecedor_id) return "empresa";
+  if (!item.empresa_id && item.fornecedor_id) return "fornecedor";
+  return "empresa_fornecedor";
+};
+
 const getRuleContextProfile = ({
   applyGlobally,
   issRuleSelected,
   tipoServicoNome,
   tipoCalculo,
+  bindingMode,
 }: {
   applyGlobally: boolean;
   issRuleSelected: boolean;
   tipoServicoNome?: string | null;
   tipoCalculo?: string | null;
+  bindingMode: RuleBindingMode;
 }): RuleContextProfile => {
+  const requirements = getBindingRequirements(bindingMode);
+
   if (issRuleSelected) {
     return {
       mode: "iss_global",
@@ -225,16 +277,110 @@ const getRuleContextProfile = ({
   const isVolume = tipoCalculo === "volume";
 
   if (isDescarga && isVolume) {
+    const modeMap: Record<RuleBindingMode, RuleContextProfile["mode"]> = {
+      empresa_fornecedor: "descarga_volume",
+      empresa: "descarga_volume",
+      fornecedor: "descarga_volume",
+      transportadora: "descarga_volume",
+      empresa_transportadora: "descarga_volume",
+      fornecedor_transportadora: "descarga_volume",
+      empresa_fornecedor_transportadora: "descarga_volume",
+    };
+
     return {
-      mode: "descarga_volume",
+      mode: modeMap[bindingMode],
       title: "Regra por transportadora",
       description:
-        "Para descarga por volume, a transportadora passa a ser o principal identificador. Empresa e fornecedor ficam opcionais.",
+        "Para descarga por volume, a transportadora passa a ser o principal identificador. Os demais vinculos seguem a combinacao escolhida acima.",
+      requireEmpresa: requirements.requireEmpresa,
+      requireTipoServico: true,
+      requireTipoCalculo: true,
+      requireTransportadora: true,
+      requireFornecedor: requirements.requireFornecedor,
+    };
+  }
+
+  if (bindingMode === "empresa") {
+    return {
+      mode: "empresa_only",
+      title: "Regra por empresa",
+      description:
+        "Essa regra fica vinculada principalmente a empresa e ao tipo de servico. O fornecedor passa a ser opcional.",
+      requireEmpresa: true,
+      requireTipoServico: true,
+      requireTipoCalculo: true,
+      requireTransportadora: false,
+      requireFornecedor: false,
+    };
+  }
+
+  if (bindingMode === "fornecedor") {
+    return {
+      mode: "fornecedor_only",
+      title: "Regra por fornecedor",
+      description:
+        "Essa regra fica vinculada principalmente ao fornecedor e ao tipo de servico. A empresa passa a ser opcional.",
+      requireEmpresa: false,
+      requireTipoServico: true,
+      requireTipoCalculo: true,
+      requireTransportadora: false,
+      requireFornecedor: true,
+    };
+  }
+
+  if (bindingMode === "transportadora") {
+    return {
+      mode: "transportadora_only",
+      title: "Regra por transportadora",
+      description:
+        "Essa regra fica vinculada principalmente a transportadora e ao tipo de servico.",
       requireEmpresa: false,
       requireTipoServico: true,
       requireTipoCalculo: true,
       requireTransportadora: true,
       requireFornecedor: false,
+    };
+  }
+
+  if (bindingMode === "empresa_transportadora") {
+    return {
+      mode: "empresa_transportadora",
+      title: "Regra por empresa e transportadora",
+      description:
+        "Essa regra fica vinculada em conjunto a empresa, a transportadora e ao tipo de servico.",
+      requireEmpresa: true,
+      requireTipoServico: true,
+      requireTipoCalculo: true,
+      requireTransportadora: true,
+      requireFornecedor: false,
+    };
+  }
+
+  if (bindingMode === "fornecedor_transportadora") {
+    return {
+      mode: "fornecedor_transportadora",
+      title: "Regra por fornecedor e transportadora",
+      description:
+        "Essa regra fica vinculada em conjunto ao fornecedor, a transportadora e ao tipo de servico.",
+      requireEmpresa: false,
+      requireTipoServico: true,
+      requireTipoCalculo: true,
+      requireTransportadora: true,
+      requireFornecedor: true,
+    };
+  }
+
+  if (bindingMode === "empresa_fornecedor_transportadora") {
+    return {
+      mode: "empresa_fornecedor_transportadora",
+      title: "Regra por empresa, fornecedor e transportadora",
+      description:
+        "Essa regra fica vinculada em conjunto a empresa, ao fornecedor, a transportadora e ao tipo de servico.",
+      requireEmpresa: true,
+      requireTipoServico: true,
+      requireTipoCalculo: true,
+      requireTransportadora: true,
+      requireFornecedor: true,
     };
   }
 
@@ -472,10 +618,12 @@ const RegrasOperacionais = () => {
   const [search, setSearch] = useState("");
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [applyGlobally, setApplyGlobally] = useState(false);
+  const [bindingMode, setBindingMode] = useState<RuleBindingMode>("empresa_fornecedor");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [quickCreate, setQuickCreate] = useState<QuickCreateState>(null);
   const [ruleToDelete, setRuleToDelete] = useState<any | null>(null);
+  const [recentDuplicatedRuleId, setRecentDuplicatedRuleId] = useState<string | null>(null);
   const [transportadoraDraft, setTransportadoraDraft] = useState({
     nome: "",
     tipo_cadastro: "transportadora",
@@ -523,6 +671,7 @@ const RegrasOperacionais = () => {
 
   useEffect(() => {
     if (applyGlobally) return;
+    if (!getBindingRequirements(bindingMode).requireEmpresa) return;
     if (form.empresa_id) return;
     if (perfil?.empresa_id) {
       setForm((prev) => ({ ...prev, empresa_id: perfil.empresa_id }));
@@ -531,7 +680,7 @@ const RegrasOperacionais = () => {
     if ((empresas as any[]).length > 0) {
       setForm((prev) => ({ ...prev, empresa_id: (empresas as any[])[0].id }));
     }
-  }, [applyGlobally, empresas, form.empresa_id, perfil]);
+  }, [applyGlobally, bindingMode, empresas, form.empresa_id, perfil]);
 
   const { data: tiposServico = [] } = useQuery({
     queryKey: ["tipos_servico_operacional_regras"],
@@ -611,9 +760,7 @@ const RegrasOperacionais = () => {
       });
     });
 
-    if (!term) return dedupedRules;
-
-    return dedupedRules.filter((item) =>
+    const filtered = !term ? dedupedRules : dedupedRules.filter((item) =>
       [
         item.empresas?.nome,
         item.tipos_servico_operacional?.nome,
@@ -627,7 +774,15 @@ const RegrasOperacionais = () => {
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(term)),
     );
-  }, [regras, search, tiposRegra]);
+
+    if (!recentDuplicatedRuleId) return filtered;
+
+    return [...filtered].sort((a, b) => {
+      if (a.id === recentDuplicatedRuleId) return -1;
+      if (b.id === recentDuplicatedRuleId) return 1;
+      return 0;
+    });
+  }, [recentDuplicatedRuleId, regras, search, tiposRegra]);
 
   const tipoServicoItems = (tiposServico as any[]).map((item) => ({ ...item, nome: item.nome })) as LookupItem[];
   const transportadoraItems = (transportadoras as any[]).map((item) => ({ ...item, nome: item.nome })) as LookupItem[];
@@ -653,9 +808,14 @@ const RegrasOperacionais = () => {
         issRuleSelected,
         tipoServicoNome: tipoServicoSelecionado?.nome,
         tipoCalculo: form.tipo_calculo,
+        bindingMode,
       }),
-    [applyGlobally, form.tipo_calculo, issRuleSelected, tipoServicoSelecionado],
+    [applyGlobally, bindingMode, form.tipo_calculo, issRuleSelected, tipoServicoSelecionado],
   );
+  const ruleContextDescription =
+    ruleContext.mode === "default"
+      ? "Neste tipo de cadastro, a regra fica vinculada em conjunto a empresa, ao tipo de servico e ao fornecedor."
+      : ruleContext.description;
 
   const similarTiposServico = useMemo(
     () => getSimilarItems(tipoServicoItems, tipoServicoDraft.nome),
@@ -681,6 +841,7 @@ const RegrasOperacionais = () => {
   const resetForm = () => {
     setEditingId(null);
     setApplyGlobally(false);
+    setBindingMode("empresa_fornecedor");
     setForm((prev) => ({
       ...EMPTY_FORM,
       empresa_id: perfil?.empresa_id ?? prev.empresa_id,
@@ -702,6 +863,19 @@ const RegrasOperacionais = () => {
       produto_carga_id: "",
     }));
   }, [editingId, issRuleSelected]);
+
+  useEffect(() => {
+    if (applyGlobally || issRuleSelected) return;
+
+    const requirements = getBindingRequirements(bindingMode);
+    setForm((prev) => ({
+      ...prev,
+      empresa_id: requirements.requireEmpresa ? prev.empresa_id : "",
+      fornecedor_id: requirements.requireFornecedor ? prev.fornecedor_id : "",
+      transportadora_id: requirements.requireTransportadora ? prev.transportadora_id : "",
+      produto_carga_id: requirements.requireFornecedor ? prev.produto_carga_id : "",
+    }));
+  }, [applyGlobally, bindingMode, issRuleSelected]);
 
   const validateStep = (step: number) => {
     if (step === 1) {
@@ -914,14 +1088,33 @@ const RegrasOperacionais = () => {
         };
       }
 
+      const bindingRequirements = getBindingRequirements(bindingMode);
+      const empresaId =
+        issRuleSelected || !bindingRequirements.requireEmpresa
+          ? null
+          : normalizeOptionalId(form.empresa_id);
+      const tipoServicoId = issRuleSelected ? null : normalizeOptionalId(form.tipo_servico_id);
+      const fornecedorId =
+        issRuleSelected || !bindingRequirements.requireFornecedor
+          ? null
+          : normalizeOptionalId(form.fornecedor_id);
+      const transportadoraId =
+        issRuleSelected || !bindingRequirements.requireTransportadora
+          ? null
+          : normalizeOptionalId(form.transportadora_id);
+      const produtoCargaId =
+        issRuleSelected || !bindingRequirements.requireFornecedor
+          ? null
+          : normalizeOptionalId(form.produto_carga_id);
+
       const hasConflict =
         form.status === "ativo"
           ? await RegraOperacionalService.hasActiveConflict({
-            empresaId: issRuleSelected ? null : normalizeOptionalId(form.empresa_id),
-            tipoServicoId: issRuleSelected ? null : normalizeOptionalId(form.tipo_servico_id),
-            fornecedorId: issRuleSelected ? null : normalizeOptionalId(form.fornecedor_id),
-            transportadoraId: issRuleSelected ? null : normalizeOptionalId(form.transportadora_id),
-            produtoCargaId: issRuleSelected ? null : normalizeOptionalId(form.produto_carga_id),
+            empresaId,
+            tipoServicoId,
+            fornecedorId,
+            transportadoraId,
+            produtoCargaId,
             tipoRegraId: form.tipo_regra_id,
             tipoCalculo: form.tipo_calculo,
             vigenciaInicio: form.vigencia_inicio,
@@ -935,12 +1128,12 @@ const RegrasOperacionais = () => {
       }
 
       const payload = {
-        empresa_id: issRuleSelected ? null : normalizeOptionalId(form.empresa_id),
+        empresa_id: empresaId,
         unidade_id: null,
-        tipo_servico_id: issRuleSelected ? null : normalizeOptionalId(form.tipo_servico_id),
-        fornecedor_id: issRuleSelected ? null : normalizeOptionalId(form.fornecedor_id),
-        transportadora_id: issRuleSelected ? null : normalizeOptionalId(form.transportadora_id),
-        produto_carga_id: issRuleSelected ? null : normalizeOptionalId(form.produto_carga_id),
+        tipo_servico_id: tipoServicoId,
+        fornecedor_id: fornecedorId,
+        transportadora_id: transportadoraId,
+        produto_carga_id: produtoCargaId,
         tipo_regra_id: form.tipo_regra_id,
         tipo_calculo: form.tipo_calculo,
         valor_unitario: Number(form.valor_unitario.replace(",", ".")),
@@ -1047,22 +1240,29 @@ const RegrasOperacionais = () => {
   const quickCreateMutation = useMutation({
     mutationFn: async () => {
       if (!quickCreate) throw new Error("Cadastro rápido indisponível.");
+      const bindingRequirements = getBindingRequirements(bindingMode);
 
       if (quickCreate.type === "transportadora") {
-        if (!form.empresa_id) throw new Error("Selecione a empresa antes de cadastrar a transportadora.");
+        if (bindingRequirements.requireEmpresa && !form.empresa_id) {
+          throw new Error("Selecione a empresa antes de cadastrar a transportadora.");
+        }
         if (!transportadoraDraft.nome.trim()) throw new Error("Informe o nome da transportadora ou cliente.");
 
         const duplicate = transportadoraItems.find(
           (item) => normalizeText(item.nome) === normalizeText(transportadoraDraft.nome),
         );
         if (duplicate) {
-          throw new Error("Já existe uma transportadora ou cliente com nome equivalente para esta empresa.");
+          throw new Error(
+            bindingRequirements.requireEmpresa
+              ? "Já existe uma transportadora ou cliente com nome equivalente para esta empresa."
+              : "Já existe uma transportadora ou cliente com nome equivalente neste escopo.",
+          );
         }
 
         return {
           type: quickCreate.type,
           data: await TransportadoraClienteService.create({
-            empresa_id: form.empresa_id,
+            empresa_id: bindingRequirements.requireEmpresa ? form.empresa_id : null,
             nome: transportadoraDraft.nome.trim(),
             tipo_cadastro: transportadoraDraft.tipo_cadastro,
             documento: transportadoraDraft.documento.trim() || null,
@@ -1092,20 +1292,26 @@ const RegrasOperacionais = () => {
       }
 
       if (quickCreate.type === "fornecedor") {
-        if (!form.empresa_id) throw new Error("Selecione a empresa antes de cadastrar o fornecedor.");
+        if (bindingRequirements.requireEmpresa && !form.empresa_id) {
+          throw new Error("Selecione a empresa antes de cadastrar o fornecedor.");
+        }
         if (!fornecedorDraft.nome.trim()) throw new Error("Informe o nome do fornecedor.");
 
         const duplicate = fornecedorItems.find(
           (item) => normalizeText(item.nome) === normalizeText(fornecedorDraft.nome),
         );
         if (duplicate) {
-          throw new Error("Já existe um fornecedor com nome equivalente para esta empresa.");
+          throw new Error(
+            bindingRequirements.requireEmpresa
+              ? "Já existe um fornecedor com nome equivalente para esta empresa."
+              : "Já existe um fornecedor com nome equivalente neste escopo.",
+          );
         }
 
         return {
           type: quickCreate.type,
           data: await FornecedorService.create({
-            empresa_id: form.empresa_id,
+            empresa_id: bindingRequirements.requireEmpresa ? form.empresa_id : null,
             nome: fornecedorDraft.nome.trim(),
             documento: fornecedorDraft.documento.trim() || null,
             ativo: true,
@@ -1230,16 +1436,16 @@ const RegrasOperacionais = () => {
     },
   });
 
-  const inactivateMutation = useMutation({
-    mutationFn: (id: string) => RegraOperacionalService.inativar(id),
-    onSuccess: () => {
+  const toggleStatusMutation = useMutation({
+    mutationFn: ({ id, ativo }: { id: string; ativo: boolean }) => RegraOperacionalService.update(id, { ativo }),
+    onSuccess: (_result, variables) => {
       queryClient.invalidateQueries({ queryKey: ["regras_operacionais"] });
       queryClient.invalidateQueries({ queryKey: ["regras_operacionais_grid"] });
-      toast.success("Regra operacional inativada.");
+      toast.success(variables.ativo ? "Regra operacional ativada." : "Regra operacional inativada.");
       if (editingId) resetForm();
     },
     onError: (error: any) => {
-      toast.error("Não foi possível inativar a regra.", {
+      toast.error("Não foi possível alterar o status da regra.", {
         description: error.message,
       });
     },
@@ -1261,9 +1467,54 @@ const RegrasOperacionais = () => {
     },
   });
 
+  const duplicateMutation = useMutation({
+    mutationFn: async (item: any) => {
+      const duplicatedStartDate = addDaysToIsoDate(item.vigencia_inicio, 1);
+      const duplicatedEndDate =
+        item.vigencia_fim && item.vigencia_fim < duplicatedStartDate
+          ? duplicatedStartDate
+          : item.vigencia_fim ?? null;
+
+      return RegraOperacionalService.create({
+        empresa_id: item.empresa_id ?? null,
+        unidade_id: item.unidade_id ?? null,
+        tipo_servico_id: item.tipo_servico_id ?? null,
+        fornecedor_id: item.fornecedor_id ?? null,
+        transportadora_id: item.transportadora_id ?? null,
+        produto_carga_id: item.produto_carga_id ?? null,
+        tipo_regra_id: item.tipo_regra_id ?? null,
+        tipo_calculo: item.tipo_calculo ?? null,
+        valor_unitario: Number(item.valor_unitario ?? 0),
+        forma_pagamento_id: item.forma_pagamento_id ?? null,
+        vigencia_inicio: duplicatedStartDate,
+        vigencia_fim: duplicatedEndDate,
+        ativo: false,
+      });
+    },
+    onSuccess: (createdRule: any) => {
+      setRecentDuplicatedRuleId(createdRule?.id ?? null);
+      queryClient.invalidateQueries({ queryKey: ["regras_operacionais"] });
+      queryClient.invalidateQueries({ queryKey: ["regras_operacionais_grid"] });
+      toast.success("Regra duplicada com sucesso.");
+    },
+    onError: (error: any) => {
+      toast.error("Não foi possível duplicar a regra.", {
+        description: error.message,
+      });
+    },
+  });
+
   const handleEdit = (item: any) => {
+    const isGlobalRule =
+      !item.empresa_id &&
+      !item.tipo_servico_id &&
+      !item.transportadora_id &&
+      !item.fornecedor_id &&
+      !item.produto_carga_id;
+
     setEditingId(item.id);
-    setApplyGlobally(false);
+    setApplyGlobally(isGlobalRule);
+    setBindingMode(getInitialBindingMode(item));
     setForm({
       empresa_id: item.empresa_id ?? "",
       tipo_servico_id: item.tipo_servico_id ?? "",
@@ -1280,6 +1531,10 @@ const RegrasOperacionais = () => {
     });
     setCurrentStep(1);
     setIsModalOpen(true);
+  };
+
+  const handleDuplicate = (item: any) => {
+    duplicateMutation.mutate(item);
   };
 
   useEffect(() => {
@@ -1506,29 +1761,33 @@ const RegrasOperacionais = () => {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
-                              <Button type="button" size="sm" variant="outline" onClick={() => handleEdit(item)}>
-                                <Pencil className="h-4 w-4 mr-2" />
-                                Editar
+                              <Button type="button" size="icon" variant="ghost" className="h-8 w-8" title="Editar" onClick={() => handleEdit(item)}>
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button type="button" size="icon" variant="ghost" className="h-8 w-8" title="Duplicar" disabled={duplicateMutation.isPending} onClick={() => handleDuplicate(item)}>
+                                <Copy className="h-4 w-4" />
                               </Button>
                               <Button
                                 type="button"
-                                size="sm"
-                                variant="outline"
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8"
+                                title="Excluir"
                                 disabled={deleteMutation.isPending}
                                 onClick={() => setRuleToDelete(item)}
                               >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Excluir
+                                <Trash2 className="h-4 w-4" />
                               </Button>
                               <Button
                                 type="button"
-                                size="sm"
-                                variant="outline"
-                                disabled={!item.ativo || inactivateMutation.isPending || deleteMutation.isPending}
-                                onClick={() => inactivateMutation.mutate(item.id)}
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8"
+                                title={item.ativo ? "Inativar" : "Ativar"}
+                                disabled={toggleStatusMutation.isPending || deleteMutation.isPending}
+                                onClick={() => toggleStatusMutation.mutate({ id: item.id, ativo: !item.ativo })}
                               >
-                                <Ban className="h-4 w-4 mr-2" />
-                                Inativar
+                                {item.ativo ? <Ban className="h-4 w-4" /> : <Check className="h-4 w-4" />}
                               </Button>
                             </div>
                           </TableCell>
@@ -1874,11 +2133,35 @@ const RegrasOperacionais = () => {
                     </div>
                   </div>
 
+                  {!issRuleSelected && (
+                    <div className="space-y-2">
+                      <Label>Vincular regra por</Label>
+                      <Select
+                        value={bindingMode}
+                        disabled={applyGlobally}
+                        onValueChange={(value: RuleBindingMode) => setBindingMode(value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Escolha o tipo de vinculo" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="empresa">Somente empresa</SelectItem>
+                          <SelectItem value="fornecedor">Somente fornecedor</SelectItem>
+                          <SelectItem value="transportadora">Somente transportadora</SelectItem>
+                          <SelectItem value="empresa_fornecedor">Empresa e fornecedor</SelectItem>
+                          <SelectItem value="empresa_transportadora">Empresa e transportadora</SelectItem>
+                          <SelectItem value="fornecedor_transportadora">Fornecedor e transportadora</SelectItem>
+                          <SelectItem value="empresa_fornecedor_transportadora">Empresa, fornecedor e transportadora</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
                   <div className="space-y-2">
                     <Label>{ruleContext.requireEmpresa ? "Empresa / Unidade *" : "Empresa / Unidade"}</Label>
                     <Select
                       value={form.empresa_id}
-                      disabled={applyGlobally}
+                      disabled={applyGlobally || !ruleContext.requireEmpresa}
                       onValueChange={(value) =>
                         setForm((prev) => ({
                           ...prev,
@@ -1904,7 +2187,7 @@ const RegrasOperacionais = () => {
 
                   <div className="md:col-span-2 rounded-xl border border-amber-200 bg-amber-50 p-4">
                     <p className="text-sm font-medium text-amber-900">{ruleContext.title}</p>
-                    <p className="text-xs text-amber-800 mt-1">{ruleContext.description}</p>
+                    <p className="text-xs text-amber-800 mt-1">{ruleContextDescription}</p>
                   </div>
                 </div>
               </div>
@@ -1966,13 +2249,13 @@ const RegrasOperacionais = () => {
                     placeholder={
                       applyGlobally
                         ? "Todos os fornecedores"
-                        : ruleContext.requireFornecedor
-                          ? "Selecione o fornecedor"
-                          : "Opcional"
+                        : !ruleContext.requireFornecedor
+                          ? "Nao se aplica a esse vinculo"
+                          : "Selecione o fornecedor"
                     }
                     value={form.fornecedor_id}
                     items={fornecedorItems}
-                    disabled={applyGlobally}
+                    disabled={applyGlobally || !ruleContext.requireFornecedor}
                     createLabel="Novo fornecedor"
                     onChange={(value) =>
                       setForm((prev) => ({
@@ -1989,7 +2272,7 @@ const RegrasOperacionais = () => {
                     placeholder={!form.fornecedor_id ? "Selecione o fornecedor antes" : "Selecione, se aplicável"}
                     value={form.produto_carga_id}
                     items={produtoItems}
-                    disabled={applyGlobally || !form.fornecedor_id}
+                    disabled={applyGlobally || !ruleContext.requireFornecedor || !form.fornecedor_id}
                     emptyOptionLabel="Geral"
                     createLabel="Novo produto"
                     onChange={(value) => setForm((prev) => ({ ...prev, produto_carga_id: value }))}
