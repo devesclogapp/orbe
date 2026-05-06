@@ -8,52 +8,75 @@ type RouteMeta = {
 };
 
 const routeMeta: RouteMeta[] = [
-  { pattern: "/financeiro/faturamento/:id", label: "Memoria de faturamento", section: "Controladoria", parentPath: "/financeiro/faturamento" },
-  { pattern: "/financeiro/colaborador/:id", label: "Memoria do colaborador", section: "Controladoria", parentPath: "/financeiro" },
-  { pattern: "/banco-horas/extrato/:id", label: "Extrato do colaborador", section: "Pessoas e Cadastros", parentPath: "/banco-horas" },
-  { pattern: "/relatorios/detalhe/:id", label: "Visualizacao de relatorio", section: "Controladoria", parentPath: "/relatorios" },
-  { pattern: "/relatorios/integracao/logs", label: "Logs de integracao", section: "Controladoria", parentPath: "/relatorios/integracao" },
-  { pattern: "/financeiro/remessa/historico", label: "Historico de remessas", section: "Pagamentos", parentPath: "/bancario" },
-  { pattern: "/operacional/dashboard", label: "Dashboard operacional", section: "Operacional" },
-  { pattern: "/operacional/pontos", label: "Pontos", section: "Operacional" },
-  { pattern: "/operacional/operacoes", label: "Operacoes", section: "Operacional" },
-  { pattern: "/financeiro/regras", label: "Regras de calculo", section: "Faturamento", parentPath: "/financeiro" },
-  { pattern: "/financeiro/faturamento", label: "Faturamento por cliente", section: "Faturamento", parentPath: "/financeiro" },
-  { pattern: "/financeiro/remessa", label: "Remessa CNAB240", section: "Pagamentos", parentPath: "/bancario" },
-  { pattern: "/financeiro/retorno", label: "Retorno bancario", section: "Pagamentos", parentPath: "/bancario" },
-  { pattern: "/relatorios/agendamentos", label: "Agendamentos", section: "Controladoria", parentPath: "/relatorios" },
-  { pattern: "/relatorios/layouts", label: "Layouts de exportacao", section: "Controladoria", parentPath: "/relatorios" },
-  { pattern: "/relatorios/integracao", label: "Integracao contabil", section: "Controladoria", parentPath: "/relatorios" },
-  { pattern: "/relatorios/mapeamento", label: "Mapeamento contabil", section: "Controladoria", parentPath: "/relatorios/integracao" },
-  { pattern: "/governanca/usuarios", label: "Usuarios", section: "Governanca", parentPath: "/governanca" },
-  { pattern: "/governanca/perfis", label: "Perfis", section: "Governanca", parentPath: "/governanca" },
-  { pattern: "/governanca/auditoria", label: "Auditoria", section: "Governanca", parentPath: "/governanca" },
-  { pattern: "/rh/diaristas/cadastros", label: "Cadastro de Diaristas", section: "RH", parentPath: "/rh/diaristas" },
-  { pattern: "/rh/diaristas", label: "Painel de Diaristas", section: "RH" },
-  { pattern: "/banco-horas/regras", label: "Regras de banco", section: "Pessoas e Cadastros", parentPath: "/banco-horas" },
-  { pattern: "/cliente/dashboard", label: "Portal do cliente", section: "Ambiente Externo" },
-  { pattern: "/cliente/relatorios", label: "Relatorios do cliente", section: "Ambiente Externo", parentPath: "/cliente/dashboard" },
-  { pattern: "/cliente/aprovacoes", label: "Aprovacoes do cliente", section: "Ambiente Externo", parentPath: "/cliente/dashboard" },
-  { pattern: "/cadastros", label: "Central de cadastros", section: "Pessoas e Cadastros" },
-  { pattern: "/cadastros/regras-operacionais", label: "Regras operacionais", section: "Pessoas e Cadastros", parentPath: "/cadastros" },
-  { pattern: "/colaboradores", label: "Colaboradores", section: "Pessoas e Cadastros", parentPath: "/cadastros" },
-  { pattern: "/empresas", label: "Empresas", section: "Pessoas e Cadastros", parentPath: "/cadastros" },
-  { pattern: "/coletores", label: "Coletores REP", section: "Pessoas e Cadastros", parentPath: "/cadastros" },
-  { pattern: "/banco-horas", label: "Banco de horas", section: "Pessoas e Cadastros" },
-  { pattern: "/operacional", label: "Operacional", section: "Operacional" },
-  { pattern: "/processamento", label: "Redirecionamento operacional", section: "Operacional", parentPath: "/operacional/operacoes" },
-  { pattern: "/importacoes", label: "Importacoes", section: "Operacional", parentPath: "/operacional/operacoes" },
-  { pattern: "/inconsistencias", label: "Inconsistencias", section: "Operacional", parentPath: "/operacional/operacoes" },
-  { pattern: "/producao", label: "Produção e Diaristas", section: "Operacional" },
-  { pattern: "/producao/diaristas", label: "Lançamento de Diaristas", section: "Operacional", parentPath: "/producao" },
-  { pattern: "/financeiro", label: "Faturamento", section: "Faturamento" },
-  { pattern: "/bancario", label: "Pagamentos", section: "Pagamentos" },
-  { pattern: "/relatorios", label: "Central de relatorios", section: "Controladoria" },
-  { pattern: "/governanca", label: "Central de governanca", section: "Governanca" },
-  { pattern: "/configuracoes", label: "Preferencias e conta", section: "Sistema" },
-  { pattern: "/simulacao/demo", label: "Gerador de demo", section: "Desenvolvimento" },
-  { pattern: "/fechamento", label: "Fechamento mensal", section: "Faturamento", parentPath: "/financeiro" },
-  { pattern: "/", label: "Dashboard", section: "Visao geral" },
+  // Entradas Operacionais
+  { pattern: "/operacional/dashboard", label: "Dashboard operacional", section: "Dashboard" },
+  { pattern: "/operacional/pontos", label: "Pontos Recebidos", section: "Entradas Operacionais" },
+  { pattern: "/operacional/operacoes", label: "Operações Recebidas", section: "Entradas Operacionais" },
+  { pattern: "/producao", label: "Lançamento de Produção", section: "Entradas Operacionais" },
+  { pattern: "/producao/diaristas", label: "Diaristas Recebidos", section: "Entradas Operacionais", parentPath: "/producao" },
+
+  // Processamento RH
+  { pattern: "/banco-horas", label: "Banco de Horas", section: "Processamento RH" },
+  { pattern: "/banco-horas/regras", label: "Regras de Banco", section: "Processamento RH", parentPath: "/banco-horas" },
+  { pattern: "/banco-horas/extrato/:id", label: "Extrato do colaborador", section: "Processamento RH", parentPath: "/banco-horas" },
+  { pattern: "/rh/diaristas", label: "Painel de Diaristas", section: "Processamento RH" },
+  { pattern: "/rh/diaristas/cadastros", label: "Cadastro de Diaristas", section: "Processamento RH", parentPath: "/rh/diaristas" },
+  { pattern: "/cadastros/regras-operacionais", label: "Regras Operacionais", section: "Processamento RH", parentPath: "/cadastros" },
+  { pattern: "/fechamento", label: "Fechamento Mensal", section: "Processamento RH" },
+
+  // Cadastros e Estrutura
+  { pattern: "/cadastros", label: "Central de Cadastros", section: "Cadastros e Estrutura" },
+  { pattern: "/colaboradores", label: "Colaboradores", section: "Cadastros e Estrutura", parentPath: "/cadastros" },
+  { pattern: "/empresas", label: "Empresas / Clientes", section: "Cadastros e Estrutura", parentPath: "/cadastros" },
+  { pattern: "/transportadoras", label: "Transportadoras", section: "Cadastros e Estrutura", parentPath: "/cadastros" },
+  { pattern: "/fornecedores", label: "Fornecedores", section: "Cadastros e Estrutura", parentPath: "/cadastros" },
+  { pattern: "/servicos", label: "Serviços", section: "Cadastros e Estrutura", parentPath: "/cadastros" },
+  { pattern: "/coletores", label: "Coletores REP", section: "Cadastros e Estrutura", parentPath: "/cadastros" },
+  { pattern: "/importacoes", label: "Importações", section: "Cadastros e Estrutura", parentPath: "/cadastros" },
+  { pattern: "/inconsistencias", label: "Inconsistências", section: "Entradas Operacionais", parentPath: "/operacional/operacoes" },
+
+  // Financeiro
+  { pattern: "/financeiro", label: "Central Financeira", section: "Financeiro" },
+  { pattern: "/financeiro/legado", label: "Financeiro (legado)", section: "Financeiro", parentPath: "/financeiro" },
+  { pattern: "/financeiro/regras", label: "Regras de Cálculo", section: "Financeiro", parentPath: "/financeiro" },
+  { pattern: "/financeiro/faturamento", label: "Faturamento por Cliente", section: "Financeiro", parentPath: "/financeiro" },
+  { pattern: "/financeiro/faturamento/:id", label: "Memória de Faturamento", section: "Financeiro", parentPath: "/financeiro/faturamento" },
+  { pattern: "/financeiro/colaborador/:id", label: "Memória do Colaborador", section: "Financeiro", parentPath: "/financeiro" },
+  { pattern: "/bancario", label: "Pagamentos e Remessas", section: "Financeiro" },
+  { pattern: "/financeiro/remessa", label: "Remessa CNAB240", section: "Financeiro", parentPath: "/bancario" },
+  { pattern: "/financeiro/remessa/historico", label: "Histórico de Remessas", section: "Financeiro", parentPath: "/bancario" },
+  { pattern: "/financeiro/retorno", label: "Retorno Bancário", section: "Financeiro", parentPath: "/bancario" },
+
+  // Relatórios e Governança
+  { pattern: "/relatorios", label: "Central de Relatórios", section: "Relatórios e Governança" },
+  { pattern: "/relatorios/legado", label: "Relatórios (legado)", section: "Relatórios e Governança", parentPath: "/relatorios" },
+  { pattern: "/relatorios/detalhe/:id", label: "Visualização de Relatório", section: "Relatórios e Governança", parentPath: "/relatorios" },
+  { pattern: "/relatorios/agendamentos", label: "Agendamentos", section: "Relatórios e Governança", parentPath: "/relatorios" },
+  { pattern: "/relatorios/layouts", label: "Layouts de Exportação", section: "Relatórios e Governança", parentPath: "/relatorios" },
+  { pattern: "/relatorios/integracao", label: "Integração Contábil", section: "Relatórios e Governança", parentPath: "/relatorios" },
+  { pattern: "/relatorios/mapeamento", label: "Mapeamento Contábil", section: "Relatórios e Governança", parentPath: "/relatorios/integracao" },
+  { pattern: "/relatorios/integracao/logs", label: "Logs de Integração", section: "Relatórios e Governança", parentPath: "/relatorios/integracao" },
+  { pattern: "/governanca", label: "Central de Governança", section: "Relatórios e Governança" },
+  { pattern: "/governanca/usuarios", label: "Usuários", section: "Relatórios e Governança", parentPath: "/governanca" },
+  { pattern: "/governanca/perfis", label: "Perfis", section: "Relatórios e Governança", parentPath: "/governanca" },
+  { pattern: "/governanca/auditoria", label: "Auditoria", section: "Relatórios e Governança", parentPath: "/governanca" },
+
+  // Ambiente Externo
+  { pattern: "/cliente/dashboard", label: "Portal do Cliente", section: "Ambiente Externo" },
+  { pattern: "/cliente/relatorios", label: "Relatórios do Cliente", section: "Ambiente Externo", parentPath: "/cliente/dashboard" },
+  { pattern: "/cliente/aprovacoes", label: "Aprovações do Cliente", section: "Ambiente Externo", parentPath: "/cliente/dashboard" },
+
+  // Central Operacional
+  { pattern: "/central", label: "Central Operacional", section: "Dashboard" },
+
+  // Sistema
+  { pattern: "/configuracoes", label: "Preferências e Conta", section: "Sistema" },
+
+  // Legado / Redirecionamentos
+  { pattern: "/operacional", label: "Operacional", section: "Dashboard" },
+  { pattern: "/processamento", label: "Redirecionamento operacional", section: "Entradas Operacionais", parentPath: "/operacional/operacoes" },
+  { pattern: "/processamento/legado", label: "Redirecionamento operacional", section: "Entradas Operacionais", parentPath: "/operacional/operacoes" },
+  { pattern: "/", label: "Dashboard", section: "Dashboard" },
 ];
 
 export const getRouteMeta = (pathname: string) =>

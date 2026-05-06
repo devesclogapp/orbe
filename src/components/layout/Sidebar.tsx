@@ -1,61 +1,128 @@
-import { LayoutDashboard, ClipboardCheck, Users, BarChart3, Settings, FilePlus, ExternalLink, Clock, Shield, Wallet, LogOut, Database, Scale, Banknote, UserCheck, Rocket } from "lucide-react";
+import {
+  LayoutDashboard, ClipboardCheck, Users, BarChart3, Settings,
+  FilePlus, ExternalLink, Clock, Shield, Wallet, LogOut, Database,
+  Scale, Banknote, UserCheck, Rocket, LayoutGrid,
+  TrendingUp, Building2, Truck, Wrench, CalendarCheck, ChevronDown,
+  ArrowRightLeft, Box
+} from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { Logo } from "@/components/ui/Logo";
 import { Button } from "@/components/ui/button";
+import { useState } from "react";
 
-const mainItems = [
+// ─── Grupos de menu ─────────────────────────────────────────────────────────
+
+const dashboardItems = [
   { icon: LayoutDashboard, label: "Dashboard", to: "/operacional/dashboard" },
-  { icon: Clock, label: "Pontos", to: "/operacional/pontos" },
-  { icon: ClipboardCheck, label: "Operações", to: "/operacional/operacoes" },
+  { icon: TrendingUp, label: "Central Operacional", to: "/central" },
 ];
 
-const cadastrosItems = [
-  { icon: Users, label: "Central de Cadastros", to: "/cadastros" },
-  { icon: FilePlus, label: "Regras Operacionais", to: "/cadastros/regras-operacionais" },
+const entradasItems = [
+  { icon: ClipboardCheck, label: "Operações Recebidas", to: "/operacional/operacoes" },
+  { icon: Clock, label: "Pontos Recebidos", to: "/operacional/pontos" },
+  { icon: UserCheck, label: "Diaristas Recebidos", to: "/rh/diaristas" },
 ];
 
 const rhItems = [
-  { icon: UserCheck, label: "Painel de Diaristas", to: "/rh/diaristas" },
+  { icon: Scale, label: "Banco de Horas", to: "/banco-horas", end: true },
+  { icon: FilePlus, label: "Regras de Banco", to: "/banco-horas/regras" },
   { icon: Users, label: "Cadastro de Diaristas", to: "/rh/diaristas/cadastros" },
+  { icon: Wrench, label: "Regras Operacionais", to: "/cadastros/regras-operacionais" },
+  { icon: CalendarCheck, label: "Fechamento Mensal", to: "/fechamento" },
 ];
 
-const bhItems = [
-  { icon: Clock, label: "Banco de Horas", to: "/banco-horas", end: true },
-  { icon: Scale, label: "Regras de Banco", to: "/banco-horas/regras" },
+const cadastrosItems = [
+  { icon: LayoutGrid, label: "Central de Cadastros", to: "/cadastros" },
 ];
 
-const faturamentoItems = [
-  { icon: Wallet, label: "Faturamento", to: "/financeiro", end: true },
-  { icon: BarChart3, label: "Central de Relatórios", to: "/relatorios" },
-];
-
-const pagamentosItems = [
+const financeiroItems = [
+  { icon: Wallet, label: "Central Financeira", to: "/financeiro", end: true },
+  { icon: TrendingUp, label: "Faturamento", to: "/financeiro/faturamento" },
   { icon: Banknote, label: "Pagamentos e Remessas", to: "/bancario" },
+  { icon: ArrowRightLeft, label: "Regras de Cálculo", to: "/financeiro/regras" },
 ];
 
-const portalItems = [
+const governancaItems = [
+  { icon: BarChart3, label: "Central de Relatórios", to: "/relatorios" },
+  { icon: Shield, label: "Governança", to: "/governanca" },
+  { icon: Database, label: "Importações", to: "/importacoes" },
+];
+
+const externoItems = [
   { icon: ExternalLink, label: "Portal do Cliente", to: "/cliente/dashboard" },
 ];
 
-const govItems = [
-  { icon: Shield, label: "Central de Governança", to: "/governanca" },
+const devItems = [
+  { icon: Rocket, label: "Onboarding", to: "/onboarding" },
 ];
 
-const simItems = [
-  { icon: Rocket, label: "Onboarding", to: "/onboarding" },
-  { icon: Database, label: "Gerador de Demo", to: "/simulacao/demo" },
+// ─── Grupos colapsáveis ──────────────────────────────────────────────────────
+
+type MenuGroup = {
+  id: string;
+  label: string;
+  sublabel?: string;
+  items: { icon: any; label: string; to: string; end?: boolean }[];
+};
+
+const groups: MenuGroup[] = [
+  {
+    id: "entradas",
+    label: "Entradas Operacionais",
+    sublabel: "dados recebidos",
+    items: entradasItems,
+  },
+  {
+    id: "rh",
+    label: "Processamento RH",
+    sublabel: "validação e tratamento",
+    items: rhItems,
+  },
+  {
+    id: "cadastros",
+    label: "Cadastros e Estrutura",
+    sublabel: "base operacional",
+    items: cadastrosItems,
+  },
+  {
+    id: "financeiro",
+    label: "Financeiro",
+    sublabel: "pagamentos e faturamento",
+    items: financeiroItems,
+  },
+  {
+    id: "governanca",
+    label: "Relatórios e Governança",
+    items: governancaItems,
+  },
+  {
+    id: "externo",
+    label: "Ambiente Externo",
+    items: externoItems,
+  },
+  {
+    id: "dev",
+    label: "Desenvolvimento",
+    items: devItems,
+  },
 ];
+
+// ─── Componente ──────────────────────────────────────────────────────────────
 
 export const Sidebar = () => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   const handleSignOut = async () => {
     await signOut();
     navigate("/login");
   };
+
+  const toggleGroup = (id: string) =>
+    setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }));
 
   const userInitials = user?.user_metadata?.full_name
     ? user.user_metadata.full_name.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2)
@@ -65,53 +132,58 @@ export const Sidebar = () => {
 
   return (
     <aside className="w-60 shrink-0 bg-sidebar border-r border-sidebar-border flex flex-col h-screen sticky top-0">
+      {/* Logo */}
       <div className="px-5 py-5 flex flex-col items-start">
         <Logo className="w-28" align="left" showSlogan sloganSize="xs" />
       </div>
 
-      <nav className="flex-1 px-2 space-y-4 overflow-y-auto pt-2">
-        <div>
-          <h3 className="px-3 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Operacional</h3>
-          {mainItems.map(renderItem)}
+      <nav className="flex-1 px-2 overflow-y-auto pt-1 space-y-0.5 pb-2">
+
+        {/* Dashboard — sempre visível no topo */}
+        <div className="mb-3">
+          {dashboardItems.map(renderItem)}
         </div>
 
-        <div>
-          <h3 className="px-3 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Cadastros</h3>
-          {cadastrosItems.map(renderItem)}
-          {bhItems.map(renderItem)}
-        </div>
+        {/* Grupos colapsáveis */}
+        {groups.map((group) => {
+          const isOpen = !collapsed[group.id];
+          return (
+            <div key={group.id} className="mb-1">
+              {/* Header do grupo */}
+              <button
+                onClick={() => toggleGroup(group.id)}
+                className="w-full flex items-center justify-between px-3 py-1.5 rounded-md hover:bg-secondary transition-colors group"
+              >
+                <div className="text-left">
+                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold leading-none">
+                    {group.label}
+                  </span>
+                  {group.sublabel && (
+                    <span className="block text-[10px] text-muted-foreground/60 leading-none mt-0.5 normal-case tracking-normal">
+                      {group.sublabel}
+                    </span>
+                  )}
+                </div>
+                <ChevronDown
+                  className={cn(
+                    "h-3 w-3 text-muted-foreground/50 transition-transform duration-200",
+                    !isOpen && "-rotate-90"
+                  )}
+                />
+              </button>
 
-        <div>
-          <h3 className="px-3 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">RH</h3>
-          {rhItems.map(renderItem)}
-        </div>
-
-        <div>
-          <h3 className="px-3 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Faturamento</h3>
-          {faturamentoItems.map(renderItem)}
-        </div>
-
-        <div>
-          <h3 className="px-3 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Pagamentos e Remessas</h3>
-          {pagamentosItems.map(renderItem)}
-        </div>
-
-        <div>
-          <h3 className="px-3 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Governança</h3>
-          {govItems.map(renderItem)}
-        </div>
-
-        <div>
-          <h3 className="px-3 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Ambiente Externo</h3>
-          {portalItems.map(renderItem)}
-        </div>
-
-        <div>
-          <h3 className="px-3 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Desenvolvimento</h3>
-          {simItems.map(renderItem)}
-        </div>
+              {/* Itens do grupo */}
+              {isOpen && (
+                <div className="mt-0.5 space-y-0.5 pl-0">
+                  {group.items.map(renderItem)}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </nav>
 
+      {/* Rodapé */}
       <div className="px-2 pt-2 border-t border-sidebar-border space-y-1">
         {renderItem({ icon: Settings, label: "Preferências", to: "/configuracoes?tab=preferencias" })}
         <Button
@@ -126,6 +198,7 @@ export const Sidebar = () => {
         </Button>
       </div>
 
+      {/* Perfil do usuário */}
       <button
         onClick={() => navigate("/configuracoes?tab=conta")}
         className="m-3 p-3 rounded-lg bg-background flex items-center gap-3 border border-border hover:border-primary/30 hover:bg-muted/50 transition-all text-left outline-none group"
@@ -143,14 +216,16 @@ export const Sidebar = () => {
         </div>
       </button>
 
-      <div className="px-4 pb-3 text-[11px] text-muted-foreground">
-        v4.1 — Navegação por Objetivos
+      <div className="px-4 pb-3 text-[10px] text-muted-foreground/60">
+        v4.2 — Centro de Processamento Operacional
       </div>
     </aside>
   );
 };
 
-const renderItem = (it: any) => {
+// ─── renderItem ──────────────────────────────────────────────────────────────
+
+const renderItem = (it: { icon: any; label: string; to: string; end?: boolean }) => {
   const Icon = it.icon;
   return (
     <NavLink

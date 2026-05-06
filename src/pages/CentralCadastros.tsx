@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { type ElementType, type ReactNode, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
@@ -61,6 +61,21 @@ import {
   TransportadoraClienteService,
 } from "@/services/base.service";
 import { useAuth } from "@/contexts/AuthContext";
+
+const CadastroTabTrigger = ({
+  value,
+  icon: Icon,
+  children,
+}: {
+  value: string;
+  icon: ElementType;
+  children: ReactNode;
+}) => (
+  <TabsTrigger value={value} className="gap-2">
+    <Icon className="h-4 w-4" />
+    <span>{children}</span>
+  </TabsTrigger>
+);
 
 const CentralCadastros = () => {
   const navigate = useNavigate();
@@ -617,13 +632,13 @@ const deleteFornecedorMutation = useMutation({
 
             <Tabs defaultValue="colaboradores" className="space-y-4">
               <TabsList className="bg-muted/50 p-1 rounded-xl border border-border/50 flex flex-wrap h-auto">
-                <TabsTrigger value="colaboradores">Colaboradores</TabsTrigger>
-                <TabsTrigger value="empresas">Empresas</TabsTrigger>
-                <TabsTrigger value="coletores">Coletores</TabsTrigger>
-                <TabsTrigger value="transportadoras">Transportadoras</TabsTrigger>
-                <TabsTrigger value="fornecedores">Fornecedores</TabsTrigger>
-                <TabsTrigger value="servicos">Serviços</TabsTrigger>
-                <TabsTrigger value="parametros">Parâmetros operacionais</TabsTrigger>
+                <CadastroTabTrigger value="colaboradores" icon={Users}>Colaboradores</CadastroTabTrigger>
+                <CadastroTabTrigger value="empresas" icon={Building2}>Empresas</CadastroTabTrigger>
+                <CadastroTabTrigger value="coletores" icon={Cpu}>Coletores</CadastroTabTrigger>
+                <CadastroTabTrigger value="transportadoras" icon={Truck}>Transportadoras</CadastroTabTrigger>
+                <CadastroTabTrigger value="fornecedores" icon={Store}>Fornecedores</CadastroTabTrigger>
+                <CadastroTabTrigger value="servicos" icon={Wrench}>Serviços</CadastroTabTrigger>
+                <CadastroTabTrigger value="parametros" icon={Settings2}>Parâmetros operacionais</CadastroTabTrigger>
               </TabsList>
 
               <TabsContent value="colaboradores" className="space-y-4 min-h-[400px]">
