@@ -42,10 +42,10 @@ const LoginOperacional = () => {
             if (error) throw error;
 
             const { data: perfil, error: perfilError } = await supabase
-                .from('perfis_usuarios')
-                .select('id, perfis!inner(nome)')
+                .from('profiles')
+                .select('id, role')
                 .eq('user_id', authData.user.id)
-                .eq('perfis.nome', 'Encarregado')
+                .eq('role', 'encarregado')
                 .maybeSingle();
 
             if (perfilError) throw perfilError;

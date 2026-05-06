@@ -5,7 +5,7 @@ import { StatusChip } from "@/components/painel/StatusChip";
 import { Button } from "@/components/ui/button";
 import {
     UserPlus, RefreshCw, Loader2, Shield, Trash2, LayoutGrid, List,
-    Mail, Copy, Check, Send, Clock, CheckCircle2, XCircle, AlertCircle
+    Mail, Copy, Check, Send, Clock, CheckCircle2, XCircle, AlertCircle, Pencil
 } from "lucide-react";
 import {
     Dialog,
@@ -47,6 +47,14 @@ interface ConviteLink {
     link: string;
 }
 
+interface InvitationValidationResult {
+    id: string;
+    tenant_id: string;
+    email: string;
+    role: string;
+    expires_at: string;
+}
+
 // ─── Serviço de Convites ──────────────────────────────────────────────────────
 
 const InvitationService = {
@@ -68,6 +76,47 @@ const InvitationService = {
             .single();
         if (error) throw error;
         return data;
+    },
+
+    async update(id: string, payload: InviteForm) {
+        const normalizedEmail = payload.email.trim().toLowerCase();
+        const { data, error } = await supabase.rpc("update_tenant_invitation", {
+            p_invitation_id: id,
+            p_email: normalizedEmail,
+            p_role: payload.role,
+        });
+
+        const functionMissing =
+            error &&
+            typeof error.message === "string" &&
+            error.message.includes("Could not find the function public.update_tenant_invitation");
+
+        if (functionMissing) {
+            const { data: fallbackData, error: fallbackError } = await supabase
+                .from("tenant_invitations")
+                .update({
+                    email: normalizedEmail,
+                    role: payload.role,
+                })
+                .eq("id", id)
+                .is("accepted_at", null)
+                .select("id, email, role")
+                .single();
+
+            if (fallbackError) throw fallbackError;
+            return fallbackData;
+        }
+
+        if (error) throw error;
+        return Array.isArray(data) ? data[0] ?? null : data ?? null;
+    },
+
+    async validateToken(token: string): Promise<InvitationValidationResult | null> {
+        const { data, error } = await supabase.rpc("validate_invitation_token", {
+            p_token: token,
+        });
+        if (error) throw error;
+        return Array.isArray(data) ? data[0] ?? null : data ?? null;
     },
 
     async delete(id: string) {
@@ -101,6 +150,9 @@ const getInviteStatus = (inv: Invitation): { label: string; variant: 'ok' | 'ale
 const formatDate = (dateStr: string) =>
     new Date(dateStr).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
+const buildInviteLink = (token: string) =>
+    `${window.location.origin}/cadastro?invite=${encodeURIComponent(token)}`;
+
 // ─── Componente Principal ─────────────────────────────────────────────────────
 
 const UsuariosGestao = () => {
@@ -110,6 +162,7 @@ const UsuariosGestao = () => {
     // Modal de convite
     const [open, setOpen] = useState(false);
     const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
+    const [editingInvite, setEditingInvite] = useState<Invitation | null>(null);
 
     // Modal de link gerado
     const [conviteLink, setConviteLink] = useState<ConviteLink | null>(null);
@@ -142,7 +195,7 @@ const UsuariosGestao = () => {
         },
         onSuccess: (data) => {
             queryClient.invalidateQueries({ queryKey: ["tenant_invitations"] });
-            const link = `${window.location.origin}/invite?token=${data.token}`;
+            const link = buildInviteLink(data.token);
             setConviteLink({ token: data.token, email: data.email, link });
             setOpen(false);
             resetForm();
@@ -160,9 +213,26 @@ const UsuariosGestao = () => {
         onError: (err: any) => toast.error("Erro ao remover", { description: err.message }),
     });
 
+    const updateMutation = useMutation({
+        mutationFn: async (payload: InviteForm) => {
+            if (!editingInvite) throw new Error("Convite não selecionado para edição.");
+            return InvitationService.update(editingInvite.id, payload);
+        },
+        onSuccess: () => {
+            toast.success("Convite atualizado com sucesso!");
+            queryClient.invalidateQueries({ queryKey: ["tenant_invitations"] });
+            setOpen(false);
+            resetForm();
+        },
+        onError: (err: any) => toast.error("Erro ao atualizar convite", { description: err.message }),
+    });
+
     // ── Handlers ───────────────────────────────────────────────────────────────
 
-    const resetForm = () => setForm({ email: "", role: "" });
+    const resetForm = () => {
+        setForm({ email: "", role: "" });
+        setEditingInvite(null);
+    };
 
     const handleGerar = () => {
         if (!form.email || !form.email.includes("@")) {
@@ -173,11 +243,22 @@ const UsuariosGestao = () => {
             toast.error("Selecione um perfil de acesso.");
             return;
         }
+        if (editingInvite) {
+            updateMutation.mutate(form);
+            return;
+        }
         inviteMutation.mutate(form);
     };
 
     const handleCopiarLink = async () => {
         if (!conviteLink) return;
+
+        const validacao = await InvitationService.validateToken(conviteLink.token);
+        if (!validacao) {
+            toast.error("Link de convite inválido ou expirado.");
+            return;
+        }
+
         await navigator.clipboard.writeText(conviteLink.link);
         setCopied(true);
         toast.success("Link copiado!");
@@ -196,6 +277,37 @@ const UsuariosGestao = () => {
         if (confirm("Revogar este convite?")) {
             deleteMutation.mutate(id);
         }
+    };
+
+    const handleEdit = (inv: Invitation) => {
+        if (inv.accepted_at) {
+            toast.error("Convites já aceitos não podem ser editados.");
+            return;
+        }
+
+        if (new Date(inv.expires_at) <= new Date()) {
+            toast.error("Convites expirados não podem ser editados. Gere um novo.");
+            return;
+        }
+
+        setEditingInvite(inv);
+        setForm({
+            email: inv.email,
+            role: inv.role,
+        });
+        setOpen(true);
+    };
+
+    const handleCopiarConviteExistente = async (inv: Invitation) => {
+        const validacao = await InvitationService.validateToken(inv.token);
+        if (!validacao) {
+            toast.error("Este convite não está mais válido. Gere um novo link.");
+            return;
+        }
+
+        const link = buildInviteLink(inv.token);
+        await navigator.clipboard.writeText(link);
+        toast.success("Link copiado!");
     };
 
     // ── Render ─────────────────────────────────────────────────────────────────
@@ -311,12 +423,19 @@ const UsuariosGestao = () => {
                                                             variant="ghost"
                                                             size="icon"
                                                             className="h-8 w-8"
+                                                            title="Editar convite"
+                                                            onClick={() => handleEdit(inv)}
+                                                        >
+                                                            <Pencil className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    )}
+                                                    {!inv.accepted_at && new Date(inv.expires_at) > new Date() && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-8 w-8"
                                                             title="Copiar link do convite"
-                                                            onClick={() => {
-                                                                const link = `${window.location.origin}/invite?token=${inv.token}`;
-                                                                navigator.clipboard.writeText(link);
-                                                                toast.success("Link copiado!");
-                                                            }}
+                                                            onClick={() => handleCopiarConviteExistente(inv)}
                                                         >
                                                             <Copy className="h-3.5 w-3.5" />
                                                         </Button>
@@ -372,11 +491,17 @@ const UsuariosGestao = () => {
                                                     variant="ghost"
                                                     size="sm"
                                                     className="h-8 text-xs gap-1"
-                                                    onClick={() => {
-                                                        const link = `${window.location.origin}/invite?token=${inv.token}`;
-                                                        navigator.clipboard.writeText(link);
-                                                        toast.success("Link copiado!");
-                                                    }}
+                                                    onClick={() => handleEdit(inv)}
+                                                >
+                                                    <Pencil className="h-3 w-3" /> Editar
+                                                </Button>
+                                            )}
+                                            {isPending && (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-8 text-xs gap-1"
+                                                    onClick={() => handleCopiarConviteExistente(inv)}
                                                 >
                                                     <Copy className="h-3 w-3" /> Copiar link
                                                 </Button>
@@ -404,9 +529,9 @@ const UsuariosGestao = () => {
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                                <UserPlus className="h-4 w-4 text-primary" />
+                                {editingInvite ? <Pencil className="h-4 w-4 text-primary" /> : <UserPlus className="h-4 w-4 text-primary" />}
                             </div>
-                            Convidar Membro
+                            {editingInvite ? "Editar Convite" : "Convidar Membro"}
                         </DialogTitle>
                         <DialogDescription>
                             Um link seguro será gerado para que o convidado crie sua conta e acesse o tenant.
@@ -457,13 +582,13 @@ const UsuariosGestao = () => {
                         <Button variant="outline" onClick={() => { setOpen(false); resetForm(); }}>Cancelar</Button>
                         <Button
                             onClick={handleGerar}
-                            disabled={inviteMutation.isPending}
+                            disabled={inviteMutation.isPending || updateMutation.isPending}
                             className="gap-2"
                         >
-                            {inviteMutation.isPending ? (
-                                <><Loader2 className="h-4 w-4 animate-spin" /> Gerando...</>
+                            {inviteMutation.isPending || updateMutation.isPending ? (
+                                <><Loader2 className="h-4 w-4 animate-spin" /> {editingInvite ? "Salvando..." : "Gerando..."}</>
                             ) : (
-                                <><Send className="h-4 w-4" /> Gerar Convite</>
+                                <>{editingInvite ? <Pencil className="h-4 w-4" /> : <Send className="h-4 w-4" />} {editingInvite ? "Salvar alterações" : "Gerar Convite"}</>
                             )}
                         </Button>
                     </DialogFooter>
