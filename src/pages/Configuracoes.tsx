@@ -49,8 +49,19 @@ import {
   ConfigProdutoService,
   ConfigTipoDiaService,
   ConfiguracaoOperacionalService,
+  ImportacaoModelosService,
   StorageService
 } from "@/services/base.service";
+
+const IMPORTACAO_MODULOS = [
+  { value: "colaboradores", label: "Colaboradores" },
+  { value: "empresas", label: "Empresas" },
+  { value: "coletores", label: "Coletores" },
+  { value: "transportadoras", label: "Transportadoras" },
+  { value: "fornecedores", label: "Fornecedores" },
+  { value: "servicos", label: "Serviços" },
+  { value: "parametros", label: "Parâmetros Operacionais" },
+];
 
 const Configuracoes = () => {
   const [searchParams] = useSearchParams();
@@ -80,6 +91,14 @@ const Configuracoes = () => {
   const [configType, setConfigType] = useState<'operacao' | 'produto' | 'dia'>('operacao');
   const [editingConfig, setEditingConfig] = useState<any>(null);
   const [configForm, setConfigForm] = useState<any>({});
+  const [importTemplateModalOpen, setImportTemplateModalOpen] = useState(false);
+  const [editingImportTemplate, setEditingImportTemplate] = useState<any>(null);
+  const [importTemplateForm, setImportTemplateForm] = useState({
+    modulo: "colaboradores",
+    nome_arquivo: "",
+    drive_url: "",
+    ativo: true,
+  });
 
   const [isEditingParams, setIsEditingParams] = useState(false);
   const [paramsForm, setParamsForm] = useState<any>({});
@@ -156,6 +175,11 @@ const Configuracoes = () => {
     queryFn: () => ConfigTipoDiaService.getAll()
   });
 
+  const { data: importacaoModelos = [], isLoading: loadingModelos } = useQuery({
+    queryKey: ['importacao_modelos'],
+    queryFn: () => ImportacaoModelosService.listAll()
+  });
+
   // Mutations for toggling status
   const toggleOpStatus = useMutation({
     mutationFn: (item: any) => ConfigTipoOperacaoService.update(item.id, { status: item.status === 'ativo' ? 'inativo' : 'ativo' }),
@@ -192,6 +216,32 @@ const Configuracoes = () => {
     }
   });
 
+  const importTemplateMutation = useMutation({
+    mutationFn: (payload: typeof importTemplateForm) => ImportacaoModelosService.upsert(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['importacao_modelos'] });
+      setImportTemplateModalOpen(false);
+      setEditingImportTemplate(null);
+      setImportTemplateForm({
+        modulo: "colaboradores",
+        nome_arquivo: "",
+        drive_url: "",
+        ativo: true,
+      });
+      toast.success("Modelo de importação salvo com sucesso");
+    },
+    onError: (err: any) => toast.error("Erro ao salvar modelo", { description: err.message })
+  });
+
+  const deleteImportTemplateMutation = useMutation({
+    mutationFn: (id: string) => ImportacaoModelosService.remove(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['importacao_modelos'] });
+      toast.success("Modelo de importação removido");
+    },
+    onError: (err: any) => toast.error("Erro ao remover modelo", { description: err.message })
+  });
+
   const handleAddConfig = (type: 'operacao' | 'produto' | 'dia') => {
     const empresaId = user?.user_metadata?.empresa_id;
     setConfigType(type);
@@ -207,6 +257,28 @@ const Configuracoes = () => {
     setEditingConfig(item);
     setConfigForm({ ...item });
     setConfigModalOpen(true);
+  };
+
+  const handleAddImportTemplate = () => {
+    setEditingImportTemplate(null);
+    setImportTemplateForm({
+      modulo: "colaboradores",
+      nome_arquivo: "",
+      drive_url: "",
+      ativo: true,
+    });
+    setImportTemplateModalOpen(true);
+  };
+
+  const handleEditImportTemplate = (item: any) => {
+    setEditingImportTemplate(item);
+    setImportTemplateForm({
+      modulo: item.modulo,
+      nome_arquivo: item.nome_arquivo || "",
+      drive_url: item.drive_url || "",
+      ativo: item.ativo ?? true,
+    });
+    setImportTemplateModalOpen(true);
   };
 
   if (loadingOps || loadingProds || loadingDias) {
@@ -225,6 +297,9 @@ const Configuracoes = () => {
         <TabsList className="bg-muted/50 p-1 rounded-xl border border-border/50">
           <TabsTrigger value="preferencias" className="px-6 rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm">
             <Settings2 className="h-4 w-4 mr-2" /> Preferências
+          </TabsTrigger>
+          <TabsTrigger value="modelos" className="px-6 rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm">
+            <Database className="h-4 w-4 mr-2" /> Modelos de Importação
           </TabsTrigger>
           <TabsTrigger value="conta" className="px-6 rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm">
             <User className="h-4 w-4 mr-2" /> Meu Perfil
@@ -465,6 +540,98 @@ const Configuracoes = () => {
           </Tabs>
         </TabsContent>
 
+        <TabsContent value="modelos" className="space-y-6 mt-6">
+          <section className="esc-card p-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="font-display font-semibold text-foreground">Modelos de Importação</h2>
+              <p className="text-sm text-muted-foreground">
+                Cadastre links do Google Drive para os modelos usados no botão "Baixar modelo".
+              </p>
+            </div>
+            <Button onClick={handleAddImportTemplate}>
+              <Plus className="h-4 w-4 mr-2" />
+              Novo modelo
+            </Button>
+          </section>
+
+          <section className="esc-card overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="esc-table-header">
+                <tr className="text-left">
+                  <th className="px-5 h-11 font-medium">Módulo</th>
+                  <th className="px-4 h-11 font-medium">Nome do arquivo</th>
+                  <th className="px-4 h-11 font-medium">Link do Drive</th>
+                  <th className="px-4 h-11 font-medium text-center">Status</th>
+                  <th className="px-5 h-11 font-medium text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loadingModelos ? (
+                  <tr>
+                    <td colSpan={5} className="px-5 py-10 text-center text-muted-foreground">
+                      <Loader2 className="h-5 w-5 animate-spin inline mr-2" />
+                      Carregando modelos...
+                    </td>
+                  </tr>
+                ) : importacaoModelos.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-5 py-10 text-center text-muted-foreground">
+                      Nenhum modelo configurado ainda.
+                    </td>
+                  </tr>
+                ) : (
+                  importacaoModelos.map((item: any) => {
+                    const moduloLabel = IMPORTACAO_MODULOS.find((modulo) => modulo.value === item.modulo)?.label || item.modulo;
+                    return (
+                      <tr key={item.id} className="border-t border-muted hover:bg-background">
+                        <td className="px-5 h-14 font-medium text-foreground">{moduloLabel}</td>
+                        <td className="px-4 text-muted-foreground">{item.nome_arquivo || "Não informado"}</td>
+                        <td className="px-4 text-muted-foreground">
+                          <a
+                            href={item.drive_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="underline underline-offset-2 hover:text-primary"
+                          >
+                            Abrir link
+                          </a>
+                        </td>
+                        <td className="px-4 text-center">
+                          <Badge variant={item.ativo ? 'success' : 'secondary'} className="h-5">
+                            {item.ativo ? "Ativo" : "Inativo"}
+                          </Badge>
+                        </td>
+                        <td className="px-5">
+                          <div className="flex justify-end gap-1">
+                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => window.open(item.drive_url, "_blank", "noopener,noreferrer")}>
+                              <Globe className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditImportTemplate(item)}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive hover:text-destructive"
+                              onClick={() => {
+                                if (confirm("Deseja remover este modelo de importação?")) {
+                                  deleteImportTemplateMutation.mutate(item.id);
+                                }
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </section>
+        </TabsContent>
+
         <TabsContent value="conta" className="mt-6">
           <div className="max-w-2xl mx-auto space-y-6">
             <div className="esc-card p-8 flex items-center gap-6 relative">
@@ -556,6 +723,72 @@ const Configuracoes = () => {
           </div>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={importTemplateModalOpen} onOpenChange={setImportTemplateModalOpen}>
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle>{editingImportTemplate ? "Editar modelo de importação" : "Novo modelo de importação"}</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Módulo</Label>
+              <Select
+                value={importTemplateForm.modulo}
+                onValueChange={(value) => setImportTemplateForm({ ...importTemplateForm, modulo: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {IMPORTACAO_MODULOS.map((modulo) => (
+                    <SelectItem key={modulo.value} value={modulo.value}>{modulo.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Nome do arquivo</Label>
+              <Input
+                value={importTemplateForm.nome_arquivo}
+                onChange={(e) => setImportTemplateForm({ ...importTemplateForm, nome_arquivo: e.target.value })}
+                placeholder="Ex: modelo_transportadoras.xlsx"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Link do Google Drive</Label>
+              <Input
+                value={importTemplateForm.drive_url}
+                onChange={(e) => setImportTemplateForm({ ...importTemplateForm, drive_url: e.target.value })}
+                placeholder="https://drive.google.com/..."
+              />
+            </div>
+
+            <div className="flex items-center justify-between rounded-lg border border-border p-3">
+              <div>
+                <p className="text-sm font-medium text-foreground">Modelo ativo</p>
+                <p className="text-xs text-muted-foreground">Define se o link deve ser usado no botão de download.</p>
+              </div>
+              <Switch
+                checked={importTemplateForm.ativo}
+                onCheckedChange={(checked) => setImportTemplateForm({ ...importTemplateForm, ativo: checked })}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setImportTemplateModalOpen(false)}>Cancelar</Button>
+            <Button
+              onClick={() => importTemplateMutation.mutate(importTemplateForm)}
+              disabled={importTemplateMutation.isPending || !importTemplateForm.drive_url.trim()}
+            >
+              {importTemplateMutation.isPending ? "Salvando..." : "Salvar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={configModalOpen} onOpenChange={setConfigModalOpen}>
         <DialogContent className="sm:max-w-[420px]">

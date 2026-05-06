@@ -1855,6 +1855,67 @@ export const StorageService = {
   }
 };
 
+export interface ImportacaoModeloLink {
+  id: string;
+  tenant_id: string;
+  modulo: string;
+  nome_arquivo: string | null;
+  drive_url: string;
+  ativo: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export class ImportacaoModelosServiceClass {
+  async listAll() {
+    const { data, error } = await supabase
+      .from('importacao_modelos' as any)
+      .select('*')
+      .order('modulo', { ascending: true });
+    if (error) throw error;
+    return (data ?? []) as ImportacaoModeloLink[];
+  }
+
+  async upsert(payload: {
+    modulo: string;
+    nome_arquivo?: string | null;
+    drive_url: string;
+    ativo?: boolean;
+  }) {
+    const tenantId = await getCurrentTenantId();
+    const { data, error } = await supabase
+      .from('importacao_modelos' as any)
+      .upsert(
+        {
+          tenant_id: tenantId,
+          modulo: payload.modulo,
+          nome_arquivo: payload.nome_arquivo ?? null,
+          drive_url: payload.drive_url,
+          ativo: payload.ativo ?? true,
+          updated_at: new Date().toISOString(),
+        },
+        {
+          onConflict: 'tenant_id,modulo',
+        },
+      )
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    return data as ImportacaoModeloLink;
+  }
+
+  async remove(id: string) {
+    const { error } = await supabase
+      .from('importacao_modelos' as any)
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
+    return true;
+  }
+}
+export const ImportacaoModelosService = new ImportacaoModelosServiceClass();
+
 // ==================================================
 // AI SERVICE & EDGE FUNCTIONS
 // ==================================================

@@ -3,6 +3,7 @@ import { ClipboardCheck, Clock, UserCheck, Scale, Wallet, AlertTriangle, CheckCi
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useTenant } from "@/contexts/TenantContext";
+import { AppShell } from "@/components/layout/AppShell";
 
 // ─── KPI card ────────────────────────────────────────────────────────────────
 
@@ -143,61 +144,63 @@ const CentralOperacional = () => {
   const hasAlerts = (diaristasCount ?? 0) > 0 || (bhCount ?? 0) > 0;
 
   return (
-    <div className="p-6 space-y-8 max-w-[1100px]">
-      {/* Cabeçalho */}
-      <div>
-        <h1 className="font-display font-bold text-[24px] text-[#171717]">Central Operacional</h1>
-        <p className="font-body text-[14px] text-[#737373] mt-1 capitalize">{today}</p>
-      </div>
-
-      {/* Pipeline visual */}
-      <div className="bg-white border border-[#DEDEDE] rounded-xl p-6 shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
-        <h2 className="font-display font-semibold text-[18px] text-[#171717] mb-6">Pipeline de Processamento</h2>
-        <div className="flex items-start gap-1">
-          <FlowStep step={1} label={"INPUT\nExterno"} done />
-          <div className="flex items-center pb-5"><ArrowRight className="h-3 w-3 text-[#C4C4C4]" /></div>
-          <FlowStep step={2} label={"Entradas\nOperacionais"} active />
-          <div className="flex items-center pb-5"><ArrowRight className="h-3 w-3 text-[#C4C4C4]" /></div>
-          <FlowStep step={3} label={"Processamento\nRH"} />
-          <div className="flex items-center pb-5"><ArrowRight className="h-3 w-3 text-[#C4C4C4]" /></div>
-          <FlowStep step={4} label={"Fechamento"} />
-          <div className="flex items-center pb-5"><ArrowRight className="h-3 w-3 text-[#C4C4C4]" /></div>
-          <FlowStep step={5} label={"Financeiro"} />
-          <div className="flex items-center pb-5"><ArrowRight className="h-3 w-3 text-[#C4C4C4]" /></div>
-          <FlowStep step={6} label={"Relatórios"} />
+    <AppShell title="Central Operacional" subtitle={today}>
+      <div className="space-y-8 max-w-[1100px]">
+        {/* Cabeçalho */}
+        <div>
+          <h1 className="font-display font-bold text-[24px] text-[#171717]">Central Operacional</h1>
+          <p className="font-body text-[14px] text-[#737373] mt-1 capitalize">{today}</p>
         </div>
-        <p className="font-body text-[11px] text-[#A3A3A3] mt-3">
-          INPUT → PROCESSAMENTO → FECHAMENTO → PAGAMENTO → RELATÓRIOS
-        </p>
-      </div>
 
-      {/* Alertas */}
-      {hasAlerts && (
-        <div className="bg-[#FEF9C3] border border-[#A16207]/20 rounded-xl p-5">
-          <div className="flex items-center gap-2 mb-2">
-            <AlertTriangle className="h-4 w-4 text-[#A16207]" />
-            <span className="font-display font-semibold text-[14px] text-[#A16207]">Atenção necessária</span>
+        {/* Pipeline visual */}
+        <div className="bg-white border border-[#DEDEDE] rounded-xl p-6 shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
+          <h2 className="font-display font-semibold text-[18px] text-[#171717] mb-6">Pipeline de Processamento</h2>
+          <div className="flex items-start gap-1">
+            <FlowStep step={1} label={"INPUT\nExterno"} done />
+            <div className="flex items-center pb-5"><ArrowRight className="h-3 w-3 text-[#C4C4C4]" /></div>
+            <FlowStep step={2} label={"Entradas\nOperacionais"} active />
+            <div className="flex items-center pb-5"><ArrowRight className="h-3 w-3 text-[#C4C4C4]" /></div>
+            <FlowStep step={3} label={"Processamento\nRH"} />
+            <div className="flex items-center pb-5"><ArrowRight className="h-3 w-3 text-[#C4C4C4]" /></div>
+            <FlowStep step={4} label={"Fechamento"} />
+            <div className="flex items-center pb-5"><ArrowRight className="h-3 w-3 text-[#C4C4C4]" /></div>
+            <FlowStep step={5} label={"Financeiro"} />
+            <div className="flex items-center pb-5"><ArrowRight className="h-3 w-3 text-[#C4C4C4]" /></div>
+            <FlowStep step={6} label={"Relatórios"} />
           </div>
-          <ul className="space-y-1 font-body text-[13px] text-[#4D4D4D]">
-            {(diaristasCount ?? 0) > 0 && <li>• {diaristasCount} diaristas aguardando validação do RH</li>}
-            {(bhCount ?? 0) > 0 && <li>• {bhCount} colaboradores com saldo de banco de horas crítico</li>}
-          </ul>
+          <p className="font-body text-[11px] text-[#A3A3A3] mt-3">
+            INPUT → PROCESSAMENTO → FECHAMENTO → PAGAMENTO → RELATÓRIOS
+          </p>
         </div>
-      )}
 
-      {/* Cards */}
-      <div>
-        <h2 className="font-display font-semibold text-[18px] text-[#171717] mb-4">Pendências do Sistema</h2>
-        <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
-          <PipelineCard icon={ClipboardCheck} label="Operações" count={opCount ?? null} sublabel="total de operações registradas" color="orange" onClick={() => navigate("/operacional/operacoes")} />
-          <PipelineCard icon={Clock} label="Pontos Hoje" count={pontoCount ?? null} sublabel="registros do dia atual" color="blue" onClick={() => navigate("/operacional/pontos")} />
-          <PipelineCard icon={UserCheck} label="Diaristas Pendentes" count={diaristasCount ?? null} sublabel="aguardando validação RH" color="yellow" onClick={() => navigate("/rh/diaristas")} />
-          <PipelineCard icon={Scale} label="Saldos Críticos BH" count={bhCount ?? null} sublabel="saldo negativo no banco de horas" color="red" onClick={() => navigate("/banco-horas")} />
-          <PipelineCard icon={Package} label="Fechamentos Pendentes" count={fechamentoCount ?? null} sublabel="aguardando processamento" color="yellow" onClick={() => navigate("/fechamento")} />
-          <PipelineCard icon={Wallet} label="Central Financeira" count={null} sublabel="pagamentos e faturamento" color="green" onClick={() => navigate("/financeiro")} />
+        {/* Alertas */}
+        {hasAlerts && (
+          <div className="bg-[#FEF9C3] border border-[#A16207]/20 rounded-xl p-5">
+            <div className="flex items-center gap-2 mb-2">
+              <AlertTriangle className="h-4 w-4 text-[#A16207]" />
+              <span className="font-display font-semibold text-[14px] text-[#A16207]">Atenção necessária</span>
+            </div>
+            <ul className="space-y-1 font-body text-[13px] text-[#4D4D4D]">
+              {(diaristasCount ?? 0) > 0 && <li>• {diaristasCount} diaristas aguardando validação do RH</li>}
+              {(bhCount ?? 0) > 0 && <li>• {bhCount} colaboradores com saldo de banco de horas crítico</li>}
+            </ul>
+          </div>
+        )}
+
+        {/* Cards */}
+        <div>
+          <h2 className="font-display font-semibold text-[18px] text-[#171717] mb-4">Pendências do Sistema</h2>
+          <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
+            <PipelineCard icon={ClipboardCheck} label="Operações" count={opCount ?? null} sublabel="total de operações registradas" color="orange" onClick={() => navigate("/operacional/operacoes")} />
+            <PipelineCard icon={Clock} label="Pontos Hoje" count={pontoCount ?? null} sublabel="registros do dia atual" color="blue" onClick={() => navigate("/operacional/pontos")} />
+            <PipelineCard icon={UserCheck} label="Diaristas Pendentes" count={diaristasCount ?? null} sublabel="aguardando validação RH" color="yellow" onClick={() => navigate("/rh/diaristas")} />
+            <PipelineCard icon={Scale} label="Saldos Críticos BH" count={bhCount ?? null} sublabel="saldo negativo no banco de horas" color="red" onClick={() => navigate("/banco-horas")} />
+            <PipelineCard icon={Package} label="Fechamentos Pendentes" count={fechamentoCount ?? null} sublabel="aguardando processamento" color="yellow" onClick={() => navigate("/fechamento")} />
+            <PipelineCard icon={Wallet} label="Central Financeira" count={null} sublabel="pagamentos e faturamento" color="green" onClick={() => navigate("/financeiro")} />
+          </div>
         </div>
       </div>
-    </div>
+    </AppShell>
   );
 };
 

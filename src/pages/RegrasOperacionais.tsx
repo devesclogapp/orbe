@@ -12,11 +12,16 @@ import {
   ShieldAlert,
   Trash2,
   MoreVertical,
+  Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TabRegrasDiaristas } from "@/pages/Rh/TabRegrasDiaristas";
 import DynamicRuleTabsContainer from "@/components/regras/DynamicRuleTabsContainer";
+import {
+  SpreadsheetUploadModal,
+  type SpreadsheetValidationResult,
+} from "@/components/shared/SpreadsheetUploadModal";
 
 import { AppShell } from "@/components/layout/AppShell";
 import {
@@ -438,6 +443,42 @@ const getSimilarItems = (items: LookupItem[], name: string) => {
   });
 };
 
+const getImportRowValue = (row: Record<string, unknown>, ...columns: string[]) => {
+  const targetColumns = columns.map((column) => normalizeText(column));
+  const entry = Object.entries(row).find(([key]) => targetColumns.includes(normalizeText(key)));
+  return String(entry?.[1] ?? "").trim();
+};
+
+const parseCurrencyLike = (value: string) => {
+  if (!value) return 0;
+  const normalized = value.replace(/\./g, "").replace(",", ".").replace(/[^\d.-]/g, "");
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const parseStatusLike = (value: string) => {
+  const normalized = normalizeText(value);
+  if (!normalized) return true;
+  return !["INATIVO", "INATIVA", "NAO", "FALSE", "0"].includes(normalized);
+};
+
+const parseIsoDateLike = (value: string) => {
+  const raw = value.trim();
+  if (!raw) return "";
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return raw;
+  }
+
+  const slashMatch = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (slashMatch) {
+    const [, day, month, year] = slashMatch;
+    return `${year}-${month}-${day}`;
+  }
+
+  return "";
+};
+
 type QuickCreateLookupProps = {
   label: string;
   placeholder: string;
@@ -620,6 +661,7 @@ const RegrasOperacionais = () => {
   const [applyGlobally, setApplyGlobally] = useState(false);
   const [bindingMode, setBindingMode] = useState<RuleBindingMode>("empresa_fornecedor");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [quickCreate, setQuickCreate] = useState<QuickCreateState>(null);
   const [ruleToDelete, setRuleToDelete] = useState<any | null>(null);
@@ -793,6 +835,251 @@ const RegrasOperacionais = () => {
     () => (tiposRegra as any[]).find((item) => item.id === form.tipo_regra_id) ?? null,
     [form.tipo_regra_id, tiposRegra],
   );
+  const activeImportConfig = useMemo(() => {
+    const empresaLookup = new Map((empresas as any[]).map((item) => [normalizeText(item.nome ?? ""), item]));
+    const tipoServicoLookup = new Map((tiposServico as any[]).map((item) => [normalizeText(item.nome ?? ""), item]));
+    const transportadoraLookup = new Map((transportadoras as any[]).map((item) => [normalizeText(item.nome ?? ""), item]));
+    const fornecedorLookup = new Map((fornecedores as any[]).map((item) => [normalizeText(item.nome ?? ""), item]));
+    const formaPagamentoLookup = new Map((formasPagamento as any[]).map((item) => [normalizeText(item.nome ?? ""), item]));
+    const tipoRegraLookup = new Map((tiposRegra as any[]).map((item) => [normalizeText(item.nome ?? ""), item]));
+    const tipoCalculoLookup = new Map(
+      TIPOS_CALCULO.flatMap((item) => [
+        [normalizeText(item.label), item.value],
+        [normalizeText(item.value), item.value],
+      ]),
+    );
+
+    const validateData = async (rows: Record<string, unknown>[]): Promise<SpreadsheetValidationResult> => {
+      const errors: string[] = [];
+      const warnings: string[] = [];
+      const validRows: Record<string, any>[] = [];
+      const previewRows: Record<string, any>[] = [];
+
+      for (const [index, row] of rows.entries()) {
+        const lineNumber = index + 2;
+        const empresaNome = getImportRowValue(row, "EMPRESA");
+        const tipoServicoNome = getImportRowValue(row, "TIPO DE SERVICO", "TIPO DE SERVIÇO", "SERVICO", "SERVIÇO");
+        const tipoCalculoRaw = getImportRowValue(row, "TIPO DE CALCULO", "TIPO DE CÁLCULO");
+        const transportadoraNome = getImportRowValue(row, "TRANSPORTADORA", "TRANSPORTADORA / CLIENTE");
+        const fornecedorNome = getImportRowValue(row, "FORNECEDOR");
+        const produtoNome = getImportRowValue(row, "PRODUTO / CARGA", "PRODUTO CARGA", "PRODUTO");
+        const tipoRegraNome = getImportRowValue(row, "TIPO DE REGRA", "TIPO DE REGRA / VARIAVEL", "TIPO DE REGRA / VARIÁVEL");
+        const valorUnitarioRaw = getImportRowValue(row, "VALOR UNITARIO", "VALOR UNITÁRIO", "VALOR");
+        const formaPagamentoNome = getImportRowValue(row, "FORMA DE PAGAMENTO", "FORMA DE PAGAMENTO PADRAO", "FORMA DE PAGAMENTO PADRÃO");
+        const vigenciaInicioRaw = getImportRowValue(row, "VIGENCIA INICIAL", "VIGÊNCIA INICIAL");
+        const vigenciaFimRaw = getImportRowValue(row, "VIGENCIA FINAL", "VIGÊNCIA FINAL");
+        const statusRaw = getImportRowValue(row, "STATUS");
+
+        const empresa = empresaNome ? empresaLookup.get(normalizeText(empresaNome)) : null;
+        const tipoServico = tipoServicoNome ? tipoServicoLookup.get(normalizeText(tipoServicoNome)) : null;
+        const transportadora = transportadoraNome ? transportadoraLookup.get(normalizeText(transportadoraNome)) : null;
+        const fornecedor = fornecedorNome ? fornecedorLookup.get(normalizeText(fornecedorNome)) : null;
+        const formaPagamento = formaPagamentoNome ? formaPagamentoLookup.get(normalizeText(formaPagamentoNome)) : null;
+        const tipoRegra = tipoRegraNome ? tipoRegraLookup.get(normalizeText(tipoRegraNome)) : null;
+        const tipoCalculo = tipoCalculoLookup.get(normalizeText(tipoCalculoRaw)) ?? "";
+        const vigenciaInicio = parseIsoDateLike(vigenciaInicioRaw);
+        const vigenciaFim = parseIsoDateLike(vigenciaFimRaw);
+        const valorUnitario = parseCurrencyLike(valorUnitarioRaw);
+        const ativo = parseStatusLike(statusRaw);
+
+        const bindingModeFromRow: RuleBindingMode =
+          empresa && fornecedor && transportadora
+            ? "empresa_fornecedor_transportadora"
+            : empresa && transportadora
+              ? "empresa_transportadora"
+              : fornecedor && transportadora
+                ? "fornecedor_transportadora"
+                : transportadora
+                  ? "transportadora"
+                  : empresa && !fornecedor
+                    ? "empresa"
+                    : !empresa && fornecedor
+                      ? "fornecedor"
+                      : "empresa_fornecedor";
+
+        const issRuleSelected = isIssRuleDefinition(tipoRegra ?? null);
+        const context = getRuleContextProfile({
+          applyGlobally: false,
+          issRuleSelected,
+          tipoServicoNome,
+          tipoCalculo,
+          bindingMode: bindingModeFromRow,
+        });
+
+        if (!tipoRegraNome) {
+          errors.push(`Linha ${lineNumber}: informe o campo TIPO DE REGRA.`);
+          continue;
+        }
+
+        if (!tipoRegra?.id) {
+          errors.push(`Linha ${lineNumber}: tipo de regra "${tipoRegraNome}" não encontrado.`);
+          continue;
+        }
+
+        if (!tipoCalculo) {
+          errors.push(`Linha ${lineNumber}: tipo de cálculo "${tipoCalculoRaw}" inválido.`);
+          continue;
+        }
+
+        if (!vigenciaInicio) {
+          errors.push(`Linha ${lineNumber}: informe uma VIGÊNCIA INICIAL válida.`);
+          continue;
+        }
+
+        if (vigenciaFimRaw && !vigenciaFim) {
+          errors.push(`Linha ${lineNumber}: informe uma VIGÊNCIA FINAL válida.`);
+          continue;
+        }
+
+        if (vigenciaFim && vigenciaFim < vigenciaInicio) {
+          errors.push(`Linha ${lineNumber}: a vigência final não pode ser menor que a vigência inicial.`);
+          continue;
+        }
+
+        if (!valorUnitarioRaw || Number.isNaN(valorUnitario)) {
+          errors.push(`Linha ${lineNumber}: informe o VALOR UNITÁRIO.`);
+          continue;
+        }
+
+        if (!issRuleSelected) {
+          if (context.requireEmpresa && !empresa) {
+            errors.push(`Linha ${lineNumber}: empresa "${empresaNome}" não encontrada ou não informada.`);
+            continue;
+          }
+
+          if (context.requireTipoServico && !tipoServico) {
+            errors.push(`Linha ${lineNumber}: tipo de serviço "${tipoServicoNome}" não encontrado ou não informado.`);
+            continue;
+          }
+
+          if (context.requireFornecedor && !fornecedor) {
+            errors.push(`Linha ${lineNumber}: fornecedor "${fornecedorNome}" não encontrado ou não informado.`);
+            continue;
+          }
+
+          if (context.requireTransportadora && !transportadora) {
+            errors.push(`Linha ${lineNumber}: transportadora "${transportadoraNome}" não encontrada ou não informada.`);
+            continue;
+          }
+        }
+
+        if (empresaNome && !empresa && !issRuleSelected) {
+          errors.push(`Linha ${lineNumber}: empresa "${empresaNome}" não encontrada.`);
+          continue;
+        }
+
+        if (tipoServicoNome && !tipoServico && !issRuleSelected) {
+          errors.push(`Linha ${lineNumber}: tipo de serviço "${tipoServicoNome}" não encontrado.`);
+          continue;
+        }
+
+        if (transportadoraNome && !transportadora && !issRuleSelected) {
+          errors.push(`Linha ${lineNumber}: transportadora "${transportadoraNome}" não encontrada.`);
+          continue;
+        }
+
+        if (fornecedorNome && !fornecedor && !issRuleSelected) {
+          errors.push(`Linha ${lineNumber}: fornecedor "${fornecedorNome}" não encontrado.`);
+          continue;
+        }
+
+        if (formaPagamentoNome && !formaPagamento) {
+          errors.push(`Linha ${lineNumber}: forma de pagamento "${formaPagamentoNome}" não encontrada.`);
+          continue;
+        }
+
+        let produto = null;
+        if (produtoNome) {
+          if (!fornecedor?.id) {
+            errors.push(`Linha ${lineNumber}: informe um fornecedor válido antes de usar PRODUTO / CARGA.`);
+            continue;
+          }
+
+          const produtosFornecedor = await ProdutoCargaService.getByFornecedor(fornecedor.id);
+          produto =
+            (produtosFornecedor as any[]).find((item) => normalizeText(item.nome ?? "") === normalizeText(produtoNome)) ?? null;
+
+          if (!produto) {
+            errors.push(`Linha ${lineNumber}: produto/carga "${produtoNome}" não encontrado para o fornecedor informado.`);
+            continue;
+          }
+        }
+
+        const payload = {
+          empresa_id: issRuleSelected ? null : empresa?.id ?? null,
+          unidade_id: null,
+          tipo_servico_id: issRuleSelected ? null : tipoServico?.id ?? null,
+          fornecedor_id: issRuleSelected ? null : fornecedor?.id ?? null,
+          transportadora_id: issRuleSelected ? null : transportadora?.id ?? null,
+          produto_carga_id: issRuleSelected ? null : produto?.id ?? null,
+          tipo_regra_id: tipoRegra.id,
+          tipo_calculo: tipoCalculo,
+          valor_unitario: valorUnitario,
+          forma_pagamento_id: formaPagamento?.id ?? null,
+          vigencia_inicio: vigenciaInicio,
+          vigencia_fim: vigenciaFim || null,
+          ativo,
+        };
+
+        const hasConflict = ativo
+          ? await RegraOperacionalService.hasActiveConflict({
+              empresaId: payload.empresa_id,
+              tipoServicoId: payload.tipo_servico_id,
+              fornecedorId: payload.fornecedor_id,
+              transportadoraId: payload.transportadora_id,
+              produtoCargaId: payload.produto_carga_id,
+              tipoRegraId: payload.tipo_regra_id,
+              tipoCalculo: payload.tipo_calculo,
+              vigenciaInicio: payload.vigencia_inicio,
+              vigenciaFim: payload.vigencia_fim,
+            })
+          : false;
+
+        if (hasConflict) {
+          errors.push(`Linha ${lineNumber}: já existe uma regra ativa para essa combinação dentro da vigência informada.`);
+          continue;
+        }
+
+        validRows.push(payload);
+        previewRows.push({
+          EMPRESA: issRuleSelected ? "Global" : empresa?.nome ?? "-",
+          SERVICO: issRuleSelected ? "Todos" : tipoServico?.nome ?? "-",
+          FORNECEDOR: fornecedor?.nome ?? "-",
+          TRANSPORTADORA: transportadora?.nome ?? "-",
+          REGRA: tipoRegra.nome ?? "-",
+          VALOR: valorUnitario,
+        });
+      }
+
+      return {
+        validRows,
+        errors,
+        warnings,
+        previewRows: previewRows.slice(0, 5),
+      };
+    };
+
+    return {
+      label: "Regras Operacionais",
+      description: "Envie uma planilha compatível com o modelo de regras operacionais.",
+      expectedColumns: [
+        "EMPRESA",
+        "TIPO DE SERVICO",
+        "TIPO DE CALCULO",
+        "TRANSPORTADORA",
+        "FORNECEDOR",
+        "PRODUTO / CARGA",
+        "TIPO DE REGRA",
+        "VALOR UNITARIO",
+        "FORMA DE PAGAMENTO",
+        "VIGENCIA INICIAL",
+        "VIGENCIA FINAL",
+        "STATUS",
+      ],
+      templateFileName: "modelo_regras_operacionais.xlsx",
+      validateData,
+    };
+  }, [empresas, fornecedores, formasPagamento, tiposRegra, tiposServico, transportadoras]);
   const tipoServicoSelecionado = useMemo(
     () => (tiposServico as any[]).find((item) => item.id === form.tipo_servico_id) ?? null,
     [form.tipo_servico_id, tiposServico],
@@ -1537,6 +1824,16 @@ const RegrasOperacionais = () => {
     duplicateMutation.mutate(item);
   };
 
+  const handleImportRules = async (rows: Record<string, any>[]) => {
+    for (const row of rows) {
+      await RegraOperacionalService.create(row);
+    }
+
+    await queryClient.invalidateQueries({ queryKey: ["regras_operacionais"] });
+    await queryClient.invalidateQueries({ queryKey: ["regras_operacionais_grid"] });
+    toast.success(`${rows.length} regras operacionais importadas com sucesso.`);
+  };
+
   useEffect(() => {
     if (!form.fornecedor_id && form.produto_carga_id) {
       setForm((prev) => ({ ...prev, produto_carga_id: "" }));
@@ -1692,6 +1989,10 @@ const RegrasOperacionais = () => {
                     placeholder="Buscar por empresa, serviço..."
                     className="flex-1 md:w-64"
                   />
+                  <Button variant="outline" className="shrink-0" onClick={() => setImportModalOpen(true)}>
+                    <Upload className="h-4 w-4 mr-2" />
+                    Importar Planilha
+                  </Button>
                   <Button className="shrink-0" onClick={() => { setIsModalOpen(true); setCurrentStep(1); }}>
                     <Plus className="h-4 w-4 mr-2" />
                     Nova Regra
@@ -2455,6 +2756,19 @@ const RegrasOperacionais = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <SpreadsheetUploadModal
+        open={importModalOpen}
+        onOpenChange={setImportModalOpen}
+        title="Importar planilha - Regras Operacionais"
+        description={activeImportConfig.description}
+        expectedColumns={activeImportConfig.expectedColumns}
+        templateColumns={activeImportConfig.expectedColumns}
+        templateFileName={activeImportConfig.templateFileName}
+        requireValidation
+        validateData={activeImportConfig.validateData}
+        onUpload={handleImportRules}
+      />
     </AppShell>
   );
 };

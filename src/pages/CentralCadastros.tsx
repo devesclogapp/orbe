@@ -26,7 +26,10 @@ import {
   Wrench,
 } from "lucide-react";
 import { toast } from "sonner";
-import { SpreadsheetUploadModal } from "@/components/shared/SpreadsheetUploadModal";
+import {
+  SpreadsheetUploadModal,
+  type SpreadsheetValidationResult,
+} from "@/components/shared/SpreadsheetUploadModal";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { MetricCard } from "@/components/painel/MetricCard";
@@ -57,10 +60,69 @@ import {
   ConfiguracaoOperacionalService,
   EmpresaService,
   FornecedorService,
+  ImportacaoModelosService,
   TipoServicoOperacionalService,
   TransportadoraClienteService,
 } from "@/services/base.service";
 import { useAuth } from "@/contexts/AuthContext";
+
+type CadastroTabValue =
+  | "colaboradores"
+  | "empresas"
+  | "coletores"
+  | "transportadoras"
+  | "fornecedores"
+  | "servicos"
+  | "parametros";
+
+const TECHNICAL_COLUMNS = [
+  "ID",
+  "TENANT_ID",
+  "CREATED_AT",
+  "UPDATED_AT",
+  "CREATED_BY",
+  "USER_ID",
+  "AUTH_ID",
+];
+
+const normalizeText = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .trim()
+    .toUpperCase();
+
+const getRowValue = (row: Record<string, unknown>, ...columns: string[]) => {
+  const entry = Object.entries(row).find(([key]) => columns.some((column) => normalizeText(key) === normalizeText(column)));
+  return String(entry?.[1] ?? "").trim();
+};
+
+const parseBooleanLike = (value: string, defaultValue = true) => {
+  const normalized = normalizeText(value);
+  if (!normalized) return defaultValue;
+  if (["SIM", "TRUE", "1", "ATIVO", "ATIVA", "YES"].includes(normalized)) return true;
+  if (["NAO", "NÃO", "FALSE", "0", "INATIVO", "INATIVA", "NO"].includes(normalized)) return false;
+  return defaultValue;
+};
+
+const parseCurrencyLike = (value: string) => {
+  if (!value) return 0;
+  const normalized = value.replace(/\./g, "").replace(",", ".").replace(/[^\d.-]/g, "");
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const splitCidadeUf = (value: string) => {
+  const raw = value.trim();
+  if (!raw) return { cidade: "", estado: "" };
+  const parts = raw.split("/");
+  if (parts.length < 2) return { cidade: raw, estado: "" };
+  return {
+    cidade: parts.slice(0, -1).join("/").trim(),
+    estado: parts[parts.length - 1].trim().toUpperCase(),
+  };
+};
 
 const CadastroTabTrigger = ({
   value,
@@ -85,6 +147,7 @@ const CentralCadastros = () => {
 
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<CadastroTabValue>("colaboradores");
   const [configType, setConfigType] = useState<"operacao" | "produto" | "dia">("operacao");
   const [editingConfig, setEditingConfig] = useState<any>(null);
   const [configForm, setConfigForm] = useState<any>({});
@@ -202,6 +265,11 @@ const CentralCadastros = () => {
     queryKey: ["config_operacional", empresaId],
     queryFn: () => ConfiguracaoOperacionalService.getByEmpresa(empresaId),
     enabled: !!empresaId,
+  });
+
+  const { data: importacaoModelos = [] } = useQuery<any[]>({
+    queryKey: ["importacao_modelos"],
+    queryFn: () => ImportacaoModelosService.listAll(),
   });
 
   useEffect(() => {
@@ -560,6 +628,286 @@ const deleteFornecedorMutation = useMutation({
     }
   };
 
+  const getIgnoredTechnicalColumns = (rows: Record<string, unknown>[]) => {
+    const headers = rows.flatMap((row) => Object.keys(row));
+    return Array.from(new Set(headers.filter((header) => TECHNICAL_COLUMNS.includes(normalizeText(header)))));
+  };
+
+  const activeImportConfig = useMemo(() => {
+    const buildResult = (
+      rows: Record<string, unknown>[],
+      mapper: (
+        row: Record<string, unknown>,
+        index: number,
+      ) => { payload?: Record<string, any>; preview?: Record<string, any>; error?: string },
+    ): SpreadsheetValidationResult => {
+      const errors: string[] = [];
+      const validRows: Record<string, any>[] = [];
+      const previewRows: Record<string, any>[] = [];
+      const warnings: string[] = [];
+      const ignoredColumns = getIgnoredTechnicalColumns(rows);
+
+      if (ignoredColumns.length > 0) {
+        warnings.push(`Colunas tÃ©cnicas ignoradas automaticamente: ${ignoredColumns.join(", ")}.`);
+      }
+
+      rows.forEach((row, index) => {
+        const result = mapper(row, index);
+        if (result.error) {
+          errors.push(result.error);
+          return;
+        }
+        if (result.payload) validRows.push(result.payload);
+        if (result.preview) previewRows.push(result.preview);
+      });
+
+      return {
+        validRows,
+        errors,
+        warnings,
+        previewRows: previewRows.slice(0, 5),
+      };
+    };
+
+    const colaboradoresEmpresaLookup = new Map(
+      empresas.map((empresa) => [normalizeText(String(empresa.nome ?? "")), empresa]),
+    );
+    const modeloImportacaoAtivo = importacaoModelos.find(
+      (item) => item.modulo === activeTab && item.ativo && item.drive_url,
+    );
+
+    const configs: Record<
+      CadastroTabValue,
+      {
+        label: string;
+        description: string;
+        downloadUrl?: string;
+        expectedColumns?: string[];
+        templateFileName?: string;
+        unsupportedMessage?: string;
+        validateData?: (rows: Record<string, unknown>[]) => SpreadsheetValidationResult;
+        onUpload?: (rows: Record<string, any>[]) => Promise<void>;
+      }
+    > = {
+      colaboradores: {
+        label: "Colaboradores",
+        description: "Envie uma planilha compatÃ­vel com o modelo da aba Colaboradores.",
+        downloadUrl: modeloImportacaoAtivo?.drive_url,
+        expectedColumns: ["NOME", "CPF", "TELEFONE", "EMPRESA", "TIPO", "CARGO", "CONTRATO", "VALOR BASE", "FATURAMENTO", "STATUS"],
+        templateFileName: "modelo_operadores_colaboradores.xlsx",
+        validateData: (rows) =>
+          buildResult(rows, (row, index) => {
+            const nome = getRowValue(row, "NOME");
+            const cpf = getRowValue(row, "CPF");
+            const telefone = getRowValue(row, "TELEFONE");
+            const empresaNome = getRowValue(row, "EMPRESA");
+            const cargo = getRowValue(row, "CARGO");
+            const tipoNormalizado = normalizeText(getRowValue(row, "TIPO"));
+            const contratoNormalizado = normalizeText(getRowValue(row, "CONTRATO"));
+            const valorBase = parseCurrencyLike(getRowValue(row, "VALOR BASE"));
+            const faturamento = parseBooleanLike(getRowValue(row, "FATURAMENTO"), true);
+            const statusNormalizado = normalizeText(getRowValue(row, "STATUS"));
+            const empresa = colaboradoresEmpresaLookup.get(normalizeText(empresaNome));
+            const tipoColaborador = tipoNormalizado === "DIARISTA"
+              ? "DIARISTA"
+              : tipoNormalizado === "INTERMITENTE"
+                ? "INTERMITENTE"
+                : tipoNormalizado === "TERCEIRIZADO"
+                  ? "TERCEIRIZADO"
+                  : tipoNormalizado === "PRODUCAO"
+                    ? "PRODUÃ‡ÃƒO"
+                    : "CLT";
+            const tipoContrato = tipoColaborador === "DIARISTA"
+              ? null
+              : contratoNormalizado === "OPERACAO" || contratoNormalizado === "OPERAÇÃO"
+                ? "OperaÃ§Ã£o"
+                : "Hora";
+            const status = statusNormalizado === "INATIVO" ? "inativo" : statusNormalizado === "PENDENTE" ? "pendente" : "ativo";
+
+            if (!nome) return { error: `Linha ${index + 2}: informe o campo NOME.` };
+            if (!empresaNome) return { error: `Linha ${index + 2}: informe o campo EMPRESA.` };
+            if (!empresa?.id) return { error: `Linha ${index + 2}: empresa "${empresaNome}" nÃ£o encontrada neste tenant.` };
+            if (tipoColaborador !== "DIARISTA" && !cargo) return { error: `Linha ${index + 2}: CARGO Ã© obrigatÃ³rio para colaboradores nÃ£o diaristas.` };
+
+            const payload = {
+              nome,
+              cpf: cpf || null,
+              telefone: telefone || null,
+              cargo: cargo || null,
+              matricula: null,
+              empresa_id: empresa.id,
+              tipo_colaborador: tipoColaborador,
+              tipo_contrato: tipoContrato,
+              valor_base: valorBase,
+              flag_faturamento: tipoColaborador === "DIARISTA" ? false : faturamento,
+              permitir_lancamento_operacional: tipoColaborador === "DIARISTA",
+              status,
+              nome_completo: null,
+              banco_codigo: null,
+              agencia: null,
+              agencia_digito: null,
+              conta: null,
+              conta_digito: null,
+              tipo_conta: "corrente",
+            };
+
+            return {
+              payload,
+              preview: { NOME: nome, EMPRESA: empresa.nome, TIPO: tipoColaborador, CARGO: cargo || "â€”", STATUS: status },
+            };
+          }),
+        onUpload: async (rows) => {
+          for (const row of rows) await ColaboradorService.create(row);
+          await queryClient.invalidateQueries({ queryKey: ["colaboradores_list"] });
+        },
+      },
+      empresas: {
+        label: "Empresas",
+        description: "Envie uma planilha compatÃ­vel com o modelo da aba Empresas.",
+        downloadUrl: modeloImportacaoAtivo?.drive_url,
+        expectedColumns: ["NOME", "CNPJ", "UNIDADE", "CIDADE/UF", "STATUS"],
+        templateFileName: "modelo_empresas.xlsx",
+        validateData: (rows) =>
+          buildResult(rows, (row, index) => {
+            const nome = getRowValue(row, "NOME");
+            const cnpj = getRowValue(row, "CNPJ");
+            const unidade = getRowValue(row, "UNIDADE");
+            const cidadeUf = getRowValue(row, "CIDADE/UF");
+            const statusNormalizado = normalizeText(getRowValue(row, "STATUS"));
+            const { cidade, estado } = splitCidadeUf(cidadeUf);
+
+            if (!nome) return { error: `Linha ${index + 2}: informe o campo NOME.` };
+            if (!cnpj) return { error: `Linha ${index + 2}: informe o campo CNPJ.` };
+            if (!cidadeUf) return { error: `Linha ${index + 2}: informe o campo CIDADE/UF.` };
+            if (!estado) return { error: `Linha ${index + 2}: use o formato CIDADE/UF no campo CIDADE/UF.` };
+
+            const payload = {
+              nome,
+              cnpj,
+              unidade: unidade || null,
+              cidade,
+              estado,
+              status: statusNormalizado === "INATIVA" || statusNormalizado === "INATIVO" ? "inativa" : "ativa",
+            };
+
+            return {
+              payload,
+              preview: { NOME: nome, CNPJ: cnpj, "CIDADE/UF": `${cidade}/${estado}`, STATUS: payload.status },
+            };
+          }),
+        onUpload: async (rows) => {
+          for (const row of rows) await EmpresaService.create(row);
+          await queryClient.invalidateQueries({ queryKey: ["empresas"] });
+        },
+      },
+      coletores: {
+        label: "Coletores",
+        description: "Envie uma planilha compatÃ­vel com o modelo da aba Coletores.",
+        unsupportedMessage: "Modelo de importaÃ§Ã£o de coletores ainda nÃ£o configurado.",
+      },
+      transportadoras: {
+        label: "Transportadoras",
+        description: "Envie uma planilha compatÃ­vel com o modelo da aba Transportadoras.",
+        downloadUrl: modeloImportacaoAtivo?.drive_url,
+        expectedColumns: ["NOME", "CNPJ/CPF", "TELEFONE", "EMAIL", "ENDERECO", "STATUS"],
+        templateFileName: "modelo_transportadoras.xlsx",
+        validateData: (rows) =>
+          buildResult(rows, (row, index) => {
+            const nome = getRowValue(row, "NOME");
+            if (!nome) return { error: `Linha ${index + 2}: informe o campo NOME.` };
+            const ativo = parseBooleanLike(getRowValue(row, "STATUS"), true);
+            const payload = {
+              nome,
+              documento: getRowValue(row, "CNPJ/CPF") || null,
+              telefone: getRowValue(row, "TELEFONE") || null,
+              email: getRowValue(row, "EMAIL") || null,
+              endereco: getRowValue(row, "ENDERECO", "ENDEREÇO") || null,
+              empresa_id: empresaId || null,
+              ativo,
+            };
+            return {
+              payload,
+              preview: { NOME: nome, DOCUMENTO: payload.documento || "â€”", STATUS: ativo ? "Ativo" : "Inativo" },
+            };
+          }),
+        onUpload: async (rows) => {
+          for (const row of rows) await TransportadoraClienteService.create(row);
+          await queryClient.invalidateQueries({ queryKey: ["transportadoras"] });
+        },
+      },
+      fornecedores: {
+        label: "Fornecedores",
+        description: "Envie uma planilha compatÃ­vel com o modelo da aba Fornecedores.",
+        expectedColumns: ["NOME", "CNPJ/CPF", "TELEFONE", "EMAIL", "ENDERECO", "STATUS"],
+        downloadUrl: modeloImportacaoAtivo?.drive_url,
+        templateFileName: "modelo_fornecedores.xlsx",
+        validateData: (rows) =>
+          buildResult(rows, (row, index) => {
+            const nome = getRowValue(row, "NOME");
+            if (!nome) return { error: `Linha ${index + 2}: informe o campo NOME.` };
+            const ativo = parseBooleanLike(getRowValue(row, "STATUS"), true);
+            const payload = {
+              nome,
+              documento: getRowValue(row, "CNPJ/CPF") || null,
+              telefone: getRowValue(row, "TELEFONE") || null,
+              email: getRowValue(row, "EMAIL") || null,
+              endereco: getRowValue(row, "ENDERECO", "ENDEREÇO") || null,
+              empresa_id: empresaId || null,
+              ativo,
+            };
+            return {
+              payload,
+              preview: { NOME: nome, DOCUMENTO: payload.documento || "â€”", STATUS: ativo ? "Ativo" : "Inativo" },
+            };
+          }),
+        onUpload: async (rows) => {
+          for (const row of rows) await FornecedorService.create(row);
+          await queryClient.invalidateQueries({ queryKey: ["fornecedores"] });
+        },
+      },
+      servicos: {
+        label: "ServiÃ§os",
+        description: "Envie uma planilha compatÃ­vel com o modelo da aba ServiÃ§os.",
+        downloadUrl: modeloImportacaoAtivo?.drive_url,
+        expectedColumns: ["NOME", "DESCRICAO", "STATUS"],
+        templateFileName: "modelo_servicos.xlsx",
+        validateData: (rows) =>
+          buildResult(rows, (row, index) => {
+            const nome = getRowValue(row, "NOME");
+            if (!nome) return { error: `Linha ${index + 2}: informe o campo NOME.` };
+            const ativo = parseBooleanLike(getRowValue(row, "STATUS"), true);
+            const payload = {
+              nome,
+              descricao: getRowValue(row, "DESCRICAO", "DESCRIÇÃO") || null,
+              ativo,
+              empresa_id: empresaId || null,
+            };
+            return {
+              payload,
+              preview: { NOME: nome, DESCRICAO: payload.descricao || "-", STATUS: ativo ? "Ativo" : "Inativo" },
+            };
+          }),
+        onUpload: async (rows) => {
+          for (const row of rows) await TipoServicoOperacionalService.create(row);
+          await queryClient.invalidateQueries({ queryKey: ["tipos_servico_operacional"] });
+        },
+      },
+      parametros: {
+        label: "ParÃ¢metros Operacionais",
+        description: "Envie uma planilha compatÃ­vel com o modelo da aba ParÃ¢metros Operacionais.",
+        unsupportedMessage: "Modelo de importaÃ§Ã£o de parÃ¢metros operacionais ainda nÃ£o configurado.",
+      },
+    };
+
+    return configs[activeTab];
+  }, [activeTab, empresas, empresaId, importacaoModelos, queryClient]);
+
+  const handleContextualImport = async (rows: Record<string, any>[]) => {
+    if (!activeImportConfig.onUpload) return;
+    await activeImportConfig.onUpload(rows);
+    toast.success(`${rows.length} registros importados com sucesso em ${activeImportConfig.label}.`);
+  };
+
   const loading =
     loadingEmpresas ||
     loadingColaboradores ||
@@ -630,7 +978,7 @@ const deleteFornecedorMutation = useMutation({
               <MetricCard label="Serviços" value={tiposServico.length.toString()} icon={Wrench} />
             </div>
 
-            <Tabs defaultValue="colaboradores" className="space-y-4">
+            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as CadastroTabValue)} className="space-y-4">
               <TabsList className="bg-muted/50 p-1 rounded-xl border border-border/50 flex flex-wrap h-auto">
                 <CadastroTabTrigger value="colaboradores" icon={Users}>Colaboradores</CadastroTabTrigger>
                 <CadastroTabTrigger value="empresas" icon={Building2}>Empresas</CadastroTabTrigger>
@@ -1986,9 +2334,20 @@ const deleteFornecedorMutation = useMutation({
       <SpreadsheetUploadModal
         open={importModalOpen}
         onOpenChange={setImportModalOpen}
-        title="Importar Configurações Operacionais"
-        description="A importação classificará os registros automaticamente: Planilhas com colunas 'Categoria'/'ICMS' vão para Produtos. 'Fator' vão para Tipos de Dia. As demais vão para Tipos de Operação."
-        onUpload={handleImport}
+        title={`Importar planilha - ${activeImportConfig.label}`}
+        description={activeImportConfig.description}
+        onDownloadTemplate={
+          activeImportConfig.downloadUrl
+            ? () => window.open(activeImportConfig.downloadUrl, "_blank", "noopener,noreferrer")
+            : undefined
+        }
+        expectedColumns={activeImportConfig.expectedColumns}
+        templateColumns={activeImportConfig.expectedColumns}
+        templateFileName={activeImportConfig.templateFileName}
+        unsupportedMessage={activeImportConfig.unsupportedMessage}
+        requireValidation
+        validateData={activeImportConfig.validateData}
+        onUpload={handleContextualImport}
       />
     </AppShell>
   );
