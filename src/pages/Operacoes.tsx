@@ -1205,7 +1205,7 @@ const Operacoes = () => {
                       value="operacoes"
                       className="rounded-xl px-4 font-display font-semibold text-[#6B7280] data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-sm"
                     >
-                      Operacoes
+                      Volume
                     </TabsTrigger>
                     <TabsTrigger
                       value="custos-extras"

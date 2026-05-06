@@ -292,6 +292,9 @@ const getContextoImportacaoValue = (item: Record<string, unknown>, key: string) 
 };
 
 const getDisplayFormaPagamento = (item: Record<string, unknown>) =>
+  (item as { formas_pagamento_operacional?: { nome?: string | null } }).formas_pagamento_operacional?.nome ??
+  ((item as { formaPagamento?: string | null }).formaPagamento ?? null) ??
+  ((item as { forma_pagamento?: string | null }).forma_pagamento ?? null) ??
   getContextoImportacaoValue(item, "forma_pagamento") ??
   getLinhaOriginalValue(item, "FORMA DE PAGAMENTO") ??
   "—";
@@ -304,6 +307,13 @@ const getDisplayObservacao = (item: Record<string, unknown>) =>
 const getDisplayStatusOriginal = (item: Record<string, unknown>) =>
   getContextoImportacaoValue(item, "status_original_planilha") ??
   getLinhaOriginalValue(item, "STATUS") ??
+  "—";
+
+const getDisplayEmpresa = (item: Record<string, unknown>, empresas: any[] = []) =>
+  (empresas.find((empresaItem: any) => empresaItem.id === (item as { empresa_id?: string | null }).empresa_id)?.nome ?? null) ??
+  ((item as { empresas?: { nome?: string | null } }).empresas?.nome ?? null) ??
+  getContextoImportacaoValue(item, "empresa") ??
+  getLinhaOriginalValue(item, "EMPRESA") ??
   "—";
 
 const toInputValue = (value: unknown) => {
@@ -1718,13 +1728,13 @@ export const OperacoesTableBlock = ({
                   <tr className="text-center font-display text-muted-foreground uppercase text-xs tracking-wide">
                     {visibleCols.data && <th style={getStickyProps("data", true).style} className={getStickyProps("data", true).className}>{renderInteractiveHeader("data", "DATA", CalendarDays)}</th>}
                     {visibleCols.idPlanilha && <th style={getStickyProps("idPlanilha", true).style} className={getStickyProps("idPlanilha", true).className}>{renderInteractiveHeader("idPlanilha", "ID")}</th>}
-                    {visibleCols.operacao && <th style={getStickyProps("operacao", true).style} className={getStickyProps("operacao", true).className}>{renderInteractiveHeader("operacao", "OPERACAO", Package)}</th>}
+                    {visibleCols.operacao && <th style={getStickyProps("operacao", true).style} className={getStickyProps("operacao", true).className}>{renderInteractiveHeader("operacao", "OPERAÇÃO/VOLUME", Package)}</th>}
+                    {visibleCols.empresaPlanilha && <th className="px-3 py-2.5 font-semibold text-center">EMPRESA</th>}
                     {visibleCols.fornecedor && <th className="px-3 py-2.5 font-semibold ">{renderInteractiveHeader("fornecedor", "FORNECEDOR")}</th>}
                     {visibleCols.transportadora && <th className="px-3 py-2.5 font-semibold ">{renderInteractiveHeader("transportadora", "TRANSPORTADORA", Truck)}</th>}
                     {visibleCols.placa && renderHeaderCell("placa", "PLACA", "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.servico && <th className="px-3 py-2.5 font-semibold ">{renderInteractiveHeader("servico", "SERVICO", Settings2)}</th>}
                     {visibleCols.qtdCol && renderHeaderCell("qtdCol", <span className="inline-flex items-center justify-center gap-1.5 w-full"><User className="h-3.5 w-3.5 text-muted-foreground" />QTD. COL.</span>, "px-3 py-2.5 font-semibold text-center")}
-                    {visibleCols.empresaPlanilha && <th className="px-3 py-2.5 font-semibold text-center">EMPRESA PLANILHA</th>}
                     {visibleCols.formaPagamento && renderHeaderCell("formaPagamento", "FORMA PAGAMENTO", "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.nf && renderHeaderCell("nf", "NF", "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.ctrc && renderHeaderCell("ctrc", "CTRC", "px-3 py-2.5 font-semibold text-center")}
@@ -1764,7 +1774,7 @@ export const OperacoesTableBlock = ({
                     const ctrc = item.ctrc || "—";
                     const iss = item.percentual_iss ? `${(Number(item.percentual_iss) * 100).toFixed(0)}%` : "—";
                     const idPlanilha = index + 1;
-                    const empresaPlanilha = getLinhaOriginalValue(item, "EMPRESA") || "—";
+                    const empresaPlanilha = getDisplayEmpresa(item, empresas as any[]);
                     const formaPagamento = getDisplayFormaPagamento(item);
                     const observacao = getDisplayObservacao(item);
                     const dataOp = item.data_operacao ? new Date(item.data_operacao + "T00:00:00").toLocaleDateString("pt-BR") : "—";
@@ -1773,10 +1783,10 @@ export const OperacoesTableBlock = ({
                     if (item.tipo_calculo_snapshot === "volume") qtdText += " vol(s)";
                     else if (item.tipo_calculo_snapshot === "diaria") qtdText += " diaria(s)";
                     else if (item.tipo_calculo_snapshot === "operacao") qtdText = "1 op";
-                    const inicio = item.horario_inicio_label ? String(item.horario_inicio_label).substring(0, 5) : "—";
-                    const fim = item.horario_fim_label ? String(item.horario_fim_label).substring(0, 5) : "—";
+                    const inicio = item.entrada_ponto ? String(item.entrada_ponto).substring(0, 5) : item.horario_inicio_label ? String(item.horario_inicio_label).substring(0, 5) : "—";
+                    const fim = item.saida_ponto ? String(item.saida_ponto).substring(0, 5) : item.horario_fim_label ? String(item.horario_fim_label).substring(0, 5) : "—";
                     const valUnitFormatter = (value: any) => Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-                    const valUnit = valUnitFormatter(item.valor_unitario_label ?? item.valor_unitario ?? 0);
+                    const valUnit = valUnitFormatter(item.valor_unitario_snapshot ?? item.valor_unitario_label ?? item.valor_unitario ?? 0);
                     const valDia = valUnitFormatter(valorTotal);
                     const valorDescarga = valUnitFormatter(item.valor_descarga);
                     const custoIss = valUnitFormatter(item.custo_com_iss);
@@ -1800,12 +1810,12 @@ export const OperacoesTableBlock = ({
                         {visibleCols.data && <td style={getStickyProps("data", false).style} className={cn(getStickyProps("data", false).className, "px-3 text-center text-muted-foreground whitespace-nowrap font-mono text-xs")}>{dataOp}</td>}
                         {visibleCols.idPlanilha && <td style={getStickyProps("idPlanilha", false).style} className={cn(getStickyProps("idPlanilha", false).className, "px-3 text-center text-muted-foreground whitespace-nowrap")}>{String(idPlanilha)}</td>}
                         {visibleCols.operacao && <td style={getStickyProps("operacao", false).style} className={cn(getStickyProps("operacao", false).className, "px-5 py-3 text-center font-medium whitespace-nowrap text-foreground")}>{operacaoNome}</td>}
+                        {visibleCols.empresaPlanilha && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{String(empresaPlanilha)}</td>}
                         {visibleCols.fornecedor && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{fornecedor}</td>}
                         {visibleCols.transportadora && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{transportadora}</td>}
                         {visibleCols.placa && renderInlineCell(item, "placa", placa)}
                         {visibleCols.servico && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{servico}</td>}
                         {visibleCols.qtdCol && renderInlineCell(item, "quantidade_colaboradores", qtdColaboradores, "text", "px-3 text-center font-display font-medium whitespace-nowrap")}
-                        {visibleCols.empresaPlanilha && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{String(empresaPlanilha)}</td>}
                         {visibleCols.formaPagamento && renderInlineCell(item, "forma_pagamento", String(formaPagamento))}
                         {visibleCols.nf && renderInlineCell(item, "nf_numero", nf)}
                         {visibleCols.ctrc && renderInlineCell(item, "ctrc", ctrc)}
