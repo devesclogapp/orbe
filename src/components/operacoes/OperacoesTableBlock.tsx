@@ -871,7 +871,7 @@ export const OperacoesTableBlock = ({
       else if (sortConfig.key === "transportadora") { valA = a.transportadoras_clientes?.nome || a.transportadora_label || ""; valB = b.transportadoras_clientes?.nome || b.transportadora_label || ""; }
       else if (sortConfig.key === "idPlanilha") { valA = a.created_at || a.id; valB = b.created_at || b.id; }
       else if (sortConfig.key === "data") { valA = a.data_operacao || ""; valB = b.data_operacao || ""; }
-      else if (sortConfig.key === "operacao") { valA = `${a.fornecedores?.nome} ${a.tipos_servico_operacional?.nome}`; valB = `${b.fornecedores?.nome} ${b.tipos_servico_operacional?.nome}`; }
+      else if (sortConfig.key === "operacao") { valA = a.tipos_servico_operacional?.nome || a.tipo_servico_label || ""; valB = b.tipos_servico_operacional?.nome || b.tipo_servico_label || ""; }
 
       if (valA < valB) return sortConfig.direction === "asc" ? -1 : 1;
       if (valA > valB) return sortConfig.direction === "asc" ? 1 : -1;
@@ -1757,7 +1757,7 @@ export const OperacoesTableBlock = ({
                     const valorTotal = valDescarga + custoComIss + totalEFilme;
                     const fornecedor = item.fornecedores?.nome || item.produto_label || "Sem fornecedor";
                     const servico = item.tipos_servico_operacional?.nome || item.tipo_servico_label || "Sem servico";
-                    const operacaoNome = `${fornecedor} • ${servico}`;
+                    const operacaoNome = servico;
                     const transportadora = item.transportadoras_clientes?.nome || item.transportadora_label || "—";
                     const placa = item.placa || "—";
                     const nf = item.nf_numero || "—";

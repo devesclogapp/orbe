@@ -184,10 +184,9 @@ export function calcularValoresOperacao({
   valorUnitarioFilme: number;
   nfRaw: string;
 }) {
-  const isNfSim = nfRaw === "S" || nfRaw === "SIM";
-  const isNfNao = nfRaw === "N" || nfRaw === "NAO" || nfRaw === "NÃO";
-
-  const percentualCalculado = isNfSim ? 5 : isNfNao ? 0 : percentualIss;
+  const hasNfInput = !!nfRaw && nfRaw !== "N" && nfRaw !== "NAO" && nfRaw !== "NÃO";
+  const baseIss = percentualIss > 0 ? percentualIss : 5;
+  const percentualCalculado = hasNfInput ? baseIss : 0;
   const valorDescargaCalculado = Math.max(quantidade, 0) * valorUnitario;
   const custoIssCalculado = valorDescargaCalculado * (percentualCalculado / 100);
   const totalFilmeCalculado = valorUnitarioFilme * quantidadeFilme;
@@ -211,7 +210,7 @@ export function processarOperacao(operacao: any, empresas: any[] = []) {
   const valoresCalculados = calcularValoresOperacao({
     quantidade,
     valorUnitario,
-    percentualIss: Number(operacao.percentual_iss || 0),
+    percentualIss: Number(operacao.percentual_iss || 0) * 100,
     quantidadeFilme: Number(operacao.quantidade_filme || 0),
     valorUnitarioFilme: Number(operacao.valor_unitario_filme || 0),
     nfRaw: String(operacao.nf_numero ?? "").toUpperCase().trim()

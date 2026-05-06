@@ -81,7 +81,7 @@ type TipoCalculo = "volume" | "daily" | "operation" | "colaborador";
 type StatusLancamento = "Processado" | "Pendente" | "Com alerta" | "Aguardando validação" | "Bloqueado";
 type LookupOption = { id: string; nome: string };
 type RuleLookupState = "idle" | "loading" | "found" | "missing" | "error" | "duplicate" | "needs_product";
-type EtapaFormulario = 1 | 2 | 3;
+type EtapaFormulario = 1 | 2 | 3 | 4;
 type TipoLancamento = "operacao_padrao" | "transbordo_servico_extra" | "custos_extras";
 type ModalidadeFinanceiraForm = "CAIXA_IMEDIATO" | "DUPLICATA" | "FATURAMENTO_MENSAL" | "CUSTO_DESPESA";
 type CondutaColaborador = {
@@ -381,7 +381,7 @@ const LancamentoProducao = () => {
     const [viewMode, setViewMode] = useState<"grid" | "carousel">("grid");
     const [carouselIndex, setCarouselIndex] = useState(0);
     const [bannerExpandido, setBannerExpandido] = useState(false);
-    const touchRef = useRef<{start: number | null; end: number | null}>({start: null, end: null});
+    const touchRef = useRef<{ start: number | null; end: number | null }>({ start: null, end: null });
 
     const { data: perfil } = useQuery({
         queryKey: ["profile_usuario", user?.id],
@@ -614,7 +614,7 @@ const LancamentoProducao = () => {
             // Usar o nome da forma de pagamento se disponível, senão usar o ID
             const formaPagamentoItem = formaPagamentoOptions.find(item => item.id === form.forma_pagamento);
             const formaPagamento = formaPagamentoItem?.nome || form.forma_pagamento;
-            
+
             if (!modalidade || !formaPagamento) {
                 setForm((prev) => ({ ...prev, regra_financeira: null }));
                 return;
@@ -631,7 +631,7 @@ const LancamentoProducao = () => {
                     const hoje = new Date();
                     const vencimento = new Date(hoje);
                     vencimento.setDate(vencimento.getDate() + prazoDias);
-                    
+
                     setForm((prev) => ({
                         ...prev,
                         regra_financeira: {
@@ -695,7 +695,7 @@ const LancamentoProducao = () => {
         retry: false,
     });
 
-    const percentualIss = regraIssRpc?.regra_encontrada ? Number(regraIssRpc.percentual_iss || 0) : 0;
+    const percentualIss = regraIssRpc?.regra_encontrada ? Number(regraIssRpc.percentual_iss || 0) * 100 : 0;
 
     const regraValor = useMemo(() => {
         if (!regraValorRpc || !regraValorRpc.regra_encontrada) return null;
@@ -756,7 +756,7 @@ const LancamentoProducao = () => {
     const quantidadeFilme = Number(form.quantidade_filme || 0);
     const hasRegraFinanceira = !!regraValor;
     const tipoCalculoAtual = regraValor?.tipoCalculo ?? null;
-    const quantidadeConsiderada = tipoCalculoAtual === "operation" ? 1 : quantidade;
+    const quantidadeConsiderada = tipoCalculoAtual === "operation" ? (quantidade || 1) : quantidade;
 
     // Regras de Negócio do Novo Módulo:
     const valoresCalculados = calcularValoresOperacao({
@@ -786,6 +786,9 @@ const LancamentoProducao = () => {
     const custoIss = valoresCalculados.custoIssCalculado;
     const totalFilme = valoresCalculados.totalFilmeCalculado;
     const totalFinal = valoresCalculados.totalFinalCalculado;
+    const baseCalculoResumo = tipoCalculoAtual === "operation"
+        ? `1 operação x ${formatCurrency(valorUnitario || 0)} + ${formatCurrency(custoIss)}`
+        : `${quantidadeConsiderada || 0} x ${formatCurrency(valorUnitario || 0)} + ${formatCurrency(custoIss)}`;
 
     const isDataRetroativa = form.data < today;
     const horarioInvalido = !!form.horario_inicio && !!form.horario_fim && form.horario_inicio > form.horario_fim;
@@ -817,15 +820,29 @@ const LancamentoProducao = () => {
         if (isQualquerCusto && !form.descricao_servico.trim()) return "Informe a descrição do custo ou motivo do diária.";
 
         if (!isQualquerCusto && !form.transportadora) return "Selecione a transportadora ou cliente.";
+
+        if (horarioInvalido) return "O horário de saída não pode ser menor que o horário de entrada.";
+        if (isDataRetroativa && !form.justificativa_data.trim()) return "Informe a justificativa para lançar uma data retroativa.";
+        return "";
+    }, [
+        form.data,
+        form.descricao_servico,
+        form.empresa_id,
+        form.justificativa_data,
+        form.tipo_servico,
+        form.transportadora,
+        horarioInvalido,
+        isDataRetroativa,
+        isQualquerCusto,
+        isTransbordoServicoExtra,
+    ]);
+
+    const etapaTresBlockReason = useMemo(() => {
         if (!isQualquerCusto && requiresProductSelection && !form.produto) return REGRA_MENSAGEM_PRODUTO;
         if (!isCustosMensaisCLT && !form.forma_pagamento) return "Selecione a categoria operacional da regra.";
 
-        // Validar regra financeira das abas dinâmicas - apenas aviso, não bloqueia
-        // A regra será aplicada se existir, ou usará valores padrão se não existir
-
         if (ruleLookupState === "loading") return "Buscando valor...";
 
-        // Regras flexíveis para Transbordo e Custos
         if (!hasRegraFinanceira) {
             if (isTransbordoServicoExtra || isQualquerCusto) {
                 if (!form.valor_unitario || Number(form.valor_unitario) <= 0) {
@@ -844,32 +861,25 @@ const LancamentoProducao = () => {
             return "Informe uma quantidade inteira de colaboradores maior que zero.";
         }
         if (quantidadeConsiderada <= 0) return "Informe uma quantidade maior que zero.";
-        if (horarioInvalido) return "O horário de saída não pode ser menor que o horário de entrada.";
-        if (isDataRetroativa && !form.justificativa_data.trim()) return "Informe a justificativa para lançar uma data retroativa.";
         return "";
     }, [
-        form.data,
-        form.descricao_servico,
-        form.empresa_id,
         form.fornecedor,
         form.forma_pagamento,
-        form.justificativa_data,
         form.quantidade_colaboradores,
         form.produto,
-        form.tipo_servico,
-        form.transportadora,
+        form.valor_unitario,
         hasRegraFinanceira,
-        horarioInvalido,
         isFluxoSemEquipe,
-        isDataRetroativa,
+        isQualquerCusto,
         isTransbordoServicoExtra,
+        isCustosMensaisCLT,
         mensagemRegra,
         quantidadeConsiderada,
         requiresProductSelection,
         ruleLookupState,
     ]);
 
-    const etapaTresBlockReason = useMemo(() => {
+    const etapaQuatroBlockReason = useMemo(() => {
         if (isFluxoSemEquipe) return "";
         const quantidadeInformada = Number(form.quantidade_colaboradores || 0);
         if (quantidadeSelecionada !== quantidadeInformada) {
@@ -1008,16 +1018,25 @@ const LancamentoProducao = () => {
                 toast.error(etapaUmBlockReasonResolvido || etapaDoisBlockReason);
                 return;
             }
+            setEtapaAtual(3);
+            return;
+        }
+
+        if (etapaAtual === 3) {
+            if (etapaUmBlockReasonResolvido || etapaDoisBlockReason || etapaTresBlockReason) {
+                toast.error(etapaUmBlockReasonResolvido || etapaDoisBlockReason || etapaTresBlockReason);
+                return;
+            }
             if (isFluxoSemEquipe) {
                 // Fluxos baseados em duplicata de transbordo encerram no próprio formulário operacional.
             } else {
-                setEtapaAtual(3);
+                setEtapaAtual(4);
                 return;
             }
         }
 
-        if (etapaUmBlockReasonResolvido || etapaDoisBlockReason || etapaTresBlockReason) {
-            toast.error(etapaUmBlockReasonResolvido || etapaDoisBlockReason || etapaTresBlockReason);
+        if (etapaUmBlockReasonResolvido || etapaDoisBlockReason || etapaTresBlockReason || etapaQuatroBlockReason) {
+            toast.error(etapaUmBlockReasonResolvido || etapaDoisBlockReason || etapaTresBlockReason || etapaQuatroBlockReason);
             return;
         }
 
@@ -1076,7 +1095,7 @@ const LancamentoProducao = () => {
         const buscarRegraFinanceira = async () => {
             const modalidade = form.modalidade_financeira || avaliacaoJson.contexto_operacional?.modalidade_financeira;
             const formaPagamento = formaPagamentoSelecionada?.nome || avaliacaoJson.contexto_operacional?.forma_pagamento || form.forma_pagamento;
-            
+
             if (!modalidade || !formaPagamento) return null;
 
             try {
@@ -1128,46 +1147,46 @@ const LancamentoProducao = () => {
                     empresa_id: form.empresa_id,
                     unidade_id: form.unidade_id || null,
                     data_operacao: form.data,
-                tipo_servico_id: form.tipo_servico,
-                colaborador_id: null,
-                entrada_ponto: form.horario_inicio || null,
-                saida_ponto: form.horario_fim || null,
-                transportadora_id: form.transportadora,
-                fornecedor_id: form.fornecedor,
-                produto_carga_id: form.produto || null,
-                quantidade: tipoCalculoAtual === "operation"
-                    ? 1
-                    : tipoCalculoAtual === "colaborador"
-                        ? quantidadeColaboradores
-                        : quantidade,
-                valor_unitario_snapshot: valorUnitario,
-                tipo_calculo_snapshot: regraValor?.tipoCalculo ?? "volume",
-                forma_pagamento_id: form.forma_pagamento && form.forma_pagamento.includes('-') ? form.forma_pagamento : null,
-                placa: form.placa_veiculo || null,
-                status: status === "Com alerta" ? "com_alerta" : status === "Aguardando validação" ? "aguardando_validacao" : "pendente",
-                percentual_iss: Number(percentualIss) / 100,
-                valor_descarga: valorDescarga,
-                custo_com_iss: custoIss,
-                valor_unitario_filme: valorUnitarioFilme,
-                quantidade_filme: quantidadeFilme,
-                valor_total_filme: totalFilme,
-                valor_total: totalFinal,
-                avaliacao_json: avaliacaoJson,
-                justificativa_retroativa: form.justificativa_data.trim() || null,
-                origem_dado: "manual",
-                // Passing the extra fields natively if the schema allows, otherwise rely on avaliacao_json since it will be passed to Operations Table
-                nf_numero: form.nf_numero.trim() || null,
-                ctrc: form.ctrc.trim() || null,
-            },
-            colaboradores: colaboradoresSelecionados.map((colaborador: any) => {
-                const conduta = condutaColaboradores[colaborador.id];
-                return {
-                    collaborator_id: colaborador.id,
-                    had_infraction: conduta?.hadInfraction ?? false,
-                    infraction_type_id: conduta?.infractionType || null,
-                    infraction_notes: conduta?.notes?.trim() || null,
-                };
-            }),
+                    tipo_servico_id: form.tipo_servico,
+                    colaborador_id: null,
+                    entrada_ponto: form.horario_inicio || null,
+                    saida_ponto: form.horario_fim || null,
+                    transportadora_id: form.transportadora,
+                    fornecedor_id: form.fornecedor,
+                    produto_carga_id: form.produto || null,
+                    quantidade: tipoCalculoAtual === "operation"
+                        ? form.quantidade ? Number(form.quantidade) : 1
+                        : tipoCalculoAtual === "colaborador"
+                            ? quantidadeColaboradores
+                            : quantidade,
+                    valor_unitario_snapshot: valorUnitario,
+                    tipo_calculo_snapshot: regraValor?.tipoCalculo ?? "volume",
+                    forma_pagamento_id: form.forma_pagamento && form.forma_pagamento.includes('-') ? form.forma_pagamento : null,
+                    placa: form.placa_veiculo || null,
+                    status: status === "Com alerta" ? "com_alerta" : status === "Aguardando validação" ? "aguardando_validacao" : "pendente",
+                    percentual_iss: Number(percentualIss) / 100,
+                    valor_descarga: valorDescarga,
+                    custo_com_iss: custoIss,
+                    valor_unitario_filme: valorUnitarioFilme,
+                    quantidade_filme: quantidadeFilme,
+                    valor_total_filme: totalFilme,
+                    valor_total: totalFinal,
+                    avaliacao_json: avaliacaoJson,
+                    justificativa_retroativa: form.justificativa_data.trim() || null,
+                    origem_dado: "manual",
+                    // Passing the extra fields natively if the schema allows, otherwise rely on avaliacao_json since it will be passed to Operations Table
+                    nf_numero: form.nf_numero.trim() || null,
+                    ctrc: form.ctrc.trim() || null,
+                },
+                colaboradores: colaboradoresSelecionados.map((colaborador: any) => {
+                    const conduta = condutaColaboradores[colaborador.id];
+                    return {
+                        collaborator_id: colaborador.id,
+                        had_infraction: conduta?.hadInfraction ?? false,
+                        infraction_type_id: conduta?.infractionType || null,
+                        infraction_notes: conduta?.notes?.trim() || null,
+                    };
+                }),
             });
         })();
     };
@@ -1191,7 +1210,7 @@ const LancamentoProducao = () => {
 
     if (isCheckingSchema) {
         return (
-<OperationalShell title="PRODUÇÃO IN-LOCO" unitName={currentUnitName || "Sincronizando..."} showBack={false}>
+            <OperationalShell title="PRODUÇÃO IN-LOCO" unitName={currentUnitName || "Sincronizando..."} showBack={false}>
                 <div className="flex flex-col items-center justify-center p-24">
                     <Clock className="w-10 h-10 animate-pulse text-muted-foreground mb-4" />
                     <p className="text-sm font-medium text-muted-foreground">Verificando disponibilidade do schema operacional...</p>
@@ -1259,16 +1278,20 @@ const LancamentoProducao = () => {
                                 <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
                                     {isFluxoSemEquipe
                                         ? etapaAtual === 1
-                                            ? "Etapa 1 de 2"
-                                            : "Etapa 2 de 2"
-                                        : etapaAtual === 1
                                             ? "Etapa 1 de 3"
                                             : etapaAtual === 2
                                                 ? "Etapa 2 de 3"
-                                                : "Etapa 3 de 3"}
+                                                : "Etapa 3 de 3"
+                                        : etapaAtual === 1
+                                            ? "Etapa 1 de 4"
+                                            : etapaAtual === 2
+                                                ? "Etapa 2 de 4"
+                                                : etapaAtual === 3
+                                                    ? "Etapa 3 de 4"
+                                                    : "Etapa 4 de 4"}
                                 </p>
                                 <p className="text-sm font-semibold text-foreground">
-                                    {etapaAtual === 1 ? "Tipo de Lançamento" : etapaAtual === 2 ? "Dados da operação" : "Colaboradores e conduta"}
+                                    {etapaAtual === 1 ? "Tipo de Lançamento" : etapaAtual === 2 ? "Dados da operação" : etapaAtual === 3 ? "Valores e Financeiro" : "Colaboradores e conduta"}
                                 </p>
                             </div>
                             {etapaAtual > 1 && (
@@ -1315,171 +1338,171 @@ const LancamentoProducao = () => {
                                     {viewMode === "grid" ? (
                                         <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
                                             {LANCAMENTO_PRESETS.map((preset) => {
-                                            const Icon = preset.icon;
-                                            const isActive = form.preset_id === preset.id;
-                                            const perfilRole = perfil?.role?.toLowerCase() ?? "";
-                                            const listaBloqueada = PRESETS_PERMITIDOS_POR_PERFIL[perfilRole] ?? [];
-                                            const isBloqueado = listaBloqueada.length > 0 && !listaBloqueada.includes(preset.id);
-                                            const rotaEspecifica = PRESET_ROTAS[preset.id];
-                                            return (
-                                                <button
-                                                    key={preset.id}
-                                                    type="button"
-                                                    disabled={isBloqueado}
-                                                    onClick={() => {
-                                                        if (isBloqueado) {
-                                                            toast.error("Você não tem permissão para acessar este lançamento.");
-                                                            return;
-                                                        }
-                                                        if (rotaEspecifica) {
-                                                            navigate(rotaEspecifica);
-                                                            return;
-                                                        }
-                                                        setForm((prev) => ({
-                                                            ...prev,
-                                                            preset_id: preset.id,
-                                                            tipo_lancamento: preset.tipo_lancamento,
-                                                            modalidade_financeira: preset.modalidade_financeira,
-                                                        }));
-                                                        setEtapaAtual(2);
-                                                        setTimeout(() => {
-                                                            window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
-                                                        }, 100);
-                                                    }}
-                                                    className={cn(
-                                                        "relative flex flex-col p-4 rounded-2xl border transition-all text-left group",
-                                                        isBloqueado && "opacity-40 cursor-not-allowed grayscale",
-                                                        !isBloqueado && isActive ? "border-brand bg-brand/5 ring-2 ring-brand/20 shadow-sm" : "",
-                                                        !isBloqueado && !isActive ? "border-border hover:border-brand/40 bg-background hover:bg-muted/30" : "",
-                                                    )}
-                                                >
-                                                    <div className={cn(
+                                                const Icon = preset.icon;
+                                                const isActive = form.preset_id === preset.id;
+                                                const perfilRole = perfil?.role?.toLowerCase() ?? "";
+                                                const listaBloqueada = PRESETS_PERMITIDOS_POR_PERFIL[perfilRole] ?? [];
+                                                const isBloqueado = listaBloqueada.length > 0 && !listaBloqueada.includes(preset.id);
+                                                const rotaEspecifica = PRESET_ROTAS[preset.id];
+                                                return (
+                                                    <button
+                                                        key={preset.id}
+                                                        type="button"
+                                                        disabled={isBloqueado}
+                                                        onClick={() => {
+                                                            if (isBloqueado) {
+                                                                toast.error("Você não tem permissão para acessar este lançamento.");
+                                                                return;
+                                                            }
+                                                            if (rotaEspecifica) {
+                                                                navigate(rotaEspecifica);
+                                                                return;
+                                                            }
+                                                            setForm((prev) => ({
+                                                                ...prev,
+                                                                preset_id: preset.id,
+                                                                tipo_lancamento: preset.tipo_lancamento,
+                                                                modalidade_financeira: preset.modalidade_financeira,
+                                                            }));
+                                                            setEtapaAtual(2);
+                                                            setTimeout(() => {
+                                                                window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+                                                            }, 100);
+                                                        }}
+                                                        className={cn(
+                                                            "relative flex flex-col p-4 rounded-2xl border transition-all text-left group",
+                                                            isBloqueado && "opacity-40 cursor-not-allowed grayscale",
+                                                            !isBloqueado && isActive ? "border-brand bg-brand/5 ring-2 ring-brand/20 shadow-sm" : "",
+                                                            !isBloqueado && !isActive ? "border-border hover:border-brand/40 bg-background hover:bg-muted/30" : "",
+                                                        )}
+                                                    >
+                                                        <div className={cn(
                                                             "w-10 h-10 mb-3 shrink-0 rounded-full flex items-center justify-center transition-colors",
                                                             isActive && !isBloqueado ? "bg-brand text-white shadow-md" : preset.iconColor || "bg-muted text-muted-foreground group-hover:bg-muted-foreground/10"
                                                         )}>
-                                                        <Icon className="w-5 h-5" />
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        <p className={cn("font-bold leading-tight", isActive && !isBloqueado ? "text-brand" : "text-foreground")}>{preset.title}</p>
-                                                        <p className="text-xs text-muted-foreground leading-relaxed">{preset.description}</p>
-                                                    </div>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                ) : (
-                                    <div className="relative">
-                                        <div 
-                                            className="overflow-hidden"
-                                            onTouchStart={(e) => {
-                                                touchRef.current.start = e.touches[0].clientX;
-                                                touchRef.current.end = null;
-                                            }}
-                                            onTouchMove={(e) => {
-                                                touchRef.current.end = e.touches[0].clientX;
-                                            }}
-                                            onTouchEnd={() => {
-                                                if (!touchRef.current.start || !touchRef.current.end) return;
-                                                const diff = touchRef.current.start - touchRef.current.end;
-                                                const threshold = 50;
-                                                if (Math.abs(diff) > threshold) {
-                                                    if (diff > 0 && carouselIndex < gridPresets.length - 1) {
-                                                        setCarouselIndex(carouselIndex + 1);
-                                                    } else if (diff < 0 && carouselIndex > 0) {
-                                                        setCarouselIndex(carouselIndex - 1);
+                                                            <Icon className="w-5 h-5" />
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <p className={cn("font-bold leading-tight", isActive && !isBloqueado ? "text-brand" : "text-foreground")}>{preset.title}</p>
+                                                            <p className="text-xs text-muted-foreground leading-relaxed">{preset.description}</p>
+                                                        </div>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    ) : (
+                                        <div className="relative">
+                                            <div
+                                                className="overflow-hidden"
+                                                onTouchStart={(e) => {
+                                                    touchRef.current.start = e.touches[0].clientX;
+                                                    touchRef.current.end = null;
+                                                }}
+                                                onTouchMove={(e) => {
+                                                    touchRef.current.end = e.touches[0].clientX;
+                                                }}
+                                                onTouchEnd={() => {
+                                                    if (!touchRef.current.start || !touchRef.current.end) return;
+                                                    const diff = touchRef.current.start - touchRef.current.end;
+                                                    const threshold = 50;
+                                                    if (Math.abs(diff) > threshold) {
+                                                        if (diff > 0 && carouselIndex < gridPresets.length - 1) {
+                                                            setCarouselIndex(carouselIndex + 1);
+                                                        } else if (diff < 0 && carouselIndex > 0) {
+                                                            setCarouselIndex(carouselIndex - 1);
+                                                        }
                                                     }
-                                                }
-                                                touchRef.current.start = null;
-                                                touchRef.current.end = null;
-                                            }}
-                                        >
-                                            <div 
-                                                className="flex transition-transform duration-300 ease-in-out" 
-                                                style={{ 
-                                                    width: `${gridPresets.length * 100}%`,
-                                                    transform: `translateX(-${carouselIndex * (100 / gridPresets.length)}%)`
+                                                    touchRef.current.start = null;
+                                                    touchRef.current.end = null;
                                                 }}
                                             >
-                                                {gridPresets.map((preset) => {
-                                                    const Icon = preset.icon;
-                                                    const isActive = form.preset_id === preset.id;
-                                                    const listaBloqueada = PRESETS_PERMITIDOS_POR_PERFIL[perfil?.role?.toLowerCase() ?? ""] ?? [];
-                                                    const isBloqueado = listaBloqueada.length > 0 && !listaBloqueada.includes(preset.id);
-                                                    const rotaEspecifica = PRESET_ROTAS[preset.id];
-                                                    return (
-                                                        <div key={preset.id} className="flex-shrink-0 px-1" style={{ width: `${100 / gridPresets.length}%` }}>
-                                                            <button
-                                                                type="button"
-                                                                disabled={isBloqueado}
-                                                                onClick={() => {
-                                                                    if (isBloqueado) {
-                                                                        toast.error("Você não tem permissão para acessar este lançamento.");
-                                                                        return;
-                                                                    }
-                                                                    if (rotaEspecifica) {
-                                                                        navigate(rotaEspecifica);
+                                                <div
+                                                    className="flex transition-transform duration-300 ease-in-out"
+                                                    style={{
+                                                        width: `${gridPresets.length * 100}%`,
+                                                        transform: `translateX(-${carouselIndex * (100 / gridPresets.length)}%)`
+                                                    }}
+                                                >
+                                                    {gridPresets.map((preset) => {
+                                                        const Icon = preset.icon;
+                                                        const isActive = form.preset_id === preset.id;
+                                                        const listaBloqueada = PRESETS_PERMITIDOS_POR_PERFIL[perfil?.role?.toLowerCase() ?? ""] ?? [];
+                                                        const isBloqueado = listaBloqueada.length > 0 && !listaBloqueada.includes(preset.id);
+                                                        const rotaEspecifica = PRESET_ROTAS[preset.id];
+                                                        return (
+                                                            <div key={preset.id} className="flex-shrink-0 px-1" style={{ width: `${100 / gridPresets.length}%` }}>
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={isBloqueado}
+                                                                    onClick={() => {
+                                                                        if (isBloqueado) {
+                                                                            toast.error("Você não tem permissão para acessar este lançamento.");
+                                                                            return;
+                                                                        }
+                                                                        if (rotaEspecifica) {
+                                                                            navigate(rotaEspecifica);
+                                                                            setTimeout(() => {
+                                                                                window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+                                                                            }, 100);
+                                                                            return;
+                                                                        }
+                                                                        setForm((prev) => ({
+                                                                            ...prev,
+                                                                            preset_id: preset.id,
+                                                                            tipo_lancamento: preset.tipo_lancamento,
+                                                                            modalidade_financeira: preset.modalidade_financeira,
+                                                                        }));
+                                                                        setEtapaAtual(2);
                                                                         setTimeout(() => {
                                                                             window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
                                                                         }, 100);
-                                                                        return;
-                                                                    }
-                                                                    setForm((prev) => ({
-                                                                        ...prev,
-                                                                        preset_id: preset.id,
-                                                                        tipo_lancamento: preset.tipo_lancamento,
-                                                                        modalidade_financeira: preset.modalidade_financeira,
-                                                                    }));
-                                                                    setEtapaAtual(2);
-                                                                    setTimeout(() => {
-                                                                        window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
-                                                                    }, 100);
-                                                                }}
-                                                                className={cn(
-                                                                    "relative flex flex-col p-8 rounded-2xl border transition-all text-left w-full h-full min-h-[280px]",
-                                                                    isBloqueado && "opacity-40 cursor-not-allowed grayscale",
-                                                                    !isBloqueado && isActive ? "border-brand bg-brand/5 ring-2 ring-brand/20 shadow-sm" : "",
-                                                                    !isBloqueado && !isActive ? "border-border hover:border-brand/40 bg-background hover:bg-muted/30" : "",
-                                                                )}
-                                                            >
-                                                                <div className={cn(
-                                                                    "w-16 h-16 mb-5 shrink-0 rounded-full flex items-center justify-center transition-colors",
-                                                                    isActive && !isBloqueado ? "bg-brand text-white shadow-md" : preset.iconColor || "bg-muted text-muted-foreground"
-                                                                )}>
-                                                                    <Icon className="w-8 h-8" />
-                                                                </div>
-                                                                <div className="space-y-2">
-                                                                    <p className={cn("text-xl font-bold leading-tight", isActive && !isBloqueado ? "text-brand" : "text-foreground")}>{preset.title}</p>
-                                                                    <p className="text-base text-muted-foreground leading-relaxed">{preset.description}</p>
-                                                                </div>
-                                                            </button>
-                                                        </div>
-                                                    );
-                                                })}
+                                                                    }}
+                                                                    className={cn(
+                                                                        "relative flex flex-col p-8 rounded-2xl border transition-all text-left w-full h-full min-h-[280px]",
+                                                                        isBloqueado && "opacity-40 cursor-not-allowed grayscale",
+                                                                        !isBloqueado && isActive ? "border-brand bg-brand/5 ring-2 ring-brand/20 shadow-sm" : "",
+                                                                        !isBloqueado && !isActive ? "border-border hover:border-brand/40 bg-background hover:bg-muted/30" : "",
+                                                                    )}
+                                                                >
+                                                                    <div className={cn(
+                                                                        "w-16 h-16 mb-5 shrink-0 rounded-full flex items-center justify-center transition-colors",
+                                                                        isActive && !isBloqueado ? "bg-brand text-white shadow-md" : preset.iconColor || "bg-muted text-muted-foreground"
+                                                                    )}>
+                                                                        <Icon className="w-8 h-8" />
+                                                                    </div>
+                                                                    <div className="space-y-2">
+                                                                        <p className={cn("text-xl font-bold leading-tight", isActive && !isBloqueado ? "text-brand" : "text-foreground")}>{preset.title}</p>
+                                                                        <p className="text-base text-muted-foreground leading-relaxed">{preset.description}</p>
+                                                                    </div>
+                                                                </button>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
                                             </div>
+                                            {gridPresets.length > 1 && (
+                                                <div className="flex items-center justify-between mt-4">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setCarouselIndex((prev) => Math.max(0, prev - 1))}
+                                                        disabled={carouselIndex === 0}
+                                                        className="p-2 rounded-lg border border-border hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
+                                                    >
+                                                        <ChevronLeft className="w-5 h-5" />
+                                                    </button>
+                                                    <span className="text-sm text-muted-foreground">{carouselIndex + 1} / {gridPresets.length}</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setCarouselIndex((prev) => Math.min(gridPresets.length - 1, prev + 1))}
+                                                        disabled={carouselIndex === gridPresets.length - 1}
+                                                        className="p-2 rounded-lg border border-border hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
+                                                    >
+                                                        <ChevronRight className="w-5 h-5" />
+                                                    </button>
+                                                </div>
+                                            )}
                                         </div>
-                                        {gridPresets.length > 1 && (
-                                            <div className="flex items-center justify-between mt-4">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setCarouselIndex((prev) => Math.max(0, prev - 1))}
-                                                    disabled={carouselIndex === 0}
-                                                    className="p-2 rounded-lg border border-border hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
-                                                >
-                                                    <ChevronLeft className="w-5 h-5" />
-                                                </button>
-                                                <span className="text-sm text-muted-foreground">{carouselIndex + 1} / {gridPresets.length}</span>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setCarouselIndex((prev) => Math.min(gridPresets.length - 1, prev + 1))}
-                                                    disabled={carouselIndex === gridPresets.length - 1}
-                                                    className="p-2 rounded-lg border border-border hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
-                                                >
-                                                    <ChevronRight className="w-5 h-5" />
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
+                                    )}
 
                                     {etapaUmBlockReasonResolvido && (
                                         <div className="esc-card p-3 border-l-4 border-l-amber-500 bg-amber-500/5 text-sm font-medium text-amber-800 dark:text-amber-200">
@@ -1698,6 +1721,16 @@ const LancamentoProducao = () => {
                                         </div>
                                     )}
 
+                                    {etapaDoisBlockReason && (
+                                        <div className="esc-card p-3 border-l-4 border-l-amber-500 bg-amber-500/5 text-sm font-medium text-amber-800 dark:text-amber-200">
+                                            {etapaDoisBlockReason}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {etapaAtual === 3 && (
+                                <div className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
                                     {(!isTransbordoServicoExtra && !isQualquerCusto) && (
                                         <>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1793,16 +1826,12 @@ const LancamentoProducao = () => {
                                             <Label>{isTransbordoServicoExtra ? "Quantitativo" : isQualquerCusto ? "Quantidade" : "Quantidade de volumes"} <span className="text-destructive">*</span></Label>
                                             <Input
                                                 type="number"
-                                                min="0"
+                                                min="1"
                                                 step="1"
-                                                placeholder="0"
+                                                placeholder={tipoCalculoAtual === "operation" ? "1" : "0"}
                                                 value={form.quantidade}
                                                 onChange={(e) => setForm((prev) => ({ ...prev, quantidade: e.target.value }))}
-                                                disabled={tipoCalculoAtual === "operation"}
-                                                className={cn(
-                                                    "h-11 rounded-xl text-center font-black text-lg",
-                                                    tipoCalculoAtual === "operation" && "opacity-70",
-                                                )}
+                                                className="h-11 rounded-xl text-center font-black text-lg"
                                             />
                                             <p className="text-[11px] text-muted-foreground">
                                                 {isTransbordoServicoExtra
@@ -1810,7 +1839,7 @@ const LancamentoProducao = () => {
                                                     : isQualquerCusto
                                                         ? "Quantidade de dias ou itens a considerar neste lançamento."
                                                         : tipoCalculoAtual === "operation"
-                                                            ? "Registros por operação usam quantidade automática de 1."
+                                                            ? "Mantenha em branco ou 1 para operação padrão. Altere para dobrar/triplicar o registro."
                                                             : "Informe a quantidade de volumes a serem descarregados."}
                                             </p>
                                         </div>
@@ -1999,9 +2028,7 @@ const LancamentoProducao = () => {
                                             <div>
                                                 <p className="text-[11px] text-muted-foreground">Base do cálculo</p>
                                                 <p className="text-sm font-bold">
-                                                    {tipoCalculoAtual === "operation"
-                                                        ? "1 operação x " + formatCurrency(valorUnitario || 0)
-                                                        : `${quantidadeConsiderada || 0} x ${formatCurrency(valorUnitario || 0)}`}
+                                                    {baseCalculoResumo}
                                                 </p>
                                             </div>
                                             {isTransbordoServicoExtra && (
@@ -2012,7 +2039,7 @@ const LancamentoProducao = () => {
                                             )}
                                         </div>
                                     </div>
-                                    
+
                                     {/* Preview da Regra Financeira */}
                                     {form.regra_financeira && (
                                         <div className="rounded-xl border border-green-500/30 bg-green-500/10 p-4 space-y-2">
@@ -2040,15 +2067,15 @@ const LancamentoProducao = () => {
                                         </div>
                                     )}
 
-                                    {etapaDoisBlockReason && (
+                                    {etapaTresBlockReason && (
                                         <div className="esc-card p-3 border-l-4 border-l-amber-500 bg-amber-500/5 text-sm font-medium text-amber-800 dark:text-amber-200">
-                                            {etapaDoisBlockReason}
+                                            {etapaTresBlockReason}
                                         </div>
                                     )}
                                 </div>
                             )}
 
-                            {etapaAtual === 3 && !isFluxoSemEquipe && (
+                            {etapaAtual === 4 && !isFluxoSemEquipe && (
                                 <div className="rounded-xl border border-border bg-background p-4 space-y-4 animate-in fade-in zoom-in-95 duration-200">
                                     <div className="flex items-start justify-between gap-3">
                                         <div>
@@ -2173,9 +2200,9 @@ const LancamentoProducao = () => {
                                         })}
                                     </div>
 
-                                    {etapaTresBlockReason && (
+                                    {etapaQuatroBlockReason && (
                                         <div className="esc-card p-3 border-l-4 border-l-amber-500 bg-amber-500/5 text-sm font-medium text-amber-800 dark:text-amber-200">
-                                            {etapaTresBlockReason}
+                                            {etapaQuatroBlockReason}
                                         </div>
                                     )}
                                 </div>
@@ -2200,16 +2227,18 @@ const LancamentoProducao = () => {
                                 <Button
                                     type="submit"
                                     className="w-full h-12 rounded-xl bg-brand hover:bg-brand/90 font-black text-lg shadow-lg shadow-brand/20 mt-2 gap-2 disabled:cursor-not-allowed disabled:opacity-60"
-                                    disabled={mutation.isPending || (etapaAtual === 2 && !!etapaDoisBlockReason) || (etapaAtual === 3 && !!etapaTresBlockReason)}
+                                    disabled={mutation.isPending || (etapaAtual === 2 && !!etapaDoisBlockReason) || (etapaAtual === 3 && !!etapaTresBlockReason) || (etapaAtual === 4 && !!etapaQuatroBlockReason)}
                                 >
                                     {mutation.isPending ? "Salvando..." : (
                                         <>
                                             <Save className="w-5 h-5" />
                                             {etapaAtual === 2
-                                                ? isFluxoSemEquipe
-                                                    ? "Registrar transbordo"
-                                                    : "Continuar para colaboradores"
-                                                : "Registrar Produção"}
+                                                ? "Continuar para Financeiro"
+                                                : etapaAtual === 3
+                                                    ? isFluxoSemEquipe
+                                                        ? "Registrar transbordo"
+                                                        : "Continuar para Colaboradores"
+                                                    : "Registrar Produção"}
                                         </>
                                     )}
                                 </Button>

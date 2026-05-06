@@ -277,6 +277,46 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
     return data;
   }
 
+  async update(id: string, payload: Record<string, any>) {
+    const cleanedPayload: Record<string, any> = {
+      nome: payload.nome,
+      cpf: payload.cpf ?? null,
+      telefone: payload.telefone ?? null,
+      cargo: payload.cargo ?? null,
+      matricula: payload.matricula ?? null,
+      empresa_id: cleanUuid(payload.empresa_id),
+      tipo_contrato: payload.tipo_contrato ?? null,
+      tipo_colaborador: payload.tipo_colaborador ?? null,
+      valor_base: Number(payload.valor_base) || 0,
+      flag_faturamento: payload.flag_faturamento ?? false,
+      permitir_lancamento_operacional: payload.permitir_lancamento_operacional ?? false,
+      status: payload.status ?? 'ativo',
+      nome_completo: payload.nome_completo ?? null,
+      banco_codigo: payload.banco_codigo ?? null,
+      agencia: payload.agencia ?? null,
+      agencia_digito: payload.agencia_digito ?? null,
+      conta: payload.conta ?? null,
+      conta_digito: payload.conta_digito ?? null,
+      tipo_conta: payload.tipo_conta ?? null,
+      unidade_id: cleanUuid(payload.unidade_id),
+      deleted_at: payload.deleted_at ?? null,
+    };
+
+    if (!cleanedPayload.empresa_id) {
+      throw new Error('Selecione uma empresa válida.');
+    }
+
+    const { data, error } = await supabase
+      .from('colaboradores')
+      .update(cleanedPayload)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
   async getDiaristas(empresaId: string, apenasAtivos = true) {
     let query = (supabase as any)
       .from('colaboradores')
@@ -1432,6 +1472,11 @@ class RegraOperacionalServiceClass {
 export const RegraOperacionalService = new RegraOperacionalServiceClass();
 
 class OperacaoProducaoServiceClass {
+  private sanitizeOperacaoPayload(payload: Record<string, any>) {
+    const { categoria_servico, ...rest } = payload;
+    return rest;
+  }
+
   private async getEmpresaIdsFromTenant(tenantId: string | null): Promise<string[] | null> {
     if (!tenantId) return null;
     const { data } = await supabase.from('empresas').select('id').eq('tenant_id', tenantId);
@@ -1448,9 +1493,10 @@ class OperacaoProducaoServiceClass {
   }
 
   async create(payload: Record<string, any>) {
+    const safePayload = this.sanitizeOperacaoPayload(payload);
     const { data, error } = await operationalClient
       .from('operacoes_producao')
-      .insert(payload)
+      .insert(safePayload)
       .select(`
         *,
         colaboradores:colaborador_id(nome, cargo),
@@ -1497,9 +1543,10 @@ class OperacaoProducaoServiceClass {
   }
 
   async update(id: string, payload: Record<string, any>) {
+    const safePayload = this.sanitizeOperacaoPayload(payload);
     const { data, error } = await operationalClient
       .from('operacoes_producao')
-      .update(payload)
+      .update(safePayload)
       .eq('id', id)
       .select(`
         *,

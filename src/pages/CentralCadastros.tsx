@@ -1876,7 +1876,16 @@ const deleteFornecedorMutation = useMutation({
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingColaborador(null)}>Cancelar</Button>
-            <Button onClick={() => updateColaboradorMutation.mutate({ id: editingColaborador.id, payload: { ...editingColaborador, valor_base: Number(editingColaborador.valor_base) || 0 } })} disabled={updateColaboradorMutation.isPending}>
+            <Button onClick={() => {
+              const { empresas, ...colaboradorPayload } = editingColaborador || {};
+              updateColaboradorMutation.mutate({
+                id: editingColaborador.id,
+                payload: {
+                  ...colaboradorPayload,
+                  valor_base: Number(editingColaborador.valor_base) || 0,
+                },
+              });
+            }} disabled={updateColaboradorMutation.isPending}>
               {updateColaboradorMutation.isPending ? "Salvando..." : "Salvar"}
             </Button>
           </DialogFooter>
