@@ -168,7 +168,7 @@ const formatDate = (value?: string | null) => {
 const getTipoCalculoLabel = (tipo?: string | null) =>
   TIPOS_CALCULO.find((item) => item.value === tipo)?.label ?? "Não definido";
 
-const normalizeOptionalId = (value: string) => (value ? value : null);
+const normalizeOptionalId = (value: string) => (value && value.trim() ? value : null);
 
 type RuleContextProfile = {
   mode: "default" | "descarga_volume" | "global" | "iss_global";
@@ -298,6 +298,7 @@ type QuickCreateLookupProps = {
   value: string;
   items: LookupItem[];
   disabled?: boolean;
+  disableCreate?: boolean;
   emptyOptionLabel?: string;
   noResultsLabel?: string;
   createLabel?: string;
@@ -311,6 +312,7 @@ const QuickCreateLookup = ({
   value,
   items,
   disabled,
+  disableCreate,
   emptyOptionLabel,
   noResultsLabel,
   createLabel,
@@ -356,7 +358,7 @@ const QuickCreateLookup = ({
           variant="ghost"
           size="sm"
           className="h-7 px-2 text-xs"
-          disabled={disabled}
+          disabled={disableCreate ?? disabled}
           onClick={() => onCreate("")}
         >
           <Plus className="mr-1 h-3.5 w-3.5" />
@@ -979,10 +981,15 @@ const RegrasOperacionais = () => {
         message.includes('null value in column "fornecedor_id"') ||
         message.includes('null value in column "empresa_id"') ||
         message.includes("violates not-null constraint");
+      const invalidTipoCalculoConstraint =
+        message.includes('fornecedor_valores_servico_tipo_calculo_check') ||
+        message.includes('operacoes_producao_tipo_calculo_snapshot_check');
       toast.error("Não foi possível salvar a regra.", {
         description: missingNullableMigration
-          ? "O banco ainda não aceita regras contextuais sem empresa ou fornecedor. Aplique a migration 20260430183000_regras_operacionais_contexto_transportadora.sql."
-          : error.message,
+          ? "O banco ainda não está no estado final para regras contextuais. Aplique a migration 20260518_hardening_cadastros_regras.sql."
+          : invalidTipoCalculoConstraint
+            ? "O banco ainda está com a regra antiga de tipo de cálculo. Reaplique a migration 20260518_hardening_cadastros_regras.sql."
+            : error.message,
       });
     },
   });
@@ -1210,8 +1217,15 @@ const RegrasOperacionais = () => {
       closeQuickCreate();
     },
     onError: (error: any) => {
+      const message = String(error?.message ?? "");
+      const legacyRoleFunctionError =
+        message.includes("column pu.role does not exist") ||
+        message.includes("function public.get_user_role") ||
+        message.includes("get_user_role()");
       toast.error("Não foi possível concluir o cadastro rápido.", {
-        description: error.message,
+        description: legacyRoleFunctionError
+          ? "O banco ainda está com validações legadas de perfil incompatíveis com o modelo atual. Reaplique a migration 20260518_hardening_cadastros_regras.sql."
+          : error.message,
       });
     },
   });
@@ -1907,15 +1921,17 @@ const RegrasOperacionais = () => {
                   </p>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2 items-start">
-                  <div className="space-y-2">
-                    <Label>{applyGlobally ? "Tipo de serviço" : "Tipo de serviço *"}</Label>
-                    <Select value={form.tipo_servico_id} onValueChange={(value) => setForm((prev) => ({ ...prev, tipo_servico_id: value }))} disabled={applyGlobally}>
-                      <SelectTrigger><SelectValue placeholder={applyGlobally ? "Todos os tipos de serviço" : "Selecione"} /></SelectTrigger>
-                      <SelectContent>
-                        {tipoServicoItems.map((t: any) => <SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  <QuickCreateLookup
+                    label={applyGlobally ? "Tipo de serviço" : "Tipo de serviço *"}
+                    placeholder={applyGlobally ? "Todos os tipos de serviço" : "Selecione"}
+                    value={form.tipo_servico_id}
+                    items={tipoServicoItems}
+                    disabled={applyGlobally}
+                    disableCreate={false}
+                    createLabel="Novo serviço"
+                    onChange={(value) => setForm((prev) => ({ ...prev, tipo_servico_id: value }))}
+                    onCreate={(searchTerm) => openQuickCreate("tipo_servico", searchTerm)}
+                  />
 
                   <div className="space-y-2">
                     <Label>Tipo de cálculo *</Label>
@@ -1994,15 +2010,19 @@ const RegrasOperacionais = () => {
                   </p>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2 items-start">
-                  <div className="space-y-2">
-                    <Label>Tipo de Regra / Variável</Label>
-                    <Select value={form.tipo_regra_id} onValueChange={(value) => setForm((prev) => ({ ...prev, tipo_regra_id: value }))}>
-                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                      <SelectContent>
-                        {(tiposRegra as any[]).map((t) => <SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  <QuickCreateLookup
+                    label="Tipo de Regra / Variável"
+                    placeholder="Selecione"
+                    value={form.tipo_regra_id}
+                    items={(tiposRegra as any[]).map((t) => ({
+                      id: t.id,
+                      nome: t.nome,
+                      ...t,
+                    }))}
+                    createLabel="Nova variável"
+                    onChange={(value) => setForm((prev) => ({ ...prev, tipo_regra_id: value }))}
+                    onCreate={(searchTerm) => openQuickCreate("tipo_regra", searchTerm)}
+                  />
 
                   <div className="space-y-2">
                     <Label>Valor / Quantidade / Percentual</Label>

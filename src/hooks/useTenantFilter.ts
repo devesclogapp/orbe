@@ -1,6 +1,11 @@
 import { useMemo } from "react";
 import { useTenant } from "@/contexts/TenantContext";
+import { supabase } from "@/lib/supabase";
 
+/**
+ * Retorna { tenantId } para uso em queries que suportam filtro por tenant_id diretamente.
+ * Na maioria dos casos, o RLS do Supabase garante o isolamento automaticamente.
+ */
 export const useTenantQueryFilter = () => {
   const { tenantId } = useTenant();
 
@@ -10,17 +15,16 @@ export const useTenantQueryFilter = () => {
   }, [tenantId]);
 };
 
-export const useEmpresaFilter = () => {
-  const { empresaIds } = useTenant();
+// REMOVIDO: useEmpresaFilter() — referenciava `empresaIds` inexistente no TenantContext,
+// causando filtro sempre vazio (vulnerabilidade de isolamento de tenant).
+// Use tenantId do TenantContext + query de empresas quando precisar de filtro por empresa.
 
-  return useMemo(() => {
-    if (!empresaIds || empresaIds.length === 0) return {};
-    return { empresa_id: { in: empresaIds } };
-  }, [empresaIds]);
-};
-
-import { supabase } from "@/lib/supabase";
-
+/**
+ * Helper assíncrono para adicionar filtro tenant a uma query Supabase.
+ * Tabelas com empresa_id intermediário são filtradas via lista de IDs de empresa do tenant.
+ * Demais tabelas são filtradas diretamente por tenant_id.
+ * O RLS do banco é a defesa primária; este filtro é defesa em profundidade.
+ */
 export const withTenantQuery = async (table: string, query: any) => {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return query;
@@ -45,7 +49,7 @@ export const withTenantQuery = async (table: string, query: any) => {
       .eq("tenant_id", profile.tenant_id);
 
     if (empresas && empresas.length > 0) {
-      return query.in("empresa_id", empresas.map(e => e.id));
+      return query.in("empresa_id", empresas.map((e: { id: string }) => e.id));
     }
     return query.eq("empresa_id", "none");
   }

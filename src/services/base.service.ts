@@ -7,8 +7,50 @@ type Table = keyof Database['public']['Tables'];
 function cleanUuid(value?: string | null): string | null {
   if (!value) return null;
   const v = value.trim();
+  if (!v) return null;
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   return uuidRegex.test(v) ? v : null;
+}
+
+// ============================================================
+// SANITIZAÇÃO GLOBAL DE PAYLOADS
+// Detecta e converte strings vazias em null
+// ============================================================
+export function sanitizePayload(data: unknown): unknown {
+  if (data === null || data === undefined) return data;
+  if (typeof data !== 'object') return data;
+  if (Array.isArray(data)) return data.map(item => sanitizePayload(item));
+
+  const result: Record<string, unknown> = {};
+  const entry = data as Record<string, unknown>;
+
+  for (const [key, value] of Object.entries(entry)) {
+    if (typeof value === 'string' && value === '') {
+      console.log(`[SANITIZE] ${key}: "" -> null`);
+      result[key] = null;
+    } else if (typeof value === 'object' && value !== null) {
+      result[key] = sanitizePayload(value);
+    } else {
+      result[key] = value;
+    }
+  }
+
+  return result;
+}
+
+// ============================================================
+// VALIDAR CAMPOS UUID DO PAYLOAD
+// ============================================================
+export function validateUuidFields(data: Record<string, unknown>, ...fields: string[]): void {
+  for (const field of fields) {
+    const value = data[field];
+    if (value !== null && value !== undefined && value !== '') {
+      const cleaned = cleanUuid(String(value));
+      if (!cleaned && String(value).trim() !== '') {
+        console.log(`[UUID INVALID] ${field}: "${value}"`);
+      }
+    }
+  }
 }
 
 // Função helper para obter tenant_id de forma segura
@@ -811,16 +853,21 @@ export const UnidadeOperacionalService = new UnidadeOperacionalServiceClass();
 
 class TipoServicoOperacionalServiceClass {
   async getByEmpresa(empresaId?: string) {
-    const { data, error } = await operationalClient
+    // RLS garante isolamento por tenant_id. Filtro explícito é defesa em profundidade.
+    let query = operationalClient
       .from('tipos_servico_operacional')
       .select('*')
       .order('created_at', { ascending: false });
 
+    if (empresaId) query = query.or(`empresa_id.eq.${empresaId},empresa_id.is.null`);
+
+    const { data, error } = await query;
     if (error) throw error;
     return data ?? [];
   }
 
   async getAllActive() {
+    // RLS garante isolamento por tenant_id automaticamente.
     const { data, error } = await operationalClient
       .from('tipos_servico_operacional')
       .select('*')
@@ -842,9 +889,12 @@ class TipoServicoOperacionalServiceClass {
       throw new Error(`Tipo de serviço "${payload.nome}" já existe.`);
     }
 
+    const tenantId = await getCurrentTenantId();
+    const payloadWithTenant = { ...payload, tenant_id: tenantId };
+
     const { data, error } = await operationalClient
       .from('tipos_servico_operacional')
-      .insert(payload)
+      .insert(payloadWithTenant)
       .select()
       .single();
 
@@ -876,11 +926,15 @@ export const TipoServicoOperacionalService = new TipoServicoOperacionalServiceCl
 
 class TransportadoraClienteServiceClass {
   async getByEmpresa(empresaId?: string) {
-    const { data, error } = await operationalClient
+    // RLS garante isolamento por tenant_id. empresaId filtra dentro do tenant.
+    let query = operationalClient
       .from('transportadoras_clientes')
       .select('*')
       .order('created_at', { ascending: false });
 
+    if (empresaId) query = query.or(`empresa_id.eq.${empresaId},empresa_id.is.null`);
+
+    const { data, error } = await query;
     if (error) throw error;
     return data ?? [];
   }
@@ -890,6 +944,7 @@ class TransportadoraClienteServiceClass {
     
     const payloadWithTenant = {
       ...payload,
+      empresa_id: payload.empresa_id ? cleanUuid(payload.empresa_id) : null,
       tenant_id: tenantId
     };
 
@@ -904,9 +959,14 @@ class TransportadoraClienteServiceClass {
   }
 
   async update(id: string, payload: Record<string, any>) {
+    const payloadCleaned = {
+      ...payload,
+      empresa_id: payload.empresa_id ? cleanUuid(payload.empresa_id) : null,
+    };
+
     const { data, error } = await operationalClient
       .from('transportadoras_clientes')
-      .update(payload)
+      .update(payloadCleaned)
       .eq('id', id)
       .select();
 
@@ -927,11 +987,15 @@ export const TransportadoraClienteService = new TransportadoraClienteServiceClas
 
 class FornecedorServiceClass {
   async getByEmpresa(empresaId?: string) {
-    const { data, error } = await operationalClient
+    // RLS garante isolamento por tenant_id. empresaId filtra dentro do tenant.
+    let query = operationalClient
       .from('fornecedores')
       .select('*')
       .order('created_at', { ascending: false });
 
+    if (empresaId) query = query.or(`empresa_id.eq.${empresaId},empresa_id.is.null`);
+
+    const { data, error } = await query;
     if (error) throw error;
     return data ?? [];
   }
@@ -941,6 +1005,7 @@ class FornecedorServiceClass {
     
     const payloadWithTenant = {
       ...payload,
+      empresa_id: payload.empresa_id ? cleanUuid(payload.empresa_id) : null,
       tenant_id: tenantId
     };
 
@@ -955,9 +1020,14 @@ class FornecedorServiceClass {
   }
 
   async update(id: string, payload: Record<string, any>) {
+    const payloadCleaned = {
+      ...payload,
+      empresa_id: payload.empresa_id ? cleanUuid(payload.empresa_id) : null,
+    };
+
     const { data, error } = await operationalClient
       .from('fornecedores')
-      .update(payload)
+      .update(payloadCleaned)
       .eq('id', id)
       .select();
 
@@ -990,9 +1060,14 @@ class ProdutoCargaServiceClass {
   }
 
   async create(payload: Record<string, any>) {
+    const payloadCleaned = {
+      ...payload,
+      fornecedor_id: payload.fornecedor_id ? cleanUuid(payload.fornecedor_id) : null,
+    };
+
     const { data, error } = await operationalClient
       .from('produtos_carga')
-      .insert(payload)
+      .insert(payloadCleaned)
       .select()
       .single();
 
@@ -1015,9 +1090,12 @@ class FormaPagamentoOperacionalServiceClass {
   }
 
   async create(payload: Record<string, any>) {
+    const tenantId = await getCurrentTenantId();
+    const payloadWithTenant = { ...payload, tenant_id: tenantId };
+
     const { data, error } = await operationalClient
       .from('formas_pagamento_operacional')
-      .insert(payload)
+      .insert(payloadWithTenant)
       .select()
       .single();
 
@@ -1100,37 +1178,180 @@ class RegraOperacionalServiceClass {
   }
 
   async create(payload: Record<string, any>) {
+    console.log('[REGRAS] Payload original:', JSON.stringify(payload));
+    
+    const tenantId = await getCurrentTenantId();
+    
+    // Campos fundamentais da tabela base + tenant_id (obrigatório)
+    const payloadCleaned: Record<string, unknown> = {
+      tenant_id: tenantId,
+      tipo_calculo: payload.tipo_calculo,
+      valor_unitario: payload.valor_unitario,
+      vigencia_inicio: payload.vigencia_inicio,
+      vigencia_fim: payload.vigencia_fim || null,
+      ativo: payload.ativo,
+    };
+    
+    // Helper para adicionar campo UUID apenas se válido
+    const tryAddUuid = (fieldName: string) => {
+      const val = payload[fieldName];
+      if (val !== undefined && val != null) {
+        const strVal = String(val).trim();
+        if (strVal !== '') {
+          const cleaned = cleanUuid(strVal);
+          if (cleaned) {
+            payloadCleaned[fieldName] = cleaned;
+          }
+        }
+      }
+    };
+    
+    // Campos UUID opcionais
+    tryAddUuid('empresa_id');
+    tryAddUuid('unidade_id');
+    tryAddUuid('tipo_servico_id');
+    tryAddUuid('fornecedor_id');
+    tryAddUuid('transportadora_id');
+    tryAddUuid('produto_carga_id');
+    tryAddUuid('tipo_regra_id');
+    tryAddUuid('forma_pagamento_id');
+
+    console.log('[REGRAS] Payload sanitizado:', JSON.stringify(payloadCleaned));
+
     const { data, error } = await operationalClient
       .from('fornecedor_valores_servico')
-      .insert(payload)
+      .insert(payloadCleaned)
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('[REGRAS] Erro ao inserir:', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        payload: payloadCleaned
+      });
+      throw error;
+    }
     return data;
   }
 
   async createMany(payloads: Record<string, any>[]) {
     if (payloads.length === 0) return [];
 
+    console.log('[REGRAS] createMany - payloads antes:', JSON.stringify(payloads));
+
+    const tenantId = await getCurrentTenantId();
+    
+    // Helper para adicionar campo UUID apenas se válido
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const tryAddUuid = (fieldName: string, obj: any, target: any) => {
+        const val = obj[fieldName];
+        if (val !== undefined && val != null) {
+          const strVal = String(val).trim();
+          if (strVal !== '') {
+            const cleaned = cleanUuid(strVal);
+            if (cleaned) {
+              target[fieldName] = cleaned;
+            }
+          }
+        }
+      };
+      
+      const uuidFieldNames = [
+        'empresa_id', 'unidade_id', 'tipo_servico_id', 'fornecedor_id', 
+        'transportadora_id', 'produto_carga_id', 'tipo_regra_id', 'forma_pagamento_id'
+      ];
+
+      const payloadsWithTenant = payloads.map(p => {
+        const cleaned: Record<string, unknown> = {
+          tenant_id: tenantId,
+          tipo_calculo: p.tipo_calculo,
+          valor_unitario: p.valor_unitario,
+          vigencia_inicio: p.vigencia_inicio,
+          vigencia_fim: p.vigencia_fim || null,
+          ativo: p.ativo,
+        };
+        
+        for (const field of uuidFieldNames) {
+          tryAddUuid(field, p, cleaned);
+        }
+        
+        return cleaned;
+      });
+
+    console.log('[REGRAS] createMany - payloads sanitizados:', JSON.stringify(payloadsWithTenant));
+
     const { data, error } = await operationalClient
       .from('fornecedor_valores_servico')
-      .insert(payloads)
+      .insert(payloadsWithTenant)
       .select();
 
-    if (error) throw error;
+    if (error) {
+      console.error('[REGRAS] createMany - erro ao inserir:', {
+        code: error.code,
+        message: error.message,
+        payloads: payloadsWithTenant
+      });
+      throw error;
+    }
     return data ?? [];
   }
 
   async update(id: string, payload: Record<string, any>) {
+    console.log('[REGRAS] update - payload antes:', JSON.stringify(payload));
+
+    // Helper para adicionar campo UUID apenas se válido
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tryAddUuid = (fieldName: string, obj: any, target: any) => {
+      const val = obj[fieldName];
+      if (val !== undefined && val != null) {
+        const strVal = String(val).trim();
+        if (strVal !== '') {
+          const cleaned = cleanUuid(strVal);
+          if (cleaned) {
+            target[fieldName] = cleaned;
+          }
+        }
+      }
+    };
+
+    const uuidFields = [
+      'empresa_id', 'unidade_id', 'tipo_servico_id', 'fornecedor_id', 
+      'transportadora_id', 'produto_carga_id', 'tipo_regra_id', 'forma_pagamento_id'
+    ];
+    
+    const payloadCleaned: Record<string, unknown> = {};
+    
+    for (const field of uuidFields) {
+      tryAddUuid(field, payload, payloadCleaned);
+    }
+    
+    // Copiar campos não-UUID
+    if (payload.tipo_calculo !== undefined) payloadCleaned.tipo_calculo = payload.tipo_calculo;
+    if (payload.valor_unitario !== undefined) payloadCleaned.valor_unitario = payload.valor_unitario;
+    if (payload.vigencia_inicio !== undefined) payloadCleaned.vigencia_inicio = payload.vigencia_inicio;
+    if (payload.vigencia_fim !== undefined) payloadCleaned.vigencia_fim = payload.vigencia_fim || null;
+    if (payload.ativo !== undefined) payloadCleaned.ativo = payload.ativo;
+
+    console.log('[REGRAS] update - payload sanitizado:', JSON.stringify(payloadCleaned));
+
     const { data, error } = await operationalClient
       .from('fornecedor_valores_servico')
-      .update(payload)
+      .update(payloadCleaned)
       .eq('id', id)
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('[REGRAS] update - erro ao atualizar:', {
+        code: error.code,
+        message: error.message,
+        payload: payloadCleaned
+      });
+      throw error;
+    }
     return data;
   }
 
@@ -1610,9 +1831,12 @@ export class TipoRegraOperacionalServiceClass {
   }
 
   async create(payload: any) {
+    const tenantId = await getCurrentTenantId();
+    const payloadWithTenant = { ...payload, tenant_id: tenantId };
+
     const { data, error } = await supabase
       .from('tipos_regra_operacional' as any)
-      .insert(payload)
+      .insert(payloadWithTenant)
       .select()
       .single();
     if (error) throw error;
@@ -1923,9 +2147,10 @@ class RegrasModulosServiceClass {
   }
 
   async criar(data: Omit<RegraModulo, 'id' | 'ativo'>): Promise<RegraModulo> {
+    const tenantId = await getCurrentTenantId();
     const { data: result, error } = await supabase
       .from(this.table)
-      .insert({ ...data, ativo: true })
+      .insert({ ...data, ativo: true, tenant_id: tenantId })
       .select('*')
       .single();
     if (error) throw error;
@@ -1976,9 +2201,10 @@ class RegrasCamposServiceClass {
   }
 
   async criar(data: Omit<RegraCampo, 'id'>): Promise<RegraCampo> {
+    const tenantId = await getCurrentTenantId();
     const { data: result, error } = await supabase
       .from(this.table)
-      .insert(data)
+      .insert({ ...data, tenant_id: tenantId })
       .select('*')
       .single();
     if (error) throw error;
@@ -2019,9 +2245,10 @@ class RegrasDadosServiceClass {
   }
 
   async criar(data: Omit<RegraDado, 'id'>): Promise<RegraDado> {
+    const tenantId = await getCurrentTenantId();
     const { data: result, error } = await supabase
       .from(this.table)
-      .insert(data)
+      .insert({ ...data, tenant_id: tenantId })
       .select('*')
       .single();
     if (error) throw error;
@@ -2077,12 +2304,47 @@ export interface RegraMarcacaoDiaristaPayload {
 
 class RegraMarcacaoDiaristaServiceClass {
   async getAll() {
+    // RLS garante isolamento por tenant_id automaticamente.
     const { data, error } = await supabase
       .from('regras_marcacao_diaristas' as any)
       .select('*, empresas:empresa_id(nome)')
       .order('codigo', { ascending: true });
     if (error) throw error;
     return data ?? [];
+  }
+
+  async getByEmpresa(empresaId: string) {
+    const { data, error } = await supabase
+      .from('regras_marcacao_diaristas' as any)
+      .select('*, empresas:empresa_id(nome)')
+      .eq('ativo', true)
+      .or(`empresa_id.is.null,empresa_id.eq.${empresaId}`)
+      .order('codigo', { ascending: true });
+    if (error) throw error;
+
+    const regras = data ?? [];
+    const regrasPorCodigo = new Map<string, any>();
+
+    regras.forEach((regra: any) => {
+      const codigo = String(regra.codigo ?? '').trim().toUpperCase();
+      const existente = regrasPorCodigo.get(codigo);
+
+      if (!existente) {
+        regrasPorCodigo.set(codigo, regra);
+        return;
+      }
+
+      const regraAtualEhEspecifica = regra.empresa_id === empresaId;
+      const existenteEhEspecifica = existente.empresa_id === empresaId;
+
+      if (regraAtualEhEspecifica && !existenteEhEspecifica) {
+        regrasPorCodigo.set(codigo, regra);
+      }
+    });
+
+    return Array.from(regrasPorCodigo.values()).sort((a: any, b: any) =>
+      String(a.codigo ?? '').localeCompare(String(b.codigo ?? '')),
+    );
   }
 
   async create(payload: RegraMarcacaoDiaristaPayload) {
