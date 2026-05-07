@@ -92,7 +92,7 @@ export const CNABService = {
 
     // 1. Buscar faturas
     const { data: faturas } = await supabase.from('faturas').select('*').eq('competencia', competencia);
-    if (!faturas) throw new Error("Sem faturas para gerar remessa");
+    if (!faturas || faturas.length === 0) throw new Error("Sem faturas para gerar remessa");
 
     // 2. Criar o lote
     const lote = await LoteRemessaService.create({
@@ -108,30 +108,9 @@ export const CNABService = {
       FaturaService.update(f.id, { lote_remessa_id: lote.id })
     ));
 
-    // 4. Gerar conteúdo CNAB real (Simpificado para 240 posições)
-    const generateCNAB240 = () => {
-      const header = `00100000          2              01ORBE ERP             ${new Date().toISOString().slice(0, 10).replace(/-/g, '')}000000\n`;
-      const body = faturas.map((f, i) => 
-        `00100013${(i+1).toString().padStart(5, '0')}P 01010${f.id.substring(0, 10).padEnd(20)} ${f.valor.toString().replace('.', '').padStart(15, '0')}`
-      ).join('\n');
-      const trailer = `\n00100019${(faturas.length + 2).toString().padStart(6, '0')}000000`;
-      return header + body + trailer;
-    };
-
-    const cnabContent = generateCNAB240();
-
-    // 5. Salvar no bucket via Supabase Storage
-    const fileName = `remessas/competencia_${competencia.replace('-', '')}/lote_${lote.id}.rem`;
-    
-    try {
-      const { data: storageData, error: storageError } = await supabase.storage
-        .from('financial_docs')
-        .upload(fileName, cnabContent, { contentType: 'text/plain', upsert: true });
-        
-      if (storageError) console.error("Erro ao salvar remessa no Storage:", storageError);
-    } catch (e) {
-      console.warn("Storage não configurado ou erro na permissão. Proseguindo sem persistência física.");
-    }
+    // Fase 5 Req: Retornar o lote sem gerar o arquivo real TXT ou disparar pro bucket real
+    const fileName = `remessa_agrupada_${competencia}_lote_${lote.id}.mock.txt`;
+    const cnabContent = "ARQUIVO MOCK - AGRUPAMENTO REALIZADO COM SUCESSO - GERACAO DE TXT DESABILITADA NESTA FASE";
 
     return { ...lote, fileName, content: cnabContent };
   },

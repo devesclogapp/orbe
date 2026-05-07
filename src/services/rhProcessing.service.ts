@@ -1,4 +1,6 @@
 import { supabase } from "@/lib/supabase";
+import MotorExecutavel from "./operationalEngine/MotorIndex";
+import { CicloOperacionalService } from "./operationalEngine/CicloOperacionalService";
 
 type Empresa = {
   id: string;
@@ -24,6 +26,8 @@ type Colaborador = {
   valor_hora?: number | null;
   valor_diaria?: number | null;
   valor_base?: number | null;
+  tipo_contrato?: string | null;
+  tipo_colaborador?: string | null;
 };
 
 type Regra = {
@@ -306,20 +310,7 @@ const findColaborador = (
   return null;
 };
 
-const getRegraByEmpresa = (empresaId: string | null | undefined, regras: Regra[]) => {
-  if (empresaId) {
-    const regraEmpresa = regras.find(
-      (regra) => regra.empresa_id === empresaId && regra.bh_ativo !== false,
-    );
-    if (regraEmpresa) return regraEmpresa;
-  }
-
-  return (
-    regras.find((regra) => !regra.empresa_id && regra.bh_ativo !== false) ||
-    regras.find((regra) => regra.bh_ativo !== false) ||
-    null
-  );
-};
+// getRegraByEmpresa removed - replaced by MotorExecutavel.resolveRule
 
 const buildInconsistencias = (params: {
   ponto: Ponto;
@@ -797,7 +788,51 @@ export const processRhPeriod = async ({
     };
   }
 
-  const pontoIds = pontos.map((ponto) => ponto.id);
+  const { year, monthNumber } = getPeriodRange(month);
+  const competenciaAtual = `${year}-${String(monthNumber).padStart(2, "0")}`;
+  const ciclosOperacionais = await CicloOperacionalService.getCiclosDaCompetencia(
+    tenantId,
+    competenciaAtual,
+  );
+
+  const validPontos = [];
+  const lockedPontosCount = { total: 0 };
+
+  for (const ponto of pontos) {
+    const semanaDoPonto = CicloOperacionalService.getSemanaOperacionalDaData(ponto.data);
+    const ciclo = ciclosOperacionais.find(
+      (c) => c.semana_operacional === semanaDoPonto,
+    );
+
+    if (ciclo && (ciclo.status === "fechado" || ciclo.status === "enviado_financeiro")) {
+      lockedPontosCount.total += 1;
+    } else {
+      validPontos.push({
+        ...ponto,
+        ciclo_id: ciclo?.id,
+        competencia: competenciaAtual,
+        semana_operacional: semanaDoPonto,
+      });
+    }
+  }
+
+  if (validPontos.length === 0) {
+    return {
+      totalRegistros: pontos.length,
+      totalProcessados: 0,
+      totalInconsistencias: 0,
+      totalCreditos: 0,
+      totalDebitos: 0,
+      colaboradoresAfetados: 0,
+      inconsistencias:
+        lockedPontosCount.total > 0
+          ? ["Todos os pontos pendentes encontram-se em ciclos fechados e não foram processados."]
+          : [],
+      durationMs: Date.now() - startedAt,
+    };
+  }
+
+  const pontoIds = validPontos.map((ponto) => ponto.id);
   await (supabase as any)
     .from("banco_horas_eventos")
     .delete()
@@ -816,7 +851,7 @@ export const processRhPeriod = async ({
   let totalCreditos = 0;
   let totalDebitos = 0;
 
-  for (const ponto of pontos) {
+  for (const ponto of validPontos) {
     const alertas: Array<{ tipo: string; descricao: string }> = [];
 
     let empresa = getEmpresaFromPonto(ponto, empresasRuntime);
@@ -850,13 +885,38 @@ export const processRhPeriod = async ({
       }
     }
 
-    let regra = getRegraByEmpresa(resolvedEmpresaId, regrasRuntime);
-    if (!regra) {
-      regra = await createFallbackRegra(tenantId);
-      regrasRuntime.push(regra);
+    const tipoColab = colaborador?.tipo_colaborador || "CLT";
+    const calendario = MotorExecutavel.Calendar.getCalendario(ponto.data, tipoColab);
+
+    const motorCtx = {
+      tenantId: tenantId,
+      empresaId: resolvedEmpresaId,
+      colaboradorId: colaborador?.id || null,
+      operacaoId: null,
+      dataProcessamento: ponto.data,
+      tipoColaborador: tipoColab,
+      calendario
+    };
+
+    const { rule: abstractRegra, isFallback } = MotorExecutavel.resolveRule(motorCtx, regrasRuntime);
+    let regra = abstractRegra.payload as Regra;
+
+    if (isFallback) {
+      const existingFallback = regrasRuntime.find(r => r.nome === regra.nome && r.origem_ponto === "automatica");
+      if (!existingFallback) {
+        regra = await createFallbackRegra(tenantId);
+        regrasRuntime.push(regra);
+      } else {
+        regra = existingFallback as Regra;
+      }
       alertas.push({
         tipo: "regra_padrao_aplicada",
-        descricao: "Regra padrão automática 8h aplicada para viabilizar o processamento.",
+        descricao: "Regra resolvida via Motor Seguro: " + abstractRegra.nome,
+      });
+    } else {
+      alertas.push({
+        tipo: "motor_regra_aplicada",
+        descricao: `Motor aplicou regra: ${abstractRegra.nome} via prioridade ${abstractRegra.prioridade}`,
       });
     }
 
@@ -964,6 +1024,9 @@ export const processRhPeriod = async ({
     const updatePayload = {
       status_processamento: inconsistencias.length > 0 ? "inconsistente" : "processado",
       processado_em: new Date().toISOString(),
+      ciclo_id: ponto.ciclo_id ?? null,
+      competencia: ponto.competencia,
+      semana_operacional: ponto.semana_operacional,
       empresa_id: resolvedEmpresaId,
       colaborador_id: colaborador?.id ?? null,
       horas_calculadas: `${Math.floor(calculo.workedMinutes / 60)}:${String(
@@ -1009,13 +1072,33 @@ export const processRhPeriod = async ({
     });
   }
 
+  for (const ciclo of ciclosOperacionais) {
+    const { count: totalProcessados } = await supabase
+      .from("registros_ponto")
+      .select("*", { count: "exact", head: true })
+      .eq("ciclo_id", ciclo.id)
+      .in("status_processamento", ["processado", "inconsistente"]);
+
+    const { count: totalInconsistenciasCiclo } = await supabase
+      .from("registros_ponto")
+      .select("*", { count: "exact", head: true })
+      .eq("ciclo_id", ciclo.id)
+      .eq("status_processamento", "inconsistente");
+
+    await CicloOperacionalService.updateCiclo(ciclo.id, {
+      total_registros: totalProcessados || 0,
+      total_processados: totalProcessados || 0,
+      total_inconsistencias: totalInconsistenciasCiclo || 0,
+    });
+  }
+
   const durationMs = Date.now() - startedAt;
   await insertLog({
     tenantId,
     month,
     empresaId,
-    totalRegistros: pontos.length,
-    totalProcessados: pontos.length,
+    totalRegistros: validPontos.length + lockedPontosCount.total,
+    totalProcessados: validPontos.length,
     totalInconsistencias,
     totalCreditos,
     totalDebitos,
@@ -1023,8 +1106,8 @@ export const processRhPeriod = async ({
   });
 
   return {
-    totalRegistros: pontos.length,
-    totalProcessados: pontos.length,
+    totalRegistros: validPontos.length + lockedPontosCount.total,
+    totalProcessados: validPontos.length,
     totalInconsistencias,
     totalCreditos,
     totalDebitos,
