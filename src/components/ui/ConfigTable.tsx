@@ -80,7 +80,7 @@ export function ConfigTable<T extends { id: string | number; status?: string }>(
             </div>
 
             <div className="esc-card overflow-hidden">
-                <div className="overflow-x-auto">
+                <div className="max-h-[60vh] overflow-y-scroll overflow-x-auto pr-1">
                     <Table>
                         <TableHeader className="esc-table-header">
                             <TableRow className="hover:bg-transparent border-b border-border bg-muted/30">

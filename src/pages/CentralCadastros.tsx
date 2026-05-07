@@ -1007,6 +1007,7 @@ const deleteFornecedorMutation = useMutation({
                       </Button>
                     </div>
                   </div>
+                  <div className="max-h-[60vh] overflow-y-scroll pr-1">
                   <table className="w-full text-sm">
                     <thead className="esc-table-header">
                       <tr className="text-left">
@@ -1024,7 +1025,7 @@ const deleteFornecedorMutation = useMutation({
                       </tr>
                     </thead>
                     <tbody>
-                      {colaboradores.slice(0, 8).map((colaborador) => (
+                      {colaboradores.map((colaborador) => (
                         <tr key={colaborador.id} className="border-t border-muted hover:bg-background">
                           <td className="px-5 h-[56px] text-center">
                             <div className="font-medium text-foreground">{colaborador.nome}</div>
@@ -1057,11 +1058,12 @@ const deleteFornecedorMutation = useMutation({
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 </section>
               </TabsContent>
 
               <TabsContent value="empresas" className="space-y-4 min-h-[400px]">
-                <section className="esc-card">
+                <section className="esc-card overflow-hidden">
                   <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-3">
                     <div>
                       <h2 className="font-display font-semibold text-foreground">Empresas cadastradas</h2>
@@ -1078,6 +1080,7 @@ const deleteFornecedorMutation = useMutation({
                       </Button>
                     </div>
                   </div>
+                  <div className="max-h-[60vh] overflow-y-scroll pr-1">
                   <table className="w-full text-sm">
                     <thead className="esc-table-header">
                       <tr className="text-left">
@@ -1130,6 +1133,7 @@ const deleteFornecedorMutation = useMutation({
                       )}
                     </tbody>
                   </table>
+                  </div>
                 </section>
 
               </TabsContent>
@@ -1152,6 +1156,7 @@ const deleteFornecedorMutation = useMutation({
                       </Button>
                     </div>
                   </div>
+                  <div className="max-h-[60vh] overflow-y-scroll pr-1">
                   <table className="w-full text-sm">
                     <thead className="esc-table-header">
                       <tr className="text-left">
@@ -1164,7 +1169,7 @@ const deleteFornecedorMutation = useMutation({
                       </tr>
                     </thead>
                     <tbody>
-                      {coletores.slice(0, 8).map((coletor) => (
+                      {coletores.map((coletor) => (
                         <tr key={coletor.id} className="border-t border-muted hover:bg-background">
                           <td className="px-5 h-[56px] font-medium text-foreground text-center">{coletor.modelo}</td>
                           <td className="px-3 text-muted-foreground text-center">{coletor.serie}</td>
@@ -1198,6 +1203,7 @@ const deleteFornecedorMutation = useMutation({
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 </section>
               </TabsContent>
 
@@ -1219,6 +1225,7 @@ const deleteFornecedorMutation = useMutation({
                       </Button>
                     </div>
                   </div>
+                  <div className="max-h-[60vh] overflow-y-scroll pr-1">
                   <table className="w-full text-sm">
                     <thead className="esc-table-header">
                       <tr className="text-left">
@@ -1239,7 +1246,7 @@ const deleteFornecedorMutation = useMutation({
                           </td>
                         </tr>
                       ) : (
-                        transportadoras.slice(0, 8).map((transportadora) => (
+                        transportadoras.map((transportadora) => (
                           <tr key={transportadora.id} className="border-t border-muted hover:bg-background">
                             <td className="px-5 h-[56px] font-medium text-foreground text-center">{transportadora.nome}</td>
                             <td className="px-3 text-muted-foreground text-center">{transportadora.documento || "—"}</td>
@@ -1269,6 +1276,7 @@ const deleteFornecedorMutation = useMutation({
                       )}
                     </tbody>
                   </table>
+                  </div>
                 </section>
               </TabsContent>
 
@@ -1290,6 +1298,7 @@ const deleteFornecedorMutation = useMutation({
                       </Button>
                     </div>
                   </div>
+                  <div className="max-h-[60vh] overflow-y-scroll pr-1">
                   <table className="w-full text-sm">
                     <thead className="esc-table-header">
                       <tr className="text-left">
@@ -1310,7 +1319,7 @@ const deleteFornecedorMutation = useMutation({
                           </td>
                         </tr>
                       ) : (
-                        fornecedores.slice(0, 8).map((fornecedor) => (
+                        fornecedores.map((fornecedor) => (
                           <tr key={fornecedor.id} className="border-t border-muted hover:bg-background">
                             <td className="px-5 h-[56px] font-medium text-foreground text-center">{fornecedor.nome}</td>
                             <td className="px-3 text-muted-foreground text-center">{fornecedor.documento || "—"}</td>
@@ -1340,6 +1349,7 @@ const deleteFornecedorMutation = useMutation({
                       )}
                     </tbody>
                   </table>
+                  </div>
                 </section>
               </TabsContent>
 
@@ -1361,6 +1371,7 @@ const deleteFornecedorMutation = useMutation({
                       </Button>
                     </div>
                   </div>
+                  <div className="max-h-[60vh] overflow-y-scroll pr-1">
                   <table className="w-full text-sm">
                     <thead className="esc-table-header">
                       <tr className="text-left">
@@ -1378,7 +1389,7 @@ const deleteFornecedorMutation = useMutation({
                           </td>
                         </tr>
                       ) : (
-                        tiposServico.slice(0, 8).map((servico) => (
+                        tiposServico.map((servico) => (
                           <tr key={servico.id} className="border-t border-muted hover:bg-background">
                             <td className="px-5 h-[56px] font-medium text-foreground text-center">{servico.nome}</td>
                             <td className="px-3 text-muted-foreground text-center">{servico.descricao || "—"}</td>
@@ -1405,10 +1416,11 @@ const deleteFornecedorMutation = useMutation({
                       )}
                     </tbody>
                   </table>
+                  </div>
                 </section>
               </TabsContent>
 
-              <TabsContent value="parametros" className="space-y-6 min-h-[400px]">
+              <TabsContent value="parametros" className="space-y-6 min-h-[400px] max-h-[75vh] overflow-y-scroll pr-1">
                 <section className="esc-card p-5">
                   <div className="flex items-center justify-between gap-3 flex-wrap">
                     <div>
