@@ -1,49 +1,46 @@
 import { supabase } from '@/lib/supabase';
 import { BaseService } from './base.service';
 
-class ContaBancariaServiceClass extends BaseService<'contas_bancarias'> {
-  constructor() { super('contas_bancarias'); }
-  async getByEmpresa(empresaId: string) {
-    const { data, error } = await supabase.from('contas_bancarias').select('*').eq('empresa_id', empresaId);
-    if (error) throw error;
-    return data;
-  }
-}
-export const ContaBancariaService = new ContaBancariaServiceClass();
+import { BankAccountService } from './bankAccount.service';
+import { CnabBBValidatorService } from './cnabBBValidator.service';
+import { CNAB240BBReader } from './cnab/CNAB240BBReader';
+import { CNAB240BBWriter } from './cnab/CNAB240BBWriter';
+import { CnabRemessaArquivoService } from './cnab/cnabRemessaArquivo.service';
+
+export { CnabRemessaArquivoService };
+export const ContaBancariaService = BankAccountService;
 
 class LoteRemessaServiceClass extends BaseService<'lotes_remessa'> {
   constructor() { super('lotes_remessa'); }
+
   async getFullHistory() {
-    const { data, error } = await supabase
-      .from('lotes_remessa')
-      .select('*, contas_bancarias(banco, agencia, conta)')
-      .order('created_at', { ascending: false });
-    if (error) throw error;
-    return data;
+    return CnabRemessaArquivoService.listarHistorico();
   }
 }
 export const LoteRemessaService = new LoteRemessaServiceClass();
 
 class FaturaServiceClass extends BaseService<'faturas'> {
   constructor() { super('faturas'); }
+
   async getByLote(loteId: string) {
     const { data, error } = await supabase.from('faturas').select('*, colaboradores(nome)').eq('lote_remessa_id', loteId);
     if (error) throw error;
     return data;
   }
+
   async getByCompetencia(competencia: string) {
     const { data: faturas, error } = await supabase
       .from('faturas')
       .select('*')
       .eq('competencia', competencia);
     if (error) throw error;
-    
+
     const { data: empresas } = await supabase.from('empresas').select('id, nome');
     const { data: colaboradores } = await supabase.from('colaboradores').select('id, nome');
-    
+
     const empresaMap = new Map((empresas || []).map(e => [e.id, e]));
     const colaboradorMap = new Map((colaboradores || []).map(c => [c.id, c]));
-    
+
     return (faturas || []).map(f => ({
       ...f,
       empresas: empresaMap.get(f.empresa_id) || null,
@@ -58,28 +55,59 @@ class LoteRetornoServiceClass extends BaseService<'lotes_retorno'> {
 }
 export const LoteRetornoService = new LoteRetornoServiceClass();
 
-// CNAB SERVICE ENGINE
 export const CNABService = {
-  async validateRemessa(competencia: string, empresaId: string) {
-    // Simula uma validação pesada
+  async validateRemessa(competencia: string, empresaId: string, contaId: string) {
     const { data: faturas, error } = await supabase
       .from('faturas')
       .select('*')
       .eq('competencia', competencia)
       .eq('empresa_id', empresaId);
-    
+
     if (error) throw error;
 
-    const inconsistencies = [];
-    if (!faturas || faturas.length === 0) inconsistencies.push("Nenhuma fatura encontrada para esta competência.");
-    
-    // Simula verificação de dados bancários
-    const { data: bnc } = await supabase.from('contas_bancarias').select('*').eq('empresa_id', empresaId).maybeSingle();
-    if (!bnc) inconsistencies.push("Dados bancários da empresa não configurados.");
+    let bnc = null;
+    if (contaId) {
+      const { data } = await supabase.from('contas_bancarias_empresa').select('*').eq('id', contaId).maybeSingle();
+      bnc = data;
+    }
+
+    const result = await CnabBBValidatorService.validateLote(
+      faturas ? faturas.map(f => f.id) : [],
+      bnc
+    );
+
+    try {
+      await CnabRemessaArquivoService.registrarAuditoria({
+        acao: 'validacao',
+        detalhes: {
+          empresa_id: empresaId,
+          competencia,
+          conta_bancaria_id: contaId,
+          isValid: result.isValid,
+          errorsCount: result.errors.length,
+          pendenciesCount: result.pendenciesByColaborador.length,
+        }
+      });
+
+      await supabase.rpc('log_audit', {
+        p_action: 'VALIDATE_CNAB_LOTE',
+        p_details: JSON.stringify({
+          empresa_id: empresaId,
+          competencia,
+          isValid: result.isValid,
+          errorsCount: result.errors.length,
+          pendenciesCount: result.pendenciesByColaborador.length
+        })
+      });
+    } catch (e) {
+      console.warn('Audit log fail', e);
+    }
 
     return {
-      isValid: inconsistencies.length === 0,
-      errors: inconsistencies,
+      isValid: result.isValid,
+      errors: result.errors,
+      warnings: result.warnings,
+      pendenciesByColaborador: result.pendenciesByColaborador,
       summary: {
         totalItems: faturas?.length || 0,
         totalValue: faturas?.reduce((acc, f) => acc + Number(f.valor), 0) || 0
@@ -87,14 +115,19 @@ export const CNABService = {
     };
   },
 
-  async generateRemessa(params: { competencia: string, empresaId: string, contaId: string }) {
-    const { competencia, empresaId, contaId } = params;
+  async generateRemessa(params: { competencia: string, empresaId: string, contaId: string, modo?: 'homologacao' | 'producao' }) {
+    const { competencia, empresaId, contaId, modo = 'producao' } = params;
 
-    // 1. Buscar faturas
-    const { data: faturas } = await supabase.from('faturas').select('*').eq('competencia', competencia);
-    if (!faturas || faturas.length === 0) throw new Error("Sem faturas para gerar remessa");
+    const { data: faturas, error: fatError } = await supabase
+      .from('faturas')
+      .select('*')
+      .eq('competencia', competencia)
+      .eq('empresa_id', empresaId)
+      .neq('status', 'pago');
 
-    // 2. Criar o lote
+    if (fatError) throw fatError;
+    if (!faturas || faturas.length === 0) throw new Error('Sem faturas pendentes para gerar remessa nesta competência.');
+
     const lote = await LoteRemessaService.create({
       competencia,
       conta_bancaria_id: contaId,
@@ -103,161 +136,153 @@ export const CNABService = {
       status: 'gerado'
     });
 
-    // 3. Vincular faturas ao lote
-    await Promise.all(faturas.map(f => 
-      FaturaService.update(f.id, { lote_remessa_id: lote.id })
-    ));
+    await Promise.all(
+      faturas.map(f => FaturaService.update(f.id, { lote_remessa_id: lote.id }))
+    );
 
-    // Fase 5 Req: Retornar o lote sem gerar o arquivo real TXT ou disparar pro bucket real
-    const fileName = `remessa_agrupada_${competencia}_lote_${lote.id}.mock.txt`;
-    const cnabContent = "ARQUIVO MOCK - AGRUPAMENTO REALIZADO COM SUCESSO - GERACAO DE TXT DESABILITADA NESTA FASE";
+    let result;
+    try {
+      result = await CNAB240BBWriter.generateCNAB240({
+        loteId: lote.id,
+        competencia,
+        contaBancariaId: contaId,
+        modo,
+        salvarConteudo: true,
+      });
+    } catch (error) {
+      await LoteRemessaService.update(lote.id, { status: 'erro' });
+      throw error;
+    }
 
-    return { ...lote, fileName, content: cnabContent };
-  },
-
-  async processRetorno(file: File, banco: string) {
-    // 1. Ler o arquivo real
-    const text = await file.text();
-    
-    // 2. Criar registro de lote retorno
-    const loteRetorno = await LoteRetornoService.create({
-      banco,
-      status: 'processado',
-      resumo: { originalName: file.name, fileSize: file.size, processedAt: new Date().toISOString() }
-    });
-
-    // 3. Lógica de processamento REAL
-    // No CNAB de retorno, os pagamentos costumam vir em linhas tipo 'T' ou 'U'
-    const lines = text.split('\n');
-    let paidCount = 0;
-    
-    // Buscar faturas que podem estar neste retorno
-    const { data: faturas } = await supabase.from('faturas').select('id, nosso_numero').neq('status', 'pago');
-    
-    if (faturas) {
-      for (const fatura of faturas) {
-        // Se o nosso_numero da fatura for encontrado no arquivo de retorno
-        if (fatura.nosso_numero && text.includes(fatura.nosso_numero)) {
-          await FaturaService.update(fatura.id, { 
-            status: 'pago', 
-            data_pagamento: new Date().toISOString().split('T')[0] 
-          });
-          paidCount++;
-        }
-      }
+    try {
+      await supabase.rpc('log_audit', {
+        p_action: 'GENERATE_CNAB240',
+        p_details: JSON.stringify({
+          lote_id: lote.id,
+          arquivo_id: result.arquivoId,
+          nome_arquivo: result.fileName,
+          sequencial: result.sequencial,
+          total_valor: result.totalValor,
+          total_linhas: result.totalLinhas,
+          hash: result.hash.substring(0, 16) + '...',
+          modo,
+        }),
+      });
+    } catch (_e) {
+      // audit never blocks
     }
 
     return {
-      loteId: loteRetorno.id,
-      resumo: {
-        totalProcessado: lines.length,
-        pagos: paidCount,
-        rejeitados: lines.length - paidCount - 2 // Descontando header e trailer
-      }
+      ...lote,
+      fileName: result.fileName,
+      content: result.content,
+      arquivoId: result.arquivoId,
+      sequencial: result.sequencial,
+      hash: result.hash,
+      inconsistencias: result.inconsistencias,
     };
+  },
+
+  async marcarComoEnviadoManual(arquivoId: string, observacoes?: string) {
+    await CnabRemessaArquivoService.marcarComoEnviadoManual(arquivoId, observacoes);
+  },
+
+  async marcarComoHomologado(arquivoId: string, observacoes?: string) {
+    await CnabRemessaArquivoService.marcarComoHomologado(arquivoId, observacoes);
+  },
+
+  async processRetorno(file: File, banco: string) {
+    const text = await file.text();
+    if (!text.trim()) {
+      throw new Error('Arquivo de retorno vazio.');
+    }
+
+    const reader = new CNAB240BBReader();
+    return reader.parse(text, {
+      banco,
+      fileName: file.name,
+      uploadedAt: new Date().toISOString(),
+    });
   }
 };
 
-// PORTAL SERVICE — dados reais do cliente logado
 export const PortalService = {
-    /**
-     * Retorna o registro do cliente associado ao usuário logado via user_id.
-     */
-    async getMyCliente() {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) throw new Error("Usuário não autenticado");
+  async getMyCliente() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Usuário não autenticado');
 
-        const { data, error } = await supabase
-            .from("clientes")
-            .select("id, nome, empresa_id, status")
-            .eq("user_id", user.id)
-            .maybeSingle();
-        if (error) throw error;
-        return data;
-    },
+    const { data, error } = await supabase
+      .from('clientes')
+      .select('id, nome, empresa_id, status')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  },
 
-    /**
-     * KPIs do dashboard: valor faturado no mês atual, pendentes, aprovados.
-     */
-    async getClientStats() {
-        const mesAtual = new Date().toISOString().slice(0, 7); // "YYYY-MM"
+  async getClientStats() {
+    const mesAtual = new Date().toISOString().slice(0, 7);
 
-        const { data: faturas, error } = await supabase
-            .from("faturas")
-            .select("valor, status, competencia");
-        if (error) throw error;
+    const { data: faturas, error } = await supabase
+      .from('faturas')
+      .select('valor, status, competencia');
+    if (error) throw error;
 
-        const faturasMes = (faturas || []).filter(f => f.competencia?.startsWith(mesAtual));
+    const faturasMes = (faturas || []).filter(f => f.competencia?.startsWith(mesAtual));
 
-        return {
-            totalFaturadoMes: faturasMes.reduce((acc, f) => acc + Number(f.valor), 0),
-            totalFaturadoGeral: (faturas || []).reduce((acc, f) => acc + Number(f.valor), 0),
-            pendentes: (faturas || []).filter(f => f.status === "pendente").length,
-            aprovados: (faturas || []).filter(f => f.status === "aprovado").length,
-            consolidados: (faturas || []).length,
-        };
-    },
+    return {
+      totalFaturadoMes: faturasMes.reduce((acc, f) => acc + Number(f.valor), 0),
+      totalFaturadoGeral: (faturas || []).reduce((acc, f) => acc + Number(f.valor), 0),
+      pendentes: (faturas || []).filter(f => f.status === 'pendente').length,
+      aprovados: (faturas || []).filter(f => f.status === 'aprovado').length,
+      consolidados: (faturas || []).length,
+    };
+  },
 
-    /**
-     * Lista de fechamentos (consolidados_cliente) do cliente logado.
-     */
-    async getConsolidados() {
-        const { data, error } = await supabase
-            .from("financeiro_consolidados_cliente")
-            .select("id, competencia, valor_total, status, created_at")
-            .order("competencia", { ascending: false })
-            .limit(12);
-        if (error) throw error;
-        return data || [];
-    },
+  async getConsolidados() {
+    const { data, error } = await supabase
+      .from('financeiro_consolidados_cliente')
+      .select('id, competencia, valor_total, status, created_at')
+      .order('competencia', { ascending: false })
+      .limit(12);
+    if (error) throw error;
+    return data || [];
+  },
 
-    /**
-     * Faturas pendentes de aprovação do cliente logado.
-     */
-    async getFaturasPendentes() {
-        const { data, error } = await supabase
-            .from("faturas")
-            .select("id, competencia, valor, vencimento, status, created_at, motivo_rejeicao")
-            .eq("status", "pendente")
-            .order("created_at", { ascending: false });
-        if (error) throw error;
-        return data || [];
-    },
+  async getFaturasPendentes() {
+    const { data, error } = await supabase
+      .from('faturas')
+      .select('id, competencia, valor, vencimento, status, created_at, motivo_rejeicao')
+      .eq('status', 'pendente')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  },
 
-    /**
-     * Histórico de faturas (todas as aprovadas/rejeitadas) do cliente logado.
-     */
-    async getHistoricoFaturas() {
-        const { data, error } = await supabase
-            .from("faturas")
-            .select("id, competencia, valor, status, data_pagamento, created_at, motivo_rejeicao")
-            .in("status", ["aprovado", "pago", "rejeitado"])
-            .order("created_at", { ascending: false })
-            .limit(20);
-        if (error) throw error;
-        return data || [];
-    },
+  async getHistoricoFaturas() {
+    const { data, error } = await supabase
+      .from('faturas')
+      .select('id, competencia, valor, status, data_pagamento, created_at, motivo_rejeicao')
+      .in('status', ['aprovado', 'pago', 'rejeitado'])
+      .order('created_at', { ascending: false })
+      .limit(20);
+    if (error) throw error;
+    return data || [];
+  },
 
-    /**
-     * Aprovar fatura: muda status para 'aprovado'.
-     */
-    async aprovarFatura(faturaId: string) {
-        const { error } = await supabase
-            .from("faturas")
-            .update({ status: "aprovado" })
-            .eq("id", faturaId);
-        if (error) throw error;
-    },
+  async aprovarFatura(faturaId: string) {
+    const { error } = await supabase
+      .from('faturas')
+      .update({ status: 'aprovado' })
+      .eq('id', faturaId);
+    if (error) throw error;
+  },
 
-    /**
-     * Rejeitar fatura: muda status para 'rejeitado' e registra motivo.
-     */
-    async rejeitarFatura(faturaId: string, motivo: string) {
-        const { error } = await supabase
-            .from("faturas")
-            .update({ status: "rejeitado", motivo_rejeicao: motivo })
-            .eq("id", faturaId);
-        if (error) throw error;
-    },
+  async rejeitarFatura(faturaId: string, motivo: string) {
+    const { error } = await supabase
+      .from('faturas')
+      .update({ status: 'rejeitado', motivo_rejeicao: motivo })
+      .eq('id', faturaId);
+    if (error) throw error;
+  },
 };
-
