@@ -1,0 +1,5 @@
+supabase\migrations\20260507202500_base_bancaria_cnab.sql:    EXECUTE FUNCTION public.set_current_tenant_id();
+supabase\migrations\20260507202600_cnab_remessas_arquivos.sql:    EXECUTE FUNCTION public.set_current_tenant_id();
+supabase\migrations\20260507202600_cnab_remessas_arquivos.sql:    EXECUTE FUNCTION public.set_current_tenant_id();
+supabase\migrations\20260507213000_cnab_retorno_bb.sql:    EXECUTE FUNCTION public.set_current_tenant_id();
+supabase\migrations\20260507213000_cnab_retorno_bb.sql:    EXECUTE FUNCTION public.set_current_tenant_id();

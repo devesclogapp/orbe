@@ -1,0 +1,1345 @@
+1:CREATE OR REPLACE FUNCTION public.set_current_tenant_id() RETURNS TRIGGER AS $$ BEGIN IF NEW.tenant_id IS NULL THEN NEW.tenant_id := public.current_tenant_id(); END IF; RETURN NEW; END; $$ LANGUAGE plpgsql SECURITY DEFINER;
+2:-- Fase 8.0: Base Bancária Obrigatória para CNAB240 Banco do Brasil
+4:-- 1. Create contas_bancarias_empresa
+5:CREATE TABLE IF NOT EXISTS public.contas_bancarias_empresa (
+6:    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+7:    tenant_id UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+8:    empresa_id UUID REFERENCES public.empresas(id) ON DELETE SET NULL,
+9:    banco_codigo VARCHAR(10) NOT NULL,
+10:    banco_nome VARCHAR(255) NOT NULL,
+11:    agencia VARCHAR(20) NOT NULL,
+12:    agencia_digito VARCHAR(5),
+13:    conta VARCHAR(50) NOT NULL,
+14:    conta_digito VARCHAR(5),
+15:    convenio VARCHAR(50),
+16:    carteira VARCHAR(20),
+17:    variacao_carteira VARCHAR(20),
+18:    cedente_nome VARCHAR(255) NOT NULL,
+19:    cedente_cnpj VARCHAR(20) NOT NULL,
+20:    tipo_conta VARCHAR(50) NOT NULL DEFAULT 'CORRENTE',
+21:    tipo_servico VARCHAR(50) NOT NULL DEFAULT 'PAGAMENTO_FORNECEDOR',
+22:    ativo BOOLEAN NOT NULL DEFAULT true,
+23:    is_padrao BOOLEAN NOT NULL DEFAULT false,
+24:    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+25:    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+26:    created_by UUID REFERENCES auth.users(id),
+27:    updated_by UUID REFERENCES auth.users(id)
+28:);
+30:-- 2. RLS & Tenant isolation
+31:ALTER TABLE public.contas_bancarias_empresa ENABLE ROW LEVEL SECURITY;
+33:DROP POLICY IF EXISTS "Tenant Isolation: contas_bancarias_empresa select" ON public.contas_bancarias_empresa;
+34:CREATE POLICY "Tenant Isolation: contas_bancarias_empresa select" ON public.contas_bancarias_empresa
+35:    FOR SELECT USING (tenant_id = (SELECT public.current_tenant_id()));
+37:DROP POLICY IF EXISTS "Tenant Isolation: contas_bancarias_empresa insert" ON public.contas_bancarias_empresa;
+38:CREATE POLICY "Tenant Isolation: contas_bancarias_empresa insert" ON public.contas_bancarias_empresa
+39:    FOR INSERT WITH CHECK (tenant_id = (SELECT public.current_tenant_id()));
+41:DROP POLICY IF EXISTS "Tenant Isolation: contas_bancarias_empresa update" ON public.contas_bancarias_empresa;
+42:CREATE POLICY "Tenant Isolation: contas_bancarias_empresa update" ON public.contas_bancarias_empresa
+43:    FOR UPDATE USING (tenant_id = (SELECT public.current_tenant_id()));
+45:DROP POLICY IF EXISTS "Tenant Isolation: contas_bancarias_empresa delete" ON public.contas_bancarias_empresa;
+46:CREATE POLICY "Tenant Isolation: contas_bancarias_empresa delete" ON public.contas_bancarias_empresa
+47:    FOR DELETE USING (tenant_id = (SELECT public.current_tenant_id()));
+49:-- Trigger auto tenant
+50:DROP TRIGGER IF EXISTS set_tenant_id_contas_bancarias_empresa ON public.contas_bancarias_empresa;
+51:CREATE TRIGGER set_tenant_id_contas_bancarias_empresa
+52:    BEFORE INSERT ON public.contas_bancarias_empresa
+53:    FOR EACH ROW
+54:    EXECUTE FUNCTION public.set_current_tenant_id();
+56:CREATE INDEX IF NOT EXISTS idx_contas_bancarias_empresa_tenant
+57:    ON public.contas_bancarias_empresa (tenant_id);
+59:CREATE INDEX IF NOT EXISTS idx_contas_bancarias_empresa_empresa
+60:    ON public.contas_bancarias_empresa (empresa_id);
+62:CREATE INDEX IF NOT EXISTS idx_contas_bancarias_empresa_ativo
+63:    ON public.contas_bancarias_empresa (tenant_id, ativo, is_padrao);
+65:-- Esta migration nao altera o workflow de remessas.
+66:-- Os status CNAB ficam centralizados em 20260507165148_cnab_remessas_arquivos.sql.
+67:-- ============================================================
+68:-- FASE 8.1.1 — CNAB Remessas Arquivos + Sequencial + Auditoria Bancária
+69:-- ============================================================
+71:-- 1. Tabela principal: memória persistente de arquivos CNAB gerados
+72:CREATE TABLE IF NOT EXISTS public.cnab_remessas_arquivos (
+73:    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+74:    tenant_id UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+75:    lote_id UUID REFERENCES public.lotes_remessa(id) ON DELETE SET NULL,
+77:    -- Identificação do arquivo
+78:    nome_arquivo TEXT NOT NULL,
+79:    sequencial_arquivo INTEGER NOT NULL,
+81:    -- Integridade
+82:    hash_arquivo TEXT NOT NULL, -- SHA-256 do conteúdo gerado
+84:    -- Conteúdo (opcional - somente se ativado por config do tenant)
+85:    conteudo_arquivo TEXT,
+87:    -- Totalizadores
+88:    total_registros INTEGER NOT NULL DEFAULT 0,
+89:    total_valor NUMERIC(15, 2) NOT NULL DEFAULT 0,
+91:    -- Dados bancários snapshot (imutável pós-geração)
+92:    banco_codigo VARCHAR(10),
+93:    banco_nome VARCHAR(255),
+94:    conta_bancaria_id UUID REFERENCES public.contas_bancarias_empresa(id) ON DELETE SET NULL,
+96:    -- Workflow de status
+97:    status TEXT NOT NULL DEFAULT 'gerado'
+98:        CHECK (status IN ('gerado', 'baixado', 'enviado_manual', 'homologado', 'erro_homologacao')),
+100:    -- Modo (separação homologação x produção)
+101:    modo TEXT NOT NULL DEFAULT 'producao'
+102:        CHECK (modo IN ('homologacao', 'producao')),
+104:    -- Competência
+105:    competencia VARCHAR(7), -- YYYY-MM
+107:    -- Auditoria de geração
+108:    usuario_geracao UUID REFERENCES auth.users(id),
+109:    data_geracao TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+111:    -- Auditoria de envio
+112:    usuario_envio UUID REFERENCES auth.users(id),
+113:    data_envio TIMESTAMPTZ,
+115:    -- Auditoria de homologação
+116:    usuario_homologacao UUID REFERENCES auth.users(id),
+117:    data_homologacao TIMESTAMPTZ,
+119:    -- Metadados extras
+120:    observacoes TEXT,
+122:    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+123:    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+124:);
+126:-- Garantir unicidade de sequencial por tenant + conta bancária
+127:CREATE UNIQUE INDEX IF NOT EXISTS idx_cnab_remessas_arquivos_sequencial
+128:    ON public.cnab_remessas_arquivos (tenant_id, conta_bancaria_id, sequencial_arquivo);
+130:-- Impedir duplicidade de hash por tenant (mesmo arquivo não pode ser gerado 2x)
+131:CREATE UNIQUE INDEX IF NOT EXISTS idx_cnab_remessas_arquivos_hash
+132:    ON public.cnab_remessas_arquivos (tenant_id, hash_arquivo);
+134:-- Índices operacionais
+135:CREATE INDEX IF NOT EXISTS idx_cnab_remessas_arquivos_tenant
+136:    ON public.cnab_remessas_arquivos (tenant_id);
+138:CREATE INDEX IF NOT EXISTS idx_cnab_remessas_arquivos_lote
+139:    ON public.cnab_remessas_arquivos (lote_id);
+141:CREATE INDEX IF NOT EXISTS idx_cnab_remessas_arquivos_status
+142:    ON public.cnab_remessas_arquivos (tenant_id, status);
+144:CREATE INDEX IF NOT EXISTS idx_cnab_remessas_arquivos_competencia
+145:    ON public.cnab_remessas_arquivos (tenant_id, competencia);
+147:-- 2. Tabela de controle de sequencial CNAB por tenant + conta bancária
+148:CREATE TABLE IF NOT EXISTS public.cnab_sequencial_controle (
+149:    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+150:    tenant_id UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+151:    conta_bancaria_id UUID NOT NULL REFERENCES public.contas_bancarias_empresa(id) ON DELETE CASCADE,
+152:    banco_codigo VARCHAR(10) NOT NULL,
+153:    ultimo_sequencial INTEGER NOT NULL DEFAULT 0,
+154:    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+156:    CONSTRAINT cnab_sequencial_unico UNIQUE (tenant_id, conta_bancaria_id)
+157:);
+159:CREATE INDEX IF NOT EXISTS idx_cnab_sequencial_controle_tenant
+160:    ON public.cnab_sequencial_controle (tenant_id, conta_bancaria_id);
+162:-- 3. Auditoria bancária
+163:CREATE TABLE IF NOT EXISTS public.cnab_auditoria_bancaria (
+164:    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+165:    tenant_id UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+166:    arquivo_id UUID REFERENCES public.cnab_remessas_arquivos(id) ON DELETE SET NULL,
+167:    lote_id UUID REFERENCES public.lotes_remessa(id) ON DELETE SET NULL,
+169:    acao TEXT NOT NULL
+170:        CHECK (acao IN ('geracao', 'download', 'envio_manual', 'homologacao', 'erro_homologacao', 'validacao')),
+172:    usuario_id UUID REFERENCES auth.users(id),
+173:    usuario_nome TEXT,
+174:    detalhes JSONB,
+175:    ip_address TEXT,
+176:    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+177:);
+179:-- Auditoria bancária é APPEND-ONLY: bloquear UPDATE e DELETE
+180:CREATE OR REPLACE RULE cnab_auditoria_no_update AS
+181:    ON UPDATE TO public.cnab_auditoria_bancaria DO INSTEAD NOTHING;
+183:CREATE OR REPLACE RULE cnab_auditoria_no_delete AS
+184:    ON DELETE TO public.cnab_auditoria_bancaria DO INSTEAD NOTHING;
+186:CREATE INDEX IF NOT EXISTS idx_cnab_auditoria_tenant
+187:    ON public.cnab_auditoria_bancaria (tenant_id);
+189:CREATE INDEX IF NOT EXISTS idx_cnab_auditoria_arquivo
+190:    ON public.cnab_auditoria_bancaria (arquivo_id);
+192:CREATE INDEX IF NOT EXISTS idx_cnab_auditoria_created
+193:    ON public.cnab_auditoria_bancaria (tenant_id, created_at DESC);
+195:-- ============================================================
+196:-- RLS
+197:-- ============================================================
+199:-- cnab_remessas_arquivos
+200:ALTER TABLE public.cnab_remessas_arquivos ENABLE ROW LEVEL SECURITY;
+202:DROP POLICY IF EXISTS "tenant_isolation_cnab_remessas_arquivos_select" ON public.cnab_remessas_arquivos;
+203:CREATE POLICY "tenant_isolation_cnab_remessas_arquivos_select"
+204:    ON public.cnab_remessas_arquivos FOR SELECT
+205:    USING (tenant_id = (SELECT public.current_tenant_id()));
+207:DROP POLICY IF EXISTS "tenant_isolation_cnab_remessas_arquivos_insert" ON public.cnab_remessas_arquivos;
+208:CREATE POLICY "tenant_isolation_cnab_remessas_arquivos_insert"
+209:    ON public.cnab_remessas_arquivos FOR INSERT
+210:    WITH CHECK (tenant_id = (SELECT public.current_tenant_id()));
+212:DROP POLICY IF EXISTS "tenant_isolation_cnab_remessas_arquivos_update" ON public.cnab_remessas_arquivos;
+213:CREATE POLICY "tenant_isolation_cnab_remessas_arquivos_update"
+214:    ON public.cnab_remessas_arquivos FOR UPDATE
+215:    USING (tenant_id = (SELECT public.current_tenant_id()));
+217:-- cnab_sequencial_controle
+218:ALTER TABLE public.cnab_sequencial_controle ENABLE ROW LEVEL SECURITY;
+220:DROP POLICY IF EXISTS "tenant_isolation_cnab_sequencial_select" ON public.cnab_sequencial_controle;
+221:CREATE POLICY "tenant_isolation_cnab_sequencial_select"
+222:    ON public.cnab_sequencial_controle FOR SELECT
+223:    USING (tenant_id = (SELECT public.current_tenant_id()));
+225:DROP POLICY IF EXISTS "tenant_isolation_cnab_sequencial_insert" ON public.cnab_sequencial_controle;
+226:CREATE POLICY "tenant_isolation_cnab_sequencial_insert"
+227:    ON public.cnab_sequencial_controle FOR INSERT
+228:    WITH CHECK (tenant_id = (SELECT public.current_tenant_id()));
+230:DROP POLICY IF EXISTS "tenant_isolation_cnab_sequencial_update" ON public.cnab_sequencial_controle;
+231:CREATE POLICY "tenant_isolation_cnab_sequencial_update"
+232:    ON public.cnab_sequencial_controle FOR UPDATE
+233:    USING (tenant_id = (SELECT public.current_tenant_id()));
+235:-- cnab_auditoria_bancaria
+236:ALTER TABLE public.cnab_auditoria_bancaria ENABLE ROW LEVEL SECURITY;
+238:DROP POLICY IF EXISTS "tenant_isolation_cnab_auditoria_select" ON public.cnab_auditoria_bancaria;
+239:CREATE POLICY "tenant_isolation_cnab_auditoria_select"
+240:    ON public.cnab_auditoria_bancaria FOR SELECT
+241:    USING (tenant_id = (SELECT public.current_tenant_id()));
+243:DROP POLICY IF EXISTS "tenant_isolation_cnab_auditoria_insert" ON public.cnab_auditoria_bancaria;
+244:CREATE POLICY "tenant_isolation_cnab_auditoria_insert"
+245:    ON public.cnab_auditoria_bancaria FOR INSERT
+246:    WITH CHECK (tenant_id = (SELECT public.current_tenant_id()));
+248:-- ============================================================
+249:-- FUNÇÃO: get_next_cnab_sequencial
+250:-- Retorna próximo sequencial de forma atômica (sem race condition)
+251:-- ============================================================
+252:CREATE OR REPLACE FUNCTION public.get_next_cnab_sequencial(
+253:    p_tenant_id UUID,
+254:    p_conta_bancaria_id UUID,
+255:    p_banco_codigo TEXT
+256:)
+257:RETURNS INTEGER
+258:LANGUAGE plpgsql
+259:SECURITY DEFINER
+260:AS $$
+261:DECLARE
+262:    v_next INTEGER;
+263:BEGIN
+264:    INSERT INTO public.cnab_sequencial_controle (tenant_id, conta_bancaria_id, banco_codigo, ultimo_sequencial)
+265:    VALUES (p_tenant_id, p_conta_bancaria_id, p_banco_codigo, 1)
+266:    ON CONFLICT (tenant_id, conta_bancaria_id)
+267:    DO UPDATE SET
+268:        ultimo_sequencial = cnab_sequencial_controle.ultimo_sequencial + 1,
+269:        updated_at = timezone('utc', now())
+270:    RETURNING ultimo_sequencial INTO v_next;
+272:    RETURN v_next;
+273:END;
+274:$$;
+276:-- ============================================================
+277:-- Triggers: auto tenant_id e updated_at
+278:-- ============================================================
+279:DROP TRIGGER IF EXISTS set_tenant_id_cnab_remessas_arquivos ON public.cnab_remessas_arquivos;
+280:CREATE TRIGGER set_tenant_id_cnab_remessas_arquivos
+281:    BEFORE INSERT ON public.cnab_remessas_arquivos
+282:    FOR EACH ROW
+283:    EXECUTE FUNCTION public.set_current_tenant_id();
+285:CREATE OR REPLACE FUNCTION public.update_cnab_remessas_updated_at()
+286:RETURNS TRIGGER LANGUAGE plpgsql AS $$
+287:BEGIN
+288:    NEW.updated_at = timezone('utc', now());
+289:    RETURN NEW;
+290:END;
+291:$$;
+293:DROP TRIGGER IF EXISTS update_cnab_remessas_arquivos_updated_at ON public.cnab_remessas_arquivos;
+294:CREATE TRIGGER update_cnab_remessas_arquivos_updated_at
+295:    BEFORE UPDATE ON public.cnab_remessas_arquivos
+296:    FOR EACH ROW
+297:    EXECUTE FUNCTION public.update_cnab_remessas_updated_at();
+299:DROP TRIGGER IF EXISTS set_tenant_id_cnab_auditoria_bancaria ON public.cnab_auditoria_bancaria;
+300:CREATE TRIGGER set_tenant_id_cnab_auditoria_bancaria
+301:    BEFORE INSERT ON public.cnab_auditoria_bancaria
+302:    FOR EACH ROW
+303:    EXECUTE FUNCTION public.set_current_tenant_id();
+305:-- ============================================================
+306:-- Atualizar status da tabela lotes_remessa com novos valores
+307:-- ============================================================
+308:DO $$
+309:BEGIN
+310:    -- Tenta adicionar novos status ao CHECK constraint se existir
+311:    -- (safe: se não existir o constraint, ignora)
+312:    BEGIN
+313:        ALTER TABLE public.lotes_remessa DROP CONSTRAINT IF EXISTS lotes_remessa_status_check;
+314:    EXCEPTION WHEN OTHERS THEN NULL;
+315:    END;
+316:END;
+317:$$;
+319:DO $$
+320:BEGIN
+321:    IF EXISTS (
+322:        SELECT 1
+323:        FROM information_schema.tables
+324:        WHERE table_schema = 'public'
+325:          AND table_name = 'lotes_remessa'
+326:    ) THEN
+327:        ALTER TABLE public.lotes_remessa
+328:            ADD CONSTRAINT lotes_remessa_status_check
+329:            CHECK (status IN (
+330:                'rascunho', 'validado', 'pendente_correcao', 'pronto_cnab',
+331:                'gerado', 'baixado', 'enviado_manual', 'homologado', 'erro_homologacao',
+332:                'enviado', 'processado', 'erro'
+333:            ));
+334:    END IF;
+335:END;
+336:$$;
+337:-- ============================================================
+338:-- FASE 8.2 - Retorno CNAB240 Banco do Brasil
+339:-- ============================================================
+341:CREATE TABLE IF NOT EXISTS public.cnab_retorno_arquivos (
+342:    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+343:    tenant_id UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+344:    remessa_arquivo_id UUID REFERENCES public.cnab_remessas_arquivos(id) ON DELETE SET NULL,
+345:    nome_arquivo TEXT NOT NULL,
+346:    hash_arquivo TEXT NOT NULL,
+347:    banco_codigo VARCHAR(10) NOT NULL DEFAULT '001',
+348:    data_processamento TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+349:    usuario_processamento UUID REFERENCES auth.users(id),
+350:    total_linhas INTEGER NOT NULL DEFAULT 0,
+351:    total_processados INTEGER NOT NULL DEFAULT 0,
+352:    total_sucesso INTEGER NOT NULL DEFAULT 0,
+353:    total_rejeitado INTEGER NOT NULL DEFAULT 0,
+354:    total_divergente INTEGER NOT NULL DEFAULT 0,
+355:    total_pendente INTEGER NOT NULL DEFAULT 0,
+356:    status TEXT NOT NULL DEFAULT 'processado'
+357:        CHECK (status IN ('processado', 'processado_com_pendencias', 'erro')),
+358:    erros_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+359:    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+360:    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+361:);
+363:CREATE UNIQUE INDEX IF NOT EXISTS idx_cnab_retorno_arquivos_hash
+364:    ON public.cnab_retorno_arquivos (tenant_id, hash_arquivo);
+366:CREATE INDEX IF NOT EXISTS idx_cnab_retorno_arquivos_tenant
+367:    ON public.cnab_retorno_arquivos (tenant_id, created_at DESC);
+369:CREATE INDEX IF NOT EXISTS idx_cnab_retorno_arquivos_remessa
+370:    ON public.cnab_retorno_arquivos (remessa_arquivo_id);
+372:CREATE TABLE IF NOT EXISTS public.cnab_retorno_itens (
+373:    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+374:    tenant_id UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+375:    retorno_arquivo_id UUID NOT NULL REFERENCES public.cnab_retorno_arquivos(id) ON DELETE CASCADE,
+376:    remessa_arquivo_id UUID REFERENCES public.cnab_remessas_arquivos(id) ON DELETE SET NULL,
+377:    lote_id UUID REFERENCES public.lotes_remessa(id) ON DELETE SET NULL,
+378:    fatura_id UUID REFERENCES public.faturas(id) ON DELETE SET NULL,
+379:    colaborador_id UUID REFERENCES public.colaboradores(id) ON DELETE SET NULL,
+380:    nome_favorecido TEXT,
+381:    documento_favorecido VARCHAR(20),
+382:    valor_esperado NUMERIC(15, 2),
+383:    valor_retornado NUMERIC(15, 2),
+384:    data_ocorrencia DATE,
+385:    codigo_ocorrencia VARCHAR(10),
+386:    descricao_ocorrencia TEXT,
+387:    status TEXT NOT NULL DEFAULT 'pendente'
+388:        CHECK (status IN ('pago', 'rejeitado', 'divergente', 'pendente', 'desconhecido')),
+389:    linha_original TEXT NOT NULL,
+390:    parsed_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+391:    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+392:);
+394:CREATE INDEX IF NOT EXISTS idx_cnab_retorno_itens_arquivo
+395:    ON public.cnab_retorno_itens (retorno_arquivo_id);
+397:CREATE INDEX IF NOT EXISTS idx_cnab_retorno_itens_remessa
+398:    ON public.cnab_retorno_itens (remessa_arquivo_id);
+400:CREATE INDEX IF NOT EXISTS idx_cnab_retorno_itens_lote
+401:    ON public.cnab_retorno_itens (lote_id);
+403:CREATE INDEX IF NOT EXISTS idx_cnab_retorno_itens_fatura
+404:    ON public.cnab_retorno_itens (fatura_id);
+406:CREATE INDEX IF NOT EXISTS idx_cnab_retorno_itens_status
+407:    ON public.cnab_retorno_itens (tenant_id, status);
+409:ALTER TABLE public.cnab_retorno_arquivos ENABLE ROW LEVEL SECURITY;
+410:ALTER TABLE public.cnab_retorno_itens ENABLE ROW LEVEL SECURITY;
+412:DROP POLICY IF EXISTS "tenant_isolation_cnab_retorno_arquivos_select" ON public.cnab_retorno_arquivos;
+413:CREATE POLICY "tenant_isolation_cnab_retorno_arquivos_select"
+414:    ON public.cnab_retorno_arquivos FOR SELECT
+415:    USING (tenant_id = (SELECT public.current_tenant_id()));
+417:DROP POLICY IF EXISTS "tenant_isolation_cnab_retorno_arquivos_insert" ON public.cnab_retorno_arquivos;
+418:CREATE POLICY "tenant_isolation_cnab_retorno_arquivos_insert"
+419:    ON public.cnab_retorno_arquivos FOR INSERT
+420:    WITH CHECK (tenant_id = (SELECT public.current_tenant_id()));
+422:DROP POLICY IF EXISTS "tenant_isolation_cnab_retorno_arquivos_update" ON public.cnab_retorno_arquivos;
+423:CREATE POLICY "tenant_isolation_cnab_retorno_arquivos_update"
+424:    ON public.cnab_retorno_arquivos FOR UPDATE
+425:    USING (tenant_id = (SELECT public.current_tenant_id()));
+427:DROP POLICY IF EXISTS "tenant_isolation_cnab_retorno_itens_select" ON public.cnab_retorno_itens;
+428:CREATE POLICY "tenant_isolation_cnab_retorno_itens_select"
+429:    ON public.cnab_retorno_itens FOR SELECT
+430:    USING (tenant_id = (SELECT public.current_tenant_id()));
+432:DROP POLICY IF EXISTS "tenant_isolation_cnab_retorno_itens_insert" ON public.cnab_retorno_itens;
+433:CREATE POLICY "tenant_isolation_cnab_retorno_itens_insert"
+434:    ON public.cnab_retorno_itens FOR INSERT
+435:    WITH CHECK (tenant_id = (SELECT public.current_tenant_id()));
+437:DROP POLICY IF EXISTS "tenant_isolation_cnab_retorno_itens_update" ON public.cnab_retorno_itens;
+438:CREATE POLICY "tenant_isolation_cnab_retorno_itens_update"
+439:    ON public.cnab_retorno_itens FOR UPDATE
+440:    USING (tenant_id = (SELECT public.current_tenant_id()));
+442:DROP TRIGGER IF EXISTS set_tenant_id_cnab_retorno_arquivos ON public.cnab_retorno_arquivos;
+443:CREATE TRIGGER set_tenant_id_cnab_retorno_arquivos
+444:    BEFORE INSERT ON public.cnab_retorno_arquivos
+445:    FOR EACH ROW
+446:    EXECUTE FUNCTION public.set_current_tenant_id();
+448:DROP TRIGGER IF EXISTS set_tenant_id_cnab_retorno_itens ON public.cnab_retorno_itens;
+449:CREATE TRIGGER set_tenant_id_cnab_retorno_itens
+450:    BEFORE INSERT ON public.cnab_retorno_itens
+451:    FOR EACH ROW
+452:    EXECUTE FUNCTION public.set_current_tenant_id();
+454:CREATE OR REPLACE FUNCTION public.update_cnab_retorno_arquivos_updated_at()
+455:RETURNS TRIGGER LANGUAGE plpgsql AS $$
+456:BEGIN
+457:    NEW.updated_at = timezone('utc', now());
+458:    RETURN NEW;
+459:END;
+460:$$;
+462:DROP TRIGGER IF EXISTS update_cnab_retorno_arquivos_updated_at ON public.cnab_retorno_arquivos;
+463:CREATE TRIGGER update_cnab_retorno_arquivos_updated_at
+464:    BEFORE UPDATE ON public.cnab_retorno_arquivos
+465:    FOR EACH ROW
+466:    EXECUTE FUNCTION public.update_cnab_retorno_arquivos_updated_at();
+468:ALTER TABLE public.cnab_auditoria_bancaria
+469:    DROP CONSTRAINT IF EXISTS cnab_auditoria_bancaria_acao_check;
+471:ALTER TABLE public.cnab_auditoria_bancaria
+472:    ADD CONSTRAINT cnab_auditoria_bancaria_acao_check
+473:    CHECK (
+474:        acao IN (
+475:            'geracao',
+476:            'download',
+477:            'envio_manual',
+478:            'homologacao',
+479:            'erro_homologacao',
+480:            'validacao',
+481:            'upload_retorno',
+482:            'processamento_retorno',
+483:            'erro_retorno',
+484:            'divergencia_retorno'
+485:        )
+486:    );
+487:-- ============================================================
+488:-- FASE 8.3 - Baixa financeira controlada e auditavel
+489:-- ============================================================
+491:CREATE OR REPLACE FUNCTION public.is_financeiro_conciliacao_role()
+492:RETURNS BOOLEAN AS $$
+493:  SELECT public.get_user_role() IN ('Admin', 'Financeiro');
+494:$$ LANGUAGE sql STABLE SECURITY DEFINER;
+496:ALTER TABLE public.cnab_auditoria_bancaria
+497:  DROP CONSTRAINT IF EXISTS cnab_auditoria_bancaria_acao_check;
+499:ALTER TABLE public.cnab_auditoria_bancaria
+500:  ADD CONSTRAINT cnab_auditoria_bancaria_acao_check
+501:  CHECK (
+502:    acao IN (
+503:      'geracao',
+504:      'download',
+505:      'envio_manual',
+506:      'homologacao',
+507:      'erro_homologacao',
+508:      'validacao',
+509:      'upload_retorno',
+510:      'processamento_retorno',
+511:      'erro_retorno',
+512:      'divergencia_retorno',
+513:      'conciliacao_aprovada',
+514:      'conciliacao_rejeitada',
+515:      'conciliacao_divergente',
+516:      'conciliacao_revertida',
+517:      'conciliacao_observacao'
+518:    )
+519:  );
+521:ALTER TABLE public.cnab_retorno_itens
+522:  ADD COLUMN IF NOT EXISTS status_conciliacao TEXT,
+523:  ADD COLUMN IF NOT EXISTS observacao_conciliacao TEXT,
+524:  ADD COLUMN IF NOT EXISTS conciliado_em TIMESTAMPTZ,
+525:  ADD COLUMN IF NOT EXISTS conciliado_por UUID REFERENCES auth.users(id),
+526:  ADD COLUMN IF NOT EXISTS revertido_em TIMESTAMPTZ,
+527:  ADD COLUMN IF NOT EXISTS revertido_por UUID REFERENCES auth.users(id);
+529:UPDATE public.cnab_retorno_itens
+530:SET status_conciliacao = COALESCE(status_conciliacao, 'aguardando_conciliacao');
+532:ALTER TABLE public.cnab_retorno_itens
+533:  ALTER COLUMN status_conciliacao SET DEFAULT 'aguardando_conciliacao';
+535:ALTER TABLE public.cnab_retorno_itens
+536:  ALTER COLUMN status_conciliacao SET NOT NULL;
+538:ALTER TABLE public.cnab_retorno_itens
+539:  DROP CONSTRAINT IF EXISTS cnab_retorno_itens_status_conciliacao_check;
+541:ALTER TABLE public.cnab_retorno_itens
+542:  ADD CONSTRAINT cnab_retorno_itens_status_conciliacao_check
+543:  CHECK (status_conciliacao IN ('aguardando_conciliacao', 'conciliado', 'divergente', 'rejeitado_banco', 'revertido'));
+545:ALTER TABLE public.faturas
+546:  ADD COLUMN IF NOT EXISTS status_conciliacao TEXT,
+547:  ADD COLUMN IF NOT EXISTS conciliado_em TIMESTAMPTZ,
+548:  ADD COLUMN IF NOT EXISTS conciliado_por UUID REFERENCES auth.users(id),
+549:  ADD COLUMN IF NOT EXISTS revertido_em TIMESTAMPTZ,
+550:  ADD COLUMN IF NOT EXISTS revertido_por UUID REFERENCES auth.users(id);
+552:UPDATE public.faturas
+553:SET status_conciliacao = COALESCE(
+554:  status_conciliacao,
+555:  CASE
+556:    WHEN status = 'pago' THEN 'conciliado'
+557:    ELSE 'aguardando_conciliacao'
+558:  END
+559:);
+561:ALTER TABLE public.faturas
+562:  ALTER COLUMN status_conciliacao SET DEFAULT 'aguardando_conciliacao';
+564:ALTER TABLE public.faturas
+565:  ALTER COLUMN status_conciliacao SET NOT NULL;
+567:ALTER TABLE public.faturas
+568:  DROP CONSTRAINT IF EXISTS faturas_status_conciliacao_check;
+570:ALTER TABLE public.faturas
+571:  ADD CONSTRAINT faturas_status_conciliacao_check
+572:  CHECK (status_conciliacao IN ('aguardando_conciliacao', 'conciliado', 'divergente', 'rejeitado_banco', 'revertido'));
+574:ALTER TABLE public.financeiro_consolidados_cliente
+575:  ADD COLUMN IF NOT EXISTS status_conciliacao TEXT;
+577:UPDATE public.financeiro_consolidados_cliente
+578:SET status_conciliacao = COALESCE(status_conciliacao, 'aguardando_conciliacao');
+580:ALTER TABLE public.financeiro_consolidados_cliente
+581:  ALTER COLUMN status_conciliacao SET DEFAULT 'aguardando_conciliacao';
+583:ALTER TABLE public.financeiro_consolidados_cliente
+584:  ALTER COLUMN status_conciliacao SET NOT NULL;
+586:ALTER TABLE public.financeiro_consolidados_cliente
+587:  DROP CONSTRAINT IF EXISTS financeiro_consolidados_cliente_status_conciliacao_check;
+589:ALTER TABLE public.financeiro_consolidados_cliente
+590:  ADD CONSTRAINT financeiro_consolidados_cliente_status_conciliacao_check
+591:  CHECK (status_conciliacao IN ('aguardando_conciliacao', 'conciliado', 'divergente', 'rejeitado_banco', 'revertido'));
+593:ALTER TABLE public.financeiro_consolidados_colaborador
+594:  ADD COLUMN IF NOT EXISTS status_conciliacao TEXT;
+596:UPDATE public.financeiro_consolidados_colaborador
+597:SET status_conciliacao = COALESCE(status_conciliacao, 'aguardando_conciliacao');
+599:ALTER TABLE public.financeiro_consolidados_colaborador
+600:  ALTER COLUMN status_conciliacao SET DEFAULT 'aguardando_conciliacao';
+602:ALTER TABLE public.financeiro_consolidados_colaborador
+603:  ALTER COLUMN status_conciliacao SET NOT NULL;
+605:ALTER TABLE public.financeiro_consolidados_colaborador
+606:  DROP CONSTRAINT IF EXISTS financeiro_consolidados_colaborador_status_conciliacao_check;
+608:ALTER TABLE public.financeiro_consolidados_colaborador
+609:  ADD CONSTRAINT financeiro_consolidados_colaborador_status_conciliacao_check
+610:  CHECK (status_conciliacao IN ('aguardando_conciliacao', 'conciliado', 'divergente', 'rejeitado_banco', 'revertido'));
+612:ALTER TABLE public.lotes_remessa
+613:  ADD COLUMN IF NOT EXISTS status_conciliacao TEXT;
+615:UPDATE public.lotes_remessa
+616:SET status_conciliacao = COALESCE(status_conciliacao, 'aguardando_conciliacao');
+618:ALTER TABLE public.lotes_remessa
+619:  ALTER COLUMN status_conciliacao SET DEFAULT 'aguardando_conciliacao';
+621:ALTER TABLE public.lotes_remessa
+622:  ALTER COLUMN status_conciliacao SET NOT NULL;
+624:ALTER TABLE public.lotes_remessa
+625:  DROP CONSTRAINT IF EXISTS lotes_remessa_status_conciliacao_check;
+627:ALTER TABLE public.lotes_remessa
+628:  ADD CONSTRAINT lotes_remessa_status_conciliacao_check
+629:  CHECK (status_conciliacao IN ('aguardando_conciliacao', 'conciliado', 'divergente', 'rejeitado_banco', 'revertido'));
+631:CREATE TABLE IF NOT EXISTS public.financeiro_conciliacoes (
+632:  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+633:  tenant_id UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+634:  retorno_item_id UUID NOT NULL REFERENCES public.cnab_retorno_itens(id) ON DELETE CASCADE,
+635:  remessa_arquivo_id UUID REFERENCES public.cnab_remessas_arquivos(id) ON DELETE SET NULL,
+636:  lote_id UUID REFERENCES public.lotes_remessa(id) ON DELETE SET NULL,
+637:  fatura_id UUID REFERENCES public.faturas(id) ON DELETE SET NULL,
+638:  colaborador_id UUID REFERENCES public.colaboradores(id) ON DELETE SET NULL,
+639:  valor_original NUMERIC(15,2) NOT NULL DEFAULT 0,
+640:  valor_pago NUMERIC(15,2) NOT NULL DEFAULT 0,
+641:  valor_conciliado NUMERIC(15,2) NOT NULL DEFAULT 0,
+642:  status TEXT NOT NULL DEFAULT 'aguardando_conciliacao',
+643:  status_anterior TEXT,
+644:  usuario_conciliacao UUID REFERENCES auth.users(id),
+645:  data_conciliacao TIMESTAMPTZ,
+646:  observacao TEXT,
+647:  reversivel BOOLEAN NOT NULL DEFAULT TRUE,
+648:  revertido_em TIMESTAMPTZ,
+649:  revertido_por UUID REFERENCES auth.users(id),
+650:  motivo_reversao TEXT,
+651:  created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+652:  updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+653:);
+655:ALTER TABLE public.financeiro_conciliacoes
+656:  ADD COLUMN IF NOT EXISTS status_anterior TEXT,
+657:  ADD COLUMN IF NOT EXISTS motivo_reversao TEXT,
+658:  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now());
+660:UPDATE public.financeiro_conciliacoes
+661:SET tenant_id = itens.tenant_id
+662:FROM public.cnab_retorno_itens itens
+663:WHERE public.financeiro_conciliacoes.tenant_id IS NULL
+664:  AND itens.id = public.financeiro_conciliacoes.retorno_item_id;
+666:ALTER TABLE public.financeiro_conciliacoes
+667:  ALTER COLUMN tenant_id SET NOT NULL;
+669:ALTER TABLE public.financeiro_conciliacoes
+670:  DROP CONSTRAINT IF EXISTS financeiro_conciliacoes_status_check;
+672:ALTER TABLE public.financeiro_conciliacoes
+673:  ADD CONSTRAINT financeiro_conciliacoes_status_check
+674:  CHECK (status IN ('aguardando_conciliacao', 'conciliado', 'divergente', 'rejeitado_banco', 'revertido'));
+676:ALTER TABLE public.financeiro_conciliacoes
+677:  DROP CONSTRAINT IF EXISTS financeiro_conciliacoes_status_anterior_check;
+679:ALTER TABLE public.financeiro_conciliacoes
+680:  ADD CONSTRAINT financeiro_conciliacoes_status_anterior_check
+681:  CHECK (
+682:    status_anterior IS NULL OR
+683:    status_anterior IN ('aguardando_conciliacao', 'conciliado', 'divergente', 'rejeitado_banco', 'revertido')
+684:  );
+686:CREATE INDEX IF NOT EXISTS idx_cnab_retorno_itens_status_conciliacao
+687:  ON public.cnab_retorno_itens (tenant_id, status_conciliacao, retorno_arquivo_id);
+689:CREATE INDEX IF NOT EXISTS idx_faturas_status_conciliacao
+690:  ON public.faturas (tenant_id, status_conciliacao);
+692:CREATE INDEX IF NOT EXISTS idx_financeiro_consolidados_cliente_status_conciliacao
+693:  ON public.financeiro_consolidados_cliente (tenant_id, status_conciliacao);
+695:CREATE INDEX IF NOT EXISTS idx_financeiro_consolidados_colab_status_conciliacao
+696:  ON public.financeiro_consolidados_colaborador (tenant_id, status_conciliacao);
+698:CREATE INDEX IF NOT EXISTS idx_lotes_remessa_status_conciliacao
+699:  ON public.lotes_remessa (tenant_id, status_conciliacao);
+701:CREATE INDEX IF NOT EXISTS idx_financeiro_conciliacoes_tenant_status
+702:  ON public.financeiro_conciliacoes (tenant_id, status, created_at DESC);
+704:CREATE UNIQUE INDEX IF NOT EXISTS uq_financeiro_conciliacoes_retorno_item_ativo
+705:  ON public.financeiro_conciliacoes (retorno_item_id)
+706:  WHERE status <> 'revertido';
+708:ALTER TABLE public.financeiro_conciliacoes ENABLE ROW LEVEL SECURITY;
+710:DROP POLICY IF EXISTS "tenant_isolation_conciliacoes_select" ON public.financeiro_conciliacoes;
+711:DROP POLICY IF EXISTS "tenant_isolation_conciliacoes_insert" ON public.financeiro_conciliacoes;
+712:DROP POLICY IF EXISTS "tenant_isolation_conciliacoes_update" ON public.financeiro_conciliacoes;
+713:DROP POLICY IF EXISTS "financeiro_conciliacoes_select" ON public.financeiro_conciliacoes;
+714:DROP POLICY IF EXISTS "financeiro_conciliacoes_insert" ON public.financeiro_conciliacoes;
+715:DROP POLICY IF EXISTS "financeiro_conciliacoes_update" ON public.financeiro_conciliacoes;
+717:CREATE POLICY "financeiro_conciliacoes_select"
+718:  ON public.financeiro_conciliacoes
+719:  FOR SELECT TO authenticated
+720:  USING (tenant_id = public.current_tenant_id());
+722:CREATE POLICY "financeiro_conciliacoes_insert"
+723:  ON public.financeiro_conciliacoes
+724:  FOR INSERT TO authenticated
+725:  WITH CHECK (
+726:    tenant_id = public.current_tenant_id()
+727:    AND public.is_financeiro_conciliacao_role()
+728:  );
+730:CREATE POLICY "financeiro_conciliacoes_update"
+731:  ON public.financeiro_conciliacoes
+732:  FOR UPDATE TO authenticated
+733:  USING (
+734:    tenant_id = public.current_tenant_id()
+735:    AND public.is_financeiro_conciliacao_role()
+736:  )
+737:  WITH CHECK (
+738:    tenant_id = public.current_tenant_id()
+739:    AND public.is_financeiro_conciliacao_role()
+740:  );
+742:CREATE OR REPLACE FUNCTION public.set_financeiro_conciliacoes_updated_at()
+743:RETURNS TRIGGER AS $$
+744:BEGIN
+745:  NEW.updated_at := timezone('utc', now());
+746:  IF NEW.tenant_id IS NULL THEN
+747:    NEW.tenant_id := public.current_tenant_id();
+748:  END IF;
+749:  RETURN NEW;
+750:END;
+751:$$ LANGUAGE plpgsql;
+753:DROP TRIGGER IF EXISTS trg_financeiro_conciliacoes_updated_at ON public.financeiro_conciliacoes;
+754:CREATE TRIGGER trg_financeiro_conciliacoes_updated_at
+755:  BEFORE INSERT OR UPDATE ON public.financeiro_conciliacoes
+756:  FOR EACH ROW EXECUTE FUNCTION public.set_financeiro_conciliacoes_updated_at();
+758:CREATE OR REPLACE FUNCTION public.calcular_status_conciliacao_agrupado(
+759:  p_total INTEGER,
+760:  p_conciliado INTEGER,
+761:  p_divergente INTEGER,
+762:  p_rejeitado INTEGER,
+763:  p_revertido INTEGER
+764:)
+765:RETURNS TEXT AS $$
+766:BEGIN
+767:  IF COALESCE(p_total, 0) = 0 THEN
+768:    RETURN 'aguardando_conciliacao';
+769:  END IF;
+771:  IF COALESCE(p_conciliado, 0) = p_total THEN
+772:    RETURN 'conciliado';
+773:  END IF;
+775:  IF COALESCE(p_divergente, 0) > 0 THEN
+776:    RETURN 'divergente';
+777:  END IF;
+779:  IF COALESCE(p_rejeitado, 0) = p_total THEN
+780:    RETURN 'rejeitado_banco';
+781:  END IF;
+783:  IF COALESCE(p_revertido, 0) = p_total THEN
+784:    RETURN 'revertido';
+785:  END IF;
+787:  RETURN 'aguardando_conciliacao';
+788:END;
+789:$$ LANGUAGE plpgsql IMMUTABLE;
+791:CREATE OR REPLACE FUNCTION public.validate_admin_override()
+792:RETURNS TRIGGER AS $$
+793:DECLARE
+794:  v_justificativa TEXT;
+795:  v_user_role TEXT;
+796:BEGIN
+797:  v_user_role := public.get_user_role();
+799:  IF (
+800:    TG_TABLE_NAME = 'faturas'
+801:    AND OLD.status = 'pago'
+802:    AND NEW.status = 'pendente'
+803:    AND COALESCE(NEW.status_conciliacao, '') = 'revertido'
+804:    AND public.is_financeiro_conciliacao_role()
+805:  ) THEN
+806:    RETURN NEW;
+807:  END IF;
+809:  IF (OLD.status IN ('pago', 'processado', 'fechado', 'consolidado')) THEN
+810:    IF v_user_role IS NULL OR v_user_role != 'Admin' THEN
+811:      RAISE EXCEPTION 'Registro bloqueado por status de imutabilidade (%). Alteração não permitida para seu perfil.', OLD.status;
+812:    END IF;
+814:    BEGIN
+815:      v_justificativa := current_setting('app.override_justification', true);
+816:    EXCEPTION WHEN OTHERS THEN
+817:      v_justificativa := NULL;
+818:    END;
+820:    IF (v_justificativa IS NULL OR v_justificativa = '' OR v_justificativa = 'null') THEN
+821:      RAISE EXCEPTION 'Justificativa obrigatória para alterar registro travado (status: %). Utilize o mecanismo de override.', OLD.status;
+822:    END IF;
+824:    INSERT INTO audit.overrides (
+825:      table_name, record_id, empresa_id, justificativa, dados_anteriores, dados_novos, user_id
+826:    )
+827:    VALUES (
+828:      TG_TABLE_NAME, OLD.id, OLD.empresa_id, v_justificativa, row_to_json(OLD)::jsonb, row_to_json(NEW)::jsonb, auth.uid()
+829:    );
+830:  END IF;
+832:  RETURN NEW;
+833:END;
+834:$$ LANGUAGE plpgsql SECURITY DEFINER;
+836:CREATE OR REPLACE FUNCTION public.sync_financeiro_conciliacao_context(
+837:  p_fatura_id UUID,
+838:  p_lote_id UUID
+839:)
+840:RETURNS VOID AS $$
+841:DECLARE
+842:  v_fatura public.faturas%ROWTYPE;
+843:  v_total INTEGER;
+844:  v_conciliado INTEGER;
+845:  v_divergente INTEGER;
+846:  v_rejeitado INTEGER;
+847:  v_revertido INTEGER;
+848:  v_status TEXT;
+849:  v_lote_id UUID;
+850:BEGIN
+851:  IF p_fatura_id IS NOT NULL THEN
+852:    SELECT *
+853:    INTO v_fatura
+854:    FROM public.faturas
+855:    WHERE id = p_fatura_id;
+857:    IF FOUND THEN
+858:      IF v_fatura.colaborador_id IS NOT NULL THEN
+859:        SELECT
+860:          COUNT(*),
+861:          COUNT(*) FILTER (WHERE status_conciliacao = 'conciliado'),
+862:          COUNT(*) FILTER (WHERE status_conciliacao = 'divergente'),
+863:          COUNT(*) FILTER (WHERE status_conciliacao = 'rejeitado_banco'),
+864:          COUNT(*) FILTER (WHERE status_conciliacao = 'revertido')
+865:        INTO v_total, v_conciliado, v_divergente, v_rejeitado, v_revertido
+866:        FROM public.faturas
+867:        WHERE tenant_id = v_fatura.tenant_id
+868:          AND empresa_id = v_fatura.empresa_id
+869:          AND competencia = v_fatura.competencia
+870:          AND colaborador_id = v_fatura.colaborador_id;
+872:        v_status := public.calcular_status_conciliacao_agrupado(v_total, v_conciliado, v_divergente, v_rejeitado, v_revertido);
+874:        UPDATE public.financeiro_consolidados_colaborador
+875:        SET status_conciliacao = v_status
+876:        WHERE tenant_id = v_fatura.tenant_id
+877:          AND empresa_id = v_fatura.empresa_id
+878:          AND competencia = v_fatura.competencia
+879:          AND colaborador_id = v_fatura.colaborador_id;
+880:      END IF;
+882:      IF v_fatura.cliente_id IS NOT NULL THEN
+883:        SELECT
+884:          COUNT(*),
+885:          COUNT(*) FILTER (WHERE status_conciliacao = 'conciliado'),
+886:          COUNT(*) FILTER (WHERE status_conciliacao = 'divergente'),
+887:          COUNT(*) FILTER (WHERE status_conciliacao = 'rejeitado_banco'),
+888:          COUNT(*) FILTER (WHERE status_conciliacao = 'revertido')
+889:        INTO v_total, v_conciliado, v_divergente, v_rejeitado, v_revertido
+890:        FROM public.faturas
+891:        WHERE tenant_id = v_fatura.tenant_id
+892:          AND empresa_id = v_fatura.empresa_id
+893:          AND competencia = v_fatura.competencia
+894:          AND cliente_id = v_fatura.cliente_id;
+896:        v_status := public.calcular_status_conciliacao_agrupado(v_total, v_conciliado, v_divergente, v_rejeitado, v_revertido);
+898:        UPDATE public.financeiro_consolidados_cliente
+899:        SET status_conciliacao = v_status
+900:        WHERE tenant_id = v_fatura.tenant_id
+901:          AND empresa_id = v_fatura.empresa_id
+902:          AND competencia = v_fatura.competencia
+903:          AND cliente_id = v_fatura.cliente_id;
+904:      END IF;
+906:      v_lote_id := COALESCE(p_lote_id, v_fatura.lote_remessa_id);
+907:    ELSE
+908:      v_lote_id := p_lote_id;
+909:    END IF;
+910:  ELSE
+911:    v_lote_id := p_lote_id;
+912:  END IF;
+914:  IF v_lote_id IS NOT NULL THEN
+915:    SELECT
+916:      COUNT(*),
+917:      COUNT(*) FILTER (WHERE status_conciliacao = 'conciliado'),
+918:      COUNT(*) FILTER (WHERE status_conciliacao = 'divergente'),
+919:      COUNT(*) FILTER (WHERE status_conciliacao = 'rejeitado_banco'),
+920:      COUNT(*) FILTER (WHERE status_conciliacao = 'revertido')
+921:    INTO v_total, v_conciliado, v_divergente, v_rejeitado, v_revertido
+922:    FROM public.faturas
+923:    WHERE lote_remessa_id = v_lote_id;
+925:    v_status := public.calcular_status_conciliacao_agrupado(v_total, v_conciliado, v_divergente, v_rejeitado, v_revertido);
+927:    UPDATE public.lotes_remessa
+928:    SET status_conciliacao = v_status
+929:    WHERE id = v_lote_id;
+930:  END IF;
+931:END;
+932:$$ LANGUAGE plpgsql SECURITY DEFINER;
+934:CREATE OR REPLACE FUNCTION public.guard_cnab_retorno_item_conciliacao()
+935:RETURNS TRIGGER AS $$
+936:DECLARE
+937:  v_is_allowed BOOLEAN;
+938:BEGIN
+939:  v_is_allowed := public.is_financeiro_conciliacao_role();
+941:  IF NEW.status IS DISTINCT FROM OLD.status THEN
+942:    RAISE EXCEPTION 'O status bancario do retorno nao pode ser alterado manualmente.';
+943:  END IF;
+945:  IF (
+946:    NEW.status_conciliacao IS DISTINCT FROM OLD.status_conciliacao OR
+947:    COALESCE(NEW.observacao_conciliacao, '') IS DISTINCT FROM COALESCE(OLD.observacao_conciliacao, '') OR
+948:    NEW.conciliado_em IS DISTINCT FROM OLD.conciliado_em OR
+949:    NEW.conciliado_por IS DISTINCT FROM OLD.conciliado_por OR
+950:    NEW.revertido_em IS DISTINCT FROM OLD.revertido_em OR
+951:    NEW.revertido_por IS DISTINCT FROM OLD.revertido_por
+952:  ) AND NOT v_is_allowed THEN
+953:    RAISE EXCEPTION 'Usuario sem permissao para alterar a conciliacao.';
+954:  END IF;
+956:  IF OLD.status_conciliacao = 'conciliado' AND NEW.status_conciliacao NOT IN ('conciliado', 'revertido') THEN
+957:    RAISE EXCEPTION 'Item conciliado nao pode ser alterado sem reversao autorizada.';
+958:  END IF;
+960:  IF OLD.status_conciliacao = 'conciliado' AND (
+961:    NEW.valor_esperado IS DISTINCT FROM OLD.valor_esperado OR
+962:    NEW.valor_retornado IS DISTINCT FROM OLD.valor_retornado
+963:  ) THEN
+964:    RAISE EXCEPTION 'Valores de item conciliado nao podem ser alterados silenciosamente.';
+965:  END IF;
+967:  RETURN NEW;
+968:END;
+969:$$ LANGUAGE plpgsql;
+971:DROP TRIGGER IF EXISTS trg_guard_cnab_retorno_item_conciliacao ON public.cnab_retorno_itens;
+972:CREATE TRIGGER trg_guard_cnab_retorno_item_conciliacao
+973:  BEFORE UPDATE ON public.cnab_retorno_itens
+974:  FOR EACH ROW EXECUTE FUNCTION public.guard_cnab_retorno_item_conciliacao();
+976:CREATE OR REPLACE FUNCTION public.guard_financeiro_conciliacoes_update()
+977:RETURNS TRIGGER AS $$
+978:BEGIN
+979:  IF OLD.status = 'revertido' THEN
+980:    RAISE EXCEPTION 'Conciliacoes revertidas sao imutaveis.';
+981:  END IF;
+983:  IF (
+984:    NEW.retorno_item_id IS DISTINCT FROM OLD.retorno_item_id OR
+985:    NEW.remessa_arquivo_id IS DISTINCT FROM OLD.remessa_arquivo_id OR
+986:    NEW.lote_id IS DISTINCT FROM OLD.lote_id OR
+987:    NEW.fatura_id IS DISTINCT FROM OLD.fatura_id OR
+988:    NEW.colaborador_id IS DISTINCT FROM OLD.colaborador_id OR
+989:    NEW.valor_original IS DISTINCT FROM OLD.valor_original OR
+990:    NEW.valor_pago IS DISTINCT FROM OLD.valor_pago OR
+991:    NEW.valor_conciliado IS DISTINCT FROM OLD.valor_conciliado OR
+992:    COALESCE(NEW.observacao, '') IS DISTINCT FROM COALESCE(OLD.observacao, '')
+993:  ) AND NEW.status <> 'revertido' THEN
+994:    RAISE EXCEPTION 'A conciliacao e append-only e nao aceita alteracao silenciosa de valores.';
+995:  END IF;
+997:  IF NEW.status IS DISTINCT FROM OLD.status AND NEW.status <> 'revertido' THEN
+998:    RAISE EXCEPTION 'A conciliacao so pode mudar de status via reversao autorizada.';
+999:  END IF;
+1001:  RETURN NEW;
+1002:END;
+1003:$$ LANGUAGE plpgsql;
+1005:DROP TRIGGER IF EXISTS trg_guard_financeiro_conciliacoes_update ON public.financeiro_conciliacoes;
+1006:CREATE TRIGGER trg_guard_financeiro_conciliacoes_update
+1007:  BEFORE UPDATE ON public.financeiro_conciliacoes
+1008:  FOR EACH ROW EXECUTE FUNCTION public.guard_financeiro_conciliacoes_update();
+1010:CREATE OR REPLACE FUNCTION public.conciliar_retorno_item(
+1011:  p_retorno_item_id UUID,
+1012:  p_status_conciliacao TEXT,
+1013:  p_valor_conciliado NUMERIC,
+1014:  p_observacao TEXT DEFAULT NULL
+1015:)
+1016:RETURNS SETOF public.financeiro_conciliacoes AS $$
+1017:DECLARE
+1018:  v_item public.cnab_retorno_itens%ROWTYPE;
+1019:  v_conciliacao public.financeiro_conciliacoes%ROWTYPE;
+1020:  v_user_id UUID;
+1021:  v_acao TEXT;
+1022:BEGIN
+1023:  IF NOT public.is_financeiro_conciliacao_role() THEN
+1024:    RAISE EXCEPTION 'Usuario sem permissao para conciliar baixa financeira.';
+1025:  END IF;
+1027:  IF p_status_conciliacao NOT IN ('conciliado', 'divergente', 'rejeitado_banco') THEN
+1028:    RAISE EXCEPTION 'Status de conciliacao invalido: %', p_status_conciliacao;
+1029:  END IF;
+1031:  SELECT auth.uid() INTO v_user_id;
+1033:  SELECT *
+1034:  INTO v_item
+1035:  FROM public.cnab_retorno_itens
+1036:  WHERE id = p_retorno_item_id
+1037:  FOR UPDATE;
+1039:  IF NOT FOUND THEN
+1040:    RAISE EXCEPTION 'Item de retorno nao encontrado.';
+1041:  END IF;
+1043:  IF v_item.status_conciliacao = 'conciliado' THEN
+1044:    RAISE EXCEPTION 'Item ja conciliado. Use a reversao autorizada antes de nova conciliacao.';
+1045:  END IF;
+1047:  IF EXISTS (
+1048:    SELECT 1
+1049:    FROM public.financeiro_conciliacoes fc
+1050:    WHERE fc.retorno_item_id = p_retorno_item_id
+1051:      AND fc.status <> 'revertido'
+1052:  ) THEN
+1053:    RAISE EXCEPTION 'Ja existe conciliacao ativa para este item.';
+1054:  END IF;
+1056:  INSERT INTO public.financeiro_conciliacoes (
+1057:    tenant_id,
+1058:    retorno_item_id,
+1059:    remessa_arquivo_id,
+1060:    lote_id,
+1061:    fatura_id,
+1062:    colaborador_id,
+1063:    valor_original,
+1064:    valor_pago,
+1065:    valor_conciliado,
+1066:    status,
+1067:    status_anterior,
+1068:    usuario_conciliacao,
+1069:    data_conciliacao,
+1070:    observacao,
+1071:    reversivel
+1072:  )
+1073:  VALUES (
+1074:    v_item.tenant_id,
+1075:    v_item.id,
+1076:    v_item.remessa_arquivo_id,
+1077:    v_item.lote_id,
+1078:    v_item.fatura_id,
+1079:    v_item.colaborador_id,
+1080:    COALESCE(v_item.valor_esperado, 0),
+1081:    COALESCE(v_item.valor_retornado, 0),
+1082:    COALESCE(p_valor_conciliado, v_item.valor_retornado, 0),
+1083:    p_status_conciliacao,
+1084:    v_item.status_conciliacao,
+1085:    v_user_id,
+1086:    timezone('utc', now()),
+1087:    NULLIF(BTRIM(COALESCE(p_observacao, '')), ''),
+1088:    TRUE
+1089:  )
+1090:  RETURNING *
+1091:  INTO v_conciliacao;
+1093:  UPDATE public.cnab_retorno_itens
+1094:  SET
+1095:    status_conciliacao = p_status_conciliacao,
+1096:    observacao_conciliacao = NULLIF(BTRIM(COALESCE(p_observacao, '')), ''),
+1097:    conciliado_em = timezone('utc', now()),
+1098:    conciliado_por = v_user_id,
+1099:    revertido_em = NULL,
+1100:    revertido_por = NULL
+1101:  WHERE id = v_item.id;
+1103:  IF v_item.fatura_id IS NOT NULL THEN
+1104:    UPDATE public.faturas
+1105:    SET
+1106:      status = CASE
+1107:        WHEN p_status_conciliacao = 'conciliado' THEN 'pago'
+1108:        ELSE 'pendente'
+1109:      END,
+1110:      status_conciliacao = p_status_conciliacao,
+1111:      motivo_rejeicao = CASE
+1112:        WHEN p_status_conciliacao = 'rejeitado_banco' THEN NULLIF(BTRIM(COALESCE(p_observacao, '')), '')
+1113:        ELSE motivo_rejeicao
+1114:      END,
+1115:      data_pagamento = CASE
+1116:        WHEN p_status_conciliacao = 'conciliado' THEN COALESCE(v_item.data_ocorrencia, CURRENT_DATE)
+1117:        ELSE NULL
+1118:      END,
+1119:      conciliado_em = timezone('utc', now()),
+1120:      conciliado_por = v_user_id,
+1121:      revertido_em = NULL,
+1122:      revertido_por = NULL
+1123:    WHERE id = v_item.fatura_id;
+1124:  END IF;
+1126:  PERFORM public.sync_financeiro_conciliacao_context(v_item.fatura_id, v_item.lote_id);
+1128:  v_acao := CASE p_status_conciliacao
+1129:    WHEN 'conciliado' THEN 'conciliacao_aprovada'
+1130:    WHEN 'divergente' THEN 'conciliacao_divergente'
+1131:    ELSE 'conciliacao_rejeitada'
+1132:  END;
+1134:  INSERT INTO public.cnab_auditoria_bancaria (
+1135:    tenant_id,
+1136:    arquivo_id,
+1137:    lote_id,
+1138:    acao,
+1139:    usuario_id,
+1140:    detalhes
+1141:  )
+1142:  VALUES (
+1143:    v_item.tenant_id,
+1144:    v_item.remessa_arquivo_id,
+1145:    v_item.lote_id,
+1146:    v_acao,
+1147:    v_user_id,
+1148:    jsonb_build_object(
+1149:      'retorno_item_id', v_item.id,
+1150:      'fatura_id', v_item.fatura_id,
+1151:      'status_banco', v_item.status,
+1152:      'status_conciliacao', p_status_conciliacao,
+1153:      'valor_original', COALESCE(v_item.valor_esperado, 0),
+1154:      'valor_pago', COALESCE(v_item.valor_retornado, 0),
+1155:      'valor_conciliado', COALESCE(p_valor_conciliado, v_item.valor_retornado, 0),
+1156:      'observacao', NULLIF(BTRIM(COALESCE(p_observacao, '')), '')
+1157:    )
+1158:  );
+1160:  RETURN QUERY
+1161:  SELECT *
+1162:  FROM public.financeiro_conciliacoes
+1163:  WHERE id = v_conciliacao.id;
+1164:END;
+1165:$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+1167:CREATE OR REPLACE FUNCTION public.reverter_conciliacao_financeira(
+1168:  p_conciliacao_id UUID,
+1169:  p_motivo TEXT
+1170:)
+1171:RETURNS SETOF public.financeiro_conciliacoes AS $$
+1172:DECLARE
+1173:  v_conciliacao public.financeiro_conciliacoes%ROWTYPE;
+1174:  v_item public.cnab_retorno_itens%ROWTYPE;
+1175:  v_user_id UUID;
+1176:BEGIN
+1177:  IF NOT public.is_financeiro_conciliacao_role() THEN
+1178:    RAISE EXCEPTION 'Usuario sem permissao para reverter conciliacao.';
+1179:  END IF;
+1181:  IF NULLIF(BTRIM(COALESCE(p_motivo, '')), '') IS NULL THEN
+1182:    RAISE EXCEPTION 'Motivo da reversao e obrigatorio.';
+1183:  END IF;
+1185:  SELECT auth.uid() INTO v_user_id;
+1187:  SELECT *
+1188:  INTO v_conciliacao
+1189:  FROM public.financeiro_conciliacoes
+1190:  WHERE id = p_conciliacao_id
+1191:  FOR UPDATE;
+1193:  IF NOT FOUND THEN
+1194:    RAISE EXCEPTION 'Conciliacao nao encontrada.';
+1195:  END IF;
+1197:  IF NOT COALESCE(v_conciliacao.reversivel, FALSE) THEN
+1198:    RAISE EXCEPTION 'Esta conciliacao nao e reversivel.';
+1199:  END IF;
+1201:  IF v_conciliacao.status = 'revertido' THEN
+1202:    RAISE EXCEPTION 'Esta conciliacao ja foi revertida.';
+1203:  END IF;
+1205:  SELECT *
+1206:  INTO v_item
+1207:  FROM public.cnab_retorno_itens
+1208:  WHERE id = v_conciliacao.retorno_item_id
+1209:  FOR UPDATE;
+1211:  UPDATE public.financeiro_conciliacoes
+1212:  SET
+1213:    status_anterior = v_conciliacao.status,
+1214:    status = 'revertido',
+1215:    revertido_em = timezone('utc', now()),
+1216:    revertido_por = v_user_id,
+1217:    motivo_reversao = NULLIF(BTRIM(COALESCE(p_motivo, '')), ''),
+1218:    observacao = CASE
+1219:      WHEN NULLIF(BTRIM(COALESCE(observacao, '')), '') IS NULL THEN NULLIF(BTRIM(COALESCE(p_motivo, '')), '')
+1220:      ELSE observacao || ' | Reversao: ' || NULLIF(BTRIM(COALESCE(p_motivo, '')), '')
+1221:    END
+1222:  WHERE id = p_conciliacao_id;
+1224:  UPDATE public.cnab_retorno_itens
+1225:  SET
+1226:    status_conciliacao = 'revertido',
+1227:    observacao_conciliacao = CASE
+1228:      WHEN NULLIF(BTRIM(COALESCE(observacao_conciliacao, '')), '') IS NULL THEN NULLIF(BTRIM(COALESCE(p_motivo, '')), '')
+1229:      ELSE observacao_conciliacao || ' | Reversao: ' || NULLIF(BTRIM(COALESCE(p_motivo, '')), '')
+1230:    END,
+1231:    revertido_em = timezone('utc', now()),
+1232:    revertido_por = v_user_id
+1233:  WHERE id = v_conciliacao.retorno_item_id;
+1235:  IF v_conciliacao.fatura_id IS NOT NULL THEN
+1236:    UPDATE public.faturas
+1237:    SET
+1238:      status = 'pendente',
+1239:      status_conciliacao = 'revertido',
+1240:      data_pagamento = NULL,
+1241:      revertido_em = timezone('utc', now()),
+1242:      revertido_por = v_user_id
+1243:    WHERE id = v_conciliacao.fatura_id;
+1244:  END IF;
+1246:  PERFORM public.sync_financeiro_conciliacao_context(v_conciliacao.fatura_id, COALESCE(v_conciliacao.lote_id, v_item.lote_id));
+1248:  INSERT INTO public.cnab_auditoria_bancaria (
+1249:    tenant_id,
+1250:    arquivo_id,
+1251:    lote_id,
+1252:    acao,
+1253:    usuario_id,
+1254:    detalhes
+1255:  )
+1256:  VALUES (
+1257:    v_conciliacao.tenant_id,
+1258:    v_conciliacao.remessa_arquivo_id,
+1259:    COALESCE(v_conciliacao.lote_id, v_item.lote_id),
+1260:    'conciliacao_revertida',
+1261:    v_user_id,
+1262:    jsonb_build_object(
+1263:      'conciliacao_id', v_conciliacao.id,
+1264:      'retorno_item_id', v_conciliacao.retorno_item_id,
+1265:      'status_anterior', v_conciliacao.status,
+1266:      'motivo', NULLIF(BTRIM(COALESCE(p_motivo, '')), '')
+1267:    )
+1268:  );
+1270:  RETURN QUERY
+1271:  SELECT *
+1272:  FROM public.financeiro_conciliacoes
+1273:  WHERE id = p_conciliacao_id;
+1274:END;
+1275:$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+1277:GRANT EXECUTE ON FUNCTION public.conciliar_retorno_item(UUID, TEXT, NUMERIC, TEXT) TO authenticated;
+1278:GRANT EXECUTE ON FUNCTION public.reverter_conciliacao_financeira(UUID, TEXT) TO authenticated;
+1279:-- ============================================================
+1280:-- FASE 8.3 - Hardening de homologacao
+1281:-- Objetivo:
+1282:--   1. Fechar bypass cross-tenant nas RPCs SECURITY DEFINER
+1283:--   2. Exigir observacao tambem no backend para divergencia/rejeicao
+1284:-- ============================================================
+1286:CREATE OR REPLACE FUNCTION public.conciliar_retorno_item(
+1287:  p_retorno_item_id UUID,
+1288:  p_status_conciliacao TEXT,
+1289:  p_valor_conciliado NUMERIC,
+1290:  p_observacao TEXT DEFAULT NULL
+1291:)
+1292:RETURNS SETOF public.financeiro_conciliacoes AS $$
+1293:DECLARE
+1294:  v_item public.cnab_retorno_itens%ROWTYPE;
+1295:  v_conciliacao public.financeiro_conciliacoes%ROWTYPE;
+1296:  v_user_id UUID;
+1297:  v_acao TEXT;
+1298:  v_observacao_limpa TEXT;
+1299:BEGIN
+1300:  IF NOT public.is_financeiro_conciliacao_role() THEN
+1301:    RAISE EXCEPTION 'Usuario sem permissao para conciliar baixa financeira.';
+1302:  END IF;
+1304:  IF p_status_conciliacao NOT IN ('conciliado', 'divergente', 'rejeitado_banco') THEN
+1305:    RAISE EXCEPTION 'Status de conciliacao invalido: %', p_status_conciliacao;
+1306:  END IF;
+1308:  v_observacao_limpa := NULLIF(BTRIM(COALESCE(p_observacao, '')), '');
+1310:  IF p_status_conciliacao IN ('divergente', 'rejeitado_banco')
+1311:    AND v_observacao_limpa IS NULL THEN
+1312:    RAISE EXCEPTION 'Observacao obrigatoria para divergencia ou rejeicao bancaria.';
+1313:  END IF;
+1315:  SELECT auth.uid() INTO v_user_id;
+1317:  SELECT *
+1318:  INTO v_item
+1319:  FROM public.cnab_retorno_itens
+1320:  WHERE id = p_retorno_item_id
+1321:    AND tenant_id = public.current_tenant_id()
+1322:  FOR UPDATE;
+1324:  IF NOT FOUND THEN
+1325:    RAISE EXCEPTION 'Item de retorno nao encontrado para o tenant atual.';
+1326:  END IF;
+1328:  IF v_item.status_conciliacao = 'conciliado' THEN
+1329:    RAISE EXCEPTION 'Item ja conciliado. Use a reversao autorizada antes de nova conciliacao.';
+1330:  END IF;
+1332:  IF EXISTS (
+1333:    SELECT 1
+1334:    FROM public.financeiro_conciliacoes fc
+1335:    WHERE fc.retorno_item_id = p_retorno_item_id
+1336:      AND fc.tenant_id = public.current_tenant_id()
+1337:      AND fc.status <> 'revertido'
+1338:  ) THEN
+1339:    RAISE EXCEPTION 'Ja existe conciliacao ativa para este item.';
+1340:  END IF;
+1342:  INSERT INTO public.financeiro_conciliacoes (
+1343:    tenant_id,
+1344:    retorno_item_id,
+1345:    remessa_arquivo_id,
+1346:    lote_id,
+1347:    fatura_id,
+1348:    colaborador_id,
+1349:    valor_original,
+1350:    valor_pago,
+1351:    valor_conciliado,
+1352:    status,
+1353:    status_anterior,
+1354:    usuario_conciliacao,
+1355:    data_conciliacao,
+1356:    observacao,
+1357:    reversivel
+1358:  )
+1359:  VALUES (
+1360:    v_item.tenant_id,
+1361:    v_item.id,
+1362:    v_item.remessa_arquivo_id,
+1363:    v_item.lote_id,
+1364:    v_item.fatura_id,
+1365:    v_item.colaborador_id,
+1366:    COALESCE(v_item.valor_esperado, 0),
+1367:    COALESCE(v_item.valor_retornado, 0),
+1368:    COALESCE(p_valor_conciliado, v_item.valor_retornado, 0),
+1369:    p_status_conciliacao,
+1370:    v_item.status_conciliacao,
+1371:    v_user_id,
+1372:    timezone('utc', now()),
+1373:    v_observacao_limpa,
+1374:    TRUE
+1375:  )
+1376:  RETURNING *
+1377:  INTO v_conciliacao;
+1379:  UPDATE public.cnab_retorno_itens
+1380:  SET
+1381:    status_conciliacao = p_status_conciliacao,
+1382:    observacao_conciliacao = v_observacao_limpa,
+1383:    conciliado_em = timezone('utc', now()),
+1384:    conciliado_por = v_user_id,
+1385:    revertido_em = NULL,
+1386:    revertido_por = NULL
+1387:  WHERE id = v_item.id
+1388:    AND tenant_id = public.current_tenant_id();
+1390:  IF v_item.fatura_id IS NOT NULL THEN
+1391:    UPDATE public.faturas
+1392:    SET
+1393:      status = CASE
+1394:        WHEN p_status_conciliacao = 'conciliado' THEN 'pago'
+1395:        ELSE 'pendente'
+1396:      END,
+1397:      status_conciliacao = p_status_conciliacao,
+1398:      motivo_rejeicao = CASE
+1399:        WHEN p_status_conciliacao = 'rejeitado_banco' THEN v_observacao_limpa
+1400:        ELSE motivo_rejeicao
+1401:      END,
+1402:      data_pagamento = CASE
+1403:        WHEN p_status_conciliacao = 'conciliado' THEN COALESCE(v_item.data_ocorrencia, CURRENT_DATE)
+1404:        ELSE NULL
+1405:      END,
+1406:      conciliado_em = timezone('utc', now()),
+1407:      conciliado_por = v_user_id,
+1408:      revertido_em = NULL,
+1409:      revertido_por = NULL
+1410:    WHERE id = v_item.fatura_id
+1411:      AND tenant_id = public.current_tenant_id();
+1412:  END IF;
+1414:  PERFORM public.sync_financeiro_conciliacao_context(v_item.fatura_id, v_item.lote_id);
+1416:  v_acao := CASE p_status_conciliacao
+1417:    WHEN 'conciliado' THEN 'conciliacao_aprovada'
+1418:    WHEN 'divergente' THEN 'conciliacao_divergente'
+1419:    ELSE 'conciliacao_rejeitada'
+1420:  END;
+1422:  INSERT INTO public.cnab_auditoria_bancaria (
+1423:    tenant_id,
+1424:    arquivo_id,
+1425:    lote_id,
+1426:    acao,
+1427:    usuario_id,
+1428:    detalhes
+1429:  )
+1430:  VALUES (
+1431:    v_item.tenant_id,
+1432:    v_item.remessa_arquivo_id,
+1433:    v_item.lote_id,
+1434:    v_acao,
+1435:    v_user_id,
+1436:    jsonb_build_object(
+1437:      'retorno_item_id', v_item.id,
+1438:      'fatura_id', v_item.fatura_id,
+1439:      'status_banco', v_item.status,
+1440:      'status_conciliacao', p_status_conciliacao,
+1441:      'valor_original', COALESCE(v_item.valor_esperado, 0),
+1442:      'valor_pago', COALESCE(v_item.valor_retornado, 0),
+1443:      'valor_conciliado', COALESCE(p_valor_conciliado, v_item.valor_retornado, 0),
+1444:      'observacao', v_observacao_limpa
+1445:    )
+1446:  );
+1448:  RETURN QUERY
+1449:  SELECT *
+1450:  FROM public.financeiro_conciliacoes
+1451:  WHERE id = v_conciliacao.id
+1452:    AND tenant_id = public.current_tenant_id();
+1453:END;
+1454:$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+1456:CREATE OR REPLACE FUNCTION public.reverter_conciliacao_financeira(
+1457:  p_conciliacao_id UUID,
+1458:  p_motivo TEXT
+1459:)
+1460:RETURNS SETOF public.financeiro_conciliacoes AS $$
+1461:DECLARE
+1462:  v_conciliacao public.financeiro_conciliacoes%ROWTYPE;
+1463:  v_item public.cnab_retorno_itens%ROWTYPE;
+1464:  v_user_id UUID;
+1465:  v_motivo_limpo TEXT;
+1466:BEGIN
+1467:  IF NOT public.is_financeiro_conciliacao_role() THEN
+1468:    RAISE EXCEPTION 'Usuario sem permissao para reverter conciliacao.';
+1469:  END IF;
+1471:  v_motivo_limpo := NULLIF(BTRIM(COALESCE(p_motivo, '')), '');
+1473:  IF v_motivo_limpo IS NULL THEN
+1474:    RAISE EXCEPTION 'Motivo da reversao e obrigatorio.';
+1475:  END IF;
+1477:  SELECT auth.uid() INTO v_user_id;
+1479:  SELECT *
+1480:  INTO v_conciliacao
+1481:  FROM public.financeiro_conciliacoes
+1482:  WHERE id = p_conciliacao_id
+1483:    AND tenant_id = public.current_tenant_id()
+1484:  FOR UPDATE;
+1486:  IF NOT FOUND THEN
+1487:    RAISE EXCEPTION 'Conciliacao nao encontrada para o tenant atual.';
+1488:  END IF;
+1490:  IF NOT COALESCE(v_conciliacao.reversivel, FALSE) THEN
+1491:    RAISE EXCEPTION 'Esta conciliacao nao e reversivel.';
+1492:  END IF;
+1494:  IF v_conciliacao.status = 'revertido' THEN
+1495:    RAISE EXCEPTION 'Esta conciliacao ja foi revertida.';
+1496:  END IF;
+1498:  SELECT *
+1499:  INTO v_item
+1500:  FROM public.cnab_retorno_itens
+1501:  WHERE id = v_conciliacao.retorno_item_id
+1502:    AND tenant_id = public.current_tenant_id()
+1503:  FOR UPDATE;
+1505:  IF NOT FOUND THEN
+1506:    RAISE EXCEPTION 'Item de retorno associado nao encontrado para o tenant atual.';
+1507:  END IF;
+1509:  UPDATE public.financeiro_conciliacoes
+1510:  SET
+1511:    status_anterior = v_conciliacao.status,
+1512:    status = 'revertido',
+1513:    revertido_em = timezone('utc', now()),
+1514:    revertido_por = v_user_id,
+1515:    motivo_reversao = v_motivo_limpo,
+1516:    observacao = CASE
+1517:      WHEN NULLIF(BTRIM(COALESCE(observacao, '')), '') IS NULL THEN v_motivo_limpo
+1518:      ELSE observacao || ' | Reversao: ' || v_motivo_limpo
+1519:    END
+1520:  WHERE id = p_conciliacao_id
+1521:    AND tenant_id = public.current_tenant_id();
+1523:  UPDATE public.cnab_retorno_itens
+1524:  SET
+1525:    status_conciliacao = 'revertido',
+1526:    observacao_conciliacao = CASE
+1527:      WHEN NULLIF(BTRIM(COALESCE(observacao_conciliacao, '')), '') IS NULL THEN v_motivo_limpo
+1528:      ELSE observacao_conciliacao || ' | Reversao: ' || v_motivo_limpo
+1529:    END,
+1530:    revertido_em = timezone('utc', now()),
+1531:    revertido_por = v_user_id
+1532:  WHERE id = v_conciliacao.retorno_item_id
+1533:    AND tenant_id = public.current_tenant_id();
+1535:  IF v_conciliacao.fatura_id IS NOT NULL THEN
+1536:    UPDATE public.faturas
+1537:    SET
+1538:      status = 'pendente',
+1539:      status_conciliacao = 'revertido',
+1540:      data_pagamento = NULL,
+1541:      revertido_em = timezone('utc', now()),
+1542:      revertido_por = v_user_id
+1543:    WHERE id = v_conciliacao.fatura_id
+1544:      AND tenant_id = public.current_tenant_id();
+1545:  END IF;
+1547:  PERFORM public.sync_financeiro_conciliacao_context(
+1548:    v_conciliacao.fatura_id,
+1549:    COALESCE(v_conciliacao.lote_id, v_item.lote_id)
+1550:  );
+1552:  INSERT INTO public.cnab_auditoria_bancaria (
+1553:    tenant_id,
+1554:    arquivo_id,
+1555:    lote_id,
+1556:    acao,
+1557:    usuario_id,
+1558:    detalhes
+1559:  )
+1560:  VALUES (
+1561:    v_conciliacao.tenant_id,
+1562:    v_conciliacao.remessa_arquivo_id,
+1563:    COALESCE(v_conciliacao.lote_id, v_item.lote_id),
+1564:    'conciliacao_revertida',
+1565:    v_user_id,
+1566:    jsonb_build_object(
+1567:      'conciliacao_id', v_conciliacao.id,
+1568:      'retorno_item_id', v_conciliacao.retorno_item_id,
+1569:      'status_anterior', v_conciliacao.status,
+1570:      'motivo', v_motivo_limpo
+1571:    )
+1572:  );
+1574:  RETURN QUERY
+1575:  SELECT *
+1576:  FROM public.financeiro_conciliacoes
+1577:  WHERE id = p_conciliacao_id
+1578:    AND tenant_id = public.current_tenant_id();
+1579:END;
+1580:$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+1582:GRANT EXECUTE ON FUNCTION public.conciliar_retorno_item(UUID, TEXT, NUMERIC, TEXT) TO authenticated;
+1583:GRANT EXECUTE ON FUNCTION public.reverter_conciliacao_financeira(UUID, TEXT) TO authenticated;
