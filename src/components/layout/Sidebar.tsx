@@ -3,7 +3,7 @@ import {
   FilePlus, ExternalLink, Clock, Shield, Wallet, LogOut, Database,
   Scale, Banknote, UserCheck, Rocket, LayoutGrid,
   TrendingUp, Building2, Truck, Wrench, CalendarCheck, ChevronDown,
-  ArrowRightLeft, Box
+  ArrowRightLeft, Box, Activity
 } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
@@ -28,6 +28,7 @@ const entradasItems = [
 const rhItems = [
   { icon: Scale, label: "Banco de Horas", to: "/banco-horas", end: true },
   { icon: FilePlus, label: "Regras de Banco", to: "/banco-horas/regras" },
+  { icon: Activity, label: "Processamento RH", to: "/banco-horas/processamento" },
   { icon: Users, label: "Cadastro de Diaristas", to: "/rh/diaristas/cadastros" },
   { icon: Wrench, label: "Regras Operacionais", to: "/cadastros/regras-operacionais" },
   { icon: CalendarCheck, label: "Fechamento Mensal", to: "/fechamento" },

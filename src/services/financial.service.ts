@@ -32,12 +32,23 @@ class FaturaServiceClass extends BaseService<'faturas'> {
     return data;
   }
   async getByCompetencia(competencia: string) {
-    const { data, error } = await supabase
+    const { data: faturas, error } = await supabase
       .from('faturas')
-      .select('*, empresas(nome), colaboradores(nome)')
+      .select('*')
       .eq('competencia', competencia);
     if (error) throw error;
-    return data;
+    
+    const { data: empresas } = await supabase.from('empresas').select('id, nome');
+    const { data: colaboradores } = await supabase.from('colaboradores').select('id, nome');
+    
+    const empresaMap = new Map((empresas || []).map(e => [e.id, e]));
+    const colaboradorMap = new Map((colaboradores || []).map(c => [c.id, c]));
+    
+    return (faturas || []).map(f => ({
+      ...f,
+      empresas: empresaMap.get(f.empresa_id) || null,
+      colaboradores: colaboradorMap.get(f.colaborador_id) || null
+    }));
   }
 }
 export const FaturaService = new FaturaServiceClass();

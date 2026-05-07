@@ -40,6 +40,16 @@ const RegrasBH = () => {
         prazo_compensacao_dias: "60",
         tipo: "acumula" as "acumula" | "zera" | "expira",
         status: "ativo" as "ativo" | "inativo",
+        carga_horaria_diaria: "8.00",
+        tolerancia_atraso: "5",
+        tolerancia_hora_extra: "0",
+        limite_diario_banco: "480",
+        validade_horas: "60",
+        regra_compensacao: "automatico",
+        regra_vencimento: "acumula",
+        bh_ativo: true,
+        jornada_contratada: "8.00",
+        origem_ponto: "manual",
     });
 
     const reset = () => setForm({
@@ -48,6 +58,16 @@ const RegrasBH = () => {
         prazo_compensacao_dias: "60",
         tipo: "acumula",
         status: "ativo",
+        carga_horaria_diaria: "8.00",
+        tolerancia_atraso: "5",
+        tolerancia_hora_extra: "0",
+        limite_diario_banco: "480",
+        validade_horas: "60",
+        regra_compensacao: "automatico",
+        regra_vencimento: "acumula",
+        bh_ativo: true,
+        jornada_contratada: "8.00",
+        origem_ponto: "manual",
     });
 
     const createMutation = useMutation({
@@ -67,9 +87,21 @@ const RegrasBH = () => {
             return;
         }
         createMutation.mutate({
-            ...form,
+            nome: form.nome,
             empresa_id: form.empresa_id === 'global' ? null : form.empresa_id,
             prazo_compensacao_dias: parseInt(form.prazo_compensacao_dias),
+            tipo: form.tipo,
+            status: form.status,
+            carga_horaria_diaria: parseFloat(form.carga_horaria_diaria),
+            tolerancia_atraso: parseInt(form.tolerancia_atraso),
+            tolerancia_hora_extra: parseInt(form.tolerancia_hora_extra),
+            limite_diario_banco: parseInt(form.limite_diario_banco),
+            validade_horas: parseInt(form.validade_horas),
+            regra_compensacao: form.regra_compensacao,
+            regra_vencimento: form.regra_vencimento,
+            bh_ativo: form.bh_ativo,
+            jornada_contratada: parseFloat(form.jornada_contratada),
+            origem_ponto: form.origem_ponto,
         });
     };
 
@@ -110,9 +142,13 @@ const RegrasBH = () => {
                             <thead className="esc-table-header">
                                 <tr className="text-left">
                                     <th className="px-5 h-11 font-medium">Nome da Regra</th>
-                                    <th className="px-3 h-11 font-medium">Empresa Vinculada</th>
-                                    <th className="px-3 h-11 font-medium text-center">Prazo (Dias)</th>
+                                    <th className="px-3 h-11 font-medium">Empresa</th>
+                                    <th className="px-3 h-11 font-medium text-center">Carga Hor.</th>
+                                    <th className="px-3 h-11 font-medium text-center">Toler. Atraso</th>
+                                    <th className="px-3 h-11 font-medium text-center">Limite</th>
+                                    <th className="px-3 h-11 font-medium text-center">Validade</th>
                                     <th className="px-3 h-11 font-medium text-center">Tipo</th>
+                                    <th className="px-3 h-11 font-medium text-center">BH Ativo</th>
                                     <th className="px-5 h-11 font-medium text-center">Status</th>
                                     <th className="px-5 h-11 font-medium text-right">Ações</th>
                                 </tr>
@@ -122,8 +158,16 @@ const RegrasBH = () => {
                                     <tr key={r.id} className="border-t border-muted hover:bg-background">
                                         <td className="px-5 h-[52px] font-medium text-foreground">{r.nome}</td>
                                         <td className="px-3 text-muted-foreground">{(r.empresas as any)?.nome || "Todas"}</td>
-                                        <td className="px-3 text-center">{r.prazo_compensacao_dias} dias</td>
+                                        <td className="px-3 text-center">{r.carga_horaria_diaria || 8}h</td>
+                                        <td className="px-3 text-center">{r.tolerancia_atraso || 5}m</td>
+                                        <td className="px-3 text-center">{Math.floor((r.limite_diario_banco || 480) / 60)}h</td>
+                                        <td className="px-3 text-center">{r.validade_horas || r.prazo_compensacao_dias} dias</td>
                                         <td className="px-3 text-center capitalize">{r.tipo}</td>
+                                        <td className="px-3 text-center">
+                                            <span className={r.bh_ativo ? "text-success" : "text-muted-foreground"}>
+                                                {r.bh_ativo ? "Sim" : "Não"}
+                                            </span>
+                                        </td>
                                         <td className="px-5 text-center">
                                             <StatusChip status={r.status === 'ativo' ? 'ok' : 'inconsistente'} label={r.status} />
                                         </td>
@@ -142,7 +186,7 @@ const RegrasBH = () => {
                                 ))}
                                 {regras.length === 0 && (
                                     <tr>
-                                        <td colSpan={6} className="p-12 text-center text-muted-foreground italic">
+                                        <td colSpan={10} className="p-12 text-center text-muted-foreground italic">
                                             Nenhuma regra configurada ainda.
                                         </td>
                                     </tr>
@@ -156,9 +200,9 @@ const RegrasBH = () => {
             <Dialog open={open} onOpenChange={setOpen}>
                 <DialogContent className="sm:max-w-[480px]">
                     <DialogHeader>
-                        <DialogTitle>Nova Regra de Compensação</DialogTitle>
+                        <DialogTitle>Nova Regra de Banco de Horas</DialogTitle>
                         <DialogDescription>
-                            Defina como as horas extras serão tratadas no banco desta empresa.
+                            Defina os parâmetros de processamento RH para esta empresa.
                         </DialogDescription>
                     </DialogHeader>
 
@@ -206,6 +250,125 @@ const RegrasBH = () => {
                                         <SelectItem value="expira">Expira Automático</SelectItem>
                                     </SelectContent>
                                 </Select>
+                            </div>
+                        </div>
+
+                        <div className="border-t pt-4 mt-4">
+                            <p className="text-sm font-medium mb-3 text-muted-foreground">Parâmetros de Processamento RH</p>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                                <Label htmlFor="carga_horaria">Carga Horária Diária (h)</Label>
+                                <Input
+                                    id="carga_horaria"
+                                    type="number"
+                                    step="0.5"
+                                    value={form.carga_horaria_diaria}
+                                    onChange={(e) => setForm({ ...form, carga_horaria_diaria: e.target.value })}
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label htmlFor="jornada_contratada">Jornada Contratada (h)</Label>
+                                <Input
+                                    id="jornada_contratada"
+                                    type="number"
+                                    step="0.5"
+                                    value={form.jornada_contratada}
+                                    onChange={(e) => setForm({ ...form, jornada_contratada: e.target.value })}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                                <Label htmlFor="tolerancia_atraso">Tolerância Atraso (min)</Label>
+                                <Input
+                                    id="tolerancia_atraso"
+                                    type="number"
+                                    value={form.tolerancia_atraso}
+                                    onChange={(e) => setForm({ ...form, tolerancia_atraso: e.target.value })}
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label htmlFor="tolerancia_he">Tolerância HE (min)</Label>
+                                <Input
+                                    id="tolerancia_he"
+                                    type="number"
+                                    value={form.tolerancia_hora_extra}
+                                    onChange={(e) => setForm({ ...form, tolerancia_hora_extra: e.target.value })}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                                <Label htmlFor="limite_diario">Limite Diário Banco (min)</Label>
+                                <Input
+                                    id="limite_diario"
+                                    type="number"
+                                    value={form.limite_diario_banco}
+                                    onChange={(e) => setForm({ ...form, limite_diario_banco: e.target.value })}
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label htmlFor="validade">Validade Horas (dias)</Label>
+                                <Input
+                                    id="validade"
+                                    type="number"
+                                    value={form.validade_horas}
+                                    onChange={(e) => setForm({ ...form, validade_horas: e.target.value })}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                                <Label>Regra Compensação</Label>
+                                <Select value={form.regra_compensacao} onValueChange={(v: any) => setForm({ ...form, regra_compensacao: v })}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="automatico">Automático</SelectItem>
+                                        <SelectItem value="manual">Manual</SelectItem>
+                                        <SelectItem value="transferencia">Transferência</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label>Regra Vencimento</Label>
+                                <Select value={form.regra_vencimento} onValueChange={(v: any) => setForm({ ...form, regra_vencimento: v })}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="acumula">Acumula</SelectItem>
+                                        <SelectItem value="zera">Zera Periódico</SelectItem>
+                                        <SelectItem value="expira">Expira</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                                <Label>Origem Ponto</Label>
+                                <Select value={form.origem_ponto} onValueChange={(v: any) => setForm({ ...form, origem_ponto: v })}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="manual">Manual</SelectItem>
+                                        <SelectItem value="biometrico">Biométrico</SelectItem>
+                                        <SelectItem value="app">App</SelectItem>
+                                        <SelectItem value="importacao">Importação</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="flex items-center h-10">
+                                <input
+                                    type="checkbox"
+                                    id="bh_ativo"
+                                    checked={form.bh_ativo}
+                                    onChange={(e) => setForm({ ...form, bh_ativo: e.target.checked })}
+                                    className="mr-2 h-4 w-4"
+                                />
+                                <Label htmlFor="bh_ativo" className="font-normal">Banco de Horas Ativo</Label>
                             </div>
                         </div>
                     </div>

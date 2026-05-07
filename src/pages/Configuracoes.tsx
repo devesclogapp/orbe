@@ -61,6 +61,8 @@ const IMPORTACAO_MODULOS = [
   { value: "fornecedores", label: "Fornecedores" },
   { value: "servicos", label: "Serviços" },
   { value: "parametros", label: "Parâmetros Operacionais" },
+  { value: "regras_operacionais", label: "Regras Operacionais" },
+  { value: "pontos_recebidos", label: "Pontos Recebidos" },
 ];
 
 const Configuracoes = () => {

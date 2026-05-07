@@ -5,12 +5,15 @@ class BHRegraServiceClass extends BaseService<'banco_horas_regras'> {
   constructor() { super('banco_horas_regras'); }
 
   async getWithEmpresa() {
-    const { data, error } = await supabase
+    const { data: regras, error } = await supabase
       .from('banco_horas_regras')
-      .select('*, empresas(nome)')
+      .select('*')
       .order('created_at', { ascending: false });
     if (error) throw error;
-    return data;
+    
+    const { data: empresas } = await supabase.from('empresas').select('id, nome');
+    const empresaMap = new Map((empresas || []).map(e => [e.id, e]));
+    return (regras || []).map(r => ({ ...r, empresas: empresaMap.get(r.empresa_id) || null }));
   }
 }
 export const BHRegraService = new BHRegraServiceClass();

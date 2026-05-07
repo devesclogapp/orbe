@@ -66,6 +66,7 @@ import NotFound from "./pages/NotFound";
 import PainelGeralBH from "./pages/BancoHoras/PainelGeral";
 import RegrasBH from "./pages/BancoHoras/Regras";
 import ExtratoColaborador from "./pages/BancoHoras/ExtratoColaborador";
+import ProcessamentoRH from "./pages/BancoHoras/ProcessamentoRH";
 
 // V4 — Governança
 import UsuariosGestao from "./pages/Governanca/Usuarios";
@@ -166,6 +167,7 @@ const App = () => (
                       <Route path="/banco-horas" element={<AuthGuard><PainelGeralBH /></AuthGuard>} />
                       <Route path="/banco-horas/regras" element={<AuthGuard><RegrasBH /></AuthGuard>} />
                       <Route path="/banco-horas/extrato/:id" element={<AuthGuard><ExtratoColaborador /></AuthGuard>} />
+                      <Route path="/banco-horas/processamento" element={<AuthGuard><ProcessamentoRH /></AuthGuard>} />
 
                       {/* Governança V4 */}
                       <Route path="/governanca" element={<AuthGuard><CentralGovernanca /></AuthGuard>} />

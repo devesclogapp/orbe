@@ -193,21 +193,31 @@ class EmpresaServiceClass extends BaseService<'empresas'> {
   }
 
   async getWithCounts() {
-    const { data, error } = await supabase
+    const { data: empresas, error } = await supabase
       .from('empresas')
-      .select(`
-        *,
-        colaboradores:colaboradores(count),
-        coletores:coletores(count)
-      `)
+      .select('*')
       .order('nome', { ascending: true });
 
     if (error) throw error;
 
-    return (data ?? []).map(item => ({
-      ...item,
-      total_colaboradores: (item.colaboradores as any)?.[0]?.count || 0,
-      total_coletores: (item.coletores as any)?.[0]?.count || 0
+    // Buscar contagens separadamente
+    const { data: colaboradores } = await supabase.from('colaboradores').select('empresa_id');
+    const { data: coletores } = await supabase.from('coletores').select('empresa_id');
+
+    const contagemColaboradores = new Map<string, number>();
+    const contagemColetores = new Map<string, number>();
+    
+    (colaboradores || []).forEach(c => {
+      contagemColaboradores.set(c.empresa_id, (contagemColaboradores.get(c.empresa_id) || 0) + 1);
+    });
+    (coletores || []).forEach(c => {
+      contagemColetores.set(c.empresa_id, (contagemColetores.get(c.empresa_id) || 0) + 1);
+    });
+
+    return (empresas || []).map(e => ({
+      ...e,
+      total_colaboradores: contagemColaboradores.get(e.id) || 0,
+      total_coletores: contagemColetores.get(e.id) || 0
     }));
   }
 
@@ -265,16 +275,25 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
   async getWithEmpresa(empresaId?: string) {
     let query = supabase
       .from('colaboradores')
-      .select('*, empresas(nome, cidade, estado)')
+      .select('*')
       .order('created_at', { ascending: false });
 
     if (empresaId) {
       query = query.eq('empresa_id', empresaId);
     }
 
-    const { data, error } = await query;
+    const { data: colaboradores, error } = await query;
     if (error) throw error;
-    return data;
+
+    // Buscar empresas separadamente
+    const { data: empresas } = await supabase.from('empresas').select('id, nome, cidade, estado');
+    
+    // Join manual
+    const empresaMap = new Map((empresas || []).map(e => [e.id, e]));
+    return (colaboradores || []).map(c => ({
+      ...c,
+      empresas: empresaMap.get(c.empresa_id) || null
+    }));
   }
 
   async update(id: string, payload: Record<string, any>) {
@@ -346,13 +365,16 @@ export const ColaboradorService = new ColaboradorServiceClass();
 class PerfilUsuarioServiceClass extends BaseService<'perfis_usuarios'> {
   constructor() { super('perfis_usuarios'); }
   async getByUserId(userId: string) {
-    const { data, error } = await supabase
+    const { data: perfil, error } = await supabase
       .from('perfis_usuarios')
-      .select('*, empresas(nome, cidade, estado)')
+      .select('*')
       .eq('user_id', userId)
       .maybeSingle();
     if (error) throw error;
-    return data;
+    if (!perfil) return null;
+    
+    const { data: empresa } = await supabase.from('empresas').select('id, nome, cidade, estado').eq('id', perfil.empresa_id).maybeSingle();
+    return { ...perfil, empresas: empresa };
   }
 }
 export const PerfilUsuarioService = new PerfilUsuarioServiceClass();
@@ -360,9 +382,11 @@ export const PerfilUsuarioService = new PerfilUsuarioServiceClass();
 class ColetorServiceClass extends BaseService<'coletores'> {
   constructor() { super('coletores'); }
   async getWithEmpresa() {
-    const { data, error } = await supabase.from('coletores').select('*, empresas(nome)').order('created_at', { ascending: false });
+    const { data: coletores, error } = await supabase.from('coletores').select('*').order('created_at', { ascending: false });
     if (error) throw error;
-    return data;
+    const { data: empresas } = await supabase.from('empresas').select('id, nome');
+    const empresaMap = new Map((empresas || []).map(e => [e.id, e]));
+    return (coletores || []).map(c => ({ ...c, empresas: empresaMap.get(c.empresa_id) || null }));
   }
 }
 export const ColetorService = new ColetorServiceClass();
@@ -370,9 +394,11 @@ export const ColetorService = new ColetorServiceClass();
 class LogSincronizacaoServiceClass extends BaseService<'logs_sincronizacao'> {
   constructor() { super('logs_sincronizacao'); }
   async getWithEmpresa() {
-    const { data, error } = await supabase.from('logs_sincronizacao').select('*, empresas(nome)').order('data', { ascending: false });
+    const { data: logs, error } = await supabase.from('logs_sincronizacao').select('*').order('data', { ascending: false });
     if (error) throw error;
-    return data;
+    const { data: empresas } = await supabase.from('empresas').select('id, nome');
+    const empresaMap = new Map((empresas || []).map(e => [e.id, e]));
+    return (logs || []).map(l => ({ ...l, empresas: empresaMap.get(l.empresa_id) || null }));
   }
 }
 export const LogSincronizacaoService = new LogSincronizacaoServiceClass();
@@ -381,9 +407,11 @@ class ResultadosServiceClass extends BaseService<'resultados_processamento'> {
   constructor() { super('resultados_processamento'); }
 
   async getSummary() {
-    const { data, error } = await supabase.from('resultados_processamento').select('*, empresas(nome)').order('data', { ascending: false });
+    const { data: resultados, error } = await supabase.from('resultados_processamento').select('*').order('data', { ascending: false });
     if (error) throw error;
-    return data;
+    const { data: empresas } = await supabase.from('empresas').select('id, nome');
+    const empresaMap = new Map((empresas || []).map(e => [e.id, e]));
+    return (resultados || []).map(r => ({ ...r, empresas: empresaMap.get(r.empresa_id) || null }));
   }
 
   async getByMonth(month: string) {

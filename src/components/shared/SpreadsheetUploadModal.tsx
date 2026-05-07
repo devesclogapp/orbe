@@ -259,7 +259,7 @@ export function SpreadsheetUploadModal({
     }
   };
 
-  const previewRows = validationResult?.previewRows ?? validationResult?.validRows?.slice(0, 5) ?? [];
+  const previewRows = validationResult?.previewRows ?? validationResult?.validRows?.slice(0, 3) ?? [];
   const canConfirm =
     !unsupportedMessage &&
     !isParsing &&
@@ -280,13 +280,13 @@ export function SpreadsheetUploadModal({
         }
       }}
     >
-      <DialogContent className="sm:max-w-4xl">
+      <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
 
-        <div className="py-4">
+        <div className="py-4 overflow-y-auto max-h-[calc(90vh-180px)]">
           <div className="mb-4 flex flex-wrap gap-2">
             <Button variant="outline" onClick={handleDownloadTemplate} disabled={!!unsupportedMessage || isUploading}>
               <Download className="mr-2 h-4 w-4" />
@@ -420,23 +420,29 @@ export function SpreadsheetUploadModal({
               </div>
 
               {validationResult.errors.length ? (
-                <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
-                  <Label className="text-sm font-semibold text-destructive">Erros</Label>
+                <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 max-h-32 overflow-y-auto">
+                  <Label className="text-sm font-semibold text-destructive">Erros ({validationResult.errors.length})</Label>
                   <ul className="mt-2 space-y-1 text-sm text-destructive">
-                    {validationResult.errors.slice(0, 10).map((error, index) => (
+                    {validationResult.errors.slice(0, 5).map((error, index) => (
                       <li key={`${error}-${index}`}>{error}</li>
                     ))}
+                    {validationResult.errors.length > 5 && (
+                      <li className="text-xs italic">... e mais {validationResult.errors.length - 5} erros</li>
+                    )}
                   </ul>
                 </div>
               ) : null}
 
               {validationResult.warnings.length ? (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                  <Label className="text-sm font-semibold text-amber-900">Alertas</Label>
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 max-h-24 overflow-y-auto">
+                  <Label className="text-sm font-semibold text-amber-900">Alertas ({validationResult.warnings.length})</Label>
                   <ul className="mt-2 space-y-1 text-sm text-amber-900">
-                    {validationResult.warnings.slice(0, 10).map((warning, index) => (
+                    {validationResult.warnings.slice(0, 3).map((warning, index) => (
                       <li key={`${warning}-${index}`}>{warning}</li>
                     ))}
+                    {validationResult.warnings.length > 3 && (
+                      <li className="text-xs italic">... e mais {validationResult.warnings.length - 3} alertas</li>
+                    )}
                   </ul>
                 </div>
               ) : null}

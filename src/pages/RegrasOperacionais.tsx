@@ -85,6 +85,7 @@ import {
   EmpresaService,
   FormaPagamentoOperacionalService,
   FornecedorService,
+  ImportacaoModelosService,
   PerfilUsuarioService,
   ProdutoCargaService,
   RegraOperacionalService,
@@ -771,6 +772,11 @@ const RegrasOperacionais = () => {
     queryFn: () => RegrasModulosService.listar(),
     enabled: canAccess,
   });
+  const { data: importacaoModelos = [] } = useQuery({
+    queryKey: ["importacao_modelos"],
+    queryFn: () => ImportacaoModelosService.listAll(),
+    enabled: canAccess,
+  });
 
   const filteredRules = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -836,6 +842,9 @@ const RegrasOperacionais = () => {
     [form.tipo_regra_id, tiposRegra],
   );
   const activeImportConfig = useMemo(() => {
+    const modeloImportacaoAtivo = (importacaoModelos as any[]).find(
+      (item) => item.modulo === "regras_operacionais" && item.ativo && item.drive_url,
+    );
     const empresaLookup = new Map((empresas as any[]).map((item) => [normalizeText(item.nome ?? ""), item]));
     const tipoServicoLookup = new Map((tiposServico as any[]).map((item) => [normalizeText(item.nome ?? ""), item]));
     const transportadoraLookup = new Map((transportadoras as any[]).map((item) => [normalizeText(item.nome ?? ""), item]));
@@ -1062,6 +1071,7 @@ const RegrasOperacionais = () => {
     return {
       label: "Regras Operacionais",
       description: "Envie uma planilha compatível com o modelo de regras operacionais.",
+      downloadUrl: modeloImportacaoAtivo?.drive_url as string | undefined,
       expectedColumns: [
         "EMPRESA",
         "TIPO DE SERVICO",
@@ -1079,7 +1089,7 @@ const RegrasOperacionais = () => {
       templateFileName: "modelo_regras_operacionais.xlsx",
       validateData,
     };
-  }, [empresas, fornecedores, formasPagamento, tiposRegra, tiposServico, transportadoras]);
+  }, [empresas, fornecedores, formasPagamento, importacaoModelos, tiposRegra, tiposServico, transportadoras]);
   const tipoServicoSelecionado = useMemo(
     () => (tiposServico as any[]).find((item) => item.id === form.tipo_servico_id) ?? null,
     [form.tipo_servico_id, tiposServico],
@@ -2762,6 +2772,11 @@ const RegrasOperacionais = () => {
         onOpenChange={setImportModalOpen}
         title="Importar planilha - Regras Operacionais"
         description={activeImportConfig.description}
+        onDownloadTemplate={
+          activeImportConfig.downloadUrl
+            ? () => window.open(activeImportConfig.downloadUrl, "_blank", "noopener,noreferrer")
+            : undefined
+        }
         expectedColumns={activeImportConfig.expectedColumns}
         templateColumns={activeImportConfig.expectedColumns}
         templateFileName={activeImportConfig.templateFileName}
