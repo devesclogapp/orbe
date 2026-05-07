@@ -20,8 +20,6 @@ import {
   Pencil,
   Plus,
   Trash2,
-  Power,
-  Sparkles,
   AlertTriangle
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -52,6 +50,7 @@ import {
   ImportacaoModelosService,
   StorageService
 } from "@/services/base.service";
+import ResetOperacional from "@/pages/Configuracoes/ResetOperacional";
 
 const IMPORTACAO_MODULOS = [
   { value: "colaboradores", label: "Colaboradores" },
@@ -300,6 +299,9 @@ const Configuracoes = () => {
           <TabsTrigger value="preferencias" className="px-6 rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm">
             <Settings2 className="h-4 w-4 mr-2" /> Preferências
           </TabsTrigger>
+          <TabsTrigger value="manutencao" className="px-6 rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm">
+            <AlertTriangle className="h-4 w-4 mr-2" /> Manutenção do Ambiente
+          </TabsTrigger>
           <TabsTrigger value="modelos" className="px-6 rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm">
             <Database className="h-4 w-4 mr-2" /> Modelos de Importação
           </TabsTrigger>
@@ -370,6 +372,26 @@ const Configuracoes = () => {
               </div>
             </section>
           </div>
+
+          <section className="esc-card p-5 flex flex-col gap-4 border-warning/30 bg-warning-soft/30 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-warning-strong">
+                <AlertTriangle className="h-4 w-4" />
+                <span className="text-sm font-semibold">ManutenÃ§Ã£o do ambiente</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Resets operacionais e financeiros controlados ficam isolados em uma Ã¡rea segura, com auditoria persistente e confirmaÃ§Ã£o dupla.
+              </p>
+            </div>
+            <Button variant="outline" onClick={() => setActiveTab("manutencao")}>
+              <AlertTriangle className="h-4 w-4 mr-2" />
+              Abrir ManutenÃ§Ã£o do Ambiente
+            </Button>
+          </section>
+        </TabsContent>
+
+        <TabsContent value="manutencao" className="space-y-6 mt-6">
+          <ResetOperacional />
         </TabsContent>
 
         <TabsContent value="minimas" className="mt-6">
