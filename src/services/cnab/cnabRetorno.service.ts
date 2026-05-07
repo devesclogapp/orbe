@@ -9,6 +9,12 @@ import { mapearOcorrenciaBB } from './retorno/ocorrenciasBB';
 
 export type CnabRetornoArquivoStatus = 'processado' | 'processado_com_pendencias' | 'erro';
 export type CnabRetornoItemStatus = 'pago' | 'rejeitado' | 'divergente' | 'pendente' | 'desconhecido';
+export type CnabConciliacaoStatus =
+  | 'aguardando_conciliacao'
+  | 'conciliado'
+  | 'divergente'
+  | 'rejeitado_banco'
+  | 'revertido';
 
 export interface CnabRetornoArquivo {
   id: string;
@@ -45,6 +51,12 @@ export interface CnabRetornoItem {
   codigo_ocorrencia?: string | null;
   descricao_ocorrencia?: string | null;
   status: CnabRetornoItemStatus;
+  status_conciliacao?: CnabConciliacaoStatus;
+  observacao_conciliacao?: string | null;
+  conciliado_em?: string | null;
+  conciliado_por?: string | null;
+  revertido_em?: string | null;
+  revertido_por?: string | null;
   linha_original: string;
   parsed_json: Record<string, unknown>;
   created_at: string;
@@ -224,6 +236,7 @@ export const CnabRetornoService = {
         codigo_ocorrencia: detalhe.codigoOcorrencia,
         descricao_ocorrencia: detalhe.descricaoOcorrencia || ocorrencia.mensagem,
         status,
+        status_conciliacao: 'aguardando_conciliacao',
         linha_original: detalhe.linhaOriginal,
         parsed_json: {
           ...detalhe.parsedJson,
