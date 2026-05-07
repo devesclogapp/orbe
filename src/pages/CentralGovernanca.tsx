@@ -78,6 +78,10 @@ const CentralGovernanca = () => {
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={() => navigate("/governanca/automacao")}>
+                <RefreshCcw className="h-4 w-4 mr-2" />
+                Automação Operacional
+              </Button>
               <Button variant="outline" size="sm" onClick={() => navigate("/governanca/auditoria")}>
                 <History className="h-4 w-4 mr-2" />
                 Logs Genéricos

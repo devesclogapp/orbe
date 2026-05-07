@@ -3,7 +3,7 @@ import {
   FilePlus, ExternalLink, Clock, Shield, Wallet, LogOut, Database,
   Scale, Banknote, UserCheck, Rocket, LayoutGrid,
   TrendingUp, Building2, Truck, Wrench, CalendarCheck, ChevronDown,
-  ArrowRightLeft, Box, Activity
+  ArrowRightLeft, Box, Activity, Zap
 } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
@@ -47,6 +47,7 @@ const financeiroItems = [
 
 const governancaItems = [
   { icon: BarChart3, label: "Central de Relatórios", to: "/relatorios" },
+  { icon: Zap, label: "Automação Operacional", to: "/governanca/automacao" },
   { icon: Shield, label: "Governança", to: "/governanca" },
   { icon: Database, label: "Importações", to: "/importacoes" },
 ];

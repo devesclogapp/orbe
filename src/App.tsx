@@ -75,6 +75,7 @@ import AuditoriaLogs from "./pages/Governanca/Auditoria";
 import LancamentoProducao from "./pages/LancamentoProducao";
 import LoginOperacional from "./pages/Auth/LoginOperacional";
 import CentralGovernanca from "./pages/CentralGovernanca";
+import AutomacaoOperacional from "./pages/Governanca/AutomacaoOperacional";
 import RegrasOperacionais from "./pages/RegrasOperacionais";
 import CentralOperacional from "./pages/CentralOperacional";
 
@@ -174,6 +175,7 @@ const App = () => (
                       <Route path="/governanca/usuarios" element={<AuthGuard><UsuariosGestao /></AuthGuard>} />
                       <Route path="/governanca/perfis" element={<AuthGuard><PerfisPermissoes /></AuthGuard>} />
                       <Route path="/governanca/auditoria" element={<AuthGuard><AuditoriaLogs /></AuthGuard>} />
+                      <Route path="/governanca/automacao" element={<AuthGuard><AutomacaoOperacional /></AuthGuard>} />
 
                       <Route path="/configuracoes" element={<AuthGuard><Configuracoes /></AuthGuard>} />
 
