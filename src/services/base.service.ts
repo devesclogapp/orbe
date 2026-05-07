@@ -684,6 +684,158 @@ class PontoServiceClass extends BaseService<'registros_ponto'> {
     if (error) throw error;
     return data;
   }
+
+  async deleteImported(month: string, empresaId?: string | null) {
+    const [year, monthNumber] = month.split('-').map(Number);
+    if (!year || !monthNumber) {
+      throw new Error('Periodo invalido para limpar importacao.');
+    }
+
+    const nextMonth = monthNumber === 12 ? 1 : monthNumber + 1;
+    const nextYear = monthNumber === 12 ? year + 1 : year;
+    const nextMonthStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+    const tenantId = await getCurrentTenantId();
+
+    let pontosQuery = supabase
+      .from('registros_ponto')
+      .select('id, colaborador_id')
+      .eq('tenant_id', tenantId)
+      .eq('origem', 'importacao')
+      .gte('data', `${month}-01`)
+      .lt('data', nextMonthStr);
+
+    if (empresaId) {
+      pontosQuery = pontosQuery.eq('empresa_id', empresaId);
+    }
+
+    const { data: pontos, error: pontosError } = await pontosQuery;
+    if (pontosError) throw pontosError;
+
+    const pontoIds = (pontos ?? []).map((ponto) => ponto.id);
+    const colaboradorIds = Array.from(
+      new Set((pontos ?? []).map((ponto) => ponto.colaborador_id).filter(Boolean)),
+    ) as string[];
+
+    if (pontoIds.length === 0) {
+      return 0;
+    }
+
+    const { error: eventosError } = await supabase
+      .from('banco_horas_eventos')
+      .delete()
+      .in('registro_ponto_id', pontoIds);
+    if (eventosError) throw eventosError;
+
+    const { error: inconsistenciasError } = await supabase
+      .from('processamento_rh_inconsistencias')
+      .delete()
+      .in('registro_ponto_id', pontoIds);
+    if (inconsistenciasError) throw inconsistenciasError;
+
+    let logsDeleteQuery = supabase
+      .from('processamento_rh_logs')
+      .delete()
+      .eq('tenant_id', tenantId)
+      .eq('periodo_mes', monthNumber)
+      .eq('periodo_ano', year);
+
+    if (empresaId) {
+      logsDeleteQuery = logsDeleteQuery.eq('empresa_id', empresaId);
+    }
+
+    const { error: logsError } = await logsDeleteQuery;
+    if (logsError) throw logsError;
+
+    let fechamentoDeleteQuery = supabase
+      .from('fechamento_mensal')
+      .delete()
+      .eq('tenant_id', tenantId)
+      .eq('mes', monthNumber)
+      .eq('ano', year);
+
+    if (empresaId) {
+      fechamentoDeleteQuery = fechamentoDeleteQuery.eq('empresa_id', empresaId);
+    }
+
+    if (colaboradorIds.length > 0) {
+      fechamentoDeleteQuery = fechamentoDeleteQuery.in('colaborador_id', colaboradorIds);
+    }
+
+    const { error: fechamentoError } = await fechamentoDeleteQuery;
+    if (fechamentoError) throw fechamentoError;
+
+    let pontosDeleteQuery = supabase
+      .from('registros_ponto')
+      .delete()
+      .eq('tenant_id', tenantId)
+      .eq('origem', 'importacao')
+      .gte('data', `${month}-01`)
+      .lt('data', nextMonthStr);
+
+    if (empresaId) {
+      pontosDeleteQuery = pontosDeleteQuery.eq('empresa_id', empresaId);
+    }
+
+    const { data: deletedPontos, error: deletePontosError } = await pontosDeleteQuery.select('id');
+    if (deletePontosError) throw deletePontosError;
+
+    for (const colaboradorId of colaboradorIds) {
+      const { data: eventosRestantes, error: eventosRestantesError } = await supabase
+        .from('banco_horas_eventos')
+        .select('quantidade_minutos, data, empresa_id')
+        .eq('tenant_id', tenantId)
+        .eq('colaborador_id', colaboradorId)
+        .order('data', { ascending: true });
+
+      if (eventosRestantesError) throw eventosRestantesError;
+
+      if (!eventosRestantes || eventosRestantes.length === 0) {
+        const { error: saldoDeleteError } = await supabase
+          .from('banco_horas_saldos')
+          .delete()
+          .eq('tenant_id', tenantId)
+          .eq('colaborador_id', colaboradorId);
+        if (saldoDeleteError) throw saldoDeleteError;
+        continue;
+      }
+
+      const saldoAtualMinutos = eventosRestantes.reduce(
+        (acc, evento) => acc + Number(evento.quantidade_minutos ?? 0),
+        0,
+      );
+      const horasPositivasMinutos = eventosRestantes
+        .filter((evento) => Number(evento.quantidade_minutos ?? 0) > 0)
+        .reduce((acc, evento) => acc + Number(evento.quantidade_minutos ?? 0), 0);
+      const horasNegativasMinutos = Math.abs(
+        eventosRestantes
+          .filter((evento) => Number(evento.quantidade_minutos ?? 0) < 0)
+          .reduce((acc, evento) => acc + Number(evento.quantidade_minutos ?? 0), 0),
+      );
+      const ultimoEvento = eventosRestantes[eventosRestantes.length - 1];
+
+      const { error: saldoUpsertError } = await supabase
+        .from('banco_horas_saldos')
+        .upsert(
+          {
+            tenant_id: tenantId,
+            empresa_id: ultimoEvento?.empresa_id ?? null,
+            colaborador_id: colaboradorId,
+            saldo_atual_minutos: saldoAtualMinutos,
+            horas_positivas_minutos: horasPositivasMinutos,
+            horas_negativas_minutos: horasNegativasMinutos,
+            ultima_movimentacao: ultimoEvento?.data
+              ? new Date(`${ultimoEvento.data}T00:00:00`).toISOString()
+              : null,
+            ultima_atualizacao: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'tenant_id,colaborador_id' },
+        );
+      if (saldoUpsertError) throw saldoUpsertError;
+    }
+
+    return deletedPontos?.length ?? pontoIds.length;
+  }
 }
 export const PontoService = new PontoServiceClass();
 

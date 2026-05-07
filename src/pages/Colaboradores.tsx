@@ -331,7 +331,9 @@ const Colaboradores = () => {
                       R$ {(c.valor_base || 0).toFixed(2).replace(".", ",")}
                     </td>
                     <td className="px-3 text-center text-muted-foreground">{c.flag_faturamento ? "Sim" : "Não"}</td>
-                    <td className="px-5 text-center"><StatusChip status={c.status} /></td>
+                    <td className="px-5 text-center">
+                      {c.cadastro_provisorio ? <StatusChip status="pendente" label="Provisório" /> : <StatusChip status={c.status} />}
+                    </td>
                     <td className="px-5 text-right">
                       <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(c)}>
@@ -361,7 +363,7 @@ const Colaboradores = () => {
                       <div className="h-10 w-10 rounded-full bg-primary-soft flex items-center justify-center text-primary font-bold">
                         {c.nome.substring(0, 1).toUpperCase()}
                       </div>
-                      <StatusChip status={c.status} />
+                      {c.cadastro_provisorio ? <StatusChip status="pendente" label="Provisório" /> : <StatusChip status={c.status} />}
                     </div>
                     <h3 className="font-display font-bold text-lg text-foreground mb-1">{c.nome}</h3>
                     <div className="flex flex-col gap-1 text-xs text-muted-foreground">

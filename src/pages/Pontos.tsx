@@ -15,6 +15,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 
 import { AppShell } from "@/components/layout/AppShell";
 import {
@@ -40,7 +41,6 @@ import {
   ImportacaoModelosService,
   PontoService,
 } from "@/services/base.service";
-import { supabase } from "@/lib/supabase";
 
 type EmpresaOption = {
   id: string;
@@ -379,6 +379,7 @@ const empresaNome = getImportRowValue(row, "EMPRESA", "EMPRESAS", "RAZÃO SOCIAL
           origem: "importacao",
           // Dados brutos da planilha (salvos para exibição)
           nome_colaborador: colaboradorNome || null,
+          empresa_nome: empresaNome || null,
           matricula_colaborador: matricula || null,
           cpf_colaborador: cpf || null,
           cargo_colaborador: cargo || null,
@@ -466,38 +467,30 @@ const empresaNome = getImportRowValue(row, "EMPRESA", "EMPRESAS", "RAZÃO SOCIAL
   const handleClearImportacao = async () => {
     setIsClearing(true);
     try {
-      const { data: registros, error: fetchError } = await supabase
-        .from('registros_ponto')
-        .select('id')
-        .eq('origem', 'importacao');
+      const deletedCount = await PontoService.deleteImported(
+        selectedMonth,
+        selectedEmpresaId === "all" ? null : selectedEmpresaId,
+      );
 
-      if (fetchError) throw fetchError;
-
-      const registrosIds = registros?.map(r => r.id) || [];
-      
-      if (registrosIds.length > 0) {
-        const { error: deleteError } = await supabase
-          .from('registros_ponto')
-          .delete()
-          .in('id', registrosIds);
-
-        if (deleteError) throw deleteError;
-        
-        console.log("IMPORTAÇÃO REMOVIDA:", {
-          registrosRemovidos: registrosIds.length,
-          timestamp: new Date().toISOString()
-        });
-        
-        toast.success(`${registrosIds.length} registros importados removidos com sucesso.`);
+      if (deletedCount > 0) {
+        toast.success(
+          `${deletedCount} registro(s) importado(s) e seus calculos de RH foram removidos com sucesso.`,
+        );
       } else {
-        toast.info("Nenhum registro de importação encontrado para remover.");
+        toast.info("Nenhum registro de importacao encontrado para remover.");
       }
 
-      await queryClient.invalidateQueries({ queryKey: ["ponto"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["ponto"] }),
+        queryClient.invalidateQueries({ queryKey: ["processamento_rh_logs"] }),
+        queryClient.invalidateQueries({ queryKey: ["processamento_rh_inconsistencias"] }),
+        queryClient.invalidateQueries({ queryKey: ["banco_horas_saldos"] }),
+        queryClient.invalidateQueries({ queryKey: ["fechamento_mensal"] }),
+      ]);
       setClearModalOpen(false);
     } catch (err: any) {
-      console.error("ERRO AO LIMPAR IMPORTAÇÃO:", err);
-      toast.error("Erro ao limpar importação: " + err.message);
+      console.error("ERRO AO LIMPAR IMPORTACAO:", err);
+      toast.error("Erro ao limpar importacao: " + err.message);
     } finally {
       setIsClearing(false);
     }
@@ -665,8 +658,8 @@ const empresaNome = getImportRowValue(row, "EMPRESA", "EMPRESAS", "RAZÃO SOCIAL
           <DialogHeader>
             <DialogTitle>Limpar Importação</DialogTitle>
             <DialogDescription>
-              Deseja remover os registros importados via planilha? 
-              Essa ação removerá apenas dados importados (origem: importação).
+              Deseja remover os registros importados via planilha do periodo selecionado?
+              Essa acao tambem limpara inconsistencias, eventos e saldos gerados pelo processamento RH desses pontos.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

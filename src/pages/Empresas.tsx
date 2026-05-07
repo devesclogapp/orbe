@@ -225,10 +225,14 @@ const Empresas = () => {
                     <span
                       className={cn(
                         "esc-chip",
-                        e.status === "ativa" ? "bg-success-soft text-success-strong" : "bg-muted text-muted-foreground"
+                        e.cadastro_provisorio
+                          ? "bg-warning-soft text-warning-strong"
+                          : e.status === "ativa"
+                            ? "bg-success-soft text-success-strong"
+                            : "bg-muted text-muted-foreground"
                       )}
                     >
-                      {e.status === "ativa" ? "Ativa" : "Inativa"}
+                      {e.cadastro_provisorio ? "Provisório" : e.status === "ativa" ? "Ativa" : "Inativa"}
                     </span>
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEdit(e)}>
@@ -277,9 +281,13 @@ const Empresas = () => {
                     <td className="px-3 text-center">{e.total_coletores}</td>
                     <td className="px-3 text-center">
                       <span className={cn("px-2 py-0.5 rounded-full text-[10px] uppercase font-bold tracking-tight",
-                        e.status === 'ativa' ? 'bg-success-soft text-success-strong' : 'bg-muted text-muted-foreground'
+                        e.cadastro_provisorio
+                          ? 'bg-warning-soft text-warning-strong'
+                          : e.status === 'ativa'
+                            ? 'bg-success-soft text-success-strong'
+                            : 'bg-muted text-muted-foreground'
                       )}>
-                        {e.status}
+                        {e.cadastro_provisorio ? 'provisório' : e.status}
                       </span>
                     </td>
                     <td className="px-5 text-right">

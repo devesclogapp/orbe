@@ -11,6 +11,9 @@ import {
   User,
   UtensilsCrossed,
   Zap,
+  Building2,
+  FileText,
+  AlertCircle,
 } from "lucide-react";
 
 import { useSelection } from "@/contexts/SelectionContext";
@@ -34,6 +37,15 @@ const calculateWorkedHours = (row: any): string => {
     const h = Math.floor(diff / 60);
     const m = diff % 60;
     return `${h}h${m.toString().padStart(2, '0')}`;
+  } catch {
+    return "-";
+  }
+};
+
+const formatDate = (dateStr: string | null) => {
+  if (!dateStr) return "-";
+  try {
+    return new Date(dateStr).toLocaleDateString("pt-BR");
   } catch {
     return "-";
   }
@@ -64,19 +76,25 @@ export const PontoTableBlock = ({ month, monthLabel, empresaId }: PontoTableBloc
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+      <table className="w-full text-xs">
         <thead className="esc-table-header">
-          <tr className="text-left font-display">
-            <th className="px-5 font-semibold py-3"><span className="inline-flex items-center gap-1.5"><User className="h-3.5 w-3.5 text-muted-foreground" />Colaborador</span></th>
-            <th className="px-3 font-semibold text-center"><span className="inline-flex items-center gap-1.5"><LogIn className="h-3.5 w-3.5 text-muted-foreground" />Entrada</span></th>
-            <th className="px-3 font-semibold text-center"><span className="inline-flex items-center gap-1.5"><UtensilsCrossed className="h-3.5 w-3.5 text-muted-foreground" />Saida almoco</span></th>
-            <th className="px-3 font-semibold text-center"><span className="inline-flex items-center gap-1.5"><Coffee className="h-3.5 w-3.5 text-muted-foreground" />Retorno almoco</span></th>
-            <th className="px-3 font-semibold text-center"><span className="inline-flex items-center gap-1.5"><LogOut className="h-3.5 w-3.5 text-muted-foreground" />Saida</span></th>
-            <th className="px-3 font-semibold text-center"><span className="inline-flex items-center gap-1.5"><Timer className="h-3.5 w-3.5 text-muted-foreground" />Horas</span></th>
-            <th className="px-3 font-semibold text-center"><span className="inline-flex items-center gap-1.5"><Zap className="h-3.5 w-3.5 text-muted-foreground" />Extras</span></th>
-            <th className="px-3 font-semibold text-center"><span className="inline-flex items-center gap-1.5"><CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />Tipo dia</span></th>
-            <th className="px-3 font-semibold text-right"><span className="inline-flex items-center gap-1.5"><DollarSign className="h-3.5 w-3.5 text-muted-foreground" />Valor do dia</span></th>
-            <th className="px-5 font-semibold text-center"><span className="inline-flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" />Status</span></th>
+          <tr className="text-center font-display text-[11px]">
+            <th className="px-2 py-2 font-semibold">Data</th>
+            <th className="px-2 py-2 font-semibold">Empresa</th>
+            <th className="px-2 py-2 font-semibold text-left">Colaborador</th>
+            <th className="px-2 py-2 font-semibold">Matrícula</th>
+            <th className="px-2 py-2 font-semibold">CPF</th>
+            <th className="px-2 py-2 font-semibold text-left">Cargo</th>
+            <th className="px-2 py-2 font-semibold">Entrada</th>
+            <th className="px-2 py-2 font-semibold">S. Almoço</th>
+            <th className="px-2 py-2 font-semibold">Retorno</th>
+            <th className="px-2 py-2 font-semibold">Saída</th>
+            <th className="px-2 py-2 font-semibold">Horas</th>
+            <th className="px-2 py-2 font-semibold">Extras</th>
+            <th className="px-2 py-2 font-semibold">Falta</th>
+            <th className="px-2 py-2 font-semibold">Atraso</th>
+            <th className="px-2 py-2 font-semibold">Status</th>
+            <th className="px-2 py-2 font-semibold text-left">Obs</th>
           </tr>
         </thead>
         <tbody>
@@ -87,41 +105,56 @@ export const PontoTableBlock = ({ month, monthLabel, empresaId }: PontoTableBloc
                 key={row.id}
                 onClick={() => select("colaborador", row.colaborador_id)}
                 className={cn(
-                  "esc-table-row cursor-pointer transition-all",
+                  "esc-table-row cursor-pointer transition-all border-b border-muted/50",
                   row.status === "inconsistente" && "bg-rowAlert border-l-[3px] border-l-primary",
                   isSelected && "bg-primary-soft/40 border-l-[3px] border-l-primary"
                 )}
               >
-                <td className="px-5 py-3">
-                  <div className="font-medium text-foreground">
-                    {row.colaboradores?.nome || row.nome_colaborador || "-"}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {row.colaboradores?.cargo || row.cargo_colaborador || "-"} · 
-                    {row.colaboradores?.empresas?.nome || "-"}
-                  </div>
+                <td className="px-2 py-2 text-center text-foreground whitespace-nowrap">{formatDate(row.data)}</td>
+                <td className="px-2 py-2 text-center text-muted-foreground max-w-[100px] truncate">{row.empresas?.nome || row.empresa_nome || "-"}</td>
+                <td className="px-2 py-2 text-left text-foreground font-medium max-w-[140px] truncate">
+                  {row.colaboradores?.nome || row.nome_colaborador || "-"}
                 </td>
-                <td className="px-3 text-center text-foreground">{row.entrada ? row.entrada.slice(0,5) : "-"}</td>
-                <td className="px-3 text-center text-muted-foreground">{row.saida_almoco ? row.saida_almoco.slice(0,5) : "-"}</td>
-                <td className="px-3 text-center text-muted-foreground">{row.retorno_almoco ? row.retorno_almoco.slice(0,5) : "-"}</td>
-                <td className="px-3 text-center text-foreground">{row.saida ? row.saida.slice(0,5) : "-"}</td>
-                <td className="px-3 text-center font-display font-medium">
+                <td className="px-2 py-2 text-center text-muted-foreground font-mono text-[10px]">
+                  {row.matricula_colaborador || row.colaboradores?.matricula || "-"}
+                </td>
+                <td className="px-2 py-2 text-center text-muted-foreground font-mono text-[10px]">
+                  {row.cpf_colaborador || "-"}
+                </td>
+                <td className="px-2 py-2 text-left text-muted-foreground max-w-[100px] truncate">
+                  {row.colaboradores?.cargo || row.cargo_colaborador || "-"}
+                </td>
+                <td className="px-2 py-2 text-center text-foreground font-mono">{row.entrada ? row.entrada.slice(0,5) : "-"}</td>
+                <td className="px-2 py-2 text-center text-muted-foreground font-mono">{row.saida_almoco ? row.saida_almoco.slice(0,5) : "-"}</td>
+                <td className="px-2 py-2 text-center text-muted-foreground font-mono">{row.retorno_almoco ? row.retorno_almoco.slice(0,5) : "-"}</td>
+                <td className="px-2 py-2 text-center text-foreground font-mono">{row.saida ? row.saida.slice(0,5) : "-"}</td>
+                <td className="px-2 py-2 text-center font-display font-medium">
                   {row.horas_trabalhadas || (row.entrada && row.saida ? calculateWorkedHours(row) : "-")}
                 </td>
-                <td className="px-3 text-center text-muted-foreground">{row.hora_extra || "-"}</td>
-                <td className="px-3 text-center text-muted-foreground">{row.tipo_dia || "-"}</td>
-                <td className="px-3 text-right font-display font-semibold text-foreground">
-                  R$ {Number(row.valor_dia || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                <td className="px-2 py-2 text-center text-muted-foreground">{row.hora_extra || "-"}</td>
+                <td className="px-2 py-2 text-center">
+                  <span className={cn(
+                    "text-[10px] px-1.5 py-0.5 rounded",
+                    row.falta?.toLowerCase().includes("sim") || row.falta?.toLowerCase().includes("true") 
+                      ? "bg-destructive-soft text-destructive" 
+                      : "text-muted-foreground"
+                  )}>
+                    {row.falta || "-"}
+                  </span>
                 </td>
-                <td className="px-5 text-center">
+                <td className="px-2 py-2 text-center text-muted-foreground">{row.atraso || "-"}</td>
+                <td className="px-2 py-2 text-center">
                   <StatusChip status={row.status} label={row.status} />
+                </td>
+                <td className="px-2 py-2 text-left text-muted-foreground max-w-[80px] truncate" title={row.observacoes || ""}>
+                  {row.observacoes || "-"}
                 </td>
               </tr>
             );
           })}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={10} className="p-12 text-center text-muted-foreground italic">Nenhum registro encontrado para {monthLabel}.</td>
+              <td colSpan={16} className="p-12 text-center text-muted-foreground italic">Nenhum registro encontrado para {monthLabel}.</td>
             </tr>
           )}
         </tbody>

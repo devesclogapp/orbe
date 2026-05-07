@@ -26,7 +26,29 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
 
     if (userRole?.toLowerCase() === "encarregado") {
         const path = location.pathname;
-        if (!path.startsWith("/producao") && !path.startsWith("/operacional")) {
+        const allowedPrefixes = [
+            "/producao",
+            "/operacional",
+            "/central",
+            "/banco-horas",
+            "/rh",
+            "/fechamento",
+            "/cadastros",
+            "/cadastros/regras-operacionais",
+            "/colaboradores",
+            "/empresas",
+            "/transportadoras",
+            "/fornecedores",
+            "/servicos",
+            "/coletores",
+            "/importacoes",
+            "/inconsistencias",
+            "/configuracoes",
+        ];
+
+        const isAllowedPath = allowedPrefixes.some((prefix) => path.startsWith(prefix));
+
+        if (!isAllowedPath) {
             return <Navigate to="/producao" replace />;
         }
     }
