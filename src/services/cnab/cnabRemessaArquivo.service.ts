@@ -19,7 +19,11 @@ export type CnabAcaoAuditoria =
   | 'envio_manual'
   | 'homologacao'
   | 'erro_homologacao'
-  | 'validacao';
+  | 'validacao'
+  | 'upload_retorno'
+  | 'processamento_retorno'
+  | 'erro_retorno'
+  | 'divergencia_retorno';
 
 export interface CnabRemessaArquivo {
   id: string;

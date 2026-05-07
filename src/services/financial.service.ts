@@ -3,11 +3,12 @@ import { BaseService } from './base.service';
 
 import { BankAccountService } from './bankAccount.service';
 import { CnabBBValidatorService } from './cnabBBValidator.service';
-import { CNAB240BBReader } from './cnab/CNAB240BBReader';
+import { CnabRetornoService } from './cnab/cnabRetorno.service';
 import { CNAB240BBWriter } from './cnab/CNAB240BBWriter';
 import { CnabRemessaArquivoService } from './cnab/cnabRemessaArquivo.service';
 
 export { CnabRemessaArquivoService };
+export { CnabRetornoService };
 export const ContaBancariaService = BankAccountService;
 
 class LoteRemessaServiceClass extends BaseService<'lotes_remessa'> {
@@ -192,17 +193,7 @@ export const CNABService = {
   },
 
   async processRetorno(file: File, banco: string) {
-    const text = await file.text();
-    if (!text.trim()) {
-      throw new Error('Arquivo de retorno vazio.');
-    }
-
-    const reader = new CNAB240BBReader();
-    return reader.parse(text, {
-      banco,
-      fileName: file.name,
-      uploadedAt: new Date().toISOString(),
-    });
+    return CnabRetornoService.processarArquivo(file, banco);
   }
 };
 
