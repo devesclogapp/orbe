@@ -58,6 +58,7 @@ const routeMeta: RouteMeta[] = [
   { pattern: "/relatorios/integracao/logs", label: "Logs de Integração", section: "Relatórios e Governança", parentPath: "/relatorios/integracao" },
   { pattern: "/governanca", label: "Central de Governança", section: "Relatórios e Governança" },
   { pattern: "/governanca/usuarios", label: "Usuários", section: "Relatórios e Governança", parentPath: "/governanca" },
+  { pattern: "/admin/usuarios-acessos", label: "Gestão de Usuários e Acessos", section: "Relatórios e Governança", parentPath: "/governanca" },
   { pattern: "/governanca/perfis", label: "Perfis", section: "Relatórios e Governança", parentPath: "/governanca" },
   { pattern: "/governanca/auditoria", label: "Auditoria", section: "Relatórios e Governança", parentPath: "/governanca" },
 

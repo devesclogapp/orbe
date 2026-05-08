@@ -39,8 +39,12 @@ interface InvitationValidationResult {
   id: string;
   tenant_id: string;
   email: string;
+  full_name?: string | null;
+  phone?: string | null;
   role: string;
+  permissions?: Record<string, unknown> | null;
   expires_at: string;
+  status?: string;
 }
 
 const Cadastro = () => {
@@ -54,7 +58,7 @@ const Cadastro = () => {
 
   useEffect(() => {
     const checkInvitation = async () => {
-      const token = searchParams.get("invite");
+      const token = searchParams.get("token") || searchParams.get("invite");
 
       if (!token) {
         setLoadingInvitation(false);
@@ -183,7 +187,7 @@ const Cadastro = () => {
         const { error: acceptError } = await supabase.rpc(
           "accept_tenant_invitation",
           {
-            p_token: searchParams.get("invite"),
+            p_token: searchParams.get("token") || searchParams.get("invite"),
           },
         );
 

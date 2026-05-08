@@ -1,672 +1,1030 @@
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { AppShell } from "@/components/layout/AppShell";
-import { StatusChip } from "@/components/painel/StatusChip";
-import { Button } from "@/components/ui/button";
+import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-    UserPlus, RefreshCw, Loader2, Shield, Trash2, LayoutGrid, List,
-    Mail, Copy, Check, Send, Clock, CheckCircle2, XCircle, AlertCircle, Pencil
+  AlertCircle,
+  Check,
+  Copy,
+  Link2,
+  Mail,
+  MessageCircle,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Shield,
+  UserCheck,
+  UserPlus,
+  UserX,
 } from "lucide-react";
+import { toast } from "sonner";
+
+import { AppShell } from "@/components/layout/AppShell";
+import { useAccessControl } from "@/contexts/AccessControlContext";
 import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogDescription,
-    DialogFooter,
+  ACCESS_ACTIONS,
+  ACCESS_MODULES,
+  ACCESS_MODULE_LABELS,
+  ACCESS_PRESET_OPTIONS,
+  ACCESS_ROLE_LABELS,
+  DEFAULT_INVITE_EXPIRATION_DAYS,
+  PermissionMatrix,
+  buildPresetPermissions,
+  countGrantedModules,
+  normalizePermissionMatrix,
+  normalizeRole,
+  permissionsToSummary,
+} from "@/lib/access-control";
+import { supabase } from "@/lib/supabase";
+import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { toast } from "sonner";
-import { cn } from "@/lib/utils";
-import { supabase } from "@/lib/supabase";
-import { useTenant } from "@/contexts/TenantContext";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
-// ─── Tipos ────────────────────────────────────────────────────────────────────
-
-interface Invitation {
-    id: string;
-    email: string;
-    role: string;
-    token: string;
-    accepted_at: string | null;
-    expires_at: string;
-    created_at: string;
-    invited_by: string;
-}
-
-interface InviteForm {
-    email: string;
-    role: string;
-}
-
-interface ConviteLink {
-    token: string;
-    email: string;
-    link: string;
-}
-
-interface InvitationValidationResult {
-    id: string;
-    tenant_id: string;
-    email: string;
-    role: string;
-    expires_at: string;
-}
-
-// ─── Serviço de Convites ──────────────────────────────────────────────────────
-
-const InvitationService = {
-    async getAll(tenantId: string): Promise<Invitation[]> {
-        const { data, error } = await supabase
-            .from("tenant_invitations")
-            .select("*")
-            .eq("tenant_id", tenantId)
-            .order("created_at", { ascending: false });
-        if (error) throw error;
-        return data || [];
-    },
-
-    async create(payload: { email: string; role: string; tenant_id: string; invited_by: string }) {
-        const { data, error } = await supabase
-            .from("tenant_invitations")
-            .insert(payload)
-            .select("token, email")
-            .single();
-        if (error) throw error;
-        return data;
-    },
-
-    async update(id: string, payload: InviteForm) {
-        const normalizedEmail = payload.email.trim().toLowerCase();
-        const { data, error } = await supabase.rpc("update_tenant_invitation", {
-            p_invitation_id: id,
-            p_email: normalizedEmail,
-            p_role: payload.role,
-        });
-
-        const functionMissing =
-            error &&
-            typeof error.message === "string" &&
-            error.message.includes("Could not find the function public.update_tenant_invitation");
-
-        if (functionMissing) {
-            const { data: fallbackData, error: fallbackError } = await supabase
-                .from("tenant_invitations")
-                .update({
-                    email: normalizedEmail,
-                    role: payload.role,
-                })
-                .eq("id", id)
-                .is("accepted_at", null)
-                .select("id, email, role")
-                .single();
-
-            if (fallbackError) throw fallbackError;
-            return fallbackData;
-        }
-
-        if (error) throw error;
-        return Array.isArray(data) ? data[0] ?? null : data ?? null;
-    },
-
-    async validateToken(token: string): Promise<InvitationValidationResult | null> {
-        const { data, error } = await supabase.rpc("validate_invitation_token", {
-            p_token: token,
-        });
-        if (error) throw error;
-        return Array.isArray(data) ? data[0] ?? null : data ?? null;
-    },
-
-    async delete(id: string) {
-        const { error } = await supabase
-            .from("tenant_invitations")
-            .delete()
-            .eq("id", id);
-        if (error) throw error;
-    },
+type AccessOverviewRow = {
+  record_type: "user" | "invite";
+  record_id: string;
+  user_id: string | null;
+  invite_id: string | null;
+  full_name: string | null;
+  email: string;
+  phone: string | null;
+  role: string;
+  status: string;
+  permissions: PermissionMatrix | null;
+  invited_at: string | null;
+  accepted_at: string | null;
+  expires_at: string | null;
+  last_access_at: string | null;
+  token: string | null;
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const getRoleLabel = (role: string) => {
-    const map: Record<string, string> = {
-        admin: "Administrador",
-        rh: "RH",
-        financeiro: "Financeiro",
-        encarregado: "Encarregado",
-        user: "Usuário",
-    };
-    return map[role] ?? role;
+type InviteFormState = {
+  fullName: string;
+  email: string;
+  phone: string;
+  role: string;
+  preset: string;
+  status: "ativo" | "bloqueado";
+  expiresAt: string;
+  permissions: PermissionMatrix;
 };
 
-const getInviteStatus = (inv: Invitation): { label: string; variant: 'ok' | 'alerta' | 'inconsistente' | 'pendente'; icon: React.ElementType } => {
-    if (inv.accepted_at) return { label: "Aceito", variant: "ok", icon: CheckCircle2 };
-    if (new Date(inv.expires_at) < new Date()) return { label: "Expirado", variant: "inconsistente", icon: XCircle };
-    return { label: "Pendente", variant: "pendente", icon: Clock };
+const emptyInviteForm = (): InviteFormState => ({
+  fullName: "",
+  email: "",
+  phone: "",
+  role: "rh",
+  preset: "rh",
+  status: "ativo",
+  expiresAt: defaultExpiryDate(),
+  permissions: buildPresetPermissions("rh"),
+});
+
+function defaultExpiryDate() {
+  const date = new Date();
+  date.setDate(date.getDate() + DEFAULT_INVITE_EXPIRATION_DAYS);
+  return date.toISOString().slice(0, 10);
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return "—";
+  return new Date(value).toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function buildInviteLink(token: string) {
+  return `${window.location.origin}/app/convite?token=${encodeURIComponent(token)}`;
+}
+
+function openWhatsAppShare(link: string) {
+  const message = encodeURIComponent(
+    `Olá! Você foi convidado para acessar o ERP Orbe.\n\nAcesse o link abaixo para criar sua conta:\n\n${link}`,
+  );
+
+  window.open(`https://wa.me/?text=${message}`, "_blank", "noopener,noreferrer");
+}
+
+const statusStyles: Record<string, string> = {
+  ativo: "bg-emerald-100 text-emerald-800 border-emerald-200",
+  pendente: "bg-amber-100 text-amber-800 border-amber-200",
+  bloqueado: "bg-rose-100 text-rose-800 border-rose-200",
+  convite_expirado: "bg-zinc-100 text-zinc-700 border-zinc-200",
 };
 
-const formatDate = (dateStr: string) =>
-    new Date(dateStr).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
-
-const buildInviteLink = (token: string) =>
-    `${window.location.origin}/cadastro?invite=${encodeURIComponent(token)}`;
-
-// ─── Componente Principal ─────────────────────────────────────────────────────
+const tableActionButtonClass =
+  "h-8 rounded-full border-border/70 bg-background px-3 text-xs font-medium text-foreground shadow-none hover:border-border hover:bg-muted/50";
 
 const UsuariosGestao = () => {
-    const queryClient = useQueryClient();
-    const { tenantId } = useTenant();
+  const queryClient = useQueryClient();
+  const { isAdmin, refetch: refetchAccess } = useAccessControl();
 
-    // Modal de convite
-    const [open, setOpen] = useState(false);
-    const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
-    const [editingInvite, setEditingInvite] = useState<Invitation | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [resultOpen, setResultOpen] = useState(false);
+  const [form, setForm] = useState<InviteFormState>(emptyInviteForm);
+  const [editingRow, setEditingRow] = useState<AccessOverviewRow | null>(null);
+  const [generatedLink, setGeneratedLink] = useState("");
 
-    // Modal de link gerado
-    const [conviteLink, setConviteLink] = useState<ConviteLink | null>(null);
-    const [copied, setCopied] = useState(false);
+  const { data = [], isLoading } = useQuery({
+    queryKey: ["admin_user_access_overview"],
+    enabled: isAdmin,
+    queryFn: async () => {
+      const { data: rows, error } = await supabase.rpc(
+        "admin_list_user_access_overview",
+      );
 
-    const [form, setForm] = useState<InviteForm>({ email: "", role: "" });
+      if (error) throw error;
+      return (rows || []).map((row) => ({
+        ...(row as AccessOverviewRow),
+        permissions: normalizePermissionMatrix(
+          (row as AccessOverviewRow).permissions,
+          (row as AccessOverviewRow).role,
+        ),
+      }));
+    },
+  });
 
-    // ── Queries ────────────────────────────────────────────────────────────────
+  const rows = data as AccessOverviewRow[];
+  const cards = useMemo(() => {
+    const activeUsers = rows.filter(
+      (row) => row.record_type === "user" && row.status === "ativo",
+    ).length;
+    const pendingInvites = rows.filter((row) => row.status === "pendente").length;
+    const expiredInvites = rows.filter(
+      (row) => row.status === "convite_expirado",
+    ).length;
+    const blockedUsers = rows.filter((row) => row.status === "bloqueado").length;
 
-    const { data: convites = [], isLoading, isFetching } = useQuery({
-        queryKey: ["tenant_invitations", tenantId],
-        queryFn: () => tenantId ? InvitationService.getAll(tenantId) : Promise.resolve([]),
-        enabled: !!tenantId,
+    return { activeUsers, pendingInvites, expiredInvites, blockedUsers };
+  }, [rows]);
+
+  const createInviteMutation = useMutation({
+    mutationFn: async (payload: InviteFormState) => {
+      const { data: invite, error } = await supabase.rpc(
+        "admin_create_tenant_invitation",
+        {
+          p_full_name: payload.fullName,
+          p_email: payload.email,
+          p_phone: payload.phone || null,
+          p_role: payload.role,
+          p_permissions: payload.permissions,
+          p_expires_at: new Date(`${payload.expiresAt}T23:59:59`).toISOString(),
+        },
+      );
+
+      if (error) throw error;
+      return invite as { token: string };
+    },
+    onSuccess: async (invite) => {
+      const link = buildInviteLink(invite.token);
+      setGeneratedLink(link);
+      setResultOpen(true);
+      setDialogOpen(false);
+      setEditingRow(null);
+      setForm(emptyInviteForm());
+      await queryClient.invalidateQueries({ queryKey: ["admin_user_access_overview"] });
+      toast.success("Convite criado com sucesso.");
+    },
+    onError: (error: Error) => {
+      toast.error("Não foi possível gerar o convite.", {
+        description: error.message,
+      });
+    },
+  });
+
+  const updateInviteMutation = useMutation({
+    mutationFn: async (payload: InviteFormState) => {
+      if (!editingRow?.invite_id) {
+        throw new Error("Convite não encontrado para edição.");
+      }
+
+      const { data: invite, error } = await supabase.rpc(
+        "update_tenant_invitation",
+        {
+          p_invitation_id: editingRow.invite_id,
+          p_full_name: payload.fullName,
+          p_email: payload.email,
+          p_phone: payload.phone || null,
+          p_role: payload.role,
+          p_permissions: payload.permissions,
+          p_expires_at: new Date(`${payload.expiresAt}T23:59:59`).toISOString(),
+        },
+      );
+
+      if (error) throw error;
+      return invite;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["admin_user_access_overview"] });
+      setDialogOpen(false);
+      setEditingRow(null);
+      setForm(emptyInviteForm());
+      toast.success("Convite atualizado com sucesso.");
+    },
+    onError: (error: Error) => {
+      toast.error("Não foi possível atualizar o convite.", {
+        description: error.message,
+      });
+    },
+  });
+
+  const updateUserMutation = useMutation({
+    mutationFn: async (payload: InviteFormState) => {
+      if (!editingRow?.user_id) {
+        throw new Error("Usuário não encontrado para edição.");
+      }
+
+      const { error } = await supabase.rpc("admin_update_user_access", {
+        p_user_id: editingRow.user_id,
+        p_role: payload.role,
+        p_status: payload.status,
+        p_permissions: payload.permissions,
+      });
+
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin_user_access_overview"] }),
+        refetchAccess(),
+      ]);
+      setDialogOpen(false);
+      setEditingRow(null);
+      setForm(emptyInviteForm());
+      toast.success("Permissões atualizadas com sucesso.");
+    },
+    onError: (error: Error) => {
+      toast.error("Não foi possível atualizar o acesso.", {
+        description: error.message,
+      });
+    },
+  });
+
+  const renewInviteMutation = useMutation({
+    mutationFn: async (row: AccessOverviewRow) => {
+      if (!row.invite_id) {
+        throw new Error("Convite inválido para reenvio.");
+      }
+
+      const { data: invite, error } = await supabase.rpc(
+        "admin_renew_tenant_invitation",
+        {
+          p_invitation_id: row.invite_id,
+          p_expires_at: new Date(
+            `${defaultExpiryDate()}T23:59:59`,
+          ).toISOString(),
+        },
+      );
+
+      if (error) throw error;
+      return invite as { token: string };
+    },
+    onSuccess: async (invite) => {
+      const link = buildInviteLink(invite.token);
+      setGeneratedLink(link);
+      setResultOpen(true);
+      await queryClient.invalidateQueries({ queryKey: ["admin_user_access_overview"] });
+      toast.success("Convite renovado com sucesso.");
+    },
+    onError: (error: Error) => {
+      toast.error("Não foi possível reenviar o convite.", {
+        description: error.message,
+      });
+    },
+  });
+
+  const deleteInviteMutation = useMutation({
+    mutationFn: async (inviteId: string) => {
+      const { error } = await supabase
+        .from("tenant_invitations")
+        .delete()
+        .eq("id", inviteId);
+
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["admin_user_access_overview"] });
+      toast.success("Convite excluído.");
+    },
+    onError: (error: Error) => {
+      toast.error("Não foi possível excluir o convite.", {
+        description: error.message,
+      });
+    },
+  });
+
+  const handleOpenNewInvite = () => {
+    setEditingRow(null);
+    setForm(emptyInviteForm());
+    setDialogOpen(true);
+  };
+
+  const handleEdit = (row: AccessOverviewRow) => {
+    const normalizedRole = normalizeRole(row.role);
+    setEditingRow(row);
+    setForm({
+      fullName: row.full_name || "",
+      email: row.email,
+      phone: row.phone || "",
+      role: normalizedRole,
+      preset: normalizedRole,
+      status: row.status === "bloqueado" ? "bloqueado" : "ativo",
+      expiresAt: row.expires_at ? row.expires_at.slice(0, 10) : defaultExpiryDate(),
+      permissions: normalizePermissionMatrix(row.permissions, normalizedRole),
     });
+    setDialogOpen(true);
+  };
 
-    // ── Mutations ──────────────────────────────────────────────────────────────
+  const handleCopyInviteLink = async (row: AccessOverviewRow) => {
+    const token = row.token;
+    if (!token) {
+      toast.error("Este registro não possui link de convite.");
+      return;
+    }
 
-    const inviteMutation = useMutation({
-        mutationFn: async (payload: InviteForm) => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) throw new Error("Usuário não autenticado.");
-            if (!tenantId) throw new Error("Tenant não identificado.");
+    await navigator.clipboard.writeText(buildInviteLink(token));
+    toast.success("Link copiado.");
+  };
 
-            return InvitationService.create({
-                email: payload.email.trim().toLowerCase(),
-                role: payload.role,
-                tenant_id: tenantId,
-                invited_by: user.id,
-            });
-        },
-        onSuccess: (data) => {
-            queryClient.invalidateQueries({ queryKey: ["tenant_invitations"] });
-            const link = buildInviteLink(data.token);
-            setConviteLink({ token: data.token, email: data.email, link });
-            setOpen(false);
-            resetForm();
-            toast.success("Convite gerado com sucesso!");
-        },
-        onError: (err: any) => toast.error("Erro ao gerar convite", { description: err.message }),
+  const handleToggleUserStatus = async (row: AccessOverviewRow) => {
+    const nextStatus = row.status === "bloqueado" ? "ativo" : "bloqueado";
+    const confirmed = window.confirm(
+      nextStatus === "bloqueado"
+        ? `Bloquear o acesso de ${row.full_name || row.email}?`
+        : `Reativar o acesso de ${row.full_name || row.email}?`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    await updateUserMutation.mutateAsync({
+      fullName: row.full_name || "",
+      email: row.email,
+      phone: row.phone || "",
+      role: normalizeRole(row.role),
+      preset: normalizeRole(row.role),
+      status: nextStatus,
+      expiresAt: defaultExpiryDate(),
+      permissions: normalizePermissionMatrix(row.permissions, row.role),
     });
+  };
 
-    const deleteMutation = useMutation({
-        mutationFn: (id: string) => InvitationService.delete(id),
-        onSuccess: () => {
-            toast.success("Convite removido");
-            queryClient.invalidateQueries({ queryKey: ["tenant_invitations"] });
+  const handleSubmit = async () => {
+    if (!form.email.includes("@")) {
+      toast.error("Informe um e-mail válido.");
+      return;
+    }
+
+    if (!form.role) {
+      toast.error("Selecione uma função.");
+      return;
+    }
+
+    if (!form.expiresAt && editingRow?.record_type === "invite") {
+      toast.error("Defina a validade do convite.");
+      return;
+    }
+
+    if (editingRow?.record_type === "user") {
+      await updateUserMutation.mutateAsync(form);
+      return;
+    }
+
+    if (editingRow?.record_type === "invite") {
+      await updateInviteMutation.mutateAsync(form);
+      return;
+    }
+
+    await createInviteMutation.mutateAsync(form);
+  };
+
+  const applyPreset = (role: string) => {
+    const normalizedRole = normalizeRole(role);
+    setForm((current) => ({
+      ...current,
+      preset: normalizedRole,
+      permissions: buildPresetPermissions(normalizedRole),
+    }));
+  };
+
+  const updatePermission = (
+    moduleId: (typeof ACCESS_MODULES)[number],
+    action: (typeof ACCESS_ACTIONS)[number],
+    checked: boolean,
+  ) => {
+    setForm((current) => ({
+      ...current,
+      permissions: {
+        ...current.permissions,
+        [moduleId]: {
+          ...(current.permissions[moduleId] || {}),
+          [action]: checked,
         },
-        onError: (err: any) => toast.error("Erro ao remover", { description: err.message }),
-    });
+      },
+    }));
+  };
 
-    const updateMutation = useMutation({
-        mutationFn: async (payload: InviteForm) => {
-            if (!editingInvite) throw new Error("Convite não selecionado para edição.");
-            return InvitationService.update(editingInvite.id, payload);
-        },
-        onSuccess: () => {
-            toast.success("Convite atualizado com sucesso!");
-            queryClient.invalidateQueries({ queryKey: ["tenant_invitations"] });
-            setOpen(false);
-            resetForm();
-        },
-        onError: (err: any) => toast.error("Erro ao atualizar convite", { description: err.message }),
-    });
-
-    // ── Handlers ───────────────────────────────────────────────────────────────
-
-    const resetForm = () => {
-        setForm({ email: "", role: "" });
-        setEditingInvite(null);
-    };
-
-    const handleGerar = () => {
-        if (!form.email || !form.email.includes("@")) {
-            toast.error("Informe um e-mail válido.");
-            return;
-        }
-        if (!form.role) {
-            toast.error("Selecione um perfil de acesso.");
-            return;
-        }
-        if (editingInvite) {
-            updateMutation.mutate(form);
-            return;
-        }
-        inviteMutation.mutate(form);
-    };
-
-    const handleCopiarLink = async () => {
-        if (!conviteLink) return;
-
-        const validacao = await InvitationService.validateToken(conviteLink.token);
-        if (!validacao) {
-            toast.error("Link de convite inválido ou expirado.");
-            return;
-        }
-
-        await navigator.clipboard.writeText(conviteLink.link);
-        setCopied(true);
-        toast.success("Link copiado!");
-        setTimeout(() => setCopied(false), 2000);
-    };
-
-    const handleWhatsApp = () => {
-        if (!conviteLink) return;
-        const mensagem = encodeURIComponent(
-            `Olá! Você foi convidado para acessar o ERP Orbe. Clique no link para criar sua conta e entrar no sistema: ${conviteLink.link}`
-        );
-        window.open(`https://wa.me/?text=${mensagem}`, "_blank");
-    };
-
-    const handleDelete = (id: string) => {
-        if (confirm("Revogar este convite?")) {
-            deleteMutation.mutate(id);
-        }
-    };
-
-    const handleEdit = (inv: Invitation) => {
-        if (inv.accepted_at) {
-            toast.error("Convites já aceitos não podem ser editados.");
-            return;
-        }
-
-        if (new Date(inv.expires_at) <= new Date()) {
-            toast.error("Convites expirados não podem ser editados. Gere um novo.");
-            return;
-        }
-
-        setEditingInvite(inv);
-        setForm({
-            email: inv.email,
-            role: inv.role,
-        });
-        setOpen(true);
-    };
-
-    const handleCopiarConviteExistente = async (inv: Invitation) => {
-        const validacao = await InvitationService.validateToken(inv.token);
-        if (!validacao) {
-            toast.error("Este convite não está mais válido. Gere um novo link.");
-            return;
-        }
-
-        const link = buildInviteLink(inv.token);
-        await navigator.clipboard.writeText(link);
-        toast.success("Link copiado!");
-    };
-
-    // ── Render ─────────────────────────────────────────────────────────────────
-
+  if (!isAdmin) {
     return (
-        <AppShell title="Gestão de Usuários" subtitle="Convide membros para o seu tenant via link seguro">
-            <div className="space-y-4">
+      <AppShell
+        title="Gestão de Usuários e Acessos"
+        subtitle="Convide usuários, defina funções e controle permissões do ERP."
+      >
+        <div className="flex min-h-[50vh] items-center justify-center">
+          <div className="max-w-md rounded-3xl border border-border bg-card p-8 text-center shadow-sm">
+            <Shield className="mx-auto h-10 w-10 text-primary" />
+            <h2 className="mt-4 text-xl font-semibold text-foreground">
+              Acesso restrito
+            </h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Acesso restrito ao administrador da conta.
+            </p>
+          </div>
+        </div>
+      </AppShell>
+    );
+  }
 
-                {/* Toolbar */}
-                <div className="flex justify-between items-center bg-background p-2 rounded-lg border border-border/50">
-                    <div className="flex border rounded-lg overflow-hidden bg-background">
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className={cn("h-9 w-9 rounded-none border-r transition-all", viewMode === 'grid' ? "bg-muted text-primary" : "text-muted-foreground hover:text-primary")}
-                            onClick={() => setViewMode('grid')}
-                        >
-                            <LayoutGrid className="h-4 w-4" />
-                        </Button>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className={cn("h-9 w-9 rounded-none transition-all", viewMode === 'table' ? "bg-muted text-primary" : "text-muted-foreground hover:text-primary")}
-                            onClick={() => setViewMode('table')}
-                        >
-                            <List className="h-4 w-4" />
-                        </Button>
-                    </div>
-                    <div className="flex gap-2">
-                        <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-9 w-9"
-                            onClick={() => queryClient.invalidateQueries({ queryKey: ["tenant_invitations"] })}
-                        >
-                            <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
-                        </Button>
-                        <Button
-                            className="h-9 px-4 font-display font-semibold text-sm"
-                            onClick={() => setOpen(true)}
-                        >
-                            <UserPlus className="h-4 w-4 mr-1.5" /> Gerar Convite
-                        </Button>
-                    </div>
-                </div>
+  return (
+    <AppShell
+      title="Gestão de Usuários e Acessos"
+      subtitle="Convide usuários, defina funções e controle permissões do ERP."
+    >
+      <div className="space-y-6">
+        <section className="rounded-3xl border border-border bg-card p-5 shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
+                Administração da Conta
+              </p>
+              <h2 className="mt-2 text-2xl font-semibold text-foreground">
+                Fluxo multi-tenant controlado pelo admin
+              </h2>
+              <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
+                Apenas o administrador gera convites, define função, controla permissões por módulo e mantém todos os usuários vinculados ao mesmo tenant.
+              </p>
+            </div>
+            <Button onClick={handleOpenNewInvite} className="gap-2">
+              <Plus className="h-4 w-4" />
+              Novo convite
+            </Button>
+          </div>
+        </section>
 
-                {/* Lista de convites */}
-                <section className={cn(viewMode === 'table' ? "esc-card overflow-hidden" : "")}>
-                    {isLoading ? (
-                        <div className="flex items-center justify-center p-12 text-center flex-col gap-3">
-                            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                            <p className="text-xs text-muted-foreground animate-pulse font-medium uppercase tracking-widest">Carregando convites...</p>
-                        </div>
-                    ) : convites.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
-                            <div className="h-14 w-14 rounded-full bg-muted flex items-center justify-center">
-                                <Mail className="h-6 w-6 text-muted-foreground" />
-                            </div>
-                            <p className="text-sm font-medium text-foreground">Nenhum convite gerado</p>
-                            <p className="text-xs text-muted-foreground max-w-xs">Clique em "Gerar Convite" para convidar um novo membro para o seu tenant.</p>
-                        </div>
-                    ) : viewMode === 'table' ? (
-                        <table className="w-full text-sm">
-                            <thead className="esc-table-header">
-                                <tr className="text-left">
-                                    <th className="px-5 h-11 font-medium">E-mail Convidado</th>
-                                    <th className="px-3 h-11 font-medium">Perfil</th>
-                                    <th className="px-3 h-11 font-medium">Gerado em</th>
-                                    <th className="px-3 h-11 font-medium">Expira em</th>
-                                    <th className="px-5 h-11 font-medium text-center">Status</th>
-                                    <th className="px-5 h-11 font-medium text-right">Ações</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {convites.map((inv) => {
-                                    const status = getInviteStatus(inv);
-                                    const StatusIcon = status.icon;
-                                    return (
-                                        <tr key={inv.id} className="border-t border-muted hover:bg-background group">
-                                            <td className="px-5 h-[52px]">
-                                                <div className="flex items-center gap-2">
-                                                    <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                                                    <span className="font-medium text-foreground truncate max-w-[200px]">{inv.email}</span>
-                                                </div>
-                                            </td>
-                                            <td className="px-3">
-                                                <div className="flex items-center gap-1.5">
-                                                    <Shield className="h-3 w-3 text-primary" />
-                                                    <span className="text-muted-foreground">{getRoleLabel(inv.role)}</span>
-                                                </div>
-                                            </td>
-                                            <td className="px-3 text-muted-foreground text-xs">{formatDate(inv.created_at)}</td>
-                                            <td className="px-3 text-muted-foreground text-xs">{formatDate(inv.expires_at)}</td>
-                                            <td className="px-5 text-center">
-                                                <div className="flex items-center justify-center gap-1.5">
-                                                    <StatusIcon className={cn("h-3.5 w-3.5",
-                                                        status.variant === 'ok' ? "text-emerald-500" :
-                                                            status.variant === 'inconsistente' ? "text-destructive" :
-                                                                "text-amber-500"
-                                                    )} />
-                                                    <span className={cn("text-xs font-medium",
-                                                        status.variant === 'ok' ? "text-emerald-600" :
-                                                            status.variant === 'inconsistente' ? "text-destructive" :
-                                                                "text-amber-600"
-                                                    )}>{status.label}</span>
-                                                </div>
-                                            </td>
-                                            <td className="px-5 text-right">
-                                                <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    {/* Recopiar link se pendente */}
-                                                    {!inv.accepted_at && new Date(inv.expires_at) > new Date() && (
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="h-8 w-8"
-                                                            title="Editar convite"
-                                                            onClick={() => handleEdit(inv)}
-                                                        >
-                                                            <Pencil className="h-3.5 w-3.5" />
-                                                        </Button>
-                                                    )}
-                                                    {!inv.accepted_at && new Date(inv.expires_at) > new Date() && (
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="h-8 w-8"
-                                                            title="Copiar link do convite"
-                                                            onClick={() => handleCopiarConviteExistente(inv)}
-                                                        >
-                                                            <Copy className="h-3.5 w-3.5" />
-                                                        </Button>
-                                                    )}
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                                        onClick={() => handleDelete(inv.id)}
-                                                        title="Revogar convite"
-                                                    >
-                                                        <Trash2 className="h-3.5 w-3.5" />
-                                                    </Button>
-                                                </div>
-                                            </td>
-                                        </tr>
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            title="Usuários ativos"
+            value={cards.activeUsers}
+            icon={UserCheck}
+            tone="emerald"
+          />
+          <StatCard
+            title="Convites pendentes"
+            value={cards.pendingInvites}
+            icon={Mail}
+            tone="amber"
+          />
+          <StatCard
+            title="Convites expirados"
+            value={cards.expiredInvites}
+            icon={AlertCircle}
+            tone="zinc"
+          />
+          <StatCard
+            title="Usuários bloqueados"
+            value={cards.blockedUsers}
+            icon={UserX}
+            tone="rose"
+          />
+        </section>
+
+        <section className="overflow-hidden rounded-3xl border border-border bg-card shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-border px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-foreground">
+                Usuários vinculados e convites
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Todos os registros abaixo pertencem ao mesmo tenant do admin logado.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() =>
+                queryClient.invalidateQueries({
+                  queryKey: ["admin_user_access_overview"],
+                })
+              }
+            >
+              <RefreshCw className="h-4 w-4" />
+              Atualizar
+            </Button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-muted/40 text-left">
+                <tr>
+                  <th className="px-5 py-3 font-medium text-muted-foreground">
+                    Usuário
+                  </th>
+                  <th className="px-4 py-3 font-medium text-muted-foreground">
+                    E-mail
+                  </th>
+                  <th className="px-4 py-3 font-medium text-muted-foreground">
+                    Função
+                  </th>
+                  <th className="px-4 py-3 font-medium text-muted-foreground">
+                    Status
+                  </th>
+                  <th className="px-4 py-3 font-medium text-muted-foreground">
+                    Permissões
+                  </th>
+                  <th className="px-4 py-3 font-medium text-muted-foreground">
+                    Convite
+                  </th>
+                  <th className="px-4 py-3 font-medium text-muted-foreground">
+                    Último acesso
+                  </th>
+                  <th className="px-5 py-3 font-medium text-muted-foreground">
+                    Ações
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={8} className="px-5 py-10 text-center text-muted-foreground">
+                      Carregando gestão de acessos...
+                    </td>
+                  </tr>
+                ) : rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-5 py-10 text-center text-muted-foreground">
+                      Nenhum usuário vinculado ou convite encontrado para este tenant.
+                    </td>
+                  </tr>
+                ) : (
+                  rows.map((row) => {
+                    const summary = permissionsToSummary(row.permissions);
+                    const permissionCount = countGrantedModules(row.permissions);
+                    const isInvite = row.record_type === "invite";
+
+                    return (
+                      <tr key={row.record_id} className="border-t border-border align-top">
+                        <td className="px-5 py-4">
+                          <div className="font-medium text-foreground">
+                            {row.full_name || "Usuário sem nome"}
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {isInvite ? "Convite aguardando aceite" : "Vínculo ativo no tenant"}
+                          </div>
+                        </td>
+                        <td className="px-4 py-4 text-muted-foreground">
+                          {row.email}
+                        </td>
+                        <td className="px-4 py-4">
+                          <Badge variant="outline">
+                            {ACCESS_ROLE_LABELS[normalizeRole(row.role)]}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-4">
+                          <span
+                            className={cn(
+                              "inline-flex rounded-full border px-2.5 py-1 text-xs font-medium capitalize",
+                              statusStyles[row.status] || statusStyles.pendente,
+                            )}
+                          >
+                            {row.status.replace("_", " ")}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="font-medium text-foreground">
+                            {permissionCount} módulo(s)
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {summary.length > 0 ? summary.join(", ") : "Sem acesso liberado"}
+                          </div>
+                        </td>
+                        <td className="px-4 py-4 text-xs text-muted-foreground">
+                          <div>Enviado: {formatDateTime(row.invited_at)}</div>
+                          <div>Aceite: {formatDateTime(row.accepted_at)}</div>
+                          {row.expires_at ? (
+                            <div>Expira: {formatDateTime(row.expires_at)}</div>
+                          ) : null}
+                        </td>
+                        <td className="px-4 py-4 text-xs text-muted-foreground">
+                          {formatDateTime(row.last_access_at)}
+                        </td>
+                        <td className="px-5 py-4">
+                          <div className="flex flex-wrap gap-1.5">
+                            {isInvite ? (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className={cn("gap-1.5", tableActionButtonClass)}
+                                  onClick={() => handleCopyInviteLink(row)}
+                                >
+                                  <Copy className="h-3.5 w-3.5" />
+                                  Copiar
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className={cn("gap-1.5", tableActionButtonClass)}
+                                  onClick={() => renewInviteMutation.mutate(row)}
+                                >
+                                  <Link2 className="h-3.5 w-3.5" />
+                                  Reenviar
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className={cn("gap-1.5", tableActionButtonClass)}
+                                  onClick={() => handleEdit(row)}
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                  Editar
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className={cn(
+                                    tableActionButtonClass,
+                                    "gap-1.5 border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800",
+                                  )}
+                                  onClick={() => {
+                                    if (!row.invite_id) return;
+                                    const confirmed = window.confirm(
+                                      `Excluir o convite pendente de ${row.email}?`,
                                     );
-                                })}
-                            </tbody>
-                        </table>
-                    ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {convites.map((inv) => {
-                                const status = getInviteStatus(inv);
-                                const StatusIcon = status.icon;
-                                const isPending = !inv.accepted_at && new Date(inv.expires_at) > new Date();
-                                return (
-                                    <article key={inv.id} className="esc-card p-5 group flex flex-col justify-between">
-                                        <div>
-                                            <div className="flex justify-between items-start mb-4">
-                                                <div className="h-10 w-10 rounded-lg bg-primary-soft flex items-center justify-center text-primary">
-                                                    <Mail className="h-5 w-5" />
-                                                </div>
-                                                <div className={cn("flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-semibold",
-                                                    status.variant === 'ok' ? "bg-emerald-100 text-emerald-700" :
-                                                        status.variant === 'inconsistente' ? "bg-red-100 text-destructive" :
-                                                            "bg-amber-100 text-amber-700"
-                                                )}>
-                                                    <StatusIcon className="h-3 w-3" />
-                                                    {status.label}
-                                                </div>
-                                            </div>
-                                            <h3 className="font-display font-bold text-foreground mb-1 line-clamp-1 text-sm" title={inv.email}>{inv.email}</h3>
-                                            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-                                                <Shield className="h-3 w-3 text-primary" />
-                                                <span className="font-semibold uppercase text-primary">{getRoleLabel(inv.role)}</span>
-                                            </p>
-                                            <p className="text-[10px] text-muted-foreground mt-2">Expira: {formatDate(inv.expires_at)}</p>
-                                        </div>
-                                        <div className="mt-4 flex justify-end gap-1 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-all border-t pt-3">
-                                            {isPending && (
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-8 text-xs gap-1"
-                                                    onClick={() => handleEdit(inv)}
-                                                >
-                                                    <Pencil className="h-3 w-3" /> Editar
-                                                </Button>
-                                            )}
-                                            {isPending && (
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-8 text-xs gap-1"
-                                                    onClick={() => handleCopiarConviteExistente(inv)}
-                                                >
-                                                    <Copy className="h-3 w-3" /> Copiar link
-                                                </Button>
-                                            )}
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className="h-8 text-destructive text-xs"
-                                                onClick={() => handleDelete(inv.id)}
-                                            >
-                                                Revogar
-                                            </Button>
-                                        </div>
-                                    </article>
-                                );
-                            })}
-                        </div>
-                    )}
-                </section>
+                                    if (confirmed) {
+                                      deleteInviteMutation.mutate(row.invite_id);
+                                    }
+                                  }}
+                                >
+                                  <UserX className="h-3.5 w-3.5" />
+                                  Excluir
+                                </Button>
+                              </>
+                            ) : (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className={cn("gap-1.5", tableActionButtonClass)}
+                                  onClick={() => handleEdit(row)}
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                  Editar
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className={cn(
+                                    tableActionButtonClass,
+                                    row.status === "bloqueado"
+                                      ? "gap-1.5 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+                                      : "gap-1.5 border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800",
+                                  )}
+                                  onClick={() => handleToggleUserStatus(row)}
+                                >
+                                  {row.status === "bloqueado" ? (
+                                    <>
+                                      <Check className="h-3.5 w-3.5" />
+                                      Reativar
+                                    </>
+                                  ) : (
+                                    <>
+                                      <UserX className="h-3.5 w-3.5" />
+                                      Bloquear
+                                    </>
+                                  )}
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>
+              {editingRow
+                ? editingRow.record_type === "invite"
+                  ? "Editar convite"
+                  : "Editar permissões do usuário"
+                : "Novo convite"}
+            </DialogTitle>
+            <DialogDescription>
+              Configure função, validade e permissões granulares por módulo.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Nome</Label>
+                <Input
+                  value={form.fullName}
+                  disabled={editingRow?.record_type === "user"}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      fullName: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>E-mail</Label>
+                <Input
+                  type="email"
+                  value={form.email}
+                  disabled={Boolean(editingRow)}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      email: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Telefone</Label>
+                <Input
+                  value={form.phone}
+                  disabled={editingRow?.record_type === "user"}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      phone: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Função</Label>
+                <Select
+                  value={form.role}
+                  onValueChange={(value) =>
+                    setForm((current) => ({
+                      ...current,
+                      role: value,
+                    }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ACCESS_PRESET_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Preset de permissões</Label>
+                <Select value={form.preset} onValueChange={applyPreset}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ACCESS_PRESET_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {editingRow?.record_type === "user" ? (
+                <div className="space-y-2">
+                  <Label>Status do usuário</Label>
+                  <Select
+                    value={form.status}
+                    onValueChange={(value: "ativo" | "bloqueado") =>
+                      setForm((current) => ({ ...current, status: value }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ativo">Ativo</SelectItem>
+                      <SelectItem value="bloqueado">Bloqueado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label>Validade do convite</Label>
+                  <Input
+                    type="date"
+                    value={form.expiresAt}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        expiresAt: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              )}
             </div>
 
-            {/* ── Modal: Gerar Convite ───────────────────────────────────────────── */}
-            <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) resetForm(); }}>
-                <DialogContent className="max-w-md">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                                {editingInvite ? <Pencil className="h-4 w-4 text-primary" /> : <UserPlus className="h-4 w-4 text-primary" />}
-                            </div>
-                            {editingInvite ? "Editar Convite" : "Convidar Membro"}
-                        </DialogTitle>
-                        <DialogDescription>
-                            Um link seguro será gerado para que o convidado crie sua conta e acesse o tenant.
-                        </DialogDescription>
-                    </DialogHeader>
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-border bg-muted/20 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-medium text-foreground">
+                      Permissões customizadas
+                    </h4>
+                    <p className="text-sm text-muted-foreground">
+                      Ajuste o que o usuário pode ver, criar, editar, excluir e processar em cada módulo.
+                    </p>
+                  </div>
+                  <Badge variant="outline">
+                    {countGrantedModules(form.permissions)} módulo(s)
+                  </Badge>
+                </div>
+              </div>
 
-                    <div className="space-y-4 py-2">
-                        {/* E-mail */}
-                        <div className="space-y-1.5">
-                            <Label htmlFor="invite-email">E-mail do convidado</Label>
-                            <Input
-                                id="invite-email"
-                                type="email"
-                                placeholder="email@exemplo.com"
-                                value={form.email}
-                                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                                autoFocus
-                            />
-                        </div>
-
-                        {/* Perfil/Role */}
-                        <div className="space-y-1.5">
-                            <Label htmlFor="invite-role">Perfil de acesso</Label>
-                            <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v })}>
-                                <SelectTrigger id="invite-role">
-                                    <SelectValue placeholder="Selecione um perfil" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="admin">Administrador</SelectItem>
-                                    <SelectItem value="rh">RH</SelectItem>
-                                    <SelectItem value="financeiro">Financeiro</SelectItem>
-                                    <SelectItem value="encarregado">Encarregado</SelectItem>
-                                    <SelectItem value="user">Usuário</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        {/* Info */}
-                        <div className="flex gap-2 p-3 rounded-lg bg-muted/50 border border-border/50">
-                            <AlertCircle className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-                            <p className="text-xs text-muted-foreground leading-relaxed">
-                                O link expira em <strong>7 dias</strong>. O convidado será vinculado automaticamente ao seu tenant ao aceitar.
-                            </p>
-                        </div>
-                    </div>
-
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => { setOpen(false); resetForm(); }}>Cancelar</Button>
-                        <Button
-                            onClick={handleGerar}
-                            disabled={inviteMutation.isPending || updateMutation.isPending}
-                            className="gap-2"
+              <div className="overflow-x-auto rounded-2xl border border-border">
+                <table className="min-w-full text-xs">
+                  <thead className="bg-muted/40">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-medium text-muted-foreground">
+                        Módulo
+                      </th>
+                      {ACCESS_ACTIONS.map((action) => (
+                        <th
+                          key={action}
+                          className="px-2 py-3 text-center font-medium uppercase tracking-wide text-muted-foreground"
                         >
-                            {inviteMutation.isPending || updateMutation.isPending ? (
-                                <><Loader2 className="h-4 w-4 animate-spin" /> {editingInvite ? "Salvando..." : "Gerando..."}</>
-                            ) : (
-                                <>{editingInvite ? <Pencil className="h-4 w-4" /> : <Send className="h-4 w-4" />} {editingInvite ? "Salvar alterações" : "Gerar Convite"}</>
-                            )}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            {/* ── Modal: Link do Convite ─────────────────────────────────────────── */}
-            <Dialog open={!!conviteLink} onOpenChange={(v) => { if (!v) setConviteLink(null); }}>
-                <DialogContent className="max-w-md">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                            <div className="h-8 w-8 rounded-lg bg-emerald-100 flex items-center justify-center">
-                                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                          {action}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ACCESS_MODULES.map((moduleId) => (
+                      <tr key={moduleId} className="border-t border-border">
+                        <td className="px-4 py-3 font-medium text-foreground">
+                          {ACCESS_MODULE_LABELS[moduleId]}
+                        </td>
+                        {ACCESS_ACTIONS.map((action) => (
+                          <td key={action} className="px-2 py-3 text-center">
+                            <div className="flex justify-center">
+                              <Checkbox
+                                checked={Boolean(form.permissions[moduleId]?.[action])}
+                                onCheckedChange={(checked) =>
+                                  updatePermission(moduleId, action, Boolean(checked))
+                                }
+                              />
                             </div>
-                            Convite Gerado!
-                        </DialogTitle>
-                        <DialogDescription>
-                            Compartilhe o link abaixo com <strong>{conviteLink?.email}</strong>. Expira em 7 dias.
-                        </DialogDescription>
-                    </DialogHeader>
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
 
-                    {conviteLink && (
-                        <div className="space-y-4 py-2">
-                            {/* Link */}
-                            <div className="space-y-1.5">
-                                <Label>Link do convite</Label>
-                                <div className="flex gap-2">
-                                    <Input
-                                        readOnly
-                                        value={conviteLink.link}
-                                        className="font-mono text-xs bg-muted/50 text-muted-foreground"
-                                    />
-                                    <Button
-                                        variant="outline"
-                                        size="icon"
-                                        className={cn("h-10 w-10 shrink-0 transition-all", copied && "bg-emerald-50 border-emerald-300 text-emerald-600")}
-                                        onClick={handleCopiarLink}
-                                    >
-                                        {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                                    </Button>
-                                </div>
-                            </div>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setDialogOpen(false);
+                setEditingRow(null);
+                setForm(emptyInviteForm());
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={handleSubmit} className="gap-2">
+              <UserPlus className="h-4 w-4" />
+              {editingRow ? "Salvar alterações" : "Gerar convite"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-                            {/* Ações */}
-                            <div className="grid grid-cols-2 gap-3">
-                                <Button
-                                    variant="outline"
-                                    className="gap-2 h-11"
-                                    onClick={handleCopiarLink}
-                                >
-                                    {copied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
-                                    {copied ? "Copiado!" : "Copiar link"}
-                                </Button>
-                                <Button
-                                    className="gap-2 h-11 bg-[#25D366] hover:bg-[#1ebe5d] text-white"
-                                    onClick={handleWhatsApp}
-                                >
-                                    <Send className="h-4 w-4" />
-                                    WhatsApp
-                                </Button>
-                            </div>
+      <Dialog open={resultOpen} onOpenChange={setResultOpen}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Convite pronto para envio</DialogTitle>
+            <DialogDescription>
+              O usuário será vinculado ao mesmo tenant do admin ao concluir o cadastro.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-border bg-muted/30 p-4 text-sm text-foreground">
+              {generatedLink}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={async () => {
+                  await navigator.clipboard.writeText(generatedLink);
+                  toast.success("Link copiado.");
+                }}
+              >
+                <Copy className="h-4 w-4" />
+                Copiar link
+              </Button>
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={() => openWhatsAppShare(generatedLink)}
+              >
+                <MessageCircle className="h-4 w-4" />
+                Compartilhar via WhatsApp
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </AppShell>
+  );
+};
 
-                            <div className="p-3 rounded-lg bg-muted/40 border border-border/50">
-                                <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide mb-1">Mensagem WhatsApp</p>
-                                <p className="text-xs text-foreground/80 leading-relaxed">
-                                    Olá! Você foi convidado para acessar o ERP Orbe. Clique no link para criar sua conta e entrar no sistema: <span className="text-primary font-mono break-all">{conviteLink.link}</span>
-                                </p>
-                            </div>
-                        </div>
-                    )}
+const StatCard = ({
+  title,
+  value,
+  icon: Icon,
+  tone,
+}: {
+  title: string;
+  value: number;
+  icon: typeof UserCheck;
+  tone: "emerald" | "amber" | "rose" | "zinc";
+}) => {
+  const toneClass =
+    tone === "emerald"
+      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+      : tone === "amber"
+        ? "bg-amber-50 text-amber-700 border-amber-200"
+        : tone === "rose"
+          ? "bg-rose-50 text-rose-700 border-rose-200"
+          : "bg-zinc-50 text-zinc-700 border-zinc-200";
 
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setConviteLink(null)}>Fechar</Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-        </AppShell>
-    );
+  return (
+    <div className="rounded-3xl border border-border bg-card p-5 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm text-muted-foreground">{title}</p>
+          <p className="mt-3 text-3xl font-semibold text-foreground">{value}</p>
+        </div>
+        <div className={cn("rounded-2xl border p-3", toneClass)}>
+          <Icon className="h-5 w-5" />
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default UsuariosGestao;

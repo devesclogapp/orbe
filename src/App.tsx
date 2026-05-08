@@ -9,6 +9,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { TenantProvider } from "@/contexts/TenantContext";
 import { ClientProvider } from "@/contexts/ClientContext";
 import { OnboardingProvider } from "@/contexts/OnboardingContext";
+import { AccessControlProvider } from "@/contexts/AccessControlContext";
 import { AuthGuard } from "@/components/Auth/AuthGuard";
 import { PortalGuard } from "@/components/Auth/PortalGuard";
 // AI Chat disabled for operational mode
@@ -105,19 +106,21 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
       <TenantProvider>
-        <OnboardingProvider>
-          <ClientProvider>
-            <PreferencesProvider>
-              <SelectionProvider>
-                <TooltipProvider>
-                  <Toaster />
-                  <Sonner />
-                  <BrowserRouter>
-                    <Routes>
+        <AccessControlProvider>
+          <OnboardingProvider>
+            <ClientProvider>
+              <PreferencesProvider>
+                <SelectionProvider>
+                  <TooltipProvider>
+                    <Toaster />
+                    <Sonner />
+                    <BrowserRouter>
+                      <Routes>
                       {/* Public Auth Routes */}
                       <Route path="/login" element={<Login />} />
                       <Route path="/login/operacional" element={<LoginOperacional />} />
                       <Route path="/cadastro" element={<Cadastro />} />
+                      <Route path="/app/convite" element={<Cadastro />} />
                       <Route path="/esqueci-senha" element={<EsqueciSenha />} />
                       <Route path="/redefinir-senha" element={<RedefinirSenha />} />
                       <Route path="/verificar-email" element={<VerificarEmail />} />
@@ -185,6 +188,7 @@ const App = () => (
                       {/* Governança V4 */}
                       <Route path="/governanca" element={<AuthGuard><CentralGovernanca /></AuthGuard>} />
                       <Route path="/governanca/usuarios" element={<AuthGuard><UsuariosGestao /></AuthGuard>} />
+                      <Route path="/admin/usuarios-acessos" element={<AuthGuard><UsuariosGestao /></AuthGuard>} />
                       <Route path="/governanca/perfis" element={<AuthGuard><PerfisPermissoes /></AuthGuard>} />
                       <Route path="/governanca/auditoria" element={<AuthGuard><AuditoriaLogs /></AuthGuard>} />
                       <Route path="/governanca/automacao" element={<AuthGuard><AutomacaoOperacional /></AuthGuard>} />
@@ -195,13 +199,14 @@ const App = () => (
                       <Route path="/styleguide" element={<Styleguide />} />
 
                       <Route path="*" element={<NotFound />} />
-                    </Routes>
-                  </BrowserRouter>
-                </TooltipProvider>
-              </SelectionProvider>
-            </PreferencesProvider>
-          </ClientProvider>
-        </OnboardingProvider>
+                      </Routes>
+                    </BrowserRouter>
+                  </TooltipProvider>
+                </SelectionProvider>
+              </PreferencesProvider>
+            </ClientProvider>
+          </OnboardingProvider>
+        </AccessControlProvider>
       </TenantProvider>
     </AuthProvider>
   </QueryClientProvider>
