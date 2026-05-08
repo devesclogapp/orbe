@@ -64,6 +64,16 @@ export default function AutomacaoOperacional() {
             case 'conta_bancaria_invalida':
                 navigate(`/financeiro/contas`);
                 break;
+            case 'falta_nao_justificada':
+            case 'excesso_horas':
+            case 'ponto_incompleto':
+                navigate(`/rh/pontos?colaborador_id=${alerta.contexto_json?.colaborador_id}`);
+                break;
+            case 'ciclo_invalidado_automaticamente':
+            case 'ciclo_sem_aprovacao':
+            case 'fechamento_atrasado':
+                navigate(`/operacional/fechamento`);
+                break;
             default:
                 break;
         }
@@ -104,13 +114,16 @@ export default function AutomacaoOperacional() {
                                         <li key={a.id} className="p-3 border border-border rounded-lg bg-background flex flex-col gap-2">
                                             <div className="flex items-start justify-between gap-2 font-medium">
                                                 <div className="flex items-center gap-2">
-                                                    {a.severidade === 'critical' || a.severidade === 'error' ? (
+                                                    {a.severidade === 'critical' ? (
                                                         <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
+                                                    ) : a.severidade === 'high' ? (
+                                                        <AlertTriangle className="h-4 w-4 text-orange-500 shrink-0" />
                                                     ) : (
                                                         <CheckCircle className="h-4 w-4 text-warning shrink-0" />
                                                     )}
                                                     <span className="text-sm">{a.tipo.replace(/_/g, ' ').toUpperCase()}</span>
                                                 </div>
+                                                <Badge variant="outline" className={`text-[10px] uppercase ${a.severidade === 'critical' ? 'border-destructive text-destructive' : a.severidade === 'high' ? 'border-orange-500 text-orange-500' : ''}`}>{a.severidade}</Badge>
                                             </div>
                                             <p className="text-sm text-muted-foreground">{a.mensagem}</p>
                                             
