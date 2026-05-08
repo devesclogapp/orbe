@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAccessControl } from "@/contexts/AccessControlContext";
@@ -12,8 +12,17 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
     const { session, loading } = useAuth();
     const { role, canAccess, isBlocked, loading: accessLoading } = useAccessControl();
     const location = useLocation();
+    const hasResolvedRoute = useRef(false);
 
-    if (loading || accessLoading) {
+    useEffect(() => {
+        if (!loading && !accessLoading) {
+            hasResolvedRoute.current = true;
+        }
+    }, [loading, accessLoading]);
+
+    const shouldBlockScreen = !hasResolvedRoute.current && (loading || accessLoading);
+
+    if (shouldBlockScreen) {
         return (
             <div className="flex items-center justify-center min-h-screen bg-background">
                 <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />

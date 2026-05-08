@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useMemo } from "react";
+import React, { createContext, useContext, useEffect, useState, useMemo, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 
 interface Tenant {
@@ -22,14 +22,21 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [role, setRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const hasResolvedInitialLoad = useRef(false);
 
-  const fetchTenant = async () => {
+  const fetchTenant = async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? hasResolvedInitialLoad.current;
+
     try {
-      setLoading(true);
+      if (!silent) {
+        setLoading(true);
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         setTenant(null);
         setRole(null);
+        hasResolvedInitialLoad.current = true;
         return;
       }
 
@@ -43,8 +50,11 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       
       if (profileError || !profile?.tenant_id) {
         console.warn("[TenantContext] Usuário sem tenant vinculado:", user.email, "Profile:", profile);
-        setTenant(null);
-        setRole(null);
+        if (!silent) {
+          setTenant(null);
+          setRole(null);
+        }
+        hasResolvedInitialLoad.current = true;
         return;
       }
 
@@ -59,30 +69,39 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       if (tenantError || !tenantData) {
         console.warn("[TenantContext] Tenant não encontrado:", profile.tenant_id);
-        setTenant(null);
+        if (!silent) {
+          setTenant(null);
+        }
+        hasResolvedInitialLoad.current = true;
         return;
       }
 
       setTenant(tenantData);
+      hasResolvedInitialLoad.current = true;
     } catch (error) {
       console.error("[TenantContext] Erro ao buscar tenant:", error);
-      setTenant(null);
-      setRole(null);
+      if (!silent) {
+        setTenant(null);
+        setRole(null);
+      }
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    fetchTenant();
+    fetchTenant({ silent: false });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
-        fetchTenant();
+        fetchTenant({ silent: true });
       } else {
         setTenant(null);
         setRole(null);
         setLoading(false);
+        hasResolvedInitialLoad.current = true;
       }
     });
 
