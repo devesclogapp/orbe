@@ -21,6 +21,41 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 
+const VALID_DB_COLUMNS_EMPRESAS = [
+  'nome', 'cnpj', 'unidade', 'cidade', 'estado',
+  'status', 'banco_codigo', 'agencia', 'agencia_digito',
+  'conta', 'conta_digito', 'convenio_bancario',
+  'codigo_empresa_banco', 'nome_empresa_banco',
+  'tenant_id', 'id', 'created_at', 'updated_at'
+];
+
+function sanitizeEmpresaPayload(form: Record<string, any>): Record<string, any> {
+  const sanitized: Record<string, any> = {};
+  for (const key of VALID_DB_COLUMNS_EMPRESAS) {
+    if (form[key] !== undefined) {
+      sanitized[key] = form[key] === '' ? null : form[key];
+    }
+  }
+  return sanitized;
+}
+
+function formatCNPJ(value: string): string {
+  const digits = value.replace(/\D/g, '').slice(0, 14);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 5) return `${digits.slice(0, 2)}.${digits.slice(2)}`;
+  if (digits.length <= 8) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5)}`;
+  if (digits.length <= 12) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8)}`;
+  return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`;
+}
+
+function validateCNPJ(cnpj: string): { valid: boolean; reason?: string } {
+  if (!cnpj || cnpj.trim() === '') return { valid: false, reason: 'CNPJ é obrigatório.' };
+  const digits = cnpj.replace(/\D/g, '');
+  if (digits.length !== 14) return { valid: false, reason: 'CNPJ deve ter 14 dígitos.' };
+  if (/^(.)\1+$/.test(digits)) return { valid: false, reason: 'CNPJ inválido.' };
+  return { valid: true };
+}
+
 const Empresas = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -30,6 +65,7 @@ const Empresas = () => {
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [form, setForm] = useState({
     nome: "",
     cnpj: "",
@@ -54,6 +90,7 @@ const Empresas = () => {
       nome_empresa_banco: ""
     });
     setEditingId(null);
+    setFormErrors({});
   };
 
   // RLS garante que a query retorna apenas empresas do tenant logado
@@ -69,7 +106,7 @@ const Empresas = () => {
       ? EmpresaService.update(editingId, payload)
       : EmpresaService.create(payload),
     onSuccess: () => {
-      toast.success(editingId ? "Empresa atualizada" : "Empresa cadastrada");
+      toast.success(editingId ? "Empresa atualizada com sucesso." : "Empresa cadastrada com sucesso.");
       queryClient.invalidateQueries({ queryKey: ["empresas"] });
       setOpen(false);
       reset();
@@ -80,16 +117,32 @@ const Empresas = () => {
         window.location.href = "/onboarding";
       }
     },
-    onError: (err: any) => toast.error(editingId ? "Erro ao atualizar" : "Erro ao cadastrar", { description: err.message })
+    onError: (err: any) => {
+      const msg = err?.message || '';
+      if (msg.includes('duplicate') || msg.includes('unique') || msg.includes('já existe')) {
+        toast.error("Já existe uma empresa cadastrada com este CNPJ.", { duration: 5000 });
+      } else {
+        toast.error(editingId ? "Erro ao atualizar empresa." : "Erro ao salvar empresa.", { description: msg });
+      }
+    }
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => EmpresaService.delete(id),
+    mutationFn: async (id: string) => {
+      const result = await EmpresaService.deleteWithCheck(id);
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      return result;
+    },
     onSuccess: () => {
-      toast.success("Empresa removida");
+      toast.success("Empresa removida com sucesso.");
       queryClient.invalidateQueries({ queryKey: ["empresas"] });
     },
-    onError: (err: any) => toast.error("Erro ao remover", { description: err.message })
+    onError: (err: any) => {
+      const msg = err?.message || '';
+      toast.error(msg || "Erro ao remover empresa.");
+    }
   });
 
   const handleEdit = (e: any) => {
@@ -113,17 +166,34 @@ const Empresas = () => {
   };
 
   const handleDelete = (id: string) => {
-    if (confirm("Deseja realmente remover esta empresa? Todos os colaboradores e registros vinculados serão afetados.")) {
+    if (confirm("Tem certeza que deseja excluir esta empresa? Colaboradores e registros vinculados serão afetados.")) {
       deleteMutation.mutate(id);
     }
   };
 
   const submit = () => {
-    if (!form.nome.trim() || !form.cnpj.trim()) {
-      toast.error("Preencha o nome e CNPJ");
+    const errors: Record<string, string> = {};
+
+    if (!form.nome.trim()) errors.nome = "Nome da empresa é obrigatório.";
+    if (!form.cnpj.trim()) errors.cnpj = "CNPJ é obrigatório.";
+    if (!form.unidade.trim()) errors.unidade = "Unidade é obrigatória.";
+    if (!form.cidade.trim()) errors.cidade = "Cidade é obrigatória.";
+    if (!form.estado.trim()) errors.estado = "Estado é obrigatório.";
+
+    const cnpjValidation = validateCNPJ(form.cnpj);
+    if (!cnpjValidation.valid && form.cnpj.trim()) {
+      errors.cnpj = cnpjValidation.reason!;
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      toast.error("Preencha todos os campos obrigatórios.");
       return;
     }
-    createMutation.mutate(form);
+
+    setFormErrors({});
+    const sanitizedPayload = sanitizeEmpresaPayload(form);
+    createMutation.mutate(sanitizedPayload);
   };
 
   const handleImport = async (data: any[]) => {
@@ -318,26 +388,74 @@ const Empresas = () => {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="space-y-1.5">
-              <Label htmlFor="nome">Nome da Empresa</Label>
-              <Input id="nome" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
+              <Label htmlFor="nome">Nome da Empresa <span className="text-destructive">*</span></Label>
+              <Input
+                id="nome"
+                value={form.nome}
+                onChange={(e) => {
+                  setForm({ ...form, nome: e.target.value });
+                  if (formErrors.nome) setFormErrors({ ...formErrors, nome: '' });
+                }}
+                className={formErrors.nome ? "border-destructive" : ""}
+              />
+              {formErrors.nome && <p className="text-xs text-destructive mt-1">{formErrors.nome}</p>}
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="cnpj">CNPJ</Label>
-              <Input id="cnpj" value={form.cnpj} onChange={(e) => setForm({ ...form, cnpj: e.target.value })} placeholder="00.000.000/0001-00" />
+              <Label htmlFor="cnpj">CNPJ <span className="text-destructive">*</span></Label>
+              <Input
+                id="cnpj"
+                value={form.cnpj}
+                onChange={(e) => {
+                  const formatted = formatCNPJ(e.target.value);
+                  setForm({ ...form, cnpj: formatted });
+                  if (formErrors.cnpj) setFormErrors({ ...formErrors, cnpj: '' });
+                }}
+                placeholder="00.000.000/0001-00"
+                className={formErrors.cnpj ? "border-destructive focus-visible:ring-destructive" : ""}
+              />
+              {formErrors.cnpj && <p className="text-xs text-destructive mt-1">{formErrors.cnpj}</p>}
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label htmlFor="unidade">Unidade (Filial)</Label>
-                <Input id="unidade" value={form.unidade} onChange={(e) => setForm({ ...form, unidade: e.target.value })} />
+                <Label htmlFor="unidade">Unidade (Filial) <span className="text-destructive">*</span></Label>
+                <Input
+                  id="unidade"
+                  value={form.unidade}
+                  onChange={(e) => {
+                    setForm({ ...form, unidade: e.target.value });
+                    if (formErrors.unidade) setFormErrors({ ...formErrors, unidade: '' });
+                  }}
+                  className={formErrors.unidade ? "border-destructive" : ""}
+                />
+                {formErrors.unidade && <p className="text-xs text-destructive mt-1">{formErrors.unidade}</p>}
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="cidade">Cidade</Label>
-                <Input id="cidade" value={form.cidade} onChange={(e) => setForm({ ...form, cidade: e.target.value })} />
+                <Label htmlFor="cidade">Cidade <span className="text-destructive">*</span></Label>
+                <Input
+                  id="cidade"
+                  value={form.cidade}
+                  onChange={(e) => {
+                    setForm({ ...form, cidade: e.target.value });
+                    if (formErrors.cidade) setFormErrors({ ...formErrors, cidade: '' });
+                  }}
+                  className={formErrors.cidade ? "border-destructive" : ""}
+                />
+                {formErrors.cidade && <p className="text-xs text-destructive mt-1">{formErrors.cidade}</p>}
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="estado">Estado (UF)</Label>
-              <Input id="estado" value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value })} maxLength={2} />
+              <Label htmlFor="estado">Estado (UF) <span className="text-destructive">*</span></Label>
+              <Input
+                id="estado"
+                value={form.estado}
+                onChange={(e) => {
+                  setForm({ ...form, estado: e.target.value.toUpperCase().slice(0, 2) });
+                  if (formErrors.estado) setFormErrors({ ...formErrors, estado: '' });
+                }}
+                maxLength={2}
+                className={formErrors.estado ? "border-destructive" : ""}
+              />
+              {formErrors.estado && <p className="text-xs text-destructive mt-1">{formErrors.estado}</p>}
             </div>
 
             {/* Secao Dados Bancarios */}

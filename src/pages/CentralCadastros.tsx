@@ -85,6 +85,41 @@ const TECHNICAL_COLUMNS = [
   "AUTH_ID",
 ];
 
+const VALID_DB_COLUMNS_EMPRESAS = [
+  'nome', 'cnpj', 'unidade', 'cidade', 'estado',
+  'status', 'banco_codigo', 'agencia', 'agencia_digito',
+  'conta', 'conta_digito', 'convenios_bancario',
+  'codigo_empresa_banco', 'nome_empresa_banco',
+  'tenant_id', 'id', 'created_at', 'updated_at'
+];
+
+function sanitizeEmpresaPayload(form: Record<string, any>): Record<string, any> {
+  const sanitized: Record<string, any> = {};
+  for (const key of VALID_DB_COLUMNS_EMPRESAS) {
+    if (form[key] !== undefined) {
+      sanitized[key] = form[key] === '' ? null : form[key];
+    }
+  }
+  return sanitized;
+}
+
+function formatCNPJ(value: string): string {
+  const digits = value.replace(/\D/g, '').slice(0, 14);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 5) return `${digits.slice(0, 2)}.${digits.slice(2)}`;
+  if (digits.length <= 8) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5)}`;
+  if (digits.length <= 12) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8)}`;
+  return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`;
+}
+
+function validateCNPJ(cnpj: string): { valid: boolean; reason?: string } {
+  if (!cnpj || cnpj.trim() === '') return { valid: false, reason: 'CNPJ é obrigatório.' };
+  const digits = cnpj.replace(/\D/g, '');
+  if (digits.length !== 14) return { valid: false, reason: 'CNPJ deve ter 14 dígitos.' };
+  if (/^(.)\1+$/.test(digits)) return { valid: false, reason: 'CNPJ inválido.' };
+  return { valid: true };
+}
+
 const normalizeText = (value: string) =>
   value
     .normalize("NFD")
@@ -191,18 +226,27 @@ const CentralCadastros = () => {
     banco_codigo: "", agencia: "", agencia_digito: "", conta: "", conta_digito: "",
     convenios_bancario: "", codigo_empresa_banco: "", nome_empresa_banco: "",
   });
+  const [empresaFormErrors, setEmpresaFormErrors] = useState<Record<string, string>>({});
 
   const [editingEmpresa, setEditingEmpresa] = useState<any>(null);
   const updateEmpresaMutation = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: any }) => EmpresaService.update(id, payload),
     onSuccess: async () => {
-      toast.success("Empresa atualizada com sucesso");
+      toast.success("Empresa atualizada com sucesso.");
       setEditingEmpresa(null);
+      setEmpresaFormErrors({});
       await queryClient.cancelQueries({ queryKey: ["empresas"] });
       queryClient.removeQueries({ queryKey: ["empresas"] });
       await queryClient.invalidateQueries({ queryKey: ["empresas"] });
     },
-    onError: (err: any) => toast.error("Erro ao atualizar", { description: err.message }),
+    onError: (err: any) => {
+      const msg = err?.message || '';
+      if (msg.includes('duplicate') || msg.includes('unique') || msg.includes('já existe')) {
+        toast.error("Já existe uma empresa cadastrada com este CNPJ.", { duration: 5000 });
+      } else {
+        toast.error("Erro ao atualizar empresa.", { description: msg });
+      }
+    },
   });
 
   const [coletorModalOpen, setColetorModalOpen] = useState(false);
@@ -383,8 +427,10 @@ const CentralCadastros = () => {
   const createEmpresaMutation = useMutation({
     mutationFn: (payload: any) => EmpresaService.create(payload),
     onSuccess: async () => {
-      toast.success("Empresa cadastrada com sucesso");
+      toast.success("Empresa cadastrada com sucesso.");
       setEmpresaModalOpen(false);
+      setEmpresaFormErrors({});
+      setEditingEmpresa(null);
       setEmpresaForm({
         nome: "", cnpj: "", unidade: "", cidade: "", estado: "",
         banco_codigo: "", agencia: "", agencia_digito: "", conta: "", conta_digito: "",
@@ -394,18 +440,34 @@ const CentralCadastros = () => {
       const data = await queryClient.fetchQuery({ queryKey: ["empresas"], queryFn: () => EmpresaService.getWithCounts() });
       queryClient.setQueryData(["empresas"], data);
     },
-    onError: (err: any) => toast.error("Erro ao cadastrar", { description: err.message }),
+    onError: (err: any) => {
+      const msg = err?.message || '';
+      if (msg.includes('duplicate') || msg.includes('unique') || msg.includes('já existe')) {
+        toast.error("Já existe uma empresa cadastrada com este CNPJ.", { duration: 5000 });
+      } else {
+        toast.error("Erro ao salvar empresa.", { description: msg });
+      }
+    },
   });
 
   const deleteEmpresaMutation = useMutation({
-    mutationFn: (id: string) => EmpresaService.delete(id),
+    mutationFn: async (id: string) => {
+      const result = await EmpresaService.deleteWithCheck(id);
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      return result;
+    },
     onSuccess: async () => {
       toast.success("Empresa excluída com sucesso");
       await queryClient.cancelQueries({ queryKey: ["empresas"] });
       queryClient.removeQueries({ queryKey: ["empresas"] });
       await queryClient.invalidateQueries({ queryKey: ["empresas"] });
     },
-    onError: (err: any) => toast.error("Erro ao excluir", { description: err.message }),
+    onError: (err: any) => {
+      const msg = err?.message || '';
+      toast.error(msg || "Erro ao excluir empresa.");
+    },
   });
 
   const createColetorMutation = useMutation({
@@ -1120,7 +1182,26 @@ const deleteFornecedorMutation = useMutation({
                             </td>
                             <td className="px-3 text-center">
                               <div className="flex items-center justify-center gap-1">
-                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingEmpresa(empresa)}>
+                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
+                                  setEditingEmpresa(empresa);
+                                  setEmpresaForm({
+                                    nome: empresa.nome || '',
+                                    cnpj: empresa.cnpj || '',
+                                    unidade: empresa.unidade || '',
+                                    cidade: empresa.cidade || '',
+                                    estado: empresa.estado || '',
+                                    banco_codigo: empresa.banco_codigo || '',
+                                    agencia: empresa.agencia || '',
+                                    agencia_digito: empresa.agencia_digito || '',
+                                    conta: empresa.conta || '',
+                                    conta_digito: empresa.conta_digito || '',
+                                    convenios_bancario: empresa.convenios_bancario || '',
+                                    codigo_empresa_banco: empresa.codigo_empresa_banco || '',
+                                    nome_empresa_banco: empresa.nome_empresa_banco || '',
+                                  });
+                                  setEmpresaFormErrors({});
+                                  setEmpresaModalOpen(true);
+                                }}>
                                   <PencilLine className="h-4 w-4" />
                                 </Button>
                                 <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => { if (confirm("Confirmar exclusão?")) deleteEmpresaMutation.mutate(empresa.id) }}>
@@ -1864,36 +1945,90 @@ const deleteFornecedorMutation = useMutation({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={empresaModalOpen} onOpenChange={setEmpresaModalOpen}>
+      <Dialog open={empresaModalOpen} onOpenChange={(open) => {
+        setEmpresaModalOpen(open);
+        if (!open) {
+          setEmpresaFormErrors({});
+          setEditingEmpresa(null);
+        }
+      }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Nova Empresa</DialogTitle>
+            <DialogTitle>{editingEmpresa ? "Editar Empresa" : "Nova Empresa"}</DialogTitle>
             <DialogDescription>
-              Cadastre uma nova unidade operacional no sistema.
+              {editingEmpresa ? "Atualize as informações da unidade operacional." : "Cadastre uma nova unidade operacional no sistema."}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="space-y-1.5">
-              <Label htmlFor="emp_nome">Nome da Empresa</Label>
-              <Input id="emp_nome" value={empresaForm.nome} onChange={(e) => setEmpresaForm({ ...empresaForm, nome: e.target.value })} />
+              <Label htmlFor="emp_nome">Nome da Empresa <span className="text-destructive">*</span></Label>
+              <Input
+                id="emp_nome"
+                value={empresaForm.nome}
+                onChange={(e) => {
+                  setEmpresaForm({ ...empresaForm, nome: e.target.value });
+                  if (empresaFormErrors.nome) setEmpresaFormErrors({ ...empresaFormErrors, nome: '' });
+                }}
+                className={empresaFormErrors.nome ? "border-destructive" : ""}
+              />
+              {empresaFormErrors.nome && <p className="text-xs text-destructive mt-1">{empresaFormErrors.nome}</p>}
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="emp_cnpj">CNPJ</Label>
-              <Input id="emp_cnpj" value={empresaForm.cnpj} onChange={(e) => setEmpresaForm({ ...empresaForm, cnpj: e.target.value })} placeholder="00.000.000/0001-00" />
+              <Label htmlFor="emp_cnpj">CNPJ <span className="text-destructive">*</span></Label>
+              <Input
+                id="emp_cnpj"
+                value={empresaForm.cnpj}
+                onChange={(e) => {
+                  const formatted = formatCNPJ(e.target.value);
+                  setEmpresaForm({ ...empresaForm, cnpj: formatted });
+                  if (empresaFormErrors.cnpj) setEmpresaFormErrors({ ...empresaFormErrors, cnpj: '' });
+                }}
+                placeholder="00.000.000/0001-00"
+                className={empresaFormErrors.cnpj ? "border-destructive" : ""}
+              />
+              {empresaFormErrors.cnpj && <p className="text-xs text-destructive mt-1">{empresaFormErrors.cnpj}</p>}
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label htmlFor="emp_unidade">Unidade (Filial)</Label>
-                <Input id="emp_unidade" value={empresaForm.unidade} onChange={(e) => setEmpresaForm({ ...empresaForm, unidade: e.target.value })} />
+                <Label htmlFor="emp_unidade">Unidade (Filial) <span className="text-destructive">*</span></Label>
+                <Input
+                  id="emp_unidade"
+                  value={empresaForm.unidade}
+                  onChange={(e) => {
+                    setEmpresaForm({ ...empresaForm, unidade: e.target.value });
+                    if (empresaFormErrors.unidade) setEmpresaFormErrors({ ...empresaFormErrors, unidade: '' });
+                  }}
+                  className={empresaFormErrors.unidade ? "border-destructive" : ""}
+                />
+                {empresaFormErrors.unidade && <p className="text-xs text-destructive mt-1">{empresaFormErrors.unidade}</p>}
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="emp_cidade">Cidade</Label>
-                <Input id="emp_cidade" value={empresaForm.cidade} onChange={(e) => setEmpresaForm({ ...empresaForm, cidade: e.target.value })} />
+                <Label htmlFor="emp_cidade">Cidade <span className="text-destructive">*</span></Label>
+                <Input
+                  id="emp_cidade"
+                  value={empresaForm.cidade}
+                  onChange={(e) => {
+                    setEmpresaForm({ ...empresaForm, cidade: e.target.value });
+                    if (empresaFormErrors.cidade) setEmpresaFormErrors({ ...empresaFormErrors, cidade: '' });
+                  }}
+                  className={empresaFormErrors.cidade ? "border-destructive" : ""}
+                />
+                {empresaFormErrors.cidade && <p className="text-xs text-destructive mt-1">{empresaFormErrors.cidade}</p>}
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="emp_estado">Estado (UF)</Label>
-              <Input id="emp_estado" value={empresaForm.estado} onChange={(e) => setEmpresaForm({ ...empresaForm, estado: e.target.value })} maxLength={2} />
+              <Label htmlFor="emp_estado">Estado (UF) <span className="text-destructive">*</span></Label>
+              <Input
+                id="emp_estado"
+                value={empresaForm.estado}
+                onChange={(e) => {
+                  setEmpresaForm({ ...empresaForm, estado: e.target.value.toUpperCase().slice(0, 2) });
+                  if (empresaFormErrors.estado) setEmpresaFormErrors({ ...empresaFormErrors, estado: '' });
+                }}
+                maxLength={2}
+                className={empresaFormErrors.estado ? "border-destructive" : ""}
+              />
+              {empresaFormErrors.estado && <p className="text-xs text-destructive mt-1">{empresaFormErrors.estado}</p>}
             </div>
             <div className="col-span-full border-t pt-4 mt-2">
               <h4 className="text-sm font-semibold mb-3">Dados Bancários</h4>
@@ -1924,31 +2059,36 @@ const deleteFornecedorMutation = useMutation({
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEmpresaModalOpen(false)}>Cancelar</Button>
+            <Button variant="outline" onClick={() => { setEmpresaModalOpen(false); setEmpresaFormErrors({}); setEditingEmpresa(null); }}>Cancelar</Button>
             <Button onClick={() => {
-              if (!empresaForm.nome?.trim()) {
-                toast.error("Informe o nome da empresa");
+              const errors: Record<string, string> = {};
+
+              if (!empresaForm.nome?.trim()) errors.nome = "Nome da empresa é obrigatório.";
+              if (!empresaForm.cnpj?.trim()) errors.cnpj = "CNPJ é obrigatório.";
+              if (!empresaForm.unidade?.trim()) errors.unidade = "Unidade é obrigatória.";
+              if (!empresaForm.cidade?.trim()) errors.cidade = "Cidade é obrigatória.";
+              if (!empresaForm.estado?.trim()) errors.estado = "Estado é obrigatório.";
+
+              const cnpjValidation = validateCNPJ(empresaForm.cnpj);
+              if (!cnpjValidation.valid && empresaForm.cnpj.trim()) {
+                errors.cnpj = cnpjValidation.reason!;
+              }
+
+              if (Object.keys(errors).length > 0) {
+                setEmpresaFormErrors(errors);
+                toast.error("Preencha todos os campos obrigatórios.");
                 return;
               }
-              if (!empresaForm.cnpj?.trim()) {
-                toast.error("Informe o CNPJ");
-                return;
+
+              setEmpresaFormErrors({});
+              const sanitized = sanitizeEmpresaPayload(empresaForm);
+              if (editingEmpresa) {
+                updateEmpresaMutation.mutate({ id: editingEmpresa.id, payload: sanitized });
+              } else {
+                createEmpresaMutation.mutate(sanitized);
               }
-              if (!empresaForm.unidade?.trim()) {
-                toast.error("Informe a unidade");
-                return;
-              }
-              if (!empresaForm.cidade?.trim()) {
-                toast.error("Informe a cidade");
-                return;
-              }
-              if (!empresaForm.estado?.trim()) {
-                toast.error("Informe o estado");
-                return;
-              }
-              createEmpresaMutation.mutate(empresaForm);
-            }} disabled={createEmpresaMutation.isPending}>
-              {createEmpresaMutation.isPending ? "Salvando..." : "Salvar"}
+            }} disabled={createEmpresaMutation.isPending || updateEmpresaMutation.isPending}>
+              {(createEmpresaMutation.isPending || updateEmpresaMutation.isPending) ? "Salvando..." : editingEmpresa ? "Salvar alterações" : "Salvar"}
             </Button>
           </DialogFooter>
         </DialogContent>

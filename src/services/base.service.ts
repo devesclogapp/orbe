@@ -225,6 +225,22 @@ class EmpresaServiceClass extends BaseService<'empresas'> {
   async create(payload: Record<string, any>) {
     const tenantId = await getCurrentTenantId();
     
+    const cnpjDigits = (payload.cnpj || '').replace(/\D/g, '');
+    
+    // Bloquear duplicidade de CNPJ dentro do mesmo tenant
+    if (cnpjDigits) {
+      const { data: existing } = await supabase
+        .from('empresas')
+        .select('id, nome')
+        .eq('tenant_id', tenantId)
+        .eq('cnpj', payload.cnpj)
+        .maybeSingle();
+      
+      if (existing) {
+        throw new Error(`Já existe uma empresa "${existing.nome}" cadastrada com este CNPJ.`);
+      }
+    }
+
     const payloadWithTenant = {
       ...payload,
       tenant_id: tenantId
@@ -236,8 +252,91 @@ class EmpresaServiceClass extends BaseService<'empresas'> {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      if (error.code === '23505' || String(error.message).toLowerCase().includes('unique')) {
+        throw new Error('Já existe uma empresa cadastrada com este CNPJ.');
+      }
+      throw error;
+    }
     return data;
+  }
+  
+  async update(id: string, payload: Record<string, any>) {
+    const tenantId = await getCurrentTenantId();
+    
+    const cnpjDigits = (payload.cnpj || '').replace(/\D/g, '');
+    
+    if (cnpjDigits) {
+      const { data: existing } = await supabase
+        .from('empresas')
+        .select('id, nome')
+        .eq('tenant_id', tenantId)
+        .eq('cnpj', payload.cnpj)
+        .neq('id', id)
+        .maybeSingle();
+      
+      if (existing) {
+        throw new Error(`Já existe uma empresa "${existing.nome}" cadastrada com este CNPJ.`);
+      }
+    }
+
+    const { data, error } = await supabase
+      .from('empresas')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      if (error.code === '23505' || String(error.message).toLowerCase().includes('unique')) {
+        throw new Error('Já existe uma empresa cadastrada com este CNPJ.');
+      }
+      throw error;
+    }
+    return data;
+  }
+  
+  async deleteWithCheck(id: string): Promise<{ success: boolean; error?: string }> {
+    const { data: colaborador } = await supabase
+      .from('colaboradores')
+      .select('id')
+      .eq('empresa_id', id)
+      .limit(1)
+      .maybeSingle();
+    
+    if (colaborador) {
+      return { success: false, error: 'Esta empresa possui vínculos operacionais e não pode ser excluída.' };
+    }
+    
+    const { data: coletor } = await supabase
+      .from('coletores')
+      .select('id')
+      .eq('empresa_id', id)
+      .limit(1)
+      .maybeSingle();
+    
+    if (coletor) {
+      return { success: false, error: 'Esta empresa possui vínculos operacionais e não pode ser excluída.' };
+    }
+    
+    const { data: operacao } = await supabase
+      .from('operacoes')
+      .select('id')
+      .eq('empresa_id', id)
+      .limit(1)
+      .maybeSingle();
+    
+    if (operacao) {
+      return { success: false, error: 'Esta empresa possui vínculos operacionais e não pode ser excluída.' };
+    }
+    
+    const { error } = await supabase
+      .from('empresas')
+      .delete()
+      .eq('id', id);
+    
+    if (error) throw error;
+    return { success: true };
   }
 }
 export const EmpresaService = new EmpresaServiceClass();
