@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
-import { Plus, Pencil, Trash2, Search } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, ToggleLeft, ToggleRight, PowerOff } from "lucide-react";
 import { TipoServicoOperacionalService, EmpresaService } from "@/services/base.service";
 import {
   Dialog,
@@ -21,10 +21,13 @@ const Servicos = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
   const [selectedEmpresa, setSelectedEmpresa] = useState("all");
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<any>(null);
+  const [deleteErrorDetails, setDeleteErrorDetails] = useState<{ tabela: string; count: number; ids?: string[] }[]>([]);
 
   const { data: list = [], isLoading } = useQuery({
-    queryKey: ["tipos_servico_list"],
-    queryFn: () => TipoServicoOperacionalService.getByEmpresa(),
+    queryKey: ["tipos_servico_operacional"],
+    queryFn: () => TipoServicoOperacionalService.getAllActive(),
     retry: 1,
   });
 
@@ -55,7 +58,7 @@ const Servicos = () => {
     mutationFn: (payload: any) => TipoServicoOperacionalService.create(payload),
     onSuccess: () => {
       toast.success("Tipo de serviço cadastrado com sucesso");
-      queryClient.invalidateQueries({ queryKey: ["tipos_servico_list"] });
+      queryClient.invalidateQueries({ queryKey: ["tipos_servico_operacional"] });
       setOpen(false);
       reset();
     },
@@ -68,7 +71,7 @@ const Servicos = () => {
     mutationFn: ({ id, payload }: { id: string; payload: any }) => TipoServicoOperacionalService.update(id, payload),
     onSuccess: () => {
       toast.success("Tipo de serviço atualizado com sucesso");
-      queryClient.invalidateQueries({ queryKey: ["tipos_servico_list"] });
+      queryClient.invalidateQueries({ queryKey: ["tipos_servico_operacional"] });
       setOpen(false);
       reset();
     },
@@ -78,15 +81,58 @@ const Servicos = () => {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => TipoServicoOperacionalService.update(id, { ativo: false }),
-    onSuccess: () => {
-      toast.success("Tipo de serviço desativado com sucesso");
-      queryClient.invalidateQueries({ queryKey: ["tipos_servico_list"] });
+    mutationFn: async (id: string) => {
+      const result = await TipoServicoOperacionalService.deleteWithCheck(id);
+      if (!result.success && result.error) {
+        throw new Error(result.error);
+      }
+      return result;
+    },
+    onSuccess: async () => {
+      toast.success("Tipo de serviço excluído com sucesso");
+      queryClient.invalidateQueries({ queryKey: ["tipos_servico_operacional"] });
+      setDeleteModalOpen(false);
+      setItemToDelete(null);
     },
     onError: (err: any) => {
-      toast.error(err?.message || "Erro ao desativar");
+      toast.error(err?.message || "Erro ao excluir tipo de serviço");
     },
   });
+
+  const toggleAtivoMutation = useMutation({
+    mutationFn: ({ id, ativo }: { id: string; ativo: boolean }) =>
+      TipoServicoOperacionalService.toggleAtivo(id, ativo),
+    onSuccess: async (_data, { ativo }) => {
+      toast.success(ativo ? "Tipo de serviço ativado com sucesso" : "Tipo de serviço desativado com sucesso");
+      queryClient.invalidateQueries({ queryKey: ["tipos_servico_operacional"] });
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || "Erro ao atualizar status");
+    },
+  });
+
+  const handleDeleteClick = async (item: any) => {
+    setItemToDelete(item);
+    console.log(`[Servicos] Tentando excluir: ${item.nome} (${item.id})`);
+    const result = await TipoServicoOperacionalService.deleteWithCheck(item.id);
+    console.log(`[Servicos] Resultado deleteWithCheck:`, result);
+    if (result.success) {
+      if (confirm("Confirmar exclusão definitiva? Esta ação não pode ser desfeita.")) {
+        deleteMutation.mutate(item.id);
+      }
+    } else {
+      setDeleteErrorDetails(result.detalhes || []);
+      setDeleteModalOpen(true);
+    }
+  };
+
+  const handleConfirmDeactivate = () => {
+    if (itemToDelete) {
+      toggleAtivoMutation.mutate({ id: itemToDelete.id, ativo: false });
+      setDeleteModalOpen(false);
+      setItemToDelete(null);
+    }
+  };
 
   const submit = () => {
     if (editingId) {
@@ -164,7 +210,7 @@ const Servicos = () => {
                     <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
                       item.ativo ? "bg-success-soft text-success-strong" : "bg-muted text-muted-foreground"
                     }`}>
-                      {item.ativo ? "Ativo" : "Inativo"}
+                      {item.ativo === true ? "Ativo" : "Inativo"}
                     </span>
                   </td>
                   <td className="px-4">
@@ -189,12 +235,24 @@ const Servicos = () => {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 text-destructive hover:text-destructive"
+                        className="h-8 w-8 text-amber-600 hover:text-amber-700"
                         onClick={() => {
-                          if (confirm("Confirmar desativação?")) {
-                            deleteMutation.mutate(item.id);
-                          }
+                          toggleAtivoMutation.mutate({ id: item.id, ativo: !item.ativo });
                         }}
+                        title={item.ativo ? "Desativar" : "Ativar"}
+                      >
+                        {item.ativo ? (
+                          <PowerOff className="h-4 w-4" />
+                        ) : (
+                          <ToggleRight className="h-4 w-4" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive hover:text-destructive"
+                        onClick={() => handleDeleteClick(item)}
+                        title="Excluir"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -220,7 +278,7 @@ const Servicos = () => {
               <Input
                 value={form.nome}
                 onChange={(e) => setForm({ ...form, nome: e.target.value })}
-                placeholder="Ex: Volume, Carro, Palet"
+                placeholder="Nome do tipo de serviço"
               />
             </div>
             <div className="grid gap-2">
@@ -247,6 +305,49 @@ const Servicos = () => {
             </Button>
             <Button onClick={submit} disabled={createMutation.isPending || updateMutation.isPending}>
               {createMutation.isPending || updateMutation.isPending ? "Salvando..." : "Salvar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
+        <DialogContent className="sm:max-w-[450px]">
+          <DialogHeader>
+            <DialogTitle>Exclusão não permitida</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-muted-foreground">
+              <strong>{itemToDelete?.nome}</strong> possui vínculos operacionais e não pode ser excluído.
+            </p>
+            {deleteErrorDetails.length > 0 && (
+              <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-md max-h-[200px] overflow-y-auto">
+                <p className="text-xs font-medium text-amber-800 mb-2">Vínculos encontrados:</p>
+                <div className="space-y-2">
+                  {deleteErrorDetails.map((detalhe, i) => (
+                    <div key={i} className="text-xs">
+                      <span className="font-medium text-amber-900">{detalhe.tabela}:</span>{' '}
+                      <span className="text-amber-700">{detalhe.count} registro(s)</span>
+                      {detalhe.ids && detalhe.ids.length > 0 && (
+                        <div className="text-amber-600 mt-0.5 pl-2 text-[10px]">
+                          IDs: {detalhe.ids.join(', ')}
+                          {detalhe.count > 3 && ` (+${detalhe.count - 3} mais)`}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <p className="text-sm text-muted-foreground mt-3">
+              Deseja desativá-lo? O registro permanecerá no histórico com status Inativo.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setDeleteModalOpen(false); setItemToDelete(null); setDeleteErrorDetails([]); }}>
+              Cancelar
+            </Button>
+            <Button onClick={handleConfirmDeactivate} disabled={toggleAtivoMutation.isPending}>
+              {toggleAtivoMutation.isPending ? "Processando..." : "Desativar"}
             </Button>
           </DialogFooter>
         </DialogContent>

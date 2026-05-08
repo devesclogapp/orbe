@@ -16,9 +16,11 @@ import {
   Pencil,
   PencilLine,
   Plus,
+  PowerOff,
   Settings2,
   ShoppingCart,
   Store,
+  ToggleRight,
   Trash2,
   Truck,
   Users,
@@ -188,6 +190,11 @@ const CentralCadastros = () => {
   const [configForm, setConfigForm] = useState<any>({});
   const [isEditingParams, setIsEditingParams] = useState(false);
   const [paramsForm, setParamsForm] = useState<any>({});
+
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteModalType, setDeleteModalType] = useState<"transportadora" | "fornecedor" | "servico" | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<any>(null);
+  const [deleteErrorDetails, setDeleteErrorDetails] = useState<{ tabela: string; count: number; ids?: string[] }[]>([]);
 
   const [colaboradorModalOpen, setColaboradorModalOpen] = useState(false);
   const [colaboradorStep, setColaboradorStep] = useState(1);
@@ -722,14 +729,35 @@ const CentralCadastros = () => {
     onError: (err: any) => toast.error("Erro ao atualizar", { description: err.message }),
   });
 const deleteFornecedorMutation = useMutation({
-    mutationFn: (id: string) => FornecedorService.update(id, { ativo: false }),
+    mutationFn: async (id: string) => {
+      const result = await FornecedorService.deleteWithCheck(id);
+      if (!result.success && result.error) {
+        throw new Error(result.error);
+      }
+      return result;
+    },
     onSuccess: async () => {
-      toast.success("Fornecedor desativado com sucesso");
+      toast.success("Fornecedor excluído com sucesso");
       await queryClient.cancelQueries({ queryKey: ["fornecedores"] });
       queryClient.removeQueries({ queryKey: ["fornecedores"] });
       await queryClient.invalidateQueries({ queryKey: ["fornecedores"] });
+      const data = await queryClient.fetchQuery({ queryKey: ["fornecedores"], queryFn: () => FornecedorService.getByEmpresa() });
+      queryClient.setQueryData(["fornecedores"], data);
     },
-    onError: (err: any) => toast.error("Erro ao desativar", { description: err.message }),
+    onError: (err: any) => toast.error(err?.message || "Erro ao excluir fornecedor", { description: err.message }),
+  });
+
+  const toggleFornecedorAtivoMutation = useMutation({
+    mutationFn: ({ id, ativo }: { id: string; ativo: boolean }) => FornecedorService.toggleAtivo(id, ativo),
+    onSuccess: async (_data, { ativo }) => {
+      toast.success(ativo ? "Fornecedor ativado com sucesso" : "Fornecedor desativado com sucesso");
+      await queryClient.cancelQueries({ queryKey: ["fornecedores"] });
+      queryClient.removeQueries({ queryKey: ["fornecedores"] });
+      await queryClient.invalidateQueries({ queryKey: ["fornecedores"] });
+      const data = await queryClient.fetchQuery({ queryKey: ["fornecedores"], queryFn: () => FornecedorService.getByEmpresa() });
+      queryClient.setQueryData(["fornecedores"], data);
+    },
+    onError: (err: any) => toast.error("Erro ao atualizar status", { description: err.message }),
   });
 
   const [editingTransportadora, setEditingTransportadora] = useState<any>(null);
@@ -745,14 +773,35 @@ const deleteFornecedorMutation = useMutation({
     onError: (err: any) => toast.error("Erro ao atualizar", { description: err.message }),
   });
   const deleteTransportadoraMutation = useMutation({
-    mutationFn: (id: string) => TransportadoraClienteService.update(id, { ativo: false }),
+    mutationFn: async (id: string) => {
+      const result = await TransportadoraClienteService.deleteWithCheck(id);
+      if (!result.success && result.error) {
+        throw new Error(result.error);
+      }
+      return result;
+    },
     onSuccess: async () => {
-      toast.success("Transportadora desativada com sucesso");
+      toast.success("Transportadora excluída com sucesso");
       await queryClient.cancelQueries({ queryKey: ["transportadoras"] });
       queryClient.removeQueries({ queryKey: ["transportadoras"] });
       await queryClient.invalidateQueries({ queryKey: ["transportadoras"] });
+      const data = await queryClient.fetchQuery({ queryKey: ["transportadoras"], queryFn: () => TransportadoraClienteService.getByEmpresa() });
+      queryClient.setQueryData(["transportadoras"], data);
     },
-    onError: (err: any) => toast.error("Erro ao desativar", { description: err.message }),
+    onError: (err: any) => toast.error(err?.message || "Erro ao excluir transportadora", { description: err.message }),
+  });
+
+  const toggleTransportadoraAtivoMutation = useMutation({
+    mutationFn: ({ id, ativo }: { id: string; ativo: boolean }) => TransportadoraClienteService.toggleAtivo(id, ativo),
+    onSuccess: async (_data, { ativo }) => {
+      toast.success(ativo ? "Transportadora ativada com sucesso" : "Transportadora desativada com sucesso");
+      await queryClient.cancelQueries({ queryKey: ["transportadoras"] });
+      queryClient.removeQueries({ queryKey: ["transportadoras"] });
+      await queryClient.invalidateQueries({ queryKey: ["transportadoras"] });
+      const data = await queryClient.fetchQuery({ queryKey: ["transportadoras"], queryFn: () => TransportadoraClienteService.getByEmpresa() });
+      queryClient.setQueryData(["transportadoras"], data);
+    },
+    onError: (err: any) => toast.error("Erro ao atualizar status", { description: err.message }),
   });
 
   const [editingServico, setEditingServico] = useState<any>(null);
@@ -768,14 +817,35 @@ const deleteFornecedorMutation = useMutation({
     onError: (err: any) => toast.error("Erro ao atualizar", { description: err.message }),
   });
   const deleteServicoMutation = useMutation({
-    mutationFn: (id: string) => TipoServicoOperacionalService.update(id, { ativo: false }),
+    mutationFn: async (id: string) => {
+      const result = await TipoServicoOperacionalService.deleteWithCheck(id);
+      if (!result.success && result.error) {
+        throw new Error(result.error);
+      }
+      return result;
+    },
     onSuccess: async () => {
-      toast.success("Tipo de serviço desativado com sucesso");
+      toast.success("Tipo de serviço excluído com sucesso");
       await queryClient.cancelQueries({ queryKey: ["tipos_servico_operacional"] });
       queryClient.removeQueries({ queryKey: ["tipos_servico_operacional"] });
       await queryClient.invalidateQueries({ queryKey: ["tipos_servico_operacional"] });
+      const data = await queryClient.fetchQuery({ queryKey: ["tipos_servico_operacional"], queryFn: () => TipoServicoOperacionalService.getAllActive() });
+      queryClient.setQueryData(["tipos_servico_operacional"], data);
     },
-    onError: (err: any) => toast.error("Erro ao desativar", { description: err.message }),
+    onError: (err: any) => toast.error(err?.message || "Erro ao excluir tipo de serviço", { description: err.message }),
+  });
+
+  const toggleServicoAtivoMutation = useMutation({
+    mutationFn: ({ id, ativo }: { id: string; ativo: boolean }) => TipoServicoOperacionalService.toggleAtivo(id, ativo),
+    onSuccess: async (_data, { ativo }) => {
+      toast.success(ativo ? "Tipo de serviço ativado com sucesso" : "Tipo de serviço desativado com sucesso");
+      await queryClient.cancelQueries({ queryKey: ["tipos_servico_operacional"] });
+      queryClient.removeQueries({ queryKey: ["tipos_servico_operacional"] });
+      await queryClient.invalidateQueries({ queryKey: ["tipos_servico_operacional"] });
+      const data = await queryClient.fetchQuery({ queryKey: ["tipos_servico_operacional"], queryFn: () => TipoServicoOperacionalService.getAllActive() });
+      queryClient.setQueryData(["tipos_servico_operacional"], data);
+    },
+    onError: (err: any) => toast.error("Erro ao atualizar status", { description: err.message }),
   });
 
   const handleAddConfig = (type: "operacao" | "produto" | "dia") => {
@@ -1557,7 +1627,10 @@ validateData: (rows) => {
                                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingTransportadora(transportadora)}>
                                   <PencilLine className="h-4 w-4" />
                                 </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => { if (confirm("Confirmar desativação?")) deleteTransportadoraMutation.mutate(transportadora.id) }}>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-amber-600 hover:text-amber-700" onClick={() => toggleTransportadoraAtivoMutation.mutate({ id: transportadora.id, ativo: !transportadora.ativo })} title={transportadora.ativo ? "Desativar" : "Ativar"}>
+                                  {transportadora.ativo ? <PowerOff className="h-4 w-4" /> : <ToggleRight className="h-4 w-4" />}
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={async () => { const result = await TransportadoraClienteService.deleteWithCheck(transportadora.id); if (!result.success) { setItemToDelete(transportadora); setDeleteModalType("transportadora"); setDeleteErrorDetails(result.detalhes || []); setDeleteModalOpen(true); } else if (confirm("Confirmar exclusão definitiva? Esta ação não pode ser desfeita.")) { deleteTransportadoraMutation.mutate(transportadora.id); } }}>
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
                               </div>
@@ -1630,7 +1703,10 @@ validateData: (rows) => {
                                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingFornecedor(fornecedor)}>
                                   <PencilLine className="h-4 w-4" />
                                 </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => { if (confirm("Confirmar desativação?")) deleteFornecedorMutation.mutate(fornecedor.id) }}>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-amber-600 hover:text-amber-700" onClick={() => toggleFornecedorAtivoMutation.mutate({ id: fornecedor.id, ativo: !fornecedor.ativo })} title={fornecedor.ativo ? "Desativar" : "Ativar"}>
+                                  {fornecedor.ativo ? <PowerOff className="h-4 w-4" /> : <ToggleRight className="h-4 w-4" />}
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={async () => { const result = await FornecedorService.deleteWithCheck(fornecedor.id); if (!result.success) { setItemToDelete(fornecedor); setDeleteModalType("fornecedor"); setDeleteErrorDetails(result.detalhes || []); setDeleteModalOpen(true); } else if (confirm("Confirmar exclusão definitiva? Esta ação não pode ser desfeita.")) { deleteFornecedorMutation.mutate(fornecedor.id); } }}>
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
                               </div>
@@ -1697,7 +1773,10 @@ validateData: (rows) => {
                                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingServico(servico)}>
                                   <PencilLine className="h-4 w-4" />
                                 </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => { if (confirm("Confirmar desativação?")) deleteServicoMutation.mutate(servico.id) }}>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-amber-600 hover:text-amber-700" onClick={() => toggleServicoAtivoMutation.mutate({ id: servico.id, ativo: !servico.ativo })} title={servico.ativo ? "Desativar" : "Ativar"}>
+                                  {servico.ativo ? <PowerOff className="h-4 w-4" /> : <ToggleRight className="h-4 w-4" />}
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={async () => { const result = await TipoServicoOperacionalService.deleteWithCheck(servico.id); if (!result.success) { setItemToDelete(servico); setDeleteModalType("servico"); setDeleteErrorDetails(result.detalhes || []); setDeleteModalOpen(true); } else if (confirm("Confirmar exclusão definitiva? Esta ação não pode ser desfeita.")) { deleteServicoMutation.mutate(servico.id); } }}>
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
                               </div>
@@ -2805,6 +2884,60 @@ validateData: (rows) => {
             <Button variant="outline" onClick={() => setEditingServico(null)}>Cancelar</Button>
             <Button onClick={() => updateServicoMutation.mutate({ id: editingServico.id, payload: editingServico })} disabled={updateServicoMutation.isPending}>
               {updateServicoMutation.isPending ? "Salvando..." : "Salvar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
+        <DialogContent className="sm:max-w-[450px]">
+          <DialogHeader>
+            <DialogTitle>Exclusão não permitida</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-muted-foreground">
+              <strong>{itemToDelete?.nome}</strong> possui vínculos operacionais e não pode ser excluído(a).
+            </p>
+            {deleteErrorDetails.length > 0 && (
+              <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-md max-h-[200px] overflow-y-auto">
+                <p className="text-xs font-medium text-amber-800 mb-2">Vínculos encontrados:</p>
+                <div className="space-y-2">
+                  {deleteErrorDetails.map((detalhe, i) => (
+                    <div key={i} className="text-xs">
+                      <span className="font-medium text-amber-900">{detalhe.tabela}:</span>{' '}
+                      <span className="text-amber-700">{detalhe.count} registro(s)</span>
+                      {detalhe.ids && detalhe.ids.length > 0 && (
+                        <div className="text-amber-600 mt-0.5 pl-2 text-[10px]">
+                          IDs: {detalhe.ids.join(', ')}
+                          {detalhe.count > 3 && ` (+${detalhe.count - 3} mais)`}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <p className="text-sm text-muted-foreground mt-3">
+              Deseja desativá-lo(a)? O registro permanecerá no histórico com status Inativo.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setDeleteModalOpen(false); setItemToDelete(null); setDeleteErrorDetails([]); }}>
+              Cancelar
+            </Button>
+            <Button onClick={() => {
+              if (deleteModalType === "transportadora" && itemToDelete) {
+                toggleTransportadoraAtivoMutation.mutate({ id: itemToDelete.id, ativo: false });
+              } else if (deleteModalType === "fornecedor" && itemToDelete) {
+                toggleFornecedorAtivoMutation.mutate({ id: itemToDelete.id, ativo: false });
+              } else if (deleteModalType === "servico" && itemToDelete) {
+                toggleServicoAtivoMutation.mutate({ id: itemToDelete.id, ativo: false });
+              }
+              setDeleteModalOpen(false);
+              setItemToDelete(null);
+              setDeleteErrorDetails([]);
+            }}>
+              Desativar
             </Button>
           </DialogFooter>
         </DialogContent>

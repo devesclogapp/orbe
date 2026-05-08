@@ -194,6 +194,15 @@ const groupPreviewByCategory = (
   return Array.from(groups.values()).sort((left, right) => right.total - left.total);
 };
 
+const sortPreviewTablesByImpact = (tables: ResetTabelaAfetada[]) =>
+  [...tables].sort((left, right) => {
+    if (right.registros !== left.registros) {
+      return right.registros - left.registros;
+    }
+
+    return left.descricao.localeCompare(right.descricao, "pt-BR");
+  });
+
 const buildEstimatedImpact = (groups: CategoryGroup[], totalRegistros: number, totalTabelas: number) => {
   if (totalRegistros === 0) {
     return "Nenhum registro encontrado para este escopo no tenant atual.";
@@ -395,7 +404,8 @@ const ResetOperacional = () => {
         {MODE_CONFIG.map((config) => {
           const query = previewQueries[config.mode];
           const preview = query.data;
-          const topTables = preview?.tabelas.slice(0, 4) ?? [];
+          const topTables = sortPreviewTablesByImpact(preview?.tabelas ?? []).slice(0, 6);
+          const hasHighlightedTables = topTables.some((item) => item.registros > 0);
           const isDanger = config.severity === "danger";
           const badgeClassName =
             config.mode === "demo"
@@ -448,14 +458,23 @@ const ResetOperacional = () => {
 
                 {topTables.length > 0 && (
                   <div className="space-y-2">
-                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Principais tabelas
-                    </p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Principais tabelas
+                      </p>
+                      <span className="text-[11px] text-muted-foreground">
+                        {hasHighlightedTables ? "Ordenado por impacto" : "Nenhum registro encontrado"}
+                      </span>
+                    </div>
                     <div className="space-y-2">
                       {topTables.map((item) => (
                         <div
                           key={`${config.mode}-${item.tabela}`}
-                          className="flex items-center justify-between rounded-lg border border-border/60 px-3 py-2"
+                          className={`flex items-center justify-between rounded-lg border px-3 py-2 ${
+                            item.registros > 0
+                              ? "border-destructive/30 bg-destructive/5"
+                              : "border-border/60"
+                          }`}
                         >
                           <div className="min-w-0">
                             <p className="truncate text-sm font-medium text-foreground">{item.descricao}</p>
@@ -464,7 +483,9 @@ const ResetOperacional = () => {
                               {item.categoria ? ` • ${CATEGORY_META[item.categoria].label}` : ""}
                             </p>
                           </div>
-                          <Badge variant="secondary">{formatInteger(item.registros)}</Badge>
+                          <Badge variant={item.registros > 0 ? "destructive" : "secondary"}>
+                            {formatInteger(item.registros)}
+                          </Badge>
                         </div>
                       ))}
                     </div>

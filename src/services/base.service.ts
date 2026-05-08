@@ -1274,6 +1274,83 @@ class TipoServicoOperacionalServiceClass {
 
     if (error) throw error;
   }
+
+  async toggleAtivo(id: string, ativo: boolean): Promise<void> {
+    const tenantId = await getCurrentTenantId();
+    const { error } = await operationalClient
+      .from('tipos_servico_operacional')
+      .update({ ativo })
+      .eq('id', id);
+
+    if (error) throw error;
+  }
+
+  async deleteWithCheck(id: string): Promise<{ success: boolean; error?: string; detalhes?: { tabela: string; count: number; ids?: string[] }[] }> {
+    const [operacaoResult, regraResult] = await Promise.all([
+      operationalClient
+        .from('operacoes_producao')
+        .select('id')
+        .eq('tipo_servico_id', id),
+      operationalClient
+        .from('fornecedor_valores_servico')
+        .select('id')
+        .eq('tipo_servico_id', id)
+    ]);
+
+    const vinculos: { tabela: string; count: number; ids?: string[] }[] = [];
+
+    if (operacaoResult.data && operacaoResult.data.length > 0) {
+      vinculos.push({
+        tabela: 'operacoes_producao',
+        count: operacaoResult.data.length,
+        ids: operacaoResult.data.slice(0, 3).map((r: any) => r.id)
+      });
+    }
+    if (regraResult.data && regraResult.data.length > 0) {
+      vinculos.push({
+        tabela: 'fornecedor_valores_servico',
+        count: regraResult.data.length,
+        ids: regraResult.data.slice(0, 3).map((r: any) => r.id)
+      });
+    }
+
+    console.log(`[TipoServicoOperacionalService.deleteWithCheck] ID: ${id}`);
+    console.log(`[TipoServicoOperacionalService.deleteWithCheck] Vínculos encontrados:`, vinculos);
+
+    if (vinculos.length > 0) {
+      return {
+        success: false,
+        error: 'Este tipo de serviço possui vínculos operacionais e não pode ser excluído.',
+        detalhes: vinculos
+      };
+    }
+
+    const { error, count } = await operationalClient
+      .from('tipos_servico_operacional')
+      .delete({ count: 'exact' })
+      .eq('id', id)
+      .select('id');
+
+    if (error) {
+      console.error(`[TipoServicoOperacionalService.deleteWithCheck] Erro no delete:`, error);
+      if (error.code === '23503') {
+        return {
+          success: false,
+          error: 'Este tipo de serviço possui vínculos e não pode ser excluído.'
+        };
+      }
+      throw error;
+    }
+
+    if (!count || count === 0) {
+      return {
+        success: false,
+        error: 'Nenhum tipo de serviço foi excluído. O registro pode não existir.'
+      };
+    }
+
+    return { success: true, deletedCount: count };
+  }
 }
 export const TipoServicoOperacionalService = new TipoServicoOperacionalServiceClass();
 
@@ -1331,6 +1408,107 @@ class TransportadoraClienteServiceClass {
     const { error } = await operationalClient
       .from('transportadoras_clientes')
       .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+  }
+
+  async deleteWithCheck(id: string): Promise<{ success: boolean; error?: string; detalhes?: { tabela: string; count: number; ids?: string[] }[] }> {
+    const [{ data: transportadora }] = await Promise.all([
+      operationalClient
+        .from('transportadoras_clientes')
+        .select('nome')
+        .eq('id', id)
+        .single(),
+    ]);
+
+    const [
+      operacaoResult,
+      regraResult,
+      operacoesLegadasResult,
+    ] = await Promise.all([
+      operationalClient
+        .from('operacoes_producao')
+        .select('id')
+        .eq('transportadora_id', id),
+      operationalClient
+        .from('fornecedor_valores_servico')
+        .select('id')
+        .eq('transportadora_id', id),
+      operationalClient
+        .from('operacoes')
+        .select('id')
+        .eq('transportadora', transportadora?.nome),
+    ]);
+
+    const vinculos: { tabela: string; count: number; ids?: string[] }[] = [];
+
+    if (operacaoResult.data && operacaoResult.data.length > 0) {
+      vinculos.push({
+        tabela: 'operacoes_producao',
+        count: operacaoResult.data.length,
+        ids: operacaoResult.data.slice(0, 3).map((r: any) => r.id)
+      });
+    }
+
+    if (regraResult.data && regraResult.data.length > 0) {
+      vinculos.push({
+        tabela: 'fornecedor_valores_servico',
+        count: regraResult.data.length,
+        ids: regraResult.data.slice(0, 3).map((r: any) => r.id)
+      });
+    }
+
+    if (operacoesLegadasResult.data && operacoesLegadasResult.data.length > 0) {
+      vinculos.push({
+        tabela: 'operacoes (legadas)',
+        count: operacoesLegadasResult.data.length,
+        ids: operacoesLegadasResult.data.slice(0, 3).map((r: any) => r.id)
+      });
+    }
+
+    console.log(`[TransportadoraClienteService.deleteWithCheck] ID: ${id}`);
+    console.log(`[TransportadoraClienteService.deleteWithCheck] Vínculos encontrados:`, vinculos);
+
+    if (vinculos.length > 0) {
+      return {
+        success: false,
+        error: 'Esta transportadora possui vínculos operacionais e não pode ser excluída.',
+        detalhes: vinculos
+      };
+    }
+
+    const { error, count } = await operationalClient
+      .from('transportadoras_clientes')
+      .delete({ count: 'exact' })
+      .eq('id', id)
+      .select('id');
+
+    if (error) {
+      console.error(`[TransportadoraClienteService.deleteWithCheck] Erro no delete:`, error);
+      if (error.code === '23503') {
+        return {
+          success: false,
+          error: 'Esta transportadora possui vínculos e não pode ser excluída.'
+        };
+      }
+      throw error;
+    }
+
+    if (!count || count === 0) {
+      return {
+        success: false,
+        error: 'Nenhuma transportadora foi excluída. O registro pode não existir.'
+      };
+    }
+
+    return { success: true, deletedCount: count };
+  }
+
+  async toggleAtivo(id: string, ativo: boolean): Promise<void> {
+    const { error } = await operationalClient
+      .from('transportadoras_clientes')
+      .update({ ativo })
       .eq('id', id);
 
     if (error) throw error;
@@ -1395,6 +1573,93 @@ class FornecedorServiceClass {
       .eq('id', id);
 
     if (error) throw error;
+  }
+
+  async toggleAtivo(id: string, ativo: boolean): Promise<void> {
+    const { error } = await operationalClient
+      .from('fornecedores')
+      .update({ ativo })
+      .eq('id', id);
+
+    if (error) throw error;
+  }
+
+  async deleteWithCheck(id: string): Promise<{ success: boolean; error?: string; detalhes?: { tabela: string; count: number; ids?: string[] }[] }> {
+    const [operacaoResult, regraResult, produtoResult] = await Promise.all([
+      operationalClient
+        .from('operacoes_producao')
+        .select('id')
+        .eq('fornecedor_id', id),
+      operationalClient
+        .from('fornecedor_valores_servico')
+        .select('id')
+        .eq('fornecedor_id', id),
+      operationalClient
+        .from('produtos_carga')
+        .select('id')
+        .eq('fornecedor_id', id)
+    ]);
+
+    const vinculos: { tabela: string; count: number; ids?: string[] }[] = [];
+
+    if (operacaoResult.data && operacaoResult.data.length > 0) {
+      vinculos.push({
+        tabela: 'operacoes_producao',
+        count: operacaoResult.data.length,
+        ids: operacaoResult.data.slice(0, 3).map((r: any) => r.id)
+      });
+    }
+    if (regraResult.data && regraResult.data.length > 0) {
+      vinculos.push({
+        tabela: 'fornecedor_valores_servico',
+        count: regraResult.data.length,
+        ids: regraResult.data.slice(0, 3).map((r: any) => r.id)
+      });
+    }
+    if (produtoResult.data && produtoResult.data.length > 0) {
+      vinculos.push({
+        tabela: 'produtos_carga',
+        count: produtoResult.data.length,
+        ids: produtoResult.data.slice(0, 3).map((r: any) => r.id)
+      });
+    }
+
+    console.log(`[FornecedorService.deleteWithCheck] ID: ${id}`);
+    console.log(`[FornecedorService.deleteWithCheck] Vínculos encontrados:`, vinculos);
+
+    if (vinculos.length > 0) {
+      return {
+        success: false,
+        error: 'Este fornecedor possui vínculos operacionais e não pode ser excluído.',
+        detalhes: vinculos
+      };
+    }
+
+    const { error, count } = await operationalClient
+      .from('fornecedores')
+      .delete({ count: 'exact' })
+      .eq('id', id)
+      .select('id');
+
+    if (error) {
+      console.error(`[FornecedorService.deleteWithCheck] Erro no delete:`, error);
+      if (error.code === '23503') {
+        return {
+          success: false,
+          error: 'Este fornecedor possui vínculos e não pode ser excluído.'
+        };
+      }
+      throw error;
+    }
+
+    if (!count || count === 0) {
+      return {
+        success: false,
+        error: 'Nenhum fornecedor foi excluído. O registro pode não existir.'
+      };
+    }
+
+    return { success: true, deletedCount: count };
   }
 }
 export const FornecedorService = new FornecedorServiceClass();

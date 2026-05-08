@@ -1,10 +1,8 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
-import { Plus, Pencil, Trash2, Search } from "lucide-react";
-import { useOnboardingCallback } from "@/hooks/useOnboardingCallback";
+import { Plus, Pencil, Trash2, Search, ToggleLeft, ToggleRight, PowerOff } from "lucide-react";
 import { FornecedorService, EmpresaService } from "@/services/base.service";
 import {
   Dialog,
@@ -23,9 +21,12 @@ const Fornecedores = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
   const [selectedEmpresa, setSelectedEmpresa] = useState("all");
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<any>(null);
+  const [deleteErrorDetails, setDeleteErrorDetails] = useState<{ tabela: string; count: number; ids?: string[] }[]>([]);
 
   const { data: list = [], isLoading } = useQuery({
-    queryKey: ["fornecedores_list"],
+    queryKey: ["fornecedores"],
     queryFn: () => FornecedorService.getByEmpresa(),
     retry: 1,
   });
@@ -63,13 +64,9 @@ const Fornecedores = () => {
     mutationFn: (payload: any) => FornecedorService.create(payload),
     onSuccess: () => {
       toast.success("Fornecedor cadastrado com sucesso");
-      queryClient.invalidateQueries({ queryKey: ["fornecedores_list"] });
+      queryClient.invalidateQueries({ queryKey: ["fornecedores"] });
       setOpen(false);
       reset();
-      const params = new URLSearchParams(window.location.search);
-      if (params.get("onboarding_return") === "true") {
-        window.location.href = "/onboarding";
-      }
     },
     onError: (err: any) => {
       toast.error(err?.message || "Erro ao cadastrar");
@@ -80,7 +77,7 @@ const Fornecedores = () => {
     mutationFn: ({ id, payload }: { id: string; payload: any }) => FornecedorService.update(id, payload),
     onSuccess: () => {
       toast.success("Fornecedor atualizado com sucesso");
-      queryClient.invalidateQueries({ queryKey: ["fornecedores_list"] });
+      queryClient.invalidateQueries({ queryKey: ["fornecedores"] });
       setOpen(false);
       reset();
     },
@@ -90,15 +87,58 @@ const Fornecedores = () => {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => FornecedorService.update(id, { ativo: false }),
-    onSuccess: () => {
-      toast.success("Fornecedor desativado com sucesso");
-      queryClient.invalidateQueries({ queryKey: ["fornecedores_list"] });
+    mutationFn: async (id: string) => {
+      const result = await FornecedorService.deleteWithCheck(id);
+      if (!result.success && result.error) {
+        throw new Error(result.error);
+      }
+      return result;
+    },
+    onSuccess: async () => {
+      toast.success("Fornecedor excluído com sucesso");
+      queryClient.invalidateQueries({ queryKey: ["fornecedores"] });
+      setDeleteModalOpen(false);
+      setItemToDelete(null);
     },
     onError: (err: any) => {
-      toast.error(err?.message || "Erro ao desativar");
+      toast.error(err?.message || "Erro ao excluir fornecedor");
     },
   });
+
+  const toggleAtivoMutation = useMutation({
+    mutationFn: ({ id, ativo }: { id: string; ativo: boolean }) =>
+      FornecedorService.toggleAtivo(id, ativo),
+    onSuccess: async (_data, { ativo }) => {
+      toast.success(ativo ? "Fornecedor ativado com sucesso" : "Fornecedor desativado com sucesso");
+      queryClient.invalidateQueries({ queryKey: ["fornecedores"] });
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || "Erro ao atualizar status");
+    },
+  });
+
+  const handleDeleteClick = async (item: any) => {
+    setItemToDelete(item);
+    console.log(`[Fornecedores] Tentando excluir: ${item.nome} (${item.id})`);
+    const result = await FornecedorService.deleteWithCheck(item.id);
+    console.log(`[Fornecedores] Resultado deleteWithCheck:`, result);
+    if (result.success) {
+      if (confirm("Confirmar exclusão definitiva? Esta ação não pode ser desfeita.")) {
+        deleteMutation.mutate(item.id);
+      }
+    } else {
+      setDeleteErrorDetails(result.detalhes || []);
+      setDeleteModalOpen(true);
+    }
+  };
+
+  const handleConfirmDeactivate = () => {
+    if (itemToDelete) {
+      toggleAtivoMutation.mutate({ id: itemToDelete.id, ativo: false });
+      setDeleteModalOpen(false);
+      setItemToDelete(null);
+    }
+  };
 
   const submit = () => {
     if (editingId) {
@@ -182,7 +222,7 @@ const Fornecedores = () => {
                     <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
                       item.ativo ? "bg-success-soft text-success-strong" : "bg-muted text-muted-foreground"
                     }`}>
-                      {item.ativo ? "Ativo" : "Inativo"}
+                      {item.ativo === true ? "Ativo" : "Inativo"}
                     </span>
                   </td>
                   <td className="px-4">
@@ -210,12 +250,24 @@ const Fornecedores = () => {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 text-destructive hover:text-destructive"
+                        className="h-8 w-8 text-amber-600 hover:text-amber-700"
                         onClick={() => {
-                          if (confirm("Confirmar desativação?")) {
-                            deleteMutation.mutate(item.id);
-                          }
+                          toggleAtivoMutation.mutate({ id: item.id, ativo: !item.ativo });
                         }}
+                        title={item.ativo ? "Desativar" : "Ativar"}
+                      >
+                        {item.ativo ? (
+                          <PowerOff className="h-4 w-4" />
+                        ) : (
+                          <ToggleRight className="h-4 w-4" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive hover:text-destructive"
+                        onClick={() => handleDeleteClick(item)}
+                        title="Excluir"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -293,6 +345,49 @@ const Fornecedores = () => {
             </Button>
             <Button onClick={submit} disabled={createMutation.isPending || updateMutation.isPending}>
               {createMutation.isPending || updateMutation.isPending ? "Salvando..." : "Salvar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
+        <DialogContent className="sm:max-w-[450px]">
+          <DialogHeader>
+            <DialogTitle>Exclusão não permitida</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-muted-foreground">
+              <strong>{itemToDelete?.nome}</strong> possui vínculos operacionais e não pode ser excluído.
+            </p>
+            {deleteErrorDetails.length > 0 && (
+              <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-md max-h-[200px] overflow-y-auto">
+                <p className="text-xs font-medium text-amber-800 mb-2">Vínculos encontrados:</p>
+                <div className="space-y-2">
+                  {deleteErrorDetails.map((detalhe, i) => (
+                    <div key={i} className="text-xs">
+                      <span className="font-medium text-amber-900">{detalhe.tabela}:</span>{' '}
+                      <span className="text-amber-700">{detalhe.count} registro(s)</span>
+                      {detalhe.ids && detalhe.ids.length > 0 && (
+                        <div className="text-amber-600 mt-0.5 pl-2 text-[10px]">
+                          IDs: {detalhe.ids.join(', ')}
+                          {detalhe.count > 3 && ` (+${detalhe.count - 3} mais)`}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <p className="text-sm text-muted-foreground mt-3">
+              Deseja desativá-lo? O registro permanecerá no histórico com status Inativo.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setDeleteModalOpen(false); setItemToDelete(null); setDeleteErrorDetails([]); }}>
+              Cancelar
+            </Button>
+            <Button onClick={handleConfirmDeactivate} disabled={toggleAtivoMutation.isPending}>
+              {toggleAtivoMutation.isPending ? "Processando..." : "Desativar"}
             </Button>
           </DialogFooter>
         </DialogContent>
