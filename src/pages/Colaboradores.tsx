@@ -22,6 +22,28 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
+const getInitialColaboradorFormData = (defaultEmpresaId = "") => ({
+  nome: "",
+  cpf: "",
+  telefone: "",
+  cargo: "",
+  matricula: "",
+  empresa_id: defaultEmpresaId,
+  tipo_contrato: "Hora" as "Hora" | "Operação",
+  tipo_colaborador: "CLT",
+  valor_base: "22",
+  flag_faturamento: true,
+  permitir_lancamento_operacional: false,
+  status: "ativo",
+  nome_completo: "",
+  banco_codigo: "",
+  agencia: "",
+  agencia_digito: "",
+  conta: "",
+  conta_digito: "",
+  tipo_conta: "corrente",
+});
+
 const Colaboradores = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -49,54 +71,23 @@ const Colaboradores = () => {
     queryFn: () => EmpresaService.getAll(),
   });
 
-  const [form, setForm] = useState({
-    nome: "",
-    cpf: "",
-    telefone: "",
-    cargo: "",
-    matricula: "",
-    empresa_id: "",
-    tipo_contrato: "Hora" as "Hora" | "Operação",
-    tipo_colaborador: "CLT",
-    valor_base: "22",
-    flag_faturamento: true,
-    permitir_lancamento_operacional: false,
-    status: "ativo",
-    nome_completo: "",
-    banco_codigo: "",
-    agencia: "",
-    agencia_digito: "",
-    conta: "",
-    conta_digito: "",
-    tipo_conta: "corrente",
-  });
-
-  const reset = () => {
-    setForm({
-      nome: "",
-      cpf: "",
-      telefone: "",
-      cargo: "",
-      matricula: "",
-      empresa_id: empresaOptions[0]?.id ?? "",
-      tipo_contrato: "Hora",
-      tipo_colaborador: "CLT",
-      valor_base: "22",
-      flag_faturamento: true,
-      permitir_lancamento_operacional: false,
-      status: "ativo",
-      nome_completo: "",
-      banco_codigo: "",
-      agencia: "",
-      agencia_digito: "",
-      conta: "",
-      conta_digito: "",
-      tipo_conta: "corrente",
-    });
+  const [form, setForm] = useState(getInitialColaboradorFormData());
+  const resetWizardState = () => {
+    setForm(getInitialColaboradorFormData(empresaOptions[0]?.id ?? ""));
     setEditingId(null);
     setStep(1);
+    setIsProcessing(false);
   };
-
+  const handleCreate = () => {
+    resetWizardState();
+    setOpen(true);
+  };
+  const handleModalOpenChange = (isOpen: boolean) => {
+    if (!isOpen) {
+      resetWizardState();
+    }
+    setOpen(isOpen);
+  };
   const normalizePhone = (value: string) => value.replace(/\D/g, "");
 
   const formatPhoneForDisplay = (value: string) => {
@@ -130,8 +121,8 @@ const Colaboradores = () => {
     onSuccess: async () => {
       toast.success(editingId ? "Colaborador atualizado com sucesso." : "Colaborador cadastrado com sucesso.");
       queryClient.invalidateQueries({ queryKey: ["colaboradores_list"] });
+      resetWizardState();
       setOpen(false);
-      reset();
       if (isOnboardingReturn) {
         await handleOnboardingReturn();
         navigate("/onboarding");
@@ -158,6 +149,8 @@ const Colaboradores = () => {
   });
 
   const handleEdit = (c: any) => {
+    setStep(1);
+    setIsProcessing(false);
     setEditingId(c.id);
     const rawPhone = c.telefone || "";
     setForm({
@@ -392,7 +385,7 @@ const Colaboradores = () => {
             <Button variant="outline" size="icon" className="h-10 w-10 flex-shrink-0" onClick={() => queryClient.invalidateQueries({ queryKey: ["colaboradores_list"] })}>
               <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
             </Button>
-            <Button className="h-10 px-4 w-full md:w-auto font-display font-semibold" onClick={() => setOpen(true)}>
+            <Button className="h-10 px-4 w-full md:w-auto font-display font-semibold" onClick={handleCreate}>
               <Plus className="h-4 w-4 mr-2" /> Novo colaborador
             </Button>
           </div>
@@ -524,7 +517,7 @@ const Colaboradores = () => {
         </section>
       </div>
 
-      <Dialog open={open} onOpenChange={(isOpen) => { setOpen(isOpen); if (!isOpen) setStep(1); }}>
+      <Dialog open={open} onOpenChange={handleModalOpenChange}>
         <DialogContent className="sm:max-w-[520px] max-h-[90vh]">
           <DialogHeader>
             <DialogTitle>{editingId ? "Editar colaborador" : "Novo colaborador"}</DialogTitle>
@@ -839,14 +832,14 @@ const Colaboradores = () => {
           <div className="flex justify-end gap-2 pt-4 border-t">
             {editingId ? (
               <>
-                <Button variant="outline" onClick={() => { setOpen(false); reset(); }}>Cancelar</Button>
+                <Button variant="outline" onClick={() => handleModalOpenChange(false)}>Cancelar</Button>
                 <Button onClick={submit} disabled={isProcessing}>
                   {isProcessing ? "Salvando..." : "Salvar alterações"}
                 </Button>
               </>
             ) : (
               <>
-                <Button variant="outline" onClick={() => { setOpen(false); reset(); }}>Cancelar</Button>
+                <Button variant="outline" onClick={() => handleModalOpenChange(false)}>Cancelar</Button>
                 {step === 1 && <Button onClick={() => { if (validateStep1()) setStep(2); }} disabled={isProcessing}>Próximo</Button>}
                 {step === 2 && (
                   <>
@@ -872,3 +865,5 @@ const Colaboradores = () => {
 };
 
 export default Colaboradores;
+
+
