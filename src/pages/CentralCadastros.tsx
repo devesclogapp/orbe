@@ -195,7 +195,7 @@ const CentralCadastros = () => {
     nome: "", cpf: "", telefone: "", cargo: "", matricula: "",
     empresa_id: empresaId || "",
     tipo_colaborador: "CLT",
-    tipo_contrato: "Hora" as "Hora" | "Operação",
+    tipo_contrato: "Hora" as "Hora" | "Operação" | "Mensal",
     valor_base: "22", flag_faturamento: true, permitir_lancamento_operacional: false,
     status: "ativo",
     nome_completo: "",
@@ -206,18 +206,68 @@ const CentralCadastros = () => {
     conta_digito: "",
     tipo_conta: "corrente",
   });
+  const [colaboradorIsProcessing, setColaboradorIsProcessing] = useState(false);
+  const [colaboradorBankNameLocked, setColaboradorBankNameLocked] = useState(true);
+
+  const normalizePhoneCC = (value: string) => value.replace(/\D/g, "");
+
+  const formatPhoneForDisplayCC = (value: string) => {
+    const digits = normalizePhoneCC(value).slice(0, 11);
+    if (digits.length === 0) return "";
+    if (digits.length <= 2) return `(${digits}`;
+    if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+    if (digits.length <= 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  };
+
+  const validatePhoneCC = (value: string) => {
+    const digits = normalizePhoneCC(value);
+    if (!digits) return "Telefone é obrigatório.";
+    if (!/^\d{10,11}$/.test(digits)) return "Telefone inválido.";
+    return null;
+  };
+
+  const handlePhoneChangeCC = (raw: string) => {
+    const digits = normalizePhoneCC(raw);
+    if (digits.length > 11) return;
+    setColaboradorForm(prev => ({ ...prev, telefone: formatPhoneForDisplayCC(digits) }));
+  };
 
   const [editingColaborador, setEditingColaborador] = useState<any>(null);
+  const [editingColaboradorIsProcessing, setEditingColaboradorIsProcessing] = useState(false);
+
+  const handleEditPhoneChangeCC = (raw: string) => {
+    if (!editingColaborador) return;
+    const digits = normalizePhoneCC(raw);
+    if (digits.length > 11) return;
+    setEditingColaborador(prev => ({ ...prev, telefone: formatPhoneForDisplayCC(digits) }));
+  };
+
   const updateColaboradorMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: any }) => ColaboradorService.update(id, payload),
+    mutationFn: ({ id, payload }: { id: string; payload: any }) => {
+      setEditingColaboradorIsProcessing(true);
+      return ColaboradorService.update(id, {
+        ...payload,
+        cpf: payload.cpf ? String(payload.cpf).replace(/\D/g, '') : null,
+        telefone: payload.telefone ? String(payload.telefone).replace(/\D/g, '') : null,
+      });
+    },
     onSuccess: async () => {
-      toast.success("Colaborador atualizado com sucesso");
+      toast.success("Colaborador atualizado com sucesso.");
       setEditingColaborador(null);
       await queryClient.cancelQueries({ queryKey: ["colaboradores_list"] });
       queryClient.removeQueries({ queryKey: ["colaboradores_list"] });
       await queryClient.invalidateQueries({ queryKey: ["colaboradores_list"] });
     },
-    onError: (err: any) => toast.error("Erro ao atualizar", { description: err.message }),
+    onError: (err: any) => {
+      const msg = err?.message || '';
+      if (msg.includes('duplicate') || msg.includes('já existe') || msg.includes('cpf')) {
+        toast.error("Já existe um colaborador cadastrado com este CPF.");
+      } else {
+        toast.error(msg || "Erro ao atualizar colaborador.");
+      }
+    },
+    onSettled: () => setEditingColaboradorIsProcessing(false),
   });
 
   const [empresaModalOpen, setEmpresaModalOpen] = useState(false);
@@ -384,12 +434,17 @@ const CentralCadastros = () => {
   });
 
   const createColaboradorMutation = useMutation({
-    mutationFn: (payload: any) => ColaboradorService.create({
-      ...payload,
-      valor_base: Number(payload.valor_base) || 0,
-    }),
+    mutationFn: (payload: any) => {
+      setColaboradorIsProcessing(true);
+      return ColaboradorService.create({
+        ...payload,
+        cpf: payload.cpf ? String(payload.cpf).replace(/\D/g, '') : null,
+        telefone: payload.telefone ? String(payload.telefone).replace(/\D/g, '') : null,
+        valor_base: Number(payload.valor_base) || 0,
+      });
+    },
     onSuccess: async () => {
-      toast.success("Colaborador cadastrado com sucesso");
+      toast.success("Colaborador cadastrado com sucesso.");
       setColaboradorModalOpen(false);
       setColaboradorForm({
         nome: "", cpf: "", telefone: "", cargo: "", matricula: "",
@@ -410,8 +465,111 @@ const CentralCadastros = () => {
       const data = await queryClient.fetchQuery({ queryKey: ["colaboradores_list"], queryFn: () => ColaboradorService.getWithEmpresa() });
       queryClient.setQueryData(["colaboradores_list"], data);
     },
-    onError: (err: any) => toast.error("Erro ao cadastrar", { description: err.message }),
+    onError: (err: any) => {
+      const msg = err?.message || '';
+      if (msg.includes('duplicate') || msg.includes('já existe') || msg.includes('cpf')) {
+        toast.error("Já existe um colaborador cadastrado com este CPF.");
+      } else {
+        toast.error(msg || "Erro ao cadastrar colaborador. Verifique os campos obrigatórios.");
+      }
+    },
+    onSettled: () => setColaboradorIsProcessing(false),
   });
+
+  const validateColaboradorStep1 = () => {
+    if (!colaboradorForm.nome.trim()) {
+      toast.error("Nome completo é obrigatório.", { icon: null });
+      return false;
+    }
+    if (!colaboradorForm.cpf.trim()) {
+      toast.error("CPF é obrigatório.", { icon: null });
+      return false;
+    }
+    const cpfClean = colaboradorForm.cpf.replace(/\D/g, "");
+    if (cpfClean.length !== 11) {
+      toast.error("CPF inválido.", { icon: null });
+      return false;
+    }
+    const phoneError = validatePhoneCC(colaboradorForm.telefone);
+    if (phoneError) {
+      toast.error(phoneError, { icon: null });
+      return false;
+    }
+    if (!colaboradorForm.empresa_id && !empresaId) {
+      toast.error("Empresa é obrigatória.", { icon: null });
+      return false;
+    }
+    return true;
+  };
+
+  const validateColaboradorStep2 = () => {
+    if (!colaboradorForm.tipo_colaborador) {
+      toast.error("Tipo de colaborador é obrigatório.", { icon: null });
+      return false;
+    }
+    if (!colaboradorForm.status) {
+      toast.error("Status é obrigatório.", { icon: null });
+      return false;
+    }
+    if (colaboradorForm.tipo_colaborador === "DIARISTA") {
+      if (!colaboradorForm.cargo.trim()) {
+        toast.error("Função operacional é obrigatória.", { icon: null });
+        return false;
+      }
+      if (!colaboradorForm.valor_base || Number(colaboradorForm.valor_base) <= 0) {
+        toast.error("Valor da diária é obrigatório.", { icon: null });
+        return false;
+      }
+    } else {
+      if (!colaboradorForm.cargo.trim()) {
+        toast.error("Cargo é obrigatório.", { icon: null });
+        return false;
+      }
+      if (!colaboradorForm.matricula.trim()) {
+        toast.error("Matrícula é obrigatória.", { icon: null });
+        return false;
+      }
+      if (!colaboradorForm.tipo_contrato) {
+        toast.error("Tipo de contrato é obrigatório.", { icon: null });
+        return false;
+      }
+      if (!colaboradorForm.valor_base || Number(colaboradorForm.valor_base) <= 0) {
+        toast.error("Valor base é obrigatório.", { icon: null });
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const validateColaboradorStep3 = () => {
+    const hasBankField = colaboradorForm.nome_completo || colaboradorForm.banco_codigo || colaboradorForm.agencia || colaboradorForm.conta;
+    if (colaboradorForm.flag_faturamento && hasBankField) {
+      if (!colaboradorForm.nome_completo?.trim()) {
+        toast.error("Nome completo da conta é obrigatório.", { icon: null });
+        return false;
+      }
+      if (!colaboradorForm.banco_codigo?.trim()) {
+        toast.error("Código do banco é obrigatório.", { icon: null });
+        return false;
+      }
+      if (!colaboradorForm.tipo_conta) {
+        toast.error("Tipo de conta é obrigatório.", { icon: null });
+        return false;
+      }
+      if (!colaboradorForm.agencia?.trim()) {
+        toast.error("Agência é obrigatória.", { icon: null });
+        return false;
+      }
+      if (!colaboradorForm.conta?.trim()) {
+        toast.error("Conta é obrigatória.", { icon: null });
+        return false;
+      }
+    }
+    if (!hasBankField && colaboradorForm.flag_faturamento) {
+      toast.warning("Para faturamento, preencha os dados bancários.", { icon: null, duration: 3000 });
+    }
+    return true;
+  };
 
   const deleteColaboradorMutation = useMutation({
     mutationFn: (id: string) => ColaboradorService.delete(id),
@@ -734,6 +892,13 @@ const deleteFornecedorMutation = useMutation({
     const colaboradoresEmpresaLookup = new Map(
       empresas.map((empresa) => [normalizeText(String(empresa.nome ?? "")), empresa]),
     );
+    
+    const existingCpfsLookup = new Set(
+      (colaboradores || [])
+        .filter(c => c.cpf)
+        .map(c => String(c.cpf).replace(/\D/g, ''))
+    );
+    
     const modeloImportacaoAtivo = importacaoModelos.find(
       (item) => item.modulo === activeTab && item.ativo && item.drive_url,
     );
@@ -757,8 +922,10 @@ const deleteFornecedorMutation = useMutation({
         downloadUrl: modeloImportacaoAtivo?.drive_url,
         expectedColumns: ["NOME", "CPF", "TELEFONE", "EMPRESA", "TIPO", "CARGO", "CONTRATO", "VALOR BASE", "FATURAMENTO", "STATUS"],
         templateFileName: "modelo_operadores_colaboradores.xlsx",
-        validateData: (rows) =>
-          buildResult(rows, (row, index) => {
+validateData: (rows) => {
+          const seenInSheet = new Set<string>();
+          
+          return buildResult(rows, (row, index) => {
             const nome = getRowValue(row, "NOME");
             const cpf = getRowValue(row, "CPF");
             const telefone = getRowValue(row, "TELEFONE");
@@ -777,24 +944,36 @@ const deleteFornecedorMutation = useMutation({
                 : tipoNormalizado === "TERCEIRIZADO"
                   ? "TERCEIRIZADO"
                   : tipoNormalizado === "PRODUCAO"
-                    ? "PRODUÃ‡ÃƒO"
+                    ? "PRODUÇÃO"
                     : "CLT";
             const tipoContrato = tipoColaborador === "DIARISTA"
               ? null
               : contratoNormalizado === "OPERACAO" || contratoNormalizado === "OPERAÇÃO"
-                ? "OperaÃ§Ã£o"
+                ? "Operação"
                 : "Hora";
             const status = statusNormalizado === "INATIVO" ? "inativo" : statusNormalizado === "PENDENTE" ? "pendente" : "ativo";
 
             if (!nome) return { error: `Linha ${index + 2}: informe o campo NOME.` };
             if (!empresaNome) return { error: `Linha ${index + 2}: informe o campo EMPRESA.` };
-            if (!empresa?.id) return { error: `Linha ${index + 2}: empresa "${empresaNome}" nÃ£o encontrada neste tenant.` };
-            if (tipoColaborador !== "DIARISTA" && !cargo) return { error: `Linha ${index + 2}: CARGO Ã© obrigatÃ³rio para colaboradores nÃ£o diaristas.` };
+            if (!empresa?.id) return { error: `Linha ${index + 2}: empresa "${empresaNome}" não encontrada neste tenant.` };
+            if (tipoColaborador !== "DIARISTA" && !cargo) return { error: `Linha ${index + 2}: CARGO é obrigatório para colaboradores não diaristas.` };
+            
+            const cpfClean = cpf ? String(cpf).replace(/\D/g, '') : '';
+            const telefoneClean = telefone ? String(telefone).replace(/\D/g, '') : '';
+            if (cpfClean && cpfClean.length === 11) {
+              if (existingCpfsLookup.has(cpfClean)) {
+                return { error: `Linha ${index + 2}: CPF duplicado no sistema.` };
+              }
+              if (seenInSheet.has(cpfClean)) {
+                return { error: `Linha ${index + 2}: CPF repetido na planilha.` };
+              }
+              seenInSheet.add(cpfClean);
+            }
 
             const payload = {
               nome,
-              cpf: cpf || null,
-              telefone: telefone || null,
+              cpf: cpfClean || null,
+              telefone: telefoneClean || null,
               cargo: cargo || null,
               matricula: null,
               empresa_id: empresa.id,
@@ -815,12 +994,43 @@ const deleteFornecedorMutation = useMutation({
 
             return {
               payload,
-              preview: { NOME: nome, EMPRESA: empresa.nome, TIPO: tipoColaborador, CARGO: cargo || "â€”", STATUS: status },
+              preview: { NOME: nome, EMPRESA: empresa.nome, TIPO: tipoColaborador, CARGO: cargo || "—", STATUS: status },
             };
-          }),
+          });
+        },
         onUpload: async (rows) => {
-          for (const row of rows) await ColaboradorService.create(row);
+          let imported = 0;
+          let ignored = 0;
+          let duplicates = 0;
+          let errors = 0;
+          const errorMessages: string[] = [];
+          
+          for (const row of rows) {
+            try {
+              await ColaboradorService.create(row);
+              imported++;
+            } catch (err: any) {
+              const msg = err?.message || "";
+              if (msg.includes("duplicate") || msg.includes("unique") || msg.includes("já existe") || msg.includes("cpf")) {
+                duplicates++;
+              } else {
+                errors++;
+                if (errorMessages.length < 5) {
+                  errorMessages.push(msg || "Erro ao importar");
+                }
+              }
+            }
+          }
+          
           await queryClient.invalidateQueries({ queryKey: ["colaboradores_list"] });
+          
+          if (errors > 0 && imported === 0) {
+            throw new Error("Importação bloqueada. Corrija os erros indicados.");
+          }
+          
+          toast.success(
+            `Importação concluída: ${imported} colaborador(es) importado(s), ${ignored} ignorado(s), ${duplicates} duplicado(s), ${errors} erro(s).`
+          );
         },
       },
       empresas: {
@@ -1108,7 +1318,7 @@ const deleteFornecedorMutation = useMutation({
                           </td>
                           <td className="px-3 text-center">
                             <div className="flex items-center justify-center gap-1">
-                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingColaborador(colaborador)}>
+                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingColaborador({ ...colaborador, telefone: formatPhoneForDisplayCC(colaborador.telefone || "") })}>
                                 <PencilLine className="h-4 w-4" />
                               </Button>
                               <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => { if (confirm("Confirmar exclusão?")) deleteColaboradorMutation.mutate(colaborador.id) }}>
@@ -1781,19 +1991,19 @@ const deleteFornecedorMutation = useMutation({
           {colaboradorStep === 1 && (
             <div className="grid grid-cols-2 gap-4 py-2">
               <div className="col-span-2 space-y-1.5">
-                <Label htmlFor="colab_nome">Nome completo</Label>
+                <Label htmlFor="colab_nome">Nome completo <span className="text-destructive">*</span></Label>
                 <Input id="colab_nome" value={colaboradorForm.nome} onChange={(e) => setColaboradorForm({ ...colaboradorForm, nome: e.target.value })} />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="colab_cpf">CPF</Label>
+                <Label htmlFor="colab_cpf">CPF <span className="text-destructive">*</span></Label>
                 <Input id="colab_cpf" value={colaboradorForm.cpf} onChange={(e) => setColaboradorForm({ ...colaboradorForm, cpf: e.target.value })} />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="colab_telefone">Telefone</Label>
-                <Input id="colab_telefone" value={colaboradorForm.telefone} onChange={(e) => setColaboradorForm({ ...colaboradorForm, telefone: e.target.value })} />
+                <Label htmlFor="colab_telefone">Telefone <span className="text-destructive">*</span></Label>
+                <Input id="colab_telefone" value={colaboradorForm.telefone} onChange={(e) => handlePhoneChangeCC(e.target.value)} />
               </div>
               <div className="col-span-2 space-y-1.5">
-                <Label>Empresa</Label>
+                <Label>Empresa <span className="text-destructive">*</span></Label>
                 <Select value={colaboradorForm.empresa_id} onValueChange={(v) => setColaboradorForm({ ...colaboradorForm, empresa_id: v })}>
                   <SelectTrigger><SelectValue placeholder="Selecione uma empresa" /></SelectTrigger>
                   <SelectContent>
@@ -1809,7 +2019,7 @@ const deleteFornecedorMutation = useMutation({
           {colaboradorStep === 2 && (
             <div className="grid grid-cols-2 gap-4 py-2">
               <div className="space-y-1.5">
-                <Label>Tipo de colaborador</Label>
+                <Label>Tipo de colaborador <span className="text-destructive">*</span></Label>
                 <Select value={colaboradorForm.tipo_colaborador} onValueChange={(v) => setColaboradorForm({ ...colaboradorForm, tipo_colaborador: v, permitir_lancamento_operacional: v === "DIARISTA" ? true : colaboradorForm.permitir_lancamento_operacional })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -1822,7 +2032,7 @@ const deleteFornecedorMutation = useMutation({
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label>Status</Label>
+                <Label>Status <span className="text-destructive">*</span></Label>
                 <Select value={colaboradorForm.status} onValueChange={(v) => setColaboradorForm({ ...colaboradorForm, status: v })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -1835,11 +2045,11 @@ const deleteFornecedorMutation = useMutation({
               {colaboradorForm.tipo_colaborador === "DIARISTA" ? (
                 <>
                   <div className="space-y-1.5">
-                    <Label htmlFor="colab_valor">Valor da diária (R$)</Label>
+                    <Label htmlFor="colab_valor">Valor da diária (R$) <span className="text-destructive">*</span></Label>
                     <Input id="colab_valor" type="number" value={colaboradorForm.valor_base} onChange={(e) => setColaboradorForm({ ...colaboradorForm, valor_base: e.target.value })} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="colab_cargo">Função operacional</Label>
+                    <Label htmlFor="colab_cargo">Função operacional <span className="text-destructive">*</span></Label>
                     <Input id="colab_cargo" value={colaboradorForm.cargo} onChange={(e) => setColaboradorForm({ ...colaboradorForm, cargo: e.target.value })} />
                   </div>
                   <div className="col-span-2 flex items-center justify-between rounded-md border border-border p-3">
@@ -1853,25 +2063,26 @@ const deleteFornecedorMutation = useMutation({
               ) : (
                 <>
                   <div className="space-y-1.5">
-                    <Label htmlFor="colab_cargo">Cargo</Label>
+                    <Label htmlFor="colab_cargo">Cargo <span className="text-destructive">*</span></Label>
                     <Input id="colab_cargo" value={colaboradorForm.cargo} onChange={(e) => setColaboradorForm({ ...colaboradorForm, cargo: e.target.value })} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="colab_matricula">Matrícula</Label>
+                    <Label htmlFor="colab_matricula">Matrícula <span className="text-destructive">*</span></Label>
                     <Input id="colab_matricula" value={colaboradorForm.matricula} onChange={(e) => setColaboradorForm({ ...colaboradorForm, matricula: e.target.value })} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label>Tipo de contrato</Label>
-                    <Select value={colaboradorForm.tipo_contrato} onValueChange={(v: "Hora" | "Operação") => setColaboradorForm({ ...colaboradorForm, tipo_contrato: v })}>
+<Label>Tipo de contrato <span className="text-destructive">*</span></Label>
+                    <Select value={colaboradorForm.tipo_contrato} onValueChange={(v: "Hora" | "Operação" | "Mensal") => setColaboradorForm({ ...colaboradorForm, tipo_contrato: v })}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="Hora">Por hora</SelectItem>
                         <SelectItem value="Operação">Por operação</SelectItem>
+                        <SelectItem value="Mensal">Mensal</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="colab_valor">Valor base (R$)</Label>
+                    <Label htmlFor="colab_valor">Valor base (R$) <span className="text-destructive">*</span></Label>
                     <Input id="colab_valor" type="number" value={colaboradorForm.valor_base} onChange={(e) => setColaboradorForm({ ...colaboradorForm, valor_base: e.target.value })} />
                   </div>
                   <div className="col-span-2 flex items-center justify-between rounded-md border border-border p-3">
@@ -1889,15 +2100,33 @@ const deleteFornecedorMutation = useMutation({
           {colaboradorStep === 3 && (
             <div className="grid grid-cols-2 gap-4 py-2">
               <div className="col-span-2 space-y-1.5">
-                <Label htmlFor="nome_completo">Nome completo (como conta)</Label>
-                <Input id="nome_completo" value={colaboradorForm.nome_completo} onChange={(e) => setColaboradorForm({ ...colaboradorForm, nome_completo: e.target.value })} />
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="nome_completo">Nome completo (como conta) <span className="text-destructive">*</span></Label>
+                  {!colaboradorBankNameLocked && (
+                    <button type="button" onClick={() => setColaboradorBankNameLocked(true)} className="text-xs text-muted-foreground hover:text-primary transition-colors">
+                      Bloquear nome
+                    </button>
+                  )}
+                  {colaboradorBankNameLocked && (
+                    <button type="button" onClick={() => setColaboradorBankNameLocked(false)} className="text-xs text-muted-foreground hover:text-primary transition-colors">
+                      Editar nome da conta
+                    </button>
+                  )}
+                </div>
+                <Input
+                  id="nome_completo"
+                  value={colaboradorBankNameLocked ? colaboradorForm.nome : colaboradorForm.nome_completo}
+                  onChange={(e) => setColaboradorForm({ ...colaboradorForm, nome_completo: e.target.value })}
+                  disabled={colaboradorBankNameLocked}
+                  placeholder="Nome conforme documento bancário"
+                />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="banco_codigo">Cód. Banco</Label>
+                <Label htmlFor="banco_codigo">Cód. Banco <span className="text-destructive">*</span></Label>
                 <Input id="banco_codigo" value={colaboradorForm.banco_codigo} onChange={(e) => setColaboradorForm({ ...colaboradorForm, banco_codigo: e.target.value })} placeholder="Ex: 341" />
               </div>
               <div className="space-y-1.5">
-                <Label>Tipo de Conta</Label>
+                <Label>Tipo de Conta <span className="text-destructive">*</span></Label>
                 <Select value={colaboradorForm.tipo_conta} onValueChange={(v) => setColaboradorForm({ ...colaboradorForm, tipo_conta: v })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -1907,14 +2136,14 @@ const deleteFornecedorMutation = useMutation({
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="agencia">Agência</Label>
+                <Label htmlFor="agência">Agência <span className="text-destructive">*</span></Label>
                 <div className="flex gap-2">
                   <Input id="agencia" value={colaboradorForm.agencia} onChange={(e) => setColaboradorForm({ ...colaboradorForm, agencia: e.target.value })} className="flex-1" />
                   <Input id="agencia_digito" value={colaboradorForm.agencia_digito} onChange={(e) => setColaboradorForm({ ...colaboradorForm, agencia_digito: e.target.value })} className="w-16" placeholder="Díg." />
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="conta">Conta</Label>
+                <Label htmlFor="conta">Conta <span className="text-destructive">*</span></Label>
                 <div className="flex gap-2">
                   <Input id="conta" value={colaboradorForm.conta} onChange={(e) => setColaboradorForm({ ...colaboradorForm, conta: e.target.value })} className="flex-1" />
                   <Input id="conta_digito" value={colaboradorForm.conta_digito} onChange={(e) => setColaboradorForm({ ...colaboradorForm, conta_digito: e.target.value })} className="w-16" placeholder="Díg." />
@@ -1926,18 +2155,27 @@ const deleteFornecedorMutation = useMutation({
 
           <div className="flex justify-end gap-2 pt-4 border-t">
             <Button variant="outline" onClick={() => { setColaboradorModalOpen(false); setColaboradorStep(1); }}>Cancelar</Button>
-            {colaboradorStep === 1 && <Button onClick={() => setColaboradorStep(2)}>Próximo</Button>}
+            {colaboradorStep === 1 && <Button onClick={() => { if (validateColaboradorStep1()) setColaboradorStep(2); }} disabled={colaboradorIsProcessing}>Próximo</Button>}
             {colaboradorStep === 2 && (
               <>
                 <Button variant="outline" onClick={() => setColaboradorStep(1)}>Voltar</Button>
-                <Button onClick={() => setColaboradorStep(3)}>Próximo</Button>
+                <Button onClick={() => {
+                  if (validateColaboradorStep2()) {
+                    setColaboradorStep(3);
+                    setColaboradorForm(prev => ({ ...prev, nome_completo: prev.nome_completo || prev.nome }));
+                  }
+                }} disabled={colaboradorIsProcessing}>Próximo</Button>
               </>
             )}
             {colaboradorStep === 3 && (
               <>
                 <Button variant="outline" onClick={() => setColaboradorStep(2)}>Voltar</Button>
-                <Button onClick={() => createColaboradorMutation.mutate(colaboradorForm)} disabled={createColaboradorMutation.isPending}>
-                  {createColaboradorMutation.isPending ? "Salvando..." : "Salvar"}
+                <Button onClick={() => {
+                  if (!validateColaboradorStep3()) return;
+                  const payload = { ...colaboradorForm, nome_completo: colaboradorForm.nome_completo || colaboradorForm.nome };
+                  createColaboradorMutation.mutate(payload);
+                }} disabled={colaboradorIsProcessing}>
+                  {colaboradorIsProcessing ? "Salvando..." : "Cadastrar"}
                 </Button>
               </>
             )}
@@ -2343,7 +2581,7 @@ const deleteFornecedorMutation = useMutation({
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="edit_colab_telefone">Telefone</Label>
-                <Input id="edit_colab_telefone" value={editingColaborador?.telefone || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, telefone: e.target.value })} />
+                <Input id="edit_colab_telefone" value={editingColaborador?.telefone || ""} onChange={(e) => handleEditPhoneChangeCC(e.target.value)} />
               </div>
               <div className="col-span-2 space-y-1.5">
                 <Label>Empresa</Label>
@@ -2399,6 +2637,7 @@ const deleteFornecedorMutation = useMutation({
                   <SelectContent>
                     <SelectItem value="Hora">Por hora</SelectItem>
                     <SelectItem value="Operação">Por operação</SelectItem>
+                    <SelectItem value="Mensal">Mensal</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -2422,8 +2661,8 @@ const deleteFornecedorMutation = useMutation({
                   valor_base: Number(editingColaborador.valor_base) || 0,
                 },
               });
-            }} disabled={updateColaboradorMutation.isPending}>
-              {updateColaboradorMutation.isPending ? "Salvando..." : "Salvar"}
+            }} disabled={updateColaboradorMutation.isPending || editingColaboradorIsProcessing}>
+              {(updateColaboradorMutation.isPending || editingColaboradorIsProcessing) ? "Salvando..." : "Salvar"}
             </Button>
           </DialogFooter>
         </DialogContent>

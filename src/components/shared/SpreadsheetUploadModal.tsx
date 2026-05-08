@@ -306,8 +306,7 @@ export function SpreadsheetUploadModal({
                 onClick={handleValidate}
                 disabled={!!unsupportedMessage || !file || isParsing || isUploading || isValidating}
               >
-                {isValidating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                Validar planilha
+                {isValidating ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Validando...</> : "Validar planilha"}
               </Button>
             ) : null}
           </div>

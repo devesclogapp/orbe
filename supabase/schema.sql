@@ -34,16 +34,35 @@ CREATE TABLE contratos (
 -- Tabela de Colaboradores
 CREATE TABLE colaboradores (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID REFERENCES tenants(id),
   nome TEXT NOT NULL,
+  cpf TEXT,
+  telefone TEXT,
   cargo TEXT,
   empresa_id UUID REFERENCES empresas(id),
-  tipo_contrato TEXT NOT NULL, -- 'Hora' ou 'Operação'
+  tipo_colaborador TEXT NOT NULL DEFAULT 'CLT', -- CLT, DIARISTA, INTERMITENTE, PRODUÇÃO, TERCEIRIZADO
+  tipo_contrato TEXT NOT NULL DEFAULT 'Hora' CHECK (tipo_contrato IN ('Hora', 'Operação', 'Mensal')),
   valor_base NUMERIC(10, 2),
   flag_faturamento BOOLEAN DEFAULT true,
   status TEXT DEFAULT 'ok',
   data_admissao DATE,
   matricula TEXT UNIQUE,
-  created_at TIMESTAMPTZ DEFAULT now()
+  permitir_lancamento_operacional BOOLEAN DEFAULT false,
+  nome_completo TEXT,
+  banco_codigo TEXT,
+  agencia TEXT,
+  agencia_digito TEXT,
+  conta TEXT,
+  conta_digito TEXT,
+  tipo_conta TEXT DEFAULT 'corrente',
+  salario_base NUMERIC(12, 2),
+  valor_hora NUMERIC(10, 4),
+  valor_diaria NUMERIC(10, 2),
+  origem TEXT DEFAULT 'manual',
+  cadastro_provisorio BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  deleted_at TIMESTAMPTZ
 );
 
 -- Tabela de Operações Logísticas

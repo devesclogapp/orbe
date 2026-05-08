@@ -35,6 +35,7 @@ const Colaboradores = () => {
   const [searchText, setSearchText] = useState("");
   const [selectedEmpresa, setSelectedEmpresa] = useState("all");
   const [selectedContrato, setSelectedContrato] = useState("all");
+  const [isProcessing, setIsProcessing] = useState(false);
 
   // Queries
   const { data: list = [], isLoading, isFetching, isError, error: queryError } = useQuery({
@@ -96,13 +97,38 @@ const Colaboradores = () => {
     setStep(1);
   };
 
+  const normalizePhone = (value: string) => value.replace(/\D/g, "");
+
+  const formatPhoneForDisplay = (value: string) => {
+    const digits = normalizePhone(value).slice(0, 11);
+    if (digits.length === 0) return "";
+    if (digits.length <= 2) return `(${digits}`;
+    if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+    if (digits.length <= 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  };
+
+  const validatePhone = (value: string) => {
+    const digits = normalizePhone(value);
+    if (!digits) return "Telefone é obrigatório.";
+    if (digits.length < 10) return "Telefone inválido.";
+    if (!/^\d{10,11}$/.test(digits)) return "Telefone inválido.";
+    return null;
+  };
+
+  const handlePhoneChange = (raw: string) => {
+    const digits = normalizePhone(raw);
+    if (digits.length > 11) return;
+    setForm(prev => ({ ...prev, telefone: formatPhoneForDisplay(digits) }));
+  };
+
   // Mutations
   const createMutation = useMutation({
     mutationFn: (payload: any) => editingId
       ? ColaboradorService.update(editingId, payload)
       : ColaboradorService.create(payload),
     onSuccess: async () => {
-      toast.success(editingId ? "Colaborador atualizado" : "Colaborador cadastrado");
+      toast.success(editingId ? "Colaborador atualizado com sucesso." : "Colaborador cadastrado com sucesso.");
       queryClient.invalidateQueries({ queryKey: ["colaboradores_list"] });
       setOpen(false);
       reset();
@@ -111,7 +137,15 @@ const Colaboradores = () => {
         navigate("/onboarding");
       }
     },
-    onError: (err: any) => toast.error(editingId ? "Erro ao atualizar" : "Erro ao cadastrar", { description: err.message })
+    onError: (err: any) => {
+      const msg = err?.message || "";
+      if (msg.includes("duplicate") || msg.includes("unique") || msg.includes("já existe") || msg.includes("cpf")) {
+        toast.error("Já existe um colaborador cadastrado com este CPF.");
+      } else {
+        toast.error(msg || (editingId ? "Erro ao atualizar colaborador." : "Erro ao cadastrar colaborador. Verifique os campos obrigatórios."));
+      }
+    },
+    onSettled: () => setIsProcessing(false),
   });
 
   const deleteMutation = useMutation({
@@ -125,10 +159,11 @@ const Colaboradores = () => {
 
   const handleEdit = (c: any) => {
     setEditingId(c.id);
+    const rawPhone = c.telefone || "";
     setForm({
       nome: c.nome || "",
       cpf: c.cpf || "",
-      telefone: c.telefone || "",
+      telefone: formatPhoneForDisplay(rawPhone),
       cargo: c.cargo || "",
       matricula: c.matricula || "",
       empresa_id: c.empresa_id || "",
@@ -155,6 +190,101 @@ const Colaboradores = () => {
     }
   };
 
+  const validateStep1 = () => {
+    if (!form.nome.trim()) {
+      toast.error("Nome completo é obrigatório.", { icon: null });
+      return false;
+    }
+    if (!form.cpf.trim()) {
+      toast.error("CPF é obrigatório.", { icon: null });
+      return false;
+    }
+    const cpfClean = form.cpf.replace(/\D/g, "");
+    if (cpfClean.length !== 11) {
+      toast.error("CPF inválido.", { icon: null });
+      return false;
+    }
+    const phoneError = validatePhone(form.telefone);
+    if (phoneError) {
+      toast.error(phoneError, { icon: null });
+      return false;
+    }
+    if (!form.empresa_id && !empresaOptions[0]?.id) {
+      toast.error("Empresa é obrigatória.", { icon: null });
+      return false;
+    }
+    return true;
+  };
+
+  const validateStep2 = () => {
+    if (!form.tipo_colaborador) {
+      toast.error("Tipo de colaborador é obrigatório.", { icon: null });
+      return false;
+    }
+    if (!form.status) {
+      toast.error("Status é obrigatório.", { icon: null });
+      return false;
+    }
+    if (form.tipo_colaborador === "DIARISTA") {
+      if (!form.cargo.trim()) {
+        toast.error("Função operacional é obrigatória.", { icon: null });
+        return false;
+      }
+      if (!form.valor_base || Number(form.valor_base) <= 0) {
+        toast.error("Valor da diária é obrigatório.", { icon: null });
+        return false;
+      }
+    } else {
+      if (!form.cargo.trim()) {
+        toast.error("Cargo é obrigatório.", { icon: null });
+        return false;
+      }
+      if (!form.matricula.trim()) {
+        toast.error("Matrícula é obrigatória.", { icon: null });
+        return false;
+      }
+      if (!form.tipo_contrato) {
+        toast.error("Tipo de contrato é obrigatório.", { icon: null });
+        return false;
+      }
+      if (!form.valor_base || Number(form.valor_base) <= 0) {
+        toast.error("Valor base é obrigatório.", { icon: null });
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const validateStep3 = () => {
+    const hasBankField = form.nome_completo || form.banco_codigo || form.agencia || form.conta;
+    if (form.flag_faturamento && hasBankField) {
+      if (!form.nome_completo?.trim()) {
+        toast.error("Nome completo da conta é obrigatório.", { icon: null });
+        return false;
+      }
+      if (!form.banco_codigo?.trim()) {
+        toast.error("Código do banco é obrigatório.", { icon: null });
+        return false;
+      }
+      if (!form.tipo_conta) {
+        toast.error("Tipo de conta é obrigatório.", { icon: null });
+        return false;
+      }
+      if (!form.agencia?.trim()) {
+        toast.error("Agência é obrigatória.", { icon: null });
+        return false;
+      }
+      if (!form.conta?.trim()) {
+        toast.error("Conta é obrigatória.", { icon: null });
+        return false;
+      }
+    }
+    if (!hasBankField && form.flag_faturamento) {
+      toast.warning("Para faturamento, preencha os dados bancários.", { icon: null, duration: 3000 });
+    }
+    return true;
+  };
+
   const submit = () => {
     if (!form.nome.trim()) {
       toast.error("Preencha o nome do colaborador");
@@ -164,17 +294,19 @@ const Colaboradores = () => {
       toast.error("Selecione uma empresa");
       return;
     }
-    // Para tipos diferentes de DIARISTA, cargo e matrícula são obrigatórios
     if (form.tipo_colaborador !== "DIARISTA") {
       if (!form.cargo.trim()) {
         toast.error("Preencha o cargo");
         return;
       }
     }
+    const cpfNormalized = form.cpf.replace(/\D/g, "");
+    const telefoneNormalized = normalizePhone(form.telefone);
+    setIsProcessing(true);
     createMutation.mutate({
       nome: form.nome.trim(),
-      cpf: form.cpf?.trim() || null,
-      telefone: form.telefone?.trim() || null,
+      cpf: cpfNormalized || null,
+      telefone: telefoneNormalized || null,
       cargo: form.cargo?.trim() || null,
       matricula: form.matricula?.trim() || null,
       empresa_id: form.empresa_id || empresaOptions[0]?.id,
@@ -420,19 +552,19 @@ const Colaboradores = () => {
                 {step === 1 && (
                   <div className="grid grid-cols-2 gap-4 py-2">
                     <div className="col-span-2 space-y-1.5">
-                      <Label htmlFor="nome">Nome completo</Label>
+<Label htmlFor="nome">Nome completo <span className="text-destructive">*</span></Label>
                       <Input id="nome" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
                     </div>
                     <div className="space-y-1.5">
-                      <Label htmlFor="cpf">CPF</Label>
+<Label htmlFor="cpf">CPF <span className="text-destructive">*</span></Label>
                       <Input id="cpf" value={form.cpf} onChange={(e) => setForm({ ...form, cpf: e.target.value })} />
                     </div>
                     <div className="space-y-1.5">
-                      <Label htmlFor="telefone">Telefone</Label>
-                      <Input id="telefone" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} />
+<Label htmlFor="telefone">Telefone <span className="text-destructive">*</span></Label>
+                      <Input id="telefone" value={form.telefone} onChange={(e) => handlePhoneChange(e.target.value)} />
                     </div>
                     <div className="col-span-2 space-y-1.5">
-                      <Label>Empresa</Label>
+                      <Label>Empresa <span className="text-destructive">*</span></Label>
                       <Select value={form.empresa_id} onValueChange={(v) => setForm({ ...form, empresa_id: v })}>
                         <SelectTrigger><SelectValue placeholder="Selecione uma empresa" /></SelectTrigger>
                         <SelectContent>
@@ -448,7 +580,7 @@ const Colaboradores = () => {
                 {step === 2 && (
                   <div className="grid grid-cols-2 gap-4 py-2">
                     <div className="space-y-1.5">
-                      <Label>Tipo de colaborador</Label>
+                      <Label>Tipo de colaborador <span className="text-destructive">*</span></Label>
                       <Select value={form.tipo_colaborador} onValueChange={(v) => setForm({ ...form, tipo_colaborador: v, permitir_lancamento_operacional: v === "DIARISTA" ? true : form.permitir_lancamento_operacional })}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
@@ -461,7 +593,7 @@ const Colaboradores = () => {
                       </Select>
                     </div>
                     <div className="space-y-1.5">
-                      <Label>Status</Label>
+                      <Label>Status <span className="text-destructive">*</span></Label>
                       <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
@@ -474,11 +606,11 @@ const Colaboradores = () => {
                     {form.tipo_colaborador === "DIARISTA" ? (
                       <>
                         <div className="space-y-1.5">
-                          <Label htmlFor="valor">Valor da diária (R$)</Label>
+<Label htmlFor="valor">Valor da diária (R$) <span className="text-destructive">*</span></Label>
                           <Input id="valor" type="number" value={form.valor_base} onChange={(e) => setForm({ ...form, valor_base: e.target.value })} />
                         </div>
                         <div className="space-y-1.5">
-                          <Label htmlFor="cargo">Função operacional</Label>
+<Label htmlFor="cargo">Função operacional <span className="text-destructive">*</span></Label>
                           <Input id="cargo" value={form.cargo} onChange={(e) => setForm({ ...form, cargo: e.target.value })} />
                         </div>
                         <div className="col-span-2 flex items-center justify-between rounded-md border border-border p-3">
@@ -492,25 +624,26 @@ const Colaboradores = () => {
                     ) : (
                       <>
                         <div className="space-y-1.5">
-                          <Label htmlFor="cargo">Cargo</Label>
+<Label htmlFor="cargo">Cargo <span className="text-destructive">*</span></Label>
                           <Input id="cargo" value={form.cargo} onChange={(e) => setForm({ ...form, cargo: e.target.value })} />
                         </div>
                         <div className="space-y-1.5">
-                          <Label htmlFor="matricula">Matrícula</Label>
+<Label htmlFor="matricula">Matrícula <span className="text-destructive">*</span></Label>
                           <Input id="matricula" value={form.matricula} onChange={(e) => setForm({ ...form, matricula: e.target.value })} />
                         </div>
                         <div className="space-y-1.5">
-                          <Label>Tipo de contrato</Label>
+<Label>Tipo de contrato <span className="text-destructive">*</span></Label>
                           <Select value={form.tipo_contrato} onValueChange={(v: "Hora" | "Operação") => setForm({ ...form, tipo_contrato: v })}>
                             <SelectTrigger><SelectValue /></SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="Hora">Por hora</SelectItem>
-                              <SelectItem value="Operação">Por operação</SelectItem>
+                            <SelectItem value="Hora">Por hora</SelectItem>
+                            <SelectItem value="Operação">Por operação</SelectItem>
+                            <SelectItem value="Mensal">Mensal</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
                         <div className="space-y-1.5">
-                          <Label htmlFor="valor">Valor base (R$)</Label>
+<Label htmlFor="valor">Valor base (R$) <span className="text-destructive">*</span></Label>
                           <Input id="valor" type="number" value={form.valor_base} onChange={(e) => setForm({ ...form, valor_base: e.target.value })} />
                         </div>
                         <div className="col-span-2 flex items-center justify-between rounded-md border border-border p-3">
@@ -528,11 +661,11 @@ const Colaboradores = () => {
                 {step === 3 && (
                   <div className="grid grid-cols-2 gap-4 py-2">
                     <div className="col-span-2 space-y-1.5">
-                      <Label htmlFor="nome_completo">Nome completo (como conta)</Label>
+                      <Label htmlFor="nome_completo">Nome completo (como conta) <span className="text-destructive">*</span></Label>
                       <Input id="nome_completo" value={form.nome_completo} onChange={(e) => setForm({ ...form, nome_completo: e.target.value })} />
                     </div>
                     <div className="space-y-1.5">
-                      <Label htmlFor="banco_codigo">Cód. Banco</Label>
+                      <Label htmlFor="banco_codigo">Cód. Banco <span className="text-destructive">*</span></Label>
                       <Input id="banco_codigo" value={form.banco_codigo} onChange={(e) => setForm({ ...form, banco_codigo: e.target.value })} placeholder="Ex: 341" />
                     </div>
                     <div className="space-y-1.5">
@@ -574,7 +707,7 @@ const Colaboradores = () => {
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="telefone">Telefone</Label>
-                  <Input id="telefone" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} />
+                  <Input id="telefone" value={form.telefone} onChange={(e) => handlePhoneChange(e.target.value)} />
                 </div>
                 <div className="col-span-2 space-y-1.5">
                   <Label>Empresa</Label>
@@ -707,25 +840,25 @@ const Colaboradores = () => {
             {editingId ? (
               <>
                 <Button variant="outline" onClick={() => { setOpen(false); reset(); }}>Cancelar</Button>
-                <Button onClick={submit} disabled={createMutation.isPending}>
-                  {createMutation.isPending ? "Salvando..." : "Salvar alterações"}
+                <Button onClick={submit} disabled={isProcessing}>
+                  {isProcessing ? "Salvando..." : "Salvar alterações"}
                 </Button>
               </>
             ) : (
               <>
                 <Button variant="outline" onClick={() => { setOpen(false); reset(); }}>Cancelar</Button>
-                {step === 1 && <Button onClick={() => setStep(2)}>Próximo</Button>}
+                {step === 1 && <Button onClick={() => { if (validateStep1()) setStep(2); }} disabled={isProcessing}>Próximo</Button>}
                 {step === 2 && (
                   <>
                     <Button variant="outline" onClick={() => setStep(1)}>Voltar</Button>
-                    <Button onClick={() => setStep(3)}>Próximo</Button>
+                    <Button onClick={() => { if (validateStep2()) setStep(3); }} disabled={isProcessing}>Próximo</Button>
                   </>
                 )}
                 {step === 3 && (
                   <>
                     <Button variant="outline" onClick={() => setStep(2)}>Voltar</Button>
-                    <Button onClick={submit} disabled={createMutation.isPending}>
-                      {createMutation.isPending ? "Salvando..." : "Cadastrar"}
+                    <Button onClick={submit} disabled={isProcessing}>
+                      {isProcessing ? "Salvando..." : "Cadastrar"}
                     </Button>
                   </>
                 )}

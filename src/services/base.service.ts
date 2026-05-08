@@ -363,9 +363,25 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
       throw new Error('Selecione uma empresa válida.');
     }
 
+    // Validar duplicidade por CPF dentro do mesmo tenant
+    const cpfClean = payload.cpf ? String(payload.cpf).replace(/\D/g, '') : null;
+    if (cpfClean && cpfClean.length === 11) {
+      const { data: existing } = await supabase
+        .from('colaboradores')
+        .select('id')
+        .eq('cpf', cpfClean)
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+      
+      if (existing) {
+        throw new Error('Já existe um colaborador cadastrado com este CPF.');
+      }
+    }
+
     // Limpar campos UUID opcionais
     const cleanedPayload = {
       ...payload,
+      cpf: cpfClean,
       empresa_id: empresaIdClean,
       unidade_id: cleanUuid(payload.unidade_id),
       tenant_id: tenantId,
@@ -377,7 +393,11 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      const details = error.details ? `\nDetalhe: ${error.details}` : '';
+      const hint = error.hint ? `\nSugestão: ${error.hint}` : '';
+      throw new Error(`${error.message}${details}${hint}`);
+    }
     return data;
   }
 
@@ -441,7 +461,11 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      const details = error.details ? `\nDetalhe: ${error.details}` : '';
+      const hint = error.hint ? `\nSugestão: ${error.hint}` : '';
+      throw new Error(`${error.message}${details}${hint}`);
+    }
     return data;
   }
 
