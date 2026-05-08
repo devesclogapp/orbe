@@ -1,6 +1,6 @@
-import { ReactNode, useState } from "react";
-import { LogOut, Zap, ArrowLeft, Home } from "lucide-react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { ReactNode } from "react";
+import { LogOut, Zap, ArrowLeft, Plus } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -16,7 +16,6 @@ interface OperationalShellProps {
 export const OperationalShell = ({ children, title = "Coletor Orbe", unitName, showBack: propShowBack, onBack }: OperationalShellProps) => {
     const { signOut, user } = useAuth();
     const navigate = useNavigate();
-    const location = useLocation();
 
     const handleSignOut = async () => {
         await signOut();
@@ -26,8 +25,8 @@ export const OperationalShell = ({ children, title = "Coletor Orbe", unitName, s
 
     return (
         <div className="min-h-screen bg-background flex flex-col">
-            {/* Topbar Simplificada */}
-            <header className="h-16 border-b border-border bg-card flex items-center justify-between px-4 sm:px-6 sticky top-0 z-50 shadow-sm">
+            {/* Topbar Operacional */}
+            <header className="h-14 border-b border-border bg-card flex items-center justify-between px-4 sm:px-6 sticky top-0 z-50 shadow-sm">
                 <div className="flex items-center gap-3">
                     {propShowBack === true && (
                         <Button
@@ -37,39 +36,40 @@ export const OperationalShell = ({ children, title = "Coletor Orbe", unitName, s
                                 if (onBack) {
                                     onBack();
                                 } else {
-                                    navigate("/producao");
+                                    navigate(-1);
                                 }
                             }}
-                            className="h-10 w-10 text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-all"
+                            className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg active:bg-muted/80"
                         >
                             <ArrowLeft className="h-5 w-5" />
                         </Button>
                     )}
-                    <div className="h-9 w-9 rounded-xl bg-brand flex items-center justify-center text-white shadow-lg shadow-brand/20">
+                    <div className="h-9 w-9 rounded-lg bg-orange-500 flex items-center justify-center text-white shadow-lg shadow-orange-500/20">
                         <Zap className="h-5 w-5 fill-current" />
                     </div>
-                    <div>
-                        <h1 className="text-sm font-black font-display text-foreground uppercase tracking-tight leading-none">
+                    <div className="min-w-0">
+                        <h1 className="text-sm font-black text-foreground leading-tight truncate max-w-[120px] sm:max-w-none">
                             {title}
                         </h1>
                         {unitName && (
-                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                                {unitName}
+                            <span className="text-[10px] font-bold text-green-600 uppercase tracking-wider flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse flex-shrink-0" />
+                                <span className="truncate max-w-[100px]">{unitName}</span>
                             </span>
                         )}
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3">
-                    <div className="hidden md:flex flex-col items-end mr-2">
-                        <span className="text-[10px] font-bold text-foreground leading-none">{user?.email?.split('@')[0]}</span>
+                <div className="flex items-center gap-2">
+                    <div className="flex flex-col items-end mr-1">
+                        <span className="text-[10px] font-bold text-foreground leading-none hidden sm:block">{user?.email?.split('@')[0]}</span>
                         <span className="text-[9px] text-muted-foreground font-medium uppercase tracking-tighter">Encarregado</span>
                     </div>
                     <Button
                         variant="ghost"
                         size="icon"
                         onClick={handleSignOut}
-                        className="h-10 w-10 text-muted-foreground hover:text-destructive hover:bg-destructive/5 rounded-xl transition-all"
+                        className="h-10 w-10 text-muted-foreground hover:text-destructive hover:bg-destructive/5 rounded-xl transition-all active:bg-destructive/10"
                     >
                         <LogOut className="h-5 w-5" />
                     </Button>
@@ -80,6 +80,16 @@ export const OperationalShell = ({ children, title = "Coletor Orbe", unitName, s
             <main className="flex-1 w-full max-w-[1600px] mx-auto px-4 py-4 sm:px-6 lg:px-8 xl:px-10">
                 {children}
             </main>
+
+            {/* Botão de Ação Flutuante */}
+            <div className="fixed bottom-8 right-6 z-50 sm:bottom-6">
+                <Button
+                    className="w-16 h-16 rounded-full bg-orange-500 hover:bg-orange-600 shadow-xl shadow-orange-500/30 flex items-center justify-center transition-all duration-200 active:scale-95"
+                    onClick={() => navigate("/producao")}
+                >
+                    <Plus className="w-8 h-8" />
+                </Button>
+            </div>
 
             {/* Footer Minimalista */}
             <footer className="py-4 border-t border-border bg-muted/30 text-center">

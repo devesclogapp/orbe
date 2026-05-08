@@ -11,7 +11,7 @@ import { ClientProvider } from "@/contexts/ClientContext";
 import { OnboardingProvider } from "@/contexts/OnboardingContext";
 import { AuthGuard } from "@/components/Auth/AuthGuard";
 import { PortalGuard } from "@/components/Auth/PortalGuard";
-import { AIChat } from "@/components/AIChat";
+// AI Chat disabled for operational mode
 
 // Auth Pages
 import Login from "./pages/Auth/Login";
@@ -87,7 +87,19 @@ import RhDiaristasGestao from "./pages/Rh/RhDiaristasGestao";
 // Onboarding
 import Onboarding from "./pages/Onboarding";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 5, // 5 minutes
+      gcTime: 1000 * 60 * 30, // 30 minutes (was cacheTime)
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+    mutations: {
+      retry: 0,
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -184,7 +196,6 @@ const App = () => (
 
                       <Route path="*" element={<NotFound />} />
                     </Routes>
-                    <AIChat />
                   </BrowserRouter>
                 </TooltipProvider>
               </SelectionProvider>

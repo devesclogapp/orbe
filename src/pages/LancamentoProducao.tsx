@@ -19,11 +19,11 @@ import {
     TrendingUp,
     Truck,
     Wallet,
-    Zap,
     Users,
     LayoutGrid,
     ChevronLeft,
     ChevronRight,
+    Minus,
 } from "lucide-react";
 
 import { OperationalShell } from "@/components/layout/OperationalShell";
@@ -78,6 +78,8 @@ import {
 } from "@/services/base.service";
 import { calcularValoresOperacao } from "@/utils/financeiro";
 import { toast } from "sonner";
+import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type RegraAvaliacao = { id: string; label: string; funcoes: string[] };
 type TipoCalculo = "volume" | "daily" | "operation" | "colaborador";
@@ -182,8 +184,18 @@ type TimePickerFieldProps = {
     onChange: (value: string) => void;
 };
 
-const TimePickerField = ({ label, value, placeholder = "--:--", onChange }: TimePickerFieldProps) => {
+const TimePickerField = ({ label, value, onChange }: TimePickerFieldProps) => {
     const [open, setOpen] = useState(false);
+
+    const isEntrada = label.toLowerCase().includes("entrada");
+    const hasValue = !!value;
+
+    const handleNow = () => {
+        const now = new Date();
+        const nextValue = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+        onChange(nextValue);
+        setOpen(false);
+    };
 
     const [hourValue, minuteValue] = value?.includes(":") ? value.split(":") : ["", ""];
 
@@ -210,13 +222,6 @@ const TimePickerField = ({ label, value, placeholder = "--:--", onChange }: Time
         setOpen(false);
     };
 
-    const handleNow = () => {
-        const now = new Date();
-        const nextValue = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-        onChange(nextValue);
-        setOpen(false);
-    };
-
     return (
         <div className="space-y-1.5">
             <Label className="flex items-center gap-1.5">
@@ -227,11 +232,26 @@ const TimePickerField = ({ label, value, placeholder = "--:--", onChange }: Time
                 <PopoverTrigger asChild>
                     <Button
                         type="button"
-                        variant="outline"
-                        className="h-11 w-full rounded-xl justify-between px-3 font-mono text-base"
+                        className={cn(
+                            "h-14 w-full rounded-xl justify-between px-4 font-mono text-lg transition-all active:scale-[0.98]",
+                            hasValue
+                                ? "bg-green-50 border-2 border-green-500 text-green-700 hover:bg-green-100"
+                                : "bg-orange-50 border-2 border-orange-400 text-orange-700 hover:bg-orange-100"
+                        )}
                     >
-                        <span className={cn(!value && "text-muted-foreground")}>{value || placeholder}</span>
-                        <Clock className="w-4 h-4 text-muted-foreground" />
+                        {hasValue ? (
+                            <>
+                                <span className="font-bold">{value}</span>
+                                <Clock className="w-5 h-5 text-green-600" />
+                            </>
+                        ) : (
+                            <>
+                                <span className="font-black text-sm uppercase tracking-wide">
+                                    {isEntrada ? "INICIAR" : "FINALIZAR"}
+                                </span>
+                                <Clock className="w-5 h-5 text-orange-600" />
+                            </>
+                        )}
                     </Button>
                 </PopoverTrigger>
                 <PopoverContent align="start" className="w-[280px] rounded-2xl p-0 overflow-hidden">
@@ -318,8 +338,8 @@ const LANCAMENTO_PRESETS: Array<{
             id: "preset_caixa",
             tipo_lancamento: "operacao_padrao",
             modalidade_financeira: "CAIXA_IMEDIATO",
-            title: "Pagamento à Vista (Caixa)",
-            description: "Operações com recebimento imediato no momento da execução, independentemente do tipo de serviço realizado.",
+            title: "Recebimento Imediato",
+            description: "Operações com recebimento imediato.",
             icon: Truck,
             iconColor: "bg-success-soft text-success-strong",
         },
@@ -327,8 +347,8 @@ const LANCAMENTO_PRESETS: Array<{
             id: "preset_boleto",
             tipo_lancamento: "operacao_padrao",
             modalidade_financeira: "DUPLICATA",
-            title: "Pagamento a Prazo (Boleto)",
-            description: "Operações com recebimento futuro via boleto.",
+            title: "Pagamento a Prazo",
+            description: "Operações com recebimento futuro.",
             icon: ListChecks,
             iconColor: "bg-info-soft text-info-strong",
         },
@@ -337,7 +357,7 @@ const LANCAMENTO_PRESETS: Array<{
             tipo_lancamento: "operacao_padrao",
             modalidade_financeira: "FATURAMENTO_MENSAL",
             title: "Faturamento Mensal",
-            description: "Operações consolidadas para pagamento no fechamento mensal, independentemente do volume ou frequência.",
+            description: "Operações para faturamento mensal.",
             icon: Wallet,
             iconColor: "bg-warning-soft text-warning-strong",
         },
@@ -345,18 +365,18 @@ const LANCAMENTO_PRESETS: Array<{
             id: "preset_transbordo",
             tipo_lancamento: "transbordo_servico_extra",
             modalidade_financeira: "CAIXA_IMEDIATO",
-            title: "Serviços Operacionais Extras",
-            description: "Registro de serviços adicionais vinculados à operação principal.",
-            icon: Truck,
+            title: "Serviços Extras",
+            description: "Registro de serviços adicionais.",
+            icon: Package,
             iconColor: "bg-purple-100 text-purple-700",
         },
         {
             id: "preset_custos_mensais",
             tipo_lancamento: "custos_extras",
             modalidade_financeira: "CUSTO_DESPESA",
-            title: "Lançamento de Custos",
-            description: "Registro de custos operacionais, administrativos e de fornecedores.",
-            icon: Users,
+            title: "Custos/Despesas",
+            description: "Registro de custos operacionais.",
+            icon: Building2,
             iconColor: "bg-orange-100 text-orange-700",
         },
         {
@@ -364,8 +384,8 @@ const LANCAMENTO_PRESETS: Array<{
             tipo_lancamento: "custos_extras",
             modalidade_financeira: "CUSTO_DESPESA",
             title: "Diaristas",
-            description: "Lançamento de diárias eventuais ou extras.",
-            icon: Zap,
+            description: "Lançamento de diárias avulsas.",
+            icon: Users,
             iconColor: "bg-teal-100 text-teal-700",
         },
     ];
@@ -423,7 +443,6 @@ const calcularTotalPrevisto = ({
     tipoCalculo: TipoCalculo | null;
 }) => {
     if (!valorUnitario || !tipoCalculo) return 0;
-    // REGRA IMPORTANTE: Qtd Colaboradores NÃO influencia no valor, serve apenas para análise
     if (tipoCalculo === "operation") return valorUnitario;
     return quantidade * valorUnitario;
 };
@@ -452,12 +471,10 @@ const normalizeText = (value: string) =>
         .trim()
         .replace(/\s+/g, " ");
 
-// Presets permitidos por perfil: lista vazia = todos liberados
 const PRESETS_PERMITIDOS_POR_PERFIL: Record<string, string[]> = {
     encarregado_diaristas: ["preset_diaristas"],
 };
 
-// Presets que redirecionam para rota própria
 const PRESET_ROTAS: Record<string, string> = {
     preset_diaristas: "/producao/diaristas",
 };
@@ -474,17 +491,7 @@ const LancamentoProducao = () => {
         modalidade_financeira: "",
         categoria_servico: "",
         data: today,
-
-        // State para armazenar a regra financeira aplicada
-        regra_financeira: null as {
-            modalidade_financeira: string;
-            forma_pagamento: string;
-            prazo_dias: number;
-            tipo_liquidacao: string;
-            entra_caixa_imediato: boolean;
-            gera_conta_receber: boolean;
-            agrupa_faturamento: boolean;
-        } | null,
+        regra_financeira: null as any,
         empresa_id: "",
         unidade_id: "",
         tipo_servico: "",
@@ -519,7 +526,7 @@ const LancamentoProducao = () => {
         queryKey: ["profile_usuario", user?.id],
         queryFn: async () => {
             if (!user?.id) return null;
-            const { data } = await supabase.from("profiles").select("role").eq("user_id", user.id).maybeSingle();
+            const { data } = await OperacaoProducaoService.getProfile(user.id);
             return data;
         },
         enabled: !!user?.id,
@@ -535,6 +542,7 @@ const LancamentoProducao = () => {
         queryKey: ["empresas"],
         queryFn: () => EmpresaService.getAll(),
         staleTime: 0,
+        retry: 1,
     });
 
     const { data: schemaDisponivel = false, isLoading: isCheckingSchema } = useQuery({
@@ -544,8 +552,8 @@ const LancamentoProducao = () => {
 
     useEffect(() => {
         if (form.empresa_id) return;
-        if (perfil?.empresa_id) {
-            setForm((prev) => ({ ...prev, empresa_id: perfil.empresa_id }));
+        if ((perfil as any)?.empresa_id) {
+            setForm((prev) => ({ ...prev, empresa_id: (perfil as any).empresa_id }));
             return;
         }
         if ((empresas as any[]).length > 0) {
@@ -672,7 +680,7 @@ const LancamentoProducao = () => {
         if (!form.modalidade_financeira) {
             return mapToLookupOptions(formasPagamentoDb as any[]);
         }
-        const regra = regrasFinanceiras.find(r => r.modalidade_financeira === form.modalidade_financeira);
+        const regra = (regrasFinanceiras as any[]).find(r => r.modalidade_financeira === form.modalidade_financeira);
         if (regra?.formas_pagamento_permitidas && formasPagamentoDb.length > 0) {
             const formasPermitidas = regra.formas_pagamento_permitidas as string[];
             return formasPermitidas.map((nomePermitido) => {
@@ -697,8 +705,8 @@ const LancamentoProducao = () => {
         [form.tipo_lancamento],
     );
     const modalidadeFinanceiraLabel = useMemo(
-        () => getModalidadeFinanceiraLabel(form.modalidade_financeira, regrasFinanceiras),
-        [form.modalidade_financeira],
+        () => getModalidadeFinanceiraLabel(form.modalidade_financeira, regrasFinanceiras as any[]),
+        [form.modalidade_financeira, regrasFinanceiras],
     );
     const isOperacaoPadrao = form.tipo_lancamento === "operacao_padrao";
     const isTransbordoServicoExtra = form.tipo_lancamento === "transbordo_servico_extra";
@@ -708,7 +716,6 @@ const LancamentoProducao = () => {
     const isFluxoSemEquipe = isTransbordoServicoExtra;
     const deveExigirModalidadeManual = isOperacaoPadrao;
 
-    // Categorização do serviço baseada no tipo de lançamento
     const categoriaServico = useMemo(() => {
         if (isDiaristas) return "DIARISTA";
         if (isQualquerCusto) return "CUSTO";
@@ -717,14 +724,12 @@ const LancamentoProducao = () => {
         return "SERVICO_VOLUME";
     }, [isDiaristas, isQualquerCusto, isTransbordoServicoExtra, isOperacaoPadrao]);
 
-    // Atualizar categoria_servico no form quando mudar
     useEffect(() => {
         if (categoriaServico && form.categoria_servico !== categoriaServico) {
             setForm((prev) => ({ ...prev, categoria_servico: categoriaServico }));
         }
     }, [categoriaServico]);
 
-    // Regra pode ser vinculada apenas à transportadora (sem fornecedor obrigatório)
     useEffect(() => {
         if (form.tipo_lancamento === "transbordo_servico_extra" && form.modalidade_financeira !== "CAIXA_IMEDIATO") {
             setForm((prev) => ({ ...prev, modalidade_financeira: "CAIXA_IMEDIATO" }));
@@ -739,11 +744,9 @@ const LancamentoProducao = () => {
         }
     }, [form.modalidade_financeira, form.tipo_lancamento]);
 
-    // Buscar regra financeira das abas dinâmicas
     useEffect(() => {
         const buscarRegraFinanceira = async () => {
             const modalidade = form.modalidade_financeira;
-            // Usar o nome da forma de pagamento se disponível, senão usar o ID
             const formaPagamentoItem = formaPagamentoOptions.find(item => item.id === form.forma_pagamento);
             const formaPagamento = formaPagamentoItem?.nome || form.forma_pagamento;
 
@@ -752,18 +755,11 @@ const LancamentoProducao = () => {
                 return;
             }
 
-            console.log("Buscando regra financeira:", { modalidade, formaPagamento });
-
             try {
                 const regra = await RegrasDadosService.buscarPorModalidadeEForma(modalidade, formaPagamento);
-                console.log("Regra encontrada:", regra);
                 if (regra?.dados) {
                     const dados = regra.dados;
                     const prazoDias = dados.prazo_dias !== undefined && dados.prazo_dias !== null ? Number(dados.prazo_dias) : 0;
-                    const hoje = new Date();
-                    const vencimento = new Date(hoje);
-                    vencimento.setDate(vencimento.getDate() + prazoDias);
-
                     setForm((prev) => ({
                         ...prev,
                         regra_financeira: {
@@ -786,7 +782,7 @@ const LancamentoProducao = () => {
         };
 
         buscarRegraFinanceira();
-    }, [form.modalidade_financeira, form.forma_pagamento]);
+    }, [form.modalidade_financeira, form.forma_pagamento, formaPagamentoOptions]);
 
     const regraLookupHabilitada = !!form.empresa_id && !!form.data && !!form.tipo_servico;
 
@@ -818,7 +814,6 @@ const LancamentoProducao = () => {
         enabled: schemaDisponivel && !!form.empresa_id,
     });
 
-    // Lookup separado para ISS (regra global ou por empresa/serviço)
     const { data: regraIssRpc = null } = useQuery({
         queryKey: ["resolver_iss_operacao", form.empresa_id, form.tipo_servico, form.data],
         queryFn: async () => {
@@ -933,11 +928,10 @@ const LancamentoProducao = () => {
     const tipoCalculoAtual = regraValor?.tipoCalculo ?? null;
     const quantidadeConsiderada = tipoCalculoAtual === "operation" ? (quantidade || 1) : quantidade;
 
-    // Regras de Negócio do Novo Módulo:
     const valoresCalculados = calcularValoresOperacao({
         quantidade: quantidadeConsiderada,
         valorUnitario: valorUnitario,
-        percentualIss: 0, // Encarregado não digita NF, mas se precisar a estrutura suporta
+        percentualIss: 0,
         quantidadeFilme: quantidadeFilme,
         valorUnitarioFilme: valorUnitarioFilme,
         nfRaw: "NÃO",
@@ -974,7 +968,7 @@ const LancamentoProducao = () => {
         if (ruleLookupState === "error") return REGRA_MENSAGEM_ERRO;
         if (ruleLookupState === "missing") {
             if (hasInactiveCompatibleRule) {
-                return "Existe uma regra operacional compatível para este contexto, mas ela está inativa. Solicite ao Admin ou Financeiro a reativação ou revisão do cadastro.";
+                return "Existe uma regra operacional compatível, mas está inativa. Peça para o Admin reativar.";
             }
             return regraValorRpc?.mensagem_bloqueio
                 ? String(regraValorRpc.mensagem_bloqueio)
@@ -994,11 +988,11 @@ const LancamentoProducao = () => {
         if (!form.data) return "Selecione a data da operação.";
         if (!form.tipo_servico) return "Selecione o tipo de serviço.";
 
-        if (isTransbordoServicoExtra && !form.descricao_servico.trim()) return "Informe a descrição do serviço conforme a aba de transbordo.";
-        if (isQualquerCusto && !form.descricao_servico.trim()) return "Informe a descrição do custo ou motivo do diária.";
+        if (isTransbordoServicoExtra && !form.descricao_servico.trim()) return "Informe a descrição do serviço.";
+        if (isQualquerCusto && !form.descricao_servico.trim()) return "Informe a descrição do custo ou motivo.";
 
-        if (horarioInvalido) return "O horário de saída não pode ser menor que o horário de entrada.";
-        if (isDataRetroativa && !form.justificativa_data.trim()) return "Informe a justificativa para lançar uma data retroativa.";
+        if (horarioInvalido) return "O horário de saída não pode ser menor que o de entrada.";
+        if (isDataRetroativa && !form.justificativa_data.trim()) return "Justifique a data retroativa.";
         return "";
     }, [
         form.data,
@@ -1006,7 +1000,6 @@ const LancamentoProducao = () => {
         form.empresa_id,
         form.justificativa_data,
         form.tipo_servico,
-        form.transportadora,
         horarioInvalido,
         isDataRetroativa,
         isQualquerCusto,
@@ -1015,14 +1008,14 @@ const LancamentoProducao = () => {
 
     const etapaTresBlockReason = useMemo(() => {
         if (!isQualquerCusto && requiresProductSelection && !form.produto) return REGRA_MENSAGEM_PRODUTO;
-        if (!isCustosMensaisCLT && !form.forma_pagamento) return "Selecione a categoria operacional da regra.";
+        if (!isCustosMensaisCLT && !form.forma_pagamento) return "Selecione a categoria da regra.";
 
         if (ruleLookupState === "loading") return "Buscando valor...";
 
         if (!hasRegraFinanceira) {
             if (isTransbordoServicoExtra || isQualquerCusto) {
                 if (!form.valor_unitario || Number(form.valor_unitario) <= 0) {
-                    return `Para ${isTransbordoServicoExtra ? 'transbordo' : 'lançamento'} sem regra sistêmica, informe o valor unitário manualmente.`;
+                    return `Informe o valor unitário manualmente.`;
                 }
             } else {
                 if (ruleLookupState === "duplicate" || ruleLookupState === "needs_product" || ruleLookupState === "error" || ruleLookupState === "missing") {
@@ -1033,12 +1026,11 @@ const LancamentoProducao = () => {
         }
 
         if (!isFluxoSemEquipe && (!Number.isInteger(Number(form.quantidade_colaboradores)) || Number(form.quantidade_colaboradores) <= 0)) {
-            return "Informe uma quantidade inteira de colaboradores maior que zero.";
+            return "Informe a quantidade de colaboradores.";
         }
         if (quantidadeConsiderada <= 0) return "Informe uma quantidade maior que zero.";
         return "";
     }, [
-        form.fornecedor,
         form.forma_pagamento,
         form.quantidade_colaboradores,
         form.produto,
@@ -1058,7 +1050,7 @@ const LancamentoProducao = () => {
         if (isFluxoSemEquipe) return "";
         const quantidadeInformada = Number(form.quantidade_colaboradores || 0);
         if (quantidadeSelecionada !== quantidadeInformada) {
-            return `Você informou ${quantidadeInformada} colaboradores envolvidos, mas selecionou ${quantidadeSelecionada}. Selecione exatamente ${quantidadeInformada} colaboradores para continuar.`;
+            return `Você informou ${quantidadeInformada} e selecionou ${quantidadeSelecionada}.`;
         }
 
         const colaboradorComInfracaoSemTipo = colaboradoresSelecionados.find((colaborador: any) => {
@@ -1111,7 +1103,7 @@ const LancamentoProducao = () => {
         },
     });
 
-    const { data: resumoV2 } = useQuery({
+    const { data: resumoV2, isLoading: isLoadingResumo } = useQuery({
         queryKey: ["resumo_producao_dia", form.empresa_id, form.unidade_id, form.data],
         queryFn: () => OperacaoProducaoService.getResumoDoDia(form.data, form.empresa_id, form.unidade_id || null).catch(() => null),
         enabled: !!form.empresa_id && schemaDisponivel,
@@ -1153,9 +1145,13 @@ const LancamentoProducao = () => {
             queryClient.invalidateQueries({ queryKey: ["producao_recente"] });
             queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
             queryClient.invalidateQueries({ queryKey: ["operacoes"] });
+
+            const lastForm = { ...form };
             setForm((prev) => ({
                 ...prev,
-                quantidade_colaboradores: "1",
+                tipo_lancamento: lastForm.tipo_lancamento,
+                modalidade_financeira: lastForm.modalidade_financeira,
+                preset_id: lastForm.preset_id,
                 descricao_servico: "",
                 transportadora: "",
                 fornecedor: "",
@@ -1171,7 +1167,7 @@ const LancamentoProducao = () => {
                 justificativa_data: "",
             }));
             setCondutaColaboradores({});
-            setEtapaAtual(1);
+            setEtapaAtual(2);
         },
         onError: (err: any) => toast.error("Erro ao salvar", { description: err.message }),
     });
@@ -1189,8 +1185,8 @@ const LancamentoProducao = () => {
         }
 
         if (etapaAtual === 2) {
-            if (etapaUmBlockReasonResolvido || etapaDoisBlockReason) {
-                toast.error(etapaUmBlockReasonResolvido || etapaDoisBlockReason);
+            if (etapaDoisBlockReason) {
+                toast.error(etapaDoisBlockReason);
                 return;
             }
             setEtapaAtual(3);
@@ -1198,1164 +1194,312 @@ const LancamentoProducao = () => {
         }
 
         if (etapaAtual === 3) {
-            if (etapaUmBlockReasonResolvido || etapaDoisBlockReason || etapaTresBlockReason) {
-                toast.error(etapaUmBlockReasonResolvido || etapaDoisBlockReason || etapaTresBlockReason);
+            if (etapaTresBlockReason) {
+                toast.error(etapaTresBlockReason);
                 return;
             }
             if (isFluxoSemEquipe) {
-                // Fluxos baseados em duplicata de transbordo encerram no próprio formulário operacional.
+                handleSave();
             } else {
                 setEtapaAtual(4);
-                return;
             }
-        }
-
-        if (etapaUmBlockReasonResolvido || etapaDoisBlockReason || etapaTresBlockReason || etapaQuatroBlockReason) {
-            toast.error(etapaUmBlockReasonResolvido || etapaDoisBlockReason || etapaTresBlockReason || etapaQuatroBlockReason);
             return;
         }
 
-        const status: StatusLancamento = infracoesCount > 0
-            ? "Com alerta"
-            : !form.horario_inicio || !form.horario_fim
-                ? "Aguardando validação"
-                : "Pendente";
-
-        const avaliacaoJson = {
-            colaboradores: colaboradoresSelecionados.map((colaborador: any) => {
-                const conduta = condutaColaboradores[colaborador.id];
-                return {
-                    collaborator_id: colaborador.id,
-                    nome: colaborador.nome,
-                    cargo: colaborador.cargo,
-                    had_infraction: conduta?.hadInfraction ?? false,
-                    infraction_type: conduta?.infractionType || null,
-                    infraction_notes: conduta?.notes?.trim() || null,
-                };
-            }),
-            total_infracoes: infracoesCount,
-            total_colaboradores_vinculados: quantidadeSelecionada,
-            contexto_operacional: {
-                finalidade_lancamento: finalidadeSelecionada?.title ?? form.tipo_lancamento,
-                categoria_servico: categoriaServico,
-                modalidade_financeira: form.modalidade_financeira,
-                modalidade_financeira_label: modalidadeFinanceiraLabel,
-                descricao_servico: form.descricao_servico.trim() || null,
-                fornecedor: fornecedorSelecionado?.nome ?? form.fornecedor,
-                produto: produtoSelecionado?.nome ?? form.produto,
-                forma_pagamento: formaPagamentoSelecionada?.nome ?? form.forma_pagamento,
-                quantidade_colaboradores: quantidadeColaboradores,
-                tipo_calculo: tipoCalculoAtual,
-                percentual_iss: Number(percentualIss) / 100,
-                valor_unitario: valorUnitario,
-                valor_unitario_filme: valorUnitarioFilme,
-                quantidade_filme: quantidadeFilme,
-                total_previsto: totalFinal,
-                valor_descarga: valorDescarga,
-                custo_com_iss: custoIss,
-                total_e_filme: totalFilme,
-                justificativa_data: form.justificativa_data.trim() || null,
-                aba_planilha: form.tipo_lancamento,
-                nf_numero: form.nf_numero.trim() || null,
-                ctrc: form.ctrc.trim() || null,
-                observacao: form.observacao.trim() || null,
-            },
-            contexto_importacao: {
-                origem_aba: finalidadeSelecionada?.title ?? form.tipo_lancamento,
-                modalidade_financeira_override: form.modalidade_financeira || null,
-            },
-        };
-
-        // Buscar regra financeira baseada na modalidade e forma de pagamento
-        const buscarRegraFinanceira = async () => {
-            const modalidade = form.modalidade_financeira || avaliacaoJson.contexto_operacional?.modalidade_financeira;
-            const formaPagamento = formaPagamentoSelecionada?.nome || avaliacaoJson.contexto_operacional?.forma_pagamento || form.forma_pagamento;
-
-            if (!modalidade || !formaPagamento) return null;
-
-            try {
-                const regra = await RegrasDadosService.buscarPorModalidadeEForma(modalidade, formaPagamento);
-                return regra?.dados || null;
-            } catch (error) {
-                console.error("Erro ao buscar regra financeira:", error);
-                return null;
+        if (etapaAtual === 4) {
+            if (etapaQuatroBlockReason) {
+                toast.error(etapaQuatroBlockReason);
+                return;
             }
-        };
-
-        // Aplicar regra financeira à operação
-        const aplicarRegraFinanceira = async () => {
-            const regra = await buscarRegraFinanceira();
-            if (!regra) return {};
-
-            const hoje = new Date();
-            let dataVencimento: string | null = null;
-
-            // Calcular data de vencimento baseada no prazo
-            if (regra.prazo_dias !== undefined && regra.prazo_dias !== null) {
-                const vencimento = new Date(hoje);
-                vencimento.setDate(vencimento.getDate() + Number(regra.prazo_dias));
-                dataVencimento = vencimento.toISOString().split('T')[0];
-            }
-
-            return {
-                regra_financeira: {
-                    modalidade_financeira: regra.modalidade_financeira,
-                    forma_pagamento: regra.forma_pagamento,
-                    prazo_dias: regra.prazo_dias,
-                    tipo_liquidacao: regra.tipo_liquidacao,
-                    entra_caixa_imediato: regra.entra_caixa_imediato,
-                    gera_conta_receber: regra.gera_conta_receber,
-                    agrupa_faturamento: regra.agrupa_faturamento,
-                    data_vencimento: dataVencimento,
-                },
-            };
-        };
-
-        // Executar mutation com a regra financeira
-        (async () => {
-            const regraFinanceira = await aplicarRegraFinanceira();
-
-            mutation.mutate({
-                operacao: {
-                    ...regraFinanceira,
-                    categoria_servico: categoriaServico,
-                    empresa_id: form.empresa_id,
-                    unidade_id: form.unidade_id || null,
-                    data_operacao: form.data,
-                    tipo_servico_id: form.tipo_servico,
-                    colaborador_id: null,
-                    entrada_ponto: form.horario_inicio || null,
-                    saida_ponto: form.horario_fim || null,
-                    transportadora_id: form.transportadora,
-                    fornecedor_id: form.fornecedor,
-                    produto_carga_id: form.produto || null,
-                    quantidade: tipoCalculoAtual === "operation"
-                        ? form.quantidade ? Number(form.quantidade) : 1
-                        : tipoCalculoAtual === "colaborador"
-                            ? quantidadeColaboradores
-                            : quantidade,
-                    valor_unitario_snapshot: valorUnitario,
-                    tipo_calculo_snapshot: regraValor?.tipoCalculo ?? "volume",
-                    forma_pagamento_id: form.forma_pagamento && form.forma_pagamento.includes('-') ? form.forma_pagamento : null,
-                    placa: form.placa_veiculo || null,
-                    status: status === "Com alerta" ? "com_alerta" : status === "Aguardando validação" ? "aguardando_validacao" : "pendente",
-                    percentual_iss: Number(percentualIss) / 100,
-                    valor_descarga: valorDescarga,
-                    custo_com_iss: custoIss,
-                    valor_unitario_filme: valorUnitarioFilme,
-                    quantidade_filme: quantidadeFilme,
-                    valor_total_filme: totalFilme,
-                    valor_total: totalFinal,
-                    avaliacao_json: avaliacaoJson,
-                    justificativa_retroativa: form.justificativa_data.trim() || null,
-                    origem_dado: "manual",
-                    // Passing the extra fields natively if the schema allows, otherwise rely on avaliacao_json since it will be passed to Operations Table
-                    nf_numero: form.nf_numero.trim() || null,
-                    ctrc: form.ctrc.trim() || null,
-                },
-                colaboradores: colaboradoresSelecionados.map((colaborador: any) => {
-                    const conduta = condutaColaboradores[colaborador.id];
-                    return {
-                        collaborator_id: colaborador.id,
-                        had_infraction: conduta?.hadInfraction ?? false,
-                        infraction_type_id: conduta?.infractionType || null,
-                        infraction_notes: conduta?.notes?.trim() || null,
-                    };
-                }),
-            });
-        })();
+            handleSave();
+        }
     };
 
-    const currentEmpresa = (empresas as any[]).find((empresa: any) => empresa.id === form.empresa_id);
-    const currentUnidade = (unidadesDb as any[]).find((unidade: any) => unidade.id === form.unidade_id);
-    const currentUnitName = currentUnidade?.nome || currentEmpresa?.nome;
-    const perfilRole = perfil?.role?.toLowerCase() ?? "";
-    const unitLocked = false; // perfil não tem mais empresa_id
+    const handleSave = () => {
+        const status = infracoesCount > 0 ? "Com alerta" : (isDataRetroativa ? "Aguardando validação" : "Pendente");
+        const regraFinanceira = form.regra_financeira as any;
 
-    // --- READINESS GATE ---
+        const avaliacaoJson = {
+            infracoes: Object.values(condutaColaboradores)
+                .filter((c) => c.selected && c.hadInfraction)
+                .map((c) => ({ type: c.infractionType, notes: c.notes })),
+            total_infracoes: infracoesCount,
+            contexto_operacional: {
+                total_previsto: totalFinal,
+                quantidade: quantidade,
+                valor_unitario: valorUnitario,
+                base_calculo: baseCalculoResumo,
+                quantidade_colaboradores: quantidadeColaboradores,
+            },
+        };
+
+        const operacao = {
+            ...regraFinanceira,
+            categoria_servico: categoriaServico,
+            empresa_id: form.empresa_id,
+            unidade_id: form.unidade_id || null,
+            data_operacao: form.data,
+            tipo_servico_id: form.tipo_servico,
+            colaborador_id: null,
+            entrada_ponto: form.horario_inicio || null,
+            saida_ponto: form.horario_fim || null,
+            transportadora_id: form.transportadora,
+            fornecedor_id: form.fornecedor,
+            produto_carga_id: form.produto || null,
+            quantidade: tipoCalculoAtual === "operation"
+                ? form.quantidade ? Number(form.quantidade) : 1
+                : tipoCalculoAtual === "colaborador"
+                    ? quantidadeColaboradores
+                    : quantidade,
+            valor_unitario_snapshot: valorUnitario,
+            tipo_calculo_snapshot: regraValor?.tipoCalculo ?? "volume",
+            forma_pagamento_id: form.forma_pagamento && form.forma_pagamento.includes('-') ? form.forma_pagamento : null,
+            placa: form.placa_veiculo || null,
+            status: status === "Com alerta" ? "com_alerta" : status === "Aguardando validação" ? "aguardando_validacao" : "pendente",
+            percentual_iss: Number(percentualIss) / 100,
+            valor_descarga: valorDescarga,
+            custo_com_iss: custoIss,
+            valor_unitario_filme: valorUnitarioFilme,
+            quantidade_filme: quantidadeFilme,
+            valor_total_filme: totalFilme,
+            valor_total: totalFinal,
+            avaliacao_json: avaliacaoJson,
+            justificativa_retroativa: form.justificativa_data.trim() || null,
+            origem_dado: "manual",
+            nf_numero: form.nf_numero.trim() || null,
+            ctrc: form.ctrc.trim() || null,
+            observacao: form.observacao.trim() || null,
+            responsavel_id: user?.id,
+            descricao_servico: form.descricao_servico.trim() || null,
+        };
+
+        const colaboradores = Object.entries(condutaColaboradores)
+            .filter(([, conduta]) => conduta.selected)
+            .map(([colaborador_id]) => ({ colaborador_id }));
+
+        mutation.mutate({ operacao, colaboradores });
+    };
+
+    const handlePresetSelect = (preset: (typeof LANCAMENTO_PRESETS)[0]) => {
+        console.log('[OPERACAO] Preset selecionado:', preset.title);
+        
+        if (PRESET_ROTAS[preset.id]) {
+            console.log('[OPERACAO] Navegando para rota externa:', PRESET_ROTAS[preset.id]);
+            navigate(PRESET_ROTAS[preset.id]);
+            return;
+        }
+
+        setForm((prev) => ({
+            ...prev,
+            preset_id: preset.id,
+            tipo_lancamento: preset.tipo_lancamento,
+            modalidade_financeira: preset.modalidade_financeira,
+        }));
+        
+        console.log('[OPERACAO] Avançando para etapa 2...');
+        setEtapaAtual(2);
+    };
+
     const cadastrosAusentes: string[] = [];
-    if ((empresas as any[]).length === 0) cadastrosAusentes.push("Empresas");
-    if (schemaDisponivel && tipoServicoOptions.length === 0 && !isLoadingTipos) cadastrosAusentes.push("Tipos de Serviço");
-    if (schemaDisponivel && formaPagamentoOptions.length === 0 && !isLoadingFormas) cadastrosAusentes.push("Formas de Pagamento");
-    if (form.empresa_id && colaboradoresFiltrados.length === 0) cadastrosAusentes.push("Colaboradores (Intermitente/Produção)");
+    if (!isLoadingEmpresas && empresas.length === 0) cadastrosAusentes.push("Empresas");
+    if (!isLoadingTipos && tiposServicoDb.length === 0) cadastrosAusentes.push("Tipos de Serviço");
 
-    const producaoBloqueada = !schemaDisponivel || cadastrosAusentes.length > 0;
-
-    if (isCheckingSchema) {
+    if (etapaAtual === 1) {
         return (
-            <OperationalShell title="PRODUÇÃO IN-LOCO" unitName={currentUnitName || "Sincronizando..."} showBack={false}>
-                <div className="flex flex-col items-center justify-center p-24">
-                    <Clock className="w-10 h-10 animate-pulse text-muted-foreground mb-4" />
-                    <p className="text-sm font-medium text-muted-foreground">Verificando disponibilidade do schema operacional...</p>
-                </div>
-            </OperationalShell>
-        );
-    }
-
-    if (!schemaDisponivel) {
-        return (
-            <OperationalShell title="PRODUÇÃO IN-LOCO" unitName={currentUnitName || "—"} showBack={false}>
-                <Card className="p-8 max-w-2xl mx-auto mt-12 text-center space-y-4 esc-card border-l-4 border-l-red-500 shadow-sm">
-                    <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mx-auto">
-                        <AlertCircle className="w-8 h-8 text-red-500" />
+            <OperationalShell title="Novo Lançamento">
+                <div className="p-4 sm:p-6">
+                    <div className="mb-6 flex items-center justify-between">
+                        <div>
+                            <h2 className="text-xl font-bold">Tipo de Operação</h2>
+                            <p className="text-sm text-muted-foreground">Selecione o tipo de lançamento para começar.</p>
+                        </div>
                     </div>
-                    <h2 className="text-xl font-black font-display text-foreground">Schema operacional não encontrado</h2>
-                    <p className="text-sm text-muted-foreground">
-                        As tabelas de produção (<code>operacoes_producao</code>, <code>tipos_servico_operacional</code>, etc.) não foram detectadas no banco de dados.
-                        Execute a migration do módulo operacional antes de usar esta tela.
-                    </p>
-                    <Badge variant="error" className="font-bold bg-red-500">Produção bloqueada</Badge>
-                </Card>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                        {gridPresets.map((preset) => (
+                            <Card
+                                key={preset.id}
+                                className={cn(
+                                    "cursor-pointer hover:border-primary/80 hover:bg-primary/5 transition-all duration-200 flex flex-col items-center justify-center text-center p-4 aspect-square",
+                                    form.preset_id === preset.id && "border-primary/80 bg-primary/5 ring-2 ring-primary/40"
+                                )}
+                                onClick={() => handlePresetSelect(preset)}
+                            >
+                                <div className={cn("w-12 h-12 rounded-full flex items-center justify-center mb-3", preset.iconColor)}>
+                                    <preset.icon className="w-6 h-6" />
+                                </div>
+                                <h3 className="font-semibold text-sm mb-1">{preset.title}</h3>
+                                <p className="text-xs text-muted-foreground line-clamp-2">{preset.description}</p>
+                            </Card>
+                        ))}
+                    </div>
+
+                    {etapaUmBlockReasonResolvido && (
+                        <div className="mt-6 p-4 border-l-4 border-l-info-strong bg-info-soft text-sm font-medium text-info-strong">
+                            {etapaUmBlockReasonResolvido}
+                        </div>
+                    )}
+                </div>
             </OperationalShell>
         );
     }
-
     return (
-        <OperationalShell title="PRODUÇÃO IN-LOCO" unitName={currentUnitName || "Sincronizando..."} showBack={false}>
-            <div className="mb-4 flex items-center justify-end">
-                <div className="flex items-center gap-1 bg-muted/50 rounded-full px-1 py-0.5">
-                    <button
-                        type="button"
-                        onClick={() => setViewMode("grid")}
-                        className={`p-1.5 rounded-full transition-colors ${viewMode === "grid" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                    >
-                        <LayoutGrid className="w-4 h-4" />
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => { setViewMode("carousel"); setCarouselIndex(0); }}
-                        className={`p-1.5 rounded-full transition-colors ${viewMode === "carousel" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                    >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-                        </svg>
-                    </button>
-                </div>
+        <OperationalShell
+            title="Novo Lançamento"
+            breadcrumbs={[
+                { label: "Operacional", action: () => setEtapaAtual(1) },
+                { label: finalidadeSelecionada?.title ?? "Detalhes" },
+            ]}
+        >
+            <div className="p-1 sm:p-2">
+                <Progress value={(etapaAtual / 4) * 100} className="h-1" />
             </div>
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:gap-6 2xl:gap-8">
 
-                <div className="xl:col-span-5 2xl:col-span-4 space-y-4">
-                    <Card className="p-6 border-border shadow-sm">
-                        <div className="mb-5 flex items-center justify-between gap-3">
-                            <h3 className="text-lg font-black font-display text-foreground flex items-center gap-2">
-                                <Zap className="w-5 h-5 text-brand" />
-                                Novo Registro
-                            </h3>
-                            {producaoBloqueada && (
-                                <Badge variant="error" className="font-bold">Cadastros ausentes</Badge>
-                            )}
-                        </div>
-
-                        <div className="mb-4 rounded-xl border border-border bg-muted/20 p-3 flex items-center justify-between gap-3">
+            <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 px-3 sm:px-6 sm:gap-6">
+                <div className="xl:col-span-5 2xl:col-span-4 space-y-4 sm:space-y-6">
+                    <Card className="p-4 sm:p-5 mx-auto w-full max-w-[95%] sm:max-w-full">
+                        <div className="flex items-center gap-3 mb-6">
+                            <button onClick={() => setEtapaAtual(e => Math.max(1, e - 1) as EtapaFormulario)} className="text-muted-foreground hover:text-foreground">
+                                <ArrowLeft className="w-5 h-5" />
+                            </button>
                             <div>
-                                <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                                    {isFluxoSemEquipe
-                                        ? etapaAtual === 1
-                                            ? "Etapa 1 de 3"
-                                            : etapaAtual === 2
-                                                ? "Etapa 2 de 3"
-                                                : "Etapa 3 de 3"
-                                        : etapaAtual === 1
-                                            ? "Etapa 1 de 4"
-                                            : etapaAtual === 2
-                                                ? "Etapa 2 de 4"
-                                                : etapaAtual === 3
-                                                    ? "Etapa 3 de 4"
-                                                    : "Etapa 4 de 4"}
-                                </p>
-                                <p className="text-sm font-semibold text-foreground">
-                                    {etapaAtual === 1 ? "Tipo de Lançamento" : etapaAtual === 2 ? "Dados da operação" : etapaAtual === 3 ? "Valores e Financeiro" : "Colaboradores e conduta"}
-                                </p>
+                                <h2 className="font-bold text-lg">{finalidadeSelecionada?.title}</h2>
+                                <p className="text-xs text-muted-foreground">{modalidadeFinanceiraLabel}</p>
                             </div>
-                            {etapaAtual > 1 && (
-                                <Button type="button" variant="outline" size="sm" onClick={() => setEtapaAtual((prev) => (prev - 1) as EtapaFormulario)}>
-                                    Voltar
-                                </Button>
-                            )}
                         </div>
 
-                        <form onSubmit={handleSubmit} className="space-y-4">
-                            {etapaAtual === 1 && (
-                                <div className="space-y-4">
-                                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Novo Registro</p>
-                                    {viewMode === "carousel" && bannerExpandido && (
-                                        <button
-                                            type="button"
-                                            onClick={() => setBannerExpandido(false)}
-                                            className="w-full esc-card p-4 border-l-4 border-l-blue-500 shadow-sm bg-card text-left"
-                                        >
-                                            <div className="flex items-start gap-3 text-blue-800 dark:text-blue-200">
-                                                <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                                                <div>
-                                                    <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-1">
-                                                        Registro operacional em tempo real
-                                                    </p>
-                                                    <p className="text-sm text-foreground">
-                                                        Registros imediatos de carga, descarga e movimentações. Preencha os dados da operação e depois vincule a equipe com a conduta de cada colaborador.
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </button>
-                                    )}
-                                    {viewMode === "carousel" && !bannerExpandido && (
-                                        <button
-                                            type="button"
-                                            onClick={() => setBannerExpandido(true)}
-                                            className="w-full text-left text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-                                        >
-                                            <AlertCircle className="w-3 h-3" />
-                                            Registro operacional em tempo real
-                                        </button>
-                                    )}
-
-                                    {viewMode === "grid" ? (
-                                        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-                                            {LANCAMENTO_PRESETS.map((preset) => {
-                                                const Icon = preset.icon;
-                                                const isActive = form.preset_id === preset.id;
-                                                const perfilRole = perfil?.role?.toLowerCase() ?? "";
-                                                const listaBloqueada = PRESETS_PERMITIDOS_POR_PERFIL[perfilRole] ?? [];
-                                                const isBloqueado = listaBloqueada.length > 0 && !listaBloqueada.includes(preset.id);
-                                                const rotaEspecifica = PRESET_ROTAS[preset.id];
-                                                return (
-                                                    <button
-                                                        key={preset.id}
-                                                        type="button"
-                                                        disabled={isBloqueado}
-                                                        onClick={() => {
-                                                            if (isBloqueado) {
-                                                                toast.error("Você não tem permissão para acessar este lançamento.");
-                                                                return;
-                                                            }
-                                                            if (rotaEspecifica) {
-                                                                navigate(rotaEspecifica);
-                                                                return;
-                                                            }
-                                                            setForm((prev) => ({
-                                                                ...prev,
-                                                                preset_id: preset.id,
-                                                                tipo_lancamento: preset.tipo_lancamento,
-                                                                modalidade_financeira: preset.modalidade_financeira,
-                                                            }));
-                                                            setEtapaAtual(2);
-                                                            setTimeout(() => {
-                                                                window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
-                                                            }, 100);
-                                                        }}
-                                                        className={cn(
-                                                            "relative flex flex-col p-4 rounded-2xl border transition-all text-left group",
-                                                            isBloqueado && "opacity-40 cursor-not-allowed grayscale",
-                                                            !isBloqueado && isActive ? "border-brand bg-brand/5 ring-2 ring-brand/20 shadow-sm" : "",
-                                                            !isBloqueado && !isActive ? "border-border hover:border-brand/40 bg-background hover:bg-muted/30" : "",
-                                                        )}
-                                                    >
-                                                        <div className={cn(
-                                                            "w-10 h-10 mb-3 shrink-0 rounded-full flex items-center justify-center transition-colors",
-                                                            isActive && !isBloqueado ? "bg-brand text-white shadow-md" : preset.iconColor || "bg-muted text-muted-foreground group-hover:bg-muted-foreground/10"
-                                                        )}>
-                                                            <Icon className="w-5 h-5" />
-                                                        </div>
-                                                        <div className="space-y-1">
-                                                            <p className={cn("font-bold leading-tight", isActive && !isBloqueado ? "text-brand" : "text-foreground")}>{preset.title}</p>
-                                                            <p className="text-xs text-muted-foreground leading-relaxed">{preset.description}</p>
-                                                        </div>
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    ) : (
-                                        <div className="relative">
-                                            <div
-                                                className="overflow-hidden"
-                                                onTouchStart={(e) => {
-                                                    touchRef.current.start = e.touches[0].clientX;
-                                                    touchRef.current.end = null;
-                                                }}
-                                                onTouchMove={(e) => {
-                                                    touchRef.current.end = e.touches[0].clientX;
-                                                }}
-                                                onTouchEnd={() => {
-                                                    if (!touchRef.current.start || !touchRef.current.end) return;
-                                                    const diff = touchRef.current.start - touchRef.current.end;
-                                                    const threshold = 50;
-                                                    if (Math.abs(diff) > threshold) {
-                                                        if (diff > 0 && carouselIndex < gridPresets.length - 1) {
-                                                            setCarouselIndex(carouselIndex + 1);
-                                                        } else if (diff < 0 && carouselIndex > 0) {
-                                                            setCarouselIndex(carouselIndex - 1);
-                                                        }
-                                                    }
-                                                    touchRef.current.start = null;
-                                                    touchRef.current.end = null;
-                                                }}
-                                            >
-                                                <div
-                                                    className="flex transition-transform duration-300 ease-in-out"
-                                                    style={{
-                                                        width: `${gridPresets.length * 100}%`,
-                                                        transform: `translateX(-${carouselIndex * (100 / gridPresets.length)}%)`
-                                                    }}
-                                                >
-                                                    {gridPresets.map((preset) => {
-                                                        const Icon = preset.icon;
-                                                        const isActive = form.preset_id === preset.id;
-                                                        const listaBloqueada = PRESETS_PERMITIDOS_POR_PERFIL[perfil?.role?.toLowerCase() ?? ""] ?? [];
-                                                        const isBloqueado = listaBloqueada.length > 0 && !listaBloqueada.includes(preset.id);
-                                                        const rotaEspecifica = PRESET_ROTAS[preset.id];
-                                                        return (
-                                                            <div key={preset.id} className="flex-shrink-0 px-1" style={{ width: `${100 / gridPresets.length}%` }}>
-                                                                <button
-                                                                    type="button"
-                                                                    disabled={isBloqueado}
-                                                                    onClick={() => {
-                                                                        if (isBloqueado) {
-                                                                            toast.error("Você não tem permissão para acessar este lançamento.");
-                                                                            return;
-                                                                        }
-                                                                        if (rotaEspecifica) {
-                                                                            navigate(rotaEspecifica);
-                                                                            setTimeout(() => {
-                                                                                window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
-                                                                            }, 100);
-                                                                            return;
-                                                                        }
-                                                                        setForm((prev) => ({
-                                                                            ...prev,
-                                                                            preset_id: preset.id,
-                                                                            tipo_lancamento: preset.tipo_lancamento,
-                                                                            modalidade_financeira: preset.modalidade_financeira,
-                                                                        }));
-                                                                        setEtapaAtual(2);
-                                                                        setTimeout(() => {
-                                                                            window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
-                                                                        }, 100);
-                                                                    }}
-                                                                    className={cn(
-                                                                        "relative flex flex-col p-8 rounded-2xl border transition-all text-left w-full h-full min-h-[280px]",
-                                                                        isBloqueado && "opacity-40 cursor-not-allowed grayscale",
-                                                                        !isBloqueado && isActive ? "border-brand bg-brand/5 ring-2 ring-brand/20 shadow-sm" : "",
-                                                                        !isBloqueado && !isActive ? "border-border hover:border-brand/40 bg-background hover:bg-muted/30" : "",
-                                                                    )}
-                                                                >
-                                                                    <div className={cn(
-                                                                        "w-16 h-16 mb-5 shrink-0 rounded-full flex items-center justify-center transition-colors",
-                                                                        isActive && !isBloqueado ? "bg-brand text-white shadow-md" : preset.iconColor || "bg-muted text-muted-foreground"
-                                                                    )}>
-                                                                        <Icon className="w-8 h-8" />
-                                                                    </div>
-                                                                    <div className="space-y-2">
-                                                                        <p className={cn("text-xl font-bold leading-tight", isActive && !isBloqueado ? "text-brand" : "text-foreground")}>{preset.title}</p>
-                                                                        <p className="text-base text-muted-foreground leading-relaxed">{preset.description}</p>
-                                                                    </div>
-                                                                </button>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
-                                            {gridPresets.length > 1 && (
-                                                <div className="flex items-center justify-between mt-4">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setCarouselIndex((prev) => Math.max(0, prev - 1))}
-                                                        disabled={carouselIndex === 0}
-                                                        className="p-2 rounded-lg border border-border hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
-                                                    >
-                                                        <ChevronLeft className="w-5 h-5" />
-                                                    </button>
-                                                    <span className="text-sm text-muted-foreground">{carouselIndex + 1} / {gridPresets.length}</span>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setCarouselIndex((prev) => Math.min(gridPresets.length - 1, prev + 1))}
-                                                        disabled={carouselIndex === gridPresets.length - 1}
-                                                        className="p-2 rounded-lg border border-border hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
-                                                    >
-                                                        <ChevronRight className="w-5 h-5" />
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-
-                                    {etapaUmBlockReasonResolvido && (
-                                        <div className="esc-card p-3 border-l-4 border-l-amber-500 bg-amber-500/5 text-sm font-medium text-amber-800 dark:text-amber-200">
-                                            {etapaUmBlockReasonResolvido}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
+                        <form onSubmit={handleSubmit} className="space-y-6">
                             {etapaAtual === 2 && (
-                                <div className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
-                                    {finalidadeSelecionada && (
-                                        <div className="rounded-2xl border border-border bg-muted/20 p-4 space-y-2">
-                                            <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Contexto do lancamento</p>
-                                            <div className="flex flex-wrap items-center gap-2">
-                                                <Badge variant="info" className="font-bold">{finalidadeSelecionada.title}</Badge>
-                                                <Badge variant="outline" className="font-bold">{modalidadeFinanceiraLabel}</Badge>
-                                            </div>
-                                            <p className="text-xs text-muted-foreground">{finalidadeSelecionada.description}</p>
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-1.5">
+                                            <Label>Data</Label>
+                                            <Input 
+                                                type="date" 
+                                                value={form.data || ""} 
+                                                onChange={(e) => setForm(f => ({ ...f, data: e.target.value }))} 
+                                                className="h-11 rounded-xl bg-background"
+                                            />
                                         </div>
-                                    )}
+                                        <div className="space-y-1.5">
+                                            <Label>Empresa</Label>
+                                            <Select value={form.empresa_id} onValueChange={(v) => setForm(f => ({ ...f, empresa_id: v }))}>
+                                                <SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    {empresas.map((e: any) => <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>)}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+                                    {isDataRetroativa && <Textarea value={form.justificativa_data} onChange={e => setForm(f => ({ ...f, justificativa_data: e.target.value }))} placeholder="Justificativa da data retroativa..." className="rounded-xl" />}
+
                                     <div className="space-y-1.5">
-                                        <Label className="flex items-center gap-1.5">
-                                            <Building2 className="w-3.5 h-3.5" />
-                                            Empresa
-                                        </Label>
-                                        <Select
-                                            value={form.empresa_id}
-                                            onValueChange={(value) =>
-                                                setForm((prev) => ({
-                                                    ...prev,
-                                                    empresa_id: value,
-                                                    unidade_id: "",
-                                                    tipo_servico: "",
-                                                    transportadora: "",
-                                                    fornecedor: "",
-                                                    produto: "",
-                                                    forma_pagamento: "",
-                                                }))
-                                            }
-                                        >
-                                            <SelectTrigger className="h-11 rounded-xl">
-                                                <SelectValue placeholder="Selecione a empresa" />
-                                            </SelectTrigger>
+                                        <Label>Tipo de Serviço</Label>
+                                        <Select value={form.tipo_servico} onValueChange={(v) => setForm(f => ({ ...f, tipo_servico: v }))}>
+                                            <SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger>
                                             <SelectContent>
-                                                {(empresas as any[]).map((empresa: any) => (
-                                                    <SelectItem key={empresa.id} value={empresa.id}>
-                                                        {empresa.nome}
-                                                    </SelectItem>
-                                                ))}
+                                                {tipoServicoOptions.map((opt) => <SelectItem key={opt.id} value={opt.id}>{opt.nome}</SelectItem>)}
                                             </SelectContent>
                                         </Select>
                                     </div>
 
-                                    {(unidadesDb as any[]).length > 0 && (
+                                    {(isTransbordoServicoExtra || isQualquerCusto) && (
                                         <div className="space-y-1.5">
-                                            <Label className="flex items-center gap-1.5">
-                                                <Building2 className="w-3.5 h-3.5" />
-                                                Unidade
-                                            </Label>
-                                            <Select
-                                                value={form.unidade_id}
-                                                onValueChange={(value) => setForm((prev) => ({ ...prev, unidade_id: value }))}
-                                            >
-                                                <SelectTrigger className="h-11 rounded-xl">
-                                                    <SelectValue placeholder="Selecione a unidade" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {(unidadesDb as any[]).map((unidade: any) => (
-                                                        <SelectItem key={unidade.id} value={unidade.id}>
-                                                            {unidade.nome}
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
+                                            <Label>Descrição</Label>
+                                            <Textarea value={form.descricao_servico} onChange={e => setForm(f => ({ ...f, descricao_servico: e.target.value }))} placeholder="Descrição do serviço, custo ou motivo" className="rounded-xl" />
                                         </div>
                                     )}
 
-                                    <div className="grid grid-cols-1 gap-4">
-                                        <div className="space-y-1.5">
-                                            <Label>Data</Label>
-                                            <Input
-                                                type="date"
-                                                value={form.data}
-                                                onChange={(e) => setForm((prev) => ({ ...prev, data: e.target.value }))}
-                                                className="h-11 rounded-xl"
-                                            />
-                                        </div>
-
-                                        <div className="space-y-1.5">
-                                            <Label>
-                                                Tipo de Serviço <span className="text-destructive">*</span>
-                                            </Label>
-                                            <Select
-                                                value={form.tipo_servico}
-                                                onValueChange={(value) =>
-                                                    setForm((prev) => ({
-                                                        ...prev,
-                                                        tipo_servico: value,
-                                                        transportadora: "",
-                                                        fornecedor: "",
-                                                        produto: "",
-                                                        quantidade: "",
-                                                        quantidade_colaboradores: "1",
-                                                        valor_unitario: "",
-                                                    }))
-                                                }
-                                            >
-                                                <SelectTrigger className="h-11 rounded-xl">
-                                                    <SelectValue placeholder="Selecione" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {tipoServicoOptions.map((tipo) => (
-                                                        <SelectItem key={tipo.id} value={tipo.id}>
-                                                            {tipo.nome}
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <TimePickerField label="Entrada" value={form.horario_inicio} onChange={(v) => setForm(f => ({ ...f, horario_inicio: v }))} />
+                                        <TimePickerField label="Saída" value={form.horario_fim} onChange={(v) => setForm(f => ({ ...f, horario_fim: v }))} />
                                     </div>
-
-                                    {isTransbordoServicoExtra && (
-                                        <div className="space-y-1.5">
-                                            <Label>
-                                                Descrição do serviço <span className="text-destructive">*</span>
-                                            </Label>
-                                            <Input
-                                                placeholder="Ex.: CONS. DE PALETES, CARREG. DE PALETES"
-                                                value={form.descricao_servico}
-                                                onChange={(e) => setForm((prev) => ({ ...prev, descricao_servico: e.target.value.toUpperCase() }))}
-                                                className="h-11 rounded-xl"
-                                            />
-                                            <p className="text-[11px] text-muted-foreground">
-                                                Campo espelha a coluna DESCRIÇÃO da aba DUPLICATAS TRANSBORDO DESMÊLO.
-                                            </p>
-                                        </div>
-                                    )}
-
-                                    {isDataRetroativa && (
-                                        <div className="esc-card p-4 border-b border-t border-r border-l-4 border-l-amber-500 bg-amber-500/5 space-y-2">
-                                            <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200 font-medium">
-                                                <ShieldAlert className="w-4 h-4" />
-                                                <span className="text-sm font-bold">Data retroativa detectada</span>
-                                            </div>
-                                            <Textarea
-                                                placeholder="Informe a justificativa para o lançamento retroativo"
-                                                value={form.justificativa_data}
-                                                onChange={(e) => setForm((prev) => ({ ...prev, justificativa_data: e.target.value }))}
-                                                className="rounded-xl min-h-[84px] bg-background/50 border-input"
-                                            />
-                                        </div>
-                                    )}
-
-                                    {(!isTransbordoServicoExtra && !isQualquerCusto) && (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <TimePickerField
-                                                label="Entrada (ponto)"
-                                                value={form.horario_inicio}
-                                                onChange={(value) => setForm((prev) => ({ ...prev, horario_inicio: value }))}
-                                            />
-                                            <TimePickerField
-                                                label="Saída (ponto)"
-                                                value={form.horario_fim}
-                                                onChange={(value) => setForm((prev) => ({ ...prev, horario_fim: value }))}
-                                            />
-                                        </div>
-                                    )}
-
-                                    {!isQualquerCusto && (
-                                        <div className="space-y-1.5">
-                                            <Label className="flex items-center gap-1.5">
-                                                <Truck className="w-3.5 h-3.5" />
-                                                Transportadora / Cliente
-                                            </Label>
-                                            <Select
-                                                value={form.transportadora}
-                                                onValueChange={(value) =>
-                                                    setForm((prev) => ({
-                                                        ...prev,
-                                                        transportadora: value,
-                                                        fornecedor: "",
-                                                        produto: "",
-                                                        quantidade: "",
-                                                        quantidade_colaboradores: "1",
-                                                        valor_unitario: "",
-                                                    }))
-                                                }
-                                                disabled={!form.tipo_servico}
-                                            >
-                                                <SelectTrigger className="h-11 rounded-xl">
-                                                    <SelectValue placeholder={!form.tipo_servico ? "Selecione o tipo de serviço antes" : "Selecione, se aplicável"} />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {transportadorasDisponiveis.map((transportadora) => (
-                                                        <SelectItem key={transportadora.id} value={transportadora.id}>
-                                                            {transportadora.nome}
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                            <p className="text-[11px] text-muted-foreground">
-                                                Preencha quando a regra operacional depender de transportadora ou cliente.
-                                            </p>
-                                        </div>
-                                    )}
-
-                                    {etapaDoisBlockReason && (
-                                        <div className="esc-card p-3 border-l-4 border-l-amber-500 bg-amber-500/5 text-sm font-medium text-amber-800 dark:text-amber-200">
-                                            {etapaDoisBlockReason}
-                                        </div>
-                                    )}
+                                    {horarioInvalido && <p className="text-xs text-destructive">Horário de saída menor que o de entrada.</p>}
                                 </div>
                             )}
 
                             {etapaAtual === 3 && (
-                                <div className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
-                                    {(!isTransbordoServicoExtra && !isQualquerCusto) && (
-                                        <>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                <div className="space-y-1.5">
-                                                    <Label className="flex items-center gap-1.5">
-                                                        <Package className="w-3.5 h-3.5" />
-                                                        Fornecedor
-                                                    </Label>
-                                                    <Select
-                                                        value={form.fornecedor}
-                                                        onValueChange={(value) =>
-                                                            setForm((prev) => ({
-                                                                ...prev,
-                                                                fornecedor: value,
-                                                                produto: "",
-                                                                quantidade: "",
-                                                                quantidade_colaboradores: "1",
-                                                            }))
-                                                        }
-                                                        disabled={!form.tipo_servico}
-                                                    >
-                                                        <SelectTrigger className="h-11 rounded-xl">
-                                                            <SelectValue
-                                                                placeholder={
-                                                                    !form.tipo_servico
-                                                                        ? "Selecione o tipo antes"
-                                                                        : "Selecione, se aplicável"
-                                                                }
-                                                            />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            {fornecedoresDisponiveis.map((fornecedor) => (
-                                                                <SelectItem key={fornecedor.id} value={fornecedor.id}>
-                                                                    {fornecedor.nome}
-                                                                </SelectItem>
-                                                            ))}
-                                                        </SelectContent>
-                                                    </Select>
-                                                    <p className="text-[11px] text-muted-foreground">
-                                                        Preencha quando a regra operacional depender de fornecedor.
-                                                    </p>
-                                                </div>
-
-                                                <div className="space-y-1.5">
-                                                    <div className="flex items-center justify-between gap-3">
-                                                        <Label className="flex items-center gap-1.5">
-                                                            <Package className="w-3.5 h-3.5" />
-                                                            Produto / Carga {requiresProductSelection && <span className="text-destructive">*</span>}
-                                                        </Label>
-                                                        <Button
-                                                            type="button"
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            className="h-7 px-2 text-xs"
-                                                            disabled={!form.fornecedor}
-                                                            onClick={() => {
-                                                                setProdutoDraft({ nome: "", categoria: "" });
-                                                                setProdutoDialogOpen(true);
-                                                            }}
-                                                        >
-                                                            <Plus className="mr-1 h-3.5 w-3.5" />
-                                                            Novo
-                                                        </Button>
-                                                    </div>
-                                                    <Select
-                                                        value={form.produto}
-                                                        onValueChange={(value) => setForm((prev) => ({ ...prev, produto: value }))}
-                                                        disabled={!form.fornecedor}
-                                                    >
-                                                        <SelectTrigger className="h-11 rounded-xl">
-                                                            <SelectValue placeholder={!form.fornecedor ? "Selecione o fornecedor antes" : "Selecione o produto, se aplicável"} />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            {produtoOptions.map((produto) => (
-                                                                <SelectItem key={produto.id} value={produto.id}>
-                                                                    {produto.nome}
-                                                                </SelectItem>
-                                                            ))}
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div>
-                                            </div>
-
-                                            {requiresProductSelection && !form.produto && (
-                                                <div className="esc-card p-3 border-l-4 border-l-amber-500 bg-amber-500/5 text-sm font-medium text-amber-800 dark:text-amber-200">
-                                                    {REGRA_MENSAGEM_PRODUTO}
-                                                </div>
-                                            )}
-                                        </>
-                                    )}
-
-                                    <div className={cn("grid gap-4", (isTransbordoServicoExtra || isQualquerCusto) ? "grid-cols-1" : "grid-cols-1 md:grid-cols-2")}>
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-2 gap-4">
                                         <div className="space-y-1.5">
-                                            <Label>{isTransbordoServicoExtra ? "Quantitativo" : isQualquerCusto ? "Quantidade" : "Quantidade de volumes"} <span className="text-destructive">*</span></Label>
-                                            <Input
-                                                type="number"
-                                                min="1"
-                                                step="1"
-                                                placeholder={tipoCalculoAtual === "operation" ? "1" : "0"}
-                                                value={form.quantidade}
-                                                onChange={(e) => setForm((prev) => ({ ...prev, quantidade: e.target.value }))}
-                                                className="h-11 rounded-xl text-center font-black text-lg"
-                                            />
-                                            <p className="text-[11px] text-muted-foreground">
-                                                {isTransbordoServicoExtra
-                                                    ? "Campo espelha a coluna QUANTITATIVO da aba de transbordo."
-                                                    : isQualquerCusto
-                                                        ? "Quantidade de dias ou itens a considerar neste lançamento."
-                                                        : tipoCalculoAtual === "operation"
-                                                            ? "Mantenha em branco ou 1 para operação padrão. Altere para dobrar/triplicar o registro."
-                                                            : "Informe a quantidade de volumes a serem descarregados."}
-                                            </p>
+                                            <Label>Transportadora</Label>
+                                            <Select value={form.transportadora} onValueChange={(v) => setForm(f => ({ ...f, transportadora: v }))}>
+                                                <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Opcional" /></SelectTrigger>
+                                                <SelectContent>
+                                                    {transportadorasDisponiveis.map((opt) => <SelectItem key={opt.id} value={opt.id}>{opt.nome}</SelectItem>)}
+                                                </SelectContent>
+                                            </Select>
                                         </div>
-
-                                        {(!isTransbordoServicoExtra && !isQualquerCusto) && (
-                                            <div className="space-y-1.5">
-                                                <Label>Quantidade Col. <span className="text-destructive">*</span></Label>
-                                                <Input
-                                                    type="number"
-                                                    min="1"
-                                                    step="1"
-                                                    inputMode="numeric"
-                                                    value={form.quantidade_colaboradores}
-                                                    onChange={(e) => setForm((prev) => ({ ...prev, quantidade_colaboradores: e.target.value.replace(/[^\d]/g, "") }))}
-                                                    className="h-11 rounded-xl text-center font-black text-lg"
-                                                />
-                                                <p className="text-[11px] text-muted-foreground">
-                                                    Informe a quantidade de colaboradores para liberar a etapa seguinte.
-                                                </p>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {(!isTransbordoServicoExtra && !isQualquerCusto) && (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <div className="space-y-1.5">
-                                                <Label>NF</Label>
-                                                <Input
-                                                    placeholder="Ex: SIM, N/A, ou #123"
-                                                    value={form.nf_numero}
-                                                    onChange={(e) => setForm((prev) => ({ ...prev, nf_numero: e.target.value.toUpperCase() }))}
-                                                    className="h-11 rounded-xl"
-                                                />
-                                            </div>
-                                            <div className="space-y-1.5">
-                                                <Label>CTRC</Label>
-                                                <Input
-                                                    placeholder="Conhecimento de Transporte"
-                                                    value={form.ctrc}
-                                                    onChange={(e) => setForm((prev) => ({ ...prev, ctrc: e.target.value.toUpperCase() }))}
-                                                    className="h-11 rounded-xl"
-                                                />
-                                            </div>
+                                        <div className="space-y-1.5">
+                                            <Label>Fornecedor</Label>
+                                            <Select value={form.fornecedor} onValueChange={(v) => setForm(f => ({ ...f, fornecedor: v }))}>
+                                                <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Opcional" /></SelectTrigger>
+                                                <SelectContent>
+                                                    {fornecedoresDisponiveis.map((opt) => <SelectItem key={opt.id} value={opt.id}>{opt.nome}</SelectItem>)}
+                                                </SelectContent>
+                                            </Select>
                                         </div>
-                                    )}
-
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        {!isCustosMensaisCLT && (
-                                            <div className="space-y-1.5">
-                                                <Label className="flex items-center gap-1.5">
-                                                    <Wallet className="w-3.5 h-3.5" />
-                                                    Categoria / Forma Pgto <span className="text-destructive">*</span>
-                                                </Label>
-                                                <Select
-                                                    value={form.forma_pagamento}
-                                                    onValueChange={(value) => setForm((prev) => ({ ...prev, forma_pagamento: value }))}
-                                                >
-                                                    <SelectTrigger className="h-11 rounded-xl">
-                                                        <SelectValue placeholder="Selecione a categoria" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        {formaPagamentoOptions.map((forma) => (
-                                                            <SelectItem key={forma.id} value={forma.id}>
-                                                                {forma.nome}
-                                                            </SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
-                                            </div>
-                                        )}
-
-                                        {!isQualquerCusto && (
-                                            <div className="space-y-1.5">
-                                                <Label className="flex items-center gap-1.5">
-                                                    <Car className="w-3.5 h-3.5" />
-                                                    Placa do veículo
-                                                </Label>
-                                                <Input
-                                                    placeholder={exibirPlaca ? "Ex: ABC-1D23" : "Opcional"}
-                                                    value={form.placa_veiculo}
-                                                    onChange={(e) => setForm((prev) => ({ ...prev, placa_veiculo: e.target.value.toUpperCase() }))}
-                                                    className="h-11 rounded-xl font-mono uppercase"
-                                                    maxLength={10}
-                                                />
-                                            </div>
-                                        )}
                                     </div>
-
                                     <div className="space-y-1.5">
-                                        <Label>Observação</Label>
-                                        <Textarea
-                                            placeholder="Detalhes adicionais sobre a operação..."
-                                            value={form.observacao}
-                                            onChange={(e) => setForm((prev) => ({ ...prev, observacao: e.target.value }))}
-                                            className="rounded-xl min-h-[64px]"
-                                        />
+                                        <Label>Produto/Carga</Label>
+                                        <Select value={form.produto} onValueChange={(v) => setForm(f => ({ ...f, produto: v }))}>
+                                            <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Opcional" /></SelectTrigger>
+                                            <SelectContent>
+                                                {produtoOptions.map((opt) => <SelectItem key={opt.id} value={opt.id}>{opt.nome}</SelectItem>)}
+                                            </SelectContent>
+                                        </Select>
                                     </div>
-
-                                    <div className="space-y-1.5">
-                                        <div className="flex items-center justify-between">
-                                            <Label>Valor Unitário</Label>
-                                            <Badge variant="info" className="font-bold">{isTransbordoServicoExtra && !hasRegraFinanceira ? "Manual" : "Automático"}</Badge>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-1.5">
+                                            <Label>{getQuantidadeLabel(tipoCalculoAtual)}</Label>
+                                            <Input type="number" value={form.quantidade} onChange={e => setForm(f => ({ ...f, quantidade: e.target.value }))} className="h-11 rounded-xl" />
                                         </div>
-                                        {isTransbordoServicoExtra && !hasRegraFinanceira ? (
-                                            <Input
-                                                type="number"
-                                                step="0.01"
-                                                min="0"
-                                                value={form.valor_unitario}
-                                                onChange={(e) => setForm((prev) => ({ ...prev, valor_unitario: e.target.value }))}
-                                                placeholder="0,00"
-                                                className="h-11 rounded-xl text-right font-display font-bold border-brand focus-visible:ring-brand"
-                                            />
-                                        ) : (
-                                            <Input
-                                                value={
-                                                    ruleLookupState === "loading"
-                                                        ? "Buscando valor..."
-                                                        : hasRegraFinanceira
-                                                            ? `${formatCurrency(valorUnitario)} por ${getUnidadeRegraLabel(tipoCalculoAtual)}`
-                                                            : ruleLookupState === "missing" || ruleLookupState === "duplicate" || ruleLookupState === "needs_product" || ruleLookupState === "error"
-                                                                ? hasInactiveCompatibleRule
-                                                                    ? "Regra compatível inativa"
-                                                                    : "Nenhuma regra operacional compatível"
-                                                                : "Aguardando regra"
-                                                }
-                                                readOnly
-                                                placeholder="Aguardando regra"
-                                                className={cn(
-                                                    "h-11 rounded-xl text-right font-display font-bold",
-                                                    ruleLookupState === "found" && "border-success text-success",
-                                                    (ruleLookupState === "missing" || ruleLookupState === "duplicate" || ruleLookupState === "needs_product" || ruleLookupState === "error") && "border-destructive text-destructive",
-                                                )}
-                                            />
-                                        )}
-                                    </div>
-
-                                    {!!mensagemRegra && regraLookupHabilitada && ruleLookupState !== "loading" && !isTransbordoServicoExtra && (
-                                        <div className="esc-card p-4 border-l-4 border-l-red-500 bg-red-500/5 text-sm font-medium text-red-800 dark:text-red-400">
-                                            {mensagemRegra}
-                                        </div>
-                                    )}
-
-                                    <div className="rounded-2xl border border-border bg-muted/20 p-4 space-y-3">
-                                        <div className="flex items-center justify-between gap-3">
-                                            <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
-                                                Preview de cálculo
-                                            </span>
-                                            <Badge variant={hasRegraFinanceira ? "success" : "warning"}>
-                                                {getTipoCalculoLabel(tipoCalculoAtual)}
-                                            </Badge>
-                                        </div>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                            <div>
-                                                <p className="text-[11px] text-muted-foreground">Valor de Descarga</p>
-                                                <p className="text-lg font-black font-display">
-                                                    {formatCurrency(valorDescarga)}
-                                                </p>
-                                            </div>
-                                            <div>
-                                                <p className="text-[11px] text-muted-foreground">Custo com ISS</p>
-                                                <p className="text-sm font-black text-muted-foreground">
-                                                    {formatCurrency(custoIss)}
-                                                </p>
-                                            </div>
-                                            <div>
-                                                <p className="text-[11px] text-muted-foreground">Total do Filme</p>
-                                                <p className="text-sm font-black text-muted-foreground">
-                                                    {formatCurrency(totalFilme)}
-                                                </p>
-                                            </div>
-                                            <div className="bg-brand/10 p-2 rounded-lg -mx-2 px-2">
-                                                <p className="text-[11px] text-brand/80 font-bold uppercase">TOTAL FINAL</p>
-                                                <p className="text-xl font-black font-display text-brand">
-                                                    {formatCurrency(totalFinal)}
-                                                </p>
-                                            </div>
-                                            <div>
-                                                <p className="text-[11px] text-muted-foreground">Quantidade (QTD)</p>
-                                                <p className="text-lg font-black font-display">{quantidadeConsiderada || 0}</p>
-                                            </div>
-                                            {isTransbordoServicoExtra && (
-                                                <div>
-                                                    <p className="text-[11px] text-muted-foreground">Quantidade de filme</p>
-                                                    <p className="text-lg font-black font-display">{quantidadeFilme || 0}</p>
-                                                </div>
-                                            )}
-                                            <div>
-                                                <p className="text-[11px] text-muted-foreground">Base do cálculo</p>
-                                                <p className="text-sm font-bold">
-                                                    {baseCalculoResumo}
-                                                </p>
-                                            </div>
-                                            {isTransbordoServicoExtra && (
-                                                <div>
-                                                    <p className="text-[11px] text-muted-foreground">Descrição da aba</p>
-                                                    <p className="text-sm font-bold">{form.descricao_servico || "Não informada"}</p>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* Preview da Regra Financeira */}
-                                    {form.regra_financeira && (
-                                        <div className="rounded-xl border border-green-500/30 bg-green-500/10 p-4 space-y-2">
+                                        <div className="space-y-1.5">
+                                            <Label>Colaboradores</Label>
                                             <div className="flex items-center gap-2">
-                                                <Badge variant="success" className="text-xs">Regra Financeira Aplicada</Badge>
-                                            </div>
-                                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                                                <div>
-                                                    <p className="text-muted-foreground">Prazo</p>
-                                                    <p className="font-medium">{form.regra_financeira.prazo_dias} dias</p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-muted-foreground">Liquidação</p>
-                                                    <p className="font-medium capitalize">{form.regra_financeira.tipo_liquidacao}</p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-muted-foreground">Entrada</p>
-                                                    <p className="font-medium">{form.regra_financeira.entra_caixa_imediato ? "Caixa Imediato" : "Conta a Receber"}</p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-muted-foreground">Faturamento</p>
-                                                    <p className="font-medium">{form.regra_financeira.agrupa_faturamento ? "Agrupa" : "Individual"}</p>
-                                                </div>
+                                                <Button type="button" variant="outline" size="icon" className="h-11 w-11 rounded-xl" onClick={() => setForm(f => ({ ...f, quantidade_colaboradores: String(Math.max(1, Number(f.quantidade_colaboradores) - 1)) }))}><Minus className="w-4 h-4" /></Button>
+                                                <Input type="number" value={form.quantidade_colaboradores} onChange={e => setForm(f => ({ ...f, quantidade_colaboradores: e.target.value }))} className="h-11 rounded-xl text-center font-bold text-base" />
+                                                <Button type="button" variant="outline" size="icon" className="h-11 w-11 rounded-xl" onClick={() => setForm(f => ({ ...f, quantidade_colaboradores: String(Number(f.quantidade_colaboradores) + 1) }))}><Plus className="w-4 h-4" /></Button>
                                             </div>
                                         </div>
-                                    )}
-
-                                    {etapaTresBlockReason && (
-                                        <div className="esc-card p-3 border-l-4 border-l-amber-500 bg-amber-500/5 text-sm font-medium text-amber-800 dark:text-amber-200">
-                                            {etapaTresBlockReason}
-                                        </div>
-                                    )}
+                                    </div>
+                                    {etapaTresBlockReason && <p className="text-xs text-destructive">{etapaTresBlockReason}</p>}
                                 </div>
                             )}
 
                             {etapaAtual === 4 && !isFluxoSemEquipe && (
-                                <div className="rounded-xl border border-border bg-background p-4 space-y-4 animate-in fade-in zoom-in-95 duration-200">
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div>
-                                            <p className="text-sm font-bold text-foreground">Seleção da equipe</p>
-                                            <p className="text-xs text-muted-foreground">
-                                                Selecione exatamente {quantidadeColaboradores} colaborador(es) e registre a conduta individual.
-                                            </p>
-                                        </div>
-                                        <Badge variant={quantidadeSelecionada === quantidadeColaboradores ? "success" : "warning"}>
-                                            {quantidadeSelecionada}/{quantidadeColaboradores}
-                                        </Badge>
+                                <div className="space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <Label>Selecione os colaboradores</Label>
+                                        <Badge>{quantidadeSelecionada}/{form.quantidade_colaboradores}</Badge>
                                     </div>
-
-                                    <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
+                                    <div className="space-y-2 max-h-96 overflow-y-auto">
                                         {colaboradoresFiltrados.map((colaborador: any) => {
-                                            const conduta = condutaColaboradores[colaborador.id] ?? {
-                                                selected: false,
-                                                hadInfraction: false,
-                                                infractionType: "",
-                                                notes: "",
-                                            };
-                                            const regrasPorCargo = getRegrasPorFuncao(colaborador.cargo ?? "");
-
+                                            const conduta = condutaColaboradores[colaborador.id] ?? { selected: false, hadInfraction: false, infractionType: "", notes: "" };
                                             return (
-                                                <div key={colaborador.id} className="rounded-xl border border-border p-3 space-y-3">
+                                                <div key={colaborador.id} className="rounded-xl border p-3 space-y-3">
                                                     <label className="flex items-start gap-3 cursor-pointer">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={conduta.selected}
-                                                            onChange={(e) =>
-                                                                setCondutaColaboradores((prev) => ({
-                                                                    ...prev,
-                                                                    [colaborador.id]: {
-                                                                        ...conduta,
-                                                                        selected: e.target.checked,
-                                                                    },
-                                                                }))
-                                                            }
-                                                            className="mt-1 h-4 w-4 rounded accent-brand"
-                                                        />
-                                                        <div className="min-w-0">
-                                                            <div className="text-sm font-semibold text-foreground">{colaborador.nome}</div>
-                                                            <div className="text-xs text-muted-foreground">
-                                                                {colaborador.cargo || "Cargo não informado"} · Ativo
-                                                            </div>
+                                                        <input type="checkbox" checked={conduta.selected} onChange={(e) => setCondutaColaboradores((prev) => ({ ...prev, [colaborador.id]: { ...conduta, selected: e.target.checked } }))} className="mt-1 h-4 w-4 rounded accent-brand" />
+                                                        <div>
+                                                            <div className="text-sm font-semibold">{colaborador.nome}</div>
+                                                            <div className="text-xs text-muted-foreground">{colaborador.cargo || "Não informado"}</div>
                                                         </div>
                                                     </label>
-
                                                     {conduta.selected && (
                                                         <div className="ml-7 space-y-3">
                                                             <div className="flex items-center gap-2">
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={conduta.hadInfraction}
-                                                                    onChange={(e) =>
-                                                                        setCondutaColaboradores((prev) => ({
-                                                                            ...prev,
-                                                                            [colaborador.id]: {
-                                                                                ...conduta,
-                                                                                hadInfraction: e.target.checked,
-                                                                                infractionType: e.target.checked ? conduta.infractionType : "",
-                                                                                notes: e.target.checked ? conduta.notes : "",
-                                                                            },
-                                                                        }))
-                                                                    }
-                                                                    className="h-4 w-4 rounded accent-destructive"
-                                                                />
+                                                                <input type="checkbox" checked={conduta.hadInfraction} onChange={(e) => setCondutaColaboradores((prev) => ({ ...prev, [colaborador.id]: { ...conduta, hadInfraction: e.target.checked } }))} className="h-4 w-4 rounded accent-destructive" />
                                                                 <span className="text-sm">Teve infração?</span>
                                                             </div>
-
                                                             {conduta.hadInfraction && (
-                                                                <div className="grid gap-3 md:grid-cols-2">
-                                                                    <div className="space-y-1.5">
-                                                                        <Label className="text-xs">Tipo de infração</Label>
-                                                                        <Select
-                                                                            value={conduta.infractionType}
-                                                                            onValueChange={(value) =>
-                                                                                setCondutaColaboradores((prev) => ({
-                                                                                    ...prev,
-                                                                                    [colaborador.id]: {
-                                                                                        ...conduta,
-                                                                                        infractionType: value,
-                                                                                    },
-                                                                                }))
-                                                                            }
-                                                                        >
-                                                                            <SelectTrigger className="h-10 rounded-xl">
-                                                                                <SelectValue placeholder="Selecione" />
-                                                                            </SelectTrigger>
-                                                                            <SelectContent>
-                                                                                {regrasPorCargo.map((regra) => (
-                                                                                    <SelectItem key={regra.id} value={regra.label}>
-                                                                                        {regra.label}
-                                                                                    </SelectItem>
-                                                                                ))}
-                                                                            </SelectContent>
-                                                                        </Select>
-                                                                    </div>
-                                                                    <div className="space-y-1.5">
-                                                                        <Label className="text-xs">Observação</Label>
-                                                                        <Textarea
-                                                                            placeholder="Opcional"
-                                                                            value={conduta.notes}
-                                                                            onChange={(e) =>
-                                                                                setCondutaColaboradores((prev) => ({
-                                                                                    ...prev,
-                                                                                    [colaborador.id]: {
-                                                                                        ...conduta,
-                                                                                        notes: e.target.value,
-                                                                                    },
-                                                                                }))
-                                                                            }
-                                                                            className="rounded-xl text-sm resize-none min-h-[72px]"
-                                                                        />
-                                                                    </div>
+                                                                <div className="grid gap-3">
+                                                                    <Select value={conduta.infractionType} onValueChange={(v) => setCondutaColaboradores((prev) => ({ ...prev, [colaborador.id]: { ...conduta, infractionType: v } }))}>
+                                                                        <SelectTrigger className="h-10 rounded-xl"><SelectValue placeholder="Selecione o tipo" /></SelectTrigger>
+                                                                        <SelectContent>
+                                                                            {getRegrasPorFuncao(colaborador.cargo ?? "").map(regra => <SelectItem key={regra.id} value={regra.label}>{regra.label}</SelectItem>)}
+                                                                        </SelectContent>
+                                                                    </Select>
+                                                                    <Textarea placeholder="Opcional" value={conduta.notes} onChange={(e) => setCondutaColaboradores((prev) => ({ ...prev, [colaborador.id]: { ...conduta, notes: e.target.value } }))} className="rounded-xl text-sm" />
                                                                 </div>
                                                             )}
                                                         </div>
@@ -2364,80 +1508,66 @@ const LancamentoProducao = () => {
                                             );
                                         })}
                                     </div>
-
-                                    {etapaQuatroBlockReason && (
-                                        <div className="esc-card p-3 border-l-4 border-l-amber-500 bg-amber-500/5 text-sm font-medium text-amber-800 dark:text-amber-200">
-                                            {etapaQuatroBlockReason}
-                                        </div>
-                                    )}
+                                    {etapaQuatroBlockReason && <p className="text-xs text-destructive">{etapaQuatroBlockReason}</p>}
                                 </div>
                             )}
 
-                            {cadastrosAusentes.length > 0 && (
-                                <div className="esc-card p-4 border-l-4 border-l-red-500 bg-red-500/5 space-y-2">
-                                    <div className="flex items-center gap-2 text-red-700 dark:text-red-400 font-medium">
-                                        <AlertCircle className="w-4 h-4" />
-                                        <span className="text-sm font-bold">Cadastros base ausentes</span>
-                                    </div>
-                                    <p className="text-sm text-red-700 dark:text-red-400">
-                                        A produção está bloqueada. Os seguintes cadastros precisam ser criados antes de registrar operações:
-                                    </p>
-                                    <ul className="list-disc list-inside text-sm text-red-700 dark:text-red-400 space-y-0.5">
-                                        {cadastrosAusentes.map((c) => <li key={c}>{c}</li>)}
-                                    </ul>
-                                </div>
-                            )}
-
-                            {etapaAtual > 1 && (
-                                <Button
-                                    type="submit"
-                                    className="w-full h-12 rounded-xl bg-brand hover:bg-brand/90 font-black text-lg shadow-lg shadow-brand/20 mt-2 gap-2 disabled:cursor-not-allowed disabled:opacity-60"
-                                    disabled={mutation.isPending || (etapaAtual === 2 && !!etapaDoisBlockReason) || (etapaAtual === 3 && !!etapaTresBlockReason) || (etapaAtual === 4 && !!etapaQuatroBlockReason)}
-                                >
-                                    {mutation.isPending ? "Salvando..." : (
-                                        <>
-                                            <Save className="w-5 h-5" />
-                                            {etapaAtual === 2
-                                                ? "Continuar para Financeiro"
-                                                : etapaAtual === 3
-                                                    ? isFluxoSemEquipe
-                                                        ? "Registrar transbordo"
-                                                        : "Continuar para Colaboradores"
-                                                    : "Registrar Produção"}
-                                        </>
-                                    )}
-                                </Button>
-                            )}
+                            <Button
+                                type="submit"
+                                className={cn(
+                                    "w-full h-14 rounded-xl font-black text-lg shadow-lg transition-all duration-200 active:scale-[0.98]",
+                                    (mutation.isPending || etapaDoisBlockReason || etapaTresBlockReason || etapaQuatroBlockReason)
+                                        ? "bg-muted text-muted-foreground cursor-not-allowed opacity-60"
+                                        : "bg-orange-500 hover:bg-orange-600 text-white shadow-orange-500/25 hover:shadow-orange-500/40"
+                                )}
+                                disabled={mutation.isPending || !!etapaDoisBlockReason || !!etapaTresBlockReason || !!etapaQuatroBlockReason}
+                            >
+                                {mutation.isPending ? (
+                                    <span className="flex items-center gap-2">
+                                        <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                        Processando...
+                                    </span>
+                                ) : etapaAtual < 4 && !isFluxoSemEquipe ? "Continuar" : "Salvar Lançamento"}
+                            </Button>
                         </form>
                     </Card>
 
-                    <Card className="p-5 bg-muted/20 border-dashed border-border shadow-none">
-                        <h4 className="font-bold text-sm text-muted-foreground mb-4 uppercase tracking-widest flex items-center gap-2">
-                            <TrendingUp className="w-4 h-4" />
-                            Resumo de Hoje
-                        </h4>
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="bg-background p-3 rounded-lg border border-border">
-                                <span className="text-[10px] font-bold text-muted-foreground block mb-1">Lançamentos</span>
-                                <span className="text-xl font-black text-foreground">{resumo.total_lancamentos}</span>
-                            </div>
-                            <div className="bg-background p-3 rounded-lg border border-border">
-                                <span className="text-[10px] font-bold text-muted-foreground block mb-1">Colaboradores</span>
-                                <span className="text-xl font-black text-foreground">{resumo.total_colaboradores}</span>
-                            </div>
-                            <div className="bg-background p-3 rounded-lg border border-border">
-                                <span className="text-[10px] font-bold text-muted-foreground block mb-1">Quantidade</span>
-                                <span className="text-xl font-black text-foreground">{Number(resumo.total_quantidade || 0)}</span>
-                            </div>
-                            <div className="bg-background p-3 rounded-lg border border-border">
-                                <span className="text-[10px] font-bold text-muted-foreground block mb-1">Pendências</span>
-                                <span className="text-xl font-black text-info-strong">{resumo.pendencias}</span>
-                            </div>
-                            <div className="bg-background p-3 rounded-lg border border-border col-span-2">
-                                <span className="text-[10px] font-bold text-muted-foreground block mb-1">Valor total</span>
-                                <span className="text-lg font-black text-brand">{formatCurrency(Number(resumo.valor_total_produzido || 0))}</span>
-                            </div>
+                    <Card className="p-4 bg-gradient-to-br from-muted/30 to-muted/10 border-dashed border-border/50 shadow-sm">
+                        <div className="flex justify-between items-center mb-4">
+                            <h4 className="font-bold text-xs text-foreground/70 uppercase tracking-wider flex items-center gap-2">
+                                <TrendingUp className="w-4 h-4 text-orange-500" />
+                                Resumo do Dia
+                            </h4>
+                            <span className="text-xs font-bold text-muted-foreground bg-muted/50 px-2 py-1 rounded-md">{form.data ? format(new Date(form.data + "T00:00:00"), "dd/MM/yyyy") : ""}</span>
                         </div>
+                        {isLoadingResumo ? (
+                            <div className="flex items-center justify-between text-center gap-2">
+                                <Skeleton className="h-14 w-1/3" />
+                                <Skeleton className="h-14 w-1/3" />
+                                <Skeleton className="h-14 w-1/3" />
+                            </div>
+                        ) : (
+                            <>
+                                <div className="flex items-center justify-between text-center gap-2">
+                                    <div className="bg-card/80 rounded-xl p-3 flex-1 border border-border/30">
+                                        <p className="text-3xl font-black text-foreground leading-none">{resumo.total_lancamentos}</p>
+                                        <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider mt-1">Lançamentos</p>
+                                    </div>
+                                    <div className="bg-card/80 rounded-xl p-3 flex-1 border border-border/30">
+                                        <p className="text-3xl font-black text-foreground leading-none">{resumo.total_colaboradores}</p>
+                                        <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider mt-1">Equipe</p>
+                                    </div>
+                                    <div className="bg-card/80 rounded-xl p-3 flex-1 border border-border/30">
+                                        <p className="text-3xl font-black text-orange-600 leading-none">{resumo.pendencias}</p>
+                                        <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider mt-1">Pendências</p>
+                                    </div>
+                                </div>
+                                <div className="mt-4 text-center bg-gradient-to-r from-orange-500/10 to-brand/10 rounded-xl py-3 border border-orange-500/20">
+                                    <p className="text-3xl font-black text-brand leading-none">{formatCurrency(Number(resumo.valor_total_produzido || 0))}</p>
+                                    <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider mt-1">Valor Total</p>
+                                </div>
+                            </>
+                        )}
                     </Card>
                 </div>
 
@@ -2455,9 +1585,10 @@ const LancamentoProducao = () => {
 
                         <div className="flex-1 min-w-0">
                             {isLoadingHistory ? (
-                                <div className="p-20 text-center text-muted-foreground text-sm flex flex-col items-center gap-2">
-                                    <Clock className="w-8 h-8 animate-pulse opacity-20" />
-                                    Carregando histórico...
+                                <div className="p-4 space-y-4">
+                                    <Skeleton className="h-24 w-full" />
+                                    <Skeleton className="h-24 w-full" />
+                                    <Skeleton className="h-24 w-full" />
                                 </div>
                             ) : (historico as any[]).length === 0 ? (
                                 <div className="p-20 text-center text-muted-foreground flex flex-col items-center gap-4">
@@ -2470,284 +1601,44 @@ const LancamentoProducao = () => {
                                     </div>
                                 </div>
                             ) : (
-                                <>
-                                    <div className="space-y-3 p-4 md:hidden">
-                                        {(historico as any[]).map((item: any) => {
-                                            const tipoServicoLabel = item.tipos_servico_operacional?.nome;
-                                            const colaboradorLabel = item.colaboradores?.nome;
-                                            const transportadoraLabel = item.transportadoras_clientes?.nome;
-                                            const fornecedorLabel = item.fornecedores?.nome;
-                                            const produtoLabel = item.produtos_carga?.nome;
-                                            const formaPagamentoLabel = item.formas_pagamento_operacional?.nome;
-                                            const quantidadeItem = Number(item.quantidade || 0);
-                                            const quantidadeColaboradoresItem = Number(
-                                                item.quantidade_colaboradores ??
-                                                item.avaliacao_json?.contexto_operacional?.quantidade_colaboradores ??
-                                                (item.tipo_calculo_snapshot === "colaborador" ? item.quantidade : 0) ??
-                                                0,
-                                            );
-                                            const unitarioItem = Number(item.valor_unitario_snapshot || 0);
-                                            const totalItem = Number(item.valor_total || 0);
-                                            const tipoCalculoItem = item.tipo_calculo_snapshot ?? null;
-                                            const quantidadeExibida = tipoCalculoItem === "colaborador" ? quantidadeColaboradoresItem : quantidadeItem;
-                                            const statusLabel = String(item.status ?? "Pendente")
-                                                .replace(/_/g, " ")
-                                                .replace(/\b\w/g, (char) => char.toUpperCase());
-                                            const placaLabel = item.placa;
-                                            const createdAt = item.criado_em;
-
-                                            return (
-                                                <div key={item.id} className="rounded-2xl border border-border bg-background p-4 space-y-3">
-                                                    <div className="flex items-start justify-between gap-3">
-                                                        <div className="min-w-0">
-                                                            <p className="font-bold text-sm text-foreground">{tipoServicoLabel}</p>
-                                                            <p className="text-[11px] text-muted-foreground">
-                                                                {createdAt ? format(new Date(createdAt), "HH:mm") : "â€”"}
-                                                                {colaboradorLabel ? ` · ${colaboradorLabel}` : ""}
-                                                            </p>
-                                                        </div>
-                                                        <Badge variant={getStatusVariant(statusLabel)} className="shrink-0">
-                                                            {statusLabel}
-                                                        </Badge>
-                                                    </div>
-
-                                                    <div className="space-y-1 text-[11px] text-muted-foreground">
-                                                        <p>{transportadoraLabel || "Sem transportadora"}</p>
-                                                        <p>{fornecedorLabel || "Fornecedor não informado"} · {produtoLabel || "Produto não informado"}</p>
-                                                        <p>
-                                                            {formaPagamentoLabel || "Forma não informada"}
-                                                            {placaLabel ? ` · ${placaLabel}` : ""}
+                                <ScrollArea className="h-full">
+                                    <div className="p-4 space-y-4">
+                                        {(historico as any[]).map((item: any) => (
+                                            <div key={item.id} className="rounded-2xl border border-border bg-background p-4 space-y-3">
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <div className="min-w-0">
+                                                        <p className="font-bold text-sm text-foreground">{item.tipos_servico_operacional?.nome}</p>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            {item.criado_em ? format(new Date(item.criado_em), "HH:mm") : ""}
                                                         </p>
-                                                        <p>{quantidadeColaboradoresItem > 0 ? `${quantidadeColaboradoresItem} colaborador(es)` : "Sem equipe informada"}</p>
                                                     </div>
-
-                                                    <div className="grid grid-cols-2 gap-3">
-                                                        <div className="rounded-xl bg-muted/30 p-3">
-                                                            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Quantidade</p>
-                                                            <p className="text-sm font-black text-foreground">{quantidadeExibida}</p>
-                                                            <p className="text-[11px] text-muted-foreground">
-                                                                {unitarioItem > 0 ? formatCurrency(unitarioItem) : "Sem valor"}
-                                                            </p>
-                                                        </div>
-                                                        <div className="rounded-xl bg-muted/30 p-3 text-right">
-                                                            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Total</p>
-                                                            <p className="text-sm font-black font-display text-foreground">{formatCurrency(totalItem)}</p>
-                                                            <p className="text-[11px] text-muted-foreground">{getTipoCalculoLabel(tipoCalculoItem)}</p>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="flex justify-end">
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            className="h-9 rounded-xl px-3 text-muted-foreground hover:text-destructive"
-                                                            onClick={() => {
-                                                                if (confirm("Deseja remover este registro?")) {
-                                                                    OperacaoProducaoService.delete(item.id).then(() => {
-                                                                        toast.success("Registro removido");
-                                                                        queryClient.invalidateQueries({ queryKey: ["producao_recente"] });
-                                                                        queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
-                                                                    });
-                                                                }
-                                                            }}
-                                                        >
-                                                            <Trash2 className="w-4 h-4 mr-2" />
-                                                            Remover
-                                                        </Button>
-                                                    </div>
+                                                    <Badge variant={getStatusVariant(item.status)}>{item.status}</Badge>
                                                 </div>
-                                            );
-                                        })}
+                                            </div>
+                                        ))}
                                     </div>
-
-                                    <div className="hidden overflow-x-auto md:block">
-                                        <Table>
-                                            <TableHeader>
-                                                <TableRow className="bg-muted/50 border-border hover:bg-muted/50">
-                                                    <TableHead className="font-bold text-[10px] uppercase">Serviço</TableHead>
-                                                    <TableHead className="font-bold text-[10px] uppercase">Vínculos</TableHead>
-                                                    <TableHead className="font-bold text-[10px] uppercase">Quantidade</TableHead>
-                                                    <TableHead className="font-bold text-[10px] uppercase text-right">Valor</TableHead>
-                                                    <TableHead className="font-bold text-[10px] uppercase text-center">Status</TableHead>
-                                                    <TableHead />
-                                                </TableRow>
-                                            </TableHeader>
-                                            <TableBody>
-                                                {(historico as any[]).map((item: any) => {
-                                                    const tipoServicoLabel = item.tipos_servico_operacional?.nome;
-                                                    const colaboradorLabel = item.colaboradores?.nome;
-                                                    const transportadoraLabel = item.transportadoras_clientes?.nome;
-                                                    const fornecedorLabel = item.fornecedores?.nome;
-                                                    const produtoLabel = item.produtos_carga?.nome;
-                                                    const formaPagamentoLabel = item.formas_pagamento_operacional?.nome;
-                                                    const quantidadeItem = Number(item.quantidade || 0);
-                                                    const quantidadeColaboradoresItem = Number(
-                                                        item.quantidade_colaboradores ??
-                                                        item.avaliacao_json?.contexto_operacional?.quantidade_colaboradores ??
-                                                        (item.tipo_calculo_snapshot === "colaborador" ? item.quantidade : 0) ??
-                                                        0,
-                                                    );
-                                                    const unitarioItem = Number(item.valor_unitario_snapshot || 0);
-                                                    const totalItem = Number(item.valor_total || 0);
-                                                    const tipoCalculoItem = item.tipo_calculo_snapshot ?? null;
-                                                    const quantidadeExibida = tipoCalculoItem === "colaborador" ? quantidadeColaboradoresItem : quantidadeItem;
-                                                    const statusLabel = String(item.status ?? "Pendente")
-                                                        .replace(/_/g, " ")
-                                                        .replace(/\b\w/g, (char) => char.toUpperCase());
-                                                    const placaLabel = item.placa;
-                                                    const createdAt = item.criado_em;
-
-                                                    return (
-                                                        <TableRow key={item.id} className="border-border hover:bg-muted/30 group transition-colors">
-                                                            <TableCell>
-                                                                <div className="space-y-1">
-                                                                    <span className="font-bold text-sm block">{tipoServicoLabel}</span>
-                                                                    <span className="text-[10px] text-muted-foreground block">
-                                                                        {createdAt ? format(new Date(createdAt), "HH:mm") : "—"}
-                                                                    </span>
-                                                                    {colaboradorLabel && (
-                                                                        <span className="text-[11px] text-muted-foreground block">{colaboradorLabel}</span>
-                                                                    )}
-                                                                </div>
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                <div className="space-y-1">
-                                                                    <span className="text-xs font-semibold block">{transportadoraLabel || "Sem transportadora"}</span>
-                                                                    <span className="text-[11px] text-muted-foreground block">
-                                                                        {fornecedorLabel || "Fornecedor não informado"} · {produtoLabel || "Produto não informado"}
-                                                                    </span>
-                                                                    <span className="text-[11px] text-muted-foreground block">
-                                                                        {formaPagamentoLabel || "Forma não informada"}
-                                                                        {placaLabel ? ` · ${placaLabel}` : ""}
-                                                                    </span>
-                                                                    <span className="text-[11px] text-muted-foreground block">
-                                                                        {quantidadeColaboradoresItem > 0 ? `${quantidadeColaboradoresItem} colaborador(es)` : "Sem equipe informada"}
-                                                                    </span>
-                                                                </div>
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                <div className="text-sm font-black">{quantidadeExibida}</div>
-                                                                <div className="text-[11px] text-muted-foreground">
-                                                                    {unitarioItem > 0 ? formatCurrency(unitarioItem) : "Sem valor"}
-                                                                </div>
-                                                            </TableCell>
-                                                            <TableCell className="text-right">
-                                                                <div className="font-display font-black text-sm">{formatCurrency(totalItem)}</div>
-                                                                <div className="text-[11px] text-muted-foreground">
-                                                                    {getTipoCalculoLabel(tipoCalculoItem)}
-                                                                </div>
-                                                            </TableCell>
-                                                            <TableCell className="text-center">
-                                                                <Badge variant={getStatusVariant(statusLabel)}>
-                                                                    {statusLabel}
-                                                                </Badge>
-                                                            </TableCell>
-                                                            <TableCell className="text-right">
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="icon"
-                                                                    className="h-8 w-8 text-muted-foreground hover:text-destructive transition-all"
-                                                                    onClick={() => {
-                                                                        if (confirm("Deseja remover este registro?")) {
-                                                                            OperacaoProducaoService.delete(item.id).then(() => {
-                                                                                toast.success("Registro removido");
-                                                                                queryClient.invalidateQueries({ queryKey: ["producao_recente"] });
-                                                                                queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
-                                                                            });
-                                                                        }
-                                                                    }}
-                                                                >
-                                                                    <Trash2 className="w-4 h-4" />
-                                                                </Button>
-                                                            </TableCell>
-                                                        </TableRow>
-                                                    );
-                                                })}
-                                            </TableBody>
-                                        </Table>
-                                    </div>
-                                </>
+                                </ScrollArea>
                             )}
-                        </div>
-
-                        <div className="p-4 bg-muted/10 border-t border-border mt-auto">
-                            <div className="flex flex-col gap-2 text-xs text-muted-foreground font-medium sm:flex-row sm:items-center sm:gap-4">
-                                <div className="flex items-center gap-1.5">
-                                    <CheckCircle2 className="w-3.5 h-3.5 text-success" />
-                                    Dados sincronizados
-                                </div>
-                                <div className="flex items-center gap-1.5 sm:ml-auto">
-                                    <ListChecks className="w-3.5 h-3.5 text-brand" />
-                                    Disponível em tempo real no painel global
-                                </div>
-                            </div>
                         </div>
                     </Card>
                 </div>
             </div>
             <Dialog open={produtoDialogOpen} onOpenChange={setProdutoDialogOpen}>
-                <DialogContent className="sm:max-w-[520px]">
+                <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Cadastrar produto / carga</DialogTitle>
+                        <DialogTitle>Cadastrar produto</DialogTitle>
                         <DialogDescription>
-                            O encarregado pode cadastrar o tipo de produto/carga diretamente aqui e seguir com o lançamento.
+                            Cadastre um novo produto/carga para o fornecedor selecionado.
                         </DialogDescription>
                     </DialogHeader>
-
-                    <div className="space-y-4">
-                        <div className="space-y-2">
-                            <Label>Nome</Label>
-                            <Input
-                                value={produtoDraft.nome}
-                                onChange={(event) => setProdutoDraft((prev) => ({ ...prev, nome: event.target.value }))}
-                                placeholder="Ex.: Geral"
-                            />
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label>Categoria</Label>
-                            <Input
-                                value={produtoDraft.categoria}
-                                onChange={(event) => setProdutoDraft((prev) => ({ ...prev, categoria: event.target.value }))}
-                                placeholder="Opcional"
-                            />
-                        </div>
-
-                        {produtoSimilarOptions.length > 0 && (
-                            <div className="esc-card p-3 border-l-4 border-l-amber-500 bg-amber-500/5 space-y-3">
-                                <div className="text-sm font-medium text-amber-800 dark:text-amber-200">
-                                    Já existe um cadastro parecido. Deseja usar o item existente?
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                    {produtoSimilarOptions.map((item) => (
-                                        <Button
-                                            key={item.id}
-                                            type="button"
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => {
-                                                setForm((prev) => ({ ...prev, produto: item.id }));
-                                                setProdutoDialogOpen(false);
-                                                setProdutoDraft({ nome: "", categoria: "" });
-                                                toast.success("Produto/carga existente selecionado.");
-                                            }}
-                                        >
-                                            Usar {item.nome}
-                                        </Button>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
+                    <div className="grid gap-4 py-4">
+                        <Input value={produtoDraft.nome} onChange={(e) => setProdutoDraft(p => ({ ...p, nome: e.target.value }))} placeholder="Nome do produto" />
+                        <Input value={produtoDraft.categoria} onChange={(e) => setProdutoDraft(p => ({ ...p, categoria: e.target.value }))} placeholder="Categoria (opcional)" />
                     </div>
-
+                    {produtoSimilarOptions.length > 0 && <p className="text-sm text-amber-600">Já existe um produto parecido.</p>}
                     <DialogFooter>
-                        <Button type="button" variant="outline" onClick={() => setProdutoDialogOpen(false)}>
-                            Cancelar
-                        </Button>
-                        <Button type="button" onClick={() => createProdutoMutation.mutate()} disabled={createProdutoMutation.isPending}>
-                            <Save className="w-4 h-4 mr-2" />
-                            Salvar produto/carga
-                        </Button>
+                        <Button variant="outline" onClick={() => setProdutoDialogOpen(false)}>Cancelar</Button>
+                        <Button onClick={() => createProdutoMutation.mutate()} disabled={createProdutoMutation.isPending}>Salvar</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

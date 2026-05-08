@@ -245,6 +245,16 @@ export const EmpresaService = new EmpresaServiceClass();
 class ColaboradorServiceClass extends BaseService<'colaboradores'> {
   constructor() { super('colaboradores'); }
 
+  async getAllForProducao() {
+    const { data, error } = await supabase
+      .from('colaboradores')
+      .select('id, nome, funcao, empresa_id')
+      .order('nome', { ascending: true });
+
+    if (error) throw error;
+    return data || [];
+  }
+
   async create(payload: Record<string, any>) {
     const tenantId = await getCurrentTenantId();
     

@@ -218,7 +218,7 @@ const DiaristasLancamento = () => {
     const hasData = empresaIdSelecionada && data;
 
     return (
-        <OperationalShell title="Lançamento de Diaristas" showBack={hasData} onBack={() => navigate("/producao")}>
+        <OperationalShell title="Lançamento de Diaristas" showBack={false} onBack={() => navigate("/producao")}>
             <div className="max-w-4xl mx-auto space-y-6 pb-24">
                 {/* Alerta de lançamentos já registrados no dia */}
                 {(lancamentosHoje as any[]).length > 0 && (
@@ -235,10 +235,15 @@ const DiaristasLancamento = () => {
 
                 {/* Etapa 1 — Dados do lançamento */}
                 <section className="esc-card p-6 space-y-4">
-                    <h2 className="font-display font-bold text-foreground flex items-center gap-2">
-                        <CalendarDays className="h-4 w-4 text-primary" />
-                        Dados do lançamento
-                    </h2>
+                    <div className="flex items-center gap-3 mb-2">
+                        <button onClick={() => navigate("/producao")} className="text-muted-foreground hover:text-foreground p-1">
+                            <ArrowLeft className="w-5 h-5" />
+                        </button>
+                        <h2 className="font-display font-bold text-foreground flex items-center gap-2">
+                            <CalendarDays className="h-4 w-4 text-primary" />
+                            Dados do lançamento
+                        </h2>
+                    </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-1.5">
@@ -405,25 +410,26 @@ const DiaristasLancamento = () => {
                                                 <div className="hidden md:block w-px h-8 bg-border"></div>
 
                                                 {/* Botões de marcação (Estilo Toggle Group Integrado) */}
-                                                <div className="flex rounded-lg border bg-muted/40 p-1 shrink-0 w-full md:w-auto overflow-x-auto scrollbar-hide">
+                                                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 w-full md:w-auto">
                                                     {(regrasMarcacao as any[]).map((regra: any) => {
                                                         const isActive = item.marcacao === regra.codigo;
                                                         const isAusente = regra.codigo === 'AUSENTE';
+                                                        const isPresente = regra.codigo === 'P';
+                                                        const isMeiaPresenca = regra.codigo === 'MP';
+
                                                         return (
                                                             <Button
                                                                 key={regra.id}
-                                                                size="sm"
-                                                                variant="ghost"
+                                                                variant={isActive ? 'default' : 'outline'}
                                                                 className={cn(
-                                                                    "h-8 px-4 text-xs font-bold transition-all rounded-md flex-1 md:flex-none",
-                                                                    isActive && !isAusente && "bg-primary text-white hover:bg-primary/90 hover:text-white shadow-sm",
-                                                                    isActive && isAusente && "bg-destructive text-white hover:bg-destructive/90 hover:text-white shadow-sm",
-                                                                    !isActive && "text-muted-foreground hover:text-foreground hover:bg-background"
+                                                                    "h-12 text-base font-bold transition-all rounded-lg flex-1",
+                                                                    isActive && isPresente && "bg-green-500 hover:bg-green-600",
+                                                                    isActive && isMeiaPresenca && "bg-yellow-500 hover:bg-yellow-600",
+                                                                    isActive && isAusente && "bg-red-500 hover:bg-red-600 text-white",
+                                                                    !isActive && "text-muted-foreground"
                                                                 )}
                                                                 onClick={() => setMarcacao(d.id, regra.codigo)}
                                                             >
-                                                                {isAusente && isActive && <XCircle className="h-3.5 w-3.5 mr-1" />}
-                                                                {!isAusente && isActive && <CheckCircle2 className="h-3.5 w-3.5 mr-1" />}
                                                                 {regra.codigo}
                                                             </Button>
                                                         );
