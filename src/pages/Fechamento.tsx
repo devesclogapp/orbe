@@ -7,17 +7,17 @@ import { supabase } from "@/lib/supabase";
 import { CicloOperacionalService, CicloOperacional } from "@/services/operationalEngine/CicloOperacionalService";
 import { toast } from "sonner";
 
-const StatusBadge = ({ label, status, type }: { label: string, status?: string | null, type: 'operacional' | 'rh' | 'fin' | 'remessa' }) => {
+const StatusBadge = ({ label, status, type }: { label: string, status?: string | null, type: 'operacional' | 'rh' | 'fin' | 'remessa' | 'automacao' }) => {
   const safeStatus = status || 'pendente';
   let color = "bg-secondary text-secondary-foreground";
   let Icon = Clock;
 
-  if (safeStatus === 'pendente' || safeStatus === 'aberto' || safeStatus === 'processando' || safeStatus === 'nao_gerada') {
+  if (safeStatus === 'pendente' || safeStatus === 'aberto' || safeStatus === 'processando' || safeStatus === 'nao_gerada' || safeStatus === 'aguardando_validacao') {
     color = "bg-warning-soft text-warning-strong";
-  } else if (safeStatus === 'validado_rh' || safeStatus === 'validado_financeiro' || safeStatus === 'fechado' || safeStatus === 'pronta' || safeStatus === 'remetida') {
+  } else if (safeStatus === 'validado_rh' || safeStatus === 'validado_financeiro' || safeStatus === 'fechado' || safeStatus === 'pronta' || safeStatus === 'remetida' || safeStatus === 'pronto_para_fechamento') {
     color = "bg-success-soft text-success-strong";
     Icon = CheckCircle2;
-  } else if (safeStatus === 'rejeitado_rh' || safeStatus === 'rejeitado_financeiro' || safeStatus === 'retornada') {
+  } else if (safeStatus === 'rejeitado_rh' || safeStatus === 'rejeitado_financeiro' || safeStatus === 'retornada' || safeStatus === 'inconsistencias_detectadas' || safeStatus === 'bloqueado_automacao') {
     color = "bg-destructive-soft text-destructive-strong";
     Icon = XCircle;
   }
@@ -117,6 +117,7 @@ const Fechamento = () => {
                 </div>
 
                 <div className="flex items-center gap-4">
+                  <StatusBadge label="Automação" status={c.status_automacao || 'aguardando_validacao'} type="automacao" />
                   <StatusBadge label="Operacional" status={c.status} type="operacional" />
                   <StatusBadge label="RH" status={c.status_rh} type="rh" />
                   <StatusBadge label="Financeiro" status={c.status_financeiro} type="fin" />
@@ -163,10 +164,10 @@ const Fechamento = () => {
                   {c.status !== "fechado" && c.status !== "enviado_financeiro" && (
                     <Button
                       size="sm"
-                      disabled={(c.total_inconsistencias || 0) > 0 || actionMutation.isPending}
+                      disabled={(c.total_inconsistencias || 0) > 0 || actionMutation.isPending || c.status_automacao !== 'pronto_para_fechamento'}
                       onClick={() => handleAction('fechar', c.id)}
                     >
-                      {actionMutation.isPending ? "Processando..." : "1. Fechar Operacional"}
+                      {actionMutation.isPending ? "Processando..." : c.status_automacao !== 'pronto_para_fechamento' ? "Bloqueado pelo Motor" : "1. Fechar Operacional"}
                     </Button>
                   )}
 

@@ -5,11 +5,12 @@ export type StatusCiclo = 'aberto' | 'processando' | 'validacao' | 'fechado' | '
 export type StatusWorkflowRH = 'pendente' | 'validado_rh' | 'rejeitado_rh';
 export type StatusWorkflowFinanceiro = 'pendente' | 'validado_financeiro' | 'rejeitado_financeiro';
 export type StatusWorkflowRemessa = 'nao_gerada' | 'pronta' | 'remetida' | 'retornada';
+export type StatusAutomacao = 'aguardando_validacao' | 'inconsistencias_detectadas' | 'pronto_para_fechamento' | 'bloqueado_automacao';
 
 export interface CicloOperacional {
   id: string;
   tenant_id: string;
-  competencia: string;
+  empresa_id: string;
   semana_operacional: number;
   data_inicio: string;
   data_fim: string;
@@ -17,6 +18,7 @@ export interface CicloOperacional {
   status_rh: StatusWorkflowRH;
   status_financeiro: StatusWorkflowFinanceiro;
   status_remessa: StatusWorkflowRemessa;
+  status_automacao?: StatusAutomacao;
   valor_operacional: number;
   valor_faturavel: number;
   valor_folha: number;
@@ -168,7 +170,7 @@ export class CicloOperacionalService {
   static async fecharSemana(cicloId: string, usuarioId: string): Promise<CicloOperacional> {
     const { data: ciclo, error: errFetch } = await supabase
       .from('ciclos_operacionais')
-      .select('status, tenant_id')
+      .select('status, tenant_id, status_automacao')
       .eq('id', cicloId)
       .single();
       
@@ -346,3 +348,4 @@ export class CicloOperacionalService {
     });
   }
 }
+

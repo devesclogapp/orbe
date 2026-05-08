@@ -1,5 +1,4 @@
 import { supabase } from '@/lib/supabase';
-import { v4 as uuidv4 } from 'uuid';
 
 export type AutomacaoStatus = 'pendente' | 'executando' | 'concluido' | 'falhou' | 'cancelado';
 export type AutomacaoTipo = 'PROCESSAMENTO_RH' | 'SUGESTAO_FECHAMENTO' | 'VALIDACAO_FINANCEIRA';
@@ -49,6 +48,16 @@ export const OperationalAutomationEngine = {
 
     if (error) throw error;
     return data.id;
+  },
+
+  async agendarLoteAssincrono(empresaId: string): Promise<void> {
+     // Enfileira os jobs base
+     await this.agendarExecucao({ empresa_id: empresaId, tipo: 'PROCESSAMENTO_RH', prioridade: 10 });
+     await this.agendarExecucao({ empresa_id: empresaId, tipo: 'SUGESTAO_FECHAMENTO', prioridade: 5 });
+     await this.agendarExecucao({ empresa_id: empresaId, tipo: 'VALIDACAO_FINANCEIRA', prioridade: 1 });
+     
+     // O frontend não processará a fila, apenas agendará.
+     // Um worker em background (AutomationWorker) deverá ser invocado ou estar rodando para puxar isso.
   },
 
   async processarFila(empresaId: string): Promise<void> {
@@ -152,7 +161,7 @@ export const OperationalAutomationEngine = {
 
     let count = 0;
     for (const c of ciclos) {
-      // se nao há alertas críticos, mudar status para aguardar_fechamento / pronto_para_fechamento
+      // Verifica inconsistencias criticas
       const { data: alertas } = await supabase
         .from('automacao_alertas')
         .select('id')
@@ -162,11 +171,17 @@ export const OperationalAutomationEngine = {
         .limit(1);
       
       if (!alertas || alertas.length === 0) {
-        // Marca como pronto_para_fechamento
+        // Marca como pronto_para_fechamento e status_automacao soberano
         await supabase.from('ciclos_operacionais').update({
-          status: 'pronto_para_fechamento'
+          status: 'pronto_para_fechamento',
+          status_automacao: 'pronto_para_fechamento'
         }).eq('id', c.id);
         count++;
+      } else {
+        // Bloqueia fechamento se houver erros criticos
+        await supabase.from('ciclos_operacionais').update({
+          status_automacao: 'bloqueado_automacao'
+        }).eq('id', c.id);
       }
     }
 
