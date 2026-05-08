@@ -1925,7 +1925,29 @@ const deleteFornecedorMutation = useMutation({
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEmpresaModalOpen(false)}>Cancelar</Button>
-            <Button onClick={() => createEmpresaMutation.mutate(empresaForm)} disabled={createEmpresaMutation.isPending}>
+            <Button onClick={() => {
+              if (!empresaForm.nome?.trim()) {
+                toast.error("Informe o nome da empresa");
+                return;
+              }
+              if (!empresaForm.cnpj?.trim()) {
+                toast.error("Informe o CNPJ");
+                return;
+              }
+              if (!empresaForm.unidade?.trim()) {
+                toast.error("Informe a unidade");
+                return;
+              }
+              if (!empresaForm.cidade?.trim()) {
+                toast.error("Informe a cidade");
+                return;
+              }
+              if (!empresaForm.estado?.trim()) {
+                toast.error("Informe o estado");
+                return;
+              }
+              createEmpresaMutation.mutate(empresaForm);
+            }} disabled={createEmpresaMutation.isPending}>
               {createEmpresaMutation.isPending ? "Salvando..." : "Salvar"}
             </Button>
           </DialogFooter>
@@ -2298,6 +2320,36 @@ const deleteFornecedorMutation = useMutation({
               <Label htmlFor="edit_emp_estado">Estado (UF)</Label>
               <Input id="edit_emp_estado" value={editingEmpresa?.estado || ""} onChange={(e) => setEditingEmpresa({ ...editingEmpresa, estado: e.target.value })} maxLength={2} />
             </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="edit_emp_banco">Código Banco</Label>
+                <Input id="edit_emp_banco" value={editingEmpresa?.banco_codigo || ""} onChange={(e) => setEditingEmpresa({ ...editingEmpresa, banco_codigo: e.target.value })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit_emp_agencia">Agência</Label>
+                <Input id="edit_emp_agencia" value={editingEmpresa?.agencia || ""} onChange={(e) => setEditingEmpresa({ ...editingEmpresa, agencia: e.target.value })} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="edit_emp_agencia_digito">Dígito Agência</Label>
+                <Input id="edit_emp_agencia_digito" value={editingEmpresa?.agencia_digito || ""} onChange={(e) => setEditingEmpresa({ ...editingEmpresa, agencia_digito: e.target.value })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit_emp_conta">Conta</Label>
+                <Input id="edit_emp_conta" value={editingEmpresa?.conta || ""} onChange={(e) => setEditingEmpresa({ ...editingEmpresa, conta: e.target.value })} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="edit_emp_conta_digito">Dígito Conta</Label>
+                <Input id="edit_emp_conta_digito" value={editingEmpresa?.conta_digito || ""} onChange={(e) => setEditingEmpresa({ ...editingEmpresa, conta_digito: e.target.value })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit_emp_convenio">Convênio</Label>
+                <Input id="edit_emp_convenio" value={editingEmpresa?.convenios_bancario || ""} onChange={(e) => setEditingEmpresa({ ...editingEmpresa, convenios_bancario: e.target.value })} />
+              </div>
+            </div>
             <div className="flex items-center gap-2">
               <input type="checkbox" id="edit_emp_ativa" checked={editingEmpresa?.status === "ativa"} onChange={(e) => setEditingEmpresa({ ...editingEmpresa, status: e.target.checked ? "ativa" : "inativa" })} />
               <Label htmlFor="edit_emp_ativa" className="cursor-pointer">Ativa</Label>
@@ -2305,7 +2357,43 @@ const deleteFornecedorMutation = useMutation({
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingEmpresa(null)}>Cancelar</Button>
-            <Button onClick={() => updateEmpresaMutation.mutate({ id: editingEmpresa.id, payload: editingEmpresa })} disabled={updateEmpresaMutation.isPending}>
+            <Button onClick={() => {
+              if (!editingEmpresa?.nome?.trim()) {
+                toast.error("Informe o nome da empresa");
+                return;
+              }
+              if (!editingEmpresa?.cnpj?.trim()) {
+                toast.error("Informe o CNPJ");
+                return;
+              }
+              if (!editingEmpresa?.unidade?.trim()) {
+                toast.error("Informe a unidade");
+                return;
+              }
+              if (!editingEmpresa?.cidade?.trim()) {
+                toast.error("Informe a cidade");
+                return;
+              }
+              if (!editingEmpresa?.estado?.trim()) {
+                toast.error("Informe o estado");
+                return;
+              }
+              const payload = {
+                nome: editingEmpresa.nome,
+                cnpj: editingEmpresa.cnpj,
+                unidade: editingEmpresa.unidade,
+                cidade: editingEmpresa.cidade,
+                estado: editingEmpresa.estado,
+                status: editingEmpresa.status,
+                banco_codigo: editingEmpresa.banco_codigo,
+                agencia: editingEmpresa.agencia,
+                agencia_digito: editingEmpresa.agencia_digito,
+                conta: editingEmpresa.conta,
+                conta_digito: editingEmpresa.conta_digito,
+                convenios_bancario: editingEmpresa.convenios_bancario,
+              };
+              updateEmpresaMutation.mutate({ id: editingEmpresa.id, payload });
+            }} disabled={updateEmpresaMutation.isPending}>
               {updateEmpresaMutation.isPending ? "Salvando..." : "Salvar"}
             </Button>
           </DialogFooter>
