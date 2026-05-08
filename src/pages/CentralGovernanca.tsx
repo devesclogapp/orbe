@@ -51,7 +51,7 @@ const CentralGovernanca = () => {
   const loading = loadingDocs && loadingTimeline; // Just initial load
 
   // Hardcode modulos conhecidos para evitar query extra cara, ou manter como lista dinamica via outra RPC futuramente
-  const modulosUnicos = ["WORKFLOW", "FINANCEIRO", "RH", "OPERACIONAL", "SISTEMA"];
+  const modulosUnicos = ["WORKFLOW", "AUTOMACAO", "FINANCEIRO", "RH", "OPERACIONAL", "SISTEMA"];
 
   const handleExportarXLS = async () => {
     await GovernanceService.exportTimelineToXLS({ modulo: filterModulo, impacto: filterImpacto });

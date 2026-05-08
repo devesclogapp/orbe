@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { supabase } from '@/lib/supabase';
 import { OperationalAutomationEngine } from './OperationalAutomationEngine';
 
@@ -67,26 +68,18 @@ export class AutomationWorker {
     private async recoverStalledExecutions() {
         const lockTimeoutDate = new Date(Date.now() - this.config.lockTimeoutMs).toISOString();
 
-        // Encontra itens executando mas com heartbeat atrasado
+        // Encontra itens executando mas com heartbeat atrasado. A limpeza completa
+        // fica no motor de auto-cura; aqui mantemos apenas o recovery local do worker.
         const { data: stalled, error } = await supabase
             .from('automacao_execucoes')
-            .select('id')
+            .select('id, empresa_id')
             .eq('status', 'executando')
             .lt('heartbeat_at', lockTimeoutDate);
 
         if (!error && stalled && stalled.length > 0) {
-            const ids = stalled.map(s => s.id);
-            // Reseta para pendente e incrementa tentativas
-            await supabase.rpc('reset_stalled_automations', { p_ids: ids }); // RPC otimizada, ou update direto:
-            
-            // Fallback usando JS
-            for(const job of stalled) {
-                await supabase.from('automacao_execucoes').update({
-                    status: 'pendente',
-                    locked_at: null,
-                    locked_by: null,
-                    heartbeat_at: null
-                }).eq('id', job.id);
+            const empresas = Array.from(new Set(stalled.map((job: any) => job.empresa_id).filter(Boolean)));
+            for (const empresaId of empresas) {
+                await OperationalAutomationEngine.limparFilaInteligente(empresaId);
             }
         }
     }
@@ -133,34 +126,23 @@ export class AutomationWorker {
     }
 
     private async executeJob(job: any) {
-        let heartbeatTimer = setInterval(async () => {
+        const heartbeatTimer = setInterval(async () => {
             await supabase.from('automacao_execucoes')
                 .update({ heartbeat_at: new Date().toISOString() })
                 .eq('id', job.id);
         }, this.config.lockTimeoutMs / 2); // Atualiza heartbeat na metade do tempo de limite
 
         try {
-            let resultado = {};
-            switch (job.tipo) {
-                case 'PROCESSAMENTO_RH':
-                    resultado = await OperationalAutomationEngine.automatizarProcessamentoRH(job.empresa_id);
-                    break;
-                case 'SUGESTAO_FECHAMENTO':
-                    resultado = await OperationalAutomationEngine.sugerirFechamento(job.empresa_id);
-                    break;
-                case 'VALIDACAO_FINANCEIRA':
-                    resultado = await OperationalAutomationEngine.validarFinanceiro(job.empresa_id);
-                    break;
-                default:
-                    throw new Error('Tipo automacao nao suportado');
-            }
+            const resultado = await OperationalAutomationEngine.executarTipoAutomacao(job.tipo, job.empresa_id);
 
             // Concluir
             await supabase.from('automacao_execucoes').update({
                 status: 'concluido',
                 finalizado_em: new Date().toISOString(),
                 resultado_json: resultado,
-                locked_by: null
+                locked_by: null,
+                locked_at: null,
+                heartbeat_at: null
             }).eq('id', job.id);
 
         } catch (err: any) {
