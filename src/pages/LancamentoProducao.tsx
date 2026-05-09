@@ -65,6 +65,7 @@ import {
     EmpresaService,
     RegrasFinanceirasService,
     RegrasDadosService,
+    RegrasModulosService,
     FormaPagamentoOperacionalService,
     FornecedorService,
     FornecedorValorServicoService,
@@ -110,6 +111,7 @@ type FormState = {
     produto: string;
     quantidade: string;
     valor_unitario: string;
+    valor_unitario_manual: string;
     valor_unitario_filme: string;
     quantidade_filme: string;
     forma_pagamento: string;
@@ -117,9 +119,13 @@ type FormState = {
     horario_fim: string;
     placa_veiculo: string;
     justificativa_data: string;
+    nf_emite: boolean;
     nf_numero: string;
     ctrc: string;
     observacao: string;
+    responsavel_nome: string;
+    data_vencimento: string;
+    status_financeiro: string;
 };
 
 const REGRAS_LOGISTICA: RegraAvaliacao[] = [
@@ -477,6 +483,8 @@ const PRESETS_PERMITIDOS_POR_PERFIL: Record<string, string[]> = {
 
 const PRESET_ROTAS: Record<string, string> = {
     preset_diaristas: "/producao/diaristas",
+    preset_custos_mensais: "/producao/custos-extras",
+    preset_transbordo: "/producao/servicos-extras",
 };
 
 const LancamentoProducao = () => {
@@ -502,6 +510,7 @@ const LancamentoProducao = () => {
         produto: "",
         quantidade: "",
         valor_unitario: "",
+        valor_unitario_manual: "",
         valor_unitario_filme: "",
         quantidade_filme: "",
         forma_pagamento: "",
@@ -509,9 +518,13 @@ const LancamentoProducao = () => {
         horario_fim: "",
         placa_veiculo: "",
         justificativa_data: "",
+        nf_emite: false,
         nf_numero: "",
         ctrc: "",
         observacao: "",
+        responsavel_nome: "",
+        data_vencimento: "",
+        status_financeiro: "PENDENTE",
     });
     const [etapaAtual, setEtapaAtual] = useState<EtapaFormulario>(1);
     const [condutaColaboradores, setCondutaColaboradores] = useState<Record<string, CondutaColaborador>>({});
@@ -598,21 +611,36 @@ const LancamentoProducao = () => {
         enabled: !!form.empresa_id && schemaDisponivel,
     });
 
+    // Produtos: carrega todos se não há fornecedor, ou por fornecedor se selecionado
     const { data: produtosDb = [] } = useQuery({
         queryKey: ["produtos_carga", form.fornecedor],
-        queryFn: () => ProdutoCargaService.getByFornecedor(form.fornecedor),
-        enabled: !!form.fornecedor && schemaDisponivel,
+        queryFn: () => form.fornecedor
+            ? ProdutoCargaService.getByFornecedor(form.fornecedor)
+            : ProdutoCargaService.getAll(),
+        enabled: schemaDisponivel,
+    });
+
+    // Buscamos o ID do módulo financeiro (Meios de Pagamento)
+    const { data: regrasModulos = [] } = useQuery({
+        queryKey: ["regras_modulos_all"],
+        queryFn: () => RegrasModulosService.listar(),
+        enabled: schemaDisponivel,
+    });
+
+    const moduloFinanceiroId = useMemo(() => {
+        return regrasModulos.find((m: any) => m.module_type === 'financial')?.id;
+    }, [regrasModulos]);
+
+    // Buscamos as regras financeiras novas baseadas no módulo
+    const { data: regrasDadosFinanceiros = [] } = useQuery({
+        queryKey: ["regras_dados_financeiros", moduloFinanceiroId],
+        queryFn: () => RegrasDadosService.listarPorModulo(moduloFinanceiroId as number),
+        enabled: !!moduloFinanceiroId && schemaDisponivel,
     });
 
     const { data: formasPagamentoDb = [], isLoading: isLoadingFormas } = useQuery({
         queryKey: ["formas_pagamento_operacional"],
         queryFn: () => FormaPagamentoOperacionalService.getAllActive(),
-        enabled: schemaDisponivel,
-    });
-
-    const { data: regrasFinanceiras = [] } = useQuery({
-        queryKey: ["regras_financeiras"],
-        queryFn: () => RegrasFinanceirasService.getAllActive(),
         enabled: schemaDisponivel,
     });
 
@@ -680,21 +708,33 @@ const LancamentoProducao = () => {
         if (!form.modalidade_financeira) {
             return mapToLookupOptions(formasPagamentoDb as any[]);
         }
-        const regra = (regrasFinanceiras as any[]).find(r => r.modalidade_financeira === form.modalidade_financeira);
-        if (regra?.formas_pagamento_permitidas && formasPagamentoDb.length > 0) {
-            const formasPermitidas = regra.formas_pagamento_permitidas as string[];
-            return formasPermitidas.map((nomePermitido) => {
+
+        let filtered = regrasDadosFinanceiros as any[];
+        if (form.modalidade_financeira) {
+            filtered = filtered.filter(
+                (d) => d.dados?.["Modalidade Financeira"] === form.modalidade_financeira
+            );
+        }
+
+        const formasPermitidasNomes = Array.from(new Set(filtered.map(d => d.dados?.["Forma de Pagamento"]).filter(Boolean)));
+
+        if (formasPermitidasNomes.length > 0) {
+            return formasPermitidasNomes.map((nomePermitido) => {
                 const formaDb = (formasPagamentoDb as any[]).find(
-                    (f: any) => f.nome?.toLowerCase() === nomePermitido.toLowerCase()
+                    (f: any) => f.nome?.toLowerCase() === (nomePermitido as string).toLowerCase()
                 );
                 return {
-                    id: formaDb?.id || nomePermitido,
-                    nome: nomePermitido
+                    id: String(formaDb?.id || nomePermitido),
+                    nome: String(nomePermitido)
                 };
             });
         }
-        return mapToLookupOptions(formasPagamentoDb as any[]);
-    }, [formasPagamentoDb, form.modalidade_financeira, regrasFinanceiras]);
+
+        return (formasPagamentoDb as any[]).map(forma => ({
+            id: String(forma.id),
+            nome: String(forma.nome)
+        }));
+    }, [formasPagamentoDb, form.modalidade_financeira, regrasDadosFinanceiros]);
 
     const formaPagamentoSelecionada = useMemo(
         () => formaPagamentoOptions.find((item) => item.id === form.forma_pagamento) ?? null,
@@ -705,8 +745,8 @@ const LancamentoProducao = () => {
         [form.tipo_lancamento],
     );
     const modalidadeFinanceiraLabel = useMemo(
-        () => getModalidadeFinanceiraLabel(form.modalidade_financeira, regrasFinanceiras as any[]),
-        [form.modalidade_financeira, regrasFinanceiras],
+        () => getModalidadeFinanceiraLabel(form.modalidade_financeira, []),
+        [form.modalidade_financeira],
     );
     const isOperacaoPadrao = form.tipo_lancamento === "operacao_padrao";
     const isTransbordoServicoExtra = form.tipo_lancamento === "transbordo_servico_extra";
@@ -928,28 +968,20 @@ const LancamentoProducao = () => {
     const tipoCalculoAtual = regraValor?.tipoCalculo ?? null;
     const quantidadeConsiderada = tipoCalculoAtual === "operation" ? (quantidade || 1) : quantidade;
 
+    // Valor efetivo: regra automática tem prioridade, mas usuário pode sobrescrever manualmente
+    const valorUnitarioEfetivo = form.valor_unitario_manual && Number(form.valor_unitario_manual) > 0
+        ? Number(form.valor_unitario_manual)
+        : Number(form.valor_unitario || 0);
+
+    // Cálculo unificado usando ISS global quando NF for emitida
     const valoresCalculados = calcularValoresOperacao({
         quantidade: quantidadeConsiderada,
-        valorUnitario: valorUnitario,
-        percentualIss: 0,
-        quantidadeFilme: quantidadeFilme,
-        valorUnitarioFilme: valorUnitarioFilme,
-        nfRaw: "NÃO",
-    });
-
-    const valoresCalculadosComIss = calcularValoresOperacao({
-        quantidade: quantidadeConsiderada,
-        valorUnitario: valorUnitario,
+        valorUnitario: valorUnitarioEfetivo,
         percentualIss: percentualIss,
         quantidadeFilme: quantidadeFilme,
         valorUnitarioFilme: valorUnitarioFilme,
-        nfRaw: String(form.nf_numero ?? "").toUpperCase().trim(),
+        nfRaw: form.nf_emite ? (form.nf_numero.trim() || "SIM") : "NAO",
     });
-    valoresCalculados.percentualCalculado = valoresCalculadosComIss.percentualCalculado;
-    valoresCalculados.valorDescargaCalculado = valoresCalculadosComIss.valorDescargaCalculado;
-    valoresCalculados.custoIssCalculado = valoresCalculadosComIss.custoIssCalculado;
-    valoresCalculados.totalFilmeCalculado = valoresCalculadosComIss.totalFilmeCalculado;
-    valoresCalculados.totalFinalCalculado = valoresCalculadosComIss.totalFinalCalculado;
 
     const valorDescarga = valoresCalculados.valorDescargaCalculado;
     const custoIss = valoresCalculados.custoIssCalculado;
@@ -1006,17 +1038,23 @@ const LancamentoProducao = () => {
         isTransbordoServicoExtra,
     ]);
 
+    // Indica se vencimento é obrigatório pela modalidade
+    const vencimentoObrigatorio = useMemo(() => {
+        return form.modalidade_financeira === "DUPLICATA" || form.modalidade_financeira === "FATURAMENTO_MENSAL";
+    }, [form.modalidade_financeira]);
+
     const etapaTresBlockReason = useMemo(() => {
         if (!isQualquerCusto && requiresProductSelection && !form.produto) return REGRA_MENSAGEM_PRODUTO;
-        if (!isCustosMensaisCLT && !form.forma_pagamento) return "Selecione a categoria da regra.";
 
         if (ruleLookupState === "loading") return "Buscando valor...";
 
-        if (!hasRegraFinanceira) {
+        const valorEfetivo = form.valor_unitario_manual && Number(form.valor_unitario_manual) > 0
+            ? Number(form.valor_unitario_manual)
+            : Number(form.valor_unitario || 0);
+
+        if (!hasRegraFinanceira && !valorEfetivo) {
             if (isTransbordoServicoExtra || isQualquerCusto) {
-                if (!form.valor_unitario || Number(form.valor_unitario) <= 0) {
-                    return `Informe o valor unitário manualmente.`;
-                }
+                return `Informe o valor unitário manualmente.`;
             } else {
                 if (ruleLookupState === "duplicate" || ruleLookupState === "needs_product" || ruleLookupState === "error" || ruleLookupState === "missing") {
                     return mensagemRegra;
@@ -1025,6 +1063,8 @@ const LancamentoProducao = () => {
             }
         }
 
+        if (!form.forma_pagamento) return "Selecione a forma de pagamento.";
+        if (vencimentoObrigatorio && !form.data_vencimento) return "Informe a data de vencimento.";
         if (!isFluxoSemEquipe && (!Number.isInteger(Number(form.quantidade_colaboradores)) || Number(form.quantidade_colaboradores) <= 0)) {
             return "Informe a quantidade de colaboradores.";
         }
@@ -1035,6 +1075,8 @@ const LancamentoProducao = () => {
         form.quantidade_colaboradores,
         form.produto,
         form.valor_unitario,
+        form.valor_unitario_manual,
+        form.data_vencimento,
         hasRegraFinanceira,
         isFluxoSemEquipe,
         isQualquerCusto,
@@ -1044,6 +1086,7 @@ const LancamentoProducao = () => {
         quantidadeConsiderada,
         requiresProductSelection,
         ruleLookupState,
+        vencimentoObrigatorio,
     ]);
 
     const etapaQuatroBlockReason = useMemo(() => {
@@ -1158,6 +1201,7 @@ const LancamentoProducao = () => {
                 produto: "",
                 quantidade: "",
                 valor_unitario: "",
+                valor_unitario_manual: "",
                 valor_unitario_filme: "",
                 quantidade_filme: "",
                 forma_pagamento: "",
@@ -1165,6 +1209,12 @@ const LancamentoProducao = () => {
                 horario_fim: "",
                 placa_veiculo: "",
                 justificativa_data: "",
+                nf_numero: "",
+                ctrc: "",
+                observacao: "",
+                responsavel_nome: "",
+                data_vencimento: "",
+                status_financeiro: "PENDENTE",
             }));
             setCondutaColaboradores({});
             setEtapaAtual(2);
@@ -1218,6 +1268,8 @@ const LancamentoProducao = () => {
     const handleSave = () => {
         const status = infracoesCount > 0 ? "Com alerta" : (isDataRetroativa ? "Aguardando validação" : "Pendente");
         const regraFinanceira = form.regra_financeira as any;
+        // Usa sempre o valor calculado automaticamente pela regra do banco
+        const valorUnitarioFinal = valorUnitario;
 
         const avaliacaoJson = {
             infracoes: Object.values(condutaColaboradores)
@@ -1227,7 +1279,7 @@ const LancamentoProducao = () => {
             contexto_operacional: {
                 total_previsto: totalFinal,
                 quantidade: quantidade,
-                valor_unitario: valorUnitario,
+                valor_unitario: valorUnitarioFinal,
                 base_calculo: baseCalculoResumo,
                 quantidade_colaboradores: quantidadeColaboradores,
             },
@@ -1251,7 +1303,7 @@ const LancamentoProducao = () => {
                 : tipoCalculoAtual === "colaborador"
                     ? quantidadeColaboradores
                     : quantidade,
-            valor_unitario_snapshot: valorUnitario,
+            valor_unitario_snapshot: valorUnitarioFinal,
             tipo_calculo_snapshot: regraValor?.tipoCalculo ?? "volume",
             forma_pagamento_id: form.forma_pagamento && form.forma_pagamento.includes('-') ? form.forma_pagamento : null,
             placa: form.placa_veiculo || null,
@@ -1271,6 +1323,7 @@ const LancamentoProducao = () => {
             observacao: form.observacao.trim() || null,
             responsavel_id: user?.id,
             descricao_servico: form.descricao_servico.trim() || null,
+            data_vencimento: form.data_vencimento || null,
         };
 
         const colaboradores = Object.entries(condutaColaboradores)
@@ -1282,7 +1335,7 @@ const LancamentoProducao = () => {
 
     const handlePresetSelect = (preset: (typeof LANCAMENTO_PRESETS)[0]) => {
         console.log('[OPERACAO] Preset selecionado:', preset.title);
-        
+
         if (PRESET_ROTAS[preset.id]) {
             console.log('[OPERACAO] Navegando para rota externa:', PRESET_ROTAS[preset.id]);
             navigate(PRESET_ROTAS[preset.id]);
@@ -1295,7 +1348,7 @@ const LancamentoProducao = () => {
             tipo_lancamento: preset.tipo_lancamento,
             modalidade_financeira: preset.modalidade_financeira,
         }));
-        
+
         console.log('[OPERACAO] Avançando para etapa 2...');
         setEtapaAtual(2);
     };
@@ -1374,10 +1427,10 @@ const LancamentoProducao = () => {
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="space-y-1.5">
                                             <Label>Data</Label>
-                                            <Input 
-                                                type="date" 
-                                                value={form.data || ""} 
-                                                onChange={(e) => setForm(f => ({ ...f, data: e.target.value }))} 
+                                            <Input
+                                                type="date"
+                                                value={form.data || ""}
+                                                onChange={(e) => setForm(f => ({ ...f, data: e.target.value }))}
                                                 className="h-11 rounded-xl bg-background"
                                             />
                                         </div>
@@ -1419,96 +1472,354 @@ const LancamentoProducao = () => {
                             )}
 
                             {etapaAtual === 3 && (
-                                <div className="space-y-4">
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-1.5">
-                                            <Label>Transportadora</Label>
-                                            <Select value={form.transportadora} onValueChange={(v) => setForm(f => ({ ...f, transportadora: v }))}>
-                                                <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Opcional" /></SelectTrigger>
-                                                <SelectContent>
-                                                    {transportadorasDisponiveis.map((opt) => <SelectItem key={opt.id} value={opt.id}>{opt.nome}</SelectItem>)}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <Label>Fornecedor</Label>
-                                            <Select value={form.fornecedor} onValueChange={(v) => setForm(f => ({ ...f, fornecedor: v }))}>
-                                                <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Opcional" /></SelectTrigger>
-                                                <SelectContent>
-                                                    {fornecedoresDisponiveis.map((opt) => <SelectItem key={opt.id} value={opt.id}>{opt.nome}</SelectItem>)}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                    </div>
-                                    <div className="space-y-1.5">
-                                        <Label>Produto/Carga</Label>
-                                        <Select value={form.produto} onValueChange={(v) => setForm(f => ({ ...f, produto: v }))}>
-                                            <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Opcional" /></SelectTrigger>
-                                            <SelectContent>
-                                                {produtoOptions.map((opt) => <SelectItem key={opt.id} value={opt.id}>{opt.nome}</SelectItem>)}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-1.5">
-                                            <Label>{getQuantidadeLabel(tipoCalculoAtual)}</Label>
-                                            <Input type="number" value={form.quantidade} onChange={e => setForm(f => ({ ...f, quantidade: e.target.value }))} className="h-11 rounded-xl" />
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <Label>Colaboradores</Label>
-                                            <div className="flex items-center gap-2">
-                                                <Button type="button" variant="outline" size="icon" className="h-11 w-11 rounded-xl" onClick={() => setForm(f => ({ ...f, quantidade_colaboradores: String(Math.max(1, Number(f.quantidade_colaboradores) - 1)) }))}><Minus className="w-4 h-4" /></Button>
-                                                <Input type="number" value={form.quantidade_colaboradores} onChange={e => setForm(f => ({ ...f, quantidade_colaboradores: e.target.value }))} className="h-11 rounded-xl text-center font-bold text-base" />
-                                                <Button type="button" variant="outline" size="icon" className="h-11 w-11 rounded-xl" onClick={() => setForm(f => ({ ...f, quantidade_colaboradores: String(Number(f.quantidade_colaboradores) + 1) }))}><Plus className="w-4 h-4" /></Button>
+                                <div className="space-y-5">
+                                    {/* ── SEÇÃO: OPERAÇÃO ── */}
+                                    <div>
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-1.5">
+                                            <Truck className="w-3.5 h-3.5" /> Operação
+                                        </p>
+                                        <div className="space-y-3">
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1.5">
+                                                    <Label>Transportadora</Label>
+                                                    <Select value={form.transportadora} onValueChange={(v) => setForm(f => ({ ...f, transportadora: v }))}>
+                                                        <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Opcional" /></SelectTrigger>
+                                                        <SelectContent>
+                                                            {transportadorasDisponiveis.map((opt) => <SelectItem key={opt.id} value={opt.id}>{opt.nome}</SelectItem>)}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <Label>Fornecedor</Label>
+                                                    <Select value={form.fornecedor} onValueChange={(v) => setForm(f => ({ ...f, fornecedor: v }))}>
+                                                        <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Opcional" /></SelectTrigger>
+                                                        <SelectContent>
+                                                            {fornecedoresDisponiveis.map((opt) => <SelectItem key={opt.id} value={opt.id}>{opt.nome}</SelectItem>)}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
                                             </div>
-                                        </div>
-                                    </div>
-                                    {etapaTresBlockReason && <p className="text-xs text-destructive">{etapaTresBlockReason}</p>}
-                                </div>
-                            )}
+                                            <div className="space-y-1.5">
+                                                <Label>Produto/Carga</Label>
+                                                <Select value={form.produto} onValueChange={(v) => setForm(f => ({ ...f, produto: v }))}>
+                                                    <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Opcional" /></SelectTrigger>
+                                                    <SelectContent>
+                                                        {produtoOptions.map((opt) => <SelectItem key={opt.id} value={opt.id}>{opt.nome}</SelectItem>)}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                            <div className="space-y-3">
+                                                {/* Quantidade de volumes - full width */}
+                                                <div className="space-y-1.5">
+                                                    <Label>{getQuantidadeLabel(tipoCalculoAtual)}</Label>
+                                                    <Input
+                                                        type="number"
+                                                        inputMode="numeric"
+                                                        value={form.quantidade}
+                                                        onChange={e => setForm(f => ({ ...f, quantidade: e.target.value }))}
+                                                        className="h-12 rounded-xl text-lg font-bold"
+                                                        placeholder="0"
+                                                    />
+                                                </div>
 
-                            {etapaAtual === 4 && !isFluxoSemEquipe && (
-                                <div className="space-y-4">
-                                    <div className="flex items-center justify-between">
-                                        <Label>Selecione os colaboradores</Label>
-                                        <Badge>{quantidadeSelecionada}/{form.quantidade_colaboradores}</Badge>
-                                    </div>
-                                    <div className="space-y-2 max-h-96 overflow-y-auto">
-                                        {colaboradoresFiltrados.map((colaborador: any) => {
-                                            const conduta = condutaColaboradores[colaborador.id] ?? { selected: false, hadInfraction: false, infractionType: "", notes: "" };
-                                            return (
-                                                <div key={colaborador.id} className="rounded-xl border p-3 space-y-3">
-                                                    <label className="flex items-start gap-3 cursor-pointer">
-                                                        <input type="checkbox" checked={conduta.selected} onChange={(e) => setCondutaColaboradores((prev) => ({ ...prev, [colaborador.id]: { ...conduta, selected: e.target.checked } }))} className="mt-1 h-4 w-4 rounded accent-brand" />
-                                                        <div>
-                                                            <div className="text-sm font-semibold">{colaborador.nome}</div>
-                                                            <div className="text-xs text-muted-foreground">{colaborador.cargo || "Não informado"}</div>
-                                                        </div>
-                                                    </label>
-                                                    {conduta.selected && (
-                                                        <div className="ml-7 space-y-3">
-                                                            <div className="flex items-center gap-2">
-                                                                <input type="checkbox" checked={conduta.hadInfraction} onChange={(e) => setCondutaColaboradores((prev) => ({ ...prev, [colaborador.id]: { ...conduta, hadInfraction: e.target.checked } }))} className="h-4 w-4 rounded accent-destructive" />
-                                                                <span className="text-sm">Teve infração?</span>
+                                                {/* Colaboradores - full width com counter grande */}
+                                                {!isFluxoSemEquipe && (
+                                                    <div className="space-y-1.5">
+                                                        <Label className="font-semibold">Nº de Colaboradores</Label>
+                                                        <div className="flex items-center gap-3 bg-muted/30 rounded-xl p-2 border">
+                                                            <Button
+                                                                type="button"
+                                                                variant="outline"
+                                                                size="icon"
+                                                                className="h-12 w-12 rounded-xl shrink-0 bg-background"
+                                                                onClick={() => setForm(f => ({ ...f, quantidade_colaboradores: String(Math.max(1, Number(f.quantidade_colaboradores) - 1)) }))}
+                                                            >
+                                                                <Minus className="w-5 h-5" />
+                                                            </Button>
+                                                            <div className="flex-1 text-center">
+                                                                <span className="text-3xl font-black text-foreground leading-none">
+                                                                    {form.quantidade_colaboradores || "0"}
+                                                                </span>
+                                                                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">colaboradores</p>
                                                             </div>
-                                                            {conduta.hadInfraction && (
-                                                                <div className="grid gap-3">
-                                                                    <Select value={conduta.infractionType} onValueChange={(v) => setCondutaColaboradores((prev) => ({ ...prev, [colaborador.id]: { ...conduta, infractionType: v } }))}>
-                                                                        <SelectTrigger className="h-10 rounded-xl"><SelectValue placeholder="Selecione o tipo" /></SelectTrigger>
-                                                                        <SelectContent>
-                                                                            {getRegrasPorFuncao(colaborador.cargo ?? "").map(regra => <SelectItem key={regra.id} value={regra.label}>{regra.label}</SelectItem>)}
-                                                                        </SelectContent>
-                                                                    </Select>
-                                                                    <Textarea placeholder="Opcional" value={conduta.notes} onChange={(e) => setCondutaColaboradores((prev) => ({ ...prev, [colaborador.id]: { ...conduta, notes: e.target.value } }))} className="rounded-xl text-sm" />
-                                                                </div>
+                                                            <Button
+                                                                type="button"
+                                                                variant="outline"
+                                                                size="icon"
+                                                                className="h-12 w-12 rounded-xl shrink-0 bg-background"
+                                                                onClick={() => setForm(f => ({ ...f, quantidade_colaboradores: String(Number(f.quantidade_colaboradores) + 1) }))}
+                                                            >
+                                                                <Plus className="w-5 h-5" />
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Placa e CTRC */}
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <div className="space-y-1.5">
+                                                        <Label className="flex items-center gap-1"><Car className="w-3 h-3" />Placa</Label>
+                                                        <Input
+                                                            value={form.placa_veiculo}
+                                                            onChange={e => setForm(f => ({ ...f, placa_veiculo: e.target.value.toUpperCase() }))}
+                                                            placeholder="AAA-0000"
+                                                            className="h-10 rounded-xl uppercase"
+                                                            maxLength={8}
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1.5">
+                                                        <Label>CTRC</Label>
+                                                        <Input
+                                                            value={form.ctrc}
+                                                            onChange={e => setForm(f => ({ ...f, ctrc: e.target.value }))}
+                                                            placeholder="Nº"
+                                                            className="h-10 rounded-xl"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {/* NF — toggle + campo de código */}
+                                                <div className="rounded-xl border border-border/60 overflow-hidden">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setForm(f => ({ ...f, nf_emite: !f.nf_emite, nf_numero: f.nf_emite ? "" : f.nf_numero }))}
+                                                        className={cn(
+                                                            "w-full flex items-center justify-between px-4 py-3 text-sm font-semibold transition-colors",
+                                                            form.nf_emite
+                                                                ? "bg-success-soft text-success-strong"
+                                                                : "bg-muted/40 text-muted-foreground hover:bg-muted/70"
+                                                        )}
+                                                    >
+                                                        <span className="flex items-center gap-2">
+                                                            <span className={cn(
+                                                                "w-5 h-5 rounded-full border-2 flex items-center justify-center text-xs font-black transition-all",
+                                                                form.nf_emite ? "border-success-strong bg-success-strong text-white" : "border-border bg-background"
+                                                            )}>
+                                                                {form.nf_emite ? "✓" : ""}
+                                                            </span>
+                                                            Emite Nota Fiscal (NF)?
+                                                        </span>
+                                                        <span className={cn(
+                                                            "text-xs px-2 py-0.5 rounded-full font-bold",
+                                                            form.nf_emite ? "bg-success-strong text-white" : "bg-muted text-muted-foreground"
+                                                        )}>
+                                                            {form.nf_emite ? "SIM" : "NÃO"}
+                                                        </span>
+                                                    </button>
+                                                    {form.nf_emite && (
+                                                        <div className="px-4 py-3 bg-background border-t border-border/40">
+                                                            <Label className="text-xs text-muted-foreground mb-1 block">Número / Código da NF</Label>
+                                                            <Input
+                                                                value={form.nf_numero}
+                                                                onChange={e => setForm(f => ({ ...f, nf_numero: e.target.value }))}
+                                                                placeholder="Digite o número ou código da NF"
+                                                                className="h-10 rounded-xl"
+                                                                autoFocus
+                                                            />
+                                                            {percentualIss > 0 && (
+                                                                <p className="text-[11px] text-success-strong mt-1.5 font-medium">
+                                                                    ℹ️ ISS de {percentualIss.toFixed(1)}% será aplicado ao valor total.
+                                                                </p>
                                                             )}
                                                         </div>
                                                     )}
                                                 </div>
-                                            );
-                                        })}
+                                            </div>
+                                        </div>
                                     </div>
-                                    {etapaQuatroBlockReason && <p className="text-xs text-destructive">{etapaQuatroBlockReason}</p>}
+
+                                    {/* ── DIVISOR ── */}
+                                    <div className="border-t border-dashed border-border/60" />
+
+                                    {/* ── SEÇÃO: FINANCEIRO ── */}
+                                    <div>
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-1.5">
+                                            <Wallet className="w-3.5 h-3.5" /> Financeiro
+                                        </p>
+                                        <div className="space-y-3">
+                                            {/* Forma de pagamento */}
+                                            <div className="space-y-1.5">
+                                                <Label className="text-sm font-semibold">Forma de Pagamento <span className="text-destructive">*</span></Label>
+                                                <Select value={form.forma_pagamento} onValueChange={(v) => setForm(f => ({ ...f, forma_pagamento: v }))}>
+                                                    <SelectTrigger className={cn("h-11 rounded-xl", !form.forma_pagamento && "border-destructive/50")}>
+                                                        <SelectValue placeholder="Selecione..." />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {formaPagamentoOptions.map((opt) => <SelectItem key={opt.id} value={opt.id}>{opt.nome}</SelectItem>)}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+
+                                            {/* Valor unitário — mostra o da regra + permite override */}
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1.5">
+                                                    <Label className="text-sm font-semibold">
+                                                        Valor Unit. <span className="text-destructive">*</span>
+                                                        {hasRegraFinanceira && (
+                                                            <span className="ml-1 text-[10px] text-success-strong bg-success-soft px-1.5 py-0.5 rounded-full">
+                                                                Auto
+                                                            </span>
+                                                        )}
+                                                    </Label>
+                                                    <div className="relative">
+                                                        <Input
+                                                            type="text"
+                                                            readOnly
+                                                            value={hasRegraFinanceira ? valorUnitario : ""}
+                                                            placeholder="0,00"
+                                                            className="h-11 rounded-xl pr-14 bg-muted/40 text-muted-foreground cursor-not-allowed border-dashed focus-visible:ring-0"
+                                                        />
+                                                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium">R$</span>
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <Label className="text-sm font-semibold">Valor Total</Label>
+                                                    <div className={cn(
+                                                        "h-11 rounded-xl flex items-center px-3 font-bold text-base border",
+                                                        totalFinal > 0 ? "bg-success-soft border-success-strong/30 text-success-strong" : "bg-muted/50 border-border text-muted-foreground"
+                                                    )}>
+                                                        {formatCurrency(totalFinal)}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Data de vencimento — só aparece para DUPLICATA e FATURAMENTO_MENSAL */}
+                                            {vencimentoObrigatorio && (
+                                                <div className="space-y-1.5">
+                                                    <Label className="text-sm font-semibold">
+                                                        Data de Vencimento <span className="text-destructive">*</span>
+                                                    </Label>
+                                                    <Input
+                                                        type="date"
+                                                        value={form.data_vencimento}
+                                                        onChange={e => setForm(f => ({ ...f, data_vencimento: e.target.value }))}
+                                                        className="h-11 rounded-xl"
+                                                        min={form.data}
+                                                    />
+                                                </div>
+                                            )}
+
+                                            {/* Status financeiro */}
+                                            <div className="space-y-1.5">
+                                                <Label className="text-sm font-semibold">Status Financeiro</Label>
+                                                <Select value={form.status_financeiro} onValueChange={(v) => setForm(f => ({ ...f, status_financeiro: v }))}>
+                                                    <SelectTrigger className="h-11 rounded-xl">
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="PENDENTE">⏳ Pendente</SelectItem>
+                                                        <SelectItem value="RECEBIDO">✅ Recebido</SelectItem>
+                                                        <SelectItem value="ATRASADO">🚨 Atrasado</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+
+                                            {/* Resumo do cálculo */}
+                                            {(valorUnitarioEfetivo > 0 || totalFinal > 0) && (
+                                                <div className="rounded-xl bg-muted/40 border border-border/50 px-4 py-3 text-xs text-muted-foreground space-y-1">
+                                                    <div className="flex justify-between">
+                                                        <span>Base de cálculo</span>
+                                                        <span className="font-mono font-bold text-foreground">{baseCalculoResumo}</span>
+                                                    </div>
+                                                    <div className="flex justify-between">
+                                                        <span>Total previsto</span>
+                                                        <span className="font-mono font-bold text-success-strong">{formatCurrency(totalFinal)}</span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {etapaTresBlockReason && (
+                                        <div className="rounded-xl bg-destructive/5 border border-destructive/20 px-4 py-3">
+                                            <p className="text-xs text-destructive font-medium">{etapaTresBlockReason}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {etapaAtual === 4 && (
+                                <div className="space-y-5">
+                                    {/* ── SEÇÃO: EQUIPE ── */}
+                                    {!isFluxoSemEquipe && (
+                                        <div>
+                                            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-1.5">
+                                                <Users className="w-3.5 h-3.5" /> Selecione os colaboradores
+                                                <Badge className="ml-auto">{quantidadeSelecionada}/{form.quantidade_colaboradores}</Badge>
+                                            </p>
+                                            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                                                {colaboradoresFiltrados.map((colaborador: any) => {
+                                                    const conduta = condutaColaboradores[colaborador.id] ?? { selected: false, hadInfraction: false, infractionType: "", notes: "" };
+                                                    return (
+                                                        <div key={colaborador.id} className="rounded-xl border p-3 space-y-3">
+                                                            <label className="flex items-start gap-3 cursor-pointer">
+                                                                <input type="checkbox" checked={conduta.selected} onChange={(e) => setCondutaColaboradores((prev) => ({ ...prev, [colaborador.id]: { ...conduta, selected: e.target.checked } }))} className="mt-1 h-4 w-4 rounded accent-brand" />
+                                                                <div>
+                                                                    <div className="text-sm font-semibold">{colaborador.nome}</div>
+                                                                    <div className="text-xs text-muted-foreground">{colaborador.cargo || "Não informado"}</div>
+                                                                </div>
+                                                            </label>
+                                                            {conduta.selected && (
+                                                                <div className="ml-7 space-y-3">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <input type="checkbox" checked={conduta.hadInfraction} onChange={(e) => setCondutaColaboradores((prev) => ({ ...prev, [colaborador.id]: { ...conduta, hadInfraction: e.target.checked } }))} className="h-4 w-4 rounded accent-destructive" />
+                                                                        <span className="text-sm">Teve infração?</span>
+                                                                    </div>
+                                                                    {conduta.hadInfraction && (
+                                                                        <div className="grid gap-3">
+                                                                            <Select value={conduta.infractionType} onValueChange={(v) => setCondutaColaboradores((prev) => ({ ...prev, [colaborador.id]: { ...conduta, infractionType: v } }))}>
+                                                                                <SelectTrigger className="h-10 rounded-xl"><SelectValue placeholder="Selecione o tipo" /></SelectTrigger>
+                                                                                <SelectContent>
+                                                                                    {getRegrasPorFuncao(colaborador.cargo ?? "").map(regra => <SelectItem key={regra.id} value={regra.label}>{regra.label}</SelectItem>)}
+                                                                                </SelectContent>
+                                                                            </Select>
+                                                                            <Textarea placeholder="Opcional" value={conduta.notes} onChange={(e) => setCondutaColaboradores((prev) => ({ ...prev, [colaborador.id]: { ...conduta, notes: e.target.value } }))} className="rounded-xl text-sm" />
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* ── DIVISOR ── */}
+                                    {!isFluxoSemEquipe && <div className="border-t border-dashed border-border/60" />}
+
+                                    {/* ── SEÇÃO: RESPONSÁVEL E OBSERVAÇÃO ── */}
+                                    <div>
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-1.5">
+                                            <ShieldAlert className="w-3.5 h-3.5" /> Responsável e Observações
+                                        </p>
+                                        <div className="space-y-3">
+                                            <div className="space-y-1.5">
+                                                <Label>Responsável pelo lançamento</Label>
+                                                <Input
+                                                    value={form.responsavel_nome}
+                                                    onChange={e => setForm(f => ({ ...f, responsavel_nome: e.target.value }))}
+                                                    placeholder="Nome do responsável (opcional)"
+                                                    className="h-11 rounded-xl"
+                                                />
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <Label>Observação</Label>
+                                                <Textarea
+                                                    value={form.observacao}
+                                                    onChange={e => setForm(f => ({ ...f, observacao: e.target.value }))}
+                                                    placeholder="Observações adicionais sobre esta operação..."
+                                                    className="rounded-xl min-h-[80px] text-sm"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {etapaQuatroBlockReason && (
+                                        <div className="rounded-xl bg-destructive/5 border border-destructive/20 px-4 py-3">
+                                            <p className="text-xs text-destructive font-medium">{etapaQuatroBlockReason}</p>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
@@ -1516,11 +1827,11 @@ const LancamentoProducao = () => {
                                 type="submit"
                                 className={cn(
                                     "w-full h-14 rounded-xl font-black text-lg shadow-lg transition-all duration-200 active:scale-[0.98]",
-                                    (mutation.isPending || etapaDoisBlockReason || etapaTresBlockReason || etapaQuatroBlockReason)
+                                    (mutation.isPending || (etapaAtual === 2 && !!etapaDoisBlockReason) || (etapaAtual === 3 && !!etapaTresBlockReason) || (etapaAtual === 4 && !!etapaQuatroBlockReason))
                                         ? "bg-muted text-muted-foreground cursor-not-allowed opacity-60"
                                         : "bg-orange-500 hover:bg-orange-600 text-white shadow-orange-500/25 hover:shadow-orange-500/40"
                                 )}
-                                disabled={mutation.isPending || !!etapaDoisBlockReason || !!etapaTresBlockReason || !!etapaQuatroBlockReason}
+                                disabled={mutation.isPending || (etapaAtual === 2 && !!etapaDoisBlockReason) || (etapaAtual === 3 && !!etapaTresBlockReason) || (etapaAtual === 4 && !!etapaQuatroBlockReason)}
                             >
                                 {mutation.isPending ? (
                                     <span className="flex items-center gap-2">

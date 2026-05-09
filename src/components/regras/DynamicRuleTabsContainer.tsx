@@ -65,8 +65,8 @@ const DynamicRuleTabsContainer: React.FC<DynamicRuleTabsContainerProps> = ({ can
 
     const existingSlug = dynamicModules.some(mod => mod.slug === newTabForm.slug);
     if (existingSlug) {
-        toast.error("Slug já existe. Por favor, escolha um slug único.");
-        return;
+      toast.error("Slug já existe. Por favor, escolha um slug único.");
+      return;
     }
 
     createModuloMutation.mutate({
@@ -77,14 +77,14 @@ const DynamicRuleTabsContainer: React.FC<DynamicRuleTabsContainerProps> = ({ can
   };
 
   return (
-    <>      
-      {dynamicModules.map((module) => (        
+    <>
+      {dynamicModules.filter(m => m.module_type !== 'tax' && m.module_type !== 'financial').map((module) => (
         <TabsContent key={module.slug} value={module.slug} className="m-0">
           <DynamicRuleTabContent moduloId={module.id} />
         </TabsContent>
       ))}
 
-      {canAccess && (        
+      {canAccess && (
         <Dialog open={isNewTabModalOpen} onOpenChange={setIsNewTabModalOpen}>
           <DialogContent>
             <DialogHeader>

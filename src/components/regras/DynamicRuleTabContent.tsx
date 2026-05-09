@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Ban, Save, X } from "lucide-react";
+import { Plus, Pencil, Trash2, Ban, Save, X, Copy } from "lucide-react";
 import { toast } from "sonner";
 
 import { Card } from "@/components/ui/card";
@@ -69,9 +69,11 @@ import ManageFieldsModal from "./ManageFieldsModal";
 
 interface DynamicRuleTabContentProps {
   moduloId: number;
+  title?: string;
+  description?: string;
 }
 
-const DynamicRuleTabContent: React.FC<DynamicRuleTabContentProps> = ({ moduloId }) => {
+const DynamicRuleTabContent: React.FC<DynamicRuleTabContentProps> = ({ moduloId, title, description }) => {
   const queryClient = useQueryClient();
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [editingDadoId, setEditingDadoId] = useState<number | null>(null);
@@ -90,6 +92,17 @@ const DynamicRuleTabContent: React.FC<DynamicRuleTabContentProps> = ({ moduloId 
     queryFn: () => RegrasDadosService.listarPorModulo(moduloId),
     enabled: !!moduloId,
   });
+
+  const sortedDados = useMemo(() => {
+    return [...dados].sort((a, b) => {
+      const orderA = Number(a.dados?._order) || (a.id * 100000);
+      const orderB = Number(b.dados?._order) || (b.id * 100000);
+      if (orderA === orderB) {
+        return b.id - a.id;
+      }
+      return orderA - orderB;
+    });
+  }, [dados]);
 
   const resetForm = () => {
     setFormData({});
@@ -137,11 +150,14 @@ const DynamicRuleTabContent: React.FC<DynamicRuleTabContentProps> = ({ moduloId 
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const payload = { modulo_id: moduloId, dados: formData };
+    const payload = { modulo_id: moduloId, dados: { ...formData } };
 
     if (editingDadoId) {
       updateDadoMutation.mutate({ id: editingDadoId, updatedDado: payload });
     } else {
+      if (payload.dados._order === undefined) {
+        payload.dados._order = Date.now();
+      }
       createDadoMutation.mutate(payload);
     }
   };
@@ -152,8 +168,29 @@ const DynamicRuleTabContent: React.FC<DynamicRuleTabContentProps> = ({ moduloId 
     setIsFormOpen(true);
   };
 
+  const handleDuplicate = (dado: RegraDado) => {
+    const originalOrder = Number(dado.dados?._order) || (dado.id * 100000);
+    const duplicatedDados = { ...dado.dados, _order: originalOrder - 1 };
+    createDadoMutation.mutate({ modulo_id: moduloId, dados: duplicatedDados });
+  };
+
   const handleChange = (fieldName: string, value: any) => {
-    setFormData((prev) => ({ ...prev, [fieldName]: value }));
+    setFormData((prev) => {
+      const next = { ...prev, [fieldName]: value };
+
+      const currentFields = isFixedSchema ? customFixedFields : campos;
+      const fieldDef = currentFields.find(c => c.nome === fieldName);
+
+      if (fieldDef?.tipo === "boolean" && value === true) {
+        if (modulo?.module_type === 'financial') {
+          currentFields.filter(c => c.tipo === "boolean" && c.nome !== fieldName).forEach(c => {
+            next[c.nome] = false;
+          });
+        }
+      }
+
+      return next;
+    });
   };
 
   const { data: modulo } = useQuery<RegraModulo | null>({
@@ -193,15 +230,18 @@ const DynamicRuleTabContent: React.FC<DynamicRuleTabContentProps> = ({ moduloId 
     <>
       <Card className="p-5 space-y-4">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <h3 className="font-semibold text-lg">Gerenciar Dados</h3>
+          <div>
+            <h2 className="font-semibold text-foreground">{title || "Regras cadastradas"}</h2>
+            {description && <p className="text-sm text-muted-foreground">{description}</p>}
+          </div>
           <div className="flex w-full md:w-auto items-center gap-2">
             {!isFixedSchema && (
-              <Button type="button" variant="outline" onClick={() => setIsManageFieldsModalOpen(true)}>
+              <Button type="button" variant="outline" className="shrink-0" onClick={() => setIsManageFieldsModalOpen(true)}>
                 <Pencil className="h-4 w-4 mr-2" /> Gerenciar Campos
               </Button>
             )}
-            <Button type="button" onClick={() => setIsFormOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" /> Novo Registro
+            <Button type="button" className="shrink-0" onClick={() => setIsFormOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" /> Nova Regra
             </Button>
           </div>
         </div>
@@ -307,52 +347,75 @@ const DynamicRuleTabContent: React.FC<DynamicRuleTabContentProps> = ({ moduloId 
           </DialogContent>
         </Dialog>
 
-        <h3 className="font-semibold text-lg mt-8">Dados Existentes</h3>
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
                 {(isFixedSchema ? customFixedFields : campos).map((campo) => (
-                  <TableHead key={campo.id} className="text-center">{campo.nome}</TableHead>
+                  <TableHead key={campo.id} className="text-center text-[10px] uppercase font-bold text-muted-foreground">{campo.nome}</TableHead>
                 ))}
-                <TableHead className="text-right">Ações</TableHead>
+                <TableHead className="text-right text-[10px] uppercase font-bold text-muted-foreground">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {dados.length === 0 && (
+              {sortedDados.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={(isFixedSchema ? customFixedFields : campos).length + 1} className="h-24 text-center text-muted-foreground">
-                    Nenhum dado cadastrado para este módulo.
+                    Nenhuma regra cadastrada para este módulo.
                   </TableCell>
                 </TableRow>
               )}
-              {dados.map((dado) => (
+              {sortedDados.map((dado) => (
                 <TableRow key={dado.id}>
                   {(isFixedSchema ? customFixedFields : campos).map((campo) => {
                     const value = dado.dados?.[campo.nome];
+
                     if (campo.tipo === "boolean") {
-                      return <TableCell key={campo.id} className="text-center">{value ? "Sim" : "Não"}</TableCell>;
+                      return (
+                        <TableCell key={campo.id} className="text-center">
+                          <span className="flex justify-center">
+                            <span className={`inline-flex items-center rounded border px-2 py-0.5 text-[10px] font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 uppercase ${value ? "border-transparent bg-emerald-100 text-emerald-800" : "border-transparent bg-zinc-100 text-zinc-800"}`}>
+                              {value ? "Sim" : "Não"}
+                            </span>
+                          </span>
+                        </TableCell>
+                      );
                     }
-                    if (campo.nome.toLowerCase() === "percentual" && value !== undefined && value !== null && value !== "") {
-                      return <TableCell key={campo.id} className="text-center">{value}%</TableCell>;
+                    if (campo.nome.toLowerCase().includes("percentual") && value !== undefined && value !== null && value !== "") {
+                      return <TableCell key={campo.id} className="text-center font-medium">{value}%</TableCell>;
                     }
-                    return <TableCell key={campo.id} className="text-center">{value?.toString() ?? "-"}</TableCell>;
+                    if (campo.nome.toLowerCase() === "status") {
+                      const isAtivo = value === "Ativo" || value === true;
+                      return (
+                        <TableCell key={campo.id} className="text-center">
+                          <span className="flex justify-center">
+                            <span className={`inline-flex items-center rounded border px-2 py-0.5 text-[10px] font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 uppercase ${isAtivo ? 'border-transparent bg-emerald-100 text-emerald-800' : 'border-transparent bg-zinc-100 text-zinc-800'}`}>
+                              {value?.toString() || "Inativo"}
+                            </span>
+                          </span>
+                        </TableCell>
+                      );
+                    }
+                    return <TableCell key={campo.id} className="text-center font-medium">{value?.toString() ?? "-"}</TableCell>;
                   })}
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
-                      <Button type="button" size="sm" variant="outline" onClick={() => handleEdit(dado)}>
-                        <Pencil className="h-4 w-4 mr-2" />
-                        Editar
+                      <Button type="button" size="icon" variant="ghost" className="h-8 w-8" title="Editar" onClick={() => handleEdit(dado)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button type="button" size="icon" variant="ghost" className="h-8 w-8" title="Duplicar" onClick={() => handleDuplicate(dado)}>
+                        <Copy className="h-4 w-4" />
                       </Button>
                       <Button
                         type="button"
-                        size="sm"
-                        variant="outline"
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8"
+                        title="Excluir"
                         disabled={deleteDadoMutation.isPending}
                         onClick={() => setDadoToDelete(dado)}
                       >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Excluir
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
                   </TableCell>

@@ -1573,6 +1573,8 @@ const RegrasOperacionais = () => {
     onSuccess: (result: any) => {
       queryClient.invalidateQueries({ queryKey: ["regras_operacionais"] });
       queryClient.invalidateQueries({ queryKey: ["regras_operacionais_grid"] });
+      queryClient.invalidateQueries({ queryKey: ["resolver_valor_operacao"] });
+      queryClient.invalidateQueries({ queryKey: ["regras_operacionais_diagnostico_encarregado"] });
       if (editingId) {
         toast.success("Regra operacional atualizada.");
       } else if (applyGlobally) {
@@ -2141,8 +2143,8 @@ const RegrasOperacionais = () => {
               </DropdownMenuContent>
             </DropdownMenu>
           </TabsTrigger>
-          {dynamicModules.map((module) => {
-            const isFixedModule = module.module_type === 'tax' || module.module_type === 'system_fixed' || ['taxas', 'impostos', 'taxas-e-impostos'].includes(module.slug);
+          {dynamicModules.filter(m => m.module_type !== 'tax' && m.module_type !== 'financial').map((module) => {
+            const isFixedModule = module.module_type === 'system_fixed';
             return (
               <TabsTrigger key={module.slug} value={module.slug}>
                 {module.nome}
@@ -2333,15 +2335,11 @@ const RegrasOperacionais = () => {
         </TabsContent>
 
         <TabsContent value="meios_pagamento" className="m-0">
-          <Card className="p-5 space-y-4">
-            <TabMeiosPagamento />
-          </Card>
+          <TabMeiosPagamento />
         </TabsContent>
 
         <TabsContent value="taxas_impostos" className="m-0">
-          <Card className="p-5 space-y-4">
-            <TabTaxasImpostos />
-          </Card>
+          <TabTaxasImpostos />
         </TabsContent>
 
         <DynamicRuleTabsContainer

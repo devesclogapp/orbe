@@ -1746,6 +1746,17 @@ class FornecedorServiceClass {
 export const FornecedorService = new FornecedorServiceClass();
 
 class ProdutoCargaServiceClass {
+  async getAll() {
+    const { data, error } = await operationalClient
+      .from('produtos_carga')
+      .select('*')
+      .eq('ativo', true)
+      .order('nome', { ascending: true });
+
+    if (error) throw error;
+    return data ?? [];
+  }
+
   async getByFornecedor(fornecedorId: string) {
     const { data, error } = await operationalClient
       .from('produtos_carga')
