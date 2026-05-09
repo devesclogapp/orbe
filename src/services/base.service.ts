@@ -2871,6 +2871,7 @@ export interface RegraModulo {
   slug: string;
   descricao?: string;
   ativo: boolean;
+  module_type?: 'system_fixed' | 'dynamic_custom' | 'financial' | 'tax' | 'rh' | 'operational';
 }
 
 export interface RegraCampo {
@@ -2946,6 +2947,18 @@ class RegrasModulosServiceClass {
   }
 
   async excluir(id: number): Promise<void> {
+    const { error: deleteDadosError } = await supabase
+      .from('regras_dados')
+      .delete()
+      .eq('modulo_id', id);
+    if (deleteDadosError) throw deleteDadosError;
+
+    const { error: deleteCamposError } = await supabase
+      .from('regras_campos')
+      .delete()
+      .eq('modulo_id', id);
+    if (deleteCamposError) throw deleteCamposError;
+
     const { error } = await supabase
       .from(this.table)
       .delete()
@@ -3373,3 +3386,15 @@ class DiaristaCicloServiceClass {
 }
 
 export const DiaristaCicloService = new DiaristaCicloServiceClass();
+// @ts-ignore
+class FormasPagamentoServiceClass extends BaseService<any> {
+  constructor() { super('formas_pagamento'); }
+}
+export const FormasPagamentoService = new FormasPagamentoServiceClass();
+
+// @ts-ignore
+class TaxasImpostosServiceClass extends BaseService<any> {
+  constructor() { super('taxas_impostos'); }
+}
+export const TaxasImpostosService = new TaxasImpostosServiceClass();
+

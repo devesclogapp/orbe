@@ -33,7 +33,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { RegraCampo, RegraDado, RegrasCamposService, RegrasDadosService } from "@/services/base.service";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { RegraCampo, RegraDado, RegrasCamposService, RegrasDadosService, RegraModulo, RegrasModulosService } from "@/services/base.service";
 
 const FIXED_FIELDS = [
   { id: "natureza", nome: "Natureza", tipo: "select", obrigatorio: true, opcoes_json: "Receita,Despesa,Custo" },
@@ -45,6 +53,18 @@ const FIXED_FIELDS = [
   { id: "gera_conta_receber", nome: "Gera Conta a Receber", tipo: "boolean", obrigatorio: true },
   { id: "agrupa_faturamento", nome: "Agrupa no Faturamento", tipo: "boolean", obrigatorio: true },
 ];
+
+const FIXED_FIELDS_TAX = [
+  { id: "nome_taxa", nome: "Nome da Taxa", tipo: "text", obrigatorio: true },
+  { id: "tipo_incidencia", nome: "Tipo de Incidência", tipo: "select", obrigatorio: true, opcoes_json: "Monetário,Percentual,Multiplicador" },
+  { id: "percentual", nome: "Percentual", tipo: "number", obrigatorio: false },
+  { id: "base_calculo", nome: "Base de Cálculo", tipo: "select", obrigatorio: true, opcoes_json: "Valor do serviço,Valor final,Faturamento,Valor bruto" },
+  { id: "municipio", nome: "Município", tipo: "text", obrigatorio: false },
+  { id: "vigencia_inicial", nome: "Vigência Inicial", tipo: "date", obrigatorio: true },
+  { id: "vigencia_final", nome: "Vigência Final", tipo: "date", obrigatorio: false },
+  { id: "status", nome: "Status", tipo: "select", obrigatorio: true, opcoes_json: "Ativo,Inativo" },
+];
+
 import ManageFieldsModal from "./ManageFieldsModal";
 
 interface DynamicRuleTabContentProps {
@@ -82,6 +102,7 @@ const DynamicRuleTabContent: React.FC<DynamicRuleTabContentProps> = ({ moduloId 
       queryClient.invalidateQueries({ queryKey: ["regras_dados", moduloId] });
       toast.success("Dado criado com sucesso!");
       resetForm();
+      setIsFormOpen(false);
     },
     onError: (error: any) => {
       toast.error("Erro ao criar dado.", { description: error.message });
@@ -95,6 +116,7 @@ const DynamicRuleTabContent: React.FC<DynamicRuleTabContentProps> = ({ moduloId 
       queryClient.invalidateQueries({ queryKey: ["regras_dados", moduloId] });
       toast.success("Dado atualizado com sucesso!");
       resetForm();
+      setIsFormOpen(false);
     },
     onError: (error: any) => {
       toast.error("Erro ao atualizar dado.", { description: error.message });
@@ -127,17 +149,29 @@ const DynamicRuleTabContent: React.FC<DynamicRuleTabContentProps> = ({ moduloId 
   const handleEdit = (dado: RegraDado) => {
     setEditingDadoId(dado.id);
     setFormData(dado.dados || {});
+    setIsFormOpen(true);
   };
 
   const handleChange = (fieldName: string, value: any) => {
     setFormData((prev) => ({ ...prev, [fieldName]: value }));
   };
 
+  const { data: modulo } = useQuery<RegraModulo | null>({
+    queryKey: ["regras_modulo", moduloId],
+    queryFn: () => RegrasModulosService.buscarPorId(moduloId),
+    enabled: !!moduloId,
+  });
+
+  const isFixedSchema = modulo?.module_type && ['system_fixed', 'financial', 'tax', 'operational', 'rh'].includes(modulo.module_type);
+
+  const isTaxSchema = modulo?.module_type === 'tax';
+  const customFixedFields = isTaxSchema ? FIXED_FIELDS_TAX : FIXED_FIELDS;
+
   if (isLoadingCampos || isLoadingDados) {
     return <Card className="p-5 space-y-4 text-center text-muted-foreground">Carregando campos e dados...</Card>;
   }
 
-  if (campos.length === 0) {
+  if (campos.length === 0 && !isFixedSchema) {
     return (
       <>
         <Card className="p-5 space-y-4 text-center text-muted-foreground">
@@ -158,107 +192,127 @@ const DynamicRuleTabContent: React.FC<DynamicRuleTabContentProps> = ({ moduloId 
   return (
     <>
       <Card className="p-5 space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <h3 className="font-semibold text-lg">Gerenciar Dados</h3>
-          <Button type="button" variant="outline" onClick={() => setIsManageFieldsModalOpen(true)}>
-            <Pencil className="h-4 w-4 mr-2" /> Gerenciar Campos
-          </Button>
+          <div className="flex w-full md:w-auto items-center gap-2">
+            {!isFixedSchema && (
+              <Button type="button" variant="outline" onClick={() => setIsManageFieldsModalOpen(true)}>
+                <Pencil className="h-4 w-4 mr-2" /> Gerenciar Campos
+              </Button>
+            )}
+            <Button type="button" onClick={() => setIsFormOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" /> Novo Registro
+            </Button>
+          </div>
         </div>
 
-        {!isFormOpen ? (
-          <Button type="button" onClick={() => setIsFormOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" /> Novo Registro
-          </Button>
-        ) : (
-          <div className="border rounded-lg p-4 bg-muted/30">
-            <div className="flex justify-between items-center mb-4">
-              <h4 className="font-medium text-sm">Novo Registro</h4>
-              <Button type="button" variant="ghost" size="sm" onClick={() => {
-                setIsFormOpen(false);
-                resetForm();
-              }}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
+        <Dialog open={isFormOpen} onOpenChange={(open) => {
+          setIsFormOpen(open);
+          if (!open) resetForm();
+        }}>
+          <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{editingDadoId ? "Editar Registro" : "Novo Registro"}</DialogTitle>
+              <DialogDescription>
+                Preencha os campos abaixo para salvar o registro no módulo {modulo?.nome}.
+              </DialogDescription>
+            </DialogHeader>
 
-            <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="border rounded-lg p-4 bg-muted/30">
-            <h4 className="font-medium text-sm mb-3 text-muted-foreground">Campos Fixos do Sistema</h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {FIXED_FIELDS.map((campo) => (
-                <div key={campo.id} className="grid w-full items-center gap-1.5">
-                  <Label htmlFor={`fixed-${campo.id}`}>
-                    {campo.nome} {campo.obrigatorio && <span className="text-red-500">*</span>}
-                  </Label>
-                  {campo.tipo === "text" && (
-                    <Input
-                      id={`fixed-${campo.id}`}
-                      type="text"
-                      value={formData[campo.nome] || ""}
-                      onChange={(e) => handleChange(campo.nome, e.target.value)}
-                      required={campo.obrigatorio}
-                    />
-                  )}
-                  {campo.tipo === "number" && (
-                    <Input
-                      id={`fixed-${campo.id}`}
-                      type="number"
-                      value={formData[campo.nome] !== undefined ? formData[campo.nome] : ""}
-                      onChange={(e) => handleChange(campo.nome, e.target.value === "" ? null : Number(e.target.value))}
-                      placeholder={campo.obrigatorio ? "Obrigatório" : "Opcional"}
-                    />
-                  )}
-                  {campo.tipo === "boolean" && (
-                    <Checkbox
-                      id={`fixed-${campo.id}`}
-                      checked={formData[campo.nome] || false}
-                      onCheckedChange={(checked) => handleChange(campo.nome, checked)}
-                    />
-                  )}
-                  {campo.tipo === "select" && campo.opcoes_json && (
-                    <Select
-                      value={formData[campo.nome] || ""}
-                      onValueChange={(value) => handleChange(campo.nome, value)}
-                      required={campo.obrigatorio}
-                    >
-                      <SelectTrigger id={`fixed-${campo.id}`}>
-                        <SelectValue placeholder={`Selecione ${campo.nome}`} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {campo.opcoes_json.split(',').map((option) => (
-                          <SelectItem key={option.trim()} value={option.trim()}>
-                            {option.trim()}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
+            <form onSubmit={handleSubmit} className="space-y-6 mt-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {(isFixedSchema ? customFixedFields : campos).map((campo) => (
+                  <div key={campo.id} className="grid w-full items-center gap-1.5">
+                    <Label htmlFor={`fixed-${campo.id}`}>
+                      {campo.nome} {campo.obrigatorio && <span className="text-red-500">*</span>}
+                    </Label>
+                    {campo.tipo === "text" && (
+                      <Input
+                        id={`fixed-${campo.id}`}
+                        type="text"
+                        value={formData[campo.nome] || ""}
+                        onChange={(e) => handleChange(campo.nome, e.target.value)}
+                        required={campo.obrigatorio}
+                      />
+                    )}
+                    {campo.tipo === "date" && (
+                      <Input
+                        id={`fixed-${campo.id}`}
+                        type="date"
+                        value={formData[campo.nome] || ""}
+                        onChange={(e) => handleChange(campo.nome, e.target.value)}
+                        required={campo.obrigatorio}
+                      />
+                    )}
+                    {campo.tipo === "number" && (
+                      <div className="relative">
+                        <Input
+                          id={`fixed-${campo.id}`}
+                          type="number"
+                          className={campo.nome.toLowerCase() === "percentual" ? "pr-8" : ""}
+                          step="any"
+                          value={formData[campo.nome] !== undefined ? formData[campo.nome] : ""}
+                          onChange={(e) => handleChange(campo.nome, e.target.value === "" ? null : Number(e.target.value))}
+                          placeholder={campo.obrigatorio ? "Obrigatório" : "Opcional"}
+                        />
+                        {campo.nome.toLowerCase() === "percentual" && (
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
+                        )}
+                      </div>
+                    )}
+                    {campo.tipo === "boolean" && (
+                      <div className="flex items-center space-x-2 mt-2">
+                        <Checkbox
+                          id={`fixed-${campo.id}`}
+                          checked={formData[campo.nome] || false}
+                          onCheckedChange={(checked) => handleChange(campo.nome, checked)}
+                        />
+                        <Label htmlFor={`fixed-${campo.id}`} className="font-normal cursor-pointer">Sim / Ativo</Label>
+                      </div>
+                    )}
+                    {campo.tipo === "select" && campo.opcoes_json && (
+                      <Select
+                        value={formData[campo.nome] || ""}
+                        onValueChange={(value) => handleChange(campo.nome, value)}
+                        required={campo.obrigatorio}
+                      >
+                        <SelectTrigger id={`fixed-${campo.id}`}>
+                          <SelectValue placeholder={`Selecione ${campo.nome}`} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {campo.opcoes_json.split(',').map((option) => (
+                            <SelectItem key={option.trim()} value={option.trim()}>
+                              {option.trim()}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+                ))}
+              </div>
 
-          <div className="flex gap-2">
-              <Button type="submit" disabled={createDadoMutation.isPending || updateDadoMutation.isPending}>
-                <Save className="h-4 w-4 mr-2" />
-                {editingDadoId ? "Atualizar Dado" : "Salvar"}
-              </Button>
-              {editingDadoId && (
-                <Button type="button" variant="outline" onClick={resetForm}>
+              <DialogFooter className="mt-6 border-t pt-4">
+                <Button type="button" variant="outline" onClick={() => {
+                  setIsFormOpen(false);
+                  resetForm();
+                }}>
                   Cancelar
                 </Button>
-              )}
-            </div>
-          </form>
-          </div>
-        )}
+                <Button type="submit" disabled={createDadoMutation.isPending || updateDadoMutation.isPending}>
+                  <Save className="h-4 w-4 mr-2" />
+                  {createDadoMutation.isPending || updateDadoMutation.isPending ? "Salvando..." : (editingDadoId ? "Atualizar Dado" : "Salvar Registro")}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
 
         <h3 className="font-semibold text-lg mt-8">Dados Existentes</h3>
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
-                {FIXED_FIELDS.map((campo) => (
+                {(isFixedSchema ? customFixedFields : campos).map((campo) => (
                   <TableHead key={campo.id} className="text-center">{campo.nome}</TableHead>
                 ))}
                 <TableHead className="text-right">Ações</TableHead>
@@ -267,17 +321,20 @@ const DynamicRuleTabContent: React.FC<DynamicRuleTabContentProps> = ({ moduloId 
             <TableBody>
               {dados.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={FIXED_FIELDS.length + 1} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={(isFixedSchema ? customFixedFields : campos).length + 1} className="h-24 text-center text-muted-foreground">
                     Nenhum dado cadastrado para este módulo.
                   </TableCell>
                 </TableRow>
               )}
               {dados.map((dado) => (
                 <TableRow key={dado.id}>
-                  {FIXED_FIELDS.map((campo) => {
+                  {(isFixedSchema ? customFixedFields : campos).map((campo) => {
                     const value = dado.dados?.[campo.nome];
                     if (campo.tipo === "boolean") {
                       return <TableCell key={campo.id} className="text-center">{value ? "Sim" : "Não"}</TableCell>;
+                    }
+                    if (campo.nome.toLowerCase() === "percentual" && value !== undefined && value !== null && value !== "") {
+                      return <TableCell key={campo.id} className="text-center">{value}%</TableCell>;
                     }
                     return <TableCell key={campo.id} className="text-center">{value?.toString() ?? "-"}</TableCell>;
                   })}

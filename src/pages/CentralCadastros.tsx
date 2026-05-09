@@ -204,6 +204,7 @@ const CentralCadastros = () => {
   const [configType, setConfigType] = useState<"operacao" | "produto" | "dia">("operacao");
   const [editingConfig, setEditingConfig] = useState<any>(null);
   const [configForm, setConfigForm] = useState<any>({});
+  const [configFormErrors, setConfigFormErrors] = useState<any>({});
 
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteModalType, setDeleteModalType] = useState<"transportadora" | "fornecedor" | "servico" | null>(null);
@@ -998,6 +999,37 @@ const CentralCadastros = () => {
     onError: (err: any) => toast.error("Erro ao atualizar status", { description: err.message }),
   });
 
+  const handleConfigFormChange = (field: string, value: any) => {
+    setConfigForm((current: any) => ({ ...current, [field]: value }));
+    setConfigFormErrors((current: any) => {
+      if (!current[field]) return current;
+      return { ...current, [field]: undefined };
+    });
+  };
+
+  const submitConfigForm = () => {
+    const errors: any = {};
+    if (configType === "operacao") {
+      if (!configForm.nome?.trim()) errors.nome = "Nome da operação é obrigatório.";
+      if (!configForm.codigo?.trim()) errors.codigo = "Código é obrigatório.";
+    } else if (configType === "produto") {
+      if (!configForm.categoria?.trim()) errors.categoria = "Categoria do produto é obrigatória.";
+      if (configForm.icms === undefined || configForm.icms === null || configForm.icms === "") errors.icms = "Alíquota é obrigatória.";
+    } else if (configType === "dia") {
+      if (!configForm.nome?.trim()) errors.nome = "Descrição do dia é obrigatória.";
+      if (configForm.fator === undefined || configForm.fator === null || configForm.fator === "") errors.fator = "Fator de cálculo é obrigatório.";
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setConfigFormErrors(errors);
+      toast.error("Preencha os campos obrigatórios.");
+      return;
+    }
+
+    setConfigFormErrors({});
+    configMutation.mutate(configForm);
+  };
+
   const handleAddConfig = (type: "operacao" | "produto" | "dia") => {
     setConfigType(type);
     setEditingConfig(null);
@@ -1008,6 +1040,7 @@ const CentralCadastros = () => {
           ? { categoria: "", icms: 0, status: "ativo", empresa_id: empresaId }
           : { nome: "", fator: 1, status: "ativo", empresa_id: empresaId }
     );
+    setConfigFormErrors({});
     setConfigModalOpen(true);
   };
 
@@ -1015,8 +1048,10 @@ const CentralCadastros = () => {
     setConfigType(type);
     setEditingConfig(item);
     setConfigForm({ ...item });
+    setConfigFormErrors({});
     setConfigModalOpen(true);
   };
+
 
   const handleImport = async (data: any[]) => {
     let count = 0;
@@ -2063,51 +2098,104 @@ const CentralCadastros = () => {
         )}
       </div>
 
-      <Dialog open={configModalOpen} onOpenChange={setConfigModalOpen}>
+      <Dialog open={configModalOpen} onOpenChange={(open) => {
+        setConfigModalOpen(open);
+        if (!open) {
+          setConfigFormErrors({});
+        }
+      }}>
         <DialogContent className="sm:max-w-[420px]">
           <DialogHeader>
             <DialogTitle>
               {editingConfig ? "Editar" : "Novo"}{" "}
               {configType === "operacao" ? "Tipo de Operação" : configType === "produto" ? "Produto" : "Tipo de Dia"}
             </DialogTitle>
+            <DialogDescription>
+              Preencha os detalhes abaixo para salvar o registro no sistema.
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
             {configType === "operacao" && (
               <>
-                <div className="space-y-2">
-                  <Label>Nome da operação</Label>
-                  <Input value={configForm.nome || ""} onChange={(e) => setConfigForm({ ...configForm, nome: e.target.value })} />
+                <div className="space-y-1.5">
+                  <Label htmlFor="op_nome">Nome da operação <span className="text-destructive">*</span></Label>
+                  <Input
+                    id="op_nome"
+                    value={configForm.nome || ""}
+                    onChange={(e) => handleConfigFormChange("nome", e.target.value)}
+                    aria-invalid={Boolean(configFormErrors.nome)}
+                    className={configFormErrors.nome ? "border-destructive focus-visible:ring-destructive" : undefined}
+                  />
+                  {configFormErrors.nome ? <p className="text-sm text-destructive" role="alert">{configFormErrors.nome}</p> : null}
                 </div>
-                <div className="space-y-2">
-                  <Label>Código</Label>
-                  <Input value={configForm.codigo || ""} onChange={(e) => setConfigForm({ ...configForm, codigo: e.target.value })} />
+                <div className="space-y-1.5">
+                  <Label htmlFor="op_codigo">Código <span className="text-destructive">*</span></Label>
+                  <Input
+                    id="op_codigo"
+                    value={configForm.codigo || ""}
+                    onChange={(e) => handleConfigFormChange("codigo", e.target.value)}
+                    aria-invalid={Boolean(configFormErrors.codigo)}
+                    className={configFormErrors.codigo ? "border-destructive focus-visible:ring-destructive" : undefined}
+                  />
+                  {configFormErrors.codigo ? <p className="text-sm text-destructive" role="alert">{configFormErrors.codigo}</p> : null}
                 </div>
               </>
             )}
 
             {configType === "produto" && (
               <>
-                <div className="space-y-2">
-                  <Label>Categoria do produto</Label>
-                  <Input value={configForm.categoria || ""} onChange={(e) => setConfigForm({ ...configForm, categoria: e.target.value })} />
+                <div className="space-y-1.5">
+                  <Label htmlFor="prod_categoria">Categoria do produto <span className="text-destructive">*</span></Label>
+                  <Input
+                    id="prod_categoria"
+                    value={configForm.categoria || ""}
+                    onChange={(e) => handleConfigFormChange("categoria", e.target.value)}
+                    aria-invalid={Boolean(configFormErrors.categoria)}
+                    className={configFormErrors.categoria ? "border-destructive focus-visible:ring-destructive" : undefined}
+                  />
+                  {configFormErrors.categoria ? <p className="text-sm text-destructive" role="alert">{configFormErrors.categoria}</p> : null}
                 </div>
-                <div className="space-y-2">
-                  <Label>Alíquota ICMS (%)</Label>
-                  <Input type="number" value={configForm.icms || 0} onChange={(e) => setConfigForm({ ...configForm, icms: Number(e.target.value) })} />
+                <div className="space-y-1.5">
+                  <Label htmlFor="prod_icms">Alíquota ICMS (%) <span className="text-destructive">*</span></Label>
+                  <Input
+                    id="prod_icms"
+                    type="number"
+                    value={configForm.icms === undefined ? "" : configForm.icms}
+                    onChange={(e) => handleConfigFormChange("icms", e.target.value ? Number(e.target.value) : "")}
+                    aria-invalid={Boolean(configFormErrors.icms)}
+                    className={configFormErrors.icms ? "border-destructive focus-visible:ring-destructive" : undefined}
+                  />
+                  {configFormErrors.icms ? <p className="text-sm text-destructive" role="alert">{configFormErrors.icms}</p> : null}
                 </div>
               </>
             )}
 
             {configType === "dia" && (
               <>
-                <div className="space-y-2">
-                  <Label>Descrição do dia</Label>
-                  <Input value={configForm.nome || ""} onChange={(e) => setConfigForm({ ...configForm, nome: e.target.value })} />
+                <div className="space-y-1.5">
+                  <Label htmlFor="dia_nome">Descrição do dia <span className="text-destructive">*</span></Label>
+                  <Input
+                    id="dia_nome"
+                    value={configForm.nome || ""}
+                    onChange={(e) => handleConfigFormChange("nome", e.target.value)}
+                    aria-invalid={Boolean(configFormErrors.nome)}
+                    className={configFormErrors.nome ? "border-destructive focus-visible:ring-destructive" : undefined}
+                  />
+                  {configFormErrors.nome ? <p className="text-sm text-destructive" role="alert">{configFormErrors.nome}</p> : null}
                 </div>
-                <div className="space-y-2">
-                  <Label>Fator de cálculo</Label>
-                  <Input type="number" step="0.1" value={configForm.fator || 1} onChange={(e) => setConfigForm({ ...configForm, fator: Number(e.target.value) })} />
+                <div className="space-y-1.5">
+                  <Label htmlFor="dia_fator">Fator de cálculo <span className="text-destructive">*</span></Label>
+                  <Input
+                    id="dia_fator"
+                    type="number"
+                    step="0.1"
+                    value={configForm.fator === undefined ? "" : configForm.fator}
+                    onChange={(e) => handleConfigFormChange("fator", e.target.value ? Number(e.target.value) : "")}
+                    aria-invalid={Boolean(configFormErrors.fator)}
+                    className={configFormErrors.fator ? "border-destructive focus-visible:ring-destructive" : undefined}
+                  />
+                  {configFormErrors.fator ? <p className="text-sm text-destructive" role="alert">{configFormErrors.fator}</p> : null}
                 </div>
               </>
             )}
@@ -2115,8 +2203,15 @@ const CentralCadastros = () => {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfigModalOpen(false)}>Cancelar</Button>
-            <Button onClick={() => configMutation.mutate(configForm)} disabled={configMutation.isPending}>
-              {configMutation.isPending ? "Salvando..." : "Confirmar"}
+            <Button
+              onClick={submitConfigForm}
+              disabled={configMutation.isPending}
+              className={configMutation.isPending ? "opacity-70 cursor-not-allowed" : ""}
+            >
+              {configMutation.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              {configMutation.isPending ? "Salvando..." : "Salvar"}
             </Button>
           </DialogFooter>
         </DialogContent>

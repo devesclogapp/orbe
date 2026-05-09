@@ -17,6 +17,8 @@ import {
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TabRegrasDiaristas } from "@/pages/Rh/TabRegrasDiaristas";
+import { TabMeiosPagamento } from "@/pages/Financeiro/TabMeiosPagamento";
+import { TabTaxasImpostos } from "@/pages/Financeiro/TabTaxasImpostos";
 import DynamicRuleTabsContainer from "@/components/regras/DynamicRuleTabsContainer";
 import {
   SpreadsheetUploadModal,
@@ -163,6 +165,74 @@ const normalizeText = (value: string) =>
     .trim()
     .replace(/\s+/g, " ");
 
+// Gera variações de chave para lookup robusto (mantém underscore como espaço E como underscore)
+const buildLookupKeys = (value: string): string[] => {
+  const base = value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+  const upper = base.toUpperCase();
+  const lower = base.toLowerCase();
+  // Substitui underscore e traço por espaço
+  const withSpaces = lower.replace(/[_\-]+/g, " ").replace(/\s+/g, " ").trim();
+  // Remove todos os separadores
+  const noSep = lower.replace(/[_\-\s]+/g, "");
+  // Mantém underscore
+  const withUnderscore = lower.replace(/[\-\s]+/g, "_");
+  return [upper, lower, withSpaces, noSep, withUnderscore].filter(Boolean);
+};
+
+// Fuzzy finder: tenta múltiplas estratégias de correspondência em cascata
+const fuzzyFindItem = <T extends { nome?: string | null }>(items: T[], rawValue: string): T | null => {
+  if (!rawValue?.trim()) return null;
+
+  const candidateKeys = buildLookupKeys(rawValue);
+  const normalize = (s: string) =>
+    s
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[_\-\s]+/g, " ")
+      .trim();
+
+  // 1. Correspondência exata (case-insensitive, ignorando acentos)
+  for (const item of items) {
+    const itemNome = item.nome ?? "";
+    if (candidateKeys.some((k) => k.toUpperCase() === itemNome.toUpperCase())) return item;
+  }
+
+  // 2. Correspondência normalizada (remove acentos, espaços e separadores)
+  const normalizedInput = normalize(rawValue);
+  for (const item of items) {
+    if (normalize(item.nome ?? "") === normalizedInput) return item;
+  }
+
+  // 3. Correspondência por substring bidirecional
+  for (const item of items) {
+    const normItem = normalize(item.nome ?? "");
+    if (normItem.includes(normalizedInput) || normalizedInput.includes(normItem)) return item;
+  }
+
+  // 4. Correspondência por palavras-chave (todas as palavras do input devem estao no item)
+  const inputWords = normalizedInput.split(" ").filter((w) => w.length > 2);
+  if (inputWords.length > 0) {
+    for (const item of items) {
+      const normItem = normalize(item.nome ?? "");
+      if (inputWords.every((w) => normItem.includes(w))) return item;
+    }
+  }
+
+  return null;
+};
+
+// Formata lista de valores disponíveis para mensagens de erro
+const formatAvailableValues = (items: { nome?: string | null }[]): string => {
+  const nomes = items.map((i) => i.nome ?? "").filter(Boolean);
+  if (nomes.length === 0) return "(nenhum cadastrado)";
+  if (nomes.length <= 5) return nomes.join(" | ");
+  return `${nomes.slice(0, 5).join(" | ")} ... (+${nomes.length - 5} outros)`;
+};
+
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 
@@ -185,16 +255,16 @@ const normalizeOptionalId = (value: string) => (value && value.trim() ? value : 
 
 type RuleContextProfile = {
   mode:
-    | "default"
-    | "empresa_only"
-    | "fornecedor_only"
-    | "transportadora_only"
-    | "empresa_transportadora"
-    | "fornecedor_transportadora"
-    | "empresa_fornecedor_transportadora"
-    | "descarga_volume"
-    | "global"
-    | "iss_global";
+  | "default"
+  | "empresa_only"
+  | "fornecedor_only"
+  | "transportadora_only"
+  | "empresa_transportadora"
+  | "fornecedor_transportadora"
+  | "empresa_fornecedor_transportadora"
+  | "descarga_volume"
+  | "global"
+  | "iss_global";
   title: string;
   description: string;
   requireEmpresa: boolean;
@@ -780,35 +850,12 @@ const RegrasOperacionais = () => {
 
   const filteredRules = useMemo(() => {
     const term = search.trim().toLowerCase();
-    const dedupedRules = (regras as any[]).filter((item, index, allItems) => {
-      const tr = (tiposRegra as any[]).find((tipo) => tipo.id === item.tipo_regra_id);
-      if (!isIssRuleDefinition(tr)) return true;
-
-      const key = buildRuleDedupKey({
-        ...item,
-        empresa_id: null,
-        tipo_servico_id: null,
-        fornecedor_id: null,
-        transportadora_id: null,
-        produto_carga_id: null,
-      });
-
-      return index === allItems.findIndex((candidate) => {
-        const candidateTr = (tiposRegra as any[]).find((tipo) => tipo.id === candidate.tipo_regra_id);
-        if (!isIssRuleDefinition(candidateTr)) return false;
-
-        return buildRuleDedupKey({
-          ...candidate,
-          empresa_id: null,
-          tipo_servico_id: null,
-          fornecedor_id: null,
-          transportadora_id: null,
-          produto_carga_id: null,
-        }) === key;
-      });
+    const validRegras = (regras as any[]).filter(r => {
+      const isTax = isIssRuleDefinition((tiposRegra as any[]).find(t => t.id === r.tipo_regra_id));
+      return !isTax;
     });
 
-    const filtered = !term ? dedupedRules : dedupedRules.filter((item) =>
+    const filtered = !term ? validRegras : validRegras.filter((item) =>
       [
         item.empresas?.nome,
         item.tipos_servico_operacional?.nome,
@@ -845,18 +892,35 @@ const RegrasOperacionais = () => {
     const modeloImportacaoAtivo = (importacaoModelos as any[]).find(
       (item) => item.modulo === "regras_operacionais" && item.ativo && item.drive_url,
     );
-    const empresaLookup = new Map((empresas as any[]).map((item) => [normalizeText(item.nome ?? ""), item]));
-    const tipoServicoLookup = new Map((tiposServico as any[]).map((item) => [normalizeText(item.nome ?? ""), item]));
-    const transportadoraLookup = new Map((transportadoras as any[]).map((item) => [normalizeText(item.nome ?? ""), item]));
-    const fornecedorLookup = new Map((fornecedores as any[]).map((item) => [normalizeText(item.nome ?? ""), item]));
-    const formaPagamentoLookup = new Map((formasPagamento as any[]).map((item) => [normalizeText(item.nome ?? ""), item]));
-    const tipoRegraLookup = new Map((tiposRegra as any[]).map((item) => [normalizeText(item.nome ?? ""), item]));
+    // Listas brutas para fuzzy matching
+    const empresasList = empresas as any[];
+    const tiposServicoList = tiposServico as any[];
+    const transportadorasList = transportadoras as any[];
+    const fornecedoresList = fornecedores as any[];
+    const formasPagamentoList = formasPagamento as any[];
+    const tiposRegraList = tiposRegra as any[];
+
+    // Lookup exato por nome normalizado (mantido para compatibilidade)
+    const empresaLookup = new Map(empresasList.map((item) => [normalizeText(item.nome ?? ""), item]));
+    const tipoServicoLookup = new Map(tiposServicoList.map((item) => [normalizeText(item.nome ?? ""), item]));
+    const transportadoraLookup = new Map(transportadorasList.map((item) => [normalizeText(item.nome ?? ""), item]));
+    const fornecedorLookup = new Map(fornecedoresList.map((item) => [normalizeText(item.nome ?? ""), item]));
     const tipoCalculoLookup = new Map(
       TIPOS_CALCULO.flatMap((item) => [
         [normalizeText(item.label), item.value],
         [normalizeText(item.value), item.value],
       ]),
     );
+
+    // Resolve com lookup exato primeiro, depois fuzzy
+    const resolveLookup = <T extends { nome?: string | null }>(
+      exactMap: Map<string, T>,
+      list: T[],
+      rawValue: string,
+    ): T | null => {
+      if (!rawValue?.trim()) return null;
+      return exactMap.get(normalizeText(rawValue)) ?? fuzzyFindItem(list, rawValue);
+    };
 
     const validateData = async (rows: Record<string, unknown>[]): Promise<SpreadsheetValidationResult> => {
       const errors: string[] = [];
@@ -879,17 +943,39 @@ const RegrasOperacionais = () => {
         const vigenciaFimRaw = getImportRowValue(row, "VIGENCIA FINAL", "VIGÊNCIA FINAL");
         const statusRaw = getImportRowValue(row, "STATUS");
 
-        const empresa = empresaNome ? empresaLookup.get(normalizeText(empresaNome)) : null;
-        const tipoServico = tipoServicoNome ? tipoServicoLookup.get(normalizeText(tipoServicoNome)) : null;
-        const transportadora = transportadoraNome ? transportadoraLookup.get(normalizeText(transportadoraNome)) : null;
-        const fornecedor = fornecedorNome ? fornecedorLookup.get(normalizeText(fornecedorNome)) : null;
-        const formaPagamento = formaPagamentoNome ? formaPagamentoLookup.get(normalizeText(formaPagamentoNome)) : null;
-        const tipoRegra = tipoRegraNome ? tipoRegraLookup.get(normalizeText(tipoRegraNome)) : null;
+        // Resolução inteligente com fuzzy matching em cascata
+        const empresa = resolveLookup(empresaLookup, empresasList, empresaNome);
+        const tipoServico = resolveLookup(tipoServicoLookup, tiposServicoList, tipoServicoNome);
+        const transportadora = resolveLookup(transportadoraLookup, transportadorasList, transportadoraNome);
+        const fornecedor = resolveLookup(fornecedorLookup, fornecedoresList, fornecedorNome);
+        // Forma de pagamento e tipo de regra usam fuzzy diretamente (nomes técnicos como CAIXA_IMEDIATO, PIX)
+        const formaPagamento = formaPagamentoNome ? fuzzyFindItem(formasPagamentoList, formaPagamentoNome) : null;
+        const tipoRegra = tipoRegraNome ? fuzzyFindItem(tiposRegraList, tipoRegraNome) : null;
         const tipoCalculo = tipoCalculoLookup.get(normalizeText(tipoCalculoRaw)) ?? "";
         const vigenciaInicio = parseIsoDateLike(vigenciaInicioRaw);
         const vigenciaFim = parseIsoDateLike(vigenciaFimRaw);
         const valorUnitario = parseCurrencyLike(valorUnitarioRaw);
         const ativo = parseStatusLike(statusRaw);
+
+        // Avisos de correspondência fuzzy (quando encontrado por aproximação)
+        if (empresa && empresaNome && normalizeText(empresa.nome ?? "") !== normalizeText(empresaNome)) {
+          warnings.push(`Linha ${lineNumber}: empresa "${empresaNome}" resolvida automaticamente para "${empresa.nome}".`);
+        }
+        if (tipoServico && tipoServicoNome && normalizeText(tipoServico.nome ?? "") !== normalizeText(tipoServicoNome)) {
+          warnings.push(`Linha ${lineNumber}: tipo de serviço "${tipoServicoNome}" resolvido automaticamente para "${tipoServico.nome}".`);
+        }
+        if (transportadora && transportadoraNome && normalizeText(transportadora.nome ?? "") !== normalizeText(transportadoraNome)) {
+          warnings.push(`Linha ${lineNumber}: transportadora "${transportadoraNome}" resolvida automaticamente para "${transportadora.nome}".`);
+        }
+        if (fornecedor && fornecedorNome && normalizeText(fornecedor.nome ?? "") !== normalizeText(fornecedorNome)) {
+          warnings.push(`Linha ${lineNumber}: fornecedor "${fornecedorNome}" resolvido automaticamente para "${fornecedor.nome}".`);
+        }
+        if (formaPagamento && formaPagamentoNome && normalizeText(formaPagamento.nome ?? "") !== normalizeText(formaPagamentoNome)) {
+          warnings.push(`Linha ${lineNumber}: forma de pagamento "${formaPagamentoNome}" resolvida automaticamente para "${formaPagamento.nome}".`);
+        }
+        if (tipoRegra && tipoRegraNome && normalizeText(tipoRegra.nome ?? "") !== normalizeText(tipoRegraNome)) {
+          warnings.push(`Linha ${lineNumber}: tipo de regra "${tipoRegraNome}" resolvido automaticamente para "${tipoRegra.nome}".`);
+        }
 
         const bindingModeFromRow: RuleBindingMode =
           empresa && fornecedor && transportadora
@@ -921,22 +1007,26 @@ const RegrasOperacionais = () => {
         }
 
         if (!tipoRegra?.id) {
-          errors.push(`Linha ${lineNumber}: tipo de regra "${tipoRegraNome}" não encontrado.`);
+          errors.push(
+            `Linha ${lineNumber}: tipo de regra "${tipoRegraNome}" não encontrado. Disponíveis: ${formatAvailableValues(tiposRegraList)}`,
+          );
           continue;
         }
 
         if (!tipoCalculo) {
-          errors.push(`Linha ${lineNumber}: tipo de cálculo "${tipoCalculoRaw}" inválido.`);
+          errors.push(
+            `Linha ${lineNumber}: tipo de cálculo "${tipoCalculoRaw}" inválido. Use: ${TIPOS_CALCULO.map((t) => t.label).join(" | ")}`,
+          );
           continue;
         }
 
         if (!vigenciaInicio) {
-          errors.push(`Linha ${lineNumber}: informe uma VIGÊNCIA INICIAL válida.`);
+          errors.push(`Linha ${lineNumber}: informe uma VIGÊNCIA INICIAL válida (ex: 01/05/2026 ou 2026-05-01).`);
           continue;
         }
 
         if (vigenciaFimRaw && !vigenciaFim) {
-          errors.push(`Linha ${lineNumber}: informe uma VIGÊNCIA FINAL válida.`);
+          errors.push(`Linha ${lineNumber}: VIGÊNCIA FINAL inválida: "${vigenciaFimRaw}". Use o formato dd/mm/aaaa ou aaaa-mm-dd.`);
           continue;
         }
 
@@ -952,75 +1042,109 @@ const RegrasOperacionais = () => {
 
         if (!issRuleSelected) {
           if (context.requireEmpresa && !empresa) {
-            errors.push(`Linha ${lineNumber}: empresa "${empresaNome}" não encontrada ou não informada.`);
+            errors.push(
+              `Linha ${lineNumber}: empresa "${empresaNome}" não encontrada. Disponíveis: ${formatAvailableValues(empresasList)}`,
+            );
             continue;
           }
 
           if (context.requireTipoServico && !tipoServico) {
-            errors.push(`Linha ${lineNumber}: tipo de serviço "${tipoServicoNome}" não encontrado ou não informado.`);
+            errors.push(
+              `Linha ${lineNumber}: tipo de serviço "${tipoServicoNome}" não encontrado. Disponíveis: ${formatAvailableValues(tiposServicoList)}`,
+            );
             continue;
           }
 
           if (context.requireFornecedor && !fornecedor) {
-            errors.push(`Linha ${lineNumber}: fornecedor "${fornecedorNome}" não encontrado ou não informado.`);
+            errors.push(
+              `Linha ${lineNumber}: fornecedor "${fornecedorNome}" não encontrado. Disponíveis: ${formatAvailableValues(fornecedoresList)}`,
+            );
             continue;
           }
 
           if (context.requireTransportadora && !transportadora) {
-            errors.push(`Linha ${lineNumber}: transportadora "${transportadoraNome}" não encontrada ou não informada.`);
+            errors.push(
+              `Linha ${lineNumber}: transportadora "${transportadoraNome}" não encontrada. Disponíveis: ${formatAvailableValues(transportadorasList)}`,
+            );
             continue;
           }
         }
 
         if (empresaNome && !empresa && !issRuleSelected) {
-          errors.push(`Linha ${lineNumber}: empresa "${empresaNome}" não encontrada.`);
+          errors.push(
+            `Linha ${lineNumber}: empresa "${empresaNome}" não encontrada. Disponíveis: ${formatAvailableValues(empresasList)}`,
+          );
           continue;
         }
 
         if (tipoServicoNome && !tipoServico && !issRuleSelected) {
-          errors.push(`Linha ${lineNumber}: tipo de serviço "${tipoServicoNome}" não encontrado.`);
+          errors.push(
+            `Linha ${lineNumber}: tipo de serviço "${tipoServicoNome}" não encontrado. Disponíveis: ${formatAvailableValues(tiposServicoList)}`,
+          );
           continue;
         }
 
         if (transportadoraNome && !transportadora && !issRuleSelected) {
-          errors.push(`Linha ${lineNumber}: transportadora "${transportadoraNome}" não encontrada.`);
+          errors.push(
+            `Linha ${lineNumber}: transportadora "${transportadoraNome}" não encontrada. Disponíveis: ${formatAvailableValues(transportadorasList)}`,
+          );
           continue;
         }
 
         if (fornecedorNome && !fornecedor && !issRuleSelected) {
-          errors.push(`Linha ${lineNumber}: fornecedor "${fornecedorNome}" não encontrado.`);
+          errors.push(
+            `Linha ${lineNumber}: fornecedor "${fornecedorNome}" não encontrado. Disponíveis: ${formatAvailableValues(fornecedoresList)}`,
+          );
           continue;
         }
 
         if (formaPagamentoNome && !formaPagamento) {
-          errors.push(`Linha ${lineNumber}: forma de pagamento "${formaPagamentoNome}" não encontrada.`);
-          continue;
+          if (formasPagamentoList.length === 0) {
+            warnings.push(
+              `Linha ${lineNumber}: forma de pagamento "${formaPagamentoNome}" ignorada — nenhuma forma cadastrada no sistema. Cadastre em Configurações Operacionais.`,
+            );
+          } else {
+            warnings.push(
+              `Linha ${lineNumber}: forma de pagamento "${formaPagamentoNome}" não reconhecida (será ignorada). Disponíveis: ${formatAvailableValues(formasPagamentoList)}`,
+            );
+          }
+          // Campo opcional: continua sem bloquear a importação
         }
+
 
         let produto = null;
         if (produtoNome) {
-          if (!fornecedor?.id) {
-            errors.push(`Linha ${lineNumber}: informe um fornecedor válido antes de usar PRODUTO / CARGA.`);
-            continue;
-          }
+          if (fornecedor?.id) {
+            const produtosFornecedor = await ProdutoCargaService.getByFornecedor(fornecedor.id);
+            // Fuzzy matching: exato → normalizado → substring
+            produto = fuzzyFindItem(produtosFornecedor as any[], produtoNome);
 
-          const produtosFornecedor = await ProdutoCargaService.getByFornecedor(fornecedor.id);
-          produto =
-            (produtosFornecedor as any[]).find((item) => normalizeText(item.nome ?? "") === normalizeText(produtoNome)) ?? null;
-
-          if (!produto) {
-            errors.push(`Linha ${lineNumber}: produto/carga "${produtoNome}" não encontrado para o fornecedor informado.`);
-            continue;
+            if (!produto) {
+              const disponiveisStr = formatAvailableValues(produtosFornecedor as any[]);
+              warnings.push(
+                `Linha ${lineNumber}: produto/carga "${produtoNome}" não encontrado para o fornecedor "${fornecedor.nome}" (será ignorado). Disponíveis: ${disponiveisStr}`,
+              );
+            } else if (normalizeText(produto.nome ?? "") !== normalizeText(produtoNome)) {
+              warnings.push(
+                `Linha ${lineNumber}: produto/carga "${produtoNome}" resolvido automaticamente para "${produto.nome}".`,
+              );
+            }
+          } else {
+            // Se fornecedor não está definido, produto também é ignorado silenciosamente
+            warnings.push(
+              `Linha ${lineNumber}: produto/carga "${produtoNome}" ignorado — nenhum fornecedor vinculado à regra.`,
+            );
           }
         }
 
+
         const payload = {
-          empresa_id: issRuleSelected ? null : empresa?.id ?? null,
+          empresa_id: empresa?.id ?? null,
           unidade_id: null,
-          tipo_servico_id: issRuleSelected ? null : tipoServico?.id ?? null,
-          fornecedor_id: issRuleSelected ? null : fornecedor?.id ?? null,
-          transportadora_id: issRuleSelected ? null : transportadora?.id ?? null,
-          produto_carga_id: issRuleSelected ? null : produto?.id ?? null,
+          tipo_servico_id: tipoServico?.id ?? null,
+          fornecedor_id: fornecedor?.id ?? null,
+          transportadora_id: transportadora?.id ?? null,
+          produto_carga_id: produto?.id ?? null,
           tipo_regra_id: tipoRegra.id,
           tipo_calculo: tipoCalculo,
           valor_unitario: valorUnitario,
@@ -1032,27 +1156,29 @@ const RegrasOperacionais = () => {
 
         const hasConflict = ativo
           ? await RegraOperacionalService.hasActiveConflict({
-              empresaId: payload.empresa_id,
-              tipoServicoId: payload.tipo_servico_id,
-              fornecedorId: payload.fornecedor_id,
-              transportadoraId: payload.transportadora_id,
-              produtoCargaId: payload.produto_carga_id,
-              tipoRegraId: payload.tipo_regra_id,
-              tipoCalculo: payload.tipo_calculo,
-              vigenciaInicio: payload.vigencia_inicio,
-              vigenciaFim: payload.vigencia_fim,
-            })
+            empresaId: payload.empresa_id,
+            tipoServicoId: payload.tipo_servico_id,
+            fornecedorId: payload.fornecedor_id,
+            transportadoraId: payload.transportadora_id,
+            produtoCargaId: payload.produto_carga_id,
+            tipoRegraId: payload.tipo_regra_id,
+            tipoCalculo: payload.tipo_calculo,
+            vigenciaInicio: payload.vigencia_inicio,
+            vigenciaFim: payload.vigencia_fim,
+          })
           : false;
 
         if (hasConflict) {
-          errors.push(`Linha ${lineNumber}: já existe uma regra ativa para essa combinação dentro da vigência informada.`);
+          warnings.push(
+            `Linha ${lineNumber}: regra já existe para essa combinação dentro da vigência informada — linha ignorada (duplicata).`,
+          );
           continue;
         }
 
         validRows.push(payload);
         previewRows.push({
-          EMPRESA: issRuleSelected ? "Global" : empresa?.nome ?? "-",
-          SERVICO: issRuleSelected ? "Todos" : tipoServico?.nome ?? "-",
+          EMPRESA: empresa?.nome ?? "-",
+          SERVICO: tipoServico?.nome ?? "-",
           FORNECEDOR: fornecedor?.nome ?? "-",
           TRANSPORTADORA: transportadora?.nome ?? "-",
           REGRA: tipoRegra.nome ?? "-",
@@ -1488,7 +1614,7 @@ const RegrasOperacionais = () => {
     mutationFn: async () => {
       if (!newTabForm.nome?.trim()) throw new Error("Informe o nome da aba.");
       if (!newTabForm.slug?.trim()) throw new Error("Informe o slug da aba.");
-      
+
       if (editingModuleId) {
         return RegrasModulosService.atualizar(editingModuleId, {
           nome: newTabForm.nome.trim(),
@@ -1496,7 +1622,7 @@ const RegrasOperacionais = () => {
           descricao: newTabForm.descricao?.trim() || "",
         });
       }
-      
+
       return RegrasModulosService.criar({
         nome: newTabForm.nome.trim(),
         slug: newTabForm.slug.trim().toLowerCase().replace(/\s+/g, "-"),
@@ -1835,13 +1961,56 @@ const RegrasOperacionais = () => {
   };
 
   const handleImportRules = async (rows: Record<string, any>[]) => {
+    let inserted = 0;
+    let updated = 0;
+    let skipped = 0;
+
     for (const row of rows) {
-      await RegraOperacionalService.create(row);
+      try {
+        // Encontrar regra existente com os mesmos vínculos e vigência
+        const existingRule = (regras as any[]).find(r =>
+          (r.empresa_id || null) === (row.empresa_id || null) &&
+          (r.tipo_servico_id || null) === (row.tipo_servico_id || null) &&
+          (r.transportadora_id || null) === (row.transportadora_id || null) &&
+          (r.fornecedor_id || null) === (row.fornecedor_id || null) &&
+          (r.produto_carga_id || null) === (row.produto_carga_id || null) &&
+          (r.tipo_regra_id || null) === (row.tipo_regra_id || null) &&
+          (r.vigencia_inicio || null) === (row.vigencia_inicio || null)
+        );
+
+        if (existingRule) {
+          await RegraOperacionalService.update(existingRule.id, row);
+          updated++;
+        } else {
+          await RegraOperacionalService.create(row);
+          inserted++;
+        }
+      } catch (err: any) {
+        const code = err?.code ?? err?.error?.code ?? "";
+        const message = String(err?.message ?? "");
+        // Ignorar silenciosamente violações de unique constraint (duplicatas)
+        if (code === "23505" || message.includes("unique constraint") || message.includes("duplicate key")) {
+          skipped++;
+        } else {
+          // Outros erros ainda são lançados
+          throw err;
+        }
+      }
     }
 
+    // Forçar refetch imediato com a queryKey exata usada pela listagem
+    await queryClient.refetchQueries({ queryKey: ["regras_operacionais", form.empresa_id || "all"] });
+    // Invalidar demais variações (outros filtros de empresa em cache)
     await queryClient.invalidateQueries({ queryKey: ["regras_operacionais"] });
     await queryClient.invalidateQueries({ queryKey: ["regras_operacionais_grid"] });
-    toast.success(`${rows.length} regras operacionais importadas com sucesso.`);
+    // Fechar modal explicitamente após atualizar dados
+    setImportModalOpen(false);
+
+    if (inserted > 0 || updated > 0) {
+      toast.success(`${inserted} regra(s) importada(s), ${updated} atualizada(s) e ${skipped} duplicata(s) ignorada(s).`);
+    } else if (inserted === 0 && updated === 0 && skipped > 0) {
+      toast.info(`Nenhuma regra nova importada — todas as ${skipped} linha(s) com erros de chave única.`);
+    }
   };
 
   useEffect(() => {
@@ -1946,36 +2115,71 @@ const RegrasOperacionais = () => {
               </DropdownMenuContent>
             </DropdownMenu>
           </TabsTrigger>
-          {dynamicModules.map((module) => (
-            <TabsTrigger key={module.slug} value={module.slug}>
-              {module.nome}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-6 w-4 p-0 ml-1" onClick={(e) => e.stopPropagation()}>
-                    <MoreVertical className="h-3 w-3" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuItem onClick={() => {
-                    setNewTabForm({ nome: module.nome, slug: module.slug, descricao: module.descricao || "" });
-                    setEditingModuleId(module.id);
-                    setIsNewTabModalOpen(true);
-                  }}>
-                    <Pencil className="h-4 w-4 mr-2" />
-                    Editar
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => {
-                    if (confirm(`Tem certeza que deseja excluir a aba "${module.nome}"?`)) {
-                      deleteModuleMutation.mutate(module.id);
-                    }
-                  }} className="text-red-600">
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Excluir
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </TabsTrigger>
-          ))}
+          <TabsTrigger value="meios_pagamento">
+            Meios de Pagamento
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-6 w-4 p-0 ml-1" onClick={(e) => e.stopPropagation()}>
+                  <MoreVertical className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem disabled>Abas fixas não podem ser editadas</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </TabsTrigger>
+          <TabsTrigger value="taxas_impostos">
+            Taxas e Impostos
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-6 w-4 p-0 ml-1" onClick={(e) => e.stopPropagation()}>
+                  <MoreVertical className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem disabled>Abas fixas não podem ser editadas</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </TabsTrigger>
+          {dynamicModules.map((module) => {
+            const isFixedModule = module.module_type === 'tax' || module.module_type === 'system_fixed' || ['taxas', 'impostos', 'taxas-e-impostos'].includes(module.slug);
+            return (
+              <TabsTrigger key={module.slug} value={module.slug}>
+                {module.nome}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm" className="h-6 w-4 p-0 ml-1" onClick={(e) => e.stopPropagation()}>
+                      <MoreVertical className="h-3 w-3" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    {isFixedModule ? (
+                      <DropdownMenuItem disabled>Abas fixas não podem ser editadas</DropdownMenuItem>
+                    ) : (
+                      <>
+                        <DropdownMenuItem onClick={() => {
+                          setNewTabForm({ nome: module.nome, slug: module.slug, descricao: module.descricao || "" });
+                          setEditingModuleId(module.id);
+                          setIsNewTabModalOpen(true);
+                        }}>
+                          <Pencil className="h-4 w-4 mr-2" />
+                          Editar
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => {
+                          if (confirm(`Tem certeza que deseja excluir a aba "${module.nome}"?`)) {
+                            deleteModuleMutation.mutate(module.id);
+                          }
+                        }} className="text-red-600">
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Excluir
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </TabsTrigger>
+            )
+          })}
           {canAccess && (
             <Button variant="outline" size="sm" onClick={() => setIsNewTabModalOpen(true)} className="ml-2">
               <Plus className="h-4 w-4 mr-2" /> Nova Aba
@@ -2020,7 +2224,8 @@ const RegrasOperacionais = () => {
                       <TableHead className="text-center">Fornecedor</TableHead>
                       <TableHead className="text-center">Produto / Carga</TableHead>
                       <TableHead className="text-center">Tipo de cálculo</TableHead>
-                      <TableHead className="text-center">Valor / Tipo de Regra</TableHead>
+                      <TableHead className="text-center">Valor</TableHead>
+                      <TableHead className="text-center">Variável</TableHead>
                       <TableHead className="text-center">Vigência</TableHead>
                       <TableHead className="text-center">Status</TableHead>
                       <TableHead className="text-right">Ações</TableHead>
@@ -2029,7 +2234,7 @@ const RegrasOperacionais = () => {
                   <TableBody>
                     {!isLoadingRegras && filteredRules.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={10} className="h-24 text-center text-muted-foreground">
+                        <TableCell colSpan={11} className="h-24 text-center text-muted-foreground">
                           Nenhuma regra operacional encontrada.
                         </TableCell>
                       </TableRow>
@@ -2044,18 +2249,27 @@ const RegrasOperacionais = () => {
                           <TableCell className="text-center">{isGlobalIssRule ? "Global" : item.empresas?.nome ?? "-"}</TableCell>
                           <TableCell className="text-center">{isGlobalIssRule ? "Todos" : item.tipos_servico_operacional?.nome ?? "-"}</TableCell>
                           <TableCell className="text-center">{isGlobalIssRule ? "Todas" : item.transportadoras_clientes?.nome ?? "Todas"}</TableCell>
-                          <TableCell className="text-center">{isGlobalIssRule ? "Todos" : item.fornecedores?.nome ?? "-"}</TableCell>
+                          <TableCell className="text-center">{isGlobalIssRule ? "Todos" : item.fornecedores?.nome ?? "Não aplicável"}</TableCell>
                           <TableCell className="text-center">{item.produtos_carga?.nome ?? "Geral"}</TableCell>
                           <TableCell className="text-center">{getTipoCalculoLabel(item.tipo_calculo)}</TableCell>
+                          <TableCell className="text-center font-medium">
+                            {isPct
+                              ? `${Number(item.valor_unitario)}%`
+                              : tr?.unidade_medida === "multiplicador"
+                                ? `x ${Number(item.valor_unitario)}`
+                                : formatCurrency(Number(item.valor_unitario || 0))}
+                          </TableCell>
                           <TableCell className="text-center">
-                            <div className="flex flex-col items-center gap-1">
-                              <span className="font-medium">
-                                {isPct ? `${Number(item.valor_unitario)}%` : formatCurrency(Number(item.valor_unitario || 0))}
-                              </span>
-                              <Badge variant="outline" className="w-fit text-[10px] h-4">
+                            <span className="flex justify-center">
+                              <Badge variant="outline" className={cn(
+                                "w-fit text-[10px] h-4",
+                                tr?.unidade_medida === "percentual" ? "bg-amber-100 text-amber-700" :
+                                  tr?.unidade_medida === "multiplicador" ? "bg-blue-100 text-blue-700" :
+                                    "bg-emerald-100 text-emerald-700"
+                              )}>
                                 {tr?.nome ?? "Taxa Operacional"}
                               </Badge>
-                            </div>
+                            </span>
                           </TableCell>
                           <TableCell className="text-center">
                             <span className="block text-center">
@@ -2115,6 +2329,18 @@ const RegrasOperacionais = () => {
         <TabsContent value="diaristas" className="m-0">
           <Card className="p-5 space-y-4">
             <TabRegrasDiaristas />
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="meios_pagamento" className="m-0">
+          <Card className="p-5 space-y-4">
+            <TabMeiosPagamento />
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="taxas_impostos" className="m-0">
+          <Card className="p-5 space-y-4">
+            <TabTaxasImpostos />
           </Card>
         </TabsContent>
 
@@ -2608,7 +2834,7 @@ const RegrasOperacionais = () => {
                     label="Tipo de Regra / Variável"
                     placeholder="Selecione"
                     value={form.tipo_regra_id}
-                    items={(tiposRegra as any[]).map((t) => ({
+                    items={tiposRegraFiltered.map((t) => ({
                       id: t.id,
                       nome: t.nome,
                       ...t,
