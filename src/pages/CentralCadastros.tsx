@@ -62,6 +62,7 @@ import {
   ConfigTipoOperacaoService,
   EmpresaService,
   FornecedorService,
+  ProdutoCargaService,
   ImportacaoModelosService,
   TipoServicoOperacionalService,
   TransportadoraClienteService,
@@ -370,6 +371,11 @@ const CentralCadastros = () => {
   const { data: produtos = [], isLoading: loadingProdutos } = useQuery<any[]>({
     queryKey: ["config_produtos"],
     queryFn: () => ConfigProdutoService.getAll(),
+  });
+
+  const { data: produtosOptions = [] } = useQuery<any[]>({
+    queryKey: ["produtos_carga_all"],
+    queryFn: () => ProdutoCargaService.getAll(),
   });
 
   const { data: tiposDia = [], isLoading: loadingTiposDia } = useQuery<any[]>({
@@ -866,6 +872,68 @@ const CentralCadastros = () => {
     },
     onError: (err: any) => toast.error(getServicoErrorMessage(err)),
   });
+
+  // ---- Produtos/Carga CRUD ----
+  const [produtoCargaModalOpen, setProdutoCargaModalOpen] = useState(false);
+  const [editingProdutoCarga, setEditingProdutoCarga] = useState<any>(null);
+  const [produtoCargaForm, setProdutoCargaForm] = useState({ nome: "", categoria: "", fornecedor_id: "" });
+  const [produtoCargaFormErrors, setProdutoCargaFormErrors] = useState<any>({});
+
+  const resetProdutoCargaForm = () => {
+    setProdutoCargaForm({ nome: "", categoria: "", fornecedor_id: "" });
+    setProdutoCargaFormErrors({});
+    setEditingProdutoCarga(null);
+  };
+
+  const createProdutoCargaMutation = useMutation({
+    mutationFn: (payload: any) => ProdutoCargaService.create(payload),
+    onSuccess: async () => {
+      toast.success("Produto cadastrado com sucesso");
+      setProdutoCargaModalOpen(false);
+      resetProdutoCargaForm();
+      await queryClient.invalidateQueries({ queryKey: ["produtos_carga_all"] });
+    },
+    onError: (err: any) => toast.error("Erro ao cadastrar produto", { description: err.message }),
+  });
+
+  const updateProdutoCargaMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: any }) => ProdutoCargaService.update(id, payload),
+    onSuccess: async () => {
+      toast.success("Produto atualizado com sucesso");
+      setProdutoCargaModalOpen(false);
+      resetProdutoCargaForm();
+      await queryClient.invalidateQueries({ queryKey: ["produtos_carga_all"] });
+    },
+    onError: (err: any) => toast.error("Erro ao atualizar produto", { description: err.message }),
+  });
+
+  const deleteProdutoCargaMutation = useMutation({
+    mutationFn: (id: string) => ProdutoCargaService.delete(id),
+    onSuccess: async () => {
+      toast.success("Produto excluído com sucesso");
+      await queryClient.invalidateQueries({ queryKey: ["produtos_carga_all"] });
+    },
+    onError: (err: any) => toast.error("Erro ao excluir produto", { description: err.message }),
+  });
+
+  const submitProdutoCargaForm = () => {
+    if (!produtoCargaForm.nome.trim()) {
+      setProdutoCargaFormErrors({ nome: "Informe o nome do produto." });
+      toast.error("Informe o nome do produto.");
+      return;
+    }
+    setProdutoCargaFormErrors({});
+    const payload = {
+      nome: produtoCargaForm.nome.trim(),
+      categoria: produtoCargaForm.categoria.trim() || null,
+      fornecedor_id: produtoCargaForm.fornecedor_id || null,
+    };
+    if (editingProdutoCarga) {
+      updateProdutoCargaMutation.mutate({ id: editingProdutoCarga.id, payload });
+    } else {
+      createProdutoCargaMutation.mutate(payload);
+    }
+  };
 
   const [editingFornecedor, setEditingFornecedor] = useState<any>(null);
   const updateFornecedorMutation = useMutation({
@@ -1867,6 +1935,7 @@ const CentralCadastros = () => {
                           <th className="px-3 h-11 font-medium text-center">Telefone</th>
                           <th className="px-3 h-11 font-medium text-center">Email</th>
                           <th className="px-3 h-11 font-medium text-center">Endereço</th>
+                          <th className="px-3 h-11 font-medium text-center">Produtos Associados</th>
                           <th className="px-5 h-11 font-medium text-center">Status</th>
                           <th className="px-3 h-11 font-medium text-center">Ações</th>
                         </tr>
@@ -1874,7 +1943,7 @@ const CentralCadastros = () => {
                       <tbody>
                         {fornecedores.length === 0 ? (
                           <tr>
-                            <td colSpan={7} className="px-5 py-8 text-center text-muted-foreground">
+                            <td colSpan={8} className="px-5 py-8 text-center text-muted-foreground">
                               Nenhum fornecedor cadastrado
                             </td>
                           </tr>
@@ -1886,6 +1955,13 @@ const CentralCadastros = () => {
                               <td className="px-3 text-muted-foreground text-center">{fornecedor.telefone || "—"}</td>
                               <td className="px-3 text-muted-foreground text-center">{fornecedor.email || "—"}</td>
                               <td className="px-3 text-muted-foreground text-center text-xs">{fornecedor.endereco || "—"}</td>
+                              <td className="px-3 text-muted-foreground text-center text-xs">
+                                {fornecedor.produtos_carga?.length > 0 ? (
+                                  <span className="bg-primary/10 text-primary px-2 py-0.5 rounded font-medium border border-primary/20">
+                                    {fornecedor.produtos_carga.map((p: any) => p.nome).join(", ")}
+                                  </span>
+                                ) : "—"}
+                              </td>
                               <td className="px-5 text-center">
                                 <Badge className={cn(
                                   "font-semibold",
@@ -1896,7 +1972,7 @@ const CentralCadastros = () => {
                               </td>
                               <td className="px-3 text-center">
                                 <div className="flex items-center justify-center gap-1">
-                                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingFornecedor(fornecedor)}>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingFornecedor({ ...fornecedor, produto_id: fornecedor.produtos_carga?.[0]?.id || "" })}>
                                     <PencilLine className="h-4 w-4" />
                                   </Button>
                                   <Button variant="ghost" size="icon" className="h-8 w-8 text-amber-600 hover:text-amber-700" onClick={() => toggleFornecedorAtivoMutation.mutate({ id: fornecedor.id, ativo: !fornecedor.ativo })} title={fornecedor.ativo ? "Desativar" : "Ativar"}>
@@ -2029,35 +2105,65 @@ const CentralCadastros = () => {
                   </TabsContent>
 
                   <TabsContent value="produtos">
-                    <ConfigTable<any>
-                      title="Produtos"
-                      data={produtos}
-                      columns={[
-                        { header: "Categoria", accessorKey: "categoria" },
-                        {
-                          header: "Alíquota ICMS",
-                          accessorKey: "icms",
-                          cell: (item) => <span className="font-bold text-primary">{item.icms}%</span>,
-                        },
-                        {
-                          header: "Status",
-                          accessorKey: "status",
-                          cell: (item) => (
-                            <Badge variant={item.status === "ativo" ? "success" : "secondary"} className="h-5">
-                              {item.status}
-                            </Badge>
-                          ),
-                        },
-                      ]}
-                      onAdd={() => handleAddConfig("produto")}
-                      onEdit={(item) => handleEditConfig("produto", item)}
-                      onDelete={(item) => {
-                        if (confirm("Deseja remover esta categoria?")) {
-                          setConfigType("produto");
-                          deleteConfigMutation.mutate(item.id);
-                        }
-                      }}
-                    />
+                    <section className="esc-card overflow-hidden">
+                      <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-3">
+                        <div>
+                          <h2 className="font-display font-semibold text-foreground">Produtos / Cargas</h2>
+                          <p className="text-sm text-muted-foreground">Produtos operacionais vinculados a fornecedores.</p>
+                        </div>
+                        <Button size="sm" onClick={() => { resetProdutoCargaForm(); setProdutoCargaModalOpen(true); }}>
+                          <Plus className="h-4 w-4 mr-1.5" /> Novo produto
+                        </Button>
+                      </div>
+                      <div className="max-h-[55vh] overflow-y-auto">
+                        <table className="w-full text-sm">
+                          <thead className="esc-table-header">
+                            <tr className="text-left">
+                              <th className="px-5 h-11 font-medium">Nome</th>
+                              <th className="px-3 h-11 font-medium">Categoria</th>
+                              <th className="px-3 h-11 font-medium">Fornecedor</th>
+                              <th className="px-3 h-11 font-medium text-center">Ações</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {produtosOptions.length === 0 ? (
+                              <tr>
+                                <td colSpan={4} className="px-5 py-8 text-center text-muted-foreground">
+                                  Nenhum produto cadastrado. Clique em "Novo produto" para começar.
+                                </td>
+                              </tr>
+                            ) : (
+                              produtosOptions.map((prod: any) => {
+                                const fornecedorNome = fornecedores.find((f: any) => f.id === prod.fornecedor_id)?.nome;
+                                return (
+                                  <tr key={prod.id} className="border-t border-muted hover:bg-background">
+                                    <td className="px-5 h-12 font-medium text-foreground">{prod.nome}</td>
+                                    <td className="px-3 text-muted-foreground">{prod.categoria || "—"}</td>
+                                    <td className="px-3 text-muted-foreground">{fornecedorNome || "—"}</td>
+                                    <td className="px-3 text-center">
+                                      <div className="flex items-center justify-center gap-1">
+                                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
+                                          setEditingProdutoCarga(prod);
+                                          setProdutoCargaForm({ nome: prod.nome, categoria: prod.categoria || "", fornecedor_id: prod.fornecedor_id || "" });
+                                          setProdutoCargaModalOpen(true);
+                                        }}>
+                                          <PencilLine className="h-4 w-4" />
+                                        </Button>
+                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => {
+                                          if (confirm("Deseja excluir este produto?")) deleteProdutoCargaMutation.mutate(prod.id);
+                                        }}>
+                                          <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </section>
                   </TabsContent>
 
                   <TabsContent value="dia">
@@ -2777,6 +2883,25 @@ const CentralCadastros = () => {
               <Label htmlFor="edit_forn_endereco">Endereço</Label>
               <Input id="edit_forn_endereco" value={editingFornecedor?.endereco || ""} onChange={(e) => setEditingFornecedor({ ...editingFornecedor, endereco: e.target.value })} />
             </div>
+            <div className="grid gap-2">
+              <Label>Produto Associado</Label>
+              <Select
+                value={editingFornecedor?.produto_id || "__none__"}
+                onValueChange={(v) => setEditingFornecedor((prev: any) => ({ ...prev, produto_id: v === "__none__" ? "" : v }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecionar produto..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Nenhum</SelectItem>
+                  {produtosOptions.map((prod: any) => (
+                    <SelectItem key={prod.id} value={prod.id}>
+                      {prod.nome}{prod.categoria ? ` (${prod.categoria})` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex items-center gap-2">
               <input type="checkbox" id="edit_forn_ativo" checked={editingFornecedor?.ativo ?? true} onChange={(e) => setEditingFornecedor({ ...editingFornecedor, ativo: e.target.checked })} />
               <Label htmlFor="edit_forn_ativo" className="cursor-pointer">Ativo</Label>
@@ -2789,7 +2914,13 @@ const CentralCadastros = () => {
                 toast.error("Informe o nome do fornecedor.");
                 return;
               }
-              updateFornecedorMutation.mutate({ id: editingFornecedor.id, payload: editingFornecedor })
+              updateFornecedorMutation.mutate({
+                id: editingFornecedor.id,
+                payload: {
+                  ...editingFornecedor,
+                  produtos_associados: editingFornecedor.produto_id ? [editingFornecedor.produto_id] : []
+                }
+              })
             }} disabled={updateFornecedorMutation.isPending}>
               {updateFornecedorMutation.isPending ? "Salvando..." : "Salvar"}
             </Button>
@@ -3050,6 +3181,68 @@ const CentralCadastros = () => {
         validateData={activeImportConfig.validateData}
         onUpload={handleContextualImport}
       />
+
+      {/* ---- Modal Produto/Carga ---- */}
+      <Dialog open={produtoCargaModalOpen} onOpenChange={(open) => { if (!open) resetProdutoCargaForm(); setProdutoCargaModalOpen(open); }}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>{editingProdutoCarga ? "Editar Produto" : "Novo Produto / Carga"}</DialogTitle>
+            <DialogDescription>
+              Cadastre um produto ou tipo de carga para vincular a um fornecedor.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="pc_nome">Nome do produto <span className="text-destructive">*</span></Label>
+              <Input
+                id="pc_nome"
+                value={produtoCargaForm.nome}
+                onChange={(e) => { setProdutoCargaForm(p => ({ ...p, nome: e.target.value })); setProdutoCargaFormErrors((p: any) => ({ ...p, nome: undefined })); }}
+                placeholder="Ex: Rolon, Carga Seca, Perfume..."
+                aria-invalid={Boolean(produtoCargaFormErrors.nome)}
+                className={produtoCargaFormErrors.nome ? "border-destructive focus-visible:ring-destructive" : undefined}
+              />
+              {produtoCargaFormErrors.nome ? <p className="text-sm text-destructive" role="alert">{produtoCargaFormErrors.nome}</p> : null}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="pc_categoria">Categoria <span className="text-xs text-muted-foreground">(opcional)</span></Label>
+              <Input
+                id="pc_categoria"
+                value={produtoCargaForm.categoria}
+                onChange={(e) => setProdutoCargaForm(p => ({ ...p, categoria: e.target.value }))}
+                placeholder="Ex: Cosmético, Alimento, Eletrônico..."
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Fornecedor <span className="text-xs text-muted-foreground">(opcional)</span></Label>
+              <Select
+                value={produtoCargaForm.fornecedor_id || "__none__"}
+                onValueChange={(v) => setProdutoCargaForm(p => ({ ...p, fornecedor_id: v === "__none__" ? "" : v }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecionar fornecedor..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Nenhum</SelectItem>
+                  {fornecedores.map((f: any) => (
+                    <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { resetProdutoCargaForm(); setProdutoCargaModalOpen(false); }}>Cancelar</Button>
+            <Button
+              onClick={submitProdutoCargaForm}
+              disabled={createProdutoCargaMutation.isPending || updateProdutoCargaMutation.isPending}
+            >
+              {(createProdutoCargaMutation.isPending || updateProdutoCargaMutation.isPending) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {(createProdutoCargaMutation.isPending || updateProdutoCargaMutation.isPending) ? "Salvando..." : "Salvar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 };

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Plus, Pencil, Trash2, Search, ToggleLeft, ToggleRight, PowerOff } from "lucide-react";
-import { FornecedorService, EmpresaService } from "@/services/base.service";
+import { FornecedorService, EmpresaService, ProdutoCargaService } from "@/services/base.service";
 import {
   Dialog,
   DialogContent,
@@ -11,6 +11,13 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
@@ -46,6 +53,11 @@ const Fornecedores = () => {
     refetchOnMount: true,
   });
 
+  const { data: produtosOptions = [] } = useQuery({
+    queryKey: ["produtos_carga_all"],
+    queryFn: () => ProdutoCargaService.getAll(),
+  });
+
   const [formErrors, setFormErrors] = useState<FornecedorValidationErrors>({});
 
   const [form, setForm] = useState<FornecedorFormValues>({
@@ -56,6 +68,7 @@ const Fornecedores = () => {
     endereco: "",
     empresa_id: "",
     ativo: true,
+    produto_id: "",
   });
 
   const reset = () => {
@@ -67,6 +80,7 @@ const Fornecedores = () => {
       endereco: "",
       empresa_id: empresaOptions[0]?.id ?? "",
       ativo: true,
+      produto_id: "",
     });
     setFormErrors({});
     setEditingId(null);
@@ -169,10 +183,13 @@ const Fornecedores = () => {
 
     const payload = normalizeFornecedorPayload(form);
 
+    // Add the single product selection
+    const finalPayload = { ...payload, produtos_associados: form.produto_id ? [form.produto_id] : [] };
+
     if (editingId) {
-      updateMutation.mutate({ id: editingId, payload });
+      updateMutation.mutate({ id: editingId, payload: finalPayload });
     } else {
-      createMutation.mutate(payload);
+      createMutation.mutate(finalPayload);
     }
   };
 
@@ -221,6 +238,7 @@ const Fornecedores = () => {
               <th className="px-4 h-11 font-medium">Telefone</th>
               <th className="px-4 h-11 font-medium">Email</th>
               <th className="px-4 h-11 font-medium">Endereço</th>
+              <th className="px-4 h-11 font-medium text-center">Produtos Associados</th>
               <th className="px-4 h-11 font-medium text-center">Status</th>
               <th className="px-4 h-11 font-medium text-center">Ações</th>
             </tr>
@@ -228,13 +246,13 @@ const Fornecedores = () => {
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                   Carregando...
                 </td>
               </tr>
             ) : filteredList.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                   Nenhum fornecedor encontrado
                 </td>
               </tr>
@@ -246,6 +264,13 @@ const Fornecedores = () => {
                   <td className="px-4 text-muted-foreground">{item.telefone || "—"}</td>
                   <td className="px-4 text-muted-foreground">{item.email || "—"}</td>
                   <td className="px-4 text-muted-foreground text-xs">{item.endereco || "—"}</td>
+                  <td className="px-4 text-muted-foreground text-xs text-center">
+                    {item.produtos_carga?.length > 0 ? (
+                      <span className="bg-primary/10 text-primary px-2 py-0.5 rounded font-medium border border-primary/20">
+                        {item.produtos_carga.map((p: any) => p.nome).join(", ")}
+                      </span>
+                    ) : "—"}
+                  </td>
                   <td className="px-4 text-center">
                     <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${item.ativo ? "bg-success-soft text-success-strong" : "bg-muted text-muted-foreground"
                       }`}>
@@ -268,6 +293,7 @@ const Fornecedores = () => {
                             endereco: item.endereco,
                             empresa_id: item.empresa_id,
                             ativo: item.ativo,
+                            produto_id: (item.produtos_carga || [])[0]?.id || "",
                           });
                           setOpen(true);
                         }}
@@ -391,6 +417,27 @@ const Fornecedores = () => {
                 placeholder="Rua, número, bairro, cidade"
               />
             </div>
+
+            <div className="grid gap-2">
+              <Label>Produto Associado</Label>
+              <Select
+                value={form.produto_id || "__none__"}
+                onValueChange={(v) => setForm((prev: any) => ({ ...prev, produto_id: v === "__none__" ? "" : v }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecionar produto..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Nenhum</SelectItem>
+                  {produtosOptions.map((prod: any) => (
+                    <SelectItem key={prod.id} value={prod.id}>
+                      {prod.nome}{prod.categoria ? ` (${prod.categoria})` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"

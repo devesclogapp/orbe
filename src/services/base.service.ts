@@ -1604,7 +1604,7 @@ class FornecedorServiceClass {
     // RLS garante isolamento por tenant_id. empresaId filtra dentro do tenant.
     let query = operationalClient
       .from('fornecedores')
-      .select('*')
+      .select('*, produtos_carga(nome)')
       .order('created_at', { ascending: false });
 
     if (empresaId) query = query.or(`empresa_id.eq.${empresaId},empresa_id.is.null`);
@@ -1633,12 +1633,17 @@ class FornecedorServiceClass {
       throw new Error("Já existe um fornecedor com este nome neste tenant.");
     }
     
+    const produtosArray = payload.produtos_associados;
+    
     const payloadWithTenant = {
       ...payload,
       nome,
       empresa_id: payload.empresa_id ? cleanUuid(payload.empresa_id) : null,
       tenant_id: tenantId
     };
+    delete payloadWithTenant.produtos_associados;
+    delete payloadWithTenant.produto_id;
+    delete payloadWithTenant.produtos_carga;
 
     const { data, error } = await operationalClient
       .from('fornecedores')
@@ -1650,6 +1655,11 @@ class FornecedorServiceClass {
       if (error.code === '23505') throw new Error("Já existe um fornecedor com este nome neste tenant.");
       throw error;
     }
+
+    if (produtosArray && Array.isArray(produtosArray) && produtosArray.length > 0 && data) {
+        await operationalClient.from('produtos_carga').update({ fornecedor_id: data.id }).in('id', produtosArray);
+    }
+
     return data;
   }
 
@@ -1673,11 +1683,15 @@ class FornecedorServiceClass {
       throw new Error("Já existe um fornecedor com este nome neste tenant.");
     }
 
+    const produtosArray = payload.produtos_associados;
     const payloadCleaned = {
       ...payload,
       nome,
       empresa_id: payload.empresa_id ? cleanUuid(payload.empresa_id) : null,
     };
+    delete payloadCleaned.produtos_associados;
+    delete payloadCleaned.produto_id;
+    delete payloadCleaned.produtos_carga;
 
     const { data, error } = await operationalClient
       .from('fornecedores')
@@ -1689,6 +1703,14 @@ class FornecedorServiceClass {
       if (error.code === '23505') throw new Error("Já existe um fornecedor com este nome neste tenant.");
       throw error;
     }
+
+    if (produtosArray !== undefined && Array.isArray(produtosArray)) {
+       await operationalClient.from('produtos_carga').update({ fornecedor_id: null }).eq('fornecedor_id', id);
+       if (produtosArray.length > 0) {
+         await operationalClient.from('produtos_carga').update({ fornecedor_id: id }).in('id', produtosArray);
+       }
+    }
+
     return data?.[0] ?? null;
   }
 
@@ -1783,6 +1805,30 @@ class ProdutoCargaServiceClass {
 
     if (error) throw error;
     return data;
+  }
+
+  async update(id: string, payload: Record<string, any>) {
+    const payloadCleaned = {
+      ...payload,
+      fornecedor_id: payload.fornecedor_id ? cleanUuid(payload.fornecedor_id) : null,
+    };
+    const { data, error } = await operationalClient
+      .from('produtos_carga')
+      .update(payloadCleaned)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  }
+
+  async delete(id: string) {
+    const { error } = await operationalClient
+      .from('produtos_carga')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
+    return true;
   }
 }
 export const ProdutoCargaService = new ProdutoCargaServiceClass();

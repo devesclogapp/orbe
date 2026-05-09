@@ -59,6 +59,7 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTenant } from "@/contexts/TenantContext";
 import { cn } from "@/lib/utils";
 import {
     ColaboradorService,
@@ -489,6 +490,7 @@ const PRESET_ROTAS: Record<string, string> = {
 
 const LancamentoProducao = () => {
     const { user } = useAuth();
+    const { tenantId } = useTenant();
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const today = format(new Date(), "yyyy-MM-dd");
@@ -618,6 +620,7 @@ const LancamentoProducao = () => {
             ? ProdutoCargaService.getByFornecedor(form.fornecedor)
             : ProdutoCargaService.getAll(),
         enabled: schemaDisponivel,
+        staleTime: 0,
     });
 
     // Buscamos o ID do módulo financeiro (Meios de Pagamento)
@@ -647,8 +650,7 @@ const LancamentoProducao = () => {
     const colaboradoresFiltrados = useMemo(
         () =>
             (colaboradoresRaw as any[]).filter((colaborador: any) => {
-                const tipoContrato = normalizeTipoContrato(colaborador.tipo_contrato);
-                return (tipoContrato === "hora" || tipoContrato === "operacao") && colaborador.status !== "inativo" && !colaborador.deleted_at;
+                return colaborador.status !== "inativo" && !colaborador.deleted_at;
             }),
         [colaboradoresRaw],
     );
@@ -1116,7 +1118,6 @@ const LancamentoProducao = () => {
 
     const createProdutoMutation = useMutation({
         mutationFn: async () => {
-            if (!form.fornecedor) throw new Error("Selecione o fornecedor antes de cadastrar o produto/carga.");
             if (!produtoDraft.nome.trim()) throw new Error("Informe o nome do produto/carga.");
 
             const duplicate = produtoOptions.find((item) => normalizeText(item.nome) === normalizeText(produtoDraft.nome));
@@ -1125,15 +1126,16 @@ const LancamentoProducao = () => {
             }
 
             return ProdutoCargaService.create({
-                fornecedor_id: form.fornecedor,
+                fornecedor_id: form.fornecedor || null,
                 nome: produtoDraft.nome.trim(),
                 categoria: produtoDraft.categoria.trim() || null,
                 descricao: produtoDraft.categoria.trim() ? `Categoria: ${produtoDraft.categoria.trim()}` : null,
                 ativo: true,
+                tenant_id: tenantId,
             });
         },
         onSuccess: async (data: any) => {
-            await queryClient.invalidateQueries({ queryKey: ["produtos_carga"] });
+            await queryClient.refetchQueries({ queryKey: ["produtos_carga"] });
             setForm((prev) => ({ ...prev, produto: data.id }));
             setProdutoDialogOpen(false);
             setProdutoDraft({ nome: "", categoria: "" });
@@ -1324,11 +1326,17 @@ const LancamentoProducao = () => {
             responsavel_id: user?.id,
             descricao_servico: form.descricao_servico.trim() || null,
             data_vencimento: form.data_vencimento || null,
+            tenant_id: tenantId,
         };
 
         const colaboradores = Object.entries(condutaColaboradores)
             .filter(([, conduta]) => conduta.selected)
-            .map(([colaborador_id]) => ({ colaborador_id }));
+            .map(([colaborador_id, conduta]) => ({
+                collaborator_id: colaborador_id,
+                had_infraction: conduta.hadInfraction,
+                infraction_type_id: conduta.infractionType || null,
+                infraction_notes: conduta.notes || null,
+            }));
 
         mutation.mutate({ operacao, colaboradores });
     };
@@ -1500,11 +1508,26 @@ const LancamentoProducao = () => {
                                                 </div>
                                             </div>
                                             <div className="space-y-1.5">
-                                                <Label>Produto/Carga</Label>
+                                                <div className="flex items-center justify-between">
+                                                    <Label>Produto/Carga</Label>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setProdutoDialogOpen(true)}
+                                                        className="text-xs text-primary font-semibold flex items-center gap-1 hover:underline"
+                                                    >
+                                                        <Plus className="w-3 h-3" /> Novo
+                                                    </button>
+                                                </div>
                                                 <Select value={form.produto} onValueChange={(v) => setForm(f => ({ ...f, produto: v }))}>
                                                     <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Opcional" /></SelectTrigger>
                                                     <SelectContent>
-                                                        {produtoOptions.map((opt) => <SelectItem key={opt.id} value={opt.id}>{opt.nome}</SelectItem>)}
+                                                        {produtoOptions.length === 0 ? (
+                                                            <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+                                                                Nenhum produto cadastrado.<br />Clique em <strong>+ Novo</strong> para adicionar.
+                                                            </div>
+                                                        ) : (
+                                                            produtoOptions.map((opt) => <SelectItem key={opt.id} value={opt.id}>{opt.nome}</SelectItem>)
+                                                        )}
                                                     </SelectContent>
                                                 </Select>
                                             </div>
@@ -1797,10 +1820,10 @@ const LancamentoProducao = () => {
                                             <div className="space-y-1.5">
                                                 <Label>Responsável pelo lançamento</Label>
                                                 <Input
-                                                    value={form.responsavel_nome}
-                                                    onChange={e => setForm(f => ({ ...f, responsavel_nome: e.target.value }))}
-                                                    placeholder="Nome do responsável (opcional)"
-                                                    className="h-11 rounded-xl"
+                                                    value={perfil?.nome || perfil?.full_name || user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || ""}
+                                                    readOnly
+                                                    placeholder="Nome do responsável"
+                                                    className="h-11 rounded-xl bg-muted/50 cursor-not-allowed text-muted-foreground"
                                                 />
                                             </div>
                                             <div className="space-y-1.5">

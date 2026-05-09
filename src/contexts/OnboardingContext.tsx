@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { useTenant } from "./TenantContext";
 import { useAuth } from "./AuthContext";
 
-export type OnboardingStep = 
+export type OnboardingStep =
   | "cadastro_base"
   | "colaboradores"
   | "regras"
@@ -153,12 +153,12 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     try {
       console.log("[OnboardingContext] Fetching data for tenant:", tenantId);
-      
+
       const [empresasRes, transportadorasRes, fornecedoresRes, colaboradoresRes, regrasRes, operacoesRes] = await Promise.all([
-        supabase.from("empresas").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("ativa", true),
+        supabase.from("empresas").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("status", "ativa"),
         supabase.from("transportadoras_clientes").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("tipo_cadastro", "transportadora").eq("ativo", true),
         supabase.from("fornecedores").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("ativo", true),
-        supabase.from("colaboradores").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("ativo", true),
+        supabase.from("colaboradores").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("status", "ativo"),
         supabase.from("fornecedor_valores_servico").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("ativo", true),
         supabase.from("operacoes").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId),
       ]);
@@ -207,7 +207,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const checkOnboardingStatus = async () => {
     if (!user) return;
-    
+
     try {
       const { data: profile, error } = await supabase
         .from("profiles")
@@ -241,7 +241,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const saveOnboardingState = async (step: OnboardingStep, completed: OnboardingStep[]) => {
     if (!user) return;
-    
+
     try {
       const { error } = await supabase
         .from("profiles")
@@ -250,7 +250,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           onboarding_completed_steps: completed,
         })
         .eq("user_id", user.id);
-      
+
       if (error) {
         console.warn("[OnboardingContext] Campos de onboarding não existem ainda - ignorando");
       }
@@ -272,7 +272,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const canAdvance = useMemo(() => {
     const req = getCurrentStepRequirements();
-    
+
     switch (currentStep) {
       case "cadastro_base":
         return dataStatus.hasEmpresa && dataStatus.hasTransportadora && dataStatus.hasSupplier;
@@ -293,7 +293,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     // Calcular progresso baseado nos dados reais do banco
     let itemsCompleted = 0;
     let totalItems = 0;
-    
+
     switch (currentStep) {
       case "cadastro_base":
         totalItems = 3;
@@ -318,7 +318,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         if (dataStatus.hasOperation) itemsCompleted = 1;
         break;
     }
-    
+
     // Progresso global considerando etapas anteriores completadas
     const globalProgress = (itemsCompleted / totalItems) * 100;
     return Math.round(globalProgress);
@@ -353,7 +353,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           .from("profiles")
           .update({ onboarding_completed: true })
           .eq("user_id", user.id);
-        
+
         if (error) {
           console.warn("[OnboardingContext] Campos de onboarding não existem ainda");
         }
@@ -371,7 +371,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           .from("profiles")
           .update({ onboarding_completed: true })
           .eq("user_id", user.id);
-        
+
         if (error) {
           console.warn("[OnboardingContext] Campos de onboarding não existem ainda");
         }
