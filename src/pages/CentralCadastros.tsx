@@ -67,6 +67,12 @@ import {
   TransportadoraClienteService,
 } from "@/services/base.service";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  normalizeTransportadoraPayload,
+  validateTransportadoraPayload,
+  type TransportadoraFormValues,
+  type TransportadoraValidationErrors,
+} from "@/utils/transportadoraValidation";
 
 type CadastroTabValue =
   | "colaboradores"
@@ -660,16 +666,18 @@ const CentralCadastros = () => {
   });
 
   const [transportadoraModalOpen, setTransportadoraModalOpen] = useState(false);
-  const [transportadoraForm, setTransportadoraForm] = useState({
-    nome: "", documento: "", telefone: "", email: "", endereco: "", empresa_id: empresaId || "",
+  const [transportadoraForm, setTransportadoraForm] = useState<TransportadoraFormValues>({
+    nome: "", documento: "", telefone: "", email: "", endereco: "", empresa_id: empresaId || "", ativo: true,
   });
+  const [transportadoraFormErrors, setTransportadoraFormErrors] = useState<TransportadoraValidationErrors>({});
 
   const createTransportadoraMutation = useMutation({
     mutationFn: (payload: any) => TransportadoraClienteService.create(payload),
     onSuccess: async () => {
       toast.success("Transportadora cadastrada com sucesso");
       setTransportadoraModalOpen(false);
-      setTransportadoraForm({ nome: "", documento: "", telefone: "", email: "", endereco: "", empresa_id: empresaId || "" });
+      setTransportadoraForm({ nome: "", documento: "", telefone: "", email: "", endereco: "", empresa_id: empresaId || "", ativo: true });
+      setTransportadoraFormErrors({});
       await new Promise(r => setTimeout(r, 500));
       await queryClient.invalidateQueries({ queryKey: ["transportadoras"] });
       const data = await queryClient.fetchQuery({ queryKey: ["transportadoras"], queryFn: () => TransportadoraClienteService.getByEmpresa() });
@@ -677,6 +685,46 @@ const CentralCadastros = () => {
     },
     onError: (err: any) => toast.error("Erro ao cadastrar", { description: err.message }),
   });
+
+  const handleTransportadoraFormChange = <K extends keyof TransportadoraFormValues>(
+    field: K,
+    value: TransportadoraFormValues[K],
+  ) => {
+    setTransportadoraForm((current) => ({ ...current, [field]: value }));
+    setTransportadoraFormErrors((current) => {
+      if (!current[field]) return current;
+      return { ...current, [field]: undefined };
+    });
+  };
+
+  const resetTransportadoraForm = () => {
+    setTransportadoraForm({
+      nome: "",
+      documento: "",
+      telefone: "",
+      email: "",
+      endereco: "",
+      empresa_id: empresaId || "",
+      ativo: true,
+    });
+    setTransportadoraFormErrors({});
+  };
+
+  const submitTransportadoraForm = () => {
+    const payload = normalizeTransportadoraPayload({
+      ...transportadoraForm,
+      ativo: true,
+    });
+    const errors = validateTransportadoraPayload(payload);
+
+    if (Object.keys(errors).length > 0) {
+      setTransportadoraFormErrors(errors);
+      return;
+    }
+
+    setTransportadoraFormErrors({});
+    createTransportadoraMutation.mutate(payload);
+  };
 
   const [fornecedorModalOpen, setFornecedorModalOpen] = useState(false);
   const [fornecedorForm, setFornecedorForm] = useState({
@@ -728,7 +776,7 @@ const CentralCadastros = () => {
     },
     onError: (err: any) => toast.error("Erro ao atualizar", { description: err.message }),
   });
-const deleteFornecedorMutation = useMutation({
+  const deleteFornecedorMutation = useMutation({
     mutationFn: async (id: string) => {
       const result = await FornecedorService.deleteWithCheck(id);
       if (!result.success && result.error) {
@@ -962,13 +1010,13 @@ const deleteFornecedorMutation = useMutation({
     const colaboradoresEmpresaLookup = new Map(
       empresas.map((empresa) => [normalizeText(String(empresa.nome ?? "")), empresa]),
     );
-    
+
     const existingCpfsLookup = new Set(
       (colaboradores || [])
         .filter(c => c.cpf)
         .map(c => String(c.cpf).replace(/\D/g, ''))
     );
-    
+
     const modeloImportacaoAtivo = importacaoModelos.find(
       (item) => item.modulo === activeTab && item.ativo && item.drive_url,
     );
@@ -992,9 +1040,9 @@ const deleteFornecedorMutation = useMutation({
         downloadUrl: modeloImportacaoAtivo?.drive_url,
         expectedColumns: ["NOME", "CPF", "TELEFONE", "EMPRESA", "TIPO", "CARGO", "CONTRATO", "VALOR BASE", "FATURAMENTO", "STATUS"],
         templateFileName: "modelo_operadores_colaboradores.xlsx",
-validateData: (rows) => {
+        validateData: (rows) => {
           const seenInSheet = new Set<string>();
-          
+
           return buildResult(rows, (row, index) => {
             const nome = getRowValue(row, "NOME");
             const cpf = getRowValue(row, "CPF");
@@ -1027,7 +1075,7 @@ validateData: (rows) => {
             if (!empresaNome) return { error: `Linha ${index + 2}: informe o campo EMPRESA.` };
             if (!empresa?.id) return { error: `Linha ${index + 2}: empresa "${empresaNome}" não encontrada neste tenant.` };
             if (tipoColaborador !== "DIARISTA" && !cargo) return { error: `Linha ${index + 2}: CARGO é obrigatório para colaboradores não diaristas.` };
-            
+
             const cpfClean = cpf ? String(cpf).replace(/\D/g, '') : '';
             const telefoneClean = telefone ? String(telefone).replace(/\D/g, '') : '';
             if (cpfClean && cpfClean.length === 11) {
@@ -1074,7 +1122,7 @@ validateData: (rows) => {
           let duplicates = 0;
           let errors = 0;
           const errorMessages: string[] = [];
-          
+
           for (const row of rows) {
             try {
               await ColaboradorService.create(row);
@@ -1091,13 +1139,13 @@ validateData: (rows) => {
               }
             }
           }
-          
+
           await queryClient.invalidateQueries({ queryKey: ["colaboradores_list"] });
-          
+
           if (errors > 0 && imported === 0) {
             throw new Error("Importação bloqueada. Corrija os erros indicados.");
           }
-          
+
           toast.success(
             `Importação concluída: ${imported} colaborador(es) importado(s), ${ignored} ignorado(s), ${duplicates} duplicado(s), ${errors} erro(s).`
           );
@@ -1244,6 +1292,16 @@ validateData: (rows) => {
     return configs[activeTab];
   }, [activeTab, empresas, empresaId, importacaoModelos, queryClient]);
 
+  const itemToDeleteLabel =
+    itemToDelete?.nome ||
+    (deleteModalType === "transportadora"
+      ? "Esta transportadora"
+      : deleteModalType === "fornecedor"
+        ? "Este fornecedor"
+        : deleteModalType === "servico"
+          ? "Este serviço"
+          : "Este registro");
+
   const handleContextualImport = async (rows: Record<string, any>[]) => {
     if (!activeImportConfig.onUpload) return;
     await activeImportConfig.onUpload(rows);
@@ -1350,56 +1408,56 @@ validateData: (rows) => {
                     </div>
                   </div>
                   <div className="max-h-[60vh] overflow-y-scroll pr-1">
-                  <table className="w-full text-sm">
-                    <thead className="esc-table-header">
-                      <tr className="text-left">
-                        <th className="px-5 h-11 font-medium text-center">Nome</th>
-                        <th className="px-3 h-11 font-medium text-center">CPF</th>
-                        <th className="px-3 h-11 font-medium text-center">Telefone</th>
-                        <th className="px-3 h-11 font-medium text-center">Empresa</th>
-                        <th className="px-3 h-11 font-medium text-center">Tipo</th>
-                        <th className="px-3 h-11 font-medium text-center">Cargo</th>
-                        <th className="px-3 h-11 font-medium text-center">Contrato</th>
-                        <th className="px-3 h-11 font-medium text-center">Valor base</th>
-                        <th className="px-3 h-11 font-medium text-center">Faturamento</th>
-                        <th className="px-5 h-11 font-medium text-center">Status</th>
-                        <th className="px-3 h-11 font-medium text-center">Ações</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {colaboradores.map((colaborador) => (
-                        <tr key={colaborador.id} className="border-t border-muted hover:bg-background">
-                          <td className="px-5 h-[56px] text-center">
-                            <div className="font-medium text-foreground">{colaborador.nome}</div>
-                            <div className="text-xs text-muted-foreground">Mat. {colaborador.matricula}</div>
-                          </td>
-                          <td className="px-3 text-muted-foreground font-mono text-xs text-center">{colaborador.cpf || "—"}</td>
-                          <td className="px-3 text-muted-foreground text-center">{colaborador.telefone || "—"}</td>
-                          <td className="px-3 text-muted-foreground text-center">{colaborador.empresas?.nome || "—"}</td>
-                          <td className="px-3 text-muted-foreground text-center">{colaborador.tipo_colaborador || "—"}</td>
-                          <td className="px-3 text-muted-foreground text-center">{colaborador.cargo || "—"}</td>
-                          <td className="px-3 text-center">{colaborador.tipo_contrato}</td>
-                          <td className="px-3 font-display font-medium text-center">
-                            R$ {Number(colaborador.valor_base || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                          </td>
-                          <td className="px-3 text-center">{colaborador.flag_faturamento ? "Sim" : "Não"}</td>
-                          <td className="px-5 text-center">
-                            <StatusChip status={colaborador.status} />
-                          </td>
-                          <td className="px-3 text-center">
-                            <div className="flex items-center justify-center gap-1">
-                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingColaborador({ ...colaborador, telefone: formatPhoneForDisplayCC(colaborador.telefone || "") })}>
-                                <PencilLine className="h-4 w-4" />
-                              </Button>
-                              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => { if (confirm("Confirmar exclusão?")) deleteColaboradorMutation.mutate(colaborador.id) }}>
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </td>
+                    <table className="w-full text-sm">
+                      <thead className="esc-table-header">
+                        <tr className="text-left">
+                          <th className="px-5 h-11 font-medium text-center">Nome</th>
+                          <th className="px-3 h-11 font-medium text-center">CPF</th>
+                          <th className="px-3 h-11 font-medium text-center">Telefone</th>
+                          <th className="px-3 h-11 font-medium text-center">Empresa</th>
+                          <th className="px-3 h-11 font-medium text-center">Tipo</th>
+                          <th className="px-3 h-11 font-medium text-center">Cargo</th>
+                          <th className="px-3 h-11 font-medium text-center">Contrato</th>
+                          <th className="px-3 h-11 font-medium text-center">Valor base</th>
+                          <th className="px-3 h-11 font-medium text-center">Faturamento</th>
+                          <th className="px-5 h-11 font-medium text-center">Status</th>
+                          <th className="px-3 h-11 font-medium text-center">Ações</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {colaboradores.map((colaborador) => (
+                          <tr key={colaborador.id} className="border-t border-muted hover:bg-background">
+                            <td className="px-5 h-[56px] text-center">
+                              <div className="font-medium text-foreground">{colaborador.nome}</div>
+                              <div className="text-xs text-muted-foreground">Mat. {colaborador.matricula}</div>
+                            </td>
+                            <td className="px-3 text-muted-foreground font-mono text-xs text-center">{colaborador.cpf || "—"}</td>
+                            <td className="px-3 text-muted-foreground text-center">{colaborador.telefone || "—"}</td>
+                            <td className="px-3 text-muted-foreground text-center">{colaborador.empresas?.nome || "—"}</td>
+                            <td className="px-3 text-muted-foreground text-center">{colaborador.tipo_colaborador || "—"}</td>
+                            <td className="px-3 text-muted-foreground text-center">{colaborador.cargo || "—"}</td>
+                            <td className="px-3 text-center">{colaborador.tipo_contrato}</td>
+                            <td className="px-3 font-display font-medium text-center">
+                              R$ {Number(colaborador.valor_base || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                            </td>
+                            <td className="px-3 text-center">{colaborador.flag_faturamento ? "Sim" : "Não"}</td>
+                            <td className="px-5 text-center">
+                              <StatusChip status={colaborador.status} />
+                            </td>
+                            <td className="px-3 text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingColaborador({ ...colaborador, telefone: formatPhoneForDisplayCC(colaborador.telefone || "") })}>
+                                  <PencilLine className="h-4 w-4" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => { if (confirm("Confirmar exclusão?")) deleteColaboradorMutation.mutate(colaborador.id) }}>
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </section>
               </TabsContent>
@@ -1423,77 +1481,78 @@ validateData: (rows) => {
                     </div>
                   </div>
                   <div className="max-h-[60vh] overflow-y-scroll pr-1">
-                  <table className="w-full text-sm">
-                    <thead className="esc-table-header">
-                      <tr className="text-left">
-                        <th className="px-5 h-11 font-medium text-center">Nome</th>
-                        <th className="px-3 h-11 font-medium text-center">CNPJ</th>
-                        <th className="px-3 h-11 font-medium text-center">Unidade</th>
-                        <th className="px-3 h-11 font-medium text-center">Cidade/UF</th>
-                        <th className="px-3 h-11 font-medium text-center">Colaboradores</th>
-                        <th className="px-3 h-11 font-medium text-center">Coletores</th>
-                        <th className="px-5 h-11 font-medium text-center">Status</th>
-                        <th className="px-3 h-11 font-medium text-center">Ações</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {empresas.length === 0 ? (
-                        <tr>
-                          <td colSpan={8} className="px-5 py-8 text-center text-muted-foreground">
-                            Nenhuma empresa cadastrada
-                          </td>
+                    <table className="w-full text-sm">
+                      <thead className="esc-table-header">
+                        <tr className="text-left">
+                          <th className="px-5 h-11 font-medium text-center">Nome</th>
+                          <th className="px-3 h-11 font-medium text-center">CNPJ</th>
+                          <th className="px-3 h-11 font-medium text-center">Unidade</th>
+                          <th className="px-3 h-11 font-medium text-center">Cidade/UF</th>
+                          <th className="px-3 h-11 font-medium text-center">Colaboradores</th>
+                          <th className="px-3 h-11 font-medium text-center">Coletores</th>
+                          <th className="px-5 h-11 font-medium text-center">Status</th>
+                          <th className="px-3 h-11 font-medium text-center">Ações</th>
                         </tr>
-                      ) : (
-                        empresas.map((empresa) => (
-                          <tr key={empresa.id} className="border-t border-muted hover:bg-background">
-                            <td className="px-5 h-[56px] font-medium text-foreground text-center">{empresa.nome}</td>
-                            <td className="px-3 text-muted-foreground text-center">{empresa.cnpj || "—"}</td>
-                            <td className="px-3 text-muted-foreground text-center">{empresa.unidade || "—"}</td>
-                            <td className="px-3 text-muted-foreground text-center">{empresa.cidade}/{empresa.estado}</td>
-                            <td className="px-3 text-center font-display font-medium">{empresa.total_colaboradores}</td>
-                            <td className="px-3 text-center font-display font-medium">{empresa.total_coletores}</td>
-                            <td className="px-5 text-center">
-                              <Badge className={cn(
-                                "font-semibold",
-                                empresa.status === "ativa" ? "bg-success-soft text-success-strong" : "bg-muted text-muted-foreground"
-                              )}>
-                                {empresa.status}
-                              </Badge>
-                            </td>
-                            <td className="px-3 text-center">
-                              <div className="flex items-center justify-center gap-1">
-                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
-                                  setEditingEmpresa(empresa);
-                                  setEmpresaForm({
-                                    nome: empresa.nome || '',
-                                    cnpj: empresa.cnpj || '',
-                                    unidade: empresa.unidade || '',
-                                    cidade: empresa.cidade || '',
-                                    estado: empresa.estado || '',
-                                    banco_codigo: empresa.banco_codigo || '',
-                                    agencia: empresa.agencia || '',
-                                    agencia_digito: empresa.agencia_digito || '',
-                                    conta: empresa.conta || '',
-                                    conta_digito: empresa.conta_digito || '',
-                                    convenios_bancario: empresa.convenios_bancario || '',
-                                    codigo_empresa_banco: empresa.codigo_empresa_banco || '',
-                                    nome_empresa_banco: empresa.nome_empresa_banco || '',
-                                  });
-                                  setEmpresaFormErrors({});
-                                  setEmpresaModalOpen(true);
-                                }}>
-                                  <PencilLine className="h-4 w-4" />
-                                </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => { if (confirm("Confirmar exclusão?")) deleteEmpresaMutation.mutate(empresa.id) }}>
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
+                      </thead>
+                      <tbody>
+                        {empresas.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="px-5 py-8 text-center text-muted-foreground">
+                              Nenhuma empresa cadastrada
                             </td>
                           </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
+                        ) : (
+                          empresas.map((empresa) => (
+                            <tr key={empresa.id} className="border-t border-muted hover:bg-background">
+                              <td className="px-5 h-[56px] font-medium text-foreground text-center">{empresa.nome}</td>
+                              <td className="px-3 text-muted-foreground text-center">{empresa.cnpj || "—"}</td>
+                              <td className="px-3 text-muted-foreground text-center">{empresa.unidade || "—"}</td>
+                              <td className="px-3 text-muted-foreground text-center">{empresa.cidade}/{empresa.estado}</td>
+                              <td className="px-3 text-center font-display font-medium">{empresa.total_colaboradores}</td>
+                              <td className="px-3 text-center font-display font-medium">{empresa.total_coletores}</td>
+                              <td className="px-5 text-center">
+                                <Badge className={cn(
+                                  "font-semibold",
+                                  empresa.status === "ativa" ? "bg-success-soft text-success-strong" : "bg-muted text-muted-foreground"
+                                )}>
+                                  {empresa.status}
+                                </Badge>
+                              </td>
+                              <td className="px-3 text-center">
+                                <div className="flex items-center justify-center gap-1">
+                                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
+                                    setEditingEmpresa(empresa);
+                                    setEmpresaForm({
+                                      nome: empresa.nome || '',
+                                      cnpj: empresa.cnpj || '',
+                                      unidade: empresa.unidade || '',
+                                      cidade: empresa.cidade || '',
+                                      estado: empresa.estado || '',
+                                      banco_codigo: empresa.banco_codigo || '',
+                                      agencia: empresa.agencia || '',
+                                      agencia_digito: empresa.agencia_digito || '',
+                                      conta: empresa.conta || '',
+                                      conta_digito: empresa.conta_digito || '',
+                                      convenios_bancario: empresa.convenios_bancario || '',
+                                      codigo_empresa_banco: empresa.codigo_empresa_banco || '',
+                                      nome_empresa_banco: empresa.nome_empresa_banco || '',
+                                      status: empresa.status || 'ativa',
+                                    });
+                                    setEmpresaFormErrors({});
+                                    setEmpresaModalOpen(true);
+                                  }}>
+                                    <PencilLine className="h-4 w-4" />
+                                  </Button>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => { if (confirm("Confirmar exclusão?")) deleteEmpresaMutation.mutate(empresa.id) }}>
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
                   </div>
                 </section>
 
@@ -1518,52 +1577,52 @@ validateData: (rows) => {
                     </div>
                   </div>
                   <div className="max-h-[60vh] overflow-y-scroll pr-1">
-                  <table className="w-full text-sm">
-                    <thead className="esc-table-header">
-                      <tr className="text-left">
-                        <th className="px-5 h-11 font-medium text-center">Modelo</th>
-                        <th className="px-3 h-11 font-medium text-center">Série</th>
-                        <th className="px-3 h-11 font-medium text-center">Empresa</th>
-                        <th className="px-3 h-11 font-medium text-center">Última sync</th>
-                        <th className="px-5 h-11 font-medium text-center">Status</th>
-                        <th className="px-3 h-11 font-medium text-center">Ações</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {coletores.map((coletor) => (
-                        <tr key={coletor.id} className="border-t border-muted hover:bg-background">
-                          <td className="px-5 h-[56px] font-medium text-foreground text-center">{coletor.modelo}</td>
-                          <td className="px-3 text-muted-foreground text-center">{coletor.serie}</td>
-                          <td className="px-3 text-muted-foreground text-center">{coletor.empresas?.nome || "—"}</td>
-                          <td className="px-3 text-center text-muted-foreground">
-                            {coletor.ultima_sync ? new Date(coletor.ultima_sync).toLocaleString("pt-BR") : "Nunca"}
-                          </td>
-                          <td className="px-5 text-center">
-                            <Badge className={cn(
-                              "font-semibold",
-                              coletor.status === "online"
-                                ? "bg-success-soft text-success-strong"
-                                : coletor.status === "erro"
-                                  ? "bg-destructive-soft text-destructive-strong"
-                                  : "bg-muted text-muted-foreground"
-                            )}>
-                              {coletor.status}
-                            </Badge>
-                          </td>
-                          <td className="px-3 text-center">
-                            <div className="flex items-center justify-center gap-1">
-                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(`/coletores?id=${coletor.id}`)}>
-                                <PencilLine className="h-4 w-4" />
-                              </Button>
-                              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => { if (confirm("Confirmar exclusão?")) deleteColetorMutation.mutate(coletor.id) }}>
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </td>
+                    <table className="w-full text-sm">
+                      <thead className="esc-table-header">
+                        <tr className="text-left">
+                          <th className="px-5 h-11 font-medium text-center">Modelo</th>
+                          <th className="px-3 h-11 font-medium text-center">Série</th>
+                          <th className="px-3 h-11 font-medium text-center">Empresa</th>
+                          <th className="px-3 h-11 font-medium text-center">Última sync</th>
+                          <th className="px-5 h-11 font-medium text-center">Status</th>
+                          <th className="px-3 h-11 font-medium text-center">Ações</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {coletores.map((coletor) => (
+                          <tr key={coletor.id} className="border-t border-muted hover:bg-background">
+                            <td className="px-5 h-[56px] font-medium text-foreground text-center">{coletor.modelo}</td>
+                            <td className="px-3 text-muted-foreground text-center">{coletor.serie}</td>
+                            <td className="px-3 text-muted-foreground text-center">{coletor.empresas?.nome || "—"}</td>
+                            <td className="px-3 text-center text-muted-foreground">
+                              {coletor.ultima_sync ? new Date(coletor.ultima_sync).toLocaleString("pt-BR") : "Nunca"}
+                            </td>
+                            <td className="px-5 text-center">
+                              <Badge className={cn(
+                                "font-semibold",
+                                coletor.status === "online"
+                                  ? "bg-success-soft text-success-strong"
+                                  : coletor.status === "erro"
+                                    ? "bg-destructive-soft text-destructive-strong"
+                                    : "bg-muted text-muted-foreground"
+                              )}>
+                                {coletor.status}
+                              </Badge>
+                            </td>
+                            <td className="px-3 text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(`/coletores?id=${coletor.id}`)}>
+                                  <PencilLine className="h-4 w-4" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => { if (confirm("Confirmar exclusão?")) deleteColetorMutation.mutate(coletor.id) }}>
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </section>
               </TabsContent>
@@ -1587,59 +1646,59 @@ validateData: (rows) => {
                     </div>
                   </div>
                   <div className="max-h-[60vh] overflow-y-scroll pr-1">
-                  <table className="w-full text-sm">
-                    <thead className="esc-table-header">
-                      <tr className="text-left">
-                        <th className="px-5 h-11 font-medium text-center">Nome</th>
-                        <th className="px-3 h-11 font-medium text-center">CNPJ/CPF</th>
-                        <th className="px-3 h-11 font-medium text-center">Telefone</th>
-                        <th className="px-3 h-11 font-medium text-center">Email</th>
-                        <th className="px-3 h-11 font-medium text-center">Endereço</th>
-                        <th className="px-5 h-11 font-medium text-center">Status</th>
-                        <th className="px-3 h-11 font-medium text-center">Ações</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {transportadoras.length === 0 ? (
-                        <tr>
-                          <td colSpan={7} className="px-5 py-8 text-center text-muted-foreground">
-                            Nenhuma transportadora cadastrada
-                          </td>
+                    <table className="w-full text-sm">
+                      <thead className="esc-table-header">
+                        <tr className="text-left">
+                          <th className="px-5 h-11 font-medium text-center">Nome</th>
+                          <th className="px-3 h-11 font-medium text-center">CNPJ/CPF</th>
+                          <th className="px-3 h-11 font-medium text-center">Telefone</th>
+                          <th className="px-3 h-11 font-medium text-center">Email</th>
+                          <th className="px-3 h-11 font-medium text-center">Endereço</th>
+                          <th className="px-5 h-11 font-medium text-center">Status</th>
+                          <th className="px-3 h-11 font-medium text-center">Ações</th>
                         </tr>
-                      ) : (
-                        transportadoras.map((transportadora) => (
-                          <tr key={transportadora.id} className="border-t border-muted hover:bg-background">
-                            <td className="px-5 h-[56px] font-medium text-foreground text-center">{transportadora.nome}</td>
-                            <td className="px-3 text-muted-foreground text-center">{transportadora.documento || "—"}</td>
-                            <td className="px-3 text-muted-foreground text-center">{transportadora.telefone || "—"}</td>
-                            <td className="px-3 text-muted-foreground text-center">{transportadora.email || "—"}</td>
-                            <td className="px-3 text-muted-foreground text-center text-xs">{transportadora.endereco || "—"}</td>
-                            <td className="px-5 text-center">
-                              <Badge className={cn(
-                                "font-semibold",
-                                transportadora.ativo ? "bg-success-soft text-success-strong" : "bg-muted text-muted-foreground"
-                              )}>
-                                {transportadora.ativo ? "Ativo" : "Inativo"}
-                              </Badge>
-                            </td>
-                            <td className="px-3 text-center">
-                              <div className="flex items-center justify-center gap-1">
-                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingTransportadora(transportadora)}>
-                                  <PencilLine className="h-4 w-4" />
-                                </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-amber-600 hover:text-amber-700" onClick={() => toggleTransportadoraAtivoMutation.mutate({ id: transportadora.id, ativo: !transportadora.ativo })} title={transportadora.ativo ? "Desativar" : "Ativar"}>
-                                  {transportadora.ativo ? <PowerOff className="h-4 w-4" /> : <ToggleRight className="h-4 w-4" />}
-                                </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={async () => { const result = await TransportadoraClienteService.deleteWithCheck(transportadora.id); if (!result.success) { setItemToDelete(transportadora); setDeleteModalType("transportadora"); setDeleteErrorDetails(result.detalhes || []); setDeleteModalOpen(true); } else if (confirm("Confirmar exclusão definitiva? Esta ação não pode ser desfeita.")) { deleteTransportadoraMutation.mutate(transportadora.id); } }}>
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
+                      </thead>
+                      <tbody>
+                        {transportadoras.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="px-5 py-8 text-center text-muted-foreground">
+                              Nenhuma transportadora cadastrada
                             </td>
                           </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
+                        ) : (
+                          transportadoras.map((transportadora) => (
+                            <tr key={transportadora.id} className="border-t border-muted hover:bg-background">
+                              <td className="px-5 h-[56px] font-medium text-foreground text-center">{transportadora.nome}</td>
+                              <td className="px-3 text-muted-foreground text-center">{transportadora.documento || "—"}</td>
+                              <td className="px-3 text-muted-foreground text-center">{transportadora.telefone || "—"}</td>
+                              <td className="px-3 text-muted-foreground text-center">{transportadora.email || "—"}</td>
+                              <td className="px-3 text-muted-foreground text-center text-xs">{transportadora.endereco || "—"}</td>
+                              <td className="px-5 text-center">
+                                <Badge className={cn(
+                                  "font-semibold",
+                                  transportadora.ativo ? "bg-success-soft text-success-strong" : "bg-muted text-muted-foreground"
+                                )}>
+                                  {transportadora.ativo ? "Ativo" : "Inativo"}
+                                </Badge>
+                              </td>
+                              <td className="px-3 text-center">
+                                <div className="flex items-center justify-center gap-1">
+                                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingTransportadora(transportadora)}>
+                                    <PencilLine className="h-4 w-4" />
+                                  </Button>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-amber-600 hover:text-amber-700" onClick={() => toggleTransportadoraAtivoMutation.mutate({ id: transportadora.id, ativo: !transportadora.ativo })} title={transportadora.ativo ? "Desativar" : "Ativar"}>
+                                    {transportadora.ativo ? <PowerOff className="h-4 w-4" /> : <ToggleRight className="h-4 w-4" />}
+                                  </Button>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={async () => { const result = await TransportadoraClienteService.deleteWithCheck(transportadora.id); if (!result.success) { setItemToDelete(transportadora); setDeleteModalType("transportadora"); setDeleteErrorDetails(result.detalhes || []); setDeleteModalOpen(true); } else if (confirm("Confirmar exclusão definitiva? Esta ação não pode ser desfeita.")) { deleteTransportadoraMutation.mutate(transportadora.id); } }}>
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
                   </div>
                 </section>
               </TabsContent>
@@ -1663,59 +1722,59 @@ validateData: (rows) => {
                     </div>
                   </div>
                   <div className="max-h-[60vh] overflow-y-scroll pr-1">
-                  <table className="w-full text-sm">
-                    <thead className="esc-table-header">
-                      <tr className="text-left">
-                        <th className="px-5 h-11 font-medium text-center">Nome</th>
-                        <th className="px-3 h-11 font-medium text-center">CNPJ/CPF</th>
-                        <th className="px-3 h-11 font-medium text-center">Telefone</th>
-                        <th className="px-3 h-11 font-medium text-center">Email</th>
-                        <th className="px-3 h-11 font-medium text-center">Endereço</th>
-                        <th className="px-5 h-11 font-medium text-center">Status</th>
-                        <th className="px-3 h-11 font-medium text-center">Ações</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {fornecedores.length === 0 ? (
-                        <tr>
-                          <td colSpan={7} className="px-5 py-8 text-center text-muted-foreground">
-                            Nenhum fornecedor cadastrado
-                          </td>
+                    <table className="w-full text-sm">
+                      <thead className="esc-table-header">
+                        <tr className="text-left">
+                          <th className="px-5 h-11 font-medium text-center">Nome</th>
+                          <th className="px-3 h-11 font-medium text-center">CNPJ/CPF</th>
+                          <th className="px-3 h-11 font-medium text-center">Telefone</th>
+                          <th className="px-3 h-11 font-medium text-center">Email</th>
+                          <th className="px-3 h-11 font-medium text-center">Endereço</th>
+                          <th className="px-5 h-11 font-medium text-center">Status</th>
+                          <th className="px-3 h-11 font-medium text-center">Ações</th>
                         </tr>
-                      ) : (
-                        fornecedores.map((fornecedor) => (
-                          <tr key={fornecedor.id} className="border-t border-muted hover:bg-background">
-                            <td className="px-5 h-[56px] font-medium text-foreground text-center">{fornecedor.nome}</td>
-                            <td className="px-3 text-muted-foreground text-center">{fornecedor.documento || "—"}</td>
-                            <td className="px-3 text-muted-foreground text-center">{fornecedor.telefone || "—"}</td>
-                            <td className="px-3 text-muted-foreground text-center">{fornecedor.email || "—"}</td>
-                            <td className="px-3 text-muted-foreground text-center text-xs">{fornecedor.endereco || "—"}</td>
-                            <td className="px-5 text-center">
-                              <Badge className={cn(
-                                "font-semibold",
-                                fornecedor.ativo ? "bg-success-soft text-success-strong" : "bg-muted text-muted-foreground"
-                              )}>
-                                {fornecedor.ativo ? "Ativo" : "Inativo"}
-                              </Badge>
-                            </td>
-                            <td className="px-3 text-center">
-                              <div className="flex items-center justify-center gap-1">
-                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingFornecedor(fornecedor)}>
-                                  <PencilLine className="h-4 w-4" />
-                                </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-amber-600 hover:text-amber-700" onClick={() => toggleFornecedorAtivoMutation.mutate({ id: fornecedor.id, ativo: !fornecedor.ativo })} title={fornecedor.ativo ? "Desativar" : "Ativar"}>
-                                  {fornecedor.ativo ? <PowerOff className="h-4 w-4" /> : <ToggleRight className="h-4 w-4" />}
-                                </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={async () => { const result = await FornecedorService.deleteWithCheck(fornecedor.id); if (!result.success) { setItemToDelete(fornecedor); setDeleteModalType("fornecedor"); setDeleteErrorDetails(result.detalhes || []); setDeleteModalOpen(true); } else if (confirm("Confirmar exclusão definitiva? Esta ação não pode ser desfeita.")) { deleteFornecedorMutation.mutate(fornecedor.id); } }}>
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
+                      </thead>
+                      <tbody>
+                        {fornecedores.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="px-5 py-8 text-center text-muted-foreground">
+                              Nenhum fornecedor cadastrado
                             </td>
                           </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
+                        ) : (
+                          fornecedores.map((fornecedor) => (
+                            <tr key={fornecedor.id} className="border-t border-muted hover:bg-background">
+                              <td className="px-5 h-[56px] font-medium text-foreground text-center">{fornecedor.nome}</td>
+                              <td className="px-3 text-muted-foreground text-center">{fornecedor.documento || "—"}</td>
+                              <td className="px-3 text-muted-foreground text-center">{fornecedor.telefone || "—"}</td>
+                              <td className="px-3 text-muted-foreground text-center">{fornecedor.email || "—"}</td>
+                              <td className="px-3 text-muted-foreground text-center text-xs">{fornecedor.endereco || "—"}</td>
+                              <td className="px-5 text-center">
+                                <Badge className={cn(
+                                  "font-semibold",
+                                  fornecedor.ativo ? "bg-success-soft text-success-strong" : "bg-muted text-muted-foreground"
+                                )}>
+                                  {fornecedor.ativo ? "Ativo" : "Inativo"}
+                                </Badge>
+                              </td>
+                              <td className="px-3 text-center">
+                                <div className="flex items-center justify-center gap-1">
+                                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingFornecedor(fornecedor)}>
+                                    <PencilLine className="h-4 w-4" />
+                                  </Button>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-amber-600 hover:text-amber-700" onClick={() => toggleFornecedorAtivoMutation.mutate({ id: fornecedor.id, ativo: !fornecedor.ativo })} title={fornecedor.ativo ? "Desativar" : "Ativar"}>
+                                    {fornecedor.ativo ? <PowerOff className="h-4 w-4" /> : <ToggleRight className="h-4 w-4" />}
+                                  </Button>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={async () => { const result = await FornecedorService.deleteWithCheck(fornecedor.id); if (!result.success) { setItemToDelete(fornecedor); setDeleteModalType("fornecedor"); setDeleteErrorDetails(result.detalhes || []); setDeleteModalOpen(true); } else if (confirm("Confirmar exclusão definitiva? Esta ação não pode ser desfeita.")) { deleteFornecedorMutation.mutate(fornecedor.id); } }}>
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
                   </div>
                 </section>
               </TabsContent>
@@ -1739,53 +1798,53 @@ validateData: (rows) => {
                     </div>
                   </div>
                   <div className="max-h-[60vh] overflow-y-scroll pr-1">
-                  <table className="w-full text-sm">
-                    <thead className="esc-table-header">
-                      <tr className="text-left">
-                        <th className="px-5 h-11 font-medium text-center">Nome</th>
-                        <th className="px-3 h-11 font-medium text-center">Descrição</th>
-                        <th className="px-5 h-11 font-medium text-center">Status</th>
-                        <th className="px-3 h-11 font-medium text-center">Ações</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {tiposServico.length === 0 ? (
-                        <tr>
-                          <td colSpan={4} className="px-5 py-8 text-center text-muted-foreground">
-                            Nenhum tipo de serviço cadastrado
-                          </td>
+                    <table className="w-full text-sm">
+                      <thead className="esc-table-header">
+                        <tr className="text-left">
+                          <th className="px-5 h-11 font-medium text-center">Nome</th>
+                          <th className="px-3 h-11 font-medium text-center">Descrição</th>
+                          <th className="px-5 h-11 font-medium text-center">Status</th>
+                          <th className="px-3 h-11 font-medium text-center">Ações</th>
                         </tr>
-                      ) : (
-                        tiposServico.map((servico) => (
-                          <tr key={servico.id} className="border-t border-muted hover:bg-background">
-                            <td className="px-5 h-[56px] font-medium text-foreground text-center">{servico.nome}</td>
-                            <td className="px-3 text-muted-foreground text-center">{servico.descricao || "—"}</td>
-                            <td className="px-5 text-center">
-                              <Badge className={cn(
-                                "font-semibold",
-                                servico.ativo ? "bg-success-soft text-success-strong" : "bg-muted text-muted-foreground"
-                              )}>
-                                {servico.ativo ? "Ativo" : "Inativo"}
-                              </Badge>
-                            </td>
-                            <td className="px-3 text-center">
-                              <div className="flex items-center justify-center gap-1">
-                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingServico(servico)}>
-                                  <PencilLine className="h-4 w-4" />
-                                </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-amber-600 hover:text-amber-700" onClick={() => toggleServicoAtivoMutation.mutate({ id: servico.id, ativo: !servico.ativo })} title={servico.ativo ? "Desativar" : "Ativar"}>
-                                  {servico.ativo ? <PowerOff className="h-4 w-4" /> : <ToggleRight className="h-4 w-4" />}
-                                </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={async () => { const result = await TipoServicoOperacionalService.deleteWithCheck(servico.id); if (!result.success) { setItemToDelete(servico); setDeleteModalType("servico"); setDeleteErrorDetails(result.detalhes || []); setDeleteModalOpen(true); } else if (confirm("Confirmar exclusão definitiva? Esta ação não pode ser desfeita.")) { deleteServicoMutation.mutate(servico.id); } }}>
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
+                      </thead>
+                      <tbody>
+                        {tiposServico.length === 0 ? (
+                          <tr>
+                            <td colSpan={4} className="px-5 py-8 text-center text-muted-foreground">
+                              Nenhum tipo de serviço cadastrado
                             </td>
                           </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
+                        ) : (
+                          tiposServico.map((servico) => (
+                            <tr key={servico.id} className="border-t border-muted hover:bg-background">
+                              <td className="px-5 h-[56px] font-medium text-foreground text-center">{servico.nome}</td>
+                              <td className="px-3 text-muted-foreground text-center">{servico.descricao || "—"}</td>
+                              <td className="px-5 text-center">
+                                <Badge className={cn(
+                                  "font-semibold",
+                                  servico.ativo ? "bg-success-soft text-success-strong" : "bg-muted text-muted-foreground"
+                                )}>
+                                  {servico.ativo ? "Ativo" : "Inativo"}
+                                </Badge>
+                              </td>
+                              <td className="px-3 text-center">
+                                <div className="flex items-center justify-center gap-1">
+                                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingServico(servico)}>
+                                    <PencilLine className="h-4 w-4" />
+                                  </Button>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-amber-600 hover:text-amber-700" onClick={() => toggleServicoAtivoMutation.mutate({ id: servico.id, ativo: !servico.ativo })} title={servico.ativo ? "Desativar" : "Ativar"}>
+                                    {servico.ativo ? <PowerOff className="h-4 w-4" /> : <ToggleRight className="h-4 w-4" />}
+                                  </Button>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={async () => { const result = await TipoServicoOperacionalService.deleteWithCheck(servico.id); if (!result.success) { setItemToDelete(servico); setDeleteModalType("servico"); setDeleteErrorDetails(result.detalhes || []); setDeleteModalOpen(true); } else if (confirm("Confirmar exclusão definitiva? Esta ação não pode ser desfeita.")) { deleteServicoMutation.mutate(servico.id); } }}>
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
                   </div>
                 </section>
               </TabsContent>
@@ -2067,169 +2126,169 @@ validateData: (rows) => {
           </DialogHeader>
 
           <div className="overflow-y-auto max-h-[60vh]">
-          {colaboradorStep === 1 && (
-            <div className="grid grid-cols-2 gap-4 py-2">
-              <div className="col-span-2 space-y-1.5">
-                <Label htmlFor="colab_nome">Nome completo <span className="text-destructive">*</span></Label>
-                <Input id="colab_nome" value={colaboradorForm.nome} onChange={(e) => setColaboradorForm({ ...colaboradorForm, nome: e.target.value })} />
+            {colaboradorStep === 1 && (
+              <div className="grid grid-cols-2 gap-4 py-2">
+                <div className="col-span-2 space-y-1.5">
+                  <Label htmlFor="colab_nome">Nome completo <span className="text-destructive">*</span></Label>
+                  <Input id="colab_nome" value={colaboradorForm.nome} onChange={(e) => setColaboradorForm({ ...colaboradorForm, nome: e.target.value })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="colab_cpf">CPF <span className="text-destructive">*</span></Label>
+                  <Input id="colab_cpf" value={colaboradorForm.cpf} onChange={(e) => setColaboradorForm({ ...colaboradorForm, cpf: e.target.value })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="colab_telefone">Telefone <span className="text-destructive">*</span></Label>
+                  <Input id="colab_telefone" value={colaboradorForm.telefone} onChange={(e) => handlePhoneChangeCC(e.target.value)} />
+                </div>
+                <div className="col-span-2 space-y-1.5">
+                  <Label>Empresa <span className="text-destructive">*</span></Label>
+                  <Select value={colaboradorForm.empresa_id} onValueChange={(v) => setColaboradorForm({ ...colaboradorForm, empresa_id: v })}>
+                    <SelectTrigger><SelectValue placeholder="Selecione uma empresa" /></SelectTrigger>
+                    <SelectContent>
+                      {empresas.map((e) => (
+                        <SelectItem key={e.id} value={e.id}>{e.nome} — {e.cidade}/{e.estado}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="colab_cpf">CPF <span className="text-destructive">*</span></Label>
-                <Input id="colab_cpf" value={colaboradorForm.cpf} onChange={(e) => setColaboradorForm({ ...colaboradorForm, cpf: e.target.value })} />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="colab_telefone">Telefone <span className="text-destructive">*</span></Label>
-                <Input id="colab_telefone" value={colaboradorForm.telefone} onChange={(e) => handlePhoneChangeCC(e.target.value)} />
-              </div>
-              <div className="col-span-2 space-y-1.5">
-                <Label>Empresa <span className="text-destructive">*</span></Label>
-                <Select value={colaboradorForm.empresa_id} onValueChange={(v) => setColaboradorForm({ ...colaboradorForm, empresa_id: v })}>
-                  <SelectTrigger><SelectValue placeholder="Selecione uma empresa" /></SelectTrigger>
-                  <SelectContent>
-                    {empresas.map((e) => (
-                      <SelectItem key={e.id} value={e.id}>{e.nome} — {e.cidade}/{e.estado}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          )}
+            )}
 
-          {colaboradorStep === 2 && (
-            <div className="grid grid-cols-2 gap-4 py-2">
-              <div className="space-y-1.5">
-                <Label>Tipo de colaborador <span className="text-destructive">*</span></Label>
-                <Select value={colaboradorForm.tipo_colaborador} onValueChange={(v) => setColaboradorForm({ ...colaboradorForm, tipo_colaborador: v, permitir_lancamento_operacional: v === "DIARISTA" ? true : colaboradorForm.permitir_lancamento_operacional })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="DIARISTA">DIARISTA</SelectItem>
-                    <SelectItem value="CLT">CLT</SelectItem>
-                    <SelectItem value="INTERMITENTE">INTERMITENTE</SelectItem>
-                    <SelectItem value="PRODUÇÃO">PRODUÇÃO</SelectItem>
-                    <SelectItem value="TERCEIRIZADO">TERCEIRIZADO</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Status <span className="text-destructive">*</span></Label>
-                <Select value={colaboradorForm.status} onValueChange={(v) => setColaboradorForm({ ...colaboradorForm, status: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ativo">Ativo</SelectItem>
-                    <SelectItem value="inativo">Inativo</SelectItem>
-                    <SelectItem value="pendente">Pendente</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              {colaboradorForm.tipo_colaborador === "DIARISTA" ? (
-                <>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="colab_valor">Valor da diária (R$) <span className="text-destructive">*</span></Label>
-                    <Input id="colab_valor" type="number" value={colaboradorForm.valor_base} onChange={(e) => setColaboradorForm({ ...colaboradorForm, valor_base: e.target.value })} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="colab_cargo">Função operacional <span className="text-destructive">*</span></Label>
-                    <Input id="colab_cargo" value={colaboradorForm.cargo} onChange={(e) => setColaboradorForm({ ...colaboradorForm, cargo: e.target.value })} />
-                  </div>
-                  <div className="col-span-2 flex items-center justify-between rounded-md border border-border p-3">
-                    <div>
-                      <Label className="cursor-pointer">Permitir lançamento operacional</Label>
-                      <p className="text-xs text-muted-foreground mt-0.5">Diarista aparecerá na tela de lançamentos.</p>
+            {colaboradorStep === 2 && (
+              <div className="grid grid-cols-2 gap-4 py-2">
+                <div className="space-y-1.5">
+                  <Label>Tipo de colaborador <span className="text-destructive">*</span></Label>
+                  <Select value={colaboradorForm.tipo_colaborador} onValueChange={(v) => setColaboradorForm({ ...colaboradorForm, tipo_colaborador: v, permitir_lancamento_operacional: v === "DIARISTA" ? true : colaboradorForm.permitir_lancamento_operacional })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="DIARISTA">DIARISTA</SelectItem>
+                      <SelectItem value="CLT">CLT</SelectItem>
+                      <SelectItem value="INTERMITENTE">INTERMITENTE</SelectItem>
+                      <SelectItem value="PRODUÇÃO">PRODUÇÃO</SelectItem>
+                      <SelectItem value="TERCEIRIZADO">TERCEIRIZADO</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Status <span className="text-destructive">*</span></Label>
+                  <Select value={colaboradorForm.status} onValueChange={(v) => setColaboradorForm({ ...colaboradorForm, status: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ativo">Ativo</SelectItem>
+                      <SelectItem value="inativo">Inativo</SelectItem>
+                      <SelectItem value="pendente">Pendente</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {colaboradorForm.tipo_colaborador === "DIARISTA" ? (
+                  <>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="colab_valor">Valor da diária (R$) <span className="text-destructive">*</span></Label>
+                      <Input id="colab_valor" type="number" value={colaboradorForm.valor_base} onChange={(e) => setColaboradorForm({ ...colaboradorForm, valor_base: e.target.value })} />
                     </div>
-                    <Switch checked={colaboradorForm.permitir_lancamento_operacional} onCheckedChange={(v) => setColaboradorForm({ ...colaboradorForm, permitir_lancamento_operacional: v })} />
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="colab_cargo">Cargo <span className="text-destructive">*</span></Label>
-                    <Input id="colab_cargo" value={colaboradorForm.cargo} onChange={(e) => setColaboradorForm({ ...colaboradorForm, cargo: e.target.value })} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="colab_matricula">Matrícula <span className="text-destructive">*</span></Label>
-                    <Input id="colab_matricula" value={colaboradorForm.matricula} onChange={(e) => setColaboradorForm({ ...colaboradorForm, matricula: e.target.value })} />
-                  </div>
-                  <div className="space-y-1.5">
-<Label>Tipo de contrato <span className="text-destructive">*</span></Label>
-                    <Select value={colaboradorForm.tipo_contrato} onValueChange={(v: "Hora" | "Operação" | "Mensal") => setColaboradorForm({ ...colaboradorForm, tipo_contrato: v })}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Hora">Por hora</SelectItem>
-                        <SelectItem value="Operação">Por operação</SelectItem>
-                        <SelectItem value="Mensal">Mensal</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="colab_valor">Valor base (R$) <span className="text-destructive">*</span></Label>
-                    <Input id="colab_valor" type="number" value={colaboradorForm.valor_base} onChange={(e) => setColaboradorForm({ ...colaboradorForm, valor_base: e.target.value })} />
-                  </div>
-                  <div className="col-span-2 flex items-center justify-between rounded-md border border-border p-3">
-                    <div>
-                      <Label className="cursor-pointer">Gera faturamento</Label>
-                      <p className="text-xs text-muted-foreground mt-0.5">Colaborador entra no cálculo financeiro.</p>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="colab_cargo">Função operacional <span className="text-destructive">*</span></Label>
+                      <Input id="colab_cargo" value={colaboradorForm.cargo} onChange={(e) => setColaboradorForm({ ...colaboradorForm, cargo: e.target.value })} />
                     </div>
-                    <Switch checked={colaboradorForm.flag_faturamento} onCheckedChange={(v) => setColaboradorForm({ ...colaboradorForm, flag_faturamento: v })} />
-                  </div>
-                </>
-              )}
-            </div>
-          )}
+                    <div className="col-span-2 flex items-center justify-between rounded-md border border-border p-3">
+                      <div>
+                        <Label className="cursor-pointer">Permitir lançamento operacional</Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">Diarista aparecerá na tela de lançamentos.</p>
+                      </div>
+                      <Switch checked={colaboradorForm.permitir_lancamento_operacional} onCheckedChange={(v) => setColaboradorForm({ ...colaboradorForm, permitir_lancamento_operacional: v })} />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="colab_cargo">Cargo <span className="text-destructive">*</span></Label>
+                      <Input id="colab_cargo" value={colaboradorForm.cargo} onChange={(e) => setColaboradorForm({ ...colaboradorForm, cargo: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="colab_matricula">Matrícula <span className="text-destructive">*</span></Label>
+                      <Input id="colab_matricula" value={colaboradorForm.matricula} onChange={(e) => setColaboradorForm({ ...colaboradorForm, matricula: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Tipo de contrato <span className="text-destructive">*</span></Label>
+                      <Select value={colaboradorForm.tipo_contrato} onValueChange={(v: "Hora" | "Operação" | "Mensal") => setColaboradorForm({ ...colaboradorForm, tipo_contrato: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Hora">Por hora</SelectItem>
+                          <SelectItem value="Operação">Por operação</SelectItem>
+                          <SelectItem value="Mensal">Mensal</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="colab_valor">Valor base (R$) <span className="text-destructive">*</span></Label>
+                      <Input id="colab_valor" type="number" value={colaboradorForm.valor_base} onChange={(e) => setColaboradorForm({ ...colaboradorForm, valor_base: e.target.value })} />
+                    </div>
+                    <div className="col-span-2 flex items-center justify-between rounded-md border border-border p-3">
+                      <div>
+                        <Label className="cursor-pointer">Gera faturamento</Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">Colaborador entra no cálculo financeiro.</p>
+                      </div>
+                      <Switch checked={colaboradorForm.flag_faturamento} onCheckedChange={(v) => setColaboradorForm({ ...colaboradorForm, flag_faturamento: v })} />
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
 
-          {colaboradorStep === 3 && (
-            <div className="grid grid-cols-2 gap-4 py-2">
-              <div className="col-span-2 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="nome_completo">Nome completo (como conta) <span className="text-destructive">*</span></Label>
-                  {!colaboradorBankNameLocked && (
-                    <button type="button" onClick={() => setColaboradorBankNameLocked(true)} className="text-xs text-muted-foreground hover:text-primary transition-colors">
-                      Bloquear nome
-                    </button>
-                  )}
-                  {colaboradorBankNameLocked && (
-                    <button type="button" onClick={() => setColaboradorBankNameLocked(false)} className="text-xs text-muted-foreground hover:text-primary transition-colors">
-                      Editar nome da conta
-                    </button>
-                  )}
+            {colaboradorStep === 3 && (
+              <div className="grid grid-cols-2 gap-4 py-2">
+                <div className="col-span-2 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="nome_completo">Nome completo (como conta) <span className="text-destructive">*</span></Label>
+                    {!colaboradorBankNameLocked && (
+                      <button type="button" onClick={() => setColaboradorBankNameLocked(true)} className="text-xs text-muted-foreground hover:text-primary transition-colors">
+                        Bloquear nome
+                      </button>
+                    )}
+                    {colaboradorBankNameLocked && (
+                      <button type="button" onClick={() => setColaboradorBankNameLocked(false)} className="text-xs text-muted-foreground hover:text-primary transition-colors">
+                        Editar nome da conta
+                      </button>
+                    )}
+                  </div>
+                  <Input
+                    id="nome_completo"
+                    value={colaboradorBankNameLocked ? colaboradorForm.nome : colaboradorForm.nome_completo}
+                    onChange={(e) => setColaboradorForm({ ...colaboradorForm, nome_completo: e.target.value })}
+                    disabled={colaboradorBankNameLocked}
+                    placeholder="Nome conforme documento bancário"
+                  />
                 </div>
-                <Input
-                  id="nome_completo"
-                  value={colaboradorBankNameLocked ? colaboradorForm.nome : colaboradorForm.nome_completo}
-                  onChange={(e) => setColaboradorForm({ ...colaboradorForm, nome_completo: e.target.value })}
-                  disabled={colaboradorBankNameLocked}
-                  placeholder="Nome conforme documento bancário"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="banco_codigo">Cód. Banco <span className="text-destructive">*</span></Label>
-                <Input id="banco_codigo" value={colaboradorForm.banco_codigo} onChange={(e) => setColaboradorForm({ ...colaboradorForm, banco_codigo: e.target.value })} placeholder="Ex: 341" />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Tipo de Conta <span className="text-destructive">*</span></Label>
-                <Select value={colaboradorForm.tipo_conta} onValueChange={(v) => setColaboradorForm({ ...colaboradorForm, tipo_conta: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="corrente">Corrente</SelectItem>
-                    <SelectItem value="poupanca">Poupança</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="agência">Agência <span className="text-destructive">*</span></Label>
-                <div className="flex gap-2">
-                  <Input id="agencia" value={colaboradorForm.agencia} onChange={(e) => setColaboradorForm({ ...colaboradorForm, agencia: e.target.value })} className="flex-1" />
-                  <Input id="agencia_digito" value={colaboradorForm.agencia_digito} onChange={(e) => setColaboradorForm({ ...colaboradorForm, agencia_digito: e.target.value })} className="w-16" placeholder="Díg." />
+                <div className="space-y-1.5">
+                  <Label htmlFor="banco_codigo">Cód. Banco <span className="text-destructive">*</span></Label>
+                  <Input id="banco_codigo" value={colaboradorForm.banco_codigo} onChange={(e) => setColaboradorForm({ ...colaboradorForm, banco_codigo: e.target.value })} placeholder="Ex: 341" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Tipo de Conta <span className="text-destructive">*</span></Label>
+                  <Select value={colaboradorForm.tipo_conta} onValueChange={(v) => setColaboradorForm({ ...colaboradorForm, tipo_conta: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="corrente">Corrente</SelectItem>
+                      <SelectItem value="poupanca">Poupança</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="agência">Agência <span className="text-destructive">*</span></Label>
+                  <div className="flex gap-2">
+                    <Input id="agencia" value={colaboradorForm.agencia} onChange={(e) => setColaboradorForm({ ...colaboradorForm, agencia: e.target.value })} className="flex-1" />
+                    <Input id="agencia_digito" value={colaboradorForm.agencia_digito} onChange={(e) => setColaboradorForm({ ...colaboradorForm, agencia_digito: e.target.value })} className="w-16" placeholder="Díg." />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="conta">Conta <span className="text-destructive">*</span></Label>
+                  <div className="flex gap-2">
+                    <Input id="conta" value={colaboradorForm.conta} onChange={(e) => setColaboradorForm({ ...colaboradorForm, conta: e.target.value })} className="flex-1" />
+                    <Input id="conta_digito" value={colaboradorForm.conta_digito} onChange={(e) => setColaboradorForm({ ...colaboradorForm, conta_digito: e.target.value })} className="w-16" placeholder="Díg." />
+                  </div>
                 </div>
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="conta">Conta <span className="text-destructive">*</span></Label>
-                <div className="flex gap-2">
-                  <Input id="conta" value={colaboradorForm.conta} onChange={(e) => setColaboradorForm({ ...colaboradorForm, conta: e.target.value })} className="flex-1" />
-                  <Input id="conta_digito" value={colaboradorForm.conta_digito} onChange={(e) => setColaboradorForm({ ...colaboradorForm, conta_digito: e.target.value })} className="w-16" placeholder="Díg." />
-                </div>
-              </div>
-            </div>
-          )}
+            )}
           </div>
 
           <div className="flex justify-end gap-2 pt-4 border-t">
@@ -2374,6 +2433,12 @@ validateData: (rows) => {
                 </div>
               </div>
             </div>
+            {editingEmpresa && (
+              <div className="flex items-center gap-2 mt-4 border-t pt-4">
+                <input type="checkbox" id="emp_ativa" checked={empresaForm.status === "ativa"} onChange={(e) => setEmpresaForm({ ...empresaForm, status: e.target.checked ? "ativa" : "inativa" })} />
+                <Label htmlFor="emp_ativa" className="cursor-pointer">Empresa Ativa</Label>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setEmpresaModalOpen(false); setEmpresaFormErrors({}); setEditingEmpresa(null); }}>Cancelar</Button>
@@ -2449,7 +2514,10 @@ validateData: (rows) => {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={transportadoraModalOpen} onOpenChange={setTransportadoraModalOpen}>
+      <Dialog open={transportadoraModalOpen} onOpenChange={(open) => {
+        setTransportadoraModalOpen(open);
+        if (!open) resetTransportadoraForm();
+      }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Nova Transportadora</DialogTitle>
@@ -2459,29 +2527,33 @@ validateData: (rows) => {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="space-y-1.5">
-              <Label htmlFor="trans_nome">Nome</Label>
-              <Input id="trans_nome" value={transportadoraForm.nome} onChange={(e) => setTransportadoraForm({ ...transportadoraForm, nome: e.target.value })} placeholder="Ex: Transportadora XYZ" />
+              <Label htmlFor="trans_nome">Nome <span className="text-destructive">*</span></Label>
+              <Input id="trans_nome" value={transportadoraForm.nome} onChange={(e) => handleTransportadoraFormChange("nome", e.target.value)} placeholder="Ex: Transportadora XYZ" aria-invalid={Boolean(transportadoraFormErrors.nome)} className={transportadoraFormErrors.nome ? "border-destructive focus-visible:ring-destructive" : undefined} />
+              {transportadoraFormErrors.nome ? <p className="text-sm text-destructive">{transportadoraFormErrors.nome}</p> : null}
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="trans_documento">CNPJ/CPF</Label>
-              <Input id="trans_documento" value={transportadoraForm.documento} onChange={(e) => setTransportadoraForm({ ...transportadoraForm, documento: e.target.value })} placeholder="00.000.000/0001-00" />
+              <Label htmlFor="trans_documento">CPF/CNPJ</Label>
+              <Input id="trans_documento" value={transportadoraForm.documento} onChange={(e) => handleTransportadoraFormChange("documento", e.target.value)} placeholder="00.000.000/0001-00" aria-invalid={Boolean(transportadoraFormErrors.documento)} className={transportadoraFormErrors.documento ? "border-destructive focus-visible:ring-destructive" : undefined} />
+              {transportadoraFormErrors.documento ? <p className="text-sm text-destructive">{transportadoraFormErrors.documento}</p> : null}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="trans_telefone">Telefone</Label>
-              <Input id="trans_telefone" value={transportadoraForm.telefone} onChange={(e) => setTransportadoraForm({ ...transportadoraForm, telefone: e.target.value })} placeholder="(00) 00000-0000" />
+              <Input id="trans_telefone" value={transportadoraForm.telefone} onChange={(e) => handleTransportadoraFormChange("telefone", e.target.value)} placeholder="(00) 00000-0000" aria-invalid={Boolean(transportadoraFormErrors.telefone)} className={transportadoraFormErrors.telefone ? "border-destructive focus-visible:ring-destructive" : undefined} />
+              {transportadoraFormErrors.telefone ? <p className="text-sm text-destructive">{transportadoraFormErrors.telefone}</p> : null}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="trans_email">Email</Label>
-              <Input id="trans_email" type="email" value={transportadoraForm.email} onChange={(e) => setTransportadoraForm({ ...transportadoraForm, email: e.target.value })} placeholder="contato@transportadora.com" />
+              <Input id="trans_email" type="email" value={transportadoraForm.email} onChange={(e) => handleTransportadoraFormChange("email", e.target.value)} placeholder="contato@transportadora.com" aria-invalid={Boolean(transportadoraFormErrors.email)} className={transportadoraFormErrors.email ? "border-destructive focus-visible:ring-destructive" : undefined} />
+              {transportadoraFormErrors.email ? <p className="text-sm text-destructive">{transportadoraFormErrors.email}</p> : null}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="trans_endereco">Endereço</Label>
-              <Input id="trans_endereco" value={transportadoraForm.endereco} onChange={(e) => setTransportadoraForm({ ...transportadoraForm, endereco: e.target.value })} placeholder="Rua, número, bairro, cidade" />
+              <Input id="trans_endereco" value={transportadoraForm.endereco} onChange={(e) => handleTransportadoraFormChange("endereco", e.target.value)} placeholder="Rua, número, bairro, cidade" />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setTransportadoraModalOpen(false)}>Cancelar</Button>
-            <Button onClick={() => createTransportadoraMutation.mutate({ ...transportadoraForm, ativo: true, empresa_id: transportadoraForm.empresa_id || null })} disabled={createTransportadoraMutation.isPending}>
+            <Button onClick={submitTransportadoraForm} disabled={createTransportadoraMutation.isPending}>
               {createTransportadoraMutation.isPending ? "Salvando..." : "Salvar"}
             </Button>
           </DialogFooter>
@@ -2498,7 +2570,7 @@ validateData: (rows) => {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="space-y-1.5">
-              <Label htmlFor="forn_nome">Nome</Label>
+              <Label htmlFor="forn_nome">Nome <span className="text-destructive">*</span></Label>
               <Input id="forn_nome" value={fornecedorForm.nome} onChange={(e) => setFornecedorForm({ ...fornecedorForm, nome: e.target.value })} placeholder="Ex: Fornecedor ABC" />
             </div>
             <div className="space-y-1.5">
@@ -2537,7 +2609,7 @@ validateData: (rows) => {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="space-y-1.5">
-              <Label htmlFor="serv_nome">Nome</Label>
+              <Label htmlFor="serv_nome">Nome <span className="text-destructive">*</span></Label>
               <Input id="serv_nome" value={servicoForm.nome} onChange={(e) => setServicoForm({ ...servicoForm, nome: e.target.value })} placeholder="Ex: Coleta, Entrega, Armazenagem" />
             </div>
             <div className="space-y-1.5">
@@ -2564,7 +2636,7 @@ validateData: (rows) => {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="space-y-1.5">
-              <Label htmlFor="edit_forn_nome">Nome</Label>
+              <Label htmlFor="edit_forn_nome">Nome <span className="text-destructive">*</span></Label>
               <Input id="edit_forn_nome" value={editingFornecedor?.nome || ""} onChange={(e) => setEditingFornecedor({ ...editingFornecedor, nome: e.target.value })} />
             </div>
             <div className="space-y-1.5">
@@ -2607,7 +2679,7 @@ validateData: (rows) => {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="space-y-1.5">
-              <Label htmlFor="edit_trans_nome">Nome</Label>
+              <Label htmlFor="edit_trans_nome">Nome <span className="text-destructive">*</span></Label>
               <Input id="edit_trans_nome" value={editingTransportadora?.nome || ""} onChange={(e) => setEditingTransportadora({ ...editingTransportadora, nome: e.target.value })} />
             </div>
             <div className="space-y-1.5">
@@ -2651,19 +2723,19 @@ validateData: (rows) => {
           <div className="overflow-y-auto max-h-[60vh]">
             <div className="grid grid-cols-2 gap-4 py-2">
               <div className="col-span-2 space-y-1.5">
-                <Label htmlFor="edit_colab_nome">Nome completo</Label>
+                <Label htmlFor="edit_colab_nome">Nome completo <span className="text-destructive">*</span></Label>
                 <Input id="edit_colab_nome" value={editingColaborador?.nome || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, nome: e.target.value })} />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="edit_colab_cpf">CPF</Label>
+                <Label htmlFor="edit_colab_cpf">CPF <span className="text-destructive">*</span></Label>
                 <Input id="edit_colab_cpf" value={editingColaborador?.cpf || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, cpf: e.target.value })} />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="edit_colab_telefone">Telefone</Label>
+                <Label htmlFor="edit_colab_telefone">Telefone <span className="text-destructive">*</span></Label>
                 <Input id="edit_colab_telefone" value={editingColaborador?.telefone || ""} onChange={(e) => handleEditPhoneChangeCC(e.target.value)} />
               </div>
               <div className="col-span-2 space-y-1.5">
-                <Label>Empresa</Label>
+                <Label>Empresa <span className="text-destructive">*</span></Label>
                 <Select value={editingColaborador?.empresa_id || ""} onValueChange={(v) => setEditingColaborador({ ...editingColaborador, empresa_id: v })}>
                   <SelectTrigger><SelectValue placeholder="Selecione uma empresa" /></SelectTrigger>
                   <SelectContent>
@@ -2674,7 +2746,7 @@ validateData: (rows) => {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label>Tipo de colaborador</Label>
+                <Label>Tipo de colaborador <span className="text-destructive">*</span></Label>
                 <Select value={editingColaborador?.tipo_colaborador || "CLT"} onValueChange={(v) => setEditingColaborador({ ...editingColaborador, tipo_colaborador: v })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -2687,7 +2759,7 @@ validateData: (rows) => {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label>Status</Label>
+                <Label>Status <span className="text-destructive">*</span></Label>
                 <Select value={editingColaborador?.status || "ativo"} onValueChange={(v) => setEditingColaborador({ ...editingColaborador, status: v })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -2698,19 +2770,19 @@ validateData: (rows) => {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="edit_colab_cargo">Cargo</Label>
+                <Label htmlFor="edit_colab_cargo">Cargo <span className="text-destructive">*</span></Label>
                 <Input id="edit_colab_cargo" value={editingColaborador?.cargo || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, cargo: e.target.value })} />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="edit_colab_matricula">Matrícula</Label>
+                <Label htmlFor="edit_colab_matricula">Matrícula <span className="text-destructive">*</span></Label>
                 <Input id="edit_colab_matricula" value={editingColaborador?.matricula || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, matricula: e.target.value })} />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="edit_colab_valor">Valor base (R$)</Label>
+                <Label htmlFor="edit_colab_valor">Valor base (R$) <span className="text-destructive">*</span></Label>
                 <Input id="edit_colab_valor" type="number" value={editingColaborador?.valor_base || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, valor_base: e.target.value })} />
               </div>
               <div className="space-y-1.5">
-                <Label>Tipo de contrato</Label>
+                <Label>Tipo de contrato <span className="text-destructive">*</span></Label>
                 <Select value={editingColaborador?.tipo_contrato || "Hora"} onValueChange={(v) => setEditingColaborador({ ...editingColaborador, tipo_contrato: v })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -2747,117 +2819,6 @@ validateData: (rows) => {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!editingEmpresa} onOpenChange={(open) => !open && setEditingEmpresa(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Editar Empresa</DialogTitle>
-            <DialogDescription>
-              Atualize os dados da empresa.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="edit_emp_nome">Nome da Empresa</Label>
-              <Input id="edit_emp_nome" value={editingEmpresa?.nome || ""} onChange={(e) => setEditingEmpresa({ ...editingEmpresa, nome: e.target.value })} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="edit_emp_cnpj">CNPJ</Label>
-              <Input id="edit_emp_cnpj" value={editingEmpresa?.cnpj || ""} onChange={(e) => setEditingEmpresa({ ...editingEmpresa, cnpj: e.target.value })} />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="edit_emp_unidade">Unidade (Filial)</Label>
-                <Input id="edit_emp_unidade" value={editingEmpresa?.unidade || ""} onChange={(e) => setEditingEmpresa({ ...editingEmpresa, unidade: e.target.value })} />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="edit_emp_cidade">Cidade</Label>
-                <Input id="edit_emp_cidade" value={editingEmpresa?.cidade || ""} onChange={(e) => setEditingEmpresa({ ...editingEmpresa, cidade: e.target.value })} />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="edit_emp_estado">Estado (UF)</Label>
-              <Input id="edit_emp_estado" value={editingEmpresa?.estado || ""} onChange={(e) => setEditingEmpresa({ ...editingEmpresa, estado: e.target.value })} maxLength={2} />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="edit_emp_banco">Código Banco</Label>
-                <Input id="edit_emp_banco" value={editingEmpresa?.banco_codigo || ""} onChange={(e) => setEditingEmpresa({ ...editingEmpresa, banco_codigo: e.target.value })} />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="edit_emp_agencia">Agência</Label>
-                <Input id="edit_emp_agencia" value={editingEmpresa?.agencia || ""} onChange={(e) => setEditingEmpresa({ ...editingEmpresa, agencia: e.target.value })} />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="edit_emp_agencia_digito">Dígito Agência</Label>
-                <Input id="edit_emp_agencia_digito" value={editingEmpresa?.agencia_digito || ""} onChange={(e) => setEditingEmpresa({ ...editingEmpresa, agencia_digito: e.target.value })} />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="edit_emp_conta">Conta</Label>
-                <Input id="edit_emp_conta" value={editingEmpresa?.conta || ""} onChange={(e) => setEditingEmpresa({ ...editingEmpresa, conta: e.target.value })} />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="edit_emp_conta_digito">Dígito Conta</Label>
-                <Input id="edit_emp_conta_digito" value={editingEmpresa?.conta_digito || ""} onChange={(e) => setEditingEmpresa({ ...editingEmpresa, conta_digito: e.target.value })} />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="edit_emp_convenio">Convênio</Label>
-                <Input id="edit_emp_convenio" value={editingEmpresa?.convenios_bancario || ""} onChange={(e) => setEditingEmpresa({ ...editingEmpresa, convenios_bancario: e.target.value })} />
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <input type="checkbox" id="edit_emp_ativa" checked={editingEmpresa?.status === "ativa"} onChange={(e) => setEditingEmpresa({ ...editingEmpresa, status: e.target.checked ? "ativa" : "inativa" })} />
-              <Label htmlFor="edit_emp_ativa" className="cursor-pointer">Ativa</Label>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingEmpresa(null)}>Cancelar</Button>
-            <Button onClick={() => {
-              if (!editingEmpresa?.nome?.trim()) {
-                toast.error("Informe o nome da empresa");
-                return;
-              }
-              if (!editingEmpresa?.cnpj?.trim()) {
-                toast.error("Informe o CNPJ");
-                return;
-              }
-              if (!editingEmpresa?.unidade?.trim()) {
-                toast.error("Informe a unidade");
-                return;
-              }
-              if (!editingEmpresa?.cidade?.trim()) {
-                toast.error("Informe a cidade");
-                return;
-              }
-              if (!editingEmpresa?.estado?.trim()) {
-                toast.error("Informe o estado");
-                return;
-              }
-              const payload = {
-                nome: editingEmpresa.nome,
-                cnpj: editingEmpresa.cnpj,
-                unidade: editingEmpresa.unidade,
-                cidade: editingEmpresa.cidade,
-                estado: editingEmpresa.estado,
-                status: editingEmpresa.status,
-                banco_codigo: editingEmpresa.banco_codigo,
-                agencia: editingEmpresa.agencia,
-                agencia_digito: editingEmpresa.agencia_digito,
-                conta: editingEmpresa.conta,
-                conta_digito: editingEmpresa.conta_digito,
-                convenios_bancario: editingEmpresa.convenios_bancario,
-              };
-              updateEmpresaMutation.mutate({ id: editingEmpresa.id, payload });
-            }} disabled={updateEmpresaMutation.isPending}>
-              {updateEmpresaMutation.isPending ? "Salvando..." : "Salvar"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <Dialog open={!!editingServico} onOpenChange={(open) => !open && setEditingServico(null)}>
         <DialogContent>
           <DialogHeader>
@@ -2868,7 +2829,7 @@ validateData: (rows) => {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="space-y-1.5">
-              <Label htmlFor="edit_serv_nome">Nome</Label>
+              <Label htmlFor="edit_serv_nome">Nome <span className="text-destructive">*</span></Label>
               <Input id="edit_serv_nome" value={editingServico?.nome || ""} onChange={(e) => setEditingServico({ ...editingServico, nome: e.target.value })} />
             </div>
             <div className="space-y-1.5">
@@ -2896,7 +2857,7 @@ validateData: (rows) => {
           </DialogHeader>
           <div className="py-4">
             <p className="text-sm text-muted-foreground">
-              <strong>{itemToDelete?.nome}</strong> possui vínculos operacionais e não pode ser excluído(a).
+              <strong>{itemToDeleteLabel}</strong> possui vínculos operacionais e não pode ser excluído(a).
             </p>
             {deleteErrorDetails.length > 0 && (
               <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-md max-h-[200px] overflow-y-auto">

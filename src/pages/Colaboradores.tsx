@@ -522,12 +522,12 @@ const Colaboradores = () => {
           <DialogHeader>
             <DialogTitle>{editingId ? "Editar colaborador" : "Novo colaborador"}</DialogTitle>
             <DialogDescription>
-              {editingId 
-                ? "Atualize as informações do colaborador." 
-                : step === 1 
-                  ? "Dados pessoais e vínculo institucional." 
-                  : step === 2 
-                    ? "Dados contratuais e informações de pagamento." 
+              {editingId
+                ? "Atualize as informações do colaborador."
+                : step === 1
+                  ? "Dados pessoais e vínculo institucional."
+                  : step === 2
+                    ? "Dados contratuais e informações de pagamento."
                     : "Dados bancários para depósito."}
             </DialogDescription>
             {!editingId && (
@@ -545,15 +545,15 @@ const Colaboradores = () => {
                 {step === 1 && (
                   <div className="grid grid-cols-2 gap-4 py-2">
                     <div className="col-span-2 space-y-1.5">
-<Label htmlFor="nome">Nome completo <span className="text-destructive">*</span></Label>
+                      <Label htmlFor="nome">Nome completo <span className="text-destructive">*</span></Label>
                       <Input id="nome" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
                     </div>
                     <div className="space-y-1.5">
-<Label htmlFor="cpf">CPF <span className="text-destructive">*</span></Label>
+                      <Label htmlFor="cpf">CPF <span className="text-destructive">*</span></Label>
                       <Input id="cpf" value={form.cpf} onChange={(e) => setForm({ ...form, cpf: e.target.value })} />
                     </div>
                     <div className="space-y-1.5">
-<Label htmlFor="telefone">Telefone <span className="text-destructive">*</span></Label>
+                      <Label htmlFor="telefone">Telefone <span className="text-destructive">*</span></Label>
                       <Input id="telefone" value={form.telefone} onChange={(e) => handlePhoneChange(e.target.value)} />
                     </div>
                     <div className="col-span-2 space-y-1.5">
@@ -599,11 +599,11 @@ const Colaboradores = () => {
                     {form.tipo_colaborador === "DIARISTA" ? (
                       <>
                         <div className="space-y-1.5">
-<Label htmlFor="valor">Valor da diária (R$) <span className="text-destructive">*</span></Label>
+                          <Label htmlFor="valor">Valor da diária (R$) <span className="text-destructive">*</span></Label>
                           <Input id="valor" type="number" value={form.valor_base} onChange={(e) => setForm({ ...form, valor_base: e.target.value })} />
                         </div>
                         <div className="space-y-1.5">
-<Label htmlFor="cargo">Função operacional <span className="text-destructive">*</span></Label>
+                          <Label htmlFor="cargo">Função operacional <span className="text-destructive">*</span></Label>
                           <Input id="cargo" value={form.cargo} onChange={(e) => setForm({ ...form, cargo: e.target.value })} />
                         </div>
                         <div className="col-span-2 flex items-center justify-between rounded-md border border-border p-3">
@@ -617,26 +617,26 @@ const Colaboradores = () => {
                     ) : (
                       <>
                         <div className="space-y-1.5">
-<Label htmlFor="cargo">Cargo <span className="text-destructive">*</span></Label>
+                          <Label htmlFor="cargo">Cargo <span className="text-destructive">*</span></Label>
                           <Input id="cargo" value={form.cargo} onChange={(e) => setForm({ ...form, cargo: e.target.value })} />
                         </div>
                         <div className="space-y-1.5">
-<Label htmlFor="matricula">Matrícula <span className="text-destructive">*</span></Label>
+                          <Label htmlFor="matricula">Matrícula <span className="text-destructive">*</span></Label>
                           <Input id="matricula" value={form.matricula} onChange={(e) => setForm({ ...form, matricula: e.target.value })} />
                         </div>
                         <div className="space-y-1.5">
-<Label>Tipo de contrato <span className="text-destructive">*</span></Label>
+                          <Label>Tipo de contrato <span className="text-destructive">*</span></Label>
                           <Select value={form.tipo_contrato} onValueChange={(v: "Hora" | "Operação") => setForm({ ...form, tipo_contrato: v })}>
                             <SelectTrigger><SelectValue /></SelectTrigger>
                             <SelectContent>
-                            <SelectItem value="Hora">Por hora</SelectItem>
-                            <SelectItem value="Operação">Por operação</SelectItem>
-                            <SelectItem value="Mensal">Mensal</SelectItem>
+                              <SelectItem value="Hora">Por hora</SelectItem>
+                              <SelectItem value="Operação">Por operação</SelectItem>
+                              <SelectItem value="Mensal">Mensal</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
                         <div className="space-y-1.5">
-<Label htmlFor="valor">Valor base (R$) <span className="text-destructive">*</span></Label>
+                          <Label htmlFor="valor">Valor base (R$) <span className="text-destructive">*</span></Label>
                           <Input id="valor" type="number" value={form.valor_base} onChange={(e) => setForm({ ...form, valor_base: e.target.value })} />
                         </div>
                         <div className="col-span-2 flex items-center justify-between rounded-md border border-border p-3">
@@ -691,19 +691,19 @@ const Colaboradores = () => {
             ) : (
               <div className="grid grid-cols-2 gap-4 py-2">
                 <div className="col-span-2 space-y-1.5">
-                  <Label htmlFor="nome">Nome completo</Label>
+                  <Label htmlFor="nome">Nome completo <span className="text-destructive">*</span></Label>
                   <Input id="nome" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="cpf">CPF</Label>
+                  <Label htmlFor="cpf">CPF <span className="text-destructive">*</span></Label>
                   <Input id="cpf" value={form.cpf} onChange={(e) => setForm({ ...form, cpf: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="telefone">Telefone</Label>
+                  <Label htmlFor="telefone">Telefone <span className="text-destructive">*</span></Label>
                   <Input id="telefone" value={form.telefone} onChange={(e) => handlePhoneChange(e.target.value)} />
                 </div>
                 <div className="col-span-2 space-y-1.5">
-                  <Label>Empresa</Label>
+                  <Label>Empresa <span className="text-destructive">*</span></Label>
                   <Select value={form.empresa_id} onValueChange={(v) => setForm({ ...form, empresa_id: v })}>
                     <SelectTrigger><SelectValue placeholder="Selecione uma empresa" /></SelectTrigger>
                     <SelectContent>
@@ -714,7 +714,7 @@ const Colaboradores = () => {
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Tipo de colaborador</Label>
+                  <Label>Tipo de colaborador <span className="text-destructive">*</span></Label>
                   <Select value={form.tipo_colaborador} onValueChange={(v) => setForm({ ...form, tipo_colaborador: v, permitir_lancamento_operacional: v === "DIARISTA" ? true : form.permitir_lancamento_operacional })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -727,7 +727,7 @@ const Colaboradores = () => {
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Status</Label>
+                  <Label>Status <span className="text-destructive">*</span></Label>
                   <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -740,11 +740,11 @@ const Colaboradores = () => {
                 {form.tipo_colaborador === "DIARISTA" ? (
                   <>
                     <div className="space-y-1.5">
-                      <Label htmlFor="valor">Valor da diária (R$)</Label>
+                      <Label htmlFor="valor">Valor da diária (R$) <span className="text-destructive">*</span></Label>
                       <Input id="valor" type="number" value={form.valor_base} onChange={(e) => setForm({ ...form, valor_base: e.target.value })} />
                     </div>
                     <div className="space-y-1.5">
-                      <Label htmlFor="cargo">Função operacional</Label>
+                      <Label htmlFor="cargo">Função operacional <span className="text-destructive">*</span></Label>
                       <Input id="cargo" value={form.cargo} onChange={(e) => setForm({ ...form, cargo: e.target.value })} />
                     </div>
                     <div className="col-span-2 flex items-center justify-between rounded-md border border-border p-3">
@@ -758,15 +758,15 @@ const Colaboradores = () => {
                 ) : (
                   <>
                     <div className="space-y-1.5">
-                      <Label htmlFor="cargo">Cargo</Label>
+                      <Label htmlFor="cargo">Cargo <span className="text-destructive">*</span></Label>
                       <Input id="cargo" value={form.cargo} onChange={(e) => setForm({ ...form, cargo: e.target.value })} />
                     </div>
                     <div className="space-y-1.5">
-                      <Label htmlFor="matricula">Matrícula</Label>
+                      <Label htmlFor="matricula">Matrícula <span className="text-destructive">*</span></Label>
                       <Input id="matricula" value={form.matricula} onChange={(e) => setForm({ ...form, matricula: e.target.value })} />
                     </div>
                     <div className="space-y-1.5">
-                      <Label>Tipo de contrato</Label>
+                      <Label>Tipo de contrato <span className="text-destructive">*</span></Label>
                       <Select value={form.tipo_contrato} onValueChange={(v: "Hora" | "Operação") => setForm({ ...form, tipo_contrato: v })}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
@@ -776,7 +776,7 @@ const Colaboradores = () => {
                       </Select>
                     </div>
                     <div className="space-y-1.5">
-                      <Label htmlFor="valor">Valor base (R$)</Label>
+                      <Label htmlFor="valor">Valor base (R$) <span className="text-destructive">*</span></Label>
                       <Input id="valor" type="number" value={form.valor_base} onChange={(e) => setForm({ ...form, valor_base: e.target.value })} />
                     </div>
                     <div className="col-span-2 flex items-center justify-between rounded-md border border-border p-3">

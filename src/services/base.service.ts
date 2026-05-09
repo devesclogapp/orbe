@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { Database } from '@/types/database';
+import { getTransportadoraDuplicateMessage, getTransportadoraErrorMessage } from '@/utils/transportadoraValidation';
 
 type Table = keyof Database['public']['Tables'];
 
@@ -10,6 +11,12 @@ function cleanUuid(value?: string | null): string | null {
   if (!v) return null;
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   return uuidRegex.test(v) ? v : null;
+}
+
+function extractReferencedTableFromFkError(error: { details?: string | null; message?: string | null }) {
+  const raw = `${error.details ?? ""} ${error.message ?? ""}`;
+  const match = raw.match(/table\s+"([^"]+)"/i);
+  return match?.[1] ?? null;
 }
 
 // ============================================================
@@ -1306,24 +1313,9 @@ class TipoServicoOperacionalServiceClass {
         ids: operacaoResult.data.slice(0, 3).map((r: any) => r.id)
       });
     }
-    if (regraResult.data && regraResult.data.length > 0) {
-      vinculos.push({
-        tabela: 'fornecedor_valores_servico',
-        count: regraResult.data.length,
-        ids: regraResult.data.slice(0, 3).map((r: any) => r.id)
-      });
-    }
 
     console.log(`[TipoServicoOperacionalService.deleteWithCheck] ID: ${id}`);
     console.log(`[TipoServicoOperacionalService.deleteWithCheck] Vínculos encontrados:`, vinculos);
-
-    if (vinculos.length > 0) {
-      return {
-        success: false,
-        error: 'Este tipo de serviço possui vínculos operacionais e não pode ser excluído.',
-        detalhes: vinculos
-      };
-    }
 
     const { error, count } = await operationalClient
       .from('tipos_servico_operacional')
@@ -1334,8 +1326,10 @@ class TipoServicoOperacionalServiceClass {
     if (error) {
       console.error(`[TipoServicoOperacionalService.deleteWithCheck] Erro no delete:`, error);
       if (error.code === '23503') {
+        const referencedTable = extractReferencedTableFromFkError(error);
         return {
           success: false,
+          detalhes: referencedTable ? [{ tabela: referencedTable, count: 1 }] : undefined,
           error: 'Este tipo de serviço possui vínculos e não pode ser excluído.'
         };
       }
@@ -1343,10 +1337,7 @@ class TipoServicoOperacionalServiceClass {
     }
 
     if (!count || count === 0) {
-      return {
-        success: false,
         error: 'Nenhum tipo de serviço foi excluído. O registro pode não existir.'
-      };
     }
 
     return { success: true, deletedCount: count };
@@ -1371,9 +1362,24 @@ class TransportadoraClienteServiceClass {
 
   async create(payload: Record<string, any>) {
     const tenantId = await getCurrentTenantId();
+
+    const nome = String(payload.nome ?? '').trim();
+    if (nome) {
+      const { data: existing } = await operationalClient
+        .from('transportadoras_clientes')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .ilike('nome', nome)
+        .maybeSingle();
+
+      if (existing) {
+        throw new Error(getTransportadoraDuplicateMessage());
+      }
+    }
     
     const payloadWithTenant = {
       ...payload,
+      nome,
       empresa_id: payload.empresa_id ? cleanUuid(payload.empresa_id) : null,
       tenant_id: tenantId
     };
@@ -1384,13 +1390,33 @@ class TransportadoraClienteServiceClass {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      throw new Error(getTransportadoraErrorMessage(error));
+    }
     return data;
   }
 
   async update(id: string, payload: Record<string, any>) {
+    const tenantId = await getCurrentTenantId();
+    const nome = String(payload.nome ?? '').trim();
+
+    if (nome) {
+      const { data: existing } = await operationalClient
+        .from('transportadoras_clientes')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .ilike('nome', nome)
+        .neq('id', id)
+        .maybeSingle();
+
+      if (existing) {
+        throw new Error(getTransportadoraDuplicateMessage());
+      }
+    }
+
     const payloadCleaned = {
       ...payload,
+      nome,
       empresa_id: payload.empresa_id ? cleanUuid(payload.empresa_id) : null,
     };
 
@@ -1400,7 +1426,9 @@ class TransportadoraClienteServiceClass {
       .eq('id', id)
       .select();
 
-    if (error) throw error;
+    if (error) {
+      throw new Error(getTransportadoraErrorMessage(error));
+    }
     return data?.[0] ?? null;
   }
 
@@ -1414,69 +1442,9 @@ class TransportadoraClienteServiceClass {
   }
 
   async deleteWithCheck(id: string): Promise<{ success: boolean; error?: string; detalhes?: { tabela: string; count: number; ids?: string[] }[] }> {
-    const [{ data: transportadora }] = await Promise.all([
-      operationalClient
-        .from('transportadoras_clientes')
-        .select('nome')
-        .eq('id', id)
-        .single(),
-    ]);
-
-    const [
-      operacaoResult,
-      regraResult,
-      operacoesLegadasResult,
-    ] = await Promise.all([
-      operationalClient
-        .from('operacoes_producao')
-        .select('id')
-        .eq('transportadora_id', id),
-      operationalClient
-        .from('fornecedor_valores_servico')
-        .select('id')
-        .eq('transportadora_id', id),
-      operationalClient
-        .from('operacoes')
-        .select('id')
-        .eq('transportadora', transportadora?.nome),
-    ]);
-
     const vinculos: { tabela: string; count: number; ids?: string[] }[] = [];
-
-    if (operacaoResult.data && operacaoResult.data.length > 0) {
-      vinculos.push({
-        tabela: 'operacoes_producao',
-        count: operacaoResult.data.length,
-        ids: operacaoResult.data.slice(0, 3).map((r: any) => r.id)
-      });
-    }
-
-    if (regraResult.data && regraResult.data.length > 0) {
-      vinculos.push({
-        tabela: 'fornecedor_valores_servico',
-        count: regraResult.data.length,
-        ids: regraResult.data.slice(0, 3).map((r: any) => r.id)
-      });
-    }
-
-    if (operacoesLegadasResult.data && operacoesLegadasResult.data.length > 0) {
-      vinculos.push({
-        tabela: 'operacoes (legadas)',
-        count: operacoesLegadasResult.data.length,
-        ids: operacoesLegadasResult.data.slice(0, 3).map((r: any) => r.id)
-      });
-    }
-
     console.log(`[TransportadoraClienteService.deleteWithCheck] ID: ${id}`);
-    console.log(`[TransportadoraClienteService.deleteWithCheck] Vínculos encontrados:`, vinculos);
-
-    if (vinculos.length > 0) {
-      return {
-        success: false,
-        error: 'Esta transportadora possui vínculos operacionais e não pode ser excluída.',
-        detalhes: vinculos
-      };
-    }
+    console.log(`[TransportadoraClienteService.deleteWithCheck] Vinculos bloqueantes encontrados:`, vinculos);
 
     const { error, count } = await operationalClient
       .from('transportadoras_clientes')
@@ -1487,8 +1455,30 @@ class TransportadoraClienteServiceClass {
     if (error) {
       console.error(`[TransportadoraClienteService.deleteWithCheck] Erro no delete:`, error);
       if (error.code === '23503') {
+        const [regraResult] = await Promise.all([
+          operationalClient
+            .from('fornecedor_valores_servico')
+            .select('id')
+            .eq('transportadora_id', id),
+        ]);
+        const referencedTable = extractReferencedTableFromFkError(error);
+        const detalhes: { tabela: string; count: number; ids?: string[] }[] = [];
+
+        if (regraResult.data && regraResult.data.length > 0) {
+          detalhes.push({
+            tabela: 'fornecedor_valores_servico',
+            count: regraResult.data.length,
+            ids: regraResult.data.slice(0, 3).map((r: any) => r.id),
+          });
+        }
+
+        if (referencedTable && !detalhes.some((item) => item.tabela === referencedTable)) {
+          detalhes.push({ tabela: referencedTable, count: 1 });
+        }
+
         return {
           success: false,
+          detalhes: detalhes.length > 0 ? detalhes : undefined,
           error: 'Esta transportadora possui vínculos e não pode ser excluída.'
         };
       }

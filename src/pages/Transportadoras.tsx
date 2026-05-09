@@ -14,6 +14,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import {
+  normalizeTransportadoraPayload,
+  validateTransportadoraPayload,
+  type TransportadoraFormValues,
+  type TransportadoraValidationErrors,
+} from "@/utils/transportadoraValidation";
 
 const Transportadoras = () => {
   const queryClient = useQueryClient();
@@ -24,6 +30,7 @@ const Transportadoras = () => {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<any>(null);
   const [deleteErrorDetails, setDeleteErrorDetails] = useState<{ tabela: string; count: number; ids?: string[] }[]>([]);
+  const [formErrors, setFormErrors] = useState<TransportadoraValidationErrors>({});
 
   const { data: list = [], isLoading } = useQuery({
     queryKey: ["transportadoras"],
@@ -37,7 +44,7 @@ const Transportadoras = () => {
     refetchOnMount: true,
   });
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<TransportadoraFormValues>({
     nome: "",
     documento: "",
     telefone: "",
@@ -57,6 +64,7 @@ const Transportadoras = () => {
       empresa_id: empresaOptions[0]?.id ?? "",
       ativo: true,
     });
+    setFormErrors({});
     setEditingId(null);
   };
 
@@ -143,11 +151,29 @@ const Transportadoras = () => {
   };
 
   const submit = () => {
-    if (editingId) {
-      updateMutation.mutate({ id: editingId, payload: form });
-    } else {
-      createMutation.mutate(form);
+    const payload = normalizeTransportadoraPayload(form);
+    const errors = validateTransportadoraPayload(payload);
+
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      return;
     }
+
+    setFormErrors({});
+
+    if (editingId) {
+      updateMutation.mutate({ id: editingId, payload });
+    } else {
+      createMutation.mutate(payload);
+    }
+  };
+
+  const updateField = <K extends keyof TransportadoraFormValues>(field: K, value: TransportadoraFormValues[K]) => {
+    setForm((current) => ({ ...current, [field]: value }));
+    setFormErrors((current) => {
+      if (!current[field]) return current;
+      return { ...current, [field]: undefined };
+    });
   };
 
   const filteredList = list.filter((item: any) =>
@@ -282,7 +308,10 @@ const Transportadoras = () => {
         </table>
       </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen) reset();
+      }}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>
@@ -291,43 +320,59 @@ const Transportadoras = () => {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label>Nome</Label>
+              <Label htmlFor="transportadora_nome">Nome</Label>
               <Input
+                id="transportadora_nome"
                 value={form.nome}
-                onChange={(e) => setForm({ ...form, nome: e.target.value })}
+                onChange={(e) => updateField("nome", e.target.value)}
                 placeholder="Nome da transportadora"
+                aria-invalid={Boolean(formErrors.nome)}
+                className={formErrors.nome ? "border-destructive focus-visible:ring-destructive" : undefined}
               />
+              {formErrors.nome ? <p className="text-sm text-destructive">{formErrors.nome}</p> : null}
             </div>
             <div className="grid gap-2">
-              <Label>CNPJ/CPF</Label>
+              <Label htmlFor="transportadora_documento">CPF/CNPJ</Label>
               <Input
+                id="transportadora_documento"
                 value={form.documento}
-                onChange={(e) => setForm({ ...form, documento: e.target.value })}
+                onChange={(e) => updateField("documento", e.target.value)}
                 placeholder="00.000.000/0001-00"
+                aria-invalid={Boolean(formErrors.documento)}
+                className={formErrors.documento ? "border-destructive focus-visible:ring-destructive" : undefined}
               />
+              {formErrors.documento ? <p className="text-sm text-destructive">{formErrors.documento}</p> : null}
             </div>
             <div className="grid gap-2">
-              <Label>Telefone</Label>
+              <Label htmlFor="transportadora_telefone">Telefone</Label>
               <Input
+                id="transportadora_telefone"
                 value={form.telefone}
-                onChange={(e) => setForm({ ...form, telefone: e.target.value })}
+                onChange={(e) => updateField("telefone", e.target.value)}
                 placeholder="(00) 00000-0000"
+                aria-invalid={Boolean(formErrors.telefone)}
+                className={formErrors.telefone ? "border-destructive focus-visible:ring-destructive" : undefined}
               />
+              {formErrors.telefone ? <p className="text-sm text-destructive">{formErrors.telefone}</p> : null}
             </div>
             <div className="grid gap-2">
-              <Label>Email</Label>
+              <Label htmlFor="transportadora_email">Email</Label>
               <Input
+                id="transportadora_email"
                 type="email"
                 value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                onChange={(e) => updateField("email", e.target.value)}
                 placeholder="contato@transportadora.com"
+                aria-invalid={Boolean(formErrors.email)}
+                className={formErrors.email ? "border-destructive focus-visible:ring-destructive" : undefined}
               />
+              {formErrors.email ? <p className="text-sm text-destructive">{formErrors.email}</p> : null}
             </div>
             <div className="grid gap-2">
               <Label>Endereço</Label>
               <Input
                 value={form.endereco}
-                onChange={(e) => setForm({ ...form, endereco: e.target.value })}
+                onChange={(e) => updateField("endereco", e.target.value)}
                 placeholder="Rua, número, bairro, cidade"
               />
             </div>
@@ -336,7 +381,7 @@ const Transportadoras = () => {
                 type="checkbox"
                 id="ativo"
                 checked={form.ativo}
-                onChange={(e) => setForm({ ...form, ativo: e.target.checked })}
+                onChange={(e) => updateField("ativo", e.target.checked)}
               />
               <label htmlFor="ativo" className="text-sm">Ativo</label>
             </div>
