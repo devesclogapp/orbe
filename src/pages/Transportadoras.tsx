@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import {
   normalizeTransportadoraPayload,
   validateTransportadoraPayload,
+  getTransportadoraErrorMessage,
   type TransportadoraFormValues,
   type TransportadoraValidationErrors,
 } from "@/utils/transportadoraValidation";
@@ -77,7 +78,7 @@ const Transportadoras = () => {
       reset();
     },
     onError: (err: any) => {
-      toast.error(err?.message || "Erro ao cadastrar");
+      toast.error(getTransportadoraErrorMessage(err));
     },
   });
 
@@ -90,7 +91,7 @@ const Transportadoras = () => {
       reset();
     },
     onError: (err: any) => {
-      toast.error(err?.message || "Erro ao atualizar");
+      toast.error(getTransportadoraErrorMessage(err));
     },
   });
 
@@ -156,6 +157,7 @@ const Transportadoras = () => {
 
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
+      toast.error("Preencha os campos obrigatórios.");
       return;
     }
 
@@ -180,7 +182,7 @@ const Transportadoras = () => {
     item.ativo !== false &&
     (selectedEmpresa === "all" || item.empresa_id === selectedEmpresa) &&
     (item.nome?.toLowerCase().includes(searchText.toLowerCase()) ||
-    item.documento?.toLowerCase().includes(searchText.toLowerCase()))
+      item.documento?.toLowerCase().includes(searchText.toLowerCase()))
   );
 
   return (
@@ -247,9 +249,8 @@ const Transportadoras = () => {
                   <td className="px-4 text-muted-foreground">{item.email || "—"}</td>
                   <td className="px-4 text-muted-foreground text-xs">{item.endereco || "—"}</td>
                   <td className="px-4 text-center">
-                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                      item.ativo ? "bg-success-soft text-success-strong" : "bg-muted text-muted-foreground"
-                    }`}>
+                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${item.ativo ? "bg-success-soft text-success-strong" : "bg-muted text-muted-foreground"
+                      }`}>
                       {item.ativo === true ? "Ativo" : "Inativo"}
                     </span>
                   </td>
@@ -320,28 +321,33 @@ const Transportadoras = () => {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="transportadora_nome">Nome</Label>
+              <Label htmlFor="transportadora_nome">
+                Nome <span className="text-destructive" aria-hidden="true">*</span>
+              </Label>
               <Input
                 id="transportadora_nome"
                 value={form.nome}
                 onChange={(e) => updateField("nome", e.target.value)}
                 placeholder="Nome da transportadora"
                 aria-invalid={Boolean(formErrors.nome)}
+                aria-required="true"
                 className={formErrors.nome ? "border-destructive focus-visible:ring-destructive" : undefined}
               />
-              {formErrors.nome ? <p className="text-sm text-destructive">{formErrors.nome}</p> : null}
+              {formErrors.nome ? <p className="text-sm text-destructive" role="alert">{formErrors.nome}</p> : null}
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="transportadora_documento">CPF/CNPJ</Label>
+              <Label htmlFor="transportadora_documento">
+                CNPJ / CPF <span className="text-xs text-muted-foreground">(opcional)</span>
+              </Label>
               <Input
                 id="transportadora_documento"
                 value={form.documento}
                 onChange={(e) => updateField("documento", e.target.value)}
-                placeholder="00.000.000/0001-00"
+                placeholder="00.000.000/0001-00 ou 000.000.000-00"
                 aria-invalid={Boolean(formErrors.documento)}
                 className={formErrors.documento ? "border-destructive focus-visible:ring-destructive" : undefined}
               />
-              {formErrors.documento ? <p className="text-sm text-destructive">{formErrors.documento}</p> : null}
+              {formErrors.documento ? <p className="text-sm text-destructive" role="alert">{formErrors.documento}</p> : null}
             </div>
             <div className="grid gap-2">
               <Label htmlFor="transportadora_telefone">Telefone</Label>
@@ -353,7 +359,7 @@ const Transportadoras = () => {
                 aria-invalid={Boolean(formErrors.telefone)}
                 className={formErrors.telefone ? "border-destructive focus-visible:ring-destructive" : undefined}
               />
-              {formErrors.telefone ? <p className="text-sm text-destructive">{formErrors.telefone}</p> : null}
+              {formErrors.telefone ? <p className="text-sm text-destructive" role="alert">{formErrors.telefone}</p> : null}
             </div>
             <div className="grid gap-2">
               <Label htmlFor="transportadora_email">Email</Label>
@@ -366,7 +372,7 @@ const Transportadoras = () => {
                 aria-invalid={Boolean(formErrors.email)}
                 className={formErrors.email ? "border-destructive focus-visible:ring-destructive" : undefined}
               />
-              {formErrors.email ? <p className="text-sm text-destructive">{formErrors.email}</p> : null}
+              {formErrors.email ? <p className="text-sm text-destructive" role="alert">{formErrors.email}</p> : null}
             </div>
             <div className="grid gap-2">
               <Label>Endereço</Label>

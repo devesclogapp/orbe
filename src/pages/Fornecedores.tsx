@@ -14,6 +14,15 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import {
+  normalizeFornecedorPayload,
+  validateFornecedorPayload,
+  getFornecedorErrorMessage,
+  type FornecedorFormValues,
+  type FornecedorValidationErrors,
+  formatCpfCnpj,
+  formatPhone,
+} from "@/utils/fornecedorValidation";
 
 const Fornecedores = () => {
   const queryClient = useQueryClient();
@@ -25,7 +34,7 @@ const Fornecedores = () => {
   const [itemToDelete, setItemToDelete] = useState<any>(null);
   const [deleteErrorDetails, setDeleteErrorDetails] = useState<{ tabela: string; count: number; ids?: string[] }[]>([]);
 
-  const { data: list = [], isLoading } = useQuery({
+  const { data: list = [], isLoading, refetch } = useQuery({
     queryKey: ["fornecedores"],
     queryFn: () => FornecedorService.getByEmpresa(),
     retry: 1,
@@ -37,7 +46,9 @@ const Fornecedores = () => {
     refetchOnMount: true,
   });
 
-  const [form, setForm] = useState({
+  const [formErrors, setFormErrors] = useState<FornecedorValidationErrors>({});
+
+  const [form, setForm] = useState<FornecedorFormValues>({
     nome: "",
     documento: "",
     telefone: "",
@@ -57,58 +68,73 @@ const Fornecedores = () => {
       empresa_id: empresaOptions[0]?.id ?? "",
       ativo: true,
     });
+    setFormErrors({});
     setEditingId(null);
   };
 
   const createMutation = useMutation({
     mutationFn: (payload: any) => FornecedorService.create(payload),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success("Fornecedor cadastrado com sucesso");
-      queryClient.invalidateQueries({ queryKey: ["fornecedores"] });
+      await refetch();
       setOpen(false);
       reset();
     },
     onError: (err: any) => {
-      toast.error(err?.message || "Erro ao cadastrar");
+      toast.error(getFornecedorErrorMessage(err));
     },
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: any }) => FornecedorService.update(id, payload),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success("Fornecedor atualizado com sucesso");
-      queryClient.invalidateQueries({ queryKey: ["fornecedores"] });
+      await refetch();
       setOpen(false);
       reset();
     },
     onError: (err: any) => {
-      toast.error(err?.message || "Erro ao atualizar");
+      toast.error(getFornecedorErrorMessage(err));
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const result = await FornecedorService.deleteWithCheck(id);
-      if (!result.success && result.error) {
-        throw new Error(result.error);
+      if (!result.success) {
+        throw result;
       }
       return result;
     },
-    onSuccess: async () => {
+    onSuccess: async (_data, deletedId) => {
       toast.success("Fornecedor excluído com sucesso");
-      queryClient.invalidateQueries({ queryKey: ["fornecedores"] });
+
+      // Update cache manually
+      queryClient.setQueryData(["fornecedores"], (oldData: any) => {
+        if (!oldData) return [];
+        return oldData.filter((item: any) => item.id !== deletedId);
+      });
+
+      // Force trigger refetch
+      await refetch();
+
       setDeleteModalOpen(false);
       setItemToDelete(null);
     },
     onError: (err: any) => {
-      toast.error(err?.message || "Erro ao excluir fornecedor");
+      if (err.detalhes || !err.success) {
+        setDeleteErrorDetails(err.detalhes || []);
+        setDeleteModalOpen(true);
+      } else {
+        toast.error(err?.message || "Erro ao excluir fornecedor");
+      }
     },
   });
 
   const toggleAtivoMutation = useMutation({
     mutationFn: ({ id, ativo }: { id: string; ativo: boolean }) =>
       FornecedorService.toggleAtivo(id, ativo),
-    onSuccess: async (_data, { ativo }) => {
+    onSuccess: (_data, { ativo }) => {
       toast.success(ativo ? "Fornecedor ativado com sucesso" : "Fornecedor desativado com sucesso");
       queryClient.invalidateQueries({ queryKey: ["fornecedores"] });
     },
@@ -117,18 +143,10 @@ const Fornecedores = () => {
     },
   });
 
-  const handleDeleteClick = async (item: any) => {
+  const handleDeleteClick = (item: any) => {
     setItemToDelete(item);
-    console.log(`[Fornecedores] Tentando excluir: ${item.nome} (${item.id})`);
-    const result = await FornecedorService.deleteWithCheck(item.id);
-    console.log(`[Fornecedores] Resultado deleteWithCheck:`, result);
-    if (result.success) {
-      if (confirm("Confirmar exclusão definitiva? Esta ação não pode ser desfeita.")) {
-        deleteMutation.mutate(item.id);
-      }
-    } else {
-      setDeleteErrorDetails(result.detalhes || []);
-      setDeleteModalOpen(true);
+    if (confirm("Confirmar exclusão definitiva? Esta ação não pode ser desfeita.")) {
+      deleteMutation.mutate(item.id);
     }
   };
 
@@ -141,10 +159,20 @@ const Fornecedores = () => {
   };
 
   const submit = () => {
+    if (!form.nome?.trim()) {
+      setFormErrors({ nome: 'Informe o nome do fornecedor.' });
+      toast.error("Preencha os campos obrigatórios.");
+      return;
+    }
+
+    setFormErrors({});
+
+    const payload = normalizeFornecedorPayload(form);
+
     if (editingId) {
-      updateMutation.mutate({ id: editingId, payload: form });
+      updateMutation.mutate({ id: editingId, payload });
     } else {
-      createMutation.mutate(form);
+      createMutation.mutate(payload);
     }
   };
 
@@ -152,7 +180,7 @@ const Fornecedores = () => {
     item.ativo !== false &&
     (selectedEmpresa === "all" || item.empresa_id === selectedEmpresa) &&
     (item.nome?.toLowerCase().includes(searchText.toLowerCase()) ||
-    item.documento?.toLowerCase().includes(searchText.toLowerCase()))
+      item.documento?.toLowerCase().includes(searchText.toLowerCase()))
   );
 
   return (
@@ -219,9 +247,8 @@ const Fornecedores = () => {
                   <td className="px-4 text-muted-foreground">{item.email || "—"}</td>
                   <td className="px-4 text-muted-foreground text-xs">{item.endereco || "—"}</td>
                   <td className="px-4 text-center">
-                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                      item.ativo ? "bg-success-soft text-success-strong" : "bg-muted text-muted-foreground"
-                    }`}>
+                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${item.ativo ? "bg-success-soft text-success-strong" : "bg-muted text-muted-foreground"
+                      }`}>
                       {item.ativo === true ? "Ativo" : "Inativo"}
                     </span>
                   </td>
@@ -280,7 +307,10 @@ const Fornecedores = () => {
         </table>
       </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen) reset();
+      }}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>
@@ -289,43 +319,75 @@ const Fornecedores = () => {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label>Nome</Label>
+              <Label htmlFor="fornecedor_nome">
+                Nome <span className="text-destructive" aria-hidden="true">*</span>
+              </Label>
               <Input
+                id="fornecedor_nome"
                 value={form.nome}
-                onChange={(e) => setForm({ ...form, nome: e.target.value })}
+                onChange={(e) => {
+                  setForm({ ...form, nome: e.target.value });
+                  setFormErrors((prev) => ({ ...prev, nome: undefined }));
+                }}
                 placeholder="Nome do fornecedor"
+                aria-invalid={Boolean(formErrors.nome)}
+                aria-required="true"
+                className={formErrors.nome ? "border-destructive focus-visible:ring-destructive" : undefined}
               />
+              {formErrors.nome ? <p className="mt-1 text-sm text-destructive" role="alert">{formErrors.nome}</p> : null}
             </div>
             <div className="grid gap-2">
-              <Label>CNPJ/CPF</Label>
+              <Label htmlFor="fornecedor_documento">
+                CNPJ / CPF <span className="text-xs text-muted-foreground">(opcional)</span>
+              </Label>
               <Input
+                id="fornecedor_documento"
                 value={form.documento}
-                onChange={(e) => setForm({ ...form, documento: e.target.value })}
-                placeholder="00.000.000/0001-00"
+                onChange={(e) => {
+                  setForm({ ...form, documento: formatCpfCnpj(e.target.value) });
+                }}
+                placeholder="00.000.000/0001-00 ou 000.000.000-00"
+                aria-invalid={Boolean(formErrors.documento)}
+                className={formErrors.documento ? "border-destructive focus-visible:ring-destructive" : undefined}
               />
+              {formErrors.documento ? <p className="mt-1 text-sm text-destructive" role="alert">{formErrors.documento}</p> : null}
             </div>
             <div className="grid gap-2">
-              <Label>Telefone</Label>
+              <Label htmlFor="fornecedor_telefone">Telefone</Label>
               <Input
+                id="fornecedor_telefone"
                 value={form.telefone}
-                onChange={(e) => setForm({ ...form, telefone: e.target.value })}
+                onChange={(e) => {
+                  setForm({ ...form, telefone: formatPhone(e.target.value) });
+                }}
                 placeholder="(00) 00000-0000"
+                aria-invalid={Boolean(formErrors.telefone)}
+                className={formErrors.telefone ? "border-destructive focus-visible:ring-destructive" : undefined}
               />
+              {formErrors.telefone ? <p className="mt-1 text-sm text-destructive" role="alert">{formErrors.telefone}</p> : null}
             </div>
             <div className="grid gap-2">
-              <Label>Email</Label>
+              <Label htmlFor="fornecedor_email">Email</Label>
               <Input
+                id="fornecedor_email"
                 type="email"
                 value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                onChange={(e) => {
+                  setForm({ ...form, email: e.target.value });
+                }}
                 placeholder="contato@fornecedor.com"
+                aria-invalid={Boolean(formErrors.email)}
+                className={formErrors.email ? "border-destructive focus-visible:ring-destructive" : undefined}
               />
+              {formErrors.email ? <p className="mt-1 text-sm text-destructive" role="alert">{formErrors.email}</p> : null}
             </div>
             <div className="grid gap-2">
               <Label>Endereço</Label>
               <Input
                 value={form.endereco}
-                onChange={(e) => setForm({ ...form, endereco: e.target.value })}
+                onChange={(e) => {
+                  setForm({ ...form, endereco: e.target.value });
+                }}
                 placeholder="Rua, número, bairro, cidade"
               />
             </div>
@@ -334,7 +396,9 @@ const Fornecedores = () => {
                 type="checkbox"
                 id="ativo"
                 checked={form.ativo}
-                onChange={(e) => setForm({ ...form, ativo: e.target.checked })}
+                onChange={(e) => {
+                  setForm({ ...form, ativo: e.target.checked });
+                }}
               />
               <label htmlFor="ativo" className="text-sm">Ativo</label>
             </div>

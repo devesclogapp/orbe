@@ -70,9 +70,11 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   normalizeTransportadoraPayload,
   validateTransportadoraPayload,
+  getTransportadoraErrorMessage,
   type TransportadoraFormValues,
   type TransportadoraValidationErrors,
 } from "@/utils/transportadoraValidation";
+import { formatCpfCnpj, formatPhone } from "@/utils/fornecedorValidation";
 
 type CadastroTabValue =
   | "colaboradores"
@@ -683,7 +685,7 @@ const CentralCadastros = () => {
       const data = await queryClient.fetchQuery({ queryKey: ["transportadoras"], queryFn: () => TransportadoraClienteService.getByEmpresa() });
       queryClient.setQueryData(["transportadoras"], data);
     },
-    onError: (err: any) => toast.error("Erro ao cadastrar", { description: err.message }),
+    onError: (err: any) => toast.error(getTransportadoraErrorMessage(err)),
   });
 
   const handleTransportadoraFormChange = <K extends keyof TransportadoraFormValues>(
@@ -719,6 +721,7 @@ const CentralCadastros = () => {
 
     if (Object.keys(errors).length > 0) {
       setTransportadoraFormErrors(errors);
+      toast.error("Preencha os campos obrigatórios.");
       return;
     }
 
@@ -727,9 +730,28 @@ const CentralCadastros = () => {
   };
 
   const [fornecedorModalOpen, setFornecedorModalOpen] = useState(false);
+  const [fornecedorFormErrors, setFornecedorFormErrors] = useState<any>({});
   const [fornecedorForm, setFornecedorForm] = useState({
     nome: "", documento: "", telefone: "", email: "", endereco: "", empresa_id: empresaId || "",
   });
+
+  const handleFornecedorFormChange = (field: string, value: string) => {
+    setFornecedorForm((current) => ({ ...current, [field]: value }));
+    setFornecedorFormErrors((current: any) => {
+      if (!current[field]) return current;
+      return { ...current, [field]: undefined };
+    });
+  };
+
+  const submitFornecedorForm = () => {
+    if (!fornecedorForm.nome?.trim()) {
+      setFornecedorFormErrors({ nome: 'Informe o nome do fornecedor.' });
+      toast.error("Preencha os campos obrigatórios.");
+      return;
+    }
+    setFornecedorFormErrors({});
+    createFornecedorMutation.mutate({ ...fornecedorForm, ativo: true, empresa_id: fornecedorForm.empresa_id || null });
+  };
 
   const createFornecedorMutation = useMutation({
     mutationFn: (payload: any) => FornecedorService.create(payload),
@@ -818,7 +840,7 @@ const CentralCadastros = () => {
       const data = await queryClient.fetchQuery({ queryKey: ["transportadoras"], queryFn: () => TransportadoraClienteService.getByEmpresa() });
       queryClient.setQueryData(["transportadoras"], data);
     },
-    onError: (err: any) => toast.error("Erro ao atualizar", { description: err.message }),
+    onError: (err: any) => toast.error(getTransportadoraErrorMessage(err)),
   });
   const deleteTransportadoraMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -2571,28 +2593,32 @@ const CentralCadastros = () => {
           <div className="grid gap-4 py-4">
             <div className="space-y-1.5">
               <Label htmlFor="forn_nome">Nome <span className="text-destructive">*</span></Label>
-              <Input id="forn_nome" value={fornecedorForm.nome} onChange={(e) => setFornecedorForm({ ...fornecedorForm, nome: e.target.value })} placeholder="Ex: Fornecedor ABC" />
+              <Input id="forn_nome" value={fornecedorForm.nome} onChange={(e) => handleFornecedorFormChange("nome", e.target.value)} placeholder="Ex: Fornecedor ABC" aria-invalid={Boolean(fornecedorFormErrors.nome)} className={fornecedorFormErrors.nome ? "border-destructive focus-visible:ring-destructive" : undefined} />
+              {fornecedorFormErrors.nome ? <p className="text-sm text-destructive" role="alert">{fornecedorFormErrors.nome}</p> : null}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="forn_documento">CNPJ/CPF</Label>
-              <Input id="forn_documento" value={fornecedorForm.documento} onChange={(e) => setFornecedorForm({ ...fornecedorForm, documento: e.target.value })} placeholder="00.000.000/0001-00" />
+              <Input id="forn_documento" value={fornecedorForm.documento} onChange={(e) => handleFornecedorFormChange("documento", formatCpfCnpj(e.target.value))} placeholder="00.000.000/0001-00" aria-invalid={Boolean(fornecedorFormErrors.documento)} className={fornecedorFormErrors.documento ? "border-destructive focus-visible:ring-destructive" : undefined} />
+              {fornecedorFormErrors.documento ? <p className="text-sm text-destructive" role="alert">{fornecedorFormErrors.documento}</p> : null}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="forn_telefone">Telefone</Label>
-              <Input id="forn_telefone" value={fornecedorForm.telefone} onChange={(e) => setFornecedorForm({ ...fornecedorForm, telefone: e.target.value })} placeholder="(00) 00000-0000" />
+              <Input id="forn_telefone" value={fornecedorForm.telefone} onChange={(e) => handleFornecedorFormChange("telefone", formatPhone(e.target.value))} placeholder="(00) 00000-0000" aria-invalid={Boolean(fornecedorFormErrors.telefone)} className={fornecedorFormErrors.telefone ? "border-destructive focus-visible:ring-destructive" : undefined} />
+              {fornecedorFormErrors.telefone ? <p className="text-sm text-destructive" role="alert">{fornecedorFormErrors.telefone}</p> : null}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="forn_email">Email</Label>
-              <Input id="forn_email" type="email" value={fornecedorForm.email} onChange={(e) => setFornecedorForm({ ...fornecedorForm, email: e.target.value })} placeholder="contato@fornecedor.com" />
+              <Input id="forn_email" type="email" value={fornecedorForm.email} onChange={(e) => handleFornecedorFormChange("email", e.target.value)} placeholder="contato@fornecedor.com" aria-invalid={Boolean(fornecedorFormErrors.email)} className={fornecedorFormErrors.email ? "border-destructive focus-visible:ring-destructive" : undefined} />
+              {fornecedorFormErrors.email ? <p className="text-sm text-destructive" role="alert">{fornecedorFormErrors.email}</p> : null}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="forn_endereco">Endereço</Label>
-              <Input id="forn_endereco" value={fornecedorForm.endereco} onChange={(e) => setFornecedorForm({ ...fornecedorForm, endereco: e.target.value })} placeholder="Rua, número, bairro, cidade" />
+              <Input id="forn_endereco" value={fornecedorForm.endereco} onChange={(e) => handleFornecedorFormChange("endereco", e.target.value)} placeholder="Rua, número, bairro, cidade" />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setFornecedorModalOpen(false)}>Cancelar</Button>
-            <Button onClick={() => createFornecedorMutation.mutate({ ...fornecedorForm, ativo: true, empresa_id: fornecedorForm.empresa_id || null })} disabled={createFornecedorMutation.isPending}>
+            <Button onClick={submitFornecedorForm} disabled={createFornecedorMutation.isPending}>
               {createFornecedorMutation.isPending ? "Salvando..." : "Salvar"}
             </Button>
           </DialogFooter>
@@ -2637,15 +2663,16 @@ const CentralCadastros = () => {
           <div className="grid gap-4 py-4">
             <div className="space-y-1.5">
               <Label htmlFor="edit_forn_nome">Nome <span className="text-destructive">*</span></Label>
-              <Input id="edit_forn_nome" value={editingFornecedor?.nome || ""} onChange={(e) => setEditingFornecedor({ ...editingFornecedor, nome: e.target.value })} />
+              <Input id="edit_forn_nome" value={editingFornecedor?.nome || ""} onChange={(e) => setEditingFornecedor({ ...editingFornecedor, nome: e.target.value })} aria-invalid={!editingFornecedor?.nome?.trim()} className={!editingFornecedor?.nome?.trim() ? "border-destructive focus-visible:ring-destructive" : undefined} />
+              {!editingFornecedor?.nome?.trim() ? <p className="text-sm text-destructive" role="alert">Informe o nome do fornecedor.</p> : null}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="edit_forn_documento">CNPJ/CPF</Label>
-              <Input id="edit_forn_documento" value={editingFornecedor?.documento || ""} onChange={(e) => setEditingFornecedor({ ...editingFornecedor, documento: e.target.value })} />
+              <Input id="edit_forn_documento" value={editingFornecedor?.documento || ""} onChange={(e) => setEditingFornecedor({ ...editingFornecedor, documento: formatCpfCnpj(e.target.value) })} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="edit_forn_telefone">Telefone</Label>
-              <Input id="edit_forn_telefone" value={editingFornecedor?.telefone || ""} onChange={(e) => setEditingFornecedor({ ...editingFornecedor, telefone: e.target.value })} />
+              <Input id="edit_forn_telefone" value={editingFornecedor?.telefone || ""} onChange={(e) => setEditingFornecedor({ ...editingFornecedor, telefone: formatPhone(e.target.value) })} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="edit_forn_email">Email</Label>
@@ -2662,7 +2689,13 @@ const CentralCadastros = () => {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingFornecedor(null)}>Cancelar</Button>
-            <Button onClick={() => updateFornecedorMutation.mutate({ id: editingFornecedor.id, payload: editingFornecedor })} disabled={updateFornecedorMutation.isPending}>
+            <Button onClick={() => {
+              if (!editingFornecedor?.nome?.trim()) {
+                toast.error("Informe o nome do fornecedor.");
+                return;
+              }
+              updateFornecedorMutation.mutate({ id: editingFornecedor.id, payload: editingFornecedor })
+            }} disabled={updateFornecedorMutation.isPending}>
               {updateFornecedorMutation.isPending ? "Salvando..." : "Salvar"}
             </Button>
           </DialogFooter>

@@ -1497,9 +1497,26 @@ class FornecedorServiceClass {
 
   async create(payload: Record<string, any>) {
     const tenantId = await getCurrentTenantId();
+    const nome = String(payload.nome ?? '').trim();
+
+    if (!nome) {
+      throw new Error("Informe o nome do fornecedor.");
+    }
+
+    const { data: existing } = await operationalClient
+      .from('fornecedores')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .ilike('nome', nome)
+      .maybeSingle();
+
+    if (existing) {
+      throw new Error("Já existe um fornecedor com este nome neste tenant.");
+    }
     
     const payloadWithTenant = {
       ...payload,
+      nome,
       empresa_id: payload.empresa_id ? cleanUuid(payload.empresa_id) : null,
       tenant_id: tenantId
     };
@@ -1510,13 +1527,36 @@ class FornecedorServiceClass {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      if (error.code === '23505') throw new Error("Já existe um fornecedor com este nome neste tenant.");
+      throw error;
+    }
     return data;
   }
 
   async update(id: string, payload: Record<string, any>) {
+    const tenantId = await getCurrentTenantId();
+    const nome = String(payload.nome ?? '').trim();
+
+    if (!nome) {
+      throw new Error("Informe o nome do fornecedor.");
+    }
+
+    const { data: existing } = await operationalClient
+      .from('fornecedores')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .ilike('nome', nome)
+      .neq('id', id)
+      .maybeSingle();
+
+    if (existing) {
+      throw new Error("Já existe um fornecedor com este nome neste tenant.");
+    }
+
     const payloadCleaned = {
       ...payload,
+      nome,
       empresa_id: payload.empresa_id ? cleanUuid(payload.empresa_id) : null,
     };
 
@@ -1526,7 +1566,10 @@ class FornecedorServiceClass {
       .eq('id', id)
       .select();
 
-    if (error) throw error;
+    if (error) {
+      if (error.code === '23505') throw new Error("Já existe um fornecedor com este nome neste tenant.");
+      throw error;
+    }
     return data?.[0] ?? null;
   }
 
@@ -1549,78 +1592,33 @@ class FornecedorServiceClass {
   }
 
   async deleteWithCheck(id: string): Promise<{ success: boolean; error?: string; detalhes?: { tabela: string; count: number; ids?: string[] }[] }> {
-    const [operacaoResult, regraResult, produtoResult] = await Promise.all([
-      operationalClient
-        .from('operacoes_producao')
-        .select('id')
-        .eq('fornecedor_id', id),
-      operationalClient
-        .from('fornecedor_valores_servico')
-        .select('id')
-        .eq('fornecedor_id', id),
-      operationalClient
-        .from('produtos_carga')
-        .select('id')
-        .eq('fornecedor_id', id)
-    ]);
+    console.log(`[FornecedorService.deleteWithCheck] Excluindo ID: ${id}`);
 
-    const vinculos: { tabela: string; count: number; ids?: string[] }[] = [];
-
-    if (operacaoResult.data && operacaoResult.data.length > 0) {
-      vinculos.push({
-        tabela: 'operacoes_producao',
-        count: operacaoResult.data.length,
-        ids: operacaoResult.data.slice(0, 3).map((r: any) => r.id)
-      });
-    }
-    if (regraResult.data && regraResult.data.length > 0) {
-      vinculos.push({
-        tabela: 'fornecedor_valores_servico',
-        count: regraResult.data.length,
-        ids: regraResult.data.slice(0, 3).map((r: any) => r.id)
-      });
-    }
-    if (produtoResult.data && produtoResult.data.length > 0) {
-      vinculos.push({
-        tabela: 'produtos_carga',
-        count: produtoResult.data.length,
-        ids: produtoResult.data.slice(0, 3).map((r: any) => r.id)
-      });
-    }
-
-    console.log(`[FornecedorService.deleteWithCheck] ID: ${id}`);
-    console.log(`[FornecedorService.deleteWithCheck] Vínculos encontrados:`, vinculos);
-
-    if (vinculos.length > 0) {
-      return {
-        success: false,
-        error: 'Este fornecedor possui vínculos operacionais e não pode ser excluído.',
-        detalhes: vinculos
-      };
-    }
-
+    // As FKs em operacoes_producao são ON DELETE SET NULL
+    // As FKs em fornecedor_valores_servico e produtos_carga são ON DELETE CASCADE
     const { error, count } = await operationalClient
       .from('fornecedores')
       .delete({ count: 'exact' })
-      .eq('id', id)
-      .select('id');
+      .eq('id', id);
 
     if (error) {
       console.error(`[FornecedorService.deleteWithCheck] Erro no delete:`, error);
       if (error.code === '23503') {
+        const referencedTable = extractReferencedTableFromFkError(error);
         return {
           success: false,
-          error: 'Este fornecedor possui vínculos e não pode ser excluído.'
+          detalhes: referencedTable ? [{ tabela: referencedTable, count: 1 }] : undefined,
+          error: 'Este fornecedor possui vínculos e não pode ser excluído.',
         };
       }
       throw error;
     }
 
-    if (!count || count === 0) {
-      return {
-        success: false,
-        error: 'Nenhum fornecedor foi excluído. O registro pode não existir.'
-      };
+    if (count === 0) {
+       return {
+         success: false,
+         error: 'Nenhum registro foi excluído. Pode não existir ou você não tem permissão.'
+       };
     }
 
     return { success: true };
