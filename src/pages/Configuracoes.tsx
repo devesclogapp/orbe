@@ -47,6 +47,7 @@ import {
   ConfigProdutoService,
   ConfigTipoDiaService,
   ConfiguracaoOperacionalService,
+  getConfigTipoOperacaoErrorMessage,
   ImportacaoModelosService,
   StorageService
 } from "@/services/base.service";
@@ -64,6 +65,14 @@ const IMPORTACAO_MODULOS = [
   { value: "pontos_recebidos", label: "Pontos Recebidos" },
 ];
 
+function normalizeOperationTypeValue(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
 const Configuracoes = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -80,7 +89,7 @@ const Configuracoes = () => {
   // Sync activeTab with queryTab when URL changes
   useEffect(() => {
     if (queryTab === "minimas") {
-      setActiveTab("preferencias");
+      setActiveTab("config_operacional");
       return;
     }
     if (queryTab && queryTab !== activeTab) {
@@ -88,10 +97,6 @@ const Configuracoes = () => {
     }
   }, [queryTab]);
 
-  const [configModalOpen, setConfigModalOpen] = useState(false);
-  const [configType, setConfigType] = useState<'operacao' | 'produto' | 'dia'>('operacao');
-  const [editingConfig, setEditingConfig] = useState<any>(null);
-  const [configForm, setConfigForm] = useState<any>({});
   const [importTemplateModalOpen, setImportTemplateModalOpen] = useState(false);
   const [editingImportTemplate, setEditingImportTemplate] = useState<any>(null);
   const [importTemplateForm, setImportTemplateForm] = useState({
@@ -161,60 +166,9 @@ const Configuracoes = () => {
   };
 
   // Real data fetching
-  const { data: tiposOperacao = [], isLoading: loadingOps } = useQuery({
-    queryKey: ['config_tipos_operacao'],
-    queryFn: () => ConfigTipoOperacaoService.getAll()
-  });
-
-  const { data: produtos = [], isLoading: loadingProds } = useQuery({
-    queryKey: ['config_produtos'],
-    queryFn: () => ConfigProdutoService.getAll()
-  });
-
-  const { data: tiposDia = [], isLoading: loadingDias } = useQuery({
-    queryKey: ['config_tipos_dia'],
-    queryFn: () => ConfigTipoDiaService.getAll()
-  });
-
   const { data: importacaoModelos = [], isLoading: loadingModelos } = useQuery({
     queryKey: ['importacao_modelos'],
     queryFn: () => ImportacaoModelosService.listAll()
-  });
-
-  // Mutations for toggling status
-  const toggleOpStatus = useMutation({
-    mutationFn: (item: any) => ConfigTipoOperacaoService.update(item.id, { status: item.status === 'ativo' ? 'inativo' : 'ativo' }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['config_tipos_operacao'] });
-      toast.success("Status atualizado");
-    }
-  });
-
-  const configMutation = useMutation({
-    mutationFn: (payload: any) => {
-      const service = configType === 'operacao' ? ConfigTipoOperacaoService :
-        configType === 'produto' ? ConfigProdutoService : ConfigTipoDiaService;
-
-      return editingConfig ? service.update(editingConfig.id, payload) : service.create(payload);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`config_tipos_${configType === 'operacao' ? 'operacao' : configType === 'produto' ? 'produtos' : 'dia'}`] });
-      toast.success(editingConfig ? "Registro atualizado" : "Registro criado");
-      setConfigModalOpen(false);
-    },
-    onError: (err: any) => toast.error("Erro ao salvar", { description: err.message })
-  });
-
-  const deleteConfigMutation = useMutation({
-    mutationFn: (id: string) => {
-      const service = configType === 'operacao' ? ConfigTipoOperacaoService :
-        configType === 'produto' ? ConfigProdutoService : ConfigTipoDiaService;
-      return service.delete(id);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`config_tipos_${configType === 'operacao' ? 'operacao' : configType === 'produto' ? 'produtos' : 'dia'}`] });
-      toast.success("Registro removido");
-    }
   });
 
   const importTemplateMutation = useMutation({
@@ -243,23 +197,6 @@ const Configuracoes = () => {
     onError: (err: any) => toast.error("Erro ao remover modelo", { description: err.message })
   });
 
-  const handleAddConfig = (type: 'operacao' | 'produto' | 'dia') => {
-    const empresaId = user?.user_metadata?.empresa_id;
-    setConfigType(type);
-    setEditingConfig(null);
-    setConfigForm(type === 'operacao' ? { nome: '', codigo: '', status: 'ativo', empresa_id: empresaId } :
-      type === 'produto' ? { categoria: '', icms: 0, status: 'ativo', empresa_id: empresaId } :
-        { nome: '', fator: 1, status: 'ativo', empresa_id: empresaId });
-    setConfigModalOpen(true);
-  };
-
-  const handleEditConfig = (type: 'operacao' | 'produto' | 'dia', item: any) => {
-    setConfigType(type);
-    setEditingConfig(item);
-    setConfigForm({ ...item });
-    setConfigModalOpen(true);
-  };
-
   const handleAddImportTemplate = () => {
     setEditingImportTemplate(null);
     setImportTemplateForm({
@@ -282,7 +219,7 @@ const Configuracoes = () => {
     setImportTemplateModalOpen(true);
   };
 
-  if (loadingOps || loadingProds || loadingDias) {
+  if (loadingSettings) {
     return (
       <AppShell title="Configurações" subtitle="Carregando configurações...">
         <div className="flex items-center justify-center p-20">
@@ -299,6 +236,9 @@ const Configuracoes = () => {
           <TabsTrigger value="preferencias" className="px-6 rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm">
             <Settings2 className="h-4 w-4 mr-2" /> Preferências
           </TabsTrigger>
+          <TabsTrigger value="config_operacional" className="px-6 rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm">
+            <Boxes className="h-4 w-4 mr-2" /> Configurações Operacionais
+          </TabsTrigger>
           <TabsTrigger value="manutencao" className="px-6 rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm">
             <AlertTriangle className="h-4 w-4 mr-2" /> Manutenção do Ambiente
           </TabsTrigger>
@@ -311,18 +251,6 @@ const Configuracoes = () => {
         </TabsList>
 
         <TabsContent value="preferencias" className="space-y-6 mt-6">
-          <section className="esc-card p-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h2 className="font-display font-semibold text-foreground">Administração operacional movida</h2>
-              <p className="text-sm text-muted-foreground">
-                Parâmetros básicos, tipos de operação, produtos e tipos de dia agora ficam na Central de Cadastros.
-              </p>
-            </div>
-            <Button variant="outline" onClick={() => navigate("/cadastros")}>
-              <Database className="h-4 w-4 mr-2" />
-              Abrir Central de Cadastros
-            </Button>
-          </section>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <section className="esc-card p-6">
               <h2 className="font-display font-bold text-foreground mb-1 flex items-center gap-2">
@@ -394,174 +322,91 @@ const Configuracoes = () => {
           <ResetOperacional />
         </TabsContent>
 
-        <TabsContent value="minimas" className="mt-6">
-          <Tabs defaultValue="operacao" className="w-full">
-            <div className="flex items-center justify-between mb-4 flex-wrap gap-4">
-              <TabsList className="bg-muted p-1 h-9 rounded-lg">
-                <TabsTrigger value="operacao" className="text-xs py-1 px-4">Tipos de Operação</TabsTrigger>
-                <TabsTrigger value="produtos" className="text-xs py-1 px-4">Produtos</TabsTrigger>
-                <TabsTrigger value="dia" className="text-xs py-1 px-4">Tipos de Dia</TabsTrigger>
-                <TabsTrigger value="parametros" className="text-xs py-1 px-4">Parâmetros Básicos</TabsTrigger>
-              </TabsList>
+        <TabsContent value="config_operacional" className="space-y-6 mt-6">
+          <section className="esc-card p-5">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <h2 className="font-display font-semibold text-foreground">Motor operacional</h2>
+                <p className="text-sm text-muted-foreground">
+                  Regras que governam cálculo, conferência e comportamento dos fluxos do ERP.
+                </p>
+              </div>
+              <Button
+                variant={isEditingParams ? "default" : "outline"}
+                size="sm"
+                onClick={() => isEditingParams ? saveParamsMutation.mutate(paramsForm) : setIsEditingParams(true)}
+                disabled={saveParamsMutation.isPending}
+              >
+                {saveParamsMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : isEditingParams ? <Check className="h-4 w-4 mr-2" /> : <Pencil className="h-4 w-4 mr-2" />}
+                {isEditingParams ? "Salvar Alterações" : "Editar Parâmetros"}
+              </Button>
             </div>
 
-            <TabsContent value="operacao">
-              <ConfigTable<any>
-                title="Tipos de Operação"
-                data={tiposOperacao as any}
-                columns={[
-                  { header: "Nome", accessorKey: "nome" },
-                  { header: "Código", accessorKey: "codigo", cell: (item) => <code className="bg-muted px-2 py-0.5 rounded text-xs font-mono">{item.codigo}</code> },
-                  {
-                    header: "Status", accessorKey: "status", cell: (item) => (
-                      <Badge variant={item.status === 'ativo' ? 'success' : 'secondary'} className="h-5">
-                        {item.status}
-                      </Badge>
-                    )
-                  },
-                ]}
-                onAdd={() => handleAddConfig('operacao')}
-                onEdit={(item) => handleEditConfig('operacao', item)}
-                onDelete={(item) => {
-                  if (confirm("Deseja remover este registro?")) {
-                    setConfigType('operacao');
-                    deleteConfigMutation.mutate(item.id);
-                  }
-                }}
-                onToggleStatus={(item) => toggleOpStatus.mutate(item)}
-              />
-            </TabsContent>
-
-            <TabsContent value="produtos">
-              <ConfigTable<any>
-                title="Produtos / Categorias"
-                data={produtos as any}
-                columns={[
-                  { header: "Categoria", accessorKey: "categoria" },
-                  { header: "Alíquota ICMS", accessorKey: "icms", cell: (item) => <span className="font-bold text-primary">{item.icms}%</span> },
-                  {
-                    header: "Status", accessorKey: "status", cell: (item) => (
-                      <Badge variant={item.status === 'ativo' ? 'success' : 'secondary'} className="h-5">
-                        {item.status}
-                      </Badge>
-                    )
-                  },
-                ]}
-                onAdd={() => handleAddConfig('produto')}
-                onEdit={(item) => handleEditConfig('produto', item)}
-                onDelete={(item) => {
-                  if (confirm("Deseja remover esta categoria?")) {
-                    setConfigType('produto');
-                    deleteConfigMutation.mutate(item.id);
-                  }
-                }}
-              />
-            </TabsContent>
-
-            <TabsContent value="dia">
-              <ConfigTable<any>
-                title="Tipos de Dia"
-                data={tiposDia as any}
-                columns={[
-                  { header: "Descrição", accessorKey: "nome" },
-                  { header: "Fator Multiplicador", accessorKey: "fator", cell: (item) => <span className="font-mono font-bold">x{item.fator}</span> },
-                  {
-                    header: "Status", accessorKey: "status", cell: (item) => (
-                      <Badge variant={item.status === 'ativo' ? 'success' : 'secondary'} className="h-5">
-                        {item.status}
-                      </Badge>
-                    )
-                  },
-                ]}
-                onAdd={() => handleAddConfig('dia')}
-                onEdit={(item) => handleEditConfig('dia', item)}
-                onDelete={(item) => {
-                  if (confirm("Deseja remover este tipo de dia?")) {
-                    setConfigType('dia');
-                    deleteConfigMutation.mutate(item.id);
-                  }
-                }}
-              />
-            </TabsContent>
-
-            <TabsContent value="parametros">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-sm font-medium text-muted-foreground">Configurações de motor de cálculo e interface</h3>
-                <Button
-                  variant={isEditingParams ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => isEditingParams ? saveParamsMutation.mutate(paramsForm) : setIsEditingParams(true)}
-                  disabled={saveParamsMutation.isPending}
-                >
-                  {saveParamsMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : isEditingParams ? <Check className="h-4 w-4 mr-2" /> : <Pencil className="h-4 w-4 mr-2" />}
-                  {isEditingParams ? "Salvar Alterações" : "Editar Parâmetros"}
-                </Button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <section className="esc-card p-6">
-                  <h3 className="font-display font-semibold mb-4 text-foreground flex items-center gap-2">
-                    <Globe className="h-4 w-4 text-primary" /> Geral
-                  </h3>
-                  <div className="space-y-4">
-                    <EditableParam
-                      label="Moeda Padrão"
-                      value={paramsForm.moeda_padrao || 'BRL (R$)'}
-                      editing={isEditingParams}
-                      onChange={v => setParamsForm({ ...paramsForm, moeda_padrao: v })}
-                      options={['BRL (R$)', 'USD ($)', 'EUR (€)']}
-                    />
-                    <EditableParam
-                      label="Fuso Horário"
-                      value={paramsForm.fuso_horario || 'GMT-3 (Brasília)'}
-                      editing={isEditingParams}
-                      onChange={v => setParamsForm({ ...paramsForm, fuso_horario: v })}
-                      options={['GMT-3 (Brasília)', 'GMT-4 (Manaus)', 'GMT-0 (Londres)']}
-                    />
-                    <EditableParam
-                      label="Limite de Escopo (Dias)"
-                      value={String(paramsForm.limite_escopo || 31)}
-                      editing={isEditingParams}
-                      type="number"
-                      onChange={v => setParamsForm({ ...paramsForm, limite_escopo: Number(v) })}
-                    />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5">
+              <section className="esc-card p-6">
+                <h3 className="font-display font-semibold mb-4 text-foreground flex items-center gap-2">
+                  <Globe className="h-4 w-4 text-primary" /> Geral
+                </h3>
+                <div className="space-y-4">
+                  <EditableParam
+                    label="Moeda Padrão"
+                    value={paramsForm.moeda_padrao || 'BRL (R$)'}
+                    editing={isEditingParams}
+                    onChange={v => setParamsForm({ ...paramsForm, moeda_padrao: v })}
+                    options={['BRL (R$)', 'USD ($)', 'EUR (€)']}
+                  />
+                  <EditableParam
+                    label="Fuso Horário"
+                    value={paramsForm.fuso_horario || 'GMT-3 (Brasília)'}
+                    editing={isEditingParams}
+                    onChange={v => setParamsForm({ ...paramsForm, fuso_horario: v })}
+                    options={['GMT-3 (Brasília)', 'GMT-4 (Manaus)', 'GMT-0 (Londres)']}
+                  />
+                  <EditableParam
+                    label="Limite de Escopo (Dias)"
+                    value={String(paramsForm.limite_escopo || 31)}
+                    editing={isEditingParams}
+                    type="number"
+                    onChange={v => setParamsForm({ ...paramsForm, limite_escopo: Number(v) })}
+                  />
+                </div>
+              </section>
+              <section className="esc-card p-6">
+                <h3 className="font-display font-semibold mb-4 text-foreground flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-primary" /> Operacional
+                </h3>
+                <div className="space-y-4">
+                  <EditableParam
+                    label="Tolerância de Ponto (Minutos)"
+                    value={String(paramsForm.tolerancia_ponto || 10)}
+                    editing={isEditingParams}
+                    type="number"
+                    onChange={v => setParamsForm({ ...paramsForm, tolerancia_ponto: Number(v) })}
+                  />
+                  <EditableParam
+                    label="Arredondamento Financeiro"
+                    value={paramsForm.arredondamento_financeiro || 'Duas casas'}
+                    editing={isEditingParams}
+                    onChange={v => setParamsForm({ ...paramsForm, arredondamento_financeiro: v })}
+                    options={['Duas casas', 'Inteiro (Cêntimos)', 'Teto']}
+                  />
+                  <div className="flex items-center justify-between py-2">
+                    <span className="text-xs text-muted-foreground">Notificação de Inconsistência</span>
+                    {isEditingParams ? (
+                      <Switch
+                        checked={paramsForm.notificacao_inconsistencia}
+                        onCheckedChange={v => setParamsForm({ ...paramsForm, notificacao_inconsistencia: v })}
+                      />
+                    ) : (
+                      <span className="text-sm font-semibold text-foreground">{paramsForm.notificacao_inconsistencia ? 'Ativado' : 'Desativado'}</span>
+                    )}
                   </div>
-                </section>
-                <section className="esc-card p-6">
-                  <h3 className="font-display font-semibold mb-4 text-foreground flex items-center gap-2">
-                    <Clock className="h-4 w-4 text-primary" /> Operacional
-                  </h3>
-                  <div className="space-y-4">
-                    <EditableParam
-                      label="Tolerância de Ponto (Minutos)"
-                      value={String(paramsForm.tolerancia_ponto || 10)}
-                      editing={isEditingParams}
-                      type="number"
-                      onChange={v => setParamsForm({ ...paramsForm, tolerancia_ponto: Number(v) })}
-                    />
-                    <EditableParam
-                      label="Arredondamento Financeiro"
-                      value={paramsForm.arredondamento_financeiro || 'Duas casas'}
-                      editing={isEditingParams}
-                      onChange={v => setParamsForm({ ...paramsForm, arredondamento_financeiro: v })}
-                      options={['Duas casas', 'Inteiro (Cêntimos)', 'Teto']}
-                    />
-                    <div className="flex items-center justify-between py-2">
-                      <span className="text-xs text-muted-foreground">Notificação de Inconsistência</span>
-                      {isEditingParams ? (
-                        <Switch
-                          checked={paramsForm.notificacao_inconsistencia}
-                          onCheckedChange={v => setParamsForm({ ...paramsForm, notificacao_inconsistencia: v })}
-                        />
-                      ) : (
-                        <span className="text-sm font-semibold text-foreground">{paramsForm.notificacao_inconsistencia ? 'Ativado' : 'Desativado'}</span>
-                      )}
-                    </div>
-                  </div>
-                </section>
-              </div>
-            </TabsContent>
-          </Tabs>
+                </div>
+              </section>
+            </div>
+          </section>
+
+
         </TabsContent>
 
         <TabsContent value="modelos" className="space-y-6 mt-6">
@@ -814,63 +659,7 @@ const Configuracoes = () => {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={configModalOpen} onOpenChange={setConfigModalOpen}>
-        <DialogContent className="sm:max-w-[420px]">
-          <DialogHeader>
-            <DialogTitle>
-              {editingConfig ? "Editar" : "Novo"} {configType === 'operacao' ? "Tipo de Operação" : configType === 'produto' ? "Produto" : "Tipo de Dia"}
-            </DialogTitle>
-          </DialogHeader>
 
-          <div className="space-y-4 py-4">
-            {configType === 'operacao' && (
-              <>
-                <div className="space-y-2">
-                  <Label>Nome da Operação</Label>
-                  <Input value={configForm.nome || ''} onChange={e => setConfigForm({ ...configForm, nome: e.target.value })} placeholder="Ex: Carga Geral" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Código</Label>
-                  <Input value={configForm.codigo || ''} onChange={e => setConfigForm({ ...configForm, codigo: e.target.value })} placeholder="Ex: CG-01" />
-                </div>
-              </>
-            )}
-
-            {configType === 'produto' && (
-              <>
-                <div className="space-y-2">
-                  <Label>Categoria do Produto</Label>
-                  <Input value={configForm.categoria || ''} onChange={e => setConfigForm({ ...configForm, categoria: e.target.value })} placeholder="Ex: Grãos" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Alíquota ICMS (%)</Label>
-                  <Input type="number" value={configForm.icms || 0} onChange={e => setConfigForm({ ...configForm, icms: Number(e.target.value) })} />
-                </div>
-              </>
-            )}
-
-            {configType === 'dia' && (
-              <>
-                <div className="space-y-2">
-                  <Label>Descrição do Dia</Label>
-                  <Input value={configForm.nome || ''} onChange={e => setConfigForm({ ...configForm, nome: e.target.value })} placeholder="Ex: Feriado Nacional" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Fator de Cálculo</Label>
-                  <Input type="number" step="0.1" value={configForm.fator || 1} onChange={e => setConfigForm({ ...configForm, fator: Number(e.target.value) })} />
-                </div>
-              </>
-            )}
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfigModalOpen(false)}>Cancelar</Button>
-            <Button onClick={() => configMutation.mutate(configForm)} disabled={configMutation.isPending}>
-              {configMutation.isPending ? "Salvando..." : "Confirmar"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </AppShell>
   );
 };

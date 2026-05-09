@@ -58,8 +58,8 @@ import {
   ColetorService,
   ConfigProdutoService,
   ConfigTipoDiaService,
+  getConfigTipoOperacaoErrorMessage,
   ConfigTipoOperacaoService,
-  ConfiguracaoOperacionalService,
   EmpresaService,
   FornecedorService,
   ImportacaoModelosService,
@@ -94,6 +94,14 @@ const TECHNICAL_COLUMNS = [
   "USER_ID",
   "AUTH_ID",
 ];
+
+function normalizeOperationTypeValue(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
 
 const VALID_DB_COLUMNS_EMPRESAS = [
   'nome', 'cnpj', 'unidade', 'cidade', 'estado',
@@ -196,8 +204,6 @@ const CentralCadastros = () => {
   const [configType, setConfigType] = useState<"operacao" | "produto" | "dia">("operacao");
   const [editingConfig, setEditingConfig] = useState<any>(null);
   const [configForm, setConfigForm] = useState<any>({});
-  const [isEditingParams, setIsEditingParams] = useState(false);
-  const [paramsForm, setParamsForm] = useState<any>({});
 
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteModalType, setDeleteModalType] = useState<"transportadora" | "fornecedor" | "servico" | null>(null);
@@ -370,32 +376,60 @@ const CentralCadastros = () => {
     queryFn: () => ConfigTipoDiaService.getAll(),
   });
 
-  const { data: opSettings } = useQuery<any>({
-    queryKey: ["config_operacional", empresaId],
-    queryFn: () => ConfiguracaoOperacionalService.getByEmpresa(empresaId),
-    enabled: !!empresaId,
-  });
-
   const { data: importacaoModelos = [] } = useQuery<any[]>({
     queryKey: ["importacao_modelos"],
     queryFn: () => ImportacaoModelosService.listAll(),
   });
 
-  useEffect(() => {
-    if (opSettings) {
-      setParamsForm(opSettings);
-    }
-  }, [opSettings]);
+  const refreshConfigQuery = async (type: "operacao" | "produto" | "dia") => {
+    const queryKey =
+      type === "operacao"
+        ? ["config_tipos_operacao"]
+        : type === "produto"
+          ? ["config_produtos"]
+          : ["config_tipos_dia"];
 
-  const saveParamsMutation = useMutation({
-    mutationFn: (payload: any) => ConfiguracaoOperacionalService.upsert({ ...payload, empresa_id: empresaId }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["config_operacional"] });
-      setIsEditingParams(false);
-      toast.success("Parâmetros salvos com sucesso");
-    },
-    onError: (err: any) => toast.error("Erro ao salvar parâmetros", { description: err.message }),
-  });
+    await queryClient.cancelQueries({ queryKey });
+    queryClient.removeQueries({ queryKey });
+    await queryClient.invalidateQueries({ queryKey });
+  };
+
+  const validateTipoOperacaoForm = (payload: any) => {
+    const nome = String(payload?.nome ?? "").trim();
+    const codigo = String(payload?.codigo ?? "").trim();
+
+    if (!nome || !codigo) {
+      toast.error("Preencha nome e código do tipo de operação.");
+      return false;
+    }
+
+    if (!user?.id) {
+      toast.error("Sua sessão expirou. Entre novamente para continuar.");
+      return false;
+    }
+
+    const hasDuplicate =
+      ConfigTipoOperacaoService.hasDuplicate(tiposOperacao, {
+        id: editingConfig?.id,
+        nome,
+        codigo,
+      }) ||
+      tiposOperacao.some((item: any) => {
+        if (editingConfig?.id && item.id === editingConfig.id) return false;
+
+        const sameNome = normalizeOperationTypeValue(item.nome) === normalizeOperationTypeValue(nome);
+        const sameCodigo = normalizeOperationTypeValue(item.codigo) === normalizeOperationTypeValue(codigo);
+        return sameNome || sameCodigo;
+      });
+
+    if (hasDuplicate) {
+      toast.error("Já existe um tipo de operação com este nome ou código.");
+      return false;
+    }
+
+    return true;
+  };
+
 
   const toggleOpStatus = useMutation({
     mutationFn: (item: any) =>
@@ -408,24 +442,44 @@ const CentralCadastros = () => {
 
   const configMutation = useMutation({
     mutationFn: (payload: any) => {
+      if (configType === "operacao" && !validateTipoOperacaoForm(payload)) {
+        throw new Error("__TIPO_OPERACAO_VALIDATION__");
+      }
+
       const service =
         configType === "operacao"
           ? ConfigTipoOperacaoService
           : configType === "produto"
             ? ConfigProdutoService
             : ConfigTipoDiaService;
-      return editingConfig ? service.update(editingConfig.id, payload) : service.create(payload);
+
+      const normalizedPayload =
+        configType === "operacao"
+          ? {
+            ...payload,
+            nome: String(payload?.nome ?? "").trim(),
+            codigo: String(payload?.codigo ?? "").trim(),
+          }
+          : payload;
+
+      return editingConfig ? service.update(editingConfig.id, normalizedPayload) : service.create(normalizedPayload);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: [
-          `config_tipos_${configType === "operacao" ? "operacao" : configType === "produto" ? "produtos" : "dia"}`,
-        ],
-      });
+    onSuccess: async () => {
+      await refreshConfigQuery(configType);
       toast.success(editingConfig ? "Registro atualizado" : "Registro criado");
       setConfigModalOpen(false);
+      setEditingConfig(null);
     },
-    onError: (err: any) => toast.error("Erro ao salvar", { description: err.message }),
+    onError: (err: any) => {
+      if (err?.message === "__TIPO_OPERACAO_VALIDATION__") return;
+
+      if (configType === "operacao") {
+        toast.error(getConfigTipoOperacaoErrorMessage(err, editingConfig ? "atualizar" : "criar"));
+        return;
+      }
+
+      toast.error("Erro ao salvar", { description: err.message });
+    },
   });
 
   const deleteConfigMutation = useMutation({
@@ -438,13 +492,17 @@ const CentralCadastros = () => {
             : ConfigTipoDiaService;
       return service.delete(id);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: [
-          `config_tipos_${configType === "operacao" ? "operacao" : configType === "produto" ? "produtos" : "dia"}`,
-        ],
-      });
+    onSuccess: async () => {
+      await refreshConfigQuery(configType);
       toast.success("Registro removido");
+    },
+    onError: (err: any) => {
+      if (configType === "operacao") {
+        toast.error(getConfigTipoOperacaoErrorMessage(err, "excluir"));
+        return;
+      }
+
+      toast.error("Erro ao remover registro", { description: err?.message });
     },
   });
 
@@ -945,7 +1003,7 @@ const CentralCadastros = () => {
     setEditingConfig(null);
     setConfigForm(
       type === "operacao"
-        ? { nome: "", codigo: "", status: "ativo", empresa_id: empresaId }
+        ? { nome: "", codigo: "", status: "ativo", tenant_id: null }
         : type === "produto"
           ? { categoria: "", icms: 0, status: "ativo", empresa_id: empresaId }
           : { nome: "", fator: 1, status: "ativo", empresa_id: empresaId }
@@ -1893,98 +1951,7 @@ const CentralCadastros = () => {
                 </section>
               </TabsContent>
 
-              <TabsContent value="parametros" className="space-y-6 min-h-[400px] max-h-[75vh] overflow-y-scroll pr-1">
-                <section className="esc-card p-5">
-                  <div className="flex items-center justify-between gap-3 flex-wrap">
-                    <div>
-                      <h2 className="font-display font-semibold text-foreground">Motor operacional</h2>
-                      <p className="text-sm text-muted-foreground">
-                        Regras mínimas que governam cálculo, conferência e comportamento dos fluxos.
-                      </p>
-                    </div>
-                    <Button
-                      variant={isEditingParams ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => isEditingParams ? saveParamsMutation.mutate(paramsForm) : setIsEditingParams(true)}
-                      disabled={saveParamsMutation.isPending}
-                    >
-                      {saveParamsMutation.isPending ? (
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      ) : isEditingParams ? (
-                        <Check className="h-4 w-4 mr-2" />
-                      ) : (
-                        <Pencil className="h-4 w-4 mr-2" />
-                      )}
-                      {isEditingParams ? "Salvar alterações" : "Editar parâmetros"}
-                    </Button>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5">
-                    <section className="esc-card p-5">
-                      <h3 className="font-display font-semibold mb-4 text-foreground flex items-center gap-2">
-                        <Globe className="h-4 w-4 text-primary" /> Geral
-                      </h3>
-                      <div className="space-y-4">
-                        <EditableParam
-                          label="Moeda padrão"
-                          value={paramsForm.moeda_padrao || "BRL (R$)"}
-                          editing={isEditingParams}
-                          onChange={(value) => setParamsForm({ ...paramsForm, moeda_padrao: value })}
-                          options={["BRL (R$)", "USD ($)", "EUR (€)"]}
-                        />
-                        <EditableParam
-                          label="Fuso horário"
-                          value={paramsForm.fuso_horario || "GMT-3 (Brasília)"}
-                          editing={isEditingParams}
-                          onChange={(value) => setParamsForm({ ...paramsForm, fuso_horario: value })}
-                          options={["GMT-3 (Brasília)", "GMT-4 (Manaus)", "GMT-0 (Londres)"]}
-                        />
-                        <EditableParam
-                          label="Limite de escopo (dias)"
-                          value={String(paramsForm.limite_escopo || 31)}
-                          editing={isEditingParams}
-                          type="number"
-                          onChange={(value) => setParamsForm({ ...paramsForm, limite_escopo: Number(value) })}
-                        />
-                      </div>
-                    </section>
-                    <section className="esc-card p-5">
-                      <h3 className="font-display font-semibold mb-4 text-foreground flex items-center gap-2">
-                        <Clock className="h-4 w-4 text-primary" /> Operacional
-                      </h3>
-                      <div className="space-y-4">
-                        <EditableParam
-                          label="Tolerância de ponto (minutos)"
-                          value={String(paramsForm.tolerancia_ponto || 10)}
-                          editing={isEditingParams}
-                          type="number"
-                          onChange={(value) => setParamsForm({ ...paramsForm, tolerancia_ponto: Number(value) })}
-                        />
-                        <EditableParam
-                          label="Arredondamento financeiro"
-                          value={paramsForm.arredondamento_financeiro || "Duas casas"}
-                          editing={isEditingParams}
-                          onChange={(value) => setParamsForm({ ...paramsForm, arredondamento_financeiro: value })}
-                          options={["Duas casas", "Inteiro (Cêntimos)", "Teto"]}
-                        />
-                        <div className="flex items-center justify-between py-2 border-b border-border/50">
-                          <span className="text-xs text-muted-foreground">Notificação de inconsistência</span>
-                          {isEditingParams ? (
-                            <Switch
-                              checked={!!paramsForm.notificacao_inconsistencia}
-                              onCheckedChange={(value) =>
-                                setParamsForm({ ...paramsForm, notificacao_inconsistencia: value })
-                              }
-                            />
-                          ) : (
-                            <span className="text-sm font-semibold text-foreground">
-                              {paramsForm.notificacao_inconsistencia ? "Ativado" : "Desativado"}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </section>
-                  </div>
-                </section>
+              <TabsContent value="parametros" className="space-y-4 min-h-[400px]">
 
                 <Tabs defaultValue="operacao" className="space-y-4">
                   <TabsList className="bg-muted p-1 h-9 rounded-lg">
@@ -2671,8 +2638,8 @@ const CentralCadastros = () => {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setServicoModalOpen(false)}>Cancelar</Button>
-            <Button 
-              onClick={submitServicoForm} 
+            <Button
+              onClick={submitServicoForm}
               disabled={createServicoMutation.isPending}
               className={createServicoMutation.isPending ? "opacity-70 cursor-not-allowed" : ""}
             >
@@ -2991,45 +2958,5 @@ const CentralCadastros = () => {
     </AppShell>
   );
 };
-
-const EditableParam = ({
-  label,
-  value,
-  editing,
-  onChange,
-  options,
-  type = "text",
-}: {
-  label: string;
-  value: string;
-  editing: boolean;
-  onChange: (value: string) => void;
-  options?: string[];
-  type?: string;
-}) => (
-  <div className="flex items-center justify-between py-2 border-b border-border/50 last:border-0 min-h-[48px]">
-    <span className="text-xs text-muted-foreground">{label}</span>
-    {editing ? (
-      options ? (
-        <Select value={value} onValueChange={onChange}>
-          <SelectTrigger className="h-8 w-40 text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {options.map((option) => (
-              <SelectItem key={option} value={option} className="text-xs">
-                {option}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      ) : (
-        <Input type={type} value={value} onChange={(e) => onChange(e.target.value)} className="h-8 w-40 text-xs text-right" />
-      )
-    ) : (
-      <span className="text-sm font-semibold text-foreground">{value}</span>
-    )}
-  </div>
-);
 
 export default CentralCadastros;

@@ -85,6 +85,61 @@ async function getCurrentTenantId(): Promise<string> {
   return profile.tenant_id;
 }
 
+async function requireAuthenticatedUserId(): Promise<string> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user?.id) {
+    throw new Error('Sessão inválida. Faça login novamente para continuar.');
+  }
+  return user.id;
+}
+
+function normalizeConfigTipoOperacaoValue(value: unknown): string {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+function isDuplicateConstraintError(error: { code?: string | null; message?: string | null; details?: string | null }) {
+  const raw = `${error.code ?? ''} ${error.message ?? ''} ${error.details ?? ''}`.toLowerCase();
+  return error.code === '23505' || raw.includes('duplicate') || raw.includes('unique');
+}
+
+export function getConfigTipoOperacaoErrorMessage(
+  error: unknown,
+  action: 'criar' | 'atualizar' | 'excluir' = 'criar'
+) {
+  const supabaseError = (error ?? {}) as {
+    code?: string | null;
+    message?: string | null;
+    details?: string | null;
+  };
+  const rawMessage = `${supabaseError.message ?? ''} ${supabaseError.details ?? ''}`.toLowerCase();
+
+  if (isDuplicateConstraintError(supabaseError)) {
+    return 'Já existe um tipo de operação com este nome ou código.';
+  }
+
+  if (rawMessage.includes('row-level security')) {
+    return action === 'excluir'
+      ? 'Você não tem permissão para excluir este tipo de operação.'
+      : 'Você não tem permissão para salvar este tipo de operação neste tenant.';
+  }
+
+  if (rawMessage.includes('usuário sem tenant')) {
+    return 'Seu usuário está sem tenant associado. Contate o administrador.';
+  }
+
+  if (rawMessage.includes('sessão inválida')) {
+    return 'Sua sessão expirou. Entre novamente e tente de novo.';
+  }
+
+  return action === 'excluir'
+    ? 'Não foi possível excluir o tipo de operação.'
+    : 'Não foi possível salvar o tipo de operação.';
+}
+
 // Função auxiliar para obter filtro de tenant
 export const getTenantQueryFilter = async (table: string) => {
   try {
@@ -1153,6 +1208,70 @@ export const EquipeService = new EquipeServiceClass();
 
 class ConfigTipoOperacaoServiceClass extends BaseService<'config_tipos_operacao'> {
   constructor() { super('config_tipos_operacao'); }
+
+  async getAll() {
+    const { data, error } = await supabase
+      .from('config_tipos_operacao')
+      .select('*')
+      .order('nome', { ascending: true });
+    if (error) throw error;
+    return data ?? [];
+  }
+
+  async create(payload: Database['public']['Tables']['config_tipos_operacao']['Insert']) {
+    await requireAuthenticatedUserId();
+    const tenantId = await getCurrentTenantId();
+
+    const payloadWithTenant = sanitizePayload({
+      ...payload,
+      tenant_id: tenantId,
+    }) as Database['public']['Tables']['config_tipos_operacao']['Insert'];
+
+    const { data, error } = await supabase
+      .from('config_tipos_operacao')
+      .insert(payloadWithTenant)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  async update(id: string, payload: Database['public']['Tables']['config_tipos_operacao']['Update']) {
+    await requireAuthenticatedUserId();
+    const tenantId = await getCurrentTenantId();
+
+    const payloadWithTenant = sanitizePayload({
+      ...payload,
+      tenant_id: tenantId,
+    }) as Database['public']['Tables']['config_tipos_operacao']['Update'];
+
+    const { data, error } = await supabase
+      .from('config_tipos_operacao')
+      .update(payloadWithTenant)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  hasDuplicate(
+    items: Array<{ id?: string | null; nome?: string | null; codigo?: string | null }>,
+    payload: { id?: string | null; nome?: string | null; codigo?: string | null }
+  ) {
+    const normalizedNome = normalizeConfigTipoOperacaoValue(payload.nome);
+    const normalizedCodigo = normalizeConfigTipoOperacaoValue(payload.codigo);
+
+    return items.some((item) => {
+      if (payload.id && item.id === payload.id) return false;
+
+      const sameNome = normalizedNome && normalizeConfigTipoOperacaoValue(item.nome) === normalizedNome;
+      const sameCodigo = normalizedCodigo && normalizeConfigTipoOperacaoValue(item.codigo) === normalizedCodigo;
+      return sameNome || sameCodigo;
+    });
+  }
 }
 export const ConfigTipoOperacaoService = new ConfigTipoOperacaoServiceClass();
 
