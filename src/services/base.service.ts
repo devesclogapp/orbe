@@ -1340,7 +1340,7 @@ class TipoServicoOperacionalServiceClass {
         error: 'Nenhum tipo de serviço foi excluído. O registro pode não existir.'
     }
 
-    return { success: true, deletedCount: count };
+    return { success: true };
   }
 }
 export const TipoServicoOperacionalService = new TipoServicoOperacionalServiceClass();
@@ -1442,57 +1442,31 @@ class TransportadoraClienteServiceClass {
   }
 
   async deleteWithCheck(id: string): Promise<{ success: boolean; error?: string; detalhes?: { tabela: string; count: number; ids?: string[] }[] }> {
-    const vinculos: { tabela: string; count: number; ids?: string[] }[] = [];
-    console.log(`[TransportadoraClienteService.deleteWithCheck] ID: ${id}`);
-    console.log(`[TransportadoraClienteService.deleteWithCheck] Vinculos bloqueantes encontrados:`, vinculos);
+    console.log(`[TransportadoraClienteService.deleteWithCheck] Excluindo ID: ${id}`);
 
-    const { error, count } = await operationalClient
+    // As FKs em operacoes_producao e fornecedor_valores_servico são ON DELETE SET NULL
+    // Não há vínculos bloqueantes — pode deletar diretamente.
+    const { error } = await operationalClient
       .from('transportadoras_clientes')
-      .delete({ count: 'exact' })
-      .eq('id', id)
-      .select('id');
+      .delete()
+      .eq('id', id);
 
     if (error) {
       console.error(`[TransportadoraClienteService.deleteWithCheck] Erro no delete:`, error);
+
+      // Caso improvável de FK violada (tabela sem SET NULL)
       if (error.code === '23503') {
-        const [regraResult] = await Promise.all([
-          operationalClient
-            .from('fornecedor_valores_servico')
-            .select('id')
-            .eq('transportadora_id', id),
-        ]);
         const referencedTable = extractReferencedTableFromFkError(error);
-        const detalhes: { tabela: string; count: number; ids?: string[] }[] = [];
-
-        if (regraResult.data && regraResult.data.length > 0) {
-          detalhes.push({
-            tabela: 'fornecedor_valores_servico',
-            count: regraResult.data.length,
-            ids: regraResult.data.slice(0, 3).map((r: any) => r.id),
-          });
-        }
-
-        if (referencedTable && !detalhes.some((item) => item.tabela === referencedTable)) {
-          detalhes.push({ tabela: referencedTable, count: 1 });
-        }
-
         return {
           success: false,
-          detalhes: detalhes.length > 0 ? detalhes : undefined,
-          error: 'Esta transportadora possui vínculos e não pode ser excluída.'
+          detalhes: referencedTable ? [{ tabela: referencedTable, count: 1 }] : undefined,
+          error: 'Esta transportadora possui vínculos e não pode ser excluída.',
         };
       }
       throw error;
     }
 
-    if (!count || count === 0) {
-      return {
-        success: false,
-        error: 'Nenhuma transportadora foi excluída. O registro pode não existir.'
-      };
-    }
-
-    return { success: true, deletedCount: count };
+    return { success: true };
   }
 
   async toggleAtivo(id: string, ativo: boolean): Promise<void> {
@@ -1649,7 +1623,7 @@ class FornecedorServiceClass {
       };
     }
 
-    return { success: true, deletedCount: count };
+    return { success: true };
   }
 }
 export const FornecedorService = new FornecedorServiceClass();
