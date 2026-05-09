@@ -768,9 +768,31 @@ const CentralCadastros = () => {
   });
 
   const [servicoModalOpen, setServicoModalOpen] = useState(false);
+  const [servicoFormErrors, setServicoFormErrors] = useState<any>({});
   const [servicoForm, setServicoForm] = useState({
     nome: "", descricao: "", ativo: true, empresa_id: empresaId || "",
   });
+
+  const getServicoErrorMessage = (err: any) => {
+    const msg = (err?.message || err?.error || "").toLowerCase();
+    if (msg.includes("duplicate key value") || msg.includes("unique") || err?.code === '23505') {
+      return "Já existe um tipo de serviço com este nome.";
+    }
+    if (msg.includes("check constraint")) {
+      return "Informe o nome do tipo de serviço.";
+    }
+    return err?.message || "Erro ao processar tipo de serviço.";
+  };
+
+  const submitServicoForm = () => {
+    if (!servicoForm.nome?.trim()) {
+      setServicoFormErrors({ nome: "Informe o nome do tipo de serviço." });
+      toast.error("Preencha os campos obrigatórios.");
+      return;
+    }
+    setServicoFormErrors({});
+    createServicoMutation.mutate({ ...servicoForm, empresa_id: servicoForm.empresa_id || null });
+  };
 
   const createServicoMutation = useMutation({
     mutationFn: (payload: any) => TipoServicoOperacionalService.create(payload),
@@ -783,7 +805,7 @@ const CentralCadastros = () => {
       const data = await queryClient.fetchQuery({ queryKey: ["tipos_servico_operacional"], queryFn: () => TipoServicoOperacionalService.getAllActive() });
       queryClient.setQueryData(["tipos_servico_operacional"], data);
     },
-    onError: (err: any) => toast.error("Erro ao cadastrar", { description: err.message }),
+    onError: (err: any) => toast.error(getServicoErrorMessage(err)),
   });
 
   const [editingFornecedor, setEditingFornecedor] = useState<any>(null);
@@ -1058,7 +1080,7 @@ const CentralCadastros = () => {
     > = {
       colaboradores: {
         label: "Colaboradores",
-        description: "Envie uma planilha compatÃ­vel com o modelo da aba Colaboradores.",
+        description: "Envie uma planilha compatível com o modelo da aba Colaboradores.",
         downloadUrl: modeloImportacaoAtivo?.drive_url,
         expectedColumns: ["NOME", "CPF", "TELEFONE", "EMPRESA", "TIPO", "CARGO", "CONTRATO", "VALOR BASE", "FATURAMENTO", "STATUS"],
         templateFileName: "modelo_operadores_colaboradores.xlsx",
@@ -1175,7 +1197,7 @@ const CentralCadastros = () => {
       },
       empresas: {
         label: "Empresas",
-        description: "Envie uma planilha compatÃ­vel com o modelo da aba Empresas.",
+        description: "Envie uma planilha compatível com o modelo da aba Empresas.",
         downloadUrl: modeloImportacaoAtivo?.drive_url,
         expectedColumns: ["NOME", "CNPJ", "UNIDADE", "CIDADE/UF", "STATUS"],
         templateFileName: "modelo_empresas.xlsx",
@@ -1214,12 +1236,12 @@ const CentralCadastros = () => {
       },
       coletores: {
         label: "Coletores",
-        description: "Envie uma planilha compatÃ­vel com o modelo da aba Coletores.",
+        description: "Envie uma planilha compatível com o modelo da aba Coletores.",
         unsupportedMessage: "Modelo de importaÃ§Ã£o de coletores ainda nÃ£o configurado.",
       },
       transportadoras: {
         label: "Transportadoras",
-        description: "Envie uma planilha compatÃ­vel com o modelo da aba Transportadoras.",
+        description: "Envie uma planilha compatível com o modelo da aba Transportadoras.",
         downloadUrl: modeloImportacaoAtivo?.drive_url,
         expectedColumns: ["NOME", "CNPJ/CPF", "TELEFONE", "EMAIL", "ENDERECO", "STATUS"],
         templateFileName: "modelo_transportadoras.xlsx",
@@ -1249,7 +1271,7 @@ const CentralCadastros = () => {
       },
       fornecedores: {
         label: "Fornecedores",
-        description: "Envie uma planilha compatÃ­vel com o modelo da aba Fornecedores.",
+        description: "Envie uma planilha compatível com o modelo da aba Fornecedores.",
         expectedColumns: ["NOME", "CNPJ/CPF", "TELEFONE", "EMAIL", "ENDERECO", "STATUS"],
         downloadUrl: modeloImportacaoAtivo?.drive_url,
         templateFileName: "modelo_fornecedores.xlsx",
@@ -1278,8 +1300,8 @@ const CentralCadastros = () => {
         },
       },
       servicos: {
-        label: "ServiÃ§os",
-        description: "Envie uma planilha compatÃ­vel com o modelo da aba ServiÃ§os.",
+        label: "Serviços",
+        description: "Envie uma planilha compatível com o modelo da aba Serviços.",
         downloadUrl: modeloImportacaoAtivo?.drive_url,
         expectedColumns: ["NOME", "DESCRICAO", "STATUS"],
         templateFileName: "modelo_servicos.xlsx",
@@ -1305,9 +1327,9 @@ const CentralCadastros = () => {
         },
       },
       parametros: {
-        label: "ParÃ¢metros Operacionais",
-        description: "Envie uma planilha compatÃ­vel com o modelo da aba ParÃ¢metros Operacionais.",
-        unsupportedMessage: "Modelo de importaÃ§Ã£o de parÃ¢metros operacionais ainda nÃ£o configurado.",
+        label: "Parâmetros Operacionais",
+        description: "Envie uma planilha compatível com o modelo da aba Parâmetros Operacionais.",
+        unsupportedMessage: "Modelo de importação de parâmetros operacionais ainda não configurado.",
       },
     };
 
@@ -2636,7 +2658,11 @@ const CentralCadastros = () => {
           <div className="grid gap-4 py-4">
             <div className="space-y-1.5">
               <Label htmlFor="serv_nome">Nome <span className="text-destructive">*</span></Label>
-              <Input id="serv_nome" value={servicoForm.nome} onChange={(e) => setServicoForm({ ...servicoForm, nome: e.target.value })} placeholder="Ex: Coleta, Entrega, Armazenagem" />
+              <Input id="serv_nome" value={servicoForm.nome} onChange={(e) => {
+                setServicoForm({ ...servicoForm, nome: e.target.value });
+                setServicoFormErrors((prev: any) => ({ ...prev, nome: undefined }));
+              }} placeholder="Ex: Coleta, Entrega, Armazenagem" aria-invalid={Boolean(servicoFormErrors.nome)} className={servicoFormErrors.nome ? "border-destructive focus-visible:ring-destructive" : undefined} />
+              {servicoFormErrors.nome ? <p className="text-sm text-destructive" role="alert">{servicoFormErrors.nome}</p> : null}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="serv_descricao">Descrição</Label>
@@ -2645,7 +2671,14 @@ const CentralCadastros = () => {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setServicoModalOpen(false)}>Cancelar</Button>
-            <Button onClick={() => createServicoMutation.mutate({ ...servicoForm, empresa_id: servicoForm.empresa_id || null })} disabled={createServicoMutation.isPending}>
+            <Button 
+              onClick={submitServicoForm} 
+              disabled={createServicoMutation.isPending}
+              className={createServicoMutation.isPending ? "opacity-70 cursor-not-allowed" : ""}
+            >
+              {createServicoMutation.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
               {createServicoMutation.isPending ? "Salvando..." : "Salvar"}
             </Button>
           </DialogFooter>

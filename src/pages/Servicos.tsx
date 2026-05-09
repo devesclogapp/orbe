@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
-import { Plus, Pencil, Trash2, Search, ToggleLeft, ToggleRight, PowerOff } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, ToggleLeft, ToggleRight, PowerOff, Loader2 } from "lucide-react";
 import { TipoServicoOperacionalService, EmpresaService } from "@/services/base.service";
 import {
   Dialog,
@@ -37,12 +37,25 @@ const Servicos = () => {
     refetchOnMount: true,
   });
 
+  const [formErrors, setFormErrors] = useState<any>({});
+
   const [form, setForm] = useState({
     nome: "",
     descricao: "",
     empresa_id: "",
     ativo: true,
   });
+
+  const getServicoErrorMessage = (err: any) => {
+    const msg = (err?.message || err?.error || "").toLowerCase();
+    if (msg.includes("duplicate key value") || msg.includes("unique") || err?.code === '23505') {
+      return "Já existe um tipo de serviço com este nome.";
+    }
+    if (msg.includes("check constraint")) {
+      return "Informe o nome do tipo de serviço.";
+    }
+    return err?.message || "Erro ao processar tipo de serviço.";
+  };
 
   const reset = () => {
     setForm({
@@ -51,6 +64,7 @@ const Servicos = () => {
       empresa_id: empresaOptions[0]?.id ?? "",
       ativo: true,
     });
+    setFormErrors({});
     setEditingId(null);
   };
 
@@ -63,7 +77,7 @@ const Servicos = () => {
       reset();
     },
     onError: (err: any) => {
-      toast.error(err?.message || "Erro ao cadastrar");
+      toast.error(getServicoErrorMessage(err));
     },
   });
 
@@ -76,7 +90,7 @@ const Servicos = () => {
       reset();
     },
     onError: (err: any) => {
-      toast.error(err?.message || "Erro ao atualizar");
+      toast.error(getServicoErrorMessage(err));
     },
   });
 
@@ -135,6 +149,13 @@ const Servicos = () => {
   };
 
   const submit = () => {
+    if (!form.nome?.trim()) {
+      setFormErrors({ nome: "Informe o nome do tipo de serviço." });
+      toast.error("Preencha os campos obrigatórios.");
+      return;
+    }
+    setFormErrors({});
+
     if (editingId) {
       updateMutation.mutate({ id: editingId, payload: form });
     } else {
@@ -274,16 +295,27 @@ const Servicos = () => {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label>Nome</Label>
+              <Label htmlFor="servico_nome">
+                Nome <span className="text-destructive" aria-hidden="true">*</span>
+              </Label>
               <Input
+                id="servico_nome"
                 value={form.nome}
-                onChange={(e) => setForm({ ...form, nome: e.target.value })}
+                onChange={(e) => {
+                  setForm({ ...form, nome: e.target.value });
+                  setFormErrors((prev: any) => ({ ...prev, nome: undefined }));
+                }}
                 placeholder="Nome do tipo de serviço"
+                aria-invalid={Boolean(formErrors.nome)}
+                aria-required="true"
+                className={formErrors.nome ? "border-destructive focus-visible:ring-destructive" : undefined}
               />
+              {formErrors.nome ? <p className="mt-1 text-sm text-destructive" role="alert">{formErrors.nome}</p> : null}
             </div>
             <div className="grid gap-2">
-              <Label>Descrição</Label>
+              <Label htmlFor="servico_descricao">Descrição</Label>
               <Input
+                id="servico_descricao"
                 value={form.descricao}
                 onChange={(e) => setForm({ ...form, descricao: e.target.value })}
                 placeholder="Descrição do tipo de serviço"
@@ -303,7 +335,14 @@ const Servicos = () => {
             <Button variant="outline" onClick={() => { setOpen(false); reset(); }}>
               Cancelar
             </Button>
-            <Button onClick={submit} disabled={createMutation.isPending || updateMutation.isPending}>
+            <Button 
+              onClick={submit} 
+              disabled={createMutation.isPending || updateMutation.isPending}
+              className={createMutation.isPending || updateMutation.isPending ? "opacity-70 cursor-not-allowed" : ""}
+            >
+              {(createMutation.isPending || updateMutation.isPending) && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
               {createMutation.isPending || updateMutation.isPending ? "Salvando..." : "Salvar"}
             </Button>
           </DialogFooter>
