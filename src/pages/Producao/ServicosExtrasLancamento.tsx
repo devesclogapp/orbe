@@ -252,7 +252,7 @@ const ServicosExtrasLancamento = () => {
     // ─── Rendering ───────────────────────────────────────────────────────────
 
     return (
-        <OperationalShell title="Serviços Extras" showBack={false} onBack={() => navigate("/producao")}>
+        <OperationalShell title="Serviços Extras" showBack={false} onBack={() => navigate("/producao")} hideFab={true}>
             <div className="max-w-3xl mx-auto space-y-6 pb-28">
                 {/* Header */}
                 <div className="flex items-center gap-3 px-1">

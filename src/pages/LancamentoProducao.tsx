@@ -549,11 +549,21 @@ const LancamentoProducao = () => {
         enabled: !!user?.id,
     });
 
-    const gridPresets = useMemo(() => LANCAMENTO_PRESETS.filter((preset) => {
-        const perfilRole = perfil?.role?.toLowerCase() ?? "";
-        const listaBloqueada = PRESETS_PERMITIDOS_POR_PERFIL[perfilRole] ?? [];
-        return listaBloqueada.length === 0 || listaBloqueada.includes(preset.id);
-    }), [perfil]);
+    const perfisPermitidosGrid = useMemo(() => {
+        const perfilRoles = perfil?.role?.toLowerCase() ?? "";
+        // Extract names of profiles if it's an array of objects
+        const roleNomes = Array.isArray(perfil?.perfis) ? perfil.perfis.map((p: any) => p.nome?.toLowerCase()) : [perfilRoles];
+        const hasEncarregadoDiarista = roleNomes.includes("encarregado_diaristas");
+
+        return LANCAMENTO_PRESETS.map((preset) => {
+            let isAllowed = true;
+            if (hasEncarregadoDiarista) {
+                const liberados = PRESETS_PERMITIDOS_POR_PERFIL["encarregado_diaristas"] ?? [];
+                isAllowed = liberados.includes(preset.id);
+            }
+            return { preset, isAllowed };
+        });
+    }, [perfil]);
 
     const { data: empresas = [], isLoading: isLoadingEmpresas, error: empresasError } = useQuery({
         queryKey: ["empresas"],
@@ -1412,7 +1422,7 @@ const LancamentoProducao = () => {
 
     if (etapaAtual === 1) {
         return (
-            <OperationalShell title="Novo Lançamento">
+            <OperationalShell title="Novo Lançamento" hideFab={true}>
                 <div className="p-4 sm:p-6">
                     <div className="mb-6 flex items-center justify-between">
                         <div>
@@ -1422,14 +1432,21 @@ const LancamentoProducao = () => {
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                        {gridPresets.map((preset) => (
+                        {perfisPermitidosGrid.map(({ preset, isAllowed }) => (
                             <Card
                                 key={preset.id}
                                 className={cn(
-                                    "cursor-pointer hover:border-primary/80 hover:bg-primary/5 transition-all duration-200 flex flex-col items-center justify-center text-center p-4 aspect-square",
+                                    "flex flex-col items-center justify-center text-center p-4 aspect-square transition-all duration-200",
+                                    isAllowed ? "cursor-pointer hover:border-primary/80 hover:bg-primary/5" : "opacity-40 cursor-not-allowed hover:bg-transparent",
                                     form.preset_id === preset.id && "border-primary/80 bg-primary/5 ring-2 ring-primary/40"
                                 )}
-                                onClick={() => handlePresetSelect(preset)}
+                                onClick={() => {
+                                    if (!isAllowed) {
+                                        toast.error("Você não tem permissão para acessar este lançamento.");
+                                        return;
+                                    }
+                                    handlePresetSelect(preset);
+                                }}
                             >
                                 <div className={cn("w-12 h-12 rounded-full flex items-center justify-center mb-3", preset.iconColor)}>
                                     <preset.icon className="w-6 h-6" />
@@ -1452,6 +1469,7 @@ const LancamentoProducao = () => {
     return (
         <OperationalShell
             title="Novo Lançamento"
+            hideFab={true}
             breadcrumbs={[
                 { label: "Operacional", action: () => setEtapaAtual(1) },
                 { label: finalidadeSelecionada?.title ?? "Detalhes" },

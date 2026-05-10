@@ -1,64 +1,112 @@
-import { useState, useMemo, useEffect } from "react";
-import { format, subWeeks, parseISO } from "date-fns";
+import { useState, useMemo, useEffect, useCallback } from "react";
+import {
+    format,
+    startOfWeek,
+    addDays,
+    subWeeks,
+    addWeeks,
+    parseISO,
+    isToday,
+    isFuture,
+} from "date-fns";
+import { ptBR } from "date-fns/locale";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, CalendarDays, CheckCircle2, Clock, Save, Users, XCircle, History, ArrowLeft, AlertCircle } from "lucide-react";
+import {
+    Building2,
+    ChevronLeft,
+    ChevronRight,
+    CheckCircle2,
+    Lock,
+    Save,
+    Users,
+    History,
+    ArrowLeft,
+    AlertCircle,
+    TrendingUp,
+    CalendarDays,
+    XCircle,
+} from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useNavigate } from "react-router-dom";
 
 import { OperationalShell } from "@/components/layout/OperationalShell";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import {
-    DiaristaService,
+    ColaboradorService,
     EmpresaService,
     LancamentoDiaristaPayload,
     LancamentoDiaristaService,
-    PerfilUsuarioService,
+    LoteFechamentoDiaristaService,
     RegraMarcacaoDiaristaService,
-    TipoServicoOperacionalService,
 } from "@/services/base.service";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-type MarcacaoDiarista = string;
+// ─── Tipos ──────────────────────────────────────────────────────────────────
 
-interface ItemMarcacao {
-    diarista_id: string;
+type CodigoMarcacao = string; // dinâmico — vem das regras
+type GradeMap = Record<string, Record<string, CodigoMarcacao>>; // [diarista_id][data_ISO] = codigo
+
+interface DiaristaRow {
+    id: string;
     nome: string;
     cpf: string | null;
     funcao: string;
     valor_diaria: number;
-    marcacao: MarcacaoDiarista;
-    observacao: string;
 }
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
 const formatCurrency = (v: number) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
 
-const calcularValor = (marcacao: MarcacaoDiarista, valorDiaria: number, regras: any[]): number => {
-    const regra = regras.find((r: any) => r.codigo === marcacao);
+const calcularValor = (codigo: CodigoMarcacao, valorDiaria: number, regras: any[]): number => {
+    if (!codigo) return 0;
+    const regra = regras.find((r: any) => r.codigo === codigo);
     if (!regra) return 0;
-    return valorDiaria * Number(regra.multiplicador);
+    return valorDiaria * Number(regra.multiplicador ?? 0);
 };
+
+/** Gera os 7 dias da semana a partir do início (segunda-feira) */
+const gerarDiasSemana = (inicioSemana: Date): Date[] =>
+    Array.from({ length: 7 }, (_, i) => addDays(inicioSemana, i));
+
+/** Retorna o rótulo curto do dia (Seg, Ter, ...) */
+const labelDia = (d: Date) => format(d, "EEE", { locale: ptBR }).replace(".", "").toUpperCase().substring(0, 3);
+
+// ─── Componente ─────────────────────────────────────────────────────────────
 
 const DiaristasLancamento = () => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
     const navigate = useNavigate();
-    const today = format(new Date(), "yyyy-MM-dd");
 
-    const [data, setData] = useState(today);
-    const [clienteUnidade, setClienteUnidade] = useState("");
+    /* Semana selecionada — começa no domingo da semana atual mas exibe de seg–dom */
+    const [semanaInicio, setSemanaInicio] = useState<Date>(() =>
+        startOfWeek(new Date(), { weekStartsOn: 1 })
+    );
+
     const [empresaIdSelecionada, setEmpresaIdSelecionada] = useState("");
-    const [operacaoServico, setOperacaoServico] = useState("");
-    const [observacoesGerais, setObservacoesGerais] = useState("");
-    const [marcacoes, setMarcacoes] = useState<Record<string, ItemMarcacao>>({});
+    const [clienteUnidade, setClienteUnidade] = useState("");
+
+    /* grade[diarista_id][data_ISO] = codigo */
+    const [grade, setGrade] = useState<GradeMap>({});
+
     const [openHistorico, setOpenHistorico] = useState(false);
+    const [fechandoPeriodo, setFechandoPeriodo] = useState(false);
+
+    const today = format(new Date(), "yyyy-MM-dd");
+    const semanaFim = useMemo(() => addDays(semanaInicio, 6), [semanaInicio]);
+
+    const diasSemana = useMemo(() => gerarDiasSemana(semanaInicio), [semanaInicio]);
+    const inicioISO = format(semanaInicio, "yyyy-MM-dd");
+    const fimISO = format(semanaFim, "yyyy-MM-dd");
+    const labelSemana = `${format(semanaInicio, "dd/MM", { locale: ptBR })} – ${format(semanaFim, "dd/MM/yyyy", { locale: ptBR })}`;
+
+    // ── Queries ─────────────────────────────────────────────────────────────
 
     const { data: perfil } = useQuery({
         queryKey: ["profile_usuario", user?.id],
@@ -70,222 +118,257 @@ const DiaristasLancamento = () => {
         enabled: !!user?.id,
     });
 
-    // Busca apenas pela empresa explicitamente selecionada no dropdown
-    const empresaIdParaBusca = empresaIdSelecionada;
-
-    const { data: diaristas = [], isLoading: isLoadingDiaristas } = useQuery({
-        queryKey: ["diaristas_lancamento", empresaIdParaBusca],
-        queryFn: () => DiaristaService.getByEmpresa(empresaIdParaBusca, true),
-        enabled: !!empresaIdParaBusca,
-    });
-
-    // Empresas disponíveis para alocação do diarista (filtro por empresa é feito via seleção)
     const { data: empresas = [] } = useQuery({
         queryKey: ["empresas_all"],
         queryFn: () => EmpresaService.getAll(),
     });
 
-    const { data: operacoes = [] } = useQuery({
-        queryKey: ["tipos_servico_operacional"],
-        queryFn: () => TipoServicoOperacionalService.getAllActive(),
-    });
-
-    const { data: lancamentosHoje = [] } = useQuery({
-        queryKey: ["lancamentos_diaristas_hoje", empresaIdParaBusca, data],
-        queryFn: () => LancamentoDiaristaService.getByData(empresaIdParaBusca, data),
-        enabled: !!empresaIdParaBusca,
-    });
-
-    const fourteenDaysAgo = format(subWeeks(new Date(), 2), "yyyy-MM-dd");
-    const { data: historicoRecente = [], isLoading: isLoadingHistorico } = useQuery({
-        queryKey: ["historico_recente_diaristas", empresaIdParaBusca],
-        queryFn: () => LancamentoDiaristaService.getByPeriodo(empresaIdParaBusca, fourteenDaysAgo, today, { encarregado_id: user?.id }),
-        enabled: !!empresaIdParaBusca && openHistorico,
+    const { data: diaristas = [], isLoading: isLoadingDiaristas } = useQuery({
+        queryKey: ["diaristas_lancamento", empresaIdSelecionada],
+        queryFn: () => ColaboradorService.getDiaristas(empresaIdSelecionada, true),
+        enabled: !!empresaIdSelecionada,
+        throwOnError: false,
+        retry: 0,
     });
 
     const { data: regrasMarcacao = [], isLoading: isLoadingRegras } = useQuery({
-        queryKey: ["regras_marcacao_diaristas", empresaIdParaBusca],
-        queryFn: () => RegraMarcacaoDiaristaService.getByEmpresa(empresaIdParaBusca),
-        enabled: !!empresaIdParaBusca,
+        queryKey: ["regras_marcacao_diaristas", empresaIdSelecionada],
+        queryFn: () => RegraMarcacaoDiaristaService.getByEmpresa(empresaIdSelecionada),
+        enabled: !!empresaIdSelecionada,
+        throwOnError: false,
+        retry: 0,
     });
 
-    // Inicializar/reinicializar marcações quando a lista de diaristas mudar
+    /* Lançamentos já existentes na semana (para indicador visual) */
+    const { data: lancamentosExistentes = [] } = useQuery({
+        queryKey: ["lancamentos_diaristas_semana", empresaIdSelecionada, inicioISO, fimISO],
+        queryFn: () =>
+            LancamentoDiaristaService.getByPeriodo(empresaIdSelecionada, inicioISO, fimISO),
+        enabled: !!empresaIdSelecionada,
+        throwOnError: false,
+        retry: 0,
+    });
+
+    /* Histórico 14 dias */
+    const fourteenDaysAgo = format(subWeeks(new Date(), 2), "yyyy-MM-dd");
+    const { data: historicoRecente = [], isLoading: isLoadingHistorico } = useQuery({
+        queryKey: ["historico_recente_diaristas", empresaIdSelecionada],
+        queryFn: () =>
+            LancamentoDiaristaService.getByPeriodo(empresaIdSelecionada, fourteenDaysAgo, today, {
+                encarregado_id: user?.id,
+            }),
+        enabled: !!empresaIdSelecionada && openHistorico,
+        throwOnError: false,
+        retry: 0,
+    });
+
+    // Mapa de lançamentos existentes: [diarista_id][data_ISO] = count
+    const lancamentosExistentesMap = useMemo(() => {
+        const map: Record<string, Record<string, any>> = {};
+        (lancamentosExistentes as any[]).forEach((l: any) => {
+            if (!map[l.diarista_id]) map[l.diarista_id] = {};
+            const dateKey = l.data_lancamento;
+            map[l.diarista_id][dateKey] = (map[l.diarista_id][dateKey] || 0) + 1;
+        });
+        return map;
+    }, [lancamentosExistentes]);
+
+    const regrasMarcacaoAtivas = useMemo(() => {
+        const regrasDB = regrasMarcacao as any[];
+        if (!regrasDB || regrasDB.length === 0) {
+            // ProjectStabilizer: Fallback base caso a empresa não tenha regras populadas (Evita bloqueio da UI)
+            return [
+                { id: "fallback-p", codigo: "P", descricao: "Presença Integral", multiplicador: 1 },
+                { id: "fallback-mp", codigo: "MP", descricao: "Meio Período", multiplicador: 0.5 },
+                { id: "fallback-f", codigo: "F", descricao: "Falta", multiplicador: 0 },
+                { id: "fallback-au", codigo: "AUSENTE", descricao: "Ausente / Não escalado", multiplicador: 0 },
+            ];
+        }
+        return regrasDB;
+    }, [regrasMarcacao]);
+
+    // Regras ordenadas excluindo AUSENTE (usado apenas como estado padrão "vazio")
+    const regrasCodigos = useMemo(
+        () =>
+            regrasMarcacaoAtivas
+                .filter((r: any) => r.codigo !== "AUSENTE" && Number(r.multiplicador) >= 0)
+                .sort((a: any, b: any) => b.multiplicador - a.multiplicador)
+                .map((r: any) => r.codigo as string),
+        [regrasMarcacaoAtivas]
+    );
+
+    // ── Inicializar grade quando diaristas mudam ─────────────────────────────
     useEffect(() => {
-        if (!diaristas || (diaristas as any[]).length === 0) return;
-        setMarcacoes(() => {
-            const inicial: Record<string, ItemMarcacao> = {};
+        if (!(diaristas as any[]).length) return;
+        setGrade((prev) => {
+            const next: GradeMap = {};
             (diaristas as any[]).forEach((d: any) => {
-                inicial[d.id] = {
-                    diarista_id: d.id,
-                    nome: d.nome,
-                    cpf: d.cpf ?? null,
-                    funcao: d.funcao ?? "—",
-                    valor_diaria: Number(d.valor_diaria || 0),
-                    marcacao: "AUSENTE",
-                    observacao: "",
-                };
+                next[d.id] = prev[d.id] ?? {};
             });
-            return inicial;
+            return next;
         });
     }, [diaristas]);
 
-    const setMarcacao = (id: string, marcacao: MarcacaoDiarista) => {
-        setMarcacoes((prev) => ({ ...prev, [id]: { ...prev[id], marcacao } }));
-    };
+    // ── Ciclo de toque ───────────────────────────────────────────────────────
+    const toggleMarcacao = useCallback(
+        (diaristaId: string, dateISO: string) => {
+            if (!regrasCodigos.length) return;
+            setGrade((prev) => {
+                const atual = prev[diaristaId]?.[dateISO] ?? "";
+                const idx = regrasCodigos.indexOf(atual);
+                // "" (vazio) → primeiro código → ... → último código → "" (vazio)
+                let next: string;
+                if (idx === -1) {
+                    // Estava vazio: vai para o primeiro código da lista
+                    next = regrasCodigos[0];
+                } else if (idx === regrasCodigos.length - 1) {
+                    // Estava no último: volta para vazio
+                    next = "";
+                } else {
+                    // Avança para o próximo
+                    next = regrasCodigos[idx + 1];
+                }
+                return {
+                    ...prev,
+                    [diaristaId]: {
+                        ...(prev[diaristaId] ?? {}),
+                        [dateISO]: next,
+                    },
+                };
+            });
+        },
+        [regrasCodigos]
+    );
 
-    const setObservacao = (id: string, observacao: string) => {
-        setMarcacoes((prev) => ({ ...prev, [id]: { ...prev[id], observacao } }));
-    };
-
+    // ── Resumo em tempo real ─────────────────────────────────────────────────
     const resumo = useMemo(() => {
-        const items = Object.values(marcacoes);
-        const valorTotal = items.reduce((acc, i) => acc + calcularValor(i.marcacao, i.valor_diaria, regrasMarcacao as any[]), 0);
+        const diaristasArr = diaristas as DiaristaRow[];
+        let valorTotal = 0;
+        const contadorCodigos: Record<string, number> = {};
+        let totalCelulasPreenchidas = 0;
 
-        const contagem: Record<string, number> = {};
-        items.forEach(i => {
-            contagem[i.marcacao] = (contagem[i.marcacao] || 0) + 1;
+        diaristasArr.forEach((d) => {
+            const diasDiarista = grade[d.id] ?? {};
+            Object.entries(diasDiarista).forEach(([, codigo]) => {
+                if (!codigo) return;
+                const val = calcularValor(codigo, d.valor_diaria, regrasMarcacaoAtivas as any[]);
+                valorTotal += val;
+                contadorCodigos[codigo] = (contadorCodigos[codigo] || 0) + 1;
+                totalCelulasPreenchidas++;
+            });
         });
 
-        return { ...contagem, total: items.length, valorTotal };
-    }, [marcacoes, regrasMarcacao]);
+        return { valorTotal, contadorCodigos, totalCelulasPreenchidas };
+    }, [grade, diaristas, regrasMarcacaoAtivas]);
 
+    // ── Salvar ───────────────────────────────────────────────────────────────
     const salvarMutation = useMutation({
         mutationFn: async () => {
-            if (!empresaIdParaBusca) throw new Error("Empresa não identificada.");
-            if (!data) throw new Error("Informe a data do lançamento.");
-            if (!clienteUnidade) throw new Error("Informe o Cliente / Unidade.");
+            if (!empresaIdSelecionada) throw new Error("Empresa não identificada.");
 
-            const registros: LancamentoDiaristaPayload[] = Object.values(marcacoes)
-                .filter((m) => m.marcacao !== "AUSENTE")
-                .map((m) => ({
-                    empresa_id: empresaIdParaBusca,
-                    diarista_id: m.diarista_id,
-                    nome_colaborador: m.nome,
-                    cpf_colaborador: m.cpf,
-                    funcao_colaborador: m.funcao,
-                    data_lancamento: data,
-                    tipo_lancamento: "diarista",
-                    codigo_marcacao: m.marcacao as any,
-                    quantidade_diaria: Number((regrasMarcacao as any[]).find((r: any) => r.codigo === m.marcacao)?.multiplicador || 0),
-                    valor_diaria_base: m.valor_diaria,
-                    valor_calculado: calcularValor(m.marcacao, m.valor_diaria, regrasMarcacao as any[]),
-                    cliente_unidade: clienteUnidade || null,
-                    operacao_servico: operacaoServico || null,
-                    encarregado_id: user?.id ?? null,
-                    encarregado_nome: user?.email ?? null,
-                    observacao: m.observacao || observacoesGerais || null,
-                }));
+            const diaristasArr = diaristas as DiaristaRow[];
+            const registros: LancamentoDiaristaPayload[] = [];
 
-            if (registros.length === 0) throw new Error("Nenhum diarista marcado como P ou MP.");
+            diaristasArr.forEach((d) => {
+                const diasDiarista = grade[d.id] ?? {};
+                Object.entries(diasDiarista).forEach(([dateISO, codigo]) => {
+                    if (!codigo) return;
+                    const regra = regrasMarcacaoAtivas.find((r: any) => r.codigo === codigo);
+                    registros.push({
+                        empresa_id: empresaIdSelecionada,
+                        diarista_id: d.id,
+                        nome_colaborador: d.nome,
+                        cpf_colaborador: d.cpf,
+                        funcao_colaborador: d.funcao,
+                        data_lancamento: dateISO,
+                        tipo_lancamento: "diarista",
+                        codigo_marcacao: codigo as any,
+                        quantidade_diaria: Number(regra?.multiplicador ?? 0),
+                        valor_diaria_base: d.valor_diaria,
+                        valor_calculado: calcularValor(codigo, d.valor_diaria, regrasMarcacaoAtivas as any[]),
+                        cliente_unidade: clienteUnidade || null,
+                        encarregado_id: user?.id ?? null,
+                        encarregado_nome: perfil?.full_name || user?.email || null,
+                    });
+                });
+            });
 
+            if (registros.length === 0) throw new Error("Nenhuma marcação preenchida na semana.");
             return LancamentoDiaristaService.createBatch(registros);
         },
         onSuccess: (data) => {
-            toast.success(`${data.length} lançamento(s) salvo(s) com sucesso.`);
-            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_hoje", empresaIdParaBusca] });
-            // Reset marcações
-            setMarcacoes((prev) => {
-                const reset = { ...prev };
-                Object.keys(reset).forEach((k) => {
-                    reset[k] = { ...reset[k], marcacao: "AUSENTE", observacao: "" };
-                });
-                return reset;
+            toast.success(`${data.length} lançamento(s) salvos com sucesso.`);
+            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_semana", empresaIdSelecionada] });
+            // Limpar apenas as células salvas
+            setGrade((prev) => {
+                const next = { ...prev };
+                Object.keys(next).forEach((k) => { next[k] = {}; });
+                return next;
             });
-            setClienteUnidade("");
-            setOperacaoServico("");
-            setObservacoesGerais("");
         },
         onError: (err: any) => toast.error("Erro ao salvar.", { description: err.message }),
     });
 
-    const isDataRetroativa = data < today;
-    const diaristasArray = diaristas as any[];
+    // ── Fechar período ────────────────────────────────────────────────────────
+    const fecharMutation = useMutation({
+        mutationFn: async () => {
+            if (!empresaIdSelecionada) throw new Error("Empresa não identificada.");
+            return LoteFechamentoDiaristaService.fecharPeriodo({
+                empresaId: empresaIdSelecionada,
+                periodoInicio: inicioISO,
+                periodoFim: fimISO,
+                fechadoPor: user?.id ?? "",
+                fechadoPorNome: perfil?.full_name || user?.email || "Encarregado",
+                observacoes: `Fechamento semanal: ${labelSemana}`,
+            });
+        },
+        onSuccess: (lote: any) => {
+            toast.success(`Período fechado. ${lote.total_registros} registro(s). ${formatCurrency(lote.valor_total)}`);
+            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_semana", empresaIdSelecionada] });
+            setFechandoPeriodo(false);
+        },
+        onError: (err: any) => toast.error("Erro ao fechar período.", { description: err.message }),
+    });
 
-    // Mapa de lançamentos já existentes para o dia selecionado, por diarista_id
-    const lancamentosHojeMap = useMemo(() => {
-        const map: Record<string, number> = {};
-        (lancamentosHoje as any[]).forEach((l: any) => {
-            map[l.diarista_id] = (map[l.diarista_id] || 0) + 1;
-        });
-        return map;
-    }, [lancamentosHoje]);
-
-    const totalDiaristasComLancamento = useMemo(
-        () => Object.keys(lancamentosHojeMap).length,
-        [lancamentosHojeMap]
+    const diaristasArr = diaristas as DiaristaRow[];
+    const temMarcacoesNovaBatch = Object.values(grade).some((dias) =>
+        Object.values(dias).some((c) => !!c)
     );
 
-    const hasData = empresaIdSelecionada && data;
+    // ─── Render ──────────────────────────────────────────────────────────────
 
     return (
-        <OperationalShell title="Lançamento de Diaristas" showBack={false} onBack={() => navigate("/producao")}>
-            <div className="max-w-4xl mx-auto space-y-6 pb-24">
-                {/* Alerta de lançamentos já registrados no dia */}
-                {(lancamentosHoje as any[]).length > 0 && (
-                    <div className="esc-card p-4 border-l-4 border-l-emerald-500">
-                        <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-1">Já lançado nesta data</p>
-                        <p className="text-sm text-foreground">
-                            <span className="font-semibold text-emerald-600">{(lancamentosHoje as any[]).length} registro(s)</span>{" "}
-                            para <span className="font-semibold text-emerald-600">{totalDiaristasComLancamento} diarista(s)</span>{" "}
-                            já foram salvos para <span className="font-mono">{format(parseISO(data), "dd/MM/yy")}</span>.
-                            {" "}<span className="text-amber-600 font-medium">Novos registros serão adicionados aos existentes.</span>
-                        </p>
-                    </div>
-                )}
+        <OperationalShell title="Lançamento de Diaristas" showBack={false} onBack={() => navigate("/producao")} hideFab={true}>
+            <div className="max-w-5xl mx-auto space-y-5 pb-28">
 
-                {/* Etapa 1 — Dados do lançamento */}
-                <section className="esc-card p-6 space-y-4">
-                    <div className="flex items-center gap-3 mb-2">
+                {/* Header: seletor de empresa + semana */}
+                <section className="esc-card p-5 space-y-4">
+                    <div className="flex items-center gap-3">
                         <button onClick={() => navigate("/producao")} className="text-muted-foreground hover:text-foreground p-1">
                             <ArrowLeft className="w-5 h-5" />
                         </button>
-                        <h2 className="font-display font-bold text-foreground flex items-center gap-2">
-                            <CalendarDays className="h-4 w-4 text-primary" />
-                            Dados do lançamento
-                        </h2>
+                        <div>
+                            <h2 className="font-display font-bold text-foreground leading-tight">Grade Semanal de Diaristas</h2>
+                            <p className="text-xs text-muted-foreground">{perfil?.full_name || user?.email}</p>
+                        </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Empresa */}
                         <div className="space-y-1.5">
-                            <Label>Data do lançamento</Label>
-                            <Input
-                                type="date"
-                                value={data}
-                                onChange={(e) => setData(e.target.value)}
-                                max={today}
-                            />
-                            {isDataRetroativa && (
-                                <p className="text-xs text-amber-600 flex items-center gap-1">
-                                    <Clock className="h-3 w-3" /> Data retroativa
-                                </p>
-                            )}
-                        </div>
-
-                        <div className="space-y-1.5">
-                            <Label>Encarregado responsável</Label>
-                            <div className="flex h-10 items-center px-3 border border-border rounded-md bg-muted/50 text-sm font-medium text-muted-foreground truncate">
-                                {perfil?.full_name || user?.email || "—"}
-                            </div>
-                        </div>
-
-                        <div className="space-y-1.5">
-                            <Label>Cliente / Empresa</Label>
+                            <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                                Cliente / Empresa
+                            </label>
                             <Select
                                 value={clienteUnidade}
                                 onValueChange={(nome) => {
-                                    // Verifica se há marcações ativas
-                                    const temMarcacoes = Object.values(marcacoes).some(m => m.marcacao !== "AUSENTE");
-                                    if (temMarcacoes) {
-                                        if (!window.confirm("Você tem marcações preenchidas. Trocar a empresa irá resetar os dados atuais. Deseja continuar?")) {
-                                            return;
-                                        }
-                                    }
-
-                                    // Encontra a empresa pelo nome para obter o ID
+                                    const temMarcacoes = Object.values(grade).some((d) =>
+                                        Object.values(d).some((c) => !!c)
+                                    );
+                                    if (temMarcacoes && !window.confirm("Você tem marcações preenchidas. Trocar a empresa irá resetar. Continuar?")) return;
                                     const empresa = (empresas as any[]).find((e: any) => e.nome === nome);
                                     setClienteUnidade(nome);
                                     setEmpresaIdSelecionada(empresa?.id ?? "");
-                                    // Não limpa marcações aqui — o useEffect reagirá quando os novos diaristas carregarem
                                 }}
                             >
                                 <SelectTrigger>
@@ -293,279 +376,445 @@ const DiaristasLancamento = () => {
                                 </SelectTrigger>
                                 <SelectContent>
                                     {(empresas as any[]).map((e: any) => (
-                                        <SelectItem key={e.id} value={e.nome}>
-                                            {e.nome}
-                                        </SelectItem>
+                                        <SelectItem key={e.id} value={e.nome}>{e.nome}</SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
                         </div>
 
+                        {/* Navegação de semana */}
                         <div className="space-y-1.5">
-                            <Label>Operação / Serviço</Label>
-                            <Select value={operacaoServico} onValueChange={setOperacaoServico}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Selecione a Operação" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {(operacoes as any[]).map((o: any) => (
-                                        <SelectItem key={o.id} value={o.nome}>
-                                            {o.nome}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div className="space-y-1.5 md:col-span-2">
-                            <Label className="flex items-center gap-2">
-                                Observações gerais
-                                <span className="text-xs font-normal text-muted-foreground">(Aplicado aos diaristas sem observação individual)</span>
-                            </Label>
-                            <Textarea
-                                placeholder="Observações do dia..."
-                                value={observacoesGerais}
-                                onChange={(e) => setObservacoesGerais(e.target.value)}
-                                rows={2}
-                            />
-                        </div>
-                    </div>
-                </section>
-
-                {/* Etapa 2 — Lista de diaristas */}
-                <section className="esc-card overflow-hidden">
-                    <div className="p-4 border-b border-border flex items-center gap-2">
-                        <Users className="h-4 w-4 text-primary" />
-                        <h2 className="font-display font-bold text-foreground">Lista de diaristas</h2>
-                        <span className="ml-auto text-xs text-muted-foreground">{diaristasArray.length} cadastrado(s)</span>
-                    </div>
-
-                    {!empresaIdSelecionada ? (
-                        <div className="p-12 text-center space-y-2">
-                            <Building2 className="h-8 w-8 text-muted-foreground mx-auto" />
-                            <p className="text-sm font-medium text-foreground">Selecione uma empresa</p>
-                            <p className="text-xs text-muted-foreground max-w-xs mx-auto">
-                                Escolha o <span className="font-semibold text-primary">Cliente / Empresa</span> acima para carregar a lista de diaristas disponíveis.
-                            </p>
-                        </div>
-                    ) : isLoadingDiaristas ? (
-                        <div className="p-12 text-center text-muted-foreground text-sm animate-pulse">
-                            Carregando diaristas...
-                        </div>
-                    ) : diaristasArray.length === 0 ? (
-                        <div className="p-12 text-center space-y-2">
-                            <Users className="h-8 w-8 text-muted-foreground mx-auto" />
-                            <p className="text-sm font-medium text-foreground">Nenhum diarista cadastrado</p>
-                            <p className="text-xs text-muted-foreground max-w-xs mx-auto">
-                                O RH ou Admin precisa cadastrar colaboradores do tipo <span className="font-semibold text-primary">DIARISTA</span> em{" "}
-                                <span className="font-mono bg-muted px-1 rounded">/colaboradores</span>{" "}
-                                e ativar a opção <em>Permitir lançamento operacional</em>.
-                            </p>
-                        </div>
-                    ) : (
-                        <div className="divide-y divide-border">
-                            {diaristasArray.map((d: any) => {
-                                const item = marcacoes[d.id];
-                                if (!item) return null;
-                                const valor = calcularValor(item.marcacao, item.valor_diaria, regrasMarcacao as any[]);
-                                const regraUtilizada = (regrasMarcacao as any[]).find(r => r.codigo === item.marcacao);
-                                const isPositive = regraUtilizada && Number(regraUtilizada.multiplicador) > 0;
-
-                                return (
-                                    <div key={d.id} className={cn(
-                                        "p-5 flex flex-col gap-4 border-b border-border bg-card transition-colors hover:bg-muted/10",
-                                        isPositive && "bg-primary-soft/20"
-                                    )}>
-                                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                            {/* Info do diarista */}
-                                            <div className="flex-1 min-w-0 flex items-center gap-3">
-                                                <div className="h-10 w-10 shrink-0 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-[15px]">
-                                                    {d.nome?.substring(0, 1).toUpperCase()}
-                                                </div>
-                                                <div className="flex flex-col">
-                                                    <div className="flex items-center gap-2">
-                                                        <p className="font-display font-bold text-foreground text-sm truncate">{d.nome}</p>
-                                                        {lancamentosHojeMap[d.id] > 0 && (
-                                                            <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-700 shrink-0">
-                                                                ⚠️ {lancamentosHojeMap[d.id]}x já lançado
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                                                        <span className="font-medium bg-muted px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider text-foreground">{d.funcao}</span>
-                                                        {d.cpf && <span className="font-mono">CPF {d.cpf}</span>}
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            {/* Informações Numéricas e Ações */}
-                                            <div className="flex items-center justify-between md:justify-end gap-4 md:gap-6 w-full md:w-auto mt-2 md:mt-0">
-                                                {/* Valor da diária */}
-                                                <div className="text-left md:text-right hidden sm:block">
-                                                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Diária base</p>
-                                                    <p className="font-mono font-semibold text-foreground text-[13px]">{formatCurrency(item.valor_diaria)}</p>
-                                                </div>
-
-                                                {/* Divisor */}
-                                                <div className="hidden md:block w-px h-8 bg-border"></div>
-
-                                                {/* Botões de marcação (Estilo Toggle Group Integrado) */}
-                                                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 w-full md:w-auto">
-                                                    {(regrasMarcacao as any[]).map((regra: any) => {
-                                                        const isActive = item.marcacao === regra.codigo;
-                                                        const isAusente = regra.codigo === 'AUSENTE';
-                                                        const isPresente = regra.codigo === 'P';
-                                                        const isMeiaPresenca = regra.codigo === 'MP';
-
-                                                        return (
-                                                            <Button
-                                                                key={regra.id}
-                                                                variant={isActive ? 'default' : 'outline'}
-                                                                className={cn(
-                                                                    "h-12 text-base font-bold transition-all rounded-lg flex-1",
-                                                                    isActive && isPresente && "bg-green-500 hover:bg-green-600",
-                                                                    isActive && isMeiaPresenca && "bg-yellow-500 hover:bg-yellow-600",
-                                                                    isActive && isAusente && "bg-red-500 hover:bg-red-600 text-white",
-                                                                    !isActive && "text-muted-foreground"
-                                                                )}
-                                                                onClick={() => setMarcacao(d.id, regra.codigo)}
-                                                            >
-                                                                {regra.codigo}
-                                                            </Button>
-                                                        );
-                                                    })}
-                                                </div>
-
-                                                {/* Divisor */}
-                                                <div className="hidden md:block w-px h-8 bg-border"></div>
-
-                                                {/* Valor gerado */}
-                                                <div className="text-right min-w-[90px] bg-background border px-3 py-1.5 rounded-lg shrink-0">
-                                                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Valor pago</p>
-                                                    <p className={cn(
-                                                        "font-mono font-bold text-sm",
-                                                        item.marcacao === "AUSENTE" && "text-muted-foreground",
-                                                        isPositive && "text-emerald-600"
-                                                    )}>
-                                                        {formatCurrency(valor)}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Observação individual (apenas se não ausente) */}
-                                        {item.marcacao !== "AUSENTE" && (
-                                            <div className="md:pl-[52px] pt-1">
-                                                <Input
-                                                    placeholder="Observação da diária (opcional)..."
-                                                    className="h-8 text-xs bg-muted/30 border-dashed"
-                                                    value={item.observacao}
-                                                    onChange={(e) => setObservacao(d.id, e.target.value)}
-                                                />
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
-                </section>
-
-                {/* Resumo em tempo real e Botões Fixados */}
-                <div className="sticky bottom-4 z-20 space-y-4">
-                    {diaristasArray.length > 0 && (
-                        <section className="esc-card p-4 shadow-lg border-primary/20 bg-card/95 backdrop-blur">
-                            <div className="flex items-center justify-between mb-3">
-                                <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Resumo do dia</h3>
+                            <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                                Semana de Referência
+                            </label>
+                            <div className="flex items-center gap-2">
+                                <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="shrink-0 h-10 w-10"
+                                    onClick={() => setSemanaInicio((d) => subWeeks(d, 1))}
+                                >
+                                    <ChevronLeft className="h-4 w-4" />
+                                </Button>
+                                <div className="flex-1 flex h-10 items-center justify-center border border-border rounded-md bg-muted/30 text-sm font-mono font-semibold text-foreground px-3">
+                                    {labelSemana}
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="shrink-0 h-10 w-10"
+                                    disabled={addWeeks(semanaInicio, 1) > new Date()}
+                                    onClick={() => setSemanaInicio((d) => addWeeks(d, 1))}
+                                >
+                                    <ChevronRight className="h-4 w-4" />
+                                </Button>
                             </div>
-                            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                                {[
-                                    { label: "Total", value: resumo.total, color: "" },
-                                    { label: "Ausentes", value: resumo["AUSENTE"] || 0, color: "text-muted-foreground" },
-                                    ...Object.keys(resumo).filter(k => k !== "total" && k !== "valorTotal" && k !== "AUSENTE").map(k => ({
-                                        label: k, value: resumo[k], color: "text-primary"
-                                    })),
-                                    { label: "Valor total", value: formatCurrency(resumo.valorTotal), color: "text-primary", isMonetary: true },
-                                ].map((item) => (
-                                    <div key={item.label} className="bg-muted/50 rounded-lg p-2 text-center flex flex-col justify-center">
-                                        <p className="text-[10px] uppercase text-muted-foreground mb-0.5">{item.label}</p>
-                                        <p className={cn("font-bold text-foreground leading-none", item.color, item.isMonetary ? "text-sm font-mono" : "text-base")}>
-                                            {item.value}
-                                        </p>
+                        </div>
+                    </div>
+
+                    {/* Legenda das siglas */}
+                    {regrasMarcacaoAtivas.length > 0 && (
+                        <div className="rounded-lg bg-muted/20 border border-border/40 px-3 py-2.5">
+                            <p className="text-[8px] font-bold uppercase tracking-[0.15em] text-muted-foreground/60 mb-2">
+                                Legenda de marcações
+                            </p>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                                {regrasMarcacaoAtivas.map((r: any) => (
+                                    <div key={r.id} className="flex items-center gap-2 min-w-0">
+                                        <span className={cn(
+                                            "h-[18px] min-w-[28px] px-1 rounded-[3px] text-[8px] font-black flex items-center justify-center tracking-wide shrink-0",
+                                            r.codigo === "P" && "bg-green-500 text-white",
+                                            r.codigo === "MP" && "bg-yellow-400 text-yellow-900",
+                                            r.codigo === "F" && "bg-red-500 text-white",
+                                            r.codigo !== "P" && r.codigo !== "MP" && r.codigo !== "F" && "bg-slate-400 dark:bg-slate-600 text-white"
+                                        )}>
+                                            {r.codigo}
+                                        </span>
+                                        <span className="text-[10px] text-foreground/60 truncate">{r.descricao}</span>
+                                        {Number(r.multiplicador) > 0 && (
+                                            <span className="text-[9px] font-mono text-muted-foreground ml-auto shrink-0">×{r.multiplicador}</span>
+                                        )}
                                     </div>
                                 ))}
                             </div>
-                        </section>
+                        </div>
                     )}
+                </section>
 
-                    {/* Botões de Ação */}
-                    <div className="flex justify-between items-center bg-card/95 backdrop-blur p-4 rounded-xl border border-border shadow-lg">
-                        <Button
-                            variant="outline"
-                            onClick={() => setOpenHistorico(true)}
-                            disabled={!empresaIdSelecionada}
-                        >
-                            <History className="h-4 w-4 md:mr-2" />
-                            <span className="hidden md:inline">Histórico recente (14 dias)</span>
-                        </Button>
+                {/* Estado vazio — sem empresa */}
+                {!empresaIdSelecionada ? (
+                    <div className="esc-card p-16 text-center space-y-3">
+                        <Building2 className="h-10 w-10 text-muted-foreground mx-auto opacity-30" />
+                        <p className="text-sm font-medium text-foreground">Selecione uma empresa para começar</p>
+                        <p className="text-xs text-muted-foreground max-w-xs mx-auto">
+                            Escolha o <span className="font-semibold text-primary">Cliente / Empresa</span> acima para carregar a grade semanal.
+                        </p>
+                    </div>
+                ) : isLoadingDiaristas || isLoadingRegras ? (
+                    <div className="esc-card p-12 text-center text-muted-foreground text-sm animate-pulse">
+                        Carregando diaristas e regras...
+                    </div>
+                ) : diaristasArr.length === 0 ? (
+                    <div className="esc-card p-16 text-center space-y-3">
+                        <Users className="h-10 w-10 text-muted-foreground mx-auto opacity-30" />
+                        <p className="text-sm font-medium text-foreground">Nenhum diarista cadastrado</p>
+                        <p className="text-xs text-muted-foreground max-w-xs mx-auto">
+                            O RH ou Admin precisa cadastrar colaboradores do tipo <span className="font-semibold text-primary">DIARISTA</span> e ativar{" "}
+                            <em>Permitir lançamento operacional</em>.
+                        </p>
+                    </div>
+                ) : (
+                    /* ── Grade semanal ── */
+                    <section className="esc-card overflow-hidden">
+                        {/* Cabeçalho */}
+                        <div className="p-4 border-b border-border flex items-center gap-2">
+                            <CalendarDays className="h-4 w-4 text-primary" />
+                            <h2 className="font-display font-bold text-foreground">Grade da Semana</h2>
+                            <span className="ml-auto text-xs text-muted-foreground">{diaristasArr.length} diarista(s)</span>
+                        </div>
 
-                        <div className="flex items-center gap-3">
-                            {(!empresaIdSelecionada || !clienteUnidade || !data) && (
-                                <span className="text-xs text-amber-600 hidden md:flex items-center gap-1 font-medium">
-                                    <AlertCircle className="w-3 h-3" /> Preencha os campos obrigatórios
-                                </span>
-                            )}
+                        {/* Cabeçalho da grade — labels dos dias */}
+                        <div className="overflow-x-auto relative">
+                            <table className="w-full min-w-[600px]">
+                                <thead>
+                                    <tr className="border-b border-border bg-muted">
+                                        <th className="text-left text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-4 py-2.5 w-[200px] sticky left-0 bg-muted z-20 border-r border-border">
+                                            Diarista
+                                        </th>
+                                        {diasSemana.map((dia) => {
+                                            const dateISO = format(dia, "yyyy-MM-dd");
+                                            const futuro = isFuture(dia) && dateISO !== today;
+                                            return (
+                                                <th
+                                                    key={dateISO}
+                                                    className={cn(
+                                                        "text-center text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-1 py-2.5 w-[80px]",
+                                                        isToday(dia) && "text-primary"
+                                                    )}
+                                                >
+                                                    <div>{labelDia(dia)}</div>
+                                                    <div className={cn(
+                                                        "text-[11px] font-mono mt-0.5",
+                                                        isToday(dia) && "text-primary font-black",
+                                                        futuro && "opacity-40"
+                                                    )}>
+                                                        {format(dia, "dd/MM")}
+                                                    </div>
+                                                </th>
+                                            );
+                                        })}
+                                        <th className="text-right text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-4 py-2.5 w-[110px]">
+                                            Total
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-border">
+                                    {diaristasArr.map((d) => {
+                                        const diasDiarista = grade[d.id] ?? {};
+                                        const totalDiarista = diasSemana.reduce((acc, dia) => {
+                                            const dateISO = format(dia, "yyyy-MM-dd");
+                                            const codigo = diasDiarista[dateISO] ?? "";
+                                            return acc + calcularValor(codigo, d.valor_diaria, regrasMarcacaoAtivas as any[]);
+                                        }, 0);
+                                        const teveAlgumaCelulaAtiva = Object.values(diasDiarista).some((c) => !!c);
+
+                                        return (
+                                            <tr
+                                                key={d.id}
+                                                className={cn(
+                                                    "hover:bg-muted/10 transition-colors",
+                                                    teveAlgumaCelulaAtiva && "bg-primary/5"
+                                                )}
+                                            >
+                                                {/* Nome + valor base */}
+                                                <td className="px-4 py-3 sticky left-0 bg-card z-10 border-r border-border shadow-[2px_0_4px_rgba(0,0,0,0.06)]">
+                                                    <div className="flex items-center gap-2.5 min-w-0">
+                                                        <div className="h-8 w-8 shrink-0 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
+                                                            {d.nome?.substring(0, 1).toUpperCase()}
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <p className="font-bold text-xs text-foreground truncate max-w-[110px]">{d.nome}</p>
+                                                            <p className="text-[10px] text-muted-foreground font-mono">
+                                                                {formatCurrency(d.valor_diaria)}/dia
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </td>
+
+                                                {/* Células dos dias */}
+                                                {diasSemana.map((dia) => {
+                                                    const dateISO = format(dia, "yyyy-MM-dd");
+                                                    const codigo = diasDiarista[dateISO] ?? "";
+                                                    const futuro = isFuture(dia) && dateISO !== today;
+                                                    const jaLancado = !!(lancamentosExistentesMap[d.id]?.[dateISO]);
+                                                    const regra = (regrasMarcacao as any[]).find((r: any) => r.codigo === codigo);
+                                                    const isPresente = codigo === "P";
+                                                    const isMeia = codigo === "MP";
+                                                    const isFalta = codigo === "F";
+
+                                                    return (
+                                                        <td key={dateISO} className="px-1 py-2 text-center">
+                                                            <button
+                                                                type="button"
+                                                                disabled={futuro}
+                                                                onClick={(e) => {
+                                                                    e.preventDefault();
+                                                                    if (!futuro) toggleMarcacao(d.id, dateISO);
+                                                                }}
+                                                                className={cn(
+                                                                    "mx-auto flex flex-col items-center justify-center rounded-lg transition-all select-none",
+                                                                    "w-14 h-12 text-xs font-black uppercase tracking-wider border-2",
+                                                                    futuro
+                                                                        ? "opacity-20 cursor-not-allowed border-transparent bg-transparent text-muted-foreground"
+                                                                        : !codigo
+                                                                            ? cn(
+                                                                                "border-dashed border-border text-muted-foreground bg-transparent hover:border-primary/40 hover:bg-primary/5",
+                                                                                jaLancado && "border-amber-400/60 bg-amber-50/50 dark:bg-amber-900/10"
+                                                                            )
+                                                                            : isPresente
+                                                                                ? "border-green-500 bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 shadow-sm"
+                                                                                : isMeia
+                                                                                    ? "border-yellow-500 bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300 shadow-sm"
+                                                                                    : isFalta
+                                                                                        ? "border-red-500 bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 shadow-sm"
+                                                                                        : "border-primary bg-primary/10 text-primary shadow-sm"
+                                                                )}
+                                                                title={
+                                                                    futuro ? "Data futura" :
+                                                                        jaLancado ? `Já lançado: ${lancamentosExistentesMap[d.id]?.[dateISO]}x` :
+                                                                            regra ? `${regra.descricao} (×${regra.multiplicador})` :
+                                                                                "Clique para marcar"
+                                                                }
+                                                            >
+                                                                {codigo ? (
+                                                                    <>
+                                                                        <span className="leading-none">{codigo}</span>
+                                                                        {regra && Number(regra.multiplicador) > 0 && (
+                                                                            <span className="text-[8px] font-medium opacity-70 mt-0.5">
+                                                                                {formatCurrency(calcularValor(codigo, d.valor_diaria, regrasMarcacaoAtivas as any[])).replace("R$\u00a0", "")}
+                                                                            </span>
+                                                                        )}
+                                                                    </>
+                                                                ) : (
+                                                                    <span className="text-[10px] font-medium opacity-40">
+                                                                        {jaLancado ? "✓" : "—"}
+                                                                    </span>
+                                                                )}
+                                                            </button>
+                                                        </td>
+                                                    );
+                                                })}
+
+                                                {/* Total do diarista */}
+                                                <td className="px-4 py-3 text-right">
+                                                    <p className={cn(
+                                                        "font-mono font-bold text-sm",
+                                                        totalDiarista > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"
+                                                    )}>
+                                                        {formatCurrency(totalDiarista)}
+                                                    </p>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                )}
+
+                {/* ── Bottom dock mobile-first ── */}
+                {empresaIdSelecionada && diaristasArr.length > 0 && (
+                    <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/98 backdrop-blur-md shadow-2xl safe-bottom">
+                        {/* KPI strip — horizontal scroll on mobile */}
+                        <div className="flex overflow-x-auto gap-1.5 px-4 pt-2 pb-1 scrollbar-hide">
+                            {/* Diaristas */}
+                            <div className="flex flex-col items-center justify-center shrink-0 bg-muted/40 rounded-lg min-w-[64px] py-1.5 px-2">
+                                <p className="text-[8px] uppercase tracking-widest text-muted-foreground font-bold leading-none">Diaristas</p>
+                                <p className="text-sm font-black text-foreground leading-tight">{diaristasArr.length}</p>
+                            </div>
+
+                            {/* Separador */}
+                            <div className="shrink-0 w-px bg-border mx-0.5 self-stretch" />
+
+                            {/* Códigos marcados */}
+                            {Object.entries(resumo.contadorCodigos).map(([codigo, qtd]) => {
+                                const isP = codigo === "P";
+                                const isMP = codigo === "MP";
+                                const isF = codigo === "F" || codigo === "FERIADO";
+                                return (
+                                    <div key={codigo} className={cn(
+                                        "flex items-center gap-1.5 shrink-0 rounded-lg px-2.5 py-1.5",
+                                        isP && "bg-green-50 dark:bg-green-900/20",
+                                        isMP && "bg-yellow-50 dark:bg-yellow-900/20",
+                                        isF && "bg-red-50 dark:bg-red-900/20",
+                                        !isP && !isMP && !isF && "bg-primary/10"
+                                    )}>
+                                        <span className={cn(
+                                            "min-w-[18px] h-[18px] rounded text-[9px] font-black flex items-center justify-center px-0.5",
+                                            isP && "bg-green-500 text-white",
+                                            isMP && "bg-yellow-500 text-white",
+                                            isF && "bg-red-500 text-white",
+                                            !isP && !isMP && !isF && "bg-primary text-primary-foreground"
+                                        )}>{codigo}</span>
+                                        <span className={cn(
+                                            "text-sm font-black leading-tight",
+                                            isP && "text-green-700 dark:text-green-300",
+                                            isMP && "text-yellow-700 dark:text-yellow-300",
+                                            isF && "text-red-700 dark:text-red-300",
+                                            !isP && !isMP && !isF && "text-primary"
+                                        )}>{qtd}</span>
+                                    </div>
+                                );
+                            })}
+
+                            {/* Separador */}
+                            <div className="shrink-0 w-px bg-border mx-0.5 self-stretch" />
+
+                            {/* Total */}
+                            <div className="flex flex-col items-center justify-center shrink-0 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg min-w-[100px] py-1.5 px-3 ml-auto">
+                                <p className="text-[8px] uppercase tracking-widest text-emerald-600 dark:text-emerald-400 font-bold leading-none">Total</p>
+                                <p className="text-sm font-black text-emerald-700 dark:text-emerald-300 font-mono leading-tight">{formatCurrency(resumo.valorTotal)}</p>
+                            </div>
+                        </div>
+
+                        {/* Action bar */}
+                        <div className="flex items-center gap-2 px-4 py-2.5">
+                            {/* Histórico */}
                             <Button
-                                size="lg"
-                                className="min-w-[140px] md:min-w-[180px] font-display font-bold border-2"
-                                onClick={() => salvarMutation.mutate()}
-                                disabled={salvarMutation.isPending || diaristasArray.length === 0 || !empresaIdSelecionada || !clienteUnidade || !data}
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setOpenHistorico(true)}
+                                className="h-11 w-11 p-0 rounded-xl shrink-0"
+                                title="Histórico"
                             >
-                                <Save className="h-4 w-4 mr-2" />
-                                {salvarMutation.isPending ? "Salvando..." : "Salvar lançamento"}
+                                <History className="h-4 w-4" />
+                            </Button>
+
+                            {/* Fechar período */}
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setFechandoPeriodo(true)}
+                                className="h-11 w-11 p-0 rounded-xl shrink-0 text-amber-700 border-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                                title="Fechar período"
+                            >
+                                <Lock className="h-4 w-4" />
+                            </Button>
+
+                            {/* Salvar - expande */}
+                            <Button
+                                type="button"
+                                size="sm"
+                                className="flex-1 h-11 gap-2 font-display font-bold rounded-xl text-sm"
+                                onClick={() => salvarMutation.mutate()}
+                                disabled={salvarMutation.isPending || !temMarcacoesNovaBatch || !empresaIdSelecionada}
+                            >
+                                <Save className="h-4 w-4 shrink-0" />
+                                {salvarMutation.isPending ? "Salvando..." : temMarcacoesNovaBatch ? "Salvar lançamentos" : "Preencha a grade"}
                             </Button>
                         </div>
                     </div>
-                </div>
+                )}
             </div>
 
+            {/* ── Modal: Histórico ── */}
             <Dialog open={openHistorico} onOpenChange={setOpenHistorico}>
                 <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle>Meus Lançamentos (Últimos 14 dias)</DialogTitle>
+                        <DialogTitle>Meus Lançamentos — Últimos 14 dias</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4">
                         {isLoadingHistorico ? (
-                            <div className="text-center p-8 text-muted-foreground animate-pulse text-sm">Carregando histórico...</div>
+                            <div className="text-center p-8 text-muted-foreground animate-pulse text-sm">Carregando...</div>
                         ) : (historicoRecente as any[]).length === 0 ? (
-                            <div className="text-center p-8 text-muted-foreground border border-dashed rounded-lg">Nenhum lançamento nos últimos 14 dias para esta empresa.</div>
+                            <div className="text-center p-8 text-muted-foreground border border-dashed rounded-lg">
+                                Nenhum lançamento nos últimos 14 dias para esta empresa.
+                            </div>
                         ) : (
                             <div className="divide-y divide-border border rounded-lg overflow-hidden">
                                 {(historicoRecente as any[]).map((h: any) => (
-                                    <div key={h.id} className="p-4 bg-card flex items-center justify-between transition-colors hover:bg-muted/50">
+                                    <div key={h.id} className="p-4 bg-card flex items-center justify-between hover:bg-muted/50 transition-colors">
                                         <div>
                                             <p className="font-bold text-sm text-foreground">{h.nome_colaborador}</p>
                                             <div className="flex gap-2 text-xs text-muted-foreground mt-1">
                                                 <span>Data: <b className="text-foreground">{format(parseISO(h.data_lancamento), "dd/MM/yy")}</b></span>
                                                 <span>•</span>
-                                                <span>Serviço: <b className="text-foreground">{h.operacao_servico || "—"}</b></span>
+                                                <span>Código: <b className="text-foreground">{h.codigo_marcacao}</b></span>
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-3">
-                                            <div className="text-right">
-                                                <span className={cn(
-                                                    "px-2 py-0.5 rounded text-xs font-bold",
-                                                    h.status === "em_aberto" ? "bg-amber-100 text-amber-700" :
-                                                        "bg-emerald-100 text-emerald-700"
-                                                )}>
-                                                    {h.status === "em_aberto" ? "Em Aberto" : "Processado"}
-                                                </span>
-                                            </div>
+                                            <span className={cn(
+                                                "px-2 py-0.5 rounded text-xs font-bold",
+                                                h.status === "em_aberto" ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
+                                            )}>
+                                                {h.status === "em_aberto" ? "Em Aberto" : "Processado"}
+                                            </span>
+                                            <span className="font-mono font-semibold text-sm text-foreground">
+                                                {formatCurrency(Number(h.valor_calculado ?? 0))}
+                                            </span>
                                         </div>
                                     </div>
                                 ))}
                             </div>
                         )}
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* ── Modal: Fechar Período ── */}
+            <Dialog open={fechandoPeriodo} onOpenChange={setFechandoPeriodo}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Lock className="h-5 w-5 text-amber-600" />
+                            Fechar Período
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-4 space-y-2">
+                            <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Resumo do fechamento</p>
+                            <div className="grid grid-cols-2 gap-2 text-xs text-amber-700 dark:text-amber-400">
+                                <div>
+                                    <p className="font-bold uppercase tracking-wider opacity-70">Período</p>
+                                    <p className="font-mono text-sm font-semibold">{labelSemana}</p>
+                                </div>
+                                <div>
+                                    <p className="font-bold uppercase tracking-wider opacity-70">Empresa</p>
+                                    <p className="font-semibold truncate">{clienteUnidade}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="bg-muted/30 rounded-lg p-4 border border-border text-sm text-muted-foreground space-y-1">
+                            <p className="flex items-center gap-2 text-foreground font-medium">
+                                <AlertCircle className="h-4 w-4 text-primary shrink-0" /> O que acontece ao fechar:
+                            </p>
+                            <ul className="list-disc list-inside space-y-0.5 pl-1">
+                                <li>Todos os lançamentos <span className="font-semibold text-foreground">em_aberto</span> do período serão bloqueados</li>
+                                <li>Status alterado para <span className="font-semibold text-amber-700">fechado_para_pagamento</span></li>
+                                <li>Um lote de fechamento é gerado para o financeiro</li>
+                                <li>A ação <span className="underline">não pode ser desfeita</span> pelo encarregado</li>
+                            </ul>
+                        </div>
+                        <div className="flex gap-3 justify-end">
+                            <Button
+                                variant="outline"
+                                onClick={() => setFechandoPeriodo(false)}
+                                disabled={fecharMutation.isPending}
+                            >
+                                <XCircle className="h-4 w-4 mr-1.5" /> Cancelar
+                            </Button>
+                            <Button
+                                className="bg-amber-600 hover:bg-amber-700 text-white"
+                                onClick={() => fecharMutation.mutate()}
+                                disabled={fecharMutation.isPending}
+                            >
+                                <Lock className="h-4 w-4 mr-1.5" />
+                                {fecharMutation.isPending ? "Fechando..." : "Confirmar Fechamento"}
+                            </Button>
+                        </div>
                     </div>
                 </DialogContent>
             </Dialog>

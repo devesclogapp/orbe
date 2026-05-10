@@ -2704,6 +2704,7 @@ export interface LancamentoDiaristaPayload {
   cpf_colaborador?: string | null;
   funcao_colaborador?: string | null;
   data_lancamento: string;
+  tipo_lancamento?: string | null; // campo local, removido antes do insert
   codigo_marcacao: CodigoMarcacao;
   quantidade_diaria: number;
   valor_diaria_base: number;
@@ -2739,6 +2740,7 @@ class DiaristaServiceClass {
   }
 
   async create(payload: Record<string, any>) {
+    const tenantId = await getCurrentTenantId();
     const mapped = {
       nome: payload.nome,
       cpf: payload.cpf ?? null,
@@ -2749,6 +2751,7 @@ class DiaristaServiceClass {
       empresa_id: payload.empresa_id,
       tipo_colaborador: 'DIARISTA',
       permitir_lancamento_operacional: payload.permitir_lancamento_operacional ?? true,
+      tenant_id: tenantId,
     };
     const { data, error } = await supabase
       .from('colaboradores')
@@ -2836,6 +2839,27 @@ class LancamentoDiaristaServiceClass {
     if (error) throw error;
     return result ?? [];
   }
+
+  async createBatch(registros: LancamentoDiaristaPayload[]) {
+    if (registros.length === 0) return [];
+
+    const tenantId = await getCurrentTenantId();
+
+    // Remove campos que podem não existir na tabela (tipo_lancamento é apenas local)
+    const payload = registros.map(({ ...r }) => {
+      const p: Record<string, unknown> = { ...r, tenant_id: tenantId };
+      delete p['tipo_lancamento'];
+      return p;
+    });
+
+    const { data, error } = await (supabase as any)
+      .from('lancamentos_diaristas')
+      .insert(payload)
+      .select('id, nome_colaborador, data_lancamento');
+
+    if (error) throw error;
+    return data ?? [];
+  }
 }
 export const LancamentoDiaristaService = new LancamentoDiaristaServiceClass();
 
@@ -2900,6 +2924,7 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
 
     const mesRef = periodoInicio.substring(0, 7);
 
+    const tenantId = await getCurrentTenantId();
     const { data: lote, error: errorLote } = await this.supabase
       .from('diaristas_lotes_fechamento')
       .insert({
@@ -2914,6 +2939,7 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
         fechado_por_nome: fechadoPorNome,
         fechado_em: new Date().toISOString(),
         observacoes,
+        tenant_id: tenantId,
       })
       .select()
       .single();
@@ -3171,13 +3197,20 @@ class RegraMarcacaoDiaristaServiceClass {
     return data ?? [];
   }
 
-  async getByEmpresa(empresaId: string) {
-    const { data, error } = await supabase
+  async getByEmpresa(empresaId?: string | null) {
+    let query = supabase
       .from('regras_marcacao_diaristas' as any)
       .select('*, empresas:empresa_id(nome)')
       .eq('ativo', true)
-      .or(`empresa_id.is.null,empresa_id.eq.${empresaId}`)
       .order('codigo', { ascending: true });
+
+    if (empresaId) {
+      query = query.or(`empresa_id.is.null,empresa_id.eq.${empresaId}`);
+    } else {
+      query = query.is('empresa_id', null);
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
 
     const regras = data ?? [];

@@ -228,7 +228,7 @@ const CustosExtrasLancamento = () => {
     // ─── Rendering ───────────────────────────────────────────────────────────
 
     return (
-        <OperationalShell title="Custos Extras" showBack={false} onBack={() => navigate("/producao")}>
+        <OperationalShell title="Custos Extras" showBack={false} onBack={() => navigate("/producao")} hideFab={true}>
             <div className="max-w-3xl mx-auto space-y-6 pb-28">
                 {/* Header with back navigation */}
                 <div className="flex items-center gap-3 px-1">

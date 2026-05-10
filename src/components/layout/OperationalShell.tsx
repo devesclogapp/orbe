@@ -11,9 +11,10 @@ interface OperationalShellProps {
     unitName?: string;
     showBack?: boolean;
     onBack?: () => void;
+    hideFab?: boolean;
 }
 
-export const OperationalShell = ({ children, title = "Coletor Orbe", unitName, showBack: propShowBack, onBack }: OperationalShellProps) => {
+export const OperationalShell = ({ children, title = "Coletor Orbe", unitName, showBack: propShowBack, onBack, hideFab }: OperationalShellProps) => {
     const { signOut, user } = useAuth();
     const navigate = useNavigate();
 
@@ -82,14 +83,16 @@ export const OperationalShell = ({ children, title = "Coletor Orbe", unitName, s
             </main>
 
             {/* Botão de Ação Flutuante */}
-            <div className="fixed bottom-8 right-6 z-50 sm:bottom-6">
-                <Button
-                    className="w-16 h-16 rounded-full bg-orange-500 hover:bg-orange-600 shadow-xl shadow-orange-500/30 flex items-center justify-center transition-all duration-200 active:scale-95"
-                    onClick={() => navigate("/producao")}
-                >
-                    <Plus className="w-8 h-8" />
-                </Button>
-            </div>
+            {!hideFab && (
+                <div className="fixed bottom-8 right-6 z-50 sm:bottom-6">
+                    <Button
+                        className="w-16 h-16 rounded-full bg-orange-500 hover:bg-orange-600 shadow-xl shadow-orange-500/30 flex items-center justify-center transition-all duration-200 active:scale-95"
+                        onClick={() => navigate("/producao")}
+                    >
+                        <Plus className="w-8 h-8" />
+                    </Button>
+                </div>
+            )}
 
             {/* Footer Minimalista */}
             <footer className="py-4 border-t border-border bg-muted/30 text-center">
