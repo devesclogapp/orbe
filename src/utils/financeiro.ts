@@ -9,12 +9,15 @@ export type ModalidadeFinanceira =
 
 export type StatusPagamento = "PENDENTE" | "RECEBIDO" | "ATRASADO";
 
-export function getModalidadeLabel(mod: ModalidadeFinanceira) {
+export function getModalidadeLabel(mod: ModalidadeFinanceira | string) {
   switch (mod) {
-    case "CAIXA_IMEDIATO": return "Deposito";
+    case "CAIXA_IMEDIATO": return "À vista";
+    case "DUPLICATA_FORNECEDOR":
     case "DUPLICATA": return "Boleto";
-    case "FATURAMENTO_MENSAL": return "Deposito (mensal)";
-    case "CUSTO_DESPESA": return "Custo";
+    case "FECHAMENTO_MENSAL_EMPRESA":
+    case "FATURAMENTO_MENSAL": return "Faturamento Mensal";
+    case "TRANSBORDO_30D": return "Transbordo 30d";
+    case "CUSTO_DESPESA": return "Custo Extra";
     default: return mod;
   }
 }
@@ -227,7 +230,30 @@ export function processarOperacao(operacao: any, empresas: any[] = []) {
 
   const empresa = empresas.find?.((e: any) => e.id === operacao.empresa_id) || {};
 
+  // PRIORIDADE: usar modalidade_financeira salva no banco (reflete a escolha real do encarregado).
+  // normalizar variantes do banco (FECHAMENTO_MENSAL_EMPRESA → FATURAMENTO_MENSAL,
+  // DUPLICATA_FORNECEDOR → DUPLICATA) para compatibilidade com os KPIs.
+  const modalidadeRaw = String(
+    operacao.modalidade_financeira ??
+    operacao.avaliacao_json?.contexto_importacao?.modalidade_financeira_override ??
+    ""
+  ).toUpperCase().trim();
+
+  let modalidadeResolvida: ModalidadeFinanceira | null = null;
+  if (modalidadeRaw === "CAIXA_IMEDIATO") {
+    modalidadeResolvida = "CAIXA_IMEDIATO";
+  } else if (modalidadeRaw === "DUPLICATA" || modalidadeRaw === "DUPLICATA_FORNECEDOR") {
+    modalidadeResolvida = "DUPLICATA";
+  } else if (modalidadeRaw === "FATURAMENTO_MENSAL" || modalidadeRaw === "FECHAMENTO_MENSAL_EMPRESA") {
+    modalidadeResolvida = "FATURAMENTO_MENSAL";
+  } else if (modalidadeRaw === "CUSTO_DESPESA") {
+    modalidadeResolvida = "CUSTO_DESPESA";
+  }
+
+  // Fallback: deducao automatica para registros antigos ou importacoes sem modalidade salva
   const financeiro = classificarFinanceiroSync(operacao, empresa);
+  const modalidadeFinal: ModalidadeFinanceira = modalidadeResolvida ?? financeiro.modalidade;
+
   const statusPagamentoRaw = String(operacao.status_pagamento ?? "").toUpperCase().trim();
 
   const dataVencimento = financeiro.vencimento 
@@ -249,7 +275,7 @@ export function processarOperacao(operacao: any, empresas: any[] = []) {
     ...operacao,
     valorDescargaCalculado: valor_descarga,
     totalFinalCalculado: total_final,
-    modalidadeFinanceira: financeiro.modalidade,
+    modalidadeFinanceira: modalidadeFinal,
     dataVencimento: dataVencimento.toISOString().split("T")[0],
     statusPagamento: status_pagamento,
     formaPagamento: formaPagamentoValue,

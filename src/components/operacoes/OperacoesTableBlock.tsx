@@ -291,13 +291,24 @@ const getContextoImportacaoValue = (item: Record<string, unknown>, key: string) 
   return trimmedValue ? trimmedValue : null;
 };
 
-const getDisplayFormaPagamento = (item: Record<string, unknown>) =>
-  (item as { formas_pagamento_operacional?: { nome?: string | null } }).formas_pagamento_operacional?.nome ??
-  ((item as { formaPagamento?: string | null }).formaPagamento ?? null) ??
-  ((item as { forma_pagamento?: string | null }).forma_pagamento ?? null) ??
-  getContextoImportacaoValue(item, "forma_pagamento") ??
-  getLinhaOriginalValue(item, "FORMA DE PAGAMENTO") ??
-  "—";
+const getDisplayFormaPagamento = (item: Record<string, unknown>) => {
+  const base = (item as { formas_pagamento_operacional?: { nome?: string | null } }).formas_pagamento_operacional?.nome ??
+    ((item as { formaPagamento?: string | null }).formaPagamento ?? null) ??
+    ((item as { forma_pagamento?: string | null }).forma_pagamento ?? null) ??
+    getContextoImportacaoValue(item, "forma_pagamento") ??
+    getLinhaOriginalValue(item, "FORMA DE PAGAMENTO");
+
+  if (base && typeof base === "string" && base.trim() !== "") {
+    return base;
+  }
+
+  const modalidade = (item as any).modalidadeFinanceira || (item as any).modalidade_financeira;
+  if (modalidade) {
+    return getModalidadeLabel(modalidade);
+  }
+
+  return "—";
+};
 
 const getDisplayObservacao = (item: Record<string, unknown>) =>
   getContextoImportacaoValue(item, "observacao") ??
@@ -564,19 +575,19 @@ export const OperacoesTableBlock = ({
   });
 
   const { data: regrasFinanceiras = [] } = useQuery({
-        queryKey: ["regras_financeiras_filter"],
-        queryFn: () => RegrasFinanceirasService.getAllActive(),
-    });
+    queryKey: ["regras_financeiras_filter"],
+    queryFn: () => RegrasFinanceirasService.getAllActive(),
+  });
 
-    const { data: formasPagamentoDb = [] } = useQuery({
-        queryKey: ["formas_pagamento_operacional_filter"],
-        queryFn: () => {
-            const { FormaPagamentoOperacionalService } = require("@/services/base.service");
-            return FormaPagamentoOperacionalService.getAllActive();
-        },
-    });
+  const { data: formasPagamentoDb = [] } = useQuery({
+    queryKey: ["formas_pagamento_operacional_filter"],
+    queryFn: () => {
+      const { FormaPagamentoOperacionalService } = require("@/services/base.service");
+      return FormaPagamentoOperacionalService.getAllActive();
+    },
+  });
 
-    const { data: empresas = [] } = useQuery({
+  const { data: empresas = [] } = useQuery({
     queryKey: ["empresas"],
     queryFn: () => EmpresaService.getAll(),
   });
@@ -866,7 +877,7 @@ export const OperacoesTableBlock = ({
 
     const statusMatch = statusFilter === "all" || item.statusPagamento === statusFilter;
     const modalidadeMatch = modalidadeFilter === "all" || item.modalidadeFinanceira === modalidadeFilter;
-    const formaPagamentoMatch = formaPagamentoFilter === "all" || 
+    const formaPagamentoMatch = formaPagamentoFilter === "all" ||
       (item.formaPagamento && item.formaPagamento.toLowerCase().includes(formaPagamentoFilter.toLowerCase())) ||
       (item.formas_pagamento_operacional?.nome && item.formas_pagamento_operacional.nome.toLowerCase().includes(formaPagamentoFilter.toLowerCase()));
 
@@ -1838,8 +1849,8 @@ export const OperacoesTableBlock = ({
                               <Badge variant="outline" className={cn(
                                 "font-medium border-0 text-xs",
                                 item.modalidadeFinanceira === "CAIXA_IMEDIATO" && "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
-                                item.modalidadeFinanceira === "DUPLICATA_FORNECEDOR" && "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
-                                item.modalidadeFinanceira === "FECHAMENTO_MENSAL_EMPRESA" && "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
+                                (item.modalidadeFinanceira === "DUPLICATA_FORNECEDOR" || item.modalidadeFinanceira === "DUPLICATA") && "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
+                                (item.modalidadeFinanceira === "FECHAMENTO_MENSAL_EMPRESA" || item.modalidadeFinanceira === "FATURAMENTO_MENSAL") && "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
                                 item.modalidadeFinanceira === "TRANSBORDO_30D" && "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300",
                                 item.modalidadeFinanceira === "CUSTO_DESPESA" && "bg-slate-100 text-slate-800 dark:bg-slate-900/40 dark:text-slate-300",
                               )}>

@@ -455,7 +455,7 @@ const calcularTotalPrevisto = ({
 };
 
 const getStatusVariant = (status: string) => {
-    if (status === "Processado") return "success" as const;
+    if (status === "Processado" || status === "Recebido" || status === "recebido") return "success" as const;
     if (status === "Com alerta") return "warning" as const;
     if (status === "Aguardando validação") return "info" as const;
     if (status === "Bloqueado") return "error" as const;
@@ -535,6 +535,8 @@ const LancamentoProducao = () => {
     const [viewMode, setViewMode] = useState<"grid" | "carousel">("grid");
     const [carouselIndex, setCarouselIndex] = useState(0);
     const [bannerExpandido, setBannerExpandido] = useState(false);
+    const [cancelItemId, setCancelItemId] = useState<string | null>(null);
+    const [cancelReason, setCancelReason] = useState("");
     const touchRef = useRef<{ start: number | null; end: number | null }>({ start: null, end: null });
 
     const { data: perfil } = useQuery({
@@ -709,6 +711,16 @@ const LancamentoProducao = () => {
     const formaPagamentoOptions = useMemo(() => {
         if (!form.modalidade_financeira) {
             return mapToLookupOptions(formasPagamentoDb as any[]);
+        }
+
+        if (form.modalidade_financeira === "DUPLICATA") {
+            const boletoFdb = (formasPagamentoDb as any[]).find((f: any) =>
+                f.nome?.toLowerCase().includes("boleto")
+            );
+            if (boletoFdb) {
+                return [{ id: String(boletoFdb.id), nome: String(boletoFdb.nome) }];
+            }
+            return [{ id: "boleto", nome: "Boleto" }];
         }
 
         let filtered = regrasDadosFinanceiros as any[];
@@ -1224,6 +1236,20 @@ const LancamentoProducao = () => {
         onError: (err: any) => toast.error("Erro ao salvar", { description: err.message }),
     });
 
+    const cancelMutation = useMutation({
+        mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+            OperacaoProducaoService.cancel(id, user?.id || "", reason),
+        onSuccess: () => {
+            toast.success("Operação cancelada com sucesso!");
+            queryClient.invalidateQueries({ queryKey: ["producao_recente"] });
+            queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
+            queryClient.invalidateQueries({ queryKey: ["operacoes"] });
+            setCancelItemId(null);
+            setCancelReason("");
+        },
+        onError: (err: any) => toast.error("Erro ao cancelar operação", { description: err.message }),
+    });
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
 
@@ -1273,6 +1299,20 @@ const LancamentoProducao = () => {
         // Usa sempre o valor calculado automaticamente pela regra do banco
         const valorUnitarioFinal = valorUnitario;
 
+        let finalModalidade = form.modalidade_financeira || regraFinanceira?.modalidade_financeira;
+
+        // Coerção Mágica: se o usuário escolheu uma forma de pagamento explícita ignorando o preset e não há regra cadastrada
+        const formaPagamentoUpper = String(formaPagamentoOptions.find(f => f.id === form.forma_pagamento)?.nome || form.forma_pagamento || "").toUpperCase();
+        if (formaPagamentoUpper.includes("BOLETO") || formaPagamentoUpper.includes("DUPLICATA")) {
+            finalModalidade = "DUPLICATA";
+        } else if (formaPagamentoUpper.includes("MENSAL")) {
+            finalModalidade = "FATURAMENTO_MENSAL";
+        }
+
+        // Traduz a modalidade da UI para a taxonomia correta do Banco (KPIs)
+        if (finalModalidade === "FATURAMENTO_MENSAL") finalModalidade = "FECHAMENTO_MENSAL_EMPRESA";
+        if (finalModalidade === "DUPLICATA") finalModalidade = "DUPLICATA_FORNECEDOR";
+
         const avaliacaoJson = {
             infracoes: Object.values(condutaColaboradores)
                 .filter((c) => c.selected && c.hadInfraction)
@@ -1285,10 +1325,15 @@ const LancamentoProducao = () => {
                 base_calculo: baseCalculoResumo,
                 quantidade_colaboradores: quantidadeColaboradores,
             },
+            contexto_importacao: {
+                modalidade_financeira_override: finalModalidade,
+                forma_pagamento: form.forma_pagamento && form.forma_pagamento.includes('-') ? form.forma_pagamento : null
+            }
         };
 
         const operacao = {
             ...regraFinanceira,
+            modalidade_financeira: finalModalidade,
             categoria_servico: categoriaServico,
             empresa_id: form.empresa_id,
             unidade_id: form.unidade_id || null,
@@ -1946,7 +1991,25 @@ const LancamentoProducao = () => {
                                                             {item.criado_em ? format(new Date(item.criado_em), "HH:mm") : ""}
                                                         </p>
                                                     </div>
-                                                    <Badge variant={getStatusVariant(item.status)}>{item.status}</Badge>
+                                                    <div className="flex items-center gap-2">
+                                                        <Badge variant={getStatusVariant(
+                                                            item.status_pagamento === "RECEBIDO" || item.status_pagamento === "Recebido" ? "Recebido" : item.status
+                                                        )}>
+                                                            {item.status_pagamento === "RECEBIDO" || item.status_pagamento === "Recebido" ? "Recebido" : item.status}
+                                                        </Badge>
+                                                        {(item.status === "pendente" || item.status === "com_alerta") &&
+                                                            (item.status_pagamento !== "RECEBIDO" && item.status_pagamento !== "Recebido") && (
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    title="Cancelar Operação"
+                                                                    onClick={() => setCancelItemId(item.id)}
+                                                                    className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                                                                >
+                                                                    <Trash2 className="w-4 h-4" />
+                                                                </Button>
+                                                            )}
+                                                    </div>
                                                 </div>
                                             </div>
                                         ))}
@@ -1973,6 +2036,39 @@ const LancamentoProducao = () => {
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setProdutoDialogOpen(false)}>Cancelar</Button>
                         <Button onClick={() => createProdutoMutation.mutate()} disabled={createProdutoMutation.isPending}>Salvar</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={!!cancelItemId} onOpenChange={(open) => !open && setCancelItemId(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Cancelar Operação</DialogTitle>
+                        <DialogDescription>
+                            Deseja realmente cancelar esta operação? Por favor, informe o motivo do cancelamento para fins de auditoria.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <Label htmlFor="motivo">Motivo do Cancelamento <span className="text-destructive">*</span></Label>
+                        <Input
+                            id="motivo"
+                            value={cancelReason}
+                            onChange={(e) => setCancelReason(e.target.value)}
+                            placeholder="Ex: Lançamento duplicado"
+                            autoFocus
+                        />
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setCancelItemId(null)} disabled={cancelMutation.isPending}>
+                            Voltar
+                        </Button>
+                        <Button
+                            variant="destructive"
+                            onClick={() => cancelItemId && cancelMutation.mutate({ id: cancelItemId, reason: cancelReason })}
+                            disabled={cancelMutation.isPending || cancelReason.trim().length < 3}
+                        >
+                            {cancelMutation.isPending ? "Cancelando..." : "Confirmar Cancelamento"}
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

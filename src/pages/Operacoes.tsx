@@ -535,7 +535,7 @@ const TopKpiCard = ({
             {value}
           </div>
         </div>
-{Icon && (
+        {Icon && (
           <div
             className={cn(
               "shrink-0 rounded-md flex items-center justify-center",
@@ -765,11 +765,20 @@ const Operacoes = () => {
       colaboradores += Number.isFinite(quantidadeColaboradores) ? quantidadeColaboradores : 0;
 
       if (statusPagamento === "RECEBIDO") {
-        caixaReal += totalLinha;
         recebidasCount += 1;
       }
-      if (statusPagamento === "PENDENTE" || statusPagamento === "ATRASADO") exposicao += totalLinha;
-      if (modalidadeFinanceira === "FATURAMENTO_MENSAL") faturamentoMensal += totalLinha;
+
+      // Distribuição por MODALIDADE FINANCEIRA escolhida pelo encarregado:
+      // • Recebimento Imediato  → CAIXA_IMEDIATO            → card Caixa Real
+      // • Pagamento a Prazo     → DUPLICATA_FORNECEDOR      → card Boleto a Receber
+      // • Faturamento Mensal    → FECHAMENTO_MENSAL_EMPRESA → card Faturamento Mensal
+      if (modalidadeFinanceira === "CAIXA_IMEDIATO") {
+        caixaReal += Number.isFinite(totalLinha) ? totalLinha : 0;
+      } else if (modalidadeFinanceira === "DUPLICATA" || modalidadeFinanceira === "DUPLICATA_FORNECEDOR") {
+        exposicao += Number.isFinite(totalLinha) ? totalLinha : 0;
+      } else if (modalidadeFinanceira === "FATURAMENTO_MENSAL" || modalidadeFinanceira === "FECHAMENTO_MENSAL_EMPRESA") {
+        faturamentoMensal += Number.isFinite(totalLinha) ? totalLinha : 0;
+      }
       if (nfNumero && nfNumero !== "NAO" && nfNumero !== "NÃO") nfComRegistro += 1;
     });
 

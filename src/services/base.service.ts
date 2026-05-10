@@ -2294,6 +2294,7 @@ class OperacaoProducaoServiceClass {
         formas_pagamento_operacional:forma_pagamento_id(nome)
       `)
       .eq('data_operacao', date)
+      .is('deleted_at', null)
       .order('criado_em', { ascending: false });
 
     if (empresaId) query = query.eq('empresa_id', empresaId);
@@ -2323,6 +2324,7 @@ class OperacaoProducaoServiceClass {
         produtos_carga:produto_carga_id(nome),
         formas_pagamento_operacional:forma_pagamento_id(nome)
       `)
+      .is('deleted_at', null)
       .order('criado_em', { ascending: false });
 
     if (empresaIds && empresaIds.length > 0) {
@@ -2345,6 +2347,23 @@ class OperacaoProducaoServiceClass {
 
     if (error) throw error;
     return true;
+  }
+
+  async cancel(id: string, userId: string, reason: string) {
+    const { data, error } = await operationalClient
+      .from('operacoes_producao')
+      .update({
+        status: 'cancelado',
+        deleted_at: new Date().toISOString(),
+        deleted_by: userId,
+        motivo_exclusao: reason
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
   }
 
   async deleteImported(empresaId?: string | null, dataInicio?: string, dataFim?: string) {
