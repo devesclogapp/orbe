@@ -2888,11 +2888,11 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
   }) {
     const { data: lancamentos, error: errorLanc } = await this.supabase
       .from('lancamentos_diaristas')
-      .select('*, diaristas(nome, cpf, valor_diaria, banco_codigo, agencia, conta)')
+      .select('*')
       .eq('empresa_id', empresaId)
       .gte('data_lancamento', periodoInicio)
       .lte('data_lancamento', periodoFim)
-      .eq('status', 'ativo');
+      .eq('status', 'em_aberto');
 
     if (errorLanc) throw errorLanc;
 
@@ -2905,21 +2905,21 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
       if (!diaristasMap.has(key)) {
         diaristasMap.set(key, {
           diarista_id: key,
-          nome_colaborador: l.diarista?.nome || "Diarista",
-          cpf: l.diarista?.cpf,
-          banco: l.diarista?.banco_codigo,
-          agencia: l.diarista?.agencia,
-          conta: l.diarista?.conta,
+          nome_colaborador: l.nome_colaborador || 'Diarista',
+          cpf: l.cpf_colaborador ?? null,
+          banco: null,
+          agencia: null,
+          conta: null,
           quantidade_dias: 0,
-          valor_dia: l.diarista?.valor_diaria || 0,
+          valor_dia: l.valor_diaria_base || 0,
           valor_final: 0,
         });
       }
       const entry = diaristasMap.get(key);
-      entry.quantidade_dias += 1;
-      entry.valor_final = entry.valor_dia * entry.quantidade_dias;
+      entry.quantidade_dias += l.quantidade_diaria ?? 1;
+      entry.valor_final += l.valor_calculado ?? 0;
       totalRegistros += 1;
-      valorTotal += entry.valor_dia;
+      valorTotal += l.valor_calculado ?? 0;
     });
 
     const mesRef = periodoInicio.substring(0, 7);
@@ -2948,11 +2948,11 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
 
     await this.supabase
       .from('lancamentos_diaristas')
-      .update({ status: 'fechado_para_pagamento' })
+      .update({ status: 'fechado_para_pagamento', lote_fechamento_id: lote.id })
       .eq('empresa_id', empresaId)
       .gte('data_lancamento', periodoInicio)
       .lte('data_lancamento', periodoFim)
-      .eq('status', 'ativo');
+      .eq('status', 'em_aberto');
 
     return {
       ...lote,
