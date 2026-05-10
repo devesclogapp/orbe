@@ -865,6 +865,19 @@ export const OperacoesTableBlock = ({
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => OperacaoProducaoService.delete(id),
+    onSuccess: () => {
+      toast.success("Operação excluída com sucesso.");
+      queryClient.invalidateQueries({ queryKey: ["operacoes"] });
+      queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
+    },
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : "Erro ao excluir operação.";
+      toast.error("Falha ao excluir operação.", { description: message });
+    },
+  });
+
   const filteredData = [...processedRows].filter((item: any) => {
     const fornecedor = item.fornecedores?.nome || item.produto_label || "";
     const transportadora = item.transportadoras_clientes?.nome || item.transportadora_label || "";
@@ -1968,8 +1981,15 @@ export const OperacoesTableBlock = ({
                                 </DropdownMenu>
                               )}
                               <button
-                                className="h-7 w-7 rounded-md hover:bg-destructive-soft flex items-center justify-center text-muted-foreground hover:text-destructive"
-                                onClick={(e) => e.stopPropagation()}
+                                className="h-7 w-7 rounded-md hover:bg-destructive-soft flex items-center justify-center text-muted-foreground hover:text-destructive disabled:opacity-50"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (confirm("Tem certeza que deseja excluir esta operação?")) {
+                                    deleteMutation.mutate(item.id);
+                                  }
+                                }}
+                                disabled={deleteMutation.isPending}
+                                title="Excluir operação"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>

@@ -23,7 +23,7 @@ DROP POLICY IF EXISTS "fpo_tenant_all" ON public.formas_pagamento_operacional;
 -- VERIFICACAO FINAL
 -- Todas as linhas do resultado devem ter:
 --   qual = (tenant_id = current_tenant_id())
--- Nao deve aparecer nada com NULL, perfis_usuarios ou get_user_role()
+-- Não deve aparecer nada com NULL, perfis_usuarios ou get_user_role()
 -- ============================================================
 SELECT
   tablename,

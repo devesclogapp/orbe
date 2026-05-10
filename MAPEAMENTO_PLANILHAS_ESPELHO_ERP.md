@@ -150,7 +150,7 @@ Este documento mapeia todas as telas do ERP ESC LOG que permitem cadastro ou rec
 | entrada | TIME | NÃO | SIM | NÃO | Entrada trabalho |
 | saida_almoco | TIME | NÃO | SIM | NÃO | Saída almoço |
 | retorno_almoco | TIME | NÃO | SIM | NÃO | Retorno almoço |
-| saida | TIME | N��O | SIM | NÃO | Saída final |
+| saida | TIME | NÃO | SIM | NÃO | Saída final |
 | periodo | TEXT | NÃO | SIM | NÃO | Diurno/Noturno |
 | tipo_dia | TEXT | NÃO | SIM | NÃO | Normal/Domingo/Feriado |
 | horas_trabalhadas | NUMERIC | NÃO | NÃO | SIM | Calculado pelo sistema |
