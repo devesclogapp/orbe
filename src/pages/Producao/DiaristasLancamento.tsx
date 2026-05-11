@@ -162,15 +162,22 @@ const DiaristasLancamento = () => {
         retry: 0,
     });
 
-    // Mapa de lançamentos existentes: [diarista_id][data_ISO] = count
+    // Mapa de lançamentos existentes: [diarista_id][data_ISO] = status
     const lancamentosExistentesMap = useMemo(() => {
         const map: Record<string, Record<string, any>> = {};
         (lancamentosExistentes as any[]).forEach((l: any) => {
             if (!map[l.diarista_id]) map[l.diarista_id] = {};
             const dateKey = l.data_lancamento;
-            map[l.diarista_id][dateKey] = (map[l.diarista_id][dateKey] || 0) + 1;
+            map[l.diarista_id][dateKey] = {
+                count: (map[l.diarista_id][dateKey]?.count || 0) + 1,
+                status: l.status
+            };
         });
         return map;
+    }, [lancamentosExistentes]);
+
+    const isSemanaFechada = useMemo(() => {
+        return (lancamentosExistentes as any[]).some((l: any) => l.status === 'fechado_para_pagamento');
     }, [lancamentosExistentes]);
 
     const regrasMarcacaoAtivas = useMemo(() => {
@@ -552,23 +559,30 @@ const DiaristasLancamento = () => {
                                                     const isMeia = codigo === "MP";
                                                     const isFalta = codigo === "F";
 
+                                                    const statusDia = lancamentosExistentesMap[d.id]?.[dateISO]?.status;
+                                                    const isFechado = isSemanaFechada || statusDia === 'fechado_para_pagamento';
+                                                    const isDisabled = futuro || isFechado;
+
                                                     return (
                                                         <td key={dateISO} className="px-1 py-2 text-center">
                                                             <button
                                                                 type="button"
-                                                                disabled={futuro}
+                                                                disabled={isDisabled}
                                                                 onClick={(e) => {
                                                                     e.preventDefault();
-                                                                    if (!futuro) toggleMarcacao(d.id, dateISO);
+                                                                    if (!isDisabled) toggleMarcacao(d.id, dateISO);
                                                                 }}
                                                                 className={cn(
                                                                     "mx-auto flex flex-col items-center justify-center rounded-lg transition-all select-none",
                                                                     "w-14 h-12 text-xs font-black uppercase tracking-wider border-2",
+                                                                    isDisabled && "cursor-not-allowed",
+                                                                    isFechado && "pointer-events-none",
                                                                     futuro
-                                                                        ? "opacity-20 cursor-not-allowed border-transparent bg-transparent text-muted-foreground"
+                                                                        ? "opacity-20 border-transparent bg-transparent text-muted-foreground"
                                                                         : !codigo
                                                                             ? cn(
-                                                                                "border-dashed border-border text-muted-foreground bg-transparent hover:border-primary/40 hover:bg-primary/5",
+                                                                                "border-dashed border-border text-muted-foreground bg-transparent",
+                                                                                !isDisabled && "hover:border-primary/40 hover:bg-primary/5",
                                                                                 jaLancado && "border-amber-400/60 bg-amber-50/50 dark:bg-amber-900/10"
                                                                             )
                                                                             : isPresente
@@ -577,13 +591,15 @@ const DiaristasLancamento = () => {
                                                                                     ? "border-yellow-500 bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300 shadow-sm"
                                                                                     : isFalta
                                                                                         ? "border-red-500 bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 shadow-sm"
-                                                                                        : "border-primary bg-primary/10 text-primary shadow-sm"
+                                                                                        : "border-primary bg-primary/10 text-primary shadow-sm",
+                                                                    isFechado && codigo && "opacity-80 saturate-50"
                                                                 )}
                                                                 title={
-                                                                    futuro ? "Data futura" :
-                                                                        jaLancado ? `Já lançado: ${lancamentosExistentesMap[d.id]?.[dateISO]}x` :
-                                                                            regra ? `${regra.descricao} (×${regra.multiplicador})` :
-                                                                                "Clique para marcar"
+                                                                    isFechado ? "Período fechado" :
+                                                                        futuro ? "Data futura" :
+                                                                            jaLancado ? `Já lançado (clique p/ alterar)` :
+                                                                                regra ? `${regra.descricao} (×${regra.multiplicador})` :
+                                                                                    "Clique para marcar"
                                                                 }
                                                             >
                                                                 {codigo ? (
@@ -698,8 +714,12 @@ const DiaristasLancamento = () => {
                                 variant="outline"
                                 size="sm"
                                 onClick={() => setFechandoPeriodo(true)}
-                                className="h-11 w-11 p-0 rounded-xl shrink-0 text-amber-700 border-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20"
-                                title="Fechar período"
+                                disabled={isSemanaFechada || !empresaIdSelecionada || (lancamentosExistentes as any[]).length === 0}
+                                className={cn(
+                                    "h-11 w-11 p-0 rounded-xl shrink-0 border-amber-300",
+                                    isSemanaFechada ? "text-muted-foreground bg-muted border-border" : "text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                                )}
+                                title={isSemanaFechada ? "Semana já fechada" : "Fechar período"}
                             >
                                 <Lock className="h-4 w-4" />
                             </Button>
@@ -710,10 +730,10 @@ const DiaristasLancamento = () => {
                                 size="sm"
                                 className="flex-1 h-11 gap-2 font-display font-bold rounded-xl text-sm"
                                 onClick={() => salvarMutation.mutate()}
-                                disabled={salvarMutation.isPending || !temMarcacoesNovaBatch || !empresaIdSelecionada}
+                                disabled={salvarMutation.isPending || (!temMarcacoesNovaBatch && !isSemanaFechada) || !empresaIdSelecionada || isSemanaFechada}
                             >
-                                <Save className="h-4 w-4 shrink-0" />
-                                {salvarMutation.isPending ? "Salvando..." : temMarcacoesNovaBatch ? "Salvar lançamentos" : "Preencha a grade"}
+                                {isSemanaFechada ? <Lock className="h-4 w-4 shrink-0" /> : <Save className="h-4 w-4 shrink-0" />}
+                                {salvarMutation.isPending ? "Salvando..." : isSemanaFechada ? "Período Fechado" : temMarcacoesNovaBatch ? "Salvar lançamentos" : "Preencha a grade"}
                             </Button>
                         </div>
                     </div>

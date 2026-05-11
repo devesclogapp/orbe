@@ -2946,13 +2946,15 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
 
     if (errorLote) throw errorLote;
 
-    await this.supabase
-      .from('lancamentos_diaristas')
-      .update({ status: 'fechado_para_pagamento', lote_fechamento_id: lote.id })
-      .eq('empresa_id', empresaId)
-      .gte('data_lancamento', periodoInicio)
-      .lte('data_lancamento', periodoFim)
-      .eq('status', 'em_aberto');
+    const { error: fecharError } = await this.supabase.rpc('fechar_periodo_diaristas', {
+      p_empresa_id: empresaId,
+      p_periodo_inicio: periodoInicio,
+      p_periodo_fim: periodoFim,
+      p_lote_id: lote.id,
+      p_tenant_id: tenantId
+    });
+
+    if (fecharError) throw fecharError;
 
     return {
       ...lote,
