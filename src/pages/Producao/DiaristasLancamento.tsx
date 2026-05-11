@@ -176,8 +176,21 @@ const DiaristasLancamento = () => {
         return map;
     }, [lancamentosExistentes]);
 
+    // Semana fechada = há lançamentos cujo status NÃO é em_aberto/EM_ABERTO
     const isSemanaFechada = useMemo(() => {
-        return (lancamentosExistentes as any[]).some((l: any) => l.status !== 'EM_ABERTO');
+        const abertos = ['em_aberto', 'EM_ABERTO'];
+        const existentes = lancamentosExistentes as any[];
+        if (existentes.length === 0) return false;
+        return existentes.some((l: any) => !abertos.includes(l.status));
+    }, [lancamentosExistentes]);
+
+    // Status predominante da semana (para exibir label correto no dock)
+    const statusSemana = useMemo(() => {
+        const existentes = lancamentosExistentes as any[];
+        if (existentes.length === 0) return null;
+        // Pega o status do primeiro lançamento não-aberto
+        const fechado = existentes.find((l: any) => !['em_aberto', 'EM_ABERTO'].includes(l.status));
+        return fechado?.status ?? null;
     }, [lancamentosExistentes]);
 
     const regrasMarcacaoAtivas = useMemo(() => {
@@ -733,7 +746,21 @@ const DiaristasLancamento = () => {
                                 disabled={salvarMutation.isPending || (!temMarcacoesNovaBatch && !isSemanaFechada) || !empresaIdSelecionada || isSemanaFechada}
                             >
                                 {isSemanaFechada ? <Lock className="h-4 w-4 shrink-0" /> : <Save className="h-4 w-4 shrink-0" />}
-                                {salvarMutation.isPending ? "Salvando..." : isSemanaFechada ? "Período Fechado" : temMarcacoesNovaBatch ? "Salvar lançamentos" : "Preencha a grade"}
+                                {salvarMutation.isPending
+                                    ? "Salvando..."
+                                    : isSemanaFechada
+                                        ? statusSemana === 'AGUARDANDO_VALIDACAO_RH'
+                                            ? "Aguardando Validação RH"
+                                            : statusSemana === 'VALIDADO_RH'
+                                                ? "Validado pelo RH"
+                                                : statusSemana === 'FECHADO_FINANCEIRO'
+                                                    ? "Aprovado — Financeiro"
+                                                    : statusSemana === 'PAGO'
+                                                        ? "Pago"
+                                                        : "Período Fechado"
+                                        : temMarcacoesNovaBatch
+                                            ? "Salvar lançamentos"
+                                            : "Preencha a grade"}
                             </Button>
                         </div>
                     </div>
@@ -767,10 +794,20 @@ const DiaristasLancamento = () => {
                                         </div>
                                         <div className="flex items-center gap-3">
                                             <span className={cn(
-                                                "px-2 py-0.5 rounded text-xs font-bold",
-                                                h.status === "EM_ABERTO" ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
+                                                "px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wide",
+                                                (h.status === "em_aberto" || h.status === "EM_ABERTO") && "bg-amber-100 text-amber-700",
+                                                h.status === "AGUARDANDO_VALIDACAO_RH" && "bg-blue-100 text-blue-800",
+                                                h.status === "VALIDADO_RH" && "bg-indigo-100 text-indigo-800",
+                                                h.status === "FECHADO_FINANCEIRO" && "bg-emerald-100 text-emerald-800",
+                                                h.status === "PAGO" && "bg-emerald-200 text-emerald-900",
+                                                h.status === "cancelado" && "bg-muted text-muted-foreground",
                                             )}>
-                                                {h.status === "EM_ABERTO" ? "Em Aberto" : "Fechado / Em proc."}
+                                                {(h.status === "em_aberto" || h.status === "EM_ABERTO") && "Em Aberto"}
+                                                {h.status === "AGUARDANDO_VALIDACAO_RH" && "Ag. Validação RH"}
+                                                {h.status === "VALIDADO_RH" && "Validado RH"}
+                                                {h.status === "FECHADO_FINANCEIRO" && "Aprovado Financeiro"}
+                                                {h.status === "PAGO" && "Pago"}
+                                                {h.status === "cancelado" && "Cancelado"}
                                             </span>
                                             <span className="font-mono font-semibold text-sm text-foreground">
                                                 {formatCurrency(Number(h.valor_calculado ?? 0))}

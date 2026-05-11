@@ -57,7 +57,7 @@ type Lote = {
     periodo_fim: string;
     total_registros: number;
     valor_total: number;
-    status: "fechado_para_pagamento" | "cnab_gerado" | "pago" | "cancelado" | "em_aberto";
+    status: "AGUARDANDO_VALIDACAO_RH" | "VALIDADO_RH" | "FECHADO_FINANCEIRO" | "PAGO" | "CANCELADO" | "EM_ABERTO" | "cnab_gerado" | "pago" | "cancelado" | "em_aberto";
     fechado_por: string;
     fechado_por_nome?: string;
     fechado_em: string;
@@ -409,17 +409,27 @@ export const CentralBancariaDiaristas = () => {
     // ─────────────────────────────────────────────────────────────────
     const statusBadge = (status: string) => {
         const map: Record<string, string> = {
-            fechado_para_pagamento: "bg-blue-500/15 text-blue-700",
+            AGUARDANDO_VALIDACAO_RH: "bg-blue-500/15 text-blue-700",
+            VALIDADO_RH: "bg-indigo-500/15 text-indigo-700",
+            FECHADO_FINANCEIRO: "bg-indigo-600/15 text-indigo-800",
             cnab_gerado: "bg-indigo-500/15 text-indigo-700",
+            PAGO: "bg-emerald-500/15 text-emerald-700",
             pago: "bg-emerald-500/15 text-emerald-700",
+            CANCELADO: "bg-muted text-muted-foreground",
             cancelado: "bg-muted text-muted-foreground",
+            EM_ABERTO: "bg-amber-500/15 text-amber-700",
             em_aberto: "bg-amber-500/15 text-amber-700",
         };
         const labels: Record<string, string> = {
-            fechado_para_pagamento: "Aguardando Pagamento",
+            AGUARDANDO_VALIDACAO_RH: "Aguardando Validação RH",
+            VALIDADO_RH: "Validado RH",
+            FECHADO_FINANCEIRO: "Fechado Financeiro",
             cnab_gerado: "CNAB Gerado",
+            PAGO: "Pago",
             pago: "Pago",
+            CANCELADO: "Cancelado",
             cancelado: "Cancelado",
+            EM_ABERTO: "Em Aberto",
             em_aberto: "Em Aberto",
         };
         return (
@@ -505,7 +515,7 @@ export const CentralBancariaDiaristas = () => {
                                                 >
                                                     <FileCode2 className="h-4 w-4 mr-1.5" /> CNAB
                                                 </Button>
-                                                <span className="text-xs text-muted-foreground ml-2">(Status: {l.status})</span>
+
                                                 {/* C2: confirm() substituído por Dialog próprio */}
                                                 {l.status !== "pago" && (
                                                     <Button
@@ -599,7 +609,7 @@ export const CentralBancariaDiaristas = () => {
                         <div className="absolute top-0 inset-x-0 h-4 bg-gradient-to-b from-muted/20 to-transparent pointer-events-none opacity-0 transition-opacity group-hover:opacity-100" />
 
                         {/* Barra de ações de governança (Admin + Financeiro podem criar ajustes; só Admin pode reabrir) */}
-                        {canAdjust && selectedLote && (["fechado_para_pagamento", "cnab_gerado", "pago"].includes(selectedLote.status)) && (
+                        {canAdjust && selectedLote && (["FECHADO_FINANCEIRO", "AGUARDANDO_VALIDACAO_RH", "VALIDADO_RH", "cnab_gerado", "PAGO", "pago"].includes(selectedLote.status)) && (
                             <div className="flex items-center gap-2 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
                                 <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
                                 <p className="text-xs text-amber-700 flex-1">

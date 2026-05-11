@@ -30,7 +30,36 @@ const formatCurrency = (v: number) =>
 const formatDate = (d: string) =>
     format(new Date(d + "T12:00:00"), "dd/MM", { locale: ptBR });
 
-type StatusFilter = "todos" | "em_aberto" | "fechado_para_pagamento" | "pago";
+// ─── Mapa de status: cobre todos os valores conhecidos (DB default lowercase + governança uppercase + legado) ───
+const STATUS_DIARISTA_MAP: Record<string, { label: string; cls: string }> = {
+    em_aberto: { label: "Em aberto", cls: "bg-amber-500/15 text-amber-700" },
+    EM_ABERTO: { label: "Em aberto", cls: "bg-amber-500/15 text-amber-700" },
+    AGUARDANDO_VALIDACAO_RH: { label: "⏳ Ag. Validação RH", cls: "bg-blue-500/15 text-blue-800" },
+    VALIDADO_RH: { label: "✅ Validado RH", cls: "bg-indigo-500/15 text-indigo-700" },
+    FECHADO_FINANCEIRO: { label: "💰 Aprovado Financeiro", cls: "bg-emerald-500/15 text-emerald-800" },
+    PAGO: { label: "✔ Pago", cls: "bg-emerald-600/15 text-emerald-800" },
+    cancelado: { label: "Cancelado", cls: "bg-muted text-muted-foreground" },
+    CANCELADO: { label: "Cancelado", cls: "bg-muted text-muted-foreground" },
+    // legado — migrado via migration mas mantido como fallback defensivo
+    fechado_para_pagamento: { label: "⏳ Ag. Validação RH", cls: "bg-blue-500/15 text-blue-800" },
+    fechado: { label: "⏳ Ag. Validação RH", cls: "bg-blue-500/15 text-blue-800" },
+};
+
+const StatusDiaristaBadge = ({ status }: { status?: string }) => {
+    if (!status) return null;
+    const entry = STATUS_DIARISTA_MAP[status];
+    return (
+        <span className={cn(
+            "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap",
+            entry?.cls ?? "bg-muted text-muted-foreground"
+        )}>
+            {entry?.label ?? status}
+        </span>
+    );
+};
+
+
+type StatusFilter = "todos" | "em_aberto" | "AGUARDANDO_VALIDACAO_RH" | "VALIDADO_RH" | "FECHADO_FINANCEIRO" | "PAGO";
 
 type Visao = "diarista" | "data" | "grade_semanal";
 type PeriodoRapido = "semana_atual" | "semana_anterior" | "personalizado";
@@ -61,8 +90,9 @@ const RhDiaristasPainel = () => {
         queryKey: ["profile_usuario", user?.id],
         queryFn: async () => {
             if (!user?.id) return null;
-            const { data } = await supabase.from("profiles").select("role, tenant_id").eq("user_id", user.id).maybeSingle();
-            return data;
+            const { data, error } = await supabase.from("profiles").select("role, tenant_id, full_name").eq("user_id", user.id).maybeSingle();
+            if (error) console.error("Erro perfil:", error);
+            return data as any;
         },
         enabled: !!user?.id,
     });
@@ -72,10 +102,12 @@ const RhDiaristasPainel = () => {
         queryFn: () => EmpresaService.getAll(),
     });
 
-    const role = perfil?.role?.toLowerCase();
-    const isAdmin = role === "admin";
-    // Empresa do usuário (usada apenas para o fechamento de período)
-    const empresaIdDoUsuario = perfil?.empresa_id ?? ((empresas as any[])[0]?.id ?? "");
+    const rawRole = perfil?.role || user?.user_metadata?.role || user?.app_metadata?.role || user?.role || "";
+    const role = (typeof rawRole === "string" ? rawRole : "").toLowerCase();
+    const isAdmin = role === "admin" || role === "administrador" || role.includes("admin");
+    const isRh = role === "rh" || role === "recursos humanos" || role === "recursos_humanos" || role.includes("rh");
+    // Empresa do usuário — Como empresa_id não está no profile base, tentamos ler do tenant context ou ignoramos
+    const empresaIdDoUsuario = perfil?.tenant_id ?? ((empresas as any[])[0]?.id ?? "");
 
     // Visão consolidada: busca lançamentos sem filtro de empresa.
     // O filtro de empresa da UI é aplicado client-side nos dados já carregados.
@@ -92,9 +124,13 @@ const RhDiaristasPainel = () => {
     });
 
     const { data: lotes = [], refetch: refetchLotes } = useQuery({
-        queryKey: ["lotes_fechamento", empresaIdDoUsuario],
-        queryFn: () => LoteFechamentoDiaristaService.getByEmpresa(empresaIdDoUsuario),
-        enabled: !!empresaIdDoUsuario,
+        queryKey: ["lotes_fechamento_painel", inicio, fim, empresaFiltroId],
+        queryFn: () => LoteFechamentoDiaristaService.getLotesPorPeriodo(
+            inicio,
+            fim,
+            empresaFiltroId === "todos" ? null : empresaFiltroId
+        ),
+        enabled: true,
     });
 
     // Agrupar lançamentos por diarista
@@ -145,7 +181,7 @@ const RhDiaristasPainel = () => {
         });
 
         return Object.values(map).sort((a, b) => a.nome.localeCompare(b.nome));
-    }, [lancamentos, nomeFiltro, funcaoFiltro]);
+    }, [lancamentos, nomeFiltro, funcaoFiltro, empresaFiltroId]);
 
     // Agrupar lançamentos por data
     const dadosAgrupadosPorData = useMemo(() => {
@@ -193,7 +229,7 @@ const RhDiaristasPainel = () => {
                 ...g,
                 totalDiaristas: new Set(g.lancamentos.map((l) => l.diarista_id)).size
             }));
-    }, [lancamentos, nomeFiltro, funcaoFiltro]);
+    }, [lancamentos, nomeFiltro, funcaoFiltro, empresaFiltroId]);
 
     // KPIs baseados nos dados filtrados (reagem ao statusFiltro e filtros de nome/função)
     const totalGeral = useMemo(() => {
@@ -358,14 +394,14 @@ const RhDiaristasPainel = () => {
                     <div className="flex items-center gap-2 px-1">
                         <span className="inline-flex items-center gap-1.5 bg-blue-500/10 text-blue-700 border border-blue-500/30 text-xs font-semibold px-2.5 py-1 rounded-full">
                             <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
-                            KPIs refletem o filtro: {statusFiltro === "em_aberto" ? "Em aberto" : statusFiltro === "fechado_para_pagamento" ? "Fechado / aguardando pagamento" : "Pago"}
+                            KPIs refletem o filtro: {statusFiltro === "em_aberto" ? "Em aberto" : statusFiltro === "AGUARDANDO_VALIDACAO_RH" ? "Aguardando Validação RH" : statusFiltro === "VALIDADO_RH" ? "Validado RH" : statusFiltro === "FECHADO_FINANCEIRO" ? "Fechado Financeiro" : statusFiltro === "PAGO" ? "Pago" : "Filtrado"}
                         </span>
                     </div>
                 )}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     {[
                         { label: "Diaristas", value: totalGeral.totalDiaristas },
-                        { label: statusFiltro !== "todos" ? `Registros (${statusFiltro === "em_aberto" ? "abertos" : statusFiltro === "pago" ? "pagos" : "fechados"})` : "Registros totais", value: totalGeral.totalRegistros },
+                        { label: statusFiltro !== "todos" ? `Registros (${statusFiltro === "em_aberto" ? "abertos" : statusFiltro === "PAGO" ? "pagos" : "fechados"})` : "Registros totais", value: totalGeral.totalRegistros },
                         { label: "Em aberto", value: totalGeral.emAberto, color: totalGeral.emAberto > 0 ? "text-amber-600" : "text-emerald-600" },
                         { label: statusFiltro !== "todos" ? "Valor (filtrado)" : "Valor total", value: formatCurrency(totalGeral.valorTotal), large: true },
                     ].map((k) => (
@@ -405,8 +441,10 @@ const RhDiaristasPainel = () => {
                                 <SelectContent>
                                     <SelectItem value="todos">Todos</SelectItem>
                                     <SelectItem value="em_aberto">Em aberto</SelectItem>
-                                    <SelectItem value="fechado_para_pagamento">Fechado / aguardando pagamento</SelectItem>
-                                    <SelectItem value="pago">Pago</SelectItem>
+                                    <SelectItem value="AGUARDANDO_VALIDACAO_RH">Aguardando Validação RH</SelectItem>
+                                    <SelectItem value="VALIDADO_RH">Validado RH</SelectItem>
+                                    <SelectItem value="FECHADO_FINANCEIRO">Fechado Financeiro</SelectItem>
+                                    <SelectItem value="PAGO">Pago</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
@@ -603,18 +641,7 @@ const RhDiaristasPainel = () => {
                                                     {formatCurrency(g.valorTotal)}
                                                 </td>
                                                 <td className="px-5 text-center">
-                                                    <span className={cn(
-                                                        "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold",
-                                                        g.lancamentos[0]?.status === "em_aberto" && "bg-amber-500/15 text-amber-700",
-                                                        g.lancamentos[0]?.status === "fechado_para_pagamento" && "bg-blue-500/15 text-blue-700",
-                                                        g.lancamentos[0]?.status === "pago" && "bg-emerald-500/15 text-emerald-700",
-                                                        g.lancamentos[0]?.status === "cancelado" && "bg-muted text-muted-foreground",
-                                                    )}>
-                                                        {g.lancamentos[0]?.status === "em_aberto" && "Em aberto"}
-                                                        {g.lancamentos[0]?.status === "fechado_para_pagamento" && "Fechado / aguardando pagamento"}
-                                                        {g.lancamentos[0]?.status === "pago" && "Pago"}
-                                                        {g.lancamentos[0]?.status === "cancelado" && "Cancelado"}
-                                                    </span>
+                                                    <StatusDiaristaBadge status={g.lancamentos[0]?.status} />
                                                 </td>
                                             </tr>
                                             {expandedId === g.diarista_id && (
@@ -752,18 +779,7 @@ const RhDiaristasPainel = () => {
                                                                         <span className="truncate text-[10px] text-muted-foreground">{l.operacao_servico ?? "—"}</span>
                                                                     </div>
                                                                     <div className="text-center">
-                                                                        <span className={cn(
-                                                                            "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase",
-                                                                            l.status === "em_aberto" && "bg-amber-500/15 text-amber-700",
-                                                                            l.status === "fechado_para_pagamento" && "bg-blue-500/15 text-blue-700",
-                                                                            l.status === "pago" && "bg-emerald-500/15 text-emerald-700",
-                                                                            l.status === "cancelado" && "bg-muted text-muted-foreground",
-                                                                        )}>
-                                                                            {l.status === "em_aberto" && "Aberto"}
-                                                                            {l.status === "fechado_para_pagamento" && "Fechado"}
-                                                                            {l.status === "pago" && "Pago"}
-                                                                            {l.status === "cancelado" && "Canc"}
-                                                                        </span>
+                                                                        <StatusDiaristaBadge status={l.status} />
                                                                     </div>
                                                                 </div>
                                                             ))}
@@ -831,87 +847,18 @@ const RhDiaristasPainel = () => {
                     )}
                 </section>
 
-                {/* Tabela de Lotes de Fechamento por Período */}
-                {(lotes as any[]).length > 0 && (
-                    <section className="border border-border/60 rounded-xl overflow-hidden mt-6">
-                        <div className="px-4 py-2.5 bg-muted/40 border-b border-border/40 flex items-center gap-2">
-                            <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Governança de Fechamento (Lotes)</span>
-                        </div>
-                        <div className="overflow-x-auto w-full">
-                            <table className="w-full text-sm">
-                                <thead className="esc-table-header">
-                                    <tr className="text-left">
-                                        <th className="px-5 h-11 font-medium">Lote / Período</th>
-                                        <th className="px-3 h-11 font-medium text-center">Registros</th>
-                                        <th className="px-3 h-11 font-medium text-right">Valor Total</th>
-                                        <th className="px-5 h-11 font-medium text-center">Status</th>
-                                        <th className="px-5 h-11 font-medium text-center">Ações</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {(lotes as any[]).map(l => (
-                                        <tr key={l.id} className="border-t border-muted bg-card">
-                                            <td className="px-5 py-3">
-                                                <p className="font-mono font-bold text-foreground">{formatDate(l.periodo_inicio)} - {formatDate(l.periodo_fim)}</p>
-                                                <p className="text-[10px] text-muted-foreground uppercase">{l.id.substring(0, 8)}... criado por {l.fechado_por_nome}</p>
-                                            </td>
-                                            <td className="px-3 py-3 text-center font-mono">{l.total_registros}</td>
-                                            <td className="px-3 py-3 text-right font-mono font-bold">{formatCurrency(l.valor_total)}</td>
-                                            <td className="px-5 py-3 text-center">
-                                                <span className={cn(
-                                                    "px-2 py-0.5 rounded text-xs font-bold uppercase",
-                                                    l.status === 'AGUARDANDO_VALIDACAO_RH' && "bg-amber-100 text-amber-700",
-                                                    l.status === 'VALIDADO_RH' && "bg-blue-100 text-blue-700",
-                                                    l.status === 'FECHADO_FINANCEIRO' && "bg-emerald-100 text-emerald-700",
-                                                    l.status === 'PAGO' && "bg-emerald-200 text-emerald-800",
-                                                    l.status === 'CANCELADO' && "bg-muted text-muted-foreground"
-                                                )}>
-                                                    {l.status.replace(/_/g, ' ')}
-                                                </span>
-                                            </td>
-                                            <td className="px-5 py-3 text-center flex items-center justify-center gap-2">
-                                                {(isAdmin || role === 'rh') && l.status === 'AGUARDANDO_VALIDACAO_RH' && (
-                                                    <Button size="sm" variant="outline" className="h-7 text-xs border-blue-200 text-blue-600 hover:bg-blue-50" onClick={() => validarMutation.mutate(l.id)} disabled={validarMutation.isPending}>
-                                                        {validarMutation.isPending ? "..." : "Validar"}
-                                                    </Button>
-                                                )}
-                                                {isAdmin && l.status === 'VALIDADO_RH' && (
-                                                    <Button size="sm" variant="outline" className="h-7 text-xs border-emerald-200 text-emerald-600 hover:bg-emerald-50" onClick={() => aprovarMutation.mutate(l.id)} disabled={aprovarMutation.isPending}>
-                                                        {aprovarMutation.isPending ? "..." : "Aprovar Financeiro"}
-                                                    </Button>
-                                                )}
-                                                {(isAdmin || role === 'rh') && l.status !== 'CANCELADO' && l.status !== 'PAGO' && (
-                                                    <Button size="sm" variant="outline" className="h-7 text-xs border-red-200 text-red-600 hover:bg-red-50"
-                                                        onClick={() => {
-                                                            const motivo = window.prompt("Motivo da reabertura do lote:");
-                                                            if (motivo) {
-                                                                reabrirMutation.mutate({ loteId: l.id, motivo });
-                                                            }
-                                                        }}
-                                                        disabled={reabrirMutation.isPending}>
-                                                        Reabrir
-                                                    </Button>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </section>
-                )}
+
             </div>
 
             {/* Dialog de fechamento */}
             <Dialog open={openFechamento} onOpenChange={setOpenFechamento}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Fechar período para pagamento</DialogTitle>
+                        <DialogTitle>Encaminhar para Validação do RH</DialogTitle>
                         <DialogDescription>
                             Isso irá agrupar <strong>{totalGeral.emAberto} registro(s) em aberto</strong> no período
                             {" "}<span className="font-mono">{formatDate(inicio)}</span> → <span className="font-mono">{formatDate(fim)}</span>{" "}
-                            e alterar o status para <strong>fechado_para_pagamento</strong>.
+                            e alterar o status para <strong>Aguardando Validação RH</strong>.
                         </DialogDescription>
                     </DialogHeader>
                     {possivelmenteIncompleto && (
@@ -955,12 +902,28 @@ const RhDiaristasPainel = () => {
                 </DialogContent>
             </Dialog>
 
-            <CycleManagementSection />
+            <CycleManagementSection
+                lotes={lotes}
+                isAdmin={isAdmin}
+                isRh={isRh}
+                role={role}
+                validarMutation={validarMutation}
+                aprovarMutation={aprovarMutation}
+                reabrirMutation={reabrirMutation}
+            />
         </AppShell>
     );
 };
 
-const CycleManagementSection = () => {
+const CycleManagementSection = ({
+    lotes,
+    isAdmin,
+    isRh,
+    role,
+    validarMutation,
+    aprovarMutation,
+    reabrirMutation
+}: any) => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
     const navigate = useNavigate();
@@ -974,11 +937,6 @@ const CycleManagementSection = () => {
     const { data: ciclos = [] } = useQuery({
         queryKey: ["ciclos_diaristas"],
         queryFn: () => DiaristaCicloService.getCiclos(20),
-    });
-
-    const { data: lotes = [] } = useQuery({
-        queryKey: ["lotes_pagamento"],
-        queryFn: () => DiaristaCicloService.getLotes(),
     });
 
     const cicloAberto = ciclos.find((c: any) => c.status === "aberto");
@@ -1078,9 +1036,9 @@ const CycleManagementSection = () => {
             case "aberto":
                 return <span className="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-800">Aberto</span>;
             case "fechado":
-                return <span className="px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-800">Fechado</span>;
+                return <span className="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-800">⏳ Ag. Validação RH</span>;
             case "enviado":
-                return <span className="px-2 py-0.5 rounded-full text-xs bg-purple-100 text-purple-800">Enviado</span>;
+                return <span className="px-2 py-0.5 rounded-full text-xs bg-purple-100 text-purple-800">✅ Enviado ao Financeiro</span>;
             default:
                 return <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-800">{status}</span>;
         }
@@ -1208,43 +1166,75 @@ const CycleManagementSection = () => {
             {activeTab === "lotes" && (
                 <div className="border rounded-lg overflow-hidden">
                     <table className="w-full text-sm">
-                        <thead className="bg-muted/50">
-                            <tr>
-                                <th className="px-3 py-2 text-left font-medium">Ciclo</th>
-                                <th className="px-3 py-2 text-center font-medium">Diaristas</th>
-                                <th className="px-3 py-2 text-right font-medium">Valor Total</th>
-                                <th className="px-3 py-2 text-center font-medium">Status</th>
-                                <th className="px-3 py-2 text-center font-medium">Enviado</th>
+                        <thead className="esc-table-header">
+                            <tr className="text-left">
+                                <th className="px-5 h-11 font-medium">Lote / Período</th>
+                                <th className="px-3 h-11 font-medium text-center">Registros</th>
+                                <th className="px-3 h-11 font-medium text-right">Valor Total</th>
+                                <th className="px-5 h-11 font-medium text-center">Status</th>
+                                <th className="px-5 h-11 font-medium text-center">Ações</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {lotes.length === 0 ? (
+                            {!lotes || lotes.length === 0 ? (
                                 <tr>
                                     <td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">
-                                        Nenhum lote gerado ainda
+                                        Nenhum lote de governança gerado
                                     </td>
                                 </tr>
                             ) : (
-                                lotes.map((lote: any) => (
-                                    <tr key={lote.id} className="border-t">
-                                        <td className="px-3 py-2">
-                                            {lote.ciclos ? `${formatDate(lote.ciclos.data_inicio)} - ${formatDate(lote.ciclos.data_fim)}` : "-"}
+                                lotes.map((l: any) => (
+                                    <tr key={l.id} className="border-t border-muted bg-card hover:bg-muted/30 transition-colors">
+                                        <td className="px-5 py-3">
+                                            <p className="font-mono font-bold text-foreground">{formatDate(l.periodo_inicio)} - {formatDate(l.periodo_fim)}</p>
+                                            <p className="text-[10px] text-muted-foreground uppercase">{l.id.substring(0, 8)}...</p>
                                         </td>
-                                        <td className="px-3 py-2 text-center">{lote.quantidade_diaristas}</td>
-                                        <td className="px-3 py-2 text-right font-mono">{formatCurrency(Number(lote.valor_total || 0))}</td>
-                                        <td className="px-3 py-2 text-center">
+                                        <td className="px-3 py-3 text-center font-mono">{l.total_registros}</td>
+                                        <td className="px-3 py-3 text-right font-mono font-bold">{formatCurrency(Number(l.valor_total || 0))}</td>
+                                        <td className="px-5 py-3 text-center">
                                             <span className={cn(
-                                                "px-2 py-0.5 rounded-full text-xs",
-                                                lote.status === "pago" ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"
+                                                "px-2 py-0.5 rounded text-xs font-bold",
+                                                l.status?.toUpperCase() === 'AGUARDANDO_VALIDACAO_RH' && "bg-amber-100 text-amber-800",
+                                                l.status?.toUpperCase() === 'VALIDADO_RH' && "bg-blue-100 text-blue-800",
+                                                l.status?.toUpperCase() === 'FECHADO_FINANCEIRO' && "bg-emerald-100 text-emerald-800",
+                                                l.status?.toUpperCase() === 'PAGO' && "bg-emerald-200 text-emerald-900",
+                                                l.status?.toUpperCase() === 'CANCELADO' && "bg-muted text-muted-foreground"
                                             )}>
-                                                {lote.status}
+                                                {l.status?.toUpperCase() === 'AGUARDANDO_VALIDACAO_RH' && "⏳ Aguardando Validação RH"}
+                                                {l.status?.toUpperCase() === 'VALIDADO_RH' && "✅ Validado pelo RH"}
+                                                {l.status?.toUpperCase() === 'FECHADO_FINANCEIRO' && "💰 Aprovado — Financeiro"}
+                                                {l.status?.toUpperCase() === 'PAGO' && "✔ Pago"}
+                                                {l.status?.toUpperCase() === 'CANCELADO' && "Cancelado"}
+                                                {!['AGUARDANDO_VALIDACAO_RH', 'VALIDADO_RH', 'FECHADO_FINANCEIRO', 'PAGO', 'CANCELADO'].includes(l.status?.toUpperCase()) && l.status}
                                             </span>
                                         </td>
-                                        <td className="px-3 py-2 text-center">
-                                            {lote.enviado_financeiro ? (
-                                                <CheckCircle2 className="h-4 w-4 text-green-600 inline" />
-                                            ) : (
-                                                <span className="text-muted-foreground">-</span>
+                                        <td className="px-5 py-3 text-center flex items-center justify-center gap-2">
+                                            {/* Debug fallback */}
+                                            <span className="text-[10px] text-muted-foreground mr-2 font-mono">
+                                                TESTE (r:{role || 'N/A'}|a:{isAdmin ? '1' : '0'}|rh:{isRh ? '1' : '0'})
+                                            </span>
+
+                                            {(isAdmin || isRh) && l.status?.toUpperCase() === 'AGUARDANDO_VALIDACAO_RH' && (
+                                                <Button size="sm" variant="outline" className="h-7 text-xs border-blue-200 text-blue-600 hover:bg-blue-50" onClick={() => validarMutation.mutate(l.id)} disabled={validarMutation.isPending}>
+                                                    {validarMutation.isPending ? "..." : "Validar RH"}
+                                                </Button>
+                                            )}
+                                            {isAdmin && l.status?.toUpperCase() === 'VALIDADO_RH' && (
+                                                <Button size="sm" variant="outline" className="h-7 text-xs border-emerald-200 text-emerald-600 hover:bg-emerald-50" onClick={() => aprovarMutation.mutate(l.id)} disabled={aprovarMutation.isPending}>
+                                                    {aprovarMutation.isPending ? "..." : "Aprovar Financeiro"}
+                                                </Button>
+                                            )}
+                                            {(isAdmin || isRh) && l.status?.toUpperCase() !== 'CANCELADO' && l.status?.toUpperCase() !== 'PAGO' && (
+                                                <Button size="sm" variant="outline" className="h-7 text-xs border-red-200 text-red-600 hover:bg-red-50"
+                                                    onClick={() => {
+                                                        const motivo = window.prompt("Motivo da reabertura do lote:");
+                                                        if (motivo) {
+                                                            reabrirMutation.mutate({ loteId: l.id, motivo });
+                                                        }
+                                                    }}
+                                                    disabled={reabrirMutation.isPending}>
+                                                    Reabrir
+                                                </Button>
                                             )}
                                         </td>
                                     </tr>

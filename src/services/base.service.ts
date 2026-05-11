@@ -2878,6 +2878,23 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
     return data;
   }
 
+  async getLotesPorPeriodo(inicio: string, fim: string, empresaId?: string | null) {
+    let query = this.supabase
+      .from('diaristas_lotes_fechamento')
+      .select('*')
+      .gte('periodo_inicio', inicio)
+      .lte('periodo_fim', fim)
+      .order('created_at', { ascending: false });
+
+    if (empresaId) {
+      query = query.eq('empresa_id', empresaId);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data ?? [];
+  }
+
   async fecharPeriodo({ empresaId, periodoInicio, periodoFim, fechadoPor, fechadoPorNome, observacoes }: {
     empresaId: string;
     periodoInicio: string;
@@ -2892,7 +2909,7 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
       .eq('empresa_id', empresaId)
       .gte('data_lancamento', periodoInicio)
       .lte('data_lancamento', periodoFim)
-      .eq('status', 'EM_ABERTO');
+      .in('status', ['em_aberto', 'EM_ABERTO']);
 
     if (errorLanc) throw errorLanc;
 
