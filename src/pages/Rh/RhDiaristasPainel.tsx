@@ -269,14 +269,7 @@ const RhDiaristasPainel = () => {
             });
         },
         onSuccess: (lote) => {
-            // M2: Toast com CTA para o Financeiro
-            toast.success(`Período fechado. ${lote.total_registros} registros · ${formatCurrency(lote.valor_total)}`, {
-                action: {
-                    label: "Ver no Bancário →",
-                    onClick: () => navigate("/bancario"),
-                },
-                duration: 8000,
-            });
+            toast.success(`Período fechado. Agurdando validação do RH.`);
             setOpenFechamento(false);
             setObsLote("");
             setConfirmText("");
@@ -284,6 +277,45 @@ const RhDiaristasPainel = () => {
             queryClient.invalidateQueries({ queryKey: ["lotes_fechamento"] });
         },
         onError: (err: any) => toast.error("Erro ao fechar período.", { description: err.message }),
+    });
+
+    const validarMutation = useMutation({
+        mutationFn: (loteId: string) => {
+            if (!user?.id) throw new Error("Usuário não identificado.");
+            return LoteFechamentoDiaristaService.validarPeriodo(loteId, user.id, perfil?.nome_completo || user.email, role || "rh");
+        },
+        onSuccess: () => {
+            toast.success("Lote validado pelo RH.");
+            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel"] });
+            queryClient.invalidateQueries({ queryKey: ["lotes_fechamento"] });
+        },
+        onError: (err: any) => toast.error("Erro ao validar lote.", { description: err.message }),
+    });
+
+    const reabrirMutation = useMutation({
+        mutationFn: ({ loteId, motivo }: { loteId: string, motivo: string }) => {
+            if (!user?.id) throw new Error("Usuário não identificado.");
+            return LoteFechamentoDiaristaService.reabrirPeriodo(loteId, user.id, perfil?.nome_completo || user.email, role || "rh", motivo);
+        },
+        onSuccess: () => {
+            toast.success("Lote reaberto com sucesso. Registros voltaram a Em Aberto.");
+            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel"] });
+            queryClient.invalidateQueries({ queryKey: ["lotes_fechamento"] });
+        },
+        onError: (err: any) => toast.error("Erro ao reabrir lote.", { description: err.message }),
+    });
+
+    const aprovarMutation = useMutation({
+        mutationFn: (loteId: string) => {
+            if (!user?.id) throw new Error("Usuário não identificado.");
+            return LoteFechamentoDiaristaService.aprovarFinanceiro(loteId, user.id, perfil?.nome_completo || user.email, role || "admin");
+        },
+        onSuccess: () => {
+            toast.success("Lote aprovado! Lançado no financeiro.");
+            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel"] });
+            queryClient.invalidateQueries({ queryKey: ["lotes_fechamento"] });
+        },
+        onError: (err: any) => toast.error("Erro ao aprovar lote.", { description: err.message }),
     });
 
     const exportarXlsx = async () => {
@@ -799,39 +831,76 @@ const RhDiaristasPainel = () => {
                     )}
                 </section>
 
-                {/* M1: Banner compacto de lotes — RH não precisa ver dados financeiros detalhados */}
-                {(lotes as any[]).length > 0 && (() => {
-                    const pendentes = (lotes as any[]).filter((l) => l.status === "fechado_para_pagamento" || l.status === "cnab_gerado").length;
-                    const pagos = (lotes as any[]).filter((l) => l.status === "pago").length;
-                    return (
-                        <section className="border border-border/60 rounded-xl overflow-hidden">
-                            <div className="px-4 py-2.5 bg-muted/40 border-b border-border/40 flex items-center gap-2">
-                                <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Situação dos Lotes no Financeiro</span>
-                            </div>
-                            <div className="p-4 flex items-center justify-between gap-4 bg-card">
-                                <div className="flex items-center gap-3">
-                                    <div>
-                                        <p className="font-display font-bold text-sm text-foreground">Lotes já enviados ao Financeiro</p>
-                                        <p className="text-xs text-muted-foreground mt-0.5">
-                                            {pendentes > 0 && <span className="text-amber-600 font-semibold mr-2">{pendentes} aguardando pagamento</span>}
-                                            {pendentes === 0 && <span className="text-emerald-600 font-semibold mr-2">Nenhum lote pendente </span>}
-                                            {pagos > 0 && <span className="text-emerald-600 font-semibold">{pagos} já pago(s)</span>}
-                                        </p>
-                                    </div>
-                                </div>
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="shrink-0 border-blue-400 text-blue-700 hover:bg-blue-50"
-                                    onClick={() => navigate("/bancario")}
-                                >
-                                    <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> Ver em Pagamentos
-                                </Button>
-                            </div>
-                        </section>
-                    );
-                })()}
+                {/* Tabela de Lotes de Fechamento por Período */}
+                {(lotes as any[]).length > 0 && (
+                    <section className="border border-border/60 rounded-xl overflow-hidden mt-6">
+                        <div className="px-4 py-2.5 bg-muted/40 border-b border-border/40 flex items-center gap-2">
+                            <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Governança de Fechamento (Lotes)</span>
+                        </div>
+                        <div className="overflow-x-auto w-full">
+                            <table className="w-full text-sm">
+                                <thead className="esc-table-header">
+                                    <tr className="text-left">
+                                        <th className="px-5 h-11 font-medium">Lote / Período</th>
+                                        <th className="px-3 h-11 font-medium text-center">Registros</th>
+                                        <th className="px-3 h-11 font-medium text-right">Valor Total</th>
+                                        <th className="px-5 h-11 font-medium text-center">Status</th>
+                                        <th className="px-5 h-11 font-medium text-center">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {(lotes as any[]).map(l => (
+                                        <tr key={l.id} className="border-t border-muted bg-card">
+                                            <td className="px-5 py-3">
+                                                <p className="font-mono font-bold text-foreground">{formatDate(l.periodo_inicio)} - {formatDate(l.periodo_fim)}</p>
+                                                <p className="text-[10px] text-muted-foreground uppercase">{l.id.substring(0, 8)}... criado por {l.fechado_por_nome}</p>
+                                            </td>
+                                            <td className="px-3 py-3 text-center font-mono">{l.total_registros}</td>
+                                            <td className="px-3 py-3 text-right font-mono font-bold">{formatCurrency(l.valor_total)}</td>
+                                            <td className="px-5 py-3 text-center">
+                                                <span className={cn(
+                                                    "px-2 py-0.5 rounded text-xs font-bold uppercase",
+                                                    l.status === 'AGUARDANDO_VALIDACAO_RH' && "bg-amber-100 text-amber-700",
+                                                    l.status === 'VALIDADO_RH' && "bg-blue-100 text-blue-700",
+                                                    l.status === 'FECHADO_FINANCEIRO' && "bg-emerald-100 text-emerald-700",
+                                                    l.status === 'PAGO' && "bg-emerald-200 text-emerald-800",
+                                                    l.status === 'CANCELADO' && "bg-muted text-muted-foreground"
+                                                )}>
+                                                    {l.status.replace(/_/g, ' ')}
+                                                </span>
+                                            </td>
+                                            <td className="px-5 py-3 text-center flex items-center justify-center gap-2">
+                                                {(isAdmin || role === 'rh') && l.status === 'AGUARDANDO_VALIDACAO_RH' && (
+                                                    <Button size="sm" variant="outline" className="h-7 text-xs border-blue-200 text-blue-600 hover:bg-blue-50" onClick={() => validarMutation.mutate(l.id)} disabled={validarMutation.isPending}>
+                                                        {validarMutation.isPending ? "..." : "Validar"}
+                                                    </Button>
+                                                )}
+                                                {isAdmin && l.status === 'VALIDADO_RH' && (
+                                                    <Button size="sm" variant="outline" className="h-7 text-xs border-emerald-200 text-emerald-600 hover:bg-emerald-50" onClick={() => aprovarMutation.mutate(l.id)} disabled={aprovarMutation.isPending}>
+                                                        {aprovarMutation.isPending ? "..." : "Aprovar Financeiro"}
+                                                    </Button>
+                                                )}
+                                                {(isAdmin || role === 'rh') && l.status !== 'CANCELADO' && l.status !== 'PAGO' && (
+                                                    <Button size="sm" variant="outline" className="h-7 text-xs border-red-200 text-red-600 hover:bg-red-50"
+                                                        onClick={() => {
+                                                            const motivo = window.prompt("Motivo da reabertura do lote:");
+                                                            if (motivo) {
+                                                                reabrirMutation.mutate({ loteId: l.id, motivo });
+                                                            }
+                                                        }}
+                                                        disabled={reabrirMutation.isPending}>
+                                                        Reabrir
+                                                    </Button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                )}
             </div>
 
             {/* Dialog de fechamento */}

@@ -2695,7 +2695,7 @@ export const TipoRegraOperacionalService = new TipoRegraOperacionalServiceClass(
 // ==================================================
 
 export type CodigoMarcacao = 'P' | 'MP' | 'AUSENTE';
-export type StatusLancamentoDiarista = 'em_aberto' | 'fechado_para_pagamento' | 'pago' | 'cancelado';
+export type StatusLancamentoDiarista = 'EM_ABERTO' | 'AGUARDANDO_VALIDACAO_RH' | 'VALIDADO_RH' | 'FECHADO_FINANCEIRO' | 'PAGO' | 'CANCELADO';
 
 export interface LancamentoDiaristaPayload {
   empresa_id: string;
@@ -2892,7 +2892,7 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
       .eq('empresa_id', empresaId)
       .gte('data_lancamento', periodoInicio)
       .lte('data_lancamento', periodoFim)
-      .eq('status', 'em_aberto');
+      .eq('status', 'EM_ABERTO');
 
     if (errorLanc) throw errorLanc;
 
@@ -2934,7 +2934,7 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
         mes_referencia: mesRef,
         total_registros: totalRegistros,
         valor_total: valorTotal,
-        status: 'fechado_para_pagamento',
+        status: 'AGUARDANDO_VALIDACAO_RH',
         fechado_por: fechadoPor,
         fechado_por_nome: fechadoPorNome,
         fechado_em: new Date().toISOString(),
@@ -2961,6 +2961,40 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
       total_registros: totalRegistros,
       valor_total: valorTotal,
     };
+  }
+
+  async validarPeriodo(loteId: string, usuarioId: string, usuarioNome: string, usuarioRole: string) {
+    const { error } = await this.supabase.rpc('validar_periodo_diaristas', {
+      p_lote_id: loteId,
+      p_usuario_id: usuarioId,
+      p_usuario_nome: usuarioNome,
+      p_usuario_role: usuarioRole
+    });
+    if (error) throw error;
+    return true;
+  }
+
+  async reabrirPeriodo(loteId: string, usuarioId: string, usuarioNome: string, usuarioRole: string, motivo: string) {
+    const { error } = await this.supabase.rpc('reabrir_periodo_diaristas', {
+      p_lote_id: loteId,
+      p_usuario_id: usuarioId,
+      p_usuario_nome: usuarioNome,
+      p_usuario_role: usuarioRole,
+      p_motivo: motivo
+    });
+    if (error) throw error;
+    return true;
+  }
+
+  async aprovarFinanceiro(loteId: string, usuarioId: string, usuarioNome: string, usuarioRole: string) {
+    const { error } = await this.supabase.rpc('aprovar_financeiro_diaristas', {
+      p_lote_id: loteId,
+      p_usuario_id: usuarioId,
+      p_usuario_nome: usuarioNome,
+      p_usuario_role: usuarioRole
+    });
+    if (error) throw error;
+    return true;
   }
 }
 export const LoteFechamentoDiaristaService = new LoteFechamentoDiaristaServiceClass();

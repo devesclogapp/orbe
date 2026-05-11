@@ -177,7 +177,7 @@ const DiaristasLancamento = () => {
     }, [lancamentosExistentes]);
 
     const isSemanaFechada = useMemo(() => {
-        return (lancamentosExistentes as any[]).some((l: any) => l.status === 'fechado_para_pagamento');
+        return (lancamentosExistentes as any[]).some((l: any) => l.status !== 'EM_ABERTO');
     }, [lancamentosExistentes]);
 
     const regrasMarcacaoAtivas = useMemo(() => {
@@ -560,7 +560,7 @@ const DiaristasLancamento = () => {
                                                     const isFalta = codigo === "F";
 
                                                     const statusDia = lancamentosExistentesMap[d.id]?.[dateISO]?.status;
-                                                    const isFechado = isSemanaFechada || statusDia === 'fechado_para_pagamento';
+                                                    const isFechado = isSemanaFechada || (statusDia && statusDia !== 'EM_ABERTO');
                                                     const isDisabled = futuro || isFechado;
 
                                                     return (
@@ -768,9 +768,9 @@ const DiaristasLancamento = () => {
                                         <div className="flex items-center gap-3">
                                             <span className={cn(
                                                 "px-2 py-0.5 rounded text-xs font-bold",
-                                                h.status === "em_aberto" ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
+                                                h.status === "EM_ABERTO" ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
                                             )}>
-                                                {h.status === "em_aberto" ? "Em Aberto" : "Processado"}
+                                                {h.status === "EM_ABERTO" ? "Em Aberto" : "Fechado / Em proc."}
                                             </span>
                                             <span className="font-mono font-semibold text-sm text-foreground">
                                                 {formatCurrency(Number(h.valor_calculado ?? 0))}
@@ -812,10 +812,10 @@ const DiaristasLancamento = () => {
                                 <AlertCircle className="h-4 w-4 text-primary shrink-0" /> O que acontece ao fechar:
                             </p>
                             <ul className="list-disc list-inside space-y-0.5 pl-1">
-                                <li>Todos os lançamentos <span className="font-semibold text-foreground">em_aberto</span> do período serão bloqueados</li>
-                                <li>Status alterado para <span className="font-semibold text-amber-700">fechado_para_pagamento</span></li>
-                                <li>Um lote de fechamento é gerado para o financeiro</li>
-                                <li>A ação <span className="underline">não pode ser desfeita</span> pelo encarregado</li>
+                                <li>Todos os lançamentos do período serão bloqueados para edição</li>
+                                <li>Status alterado para <span className="font-semibold text-amber-700">AGUARDANDO VALIDAÇÃO DO RH</span></li>
+                                <li>Período enviado para análise centralizada</li>
+                                <li>A ação <span className="underline">não pode ser desfeita</span> por você</li>
                             </ul>
                         </div>
                         <div className="flex gap-3 justify-end">
