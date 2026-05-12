@@ -21,7 +21,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Download, Loader2, Lock, RefreshCw, Users, Calendar, Table as TableIcon, Settings, Send, FileCheck, History, CalendarClock } from "lucide-react";
+import { CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Download, Loader2, Lock, RefreshCw, Users, Calendar, Table as TableIcon, Settings, Send, FileCheck, History, CalendarClock, Banknote, FileCode2, Laptop } from "lucide-react";
 
 const formatCurrency = (v: number) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
@@ -183,6 +183,75 @@ const RhDiaristasPainel = () => {
         enabled: !!perfil?.tenant_id,
     });
 
+
+    const groupedLogs = useMemo(() => {
+        if (!logsFechamento) return [];
+        const grouped = [];
+        let currentGroup: any = null;
+
+        for (const log of logsFechamento as any[]) {
+            if (!currentGroup) {
+                currentGroup = { ...log, count: 1, grouped_ids: [log.id] };
+                grouped.push(currentGroup);
+                continue;
+            }
+
+            // Group if same action, same user, same period, within 5 minutes
+            const timeDiff = Math.abs(new Date(currentGroup.created_at).getTime() - new Date(log.created_at).getTime());
+            const isWithin5Minutes = timeDiff <= 5 * 60 * 1000;
+
+            if (
+                currentGroup.acao === log.acao &&
+                currentGroup.usuario_id === log.usuario_id &&
+                currentGroup.periodo_inicio === log.periodo_inicio &&
+                currentGroup.periodo_fim === log.periodo_fim &&
+                isWithin5Minutes
+            ) {
+                currentGroup.count += 1;
+                currentGroup.grouped_ids.push(log.id);
+                // Concatenate motivos if different
+                if (log.motivo && currentGroup.motivo && !currentGroup.motivo.includes(log.motivo)) {
+                    currentGroup.motivo = `${currentGroup.motivo} | ${log.motivo}`;
+                } else if (log.motivo && !currentGroup.motivo) {
+                    currentGroup.motivo = log.motivo;
+                }
+            } else {
+                currentGroup = { ...log, count: 1, grouped_ids: [log.id] };
+                grouped.push(currentGroup);
+            }
+        }
+        return grouped;
+    }, [logsFechamento]);
+
+    const exportarAuditoriaXlsx = async () => {
+        if (!logsFechamento || logsFechamento.length === 0) {
+            toast.warning("Nenhum log para exportar.");
+            return;
+        }
+        try {
+            const { utils, writeFile } = await import("xlsx");
+            const rows = (logsFechamento as any[]).map(log => ({
+                "Data/Hora": format(new Date(log.created_at), "dd/MM/yyyy HH:mm:ss"),
+                "Ação": log.acao,
+                "Usuário": log.usuario_nome || "Sistema",
+                "Perfil": log.usuario_role || "sistema",
+                "Período Início": log.periodo_inicio ? format(new Date(log.periodo_inicio + "T12:00:00"), "dd/MM/yyyy") : "-",
+                "Período Fim": log.periodo_fim ? format(new Date(log.periodo_fim + "T12:00:00"), "dd/MM/yyyy") : "-",
+                "Motivo/Obs": log.motivo || "-",
+                "IP": log.ip_address || "-",
+                "Dispositivo": log.user_agent || "-",
+                "Empresa ID": log.empresa_id || "-",
+            }));
+
+            const ws = utils.json_to_sheet(rows);
+            const wb = utils.book_new();
+            utils.book_append_sheet(wb, ws, "Auditoria");
+            writeFile(wb, `Auditoria_Fechamentos_${format(new Date(), "yyyyMMdd_HHmm")}.xlsx`);
+            toast.success("Trilha de auditoria exportada com sucesso.");
+        } catch {
+            toast.error("Erro ao exportar a planilha de auditoria.");
+        }
+    };
 
     const [cicloTab, setCicloTab] = useState<"ciclos" | "lotes" | "historico" | "configuracao">("lotes");
 
@@ -468,6 +537,10 @@ const RhDiaristasPainel = () => {
             queryClient.invalidateQueries({ queryKey: ["lotes_fechamento_painel"] });
             queryClient.invalidateQueries({ queryKey: ["lotes_fechamento"] });
             queryClient.invalidateQueries({ queryKey: ["diaristas_logs_fechamento"] });
+            queryClient.invalidateQueries({ queryKey: ["lotes_fechamento_producao"] });
+            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_semana"] });
+            queryClient.invalidateQueries({ queryKey: ["historico_recente_diaristas"] });
+            queryClient.invalidateQueries({ queryKey: ["diaristas_lancamento"] });
             refetchHistorico();
         },
         onError: (err: any) => toast.error("Erro ao reabrir lote.", { description: err.message }),
@@ -1242,13 +1315,19 @@ const RhDiaristasPainel = () => {
                             <div className="space-y-6">
                                 <div className="flex items-center justify-between">
                                     <h3 className="text-base font-semibold text-foreground">Timeline de Governança</h3>
-                                    <Button variant="outline" size="sm" onClick={() => refetchHistorico()} disabled={isFetchingLogs}>
-                                        <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", isFetchingLogs && "animate-spin")} />
-                                        Sincronizar
-                                    </Button>
+                                    <div className="flex gap-2">
+                                        <Button variant="outline" size="sm" onClick={exportarAuditoriaXlsx}>
+                                            <Download className="h-3.5 w-3.5 mr-1.5" />
+                                            Exportar Auditoria
+                                        </Button>
+                                        <Button variant="outline" size="sm" onClick={() => refetchHistorico()} disabled={isFetchingLogs}>
+                                            <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", isFetchingLogs && "animate-spin")} />
+                                            Sincronizar
+                                        </Button>
+                                    </div>
                                 </div>
 
-                                {(logsFechamento as any[]).length === 0 ? (
+                                {groupedLogs.length === 0 ? (
                                     <div className="flex flex-col items-center justify-center py-12 bg-muted/20 rounded-xl border border-dashed">
                                         <History className="h-10 w-10 text-muted-foreground/30 mb-3" />
                                         <p className="text-sm font-medium text-foreground">Nenhuma atividade registrada</p>
@@ -1258,13 +1337,15 @@ const RhDiaristasPainel = () => {
                                     </div>
                                 ) : (
                                     <div className="relative pl-6 space-y-8 before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-0.5 before:bg-border">
-                                        {(logsFechamento as any[]).map((log: any, idx: number) => {
+                                        {groupedLogs.map((log: any, idx: number) => {
                                             const isSistema = log.usuario_role === 'sistema';
                                             const isFechou = log.acao === 'FECHOU';
                                             const isValidou = log.acao === 'VALIDOU';
-                                            const isAprovou = log.acao === 'APROVOU';
+                                            const isAprovou = log.acao === 'APROVOU' || log.acao === 'APROVOU_FINANCEIRO';
                                             const isReabriu = log.acao === 'REABRIU';
                                             const isEncerrou = log.acao === 'ENCERROU';
+                                            const isPagamento = log.acao === 'MARCOU_PAGO';
+                                            const isCnab = log.acao === 'GEROU_CNAB';
 
                                             return (
                                                 <div key={log.id ?? idx} className="relative">
@@ -1272,16 +1353,20 @@ const RhDiaristasPainel = () => {
                                                     <div className={cn(
                                                         "absolute -left-[29px] top-1.5 h-6 w-6 rounded-full border-4 border-background flex items-center justify-center shadow-sm z-10",
                                                         isFechou && "bg-amber-500",
-                                                        isValidou && "bg-indigo-500",
+                                                        isValidou && "bg-blue-500",
                                                         isAprovou && "bg-emerald-500",
                                                         isReabriu && "bg-rose-500",
+                                                        isPagamento && "bg-emerald-600",
+                                                        isCnab && "bg-indigo-600",
                                                         isEncerrou && "bg-slate-700",
-                                                        (!isFechou && !isValidou && !isAprovou && !isReabriu && !isEncerrou) && "bg-muted-foreground"
+                                                        (!isFechou && !isValidou && !isAprovou && !isReabriu && !isEncerrou && !isPagamento && !isCnab) && "bg-muted-foreground"
                                                     )}>
                                                         {isFechou && <Lock className="h-3 w-3 text-white" />}
                                                         {isValidou && <CheckCircle2 className="h-3 w-3 text-white" />}
-                                                        {isAprovou && <Send className="h-3 w-3 text-white" />}
+                                                        {isAprovou && <CheckCircle2 className="h-3 w-3 text-white" />}
                                                         {isReabriu && <RefreshCw className="h-3 w-3 text-white" />}
+                                                        {isPagamento && <Banknote className="h-3 w-3 text-white" />}
+                                                        {isCnab && <FileCode2 className="h-3 w-3 text-white" />}
                                                         {isEncerrou && <FileCheck className="h-3 w-3 text-white" />}
                                                     </div>
 
@@ -1290,9 +1375,11 @@ const RhDiaristasPainel = () => {
                                                             <span className={cn(
                                                                 "text-xs font-black uppercase tracking-wider px-2 py-0.5 rounded",
                                                                 isFechou && "bg-amber-100 text-amber-800",
-                                                                isValidou && "bg-indigo-100 text-indigo-800",
+                                                                isValidou && "bg-blue-100 text-blue-800",
                                                                 isAprovou && "bg-emerald-100 text-emerald-800",
                                                                 isReabriu && "bg-rose-100 text-rose-800",
+                                                                isPagamento && "bg-emerald-100 text-emerald-800",
+                                                                isCnab && "bg-indigo-100 text-indigo-800",
                                                                 isEncerrou && "bg-slate-200 text-slate-800",
                                                             )}>
                                                                 {log.acao}
@@ -1300,23 +1387,36 @@ const RhDiaristasPainel = () => {
                                                             <span className="text-[10px] font-mono text-muted-foreground">
                                                                 {log.created_at ? format(new Date(log.created_at), "dd/MM/yy HH:mm", { locale: ptBR }) : "—"}
                                                             </span>
+                                                            {log.count > 1 && (
+                                                                <span className="text-[10px] font-bold text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">
+                                                                    {log.count}x (agrupado)
+                                                                </span>
+                                                            )}
                                                         </div>
                                                         <div className="esc-card p-3 bg-card shadow-sm border-border/60">
-                                                            <div className="flex justify-between items-start gap-4">
-                                                                <div className="space-y-1">
-                                                                    <p className="text-sm font-medium text-foreground">
-                                                                        {isSistema ? "Ação Automática" : log.usuario_nome}
-                                                                        {!isSistema && <span className="text-[10px] text-muted-foreground ml-1.5 opacity-60">({log.usuario_role})</span>}
-                                                                    </p>
-                                                                    <p className="text-xs text-muted-foreground">
-                                                                        Período: <span className="font-mono font-semibold text-foreground">{formatDate(log.periodo_inicio)} → {formatDate(log.periodo_fim)}</span>
-                                                                    </p>
-                                                                    {log.motivo && (
-                                                                        <div className="mt-2 p-2 bg-muted/30 rounded border-l-2 border-primary/30 text-xs italic italic text-muted-foreground">
-                                                                            "{log.motivo}"
+                                                            <div className="flex flex-col gap-2">
+                                                                <div className="flex justify-between items-start gap-4">
+                                                                    <div className="space-y-1">
+                                                                        <p className="text-sm font-medium text-foreground">
+                                                                            {isSistema ? "Ação Automática" : log.usuario_nome}
+                                                                            {!isSistema && <span className="text-[10px] text-muted-foreground ml-1.5 opacity-60">({log.usuario_role})</span>}
+                                                                        </p>
+                                                                        <p className="text-xs text-muted-foreground">
+                                                                            Período: <span className="font-mono font-semibold text-foreground">{formatDate(log.periodo_inicio)} → {formatDate(log.periodo_fim)}</span>
+                                                                        </p>
+                                                                    </div>
+                                                                    {(log.ip_address || log.user_agent) && (
+                                                                        <div className="flex flex-col items-end gap-1 opacity-60">
+                                                                            {log.ip_address && <p className="text-[9px] font-mono flex items-center gap-1"><Laptop className="w-2.5 h-2.5" /> {log.ip_address}</p>}
+                                                                            {log.user_agent && <p className="text-[9px] text-muted-foreground truncate max-w-[150px]" title={log.user_agent}>{log.user_agent}</p>}
                                                                         </div>
                                                                     )}
                                                                 </div>
+                                                                {log.motivo && (
+                                                                    <div className="p-2 bg-muted/30 rounded border-l-2 border-primary/30 text-xs italic text-muted-foreground">
+                                                                        "{log.motivo}"
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         </div>
                                                     </div>

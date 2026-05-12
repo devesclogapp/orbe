@@ -1,6 +1,7 @@
 import React, { useState, useMemo, Fragment } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -57,7 +58,7 @@ type Lote = {
     periodo_fim: string;
     total_registros: number;
     valor_total: number;
-    status: "AGUARDANDO_VALIDACAO_RH" | "VALIDADO_RH" | "FECHADO_FINANCEIRO" | "PAGO" | "CANCELADO" | "EM_ABERTO" | "cnab_gerado" | "pago" | "cancelado" | "em_aberto";
+    status: "AGUARDANDO_VALIDACAO_RH" | "VALIDADO_RH" | "FECHADO_FINANCEIRO" | "AGUARDANDO_PAGAMENTO" | "PAGO" | "CANCELADO" | "EM_ABERTO" | "cnab_gerado" | "pago" | "cancelado" | "em_aberto";
     fechado_por: string;
     fechado_por_nome?: string;
     fechado_em: string;
@@ -89,7 +90,7 @@ type Lancamento = {
 // ─────────────────────────────────────────────────────────────────────
 // Componente Principal
 // ─────────────────────────────────────────────────────────────────────
-export const CentralBancariaDiaristas = () => {
+export const CentralBancariaDiaristas = ({ onMetricsUpdate }: { onMetricsUpdate?: (metrics: any) => void }) => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
 
@@ -156,6 +157,18 @@ export const CentralBancariaDiaristas = () => {
         enabled: !!empresaId,
     });
 
+    React.useEffect(() => {
+        if (onMetricsUpdate && lotes) {
+            const arr = lotes as Lote[];
+            onMetricsUpdate({
+                totalRemessas: arr.length,
+                totalTitulos: arr.reduce((acc, l) => acc + Number(l.total_registros || 0), 0),
+                totalValor: arr.reduce((acc, l) => acc + Number(l.valor_total || 0), 0),
+                remessasComErro: arr.filter(l => l.status === "AGUARDANDO_PAGAMENTO" || l.status === "EM_ABERTO" || l.status === "em_aberto").length,
+            });
+        }
+    }, [lotes, onMetricsUpdate]);
+
     // Lotes paginados
     const totalPaginas = Math.ceil((lotes as Lote[]).length / PAGE_SIZE);
     const lotesPaginados = useMemo(() => {
@@ -163,10 +176,36 @@ export const CentralBancariaDiaristas = () => {
         return (lotes as Lote[]).slice(inicio, inicio + PAGE_SIZE);
     }, [lotes, paginaAtual]);
 
-    // ── lançamentos do lote selecionado (inclui ajustes) ──
+    // ── lançamentos do lote selecionado ──
+    // Estratégia dupla: tenta por lote_fechamento_id primeiro;
+    // se retornar vazio (lote antigo sem lote_fechamento_id preenchido),
+    // faz fallback por empresa + período sem filtro de status.
     const { data: lancamentosLote = [], isLoading: isLoadingLancamentos } = useQuery({
         queryKey: ["lancamentos_lote", selectedLote?.id],
-        queryFn: () => LancamentoDiaristaService.getByLoteId(selectedLote!.id),
+        queryFn: async () => {
+            if (!selectedLote) return [];
+
+            // Tentativa 1: busca vinculada ao lote pelo campo lote_fechamento_id
+            const porLote = await LancamentoDiaristaService.getByLoteId(selectedLote.id);
+            if (porLote && porLote.length > 0) return porLote;
+
+            // Fallback: sem filtro de status — cobre lotes antigos onde o campo
+            // lote_fechamento_id pode estar nulo e o status pode não ter sido atualizado
+            const { data: porPeriodo, error } = await (supabase as any)
+                .from('lancamentos_diaristas')
+                .select('*')
+                .eq('empresa_id', selectedLote.empresa_id)
+                .gte('data_lancamento', selectedLote.periodo_inicio)
+                .lte('data_lancamento', selectedLote.periodo_fim)
+                .order('nome_colaborador', { ascending: true })
+                .order('data_lancamento', { ascending: true });
+
+            if (error) {
+                console.error('[CentralBancaria] Fallback query error:', error);
+                return [];
+            }
+            return porPeriodo ?? [];
+        },
         enabled: !!selectedLote?.id,
     });
 
@@ -225,19 +264,29 @@ export const CentralBancariaDiaristas = () => {
             toast.success("Lote marcado como pago.");
             queryClient.invalidateQueries({ queryKey: ["lotes_fechamento"] });
             queryClient.invalidateQueries({ queryKey: ["lancamentos_lote"] });
+            setOpenConfirmPago(false);
             setOpenDetalhe(false);
             setSelectedLote(null);
+            setLoteParaPagar(null);
         },
+
         onError: (err: any) => toast.error("Erro ao marcar como pago", { description: err.message }),
     });
 
     const reabrirMutation = useMutation({
         mutationFn: () =>
-            LoteFechamentoDiaristaService.reabrirPeriodo(selectedLote!.id, user!.id, userName),
+            LoteFechamentoDiaristaService.reabrirPeriodo(selectedLote!.id, user!.id, userName, role ?? "admin", motivoReabrir),
+
         onSuccess: () => {
             toast.success("Período reaberto com sucesso. Registros voltaram para em_aberto.");
             queryClient.invalidateQueries({ queryKey: ["lotes_fechamento"] });
             queryClient.invalidateQueries({ queryKey: ["lancamentos_lote"] });
+            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel"] });
+            queryClient.invalidateQueries({ queryKey: ["lotes_fechamento_painel"] });
+            queryClient.invalidateQueries({ queryKey: ["lotes_fechamento_producao"] });
+            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_semana"] });
+            queryClient.invalidateQueries({ queryKey: ["historico_recente_diaristas"] });
+            queryClient.invalidateQueries({ queryKey: ["diaristas_lancamento"] });
             setOpenReabrir(false);
             setOpenDetalhe(false);
             setSelectedLote(null);
@@ -314,10 +363,12 @@ export const CentralBancariaDiaristas = () => {
         },
         onSuccess: (result) => {
             toast.success(`CNAB gerado com sucesso! ${result.totalRegistros} registros — ${formatCurrency(result.valorTotal)}`, {
-                description: `Arquivo: ${result.nomeArquivo}`,
+                description: `Arquivo baixado: ${result.nomeArquivo}`,
             });
+            queryClient.invalidateQueries({ queryKey: ["lotes_fechamento"] });
             setOpenCnab(false);
         },
+
         onError: (err: any) => {
             // Mostrar erros de validação de forma amigável
             toast.error("Falha na geração do CNAB", {
@@ -411,7 +462,8 @@ export const CentralBancariaDiaristas = () => {
         const map: Record<string, string> = {
             AGUARDANDO_VALIDACAO_RH: "bg-blue-500/15 text-blue-700",
             VALIDADO_RH: "bg-indigo-500/15 text-indigo-700",
-            FECHADO_FINANCEIRO: "bg-indigo-600/15 text-indigo-800",
+            FECHADO_FINANCEIRO: "bg-amber-500/15 text-amber-700",
+            AGUARDANDO_PAGAMENTO: "bg-amber-500/15 text-amber-700",
             cnab_gerado: "bg-indigo-500/15 text-indigo-700",
             PAGO: "bg-emerald-500/15 text-emerald-700",
             pago: "bg-emerald-500/15 text-emerald-700",
@@ -423,7 +475,8 @@ export const CentralBancariaDiaristas = () => {
         const labels: Record<string, string> = {
             AGUARDANDO_VALIDACAO_RH: "Aguardando Validação RH",
             VALIDADO_RH: "Validado RH",
-            FECHADO_FINANCEIRO: "Fechado Financeiro",
+            FECHADO_FINANCEIRO: "Aguardando Pagamento",
+            AGUARDANDO_PAGAMENTO: "Aguardando Pagamento",
             cnab_gerado: "CNAB Gerado",
             PAGO: "Pago",
             pago: "Pago",
@@ -505,19 +558,30 @@ export const CentralBancariaDiaristas = () => {
                                                     <Eye className="h-4 w-4 mr-1.5" /> Detalhes
                                                 </Button>
                                                 {/* O2 / C1: CNAB bloqueado para lotes já pagos ou se o arquivo já foi gerado uma vez */}
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="border-indigo-400 text-indigo-700 hover:bg-indigo-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                                                    onClick={() => handleAbrirCnab(l)}
-                                                    disabled={l.status === "pago" || l.status === "cnab_gerado"}
-                                                    title={l.status === "pago" ? "CNAB indisponível: lote já marcado como pago" : (l.status === "cnab_gerado" ? "Arquivo já gerado. Contate o admin se precisar reabrir." : "Gerar arquivo CNAB240")}
-                                                >
-                                                    <FileCode2 className="h-4 w-4 mr-1.5" /> CNAB
-                                                </Button>
+                                                {(() => {
+                                                    const isPago = l.status === "pago" || l.status === "PAGO";
+                                                    const isCnabGerado = l.status === "cnab_gerado";
+                                                    return (
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="border-indigo-400 text-indigo-700 hover:bg-indigo-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                                                            onClick={() => handleAbrirCnab(l)}
+                                                            disabled={isPago || isCnabGerado}
+                                                            title={isPago ? "CNAB indisponível: lote já pago" : isCnabGerado ? "Arquivo já gerado" : "Gerar arquivo CNAB240"}
+                                                        >
+                                                            <FileCode2 className="h-4 w-4 mr-1.5" /> CNAB
+                                                        </Button>
+                                                    );
+                                                })()}
 
-                                                {/* C2: confirm() substituído por Dialog próprio */}
-                                                {l.status !== "pago" && (
+                                                {/* Botão Pago ou Badge Concluído */}
+                                                {(l.status === "pago" || l.status === "PAGO") ? (
+                                                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-700 border border-emerald-500/30">
+                                                        <CheckCircle2 className="h-3.5 w-3.5" />
+                                                        Pagamento Concluído
+                                                    </span>
+                                                ) : (
                                                     <Button
                                                         size="sm"
                                                         className="bg-emerald-600 hover:bg-emerald-700"
@@ -526,6 +590,7 @@ export const CentralBancariaDiaristas = () => {
                                                         <CheckCircle2 className="h-4 w-4 mr-1.5" /> Pago
                                                     </Button>
                                                 )}
+
                                             </div>
                                         </td>
                                     </tr>
@@ -763,8 +828,8 @@ export const CentralBancariaDiaristas = () => {
                             <Button variant="outline" onClick={exportarXlsx}>
                                 <Download className="h-4 w-4 mr-2" /> Exportar Planilha
                             </Button>
-                            {/* O2 / C1: CNAB bloqueado para lote já pago ou se já foi gerado */}
-                            {selectedLote && selectedLote.status !== "pago" && selectedLote.status !== "cnab_gerado" && (
+                            {/* CNAB: bloqueado para lote já pago */}
+                            {selectedLote && !(selectedLote.status === "pago" || selectedLote.status === "PAGO") && selectedLote.status !== "cnab_gerado" && (
                                 <Button
                                     variant="outline"
                                     className="border-indigo-400 text-indigo-700 hover:bg-indigo-50"
@@ -777,10 +842,15 @@ export const CentralBancariaDiaristas = () => {
                                 </Button>
                             )}
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 items-center">
                             <Button variant="ghost" onClick={() => setOpenDetalhe(false)}>Fechar</Button>
-                            {/* C2: confirm() substituído por Dialog próprio */}
-                            {selectedLote?.status !== "pago" && (
+                            {/* Botão Pago ou Badge Concluído */}
+                            {(selectedLote?.status === "pago" || selectedLote?.status === "PAGO") ? (
+                                <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-bold bg-emerald-500/15 text-emerald-700 border border-emerald-500/30">
+                                    <CheckCircle2 className="h-4 w-4" />
+                                    Pagamento Concluído
+                                </span>
+                            ) : (
                                 <Button
                                     className="bg-emerald-600 hover:bg-emerald-700"
                                     onClick={() => { setLoteParaPagar(selectedLote); setOpenConfirmPago(true); }}

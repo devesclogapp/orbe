@@ -1,6 +1,13 @@
 import { supabase } from '@/lib/supabase';
 import { Database } from '@/types/database';
 import { getTransportadoraDuplicateMessage, getTransportadoraErrorMessage } from '@/utils/transportadoraValidation';
+import {
+  gerarCNAB240BB,
+  downloadCNAB240,
+  validarBeneficiarios,
+  type EmpresaRemessa,
+  type BeneficiarioPagamento,
+} from './cnab/cnab240-posicional';
 
 type Table = keyof Database['public']['Tables'];
 
@@ -2695,7 +2702,7 @@ export const TipoRegraOperacionalService = new TipoRegraOperacionalServiceClass(
 // ==================================================
 
 export type CodigoMarcacao = 'P' | 'MP' | 'AUSENTE';
-export type StatusLancamentoDiarista = 'EM_ABERTO' | 'AGUARDANDO_VALIDACAO_RH' | 'VALIDADO_RH' | 'FECHADO_FINANCEIRO' | 'PAGO' | 'CANCELADO';
+export type StatusLancamentoDiarista = 'EM_ABERTO' | 'AGUARDANDO_VALIDACAO_RH' | 'VALIDADO_RH' | 'FECHADO_FINANCEIRO' | 'AGUARDANDO_PAGAMENTO' | 'PAGO' | 'CANCELADO';
 
 export interface LancamentoDiaristaPayload {
   empresa_id: string;
@@ -2720,7 +2727,7 @@ class DiaristaServiceClass {
   async getByEmpresa(empresaId: string, apenasAtivos = true) {
     let query = supabase
       .from('colaboradores')
-      .select('id, nome, cpf, telefone, cargo, valor_base, status, empresa_id, permitir_lancamento_operacional, deleted_at')
+      .select('id, nome, cpf, telefone, cargo, valor_base, status, empresa_id, permitir_lancamento_operacional, deleted_at, banco_codigo, agencia, agencia_digito, conta, digito_conta, tipo_conta, nome_completo, observacoes')
       .eq('empresa_id', empresaId)
       .eq('tipo_colaborador', 'DIARISTA')
       .eq('permitir_lancamento_operacional', true)
@@ -2736,6 +2743,8 @@ class DiaristaServiceClass {
       ...c,
       funcao: c.cargo ?? '—',
       valor_diaria: Number(c.valor_base ?? 0),
+      // Indica se possui dados bancários completos para CNAB
+      tem_dados_bancarios: !!(c.banco_codigo && c.agencia && c.conta && c.digito_conta && c.cpf),
     }));
   }
 
@@ -2752,6 +2761,15 @@ class DiaristaServiceClass {
       tipo_colaborador: 'DIARISTA',
       permitir_lancamento_operacional: payload.permitir_lancamento_operacional ?? true,
       tenant_id: tenantId,
+      // Dados bancários
+      banco_codigo:   payload.banco_codigo?.trim()   || null,
+      agencia:        payload.agencia?.trim()         || null,
+      agencia_digito: payload.agencia_digito?.trim()  || null,
+      conta:          payload.conta?.trim()           || null,
+      digito_conta:   payload.digito_conta?.trim()    || null,
+      tipo_conta:     payload.tipo_conta              || 'corrente',
+      nome_completo:  payload.nome_completo?.trim()   || null,
+      observacoes:    payload.observacoes?.trim()      || null,
     };
     const { data, error } = await supabase
       .from('colaboradores')
@@ -2775,6 +2793,15 @@ class DiaristaServiceClass {
     if (payload.deleted_at !== undefined) mapped.deleted_at = payload.deleted_at;
     if (payload.permitir_lancamento_operacional !== undefined)
       mapped.permitir_lancamento_operacional = payload.permitir_lancamento_operacional;
+    // Dados bancários
+    if (payload.banco_codigo !== undefined)   mapped.banco_codigo   = payload.banco_codigo?.trim()   || null;
+    if (payload.agencia !== undefined)        mapped.agencia        = payload.agencia?.trim()         || null;
+    if (payload.agencia_digito !== undefined) mapped.agencia_digito = payload.agencia_digito?.trim()  || null;
+    if (payload.conta !== undefined)          mapped.conta          = payload.conta?.trim()           || null;
+    if (payload.digito_conta !== undefined)   mapped.digito_conta   = payload.digito_conta?.trim()    || null;
+    if (payload.tipo_conta !== undefined)     mapped.tipo_conta     = payload.tipo_conta              || 'corrente';
+    if (payload.nome_completo !== undefined)  mapped.nome_completo  = payload.nome_completo?.trim()   || null;
+    if (payload.observacoes !== undefined)    mapped.observacoes    = payload.observacoes?.trim()     || null;
 
     const { data, error } = await supabase
       .from('colaboradores')
@@ -2840,6 +2867,65 @@ class LancamentoDiaristaServiceClass {
     return result ?? [];
   }
 
+  async getByLoteId(loteId: string) {
+    const { data, error } = await (supabase as any)
+      .from('lancamentos_diaristas')
+      .select('*')
+      .eq('lote_fechamento_id', loteId)
+      .order('nome_colaborador', { ascending: true })
+      .order('data_lancamento', { ascending: true });
+
+    if (error) throw error;
+    return data ?? [];
+  }
+
+  async criarAjuste(params: {
+    empresaId: string;
+    referenciaLancamentoId: string;
+    valorAjuste: number;
+    motivo: string;
+    adjustedBy: string;
+    adjustedByNome: string;
+    original: {
+      diarista_id: string;
+      nome_colaborador: string;
+      funcao_colaborador: string;
+      data_lancamento: string;
+      codigo_marcacao: string;
+      lote_fechamento_id: string;
+    }
+  }) {
+    const tenantId = await getCurrentTenantId();
+    const payload = {
+      tenant_id: tenantId,
+      empresa_id: params.empresaId,
+      diarista_id: params.original.diarista_id,
+      nome_colaborador: params.original.nome_colaborador,
+      funcao_colaborador: params.original.funcao_colaborador,
+      data_lancamento: params.original.data_lancamento,
+      codigo_marcacao: params.original.codigo_marcacao,
+      quantidade_diaria: 0,
+      valor_calculado: params.valorAjuste,
+      tipo_registro: 'ajuste',
+      status: 'EM_ABERTO', // Ou poderia pegar o status do lote
+      referencia_lancamento_id: params.referenciaLancamentoId,
+      lote_fechamento_id: params.original.lote_fechamento_id,
+      motivo_ajuste: params.motivo,
+      adjusted_by: params.adjustedBy,
+      adjusted_by_nome: params.adjustedByNome,
+      adjusted_at: new Date().toISOString()
+    };
+
+    const { data, error } = await (supabase as any)
+      .from('lancamentos_diaristas')
+      .insert([payload])
+      .select('id')
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
   async createBatch(registros: LancamentoDiaristaPayload[]) {
     if (registros.length === 0) return [];
 
@@ -2891,6 +2977,17 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
     }
 
     const { data, error } = await query;
+    if (error) throw error;
+    return data ?? [];
+  }
+
+  async getByEmpresaParaFinanceiro(empresaId: string) {
+    const { data, error } = await this.supabase
+      .from('diaristas_lotes_fechamento')
+      .select('*, empresa:empresas(nome)')
+      .eq('empresa_id', empresaId)
+      .in('status', ['VALIDADO_RH', 'FECHADO_FINANCEIRO', 'AGUARDANDO_PAGAMENTO', 'PAGO', 'pago', 'cnab_gerado'])
+      .order('created_at', { ascending: false });
     if (error) throw error;
     return data ?? [];
   }
@@ -3056,6 +3153,217 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
     });
     if (error) throw error;
     return true;
+  }
+
+  async marcarComoPago(loteId: string, usuarioId: string | undefined, usuarioNome: string) {
+    // Usa RPC SECURITY DEFINER para garantir bypass de RLS e atomicidade
+    // (atualiza lote + lançamentos + log em uma transação)
+    const { error } = await this.supabase.rpc('marcar_como_pago_diaristas' as any, {
+      p_lote_id:     loteId,
+      p_usuario_id:  usuarioId ?? null,
+      p_usuario_nome: usuarioNome ?? 'Sistema',
+    });
+
+    if (error) throw error;
+    return true;
+  }
+
+
+  // ─── CNAB240 ─────────────────────────────────────────────────────────────
+  // Gera o arquivo de remessa CNAB240 FEBRABAN real para pagamento de diaristas.
+  // Layout posicional: cada linha tem EXATAMENTE 240 caracteres.
+  // Segmentos: Header Arquivo (0), Header Lote (1), Segmento A (3A),
+  // Segmento B (3B), Trailer Lote (5), Trailer Arquivo (9).
+  // Exportação: Windows-1252 (ANSI) conforme padrão bancário.
+  async gerarCNABParaLote(params: {
+    loteId: string;
+    empresaId: string;
+    geradoPor: string;
+    geradoPorNome: string;
+    empresaRemetente: {
+      cnpj: string;
+      razao_social: string;
+      banco_codigo: string;
+      agencia: string;
+      agencia_digito?: string;
+      conta: string;
+      digito_conta?: string;
+      convenio_bancario?: string;
+      codigo_empresa_banco?: string;
+      nome_empresa_banco?: string;
+    };
+  }): Promise<{ nomeArquivo: string; totalRegistros: number; valorTotal: number }> {
+    const { loteId, empresaId, geradoPor, geradoPorNome, empresaRemetente } = params;
+
+    // ── 1. Buscar lote ────────────────────────────────────────────────────────
+    const { data: lote, error: loteErr } = await this.supabase
+      .from('diaristas_lotes_fechamento')
+      .select('*')
+      .eq('id', loteId)
+      .single();
+    if (loteErr || !lote) throw new Error('Lote não encontrado.');
+
+    // ── 2. Buscar lançamentos — tenta por lote_fechamento_id, depois por período
+    let lancamentos: any[] = [];
+    const { data: porLote } = await this.supabase
+      .from('lancamentos_diaristas' as any)
+      .select('*')
+      .eq('lote_fechamento_id', loteId)
+      .neq('tipo_registro', 'ajuste');
+
+    if (porLote && porLote.length > 0) {
+      lancamentos = porLote;
+    } else {
+      const { data: porPeriodo } = await this.supabase
+        .from('lancamentos_diaristas' as any)
+        .select('*')
+        .eq('empresa_id', empresaId)
+        .gte('data_lancamento', lote.periodo_inicio)
+        .lte('data_lancamento', lote.periodo_fim)
+        .neq('tipo_registro', 'ajuste');
+      lancamentos = porPeriodo ?? [];
+    }
+
+    if (lancamentos.length === 0)
+      throw new Error('Nenhum lançamento encontrado para este lote.');
+
+    // ── 3. Agregar valores por diarista ───────────────────────────────────────
+    const diaristasMap = new Map<string, {
+      diarista_id: string;
+      nome: string;
+      cpf: string;
+      valor: number;
+    }>();
+
+    for (const l of lancamentos) {
+      const key = l.diarista_id || l.nome_colaborador;
+      if (!diaristasMap.has(key)) {
+        diaristasMap.set(key, {
+          diarista_id: l.diarista_id ?? '',
+          nome: l.nome_colaborador ?? '',
+          cpf: l.cpf_colaborador ?? '',
+          valor: 0,
+        });
+      }
+      diaristasMap.get(key)!.valor += Number(l.valor_calculado || 0);
+    }
+
+    // ── 4. Buscar dados bancários dos colaboradores ───────────────────────────
+    const diaristasIds = Array.from(diaristasMap.values())
+      .map(d => d.diarista_id)
+      .filter(Boolean);
+
+    const { data: colaboradoresData } = await this.supabase
+      .from('colaboradores' as any)
+      .select('id, nome, nome_completo, cpf, banco_codigo, agencia, agencia_digito, conta, digito_conta, tipo_conta')
+      .in('id', diaristasIds.length > 0 ? diaristasIds : ['00000000-0000-0000-0000-000000000000']);
+
+    const colaboradoresMap = new Map<string, any>();
+    for (const c of (colaboradoresData ?? [])) {
+      colaboradoresMap.set(c.id, c);
+    }
+
+    // ── 5. Validar e montar lista de beneficiários ────────────────────────────
+    const pendencias: string[] = [];
+    const beneficiarios: BeneficiarioPagamento[] = [];
+    const now = new Date();
+
+    for (const [, d] of diaristasMap) {
+      const col = colaboradoresMap.get(d.diarista_id);
+      const banco        = col?.banco_codigo?.trim();
+      const agencia      = col?.agencia?.trim();
+      const conta        = col?.conta?.trim();
+      const digito       = col?.digito_conta?.trim();
+      const agDigito     = col?.agencia_digito?.trim() || ' ';
+      const cpf          = (col?.cpf || d.cpf || '').replace(/\D/g, '');
+      const tipoConta    = col?.tipo_conta === 'poupanca' ? 'poupanca' as const : 'corrente' as const;
+
+      const faltando: string[] = [];
+      if (!banco)             faltando.push('banco');
+      if (!agencia)           faltando.push('agência');
+      if (!conta)             faltando.push('conta');
+      if (!digito)            faltando.push('dígito da conta');
+      if (cpf.length !== 11)  faltando.push(`CPF inválido (${cpf.length} dígitos)`);
+      if (d.valor <= 0)       faltando.push('valor zerado ou negativo');
+
+      if (faltando.length > 0) {
+        pendencias.push(`${d.nome}: falta ${faltando.join(', ')}`);
+      } else {
+        beneficiarios.push({
+          nome:           col?.nome_completo?.trim() || d.nome,
+          cpf,
+          valor:          d.valor,
+          banco_codigo:   banco!,
+          agencia:        agencia!,
+          agencia_digito: agDigito,
+          conta:          conta!,
+          conta_digito:   digito!,
+          tipo_conta:     tipoConta,
+          data_pagamento: now,
+        });
+      }
+    }
+
+    // Bloquear se há pendências
+    if (pendencias.length > 0) {
+      throw new Error(
+        `Dados bancários incompletos para ${pendencias.length} diarista(s):\n\n` +
+        pendencias.map(p => `• ${p}`).join('\n') +
+        '\n\nAtualize o cadastro de cada diarista antes de gerar o CNAB.'
+      );
+    }
+
+    // ── 6. Montar empresa remetente ───────────────────────────────────────────
+    const empresaRemessa: EmpresaRemessa = {
+      cnpj:           (empresaRemetente.cnpj || '').replace(/\D/g, ''),
+      razao_social:   empresaRemetente.razao_social,
+      agencia:        empresaRemetente.agencia,
+      agencia_digito: empresaRemetente.agencia_digito || ' ',
+      conta:          empresaRemetente.conta,
+      conta_digito:   empresaRemetente.digito_conta || ' ',
+      convenio:       empresaRemetente.convenio_bancario || '',
+    };
+
+    // ── 7. Gerar CNAB240 posicional ───────────────────────────────────────────
+    // Tipo serviço: 20=Fornecedor (pagamentos a prestadores de serviço)
+    const resultado = gerarCNAB240BB(empresaRemessa, beneficiarios, {
+      tipo_servico: 20,
+    });
+
+    // ── 8. Disparar download ──────────────────────────────────────────────────
+    // Exportação em Windows-1252 (ANSI) — padrão bancário FEBRABAN
+    downloadCNAB240(resultado);
+
+    // ── 9. Atualizar status do lote ───────────────────────────────────────────
+    await this.supabase
+      .from('diaristas_lotes_fechamento')
+      .update({ status: 'cnab_gerado', updated_at: new Date().toISOString() })
+      .eq('id', loteId);
+
+    // ── 10. Registrar auditoria ───────────────────────────────────────────────
+    const tenantId = await getCurrentTenantId();
+    await this.supabase.from('diaristas_logs_fechamento' as any).insert({
+      empresa_id:     empresaId,
+      tenant_id:      tenantId,
+      usuario_id:     geradoPor,
+      usuario_nome:   geradoPorNome,
+      usuario_role:   'financeiro',
+      acao:           'GEROU_CNAB',
+      periodo_inicio: lote.periodo_inicio,
+      periodo_fim:    lote.periodo_fim,
+      motivo: [
+        `Arquivo CNAB240 gerado: ${resultado.nome_arquivo}`,
+        `Beneficiários: ${resultado.total_beneficiarios}`,
+        `Total linhas: ${resultado.total_linhas}`,
+        `Valor total: R$ ${resultado.valor_total.toFixed(2)}`,
+      ].join(' | '),
+    });
+
+    return {
+      nomeArquivo:    resultado.nome_arquivo,
+      totalRegistros: resultado.total_beneficiarios,
+      valorTotal:     resultado.valor_total,
+    };
   }
 }
 export const LoteFechamentoDiaristaService = new LoteFechamentoDiaristaServiceClass();

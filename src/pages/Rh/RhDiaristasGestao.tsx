@@ -31,6 +31,7 @@ const emptyForm = {
     // Dados bancários
     banco_codigo: "",
     agencia: "",
+    agencia_digito: "",
     conta: "",
     digito_conta: "",
     tipo_conta: "corrente" as "corrente" | "poupanca",
@@ -86,6 +87,7 @@ const RhDiaristasGestao = () => {
             observacoes: d.observacoes ?? "",
             banco_codigo: d.banco_codigo ?? "",
             agencia: d.agencia ?? "",
+            agencia_digito: d.agencia_digito ?? "",
             conta: d.conta ?? "",
             digito_conta: d.digito_conta ?? "",
             tipo_conta: d.tipo_conta ?? "corrente",
@@ -93,6 +95,7 @@ const RhDiaristasGestao = () => {
         });
         setOpen(true);
     };
+
 
     const saveMutation = useMutation({
         mutationFn: () => {
@@ -112,6 +115,7 @@ const RhDiaristasGestao = () => {
                 // Dados bancários
                 banco_codigo: form.banco_codigo.trim() || null,
                 agencia: form.agencia.trim() || null,
+                agencia_digito: form.agencia_digito.trim() || null,
                 conta: form.conta.trim() || null,
                 digito_conta: form.digito_conta.trim() || null,
                 tipo_conta: form.tipo_conta || null,

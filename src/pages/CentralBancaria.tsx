@@ -89,6 +89,9 @@ const CentralBancaria = () => {
   const [markingEnviadoId, setMarkingEnviadoId] = useState<string | null>(null);
   const [observacaoEnvio, setObservacaoEnvio] = useState("");
 
+  const [activeTab, setActiveTab] = useState("remessa");
+  const [diaristasMetrics, setDiaristasMetrics] = useState({ totalRemessas: 0, totalTitulos: 0, totalValor: 0, remessasComErro: 0 });
+
   const { data: competencias = [], isLoading: loadingCompetencias } = useQuery<any[]>({
     queryKey: ["financeiro-competencias"],
     queryFn: async () => {
@@ -142,10 +145,10 @@ const CentralBancaria = () => {
     [remessas, historySearch, competencia]
   );
 
-  const totalRemessas = remessas.length;
-  const totalTitulos = remessas.reduce((acc, remessa) => acc + Number(remessa.lotes_remessa?.quantidade_titulos || 0), 0);
-  const totalValor = remessas.reduce((acc, remessa) => acc + Number(remessa.total_valor || remessa.lotes_remessa?.valor_total || 0), 0);
-  const remessasComErro = remessas.filter((remessa) => remessa.status === "erro_homologacao").length;
+  const totalRemessas = activeTab === "diaristas" ? diaristasMetrics.totalRemessas : remessas.length;
+  const totalTitulos = activeTab === "diaristas" ? diaristasMetrics.totalTitulos : remessas.reduce((acc, remessa) => acc + Number(remessa.lotes_remessa?.quantidade_titulos || 0), 0);
+  const totalValor = activeTab === "diaristas" ? diaristasMetrics.totalValor : remessas.reduce((acc, remessa) => acc + Number(remessa.total_valor || remessa.lotes_remessa?.valor_total || 0), 0);
+  const remessasComErro = activeTab === "diaristas" ? diaristasMetrics.remessasComErro : remessas.filter((remessa) => remessa.status === "erro_homologacao").length;
 
   const handleValidate = async () => {
     if (!competencia) return toast.error("Selecione a competência");
@@ -262,18 +265,18 @@ const CentralBancaria = () => {
           </section>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-            <MetricCard label="Remessas" value={totalRemessas.toString()} icon={FileText} />
-            <MetricCard label="Títulos" value={totalTitulos.toString()} icon={FileCheck} />
+            <MetricCard label={activeTab === "diaristas" ? "Lotes Fechados" : "Remessas"} value={totalRemessas.toString()} icon={FileText} />
+            <MetricCard label={activeTab === "diaristas" ? "Diaristas" : "Títulos"} value={totalTitulos.toString()} icon={FileCheck} />
             <MetricCard
               label="Valor total"
               value={new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(totalValor)}
               icon={Banknote}
               accent
             />
-            <MetricCard label="Lotes com erro" value={remessasComErro.toString()} icon={AlertCircle} />
+            <MetricCard label={activeTab === "diaristas" ? "Pendentes de Pgto" : "Lotes com erro"} value={remessasComErro.toString()} icon={AlertCircle} />
           </div>
 
-          <Tabs defaultValue="remessa" className="space-y-4">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
             <TabsList className="bg-muted/50 p-1 rounded-xl border border-border/50 flex flex-wrap h-auto">
               <TabsTrigger value="remessa">Remessa</TabsTrigger>
               <TabsTrigger value="historico">Histórico</TabsTrigger>
@@ -662,7 +665,7 @@ const CentralBancaria = () => {
 
             <TabsContent value="diaristas">
               <div className="bg-card text-card-foreground border border-border shadow-sm rounded-xl overflow-hidden">
-                <CentralBancariaDiaristas />
+                <CentralBancariaDiaristas onMetricsUpdate={setDiaristasMetrics} />
               </div>
             </TabsContent>
           </Tabs>
