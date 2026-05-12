@@ -25,7 +25,7 @@ import {
   Zap,
 } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
-import { ComponentType, useState } from "react";
+import { ComponentType, useEffect, useRef, useState } from "react";
 
 import { useAccessControl } from "@/contexts/AccessControlContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -33,6 +33,8 @@ import { AccessModule } from "@/lib/access-control";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/ui/Logo";
 import { Button } from "@/components/ui/button";
+
+const SIDEBAR_SCROLL_KEY = "sidebar-scroll-position";
 
 type MenuItem = {
   icon: ComponentType<{ className?: string; strokeWidth?: number }>;
@@ -129,6 +131,21 @@ export const Sidebar = () => {
   const { canAccess, isAdmin } = useAccessControl();
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const navRef = useRef<HTMLElement>(null);
+
+  // Restaurar posição do scroll ao montar
+  useEffect(() => {
+    const savedScrollPosition = sessionStorage.getItem(SIDEBAR_SCROLL_KEY);
+    if (savedScrollPosition && navRef.current) {
+      navRef.current.scrollTop = parseInt(savedScrollPosition, 10);
+    }
+  }, []);
+
+  const handleScroll = () => {
+    if (navRef.current) {
+      sessionStorage.setItem(SIDEBAR_SCROLL_KEY, navRef.current.scrollTop.toString());
+    }
+  };
 
   const handleSignOut = async () => {
     await signOut();
@@ -159,7 +176,11 @@ export const Sidebar = () => {
         <Logo className="w-28" align="left" showSlogan sloganSize="xs" />
       </div>
 
-      <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 pb-2 pt-1">
+      <nav
+        ref={navRef}
+        onScroll={handleScroll}
+        className="flex-1 space-y-0.5 overflow-y-auto px-2 pb-2 pt-1"
+      >
         <div className="mb-3">{filterItems(dashboardItems).map(renderItem)}</div>
 
         {groups.map((group) => {
