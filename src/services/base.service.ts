@@ -2881,7 +2881,7 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
   async getLotesPorPeriodo(inicio: string, fim: string, empresaId?: string | null) {
     let query = this.supabase
       .from('diaristas_lotes_fechamento')
-      .select('*')
+      .select('*, empresa:empresas(nome)')
       .gte('periodo_inicio', inicio)
       .lte('periodo_fim', fim)
       .order('created_at', { ascending: false });
@@ -2895,12 +2895,13 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
     return data ?? [];
   }
 
-  async fecharPeriodo({ empresaId, periodoInicio, periodoFim, fechadoPor, fechadoPorNome, observacoes }: {
+  async fecharPeriodo({ empresaId, periodoInicio, periodoFim, fechadoPor, fechadoPorNome, fechadoPorRole, observacoes }: {
     empresaId: string;
     periodoInicio: string;
     periodoFim: string;
     fechadoPor: string;
     fechadoPorNome: string;
+    fechadoPorRole: string;
     observacoes?: string;
   }) {
     const { data: lancamentos, error: errorLanc } = await this.supabase
@@ -2942,33 +2943,76 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
     const mesRef = periodoInicio.substring(0, 7);
 
     const tenantId = await getCurrentTenantId();
-    const { data: lote, error: errorLote } = await this.supabase
+
+    // Verifica se já existe um lote para o período e empresa
+    let { data: loteExistente } = await this.supabase
       .from('diaristas_lotes_fechamento')
-      .insert({
-        empresa_id: empresaId,
-        periodo_inicio: periodoInicio,
-        periodo_fim: periodoFim,
-        mes_referencia: mesRef,
-        total_registros: totalRegistros,
-        valor_total: valorTotal,
-        status: 'AGUARDANDO_VALIDACAO_RH',
-        fechado_por: fechadoPor,
-        fechado_por_nome: fechadoPorNome,
-        fechado_em: new Date().toISOString(),
-        observacoes,
-        tenant_id: tenantId,
-      })
-      .select()
+      .select('id')
+      .eq('empresa_id', empresaId)
+      .eq('periodo_inicio', periodoInicio)
+      .eq('periodo_fim', periodoFim)
       .single();
 
-    if (errorLote) throw errorLote;
+    let lote;
+
+    if (loteExistente) {
+      // Reutiliza o lote existente, atualizando os valores
+      const { data: loteAtualizado, error: errorUpdate } = await this.supabase
+        .from('diaristas_lotes_fechamento')
+        .update({
+          total_registros: totalRegistros,
+          valor_total: valorTotal,
+          status: 'AGUARDANDO_VALIDACAO_RH', // Garante que o status seja atualizado
+          fechado_por: fechadoPor,
+          fechado_por_nome: fechadoPorNome,
+          fechado_em: new Date().toISOString(),
+          observacoes,
+        })
+        .eq('id', loteExistente.id)
+        .select()
+        .single();
+      
+      if (errorUpdate) throw errorUpdate;
+      lote = loteAtualizado;
+
+    } else {
+      // Cria um novo lote se não existir
+      const { data: novoLote, error: errorLote } = await this.supabase
+        .from('diaristas_lotes_fechamento')
+        .insert({
+          empresa_id: empresaId,
+          periodo_inicio: periodoInicio,
+          periodo_fim: periodoFim,
+          mes_referencia: mesRef,
+          total_registros: totalRegistros,
+          valor_total: valorTotal,
+          status: 'AGUARDANDO_VALIDACAO_RH',
+          fechado_por: fechadoPor,
+          fechado_por_nome: fechadoPorNome,
+          fechado_em: new Date().toISOString(),
+          observacoes,
+          tenant_id: tenantId,
+        })
+        .select()
+        .single();
+
+      if (errorLote) throw errorLote;
+      lote = novoLote;
+    }
+
+    if (!lote) {
+      throw new Error("Não foi possível criar ou encontrar um lote de fechamento.");
+    }
 
     const { error: fecharError } = await this.supabase.rpc('fechar_periodo_diaristas', {
       p_empresa_id: empresaId,
       p_periodo_inicio: periodoInicio,
       p_periodo_fim: periodoFim,
       p_lote_id: lote.id,
-      p_tenant_id: tenantId
+      p_tenant_id: tenantId,
+      p_usuario_id: fechadoPor,
+      p_usuario_nome: fechadoPorNome,
+      p_usuario_role: fechadoPorRole
     });
 
     if (fecharError) throw fecharError;
@@ -3323,8 +3367,8 @@ class DiaristaCicloServiceClass {
       .select('*')
       .eq('ativo', true)
       .limit(1)
-      .single();
-    if (error && error.code !== 'PGRST116') throw error;
+      .maybeSingle();
+    if (error) throw error;
     return data;
   }
 

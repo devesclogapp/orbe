@@ -45,6 +45,33 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
+// ─── Mapa de status: cobre todos os valores conhecidos ───
+const STATUS_DIARISTA_MAP: Record<string, { label: string; cls: string }> = {
+    em_aberto: { label: "Em aberto", cls: "bg-amber-500/15 text-amber-700" },
+    EM_ABERTO: { label: "Em aberto", cls: "bg-amber-500/15 text-amber-700" },
+    AGUARDANDO_VALIDACAO_RH: { label: "⏳ Ag. Validação RH", cls: "bg-blue-500/15 text-blue-800" },
+    VALIDADO_RH: { label: "✅ Validado RH", cls: "bg-indigo-500/15 text-indigo-700" },
+    FECHADO_FINANCEIRO: { label: "💰 Aprovado Financeiro", cls: "bg-emerald-500/15 text-emerald-800" },
+    PAGO: { label: "✔ Pago", cls: "bg-emerald-600/15 text-emerald-800" },
+    cancelado: { label: "Cancelado", cls: "bg-muted text-muted-foreground" },
+    CANCELADO: { label: "Cancelado", cls: "bg-muted text-muted-foreground" },
+    fechado_para_pagamento: { label: "⏳ Ag. Validação RH", cls: "bg-blue-500/15 text-blue-800" },
+    fechado: { label: "⏳ Ag. Validação RH", cls: "bg-blue-500/15 text-blue-800" },
+};
+
+const StatusDiaristaBadge = ({ status }: { status?: string }) => {
+    if (!status) return null;
+    const entry = STATUS_DIARISTA_MAP[status];
+    return (
+        <span className={cn(
+            "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap",
+            entry?.cls ?? "bg-muted text-muted-foreground"
+        )}>
+            {entry?.label ?? status}
+        </span>
+    );
+};
+
 // ─── Tipos ──────────────────────────────────────────────────────────────────
 
 type CodigoMarcacao = string; // dinâmico — vem das regras
@@ -112,7 +139,7 @@ const DiaristasLancamento = () => {
         queryKey: ["profile_usuario", user?.id],
         queryFn: async () => {
             if (!user?.id) return null;
-            const { data } = await supabase.from("profiles").select("full_name").eq("user_id", user.id).maybeSingle();
+            const { data } = await supabase.from("profiles").select("role, full_name").eq("user_id", user.id).maybeSingle();
             return data;
         },
         enabled: !!user?.id,
@@ -150,11 +177,44 @@ const DiaristasLancamento = () => {
     });
 
     /* Histórico 14 dias */
-    const fourteenDaysAgo = format(subWeeks(new Date(), 2), "yyyy-MM-dd");
+    const fourteenDaysAgoStr = useMemo(() => format(subWeeks(new Date(), 2), "yyyy-MM-dd"), []);
+    
+    const { data: lotes = [] } = useQuery({
+        queryKey: ["lotes_fechamento_producao", fourteenDaysAgoStr, today, empresaIdSelecionada],
+        queryFn: () => LoteFechamentoDiaristaService.getLotesPorPeriodo(
+            fourteenDaysAgoStr,
+            today,
+            empresaIdSelecionada
+        ),
+        enabled: !!empresaIdSelecionada,
+    });
+
+    const { data: regraFechamento } = useQuery({
+        queryKey: ["regra_fechamento_diaristas"],
+        queryFn: () => DiaristaCicloService.getRegraFechamento(),
+    });
+
+    const periodoBloqueado = useMemo(() => {
+        // Filtra os lotes para encontrar um que pertença EXATAMENTE ao período da semana selecionada
+        const loteAtivo = (lotes as any[]).find(l =>
+            l.empresa_id === empresaIdSelecionada &&
+            l.periodo_inicio === inicioISO &&
+            l.periodo_fim === fimISO &&
+            ["AGUARDANDO_VALIDACAO_RH", "VALIDADO_RH", "AGUARDANDO_FINANCEIRO", "FECHADO_FINANCEIRO", "PAGO"].includes(l.status)
+        );
+        
+        // Se houver lote ativo e a configuração de bloquear edição estiver ativa (ou não existir, default true)
+        if (loteAtivo && (regraFechamento as any)?.bloquear_edicao !== false) {
+            return true;
+        }
+
+        return false;
+    }, [lotes, empresaIdSelecionada, regraFechamento, inicioISO, fimISO]);
+
     const { data: historicoRecente = [], isLoading: isLoadingHistorico } = useQuery({
         queryKey: ["historico_recente_diaristas", empresaIdSelecionada],
         queryFn: () =>
-            LancamentoDiaristaService.getByPeriodo(empresaIdSelecionada, fourteenDaysAgo, today, {
+            LancamentoDiaristaService.getByPeriodo(empresaIdSelecionada, fourteenDaysAgoStr, today, {
                 encarregado_id: user?.id,
             }),
         enabled: !!empresaIdSelecionada && openHistorico,
@@ -339,12 +399,14 @@ const DiaristasLancamento = () => {
                 periodoFim: fimISO,
                 fechadoPor: user?.id ?? "",
                 fechadoPorNome: perfil?.full_name || user?.email || "Encarregado",
+                fechadoPorRole: (perfil as any)?.role || "encarregado",
                 observacoes: `Fechamento semanal: ${labelSemana}`,
             });
         },
         onSuccess: (lote: any) => {
             toast.success(`Período fechado. ${lote.total_registros} registro(s). ${formatCurrency(lote.valor_total)}`);
             queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_semana", empresaIdSelecionada] });
+            queryClient.invalidateQueries({ queryKey: ["historico_recente_diaristas", empresaIdSelecionada] });
             setFechandoPeriodo(false);
         },
         onError: (err: any) => toast.error("Erro ao fechar período.", { description: err.message }),
@@ -484,19 +546,36 @@ const DiaristasLancamento = () => {
                         </p>
                     </div>
                 ) : (
-                    /* ── Grade semanal ── */
-                    <section className="esc-card overflow-hidden">
-                        {/* Cabeçalho */}
-                        <div className="p-4 border-b border-border flex items-center gap-2">
-                            <CalendarDays className="h-4 w-4 text-primary" />
-                            <h2 className="font-display font-bold text-foreground">Grade da Semana</h2>
-                            <span className="ml-auto text-xs text-muted-foreground">{diaristasArr.length} diarista(s)</span>
+                    <>
+                {/* ── Grade semanal ── */}
+                {periodoBloqueado && (
+                    <div className="bg-amber-600/90 backdrop-blur-sm text-white p-4 rounded-xl flex items-center justify-center gap-3 mb-6 animate-pulse shadow-xl border border-amber-500/50">
+                        <div className="h-10 w-10 rounded-full bg-white/20 flex items-center justify-center">
+                            <Lock className="h-5 w-5" />
                         </div>
+                        <div className="flex flex-col">
+                            <span className="font-black text-sm uppercase tracking-wider">Período sob Governança</span>
+                            <span className="text-[10px] opacity-90 font-medium">Os registros foram enviados para validação do RH e estão bloqueados para edição.</span>
+                        </div>
+                    </div>
+                )}
 
-                        {/* Cabeçalho da grade — labels dos dias */}
-                        <div className="overflow-x-auto relative">
-                            <table className="w-full min-w-[600px]">
-                                <thead>
+                <section className={cn(
+                    "esc-card overflow-hidden transition-all duration-500", 
+                    periodoBloqueado && "opacity-60 grayscale-[0.5] select-none pointer-events-none"
+                )}>
+
+                    {/* Cabeçalho */}
+                    <div className="p-4 border-b border-border flex items-center gap-2">
+                        <CalendarDays className="h-4 w-4 text-primary" />
+                        <h2 className="font-display font-bold text-foreground">Grade da Semana</h2>
+                        <span className="ml-auto text-xs text-muted-foreground">{diaristasArr.length} diarista(s)</span>
+                    </div>
+
+                    {/* Cabeçalho da grade — labels dos dias */}
+                    <div className="overflow-x-auto relative">
+                        <table className={cn("w-full min-w-[600px]", periodoBloqueado && "cursor-not-allowed")}>
+                            <thead>
                                     <tr className="border-b border-border bg-muted">
                                         <th className="text-left text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-4 py-2.5 w-[200px] sticky left-0 bg-muted z-20 border-r border-border">
                                             Diarista
@@ -573,7 +652,15 @@ const DiaristasLancamento = () => {
                                                     const isFalta = codigo === "F";
 
                                                     const statusDia = lancamentosExistentesMap[d.id]?.[dateISO]?.status;
-                                                    const isFechado = isSemanaFechada || (statusDia && statusDia !== 'EM_ABERTO');
+                                                    const statusVisual = (() => {
+                                                        if (statusDia === "EM_ABERTO" || statusDia === "em_aberto") {
+                                                            const loteRel = (lotes as any[]).find(l => l.empresa_id === empresaIdSelecionada);
+                                                            return loteRel ? loteRel.status : statusDia;
+                                                        }
+                                                        return statusDia;
+                                                    })();
+                                                    
+                                                    const isFechado = isSemanaFechada || (statusVisual && statusVisual !== 'EM_ABERTO' && statusVisual !== 'em_aberto') || periodoBloqueado;
                                                     const isDisabled = futuro || isFechado;
 
                                                     return (
@@ -608,7 +695,7 @@ const DiaristasLancamento = () => {
                                                                     isFechado && codigo && "opacity-80 saturate-50"
                                                                 )}
                                                                 title={
-                                                                    isFechado ? "Período fechado" :
+                                                                    isFechado ? `Período fechado (${STATUS_DIARISTA_MAP[statusVisual]?.label || statusVisual})` :
                                                                         futuro ? "Data futura" :
                                                                             jaLancado ? `Já lançado (clique p/ alterar)` :
                                                                                 regra ? `${regra.descricao} (×${regra.multiplicador})` :
@@ -650,6 +737,7 @@ const DiaristasLancamento = () => {
                             </table>
                         </div>
                     </section>
+                </>
                 )}
 
                 {/* ── Bottom dock mobile-first ── */}
@@ -722,20 +810,19 @@ const DiaristasLancamento = () => {
                             </Button>
 
                             {/* Fechar período */}
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setFechandoPeriodo(true)}
-                                disabled={isSemanaFechada || !empresaIdSelecionada || (lancamentosExistentes as any[]).length === 0}
-                                className={cn(
-                                    "h-11 w-11 p-0 rounded-xl shrink-0 border-amber-300",
-                                    isSemanaFechada ? "text-muted-foreground bg-muted border-border" : "text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/20"
-                                )}
-                                title={isSemanaFechada ? "Semana já fechada" : "Fechar período"}
-                            >
-                                <Lock className="h-4 w-4" />
-                            </Button>
+                            {!isSemanaFechada && !periodoBloqueado && (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setFechandoPeriodo(true)}
+                                    disabled={!empresaIdSelecionada || (lancamentosExistentes as any[]).length === 0}
+                                    className="h-11 w-11 p-0 rounded-xl shrink-0 border-amber-300 text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                                    title="Fechar período"
+                                >
+                                    <Lock className="h-4 w-4" />
+                                </Button>
+                            )}
 
                             {/* Salvar - expande */}
                             <Button
@@ -743,19 +830,19 @@ const DiaristasLancamento = () => {
                                 size="sm"
                                 className="flex-1 h-11 gap-2 font-display font-bold rounded-xl text-sm"
                                 onClick={() => salvarMutation.mutate()}
-                                disabled={salvarMutation.isPending || (!temMarcacoesNovaBatch && !isSemanaFechada) || !empresaIdSelecionada || isSemanaFechada}
+                                disabled={salvarMutation.isPending || (!temMarcacoesNovaBatch && !isSemanaFechada && !periodoBloqueado) || !empresaIdSelecionada || isSemanaFechada || periodoBloqueado}
                             >
-                                {isSemanaFechada ? <Lock className="h-4 w-4 shrink-0" /> : <Save className="h-4 w-4 shrink-0" />}
+                                {isSemanaFechada || periodoBloqueado ? <Lock className="h-4 w-4 shrink-0" /> : <Save className="h-4 w-4 shrink-0" />}
                                 {salvarMutation.isPending
                                     ? "Salvando..."
-                                    : isSemanaFechada
-                                        ? statusSemana === 'AGUARDANDO_VALIDACAO_RH'
+                                    : (isSemanaFechada || periodoBloqueado)
+                                        ? (statusSemana || (periodoBloqueado ? (lotes[0]?.status) : null)) === 'AGUARDANDO_VALIDACAO_RH'
                                             ? "Aguardando Validação RH"
-                                            : statusSemana === 'VALIDADO_RH'
+                                            : (statusSemana || (periodoBloqueado ? (lotes[0]?.status) : null)) === 'VALIDADO_RH'
                                                 ? "Validado pelo RH"
-                                                : statusSemana === 'FECHADO_FINANCEIRO'
+                                                : (statusSemana || (periodoBloqueado ? (lotes[0]?.status) : null)) === 'FECHADO_FINANCEIRO'
                                                     ? "Aprovado — Financeiro"
-                                                    : statusSemana === 'PAGO'
+                                                    : (statusSemana || (periodoBloqueado ? (lotes[0]?.status) : null)) === 'PAGO'
                                                         ? "Pago"
                                                         : "Período Fechado"
                                         : temMarcacoesNovaBatch
@@ -793,23 +880,20 @@ const DiaristasLancamento = () => {
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-3">
-                                            <span className={cn(
-                                                "px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wide",
-                                                (h.status === "em_aberto" || h.status === "EM_ABERTO") && "bg-amber-100 text-amber-700",
-                                                h.status === "AGUARDANDO_VALIDACAO_RH" && "bg-blue-100 text-blue-800",
-                                                h.status === "VALIDADO_RH" && "bg-indigo-100 text-indigo-800",
-                                                h.status === "FECHADO_FINANCEIRO" && "bg-emerald-100 text-emerald-800",
-                                                h.status === "PAGO" && "bg-emerald-200 text-emerald-900",
-                                                h.status === "cancelado" && "bg-muted text-muted-foreground",
-                                            )}>
-                                                {(h.status === "em_aberto" || h.status === "EM_ABERTO") && "Em Aberto"}
-                                                {h.status === "AGUARDANDO_VALIDACAO_RH" && "Ag. Validação RH"}
-                                                {h.status === "VALIDADO_RH" && "Validado RH"}
-                                                {h.status === "FECHADO_FINANCEIRO" && "Aprovado Financeiro"}
-                                                {h.status === "PAGO" && "Pago"}
-                                                {h.status === "cancelado" && "Cancelado"}
-                                            </span>
+                                            <StatusDiaristaBadge status={(() => {
+                                                if (h.status === "EM_ABERTO" || h.status === "em_aberto") {
+                                                    // Tenta encontrar um lote para a data deste lançamento no histórico expandido de lotes
+                                                    const loteRel = (lotes as any[]).find(l => 
+                                                        l.empresa_id === empresaIdSelecionada &&
+                                                        h.data_lancamento >= l.periodo_inicio &&
+                                                        h.data_lancamento <= l.periodo_fim
+                                                    );
+                                                    return loteRel ? loteRel.status : h.status;
+                                                }
+                                                return h.status;
+                                            })()} />
                                             <span className="font-mono font-semibold text-sm text-foreground">
+
                                                 {formatCurrency(Number(h.valor_calculado ?? 0))}
                                             </span>
                                         </div>
