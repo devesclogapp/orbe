@@ -180,18 +180,19 @@ const DiaristasLancamento = () => {
     const fourteenDaysAgoStr = useMemo(() => format(subWeeks(new Date(), 2), "yyyy-MM-dd"), []);
     
     const { data: lotes = [] } = useQuery({
-        queryKey: ["lotes_fechamento_producao", fourteenDaysAgoStr, today, empresaIdSelecionada],
+        queryKey: ["lotes_fechamento_producao", fourteenDaysAgoStr, today, empresaIdSelecionada, user?.id],
         queryFn: () => LoteFechamentoDiaristaService.getLotesPorPeriodo(
             fourteenDaysAgoStr,
             today,
             empresaIdSelecionada
         ),
-        enabled: !!empresaIdSelecionada,
+        enabled: !!empresaIdSelecionada && !!user?.id,
     });
 
     const { data: regraFechamento } = useQuery({
-        queryKey: ["regra_fechamento_diaristas"],
+        queryKey: ["regra_fechamento_diaristas", user?.id],
         queryFn: () => DiaristaCicloService.getRegraFechamento(),
+        enabled: !!user?.id,
     });
 
     const periodoBloqueado = useMemo(() => {
@@ -212,12 +213,12 @@ const DiaristasLancamento = () => {
     }, [lotes, empresaIdSelecionada, regraFechamento, inicioISO, fimISO]);
 
     const { data: historicoRecente = [], isLoading: isLoadingHistorico } = useQuery({
-        queryKey: ["historico_recente_diaristas", empresaIdSelecionada],
+        queryKey: ["historico_recente_diaristas", empresaIdSelecionada, user?.id],
         queryFn: () =>
             LancamentoDiaristaService.getByPeriodo(empresaIdSelecionada, fourteenDaysAgoStr, today, {
                 encarregado_id: user?.id,
             }),
-        enabled: !!empresaIdSelecionada && openHistorico,
+        enabled: !!empresaIdSelecionada && openHistorico && !!user?.id,
         throwOnError: false,
         retry: 0,
     });
@@ -654,13 +655,18 @@ const DiaristasLancamento = () => {
                                                     const statusDia = lancamentosExistentesMap[d.id]?.[dateISO]?.status;
                                                     const statusVisual = (() => {
                                                         if (statusDia === "EM_ABERTO" || statusDia === "em_aberto") {
-                                                            const loteRel = (lotes as any[]).find(l => l.empresa_id === empresaIdSelecionada);
+                                                            // Tenta encontrar um lote para a data deste lançamento
+                                                            const loteRel = (lotes as any[]).find(l => 
+                                                                l.empresa_id === empresaIdSelecionada &&
+                                                                dateISO >= l.periodo_inicio &&
+                                                                dateISO <= l.periodo_fim
+                                                            );
                                                             return loteRel ? loteRel.status : statusDia;
                                                         }
                                                         return statusDia;
                                                     })();
                                                     
-                                                    const isFechado = isSemanaFechada || (statusVisual && statusVisual !== 'EM_ABERTO' && statusVisual !== 'em_aberto') || periodoBloqueado;
+                                                    const isFechado = (statusVisual && statusVisual !== 'EM_ABERTO' && statusVisual !== 'em_aberto') || periodoBloqueado;
                                                     const isDisabled = futuro || isFechado;
 
                                                     return (

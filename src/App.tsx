@@ -129,7 +129,7 @@ const App = () => (
 
                         {/* Protected Routes */}
                         <Route path="/onboarding" element={<AuthGuard><Onboarding /></AuthGuard>} />
-                        <Route path="/" element={<AuthGuard><Dashboard /></AuthGuard>} />
+                        <Route path="/" element={<Navigate to="/operacional/dashboard" replace />} />
                         <Route path="/central" element={<AuthGuard><CentralOperacional /></AuthGuard>} />
                         <Route path="/operacional" element={<Navigate to="/operacional/dashboard" replace />} />
                         <Route path="/operacional/dashboard" element={<AuthGuard><Dashboard /></AuthGuard>} />

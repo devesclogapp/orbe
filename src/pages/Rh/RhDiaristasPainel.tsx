@@ -161,7 +161,7 @@ const RhDiaristasPainel = () => {
         queryKey: ["diaristas_logs_fechamento", empresaFiltroId, perfil?.tenant_id],
         queryFn: async () => {
             if (!perfil?.tenant_id) return [];
-            
+
             let q = supabase
                 .from("diaristas_logs_fechamento")
                 .select("*")
@@ -195,9 +195,9 @@ const RhDiaristasPainel = () => {
             }
             return DiaristaCicloService.updateRegraFechamento((regraFechamento as any).id, payload);
         },
-        onSuccess: () => { 
-            toast.success("Configuração atualizada com sucesso."); 
-            refetchRegra(); 
+        onSuccess: () => {
+            toast.success("Configuração atualizada com sucesso.");
+            refetchRegra();
         },
         onError: (err: any) => toast.error("Erro ao atualizar regra.", { description: err.message }),
     });
@@ -318,19 +318,34 @@ const RhDiaristasPainel = () => {
         const lancsFiltradosPorStatus = statusFiltro !== "todos"
             ? (lancamentos as any[]).filter((l) => l.status === statusFiltro)
             : (lancamentos as any[]);
+
+        const openStatuses = ["em_aberto", "EM_ABERTO", "AGUARDANDO_VALIDACAO_RH"];
+
         return {
             valorTotal: dadosAgrupados.reduce((a, g) => a + g.valorTotal, 0),
             totalDiaristas: dadosAgrupados.length,
             totalRegistros: lancsFiltradosPorStatus.length,
-            emAberto: (lancamentos as any[]).filter((l) => l.status === "em_aberto" || l.status === "EM_ABERTO").length,
+            emAberto: (lancamentos as any[]).filter((l) => {
+                // SINCRONIZAÇÃO: Usa status do lote se o registro ainda estiver 'em_aberto' no DB
+                const loteRelacionado = (lotes as any[]).find(lote => lote.empresa_id === l.empresa_id);
+                const effectiveStatus = (loteRelacionado && (l.status === "EM_ABERTO" || l.status === "em_aberto"))
+                    ? loteRelacionado.status
+                    : l.status;
+                return openStatuses.includes(effectiveStatus);
+            }).length,
         };
-    }, [dadosAgrupados, lancamentos, statusFiltro]);
+    }, [dadosAgrupados, lancamentos, statusFiltro, lotes]);
 
     // rawEmAberto: conta apenas registros da empresa do usuário em aberto (para o fechamento)
-    const rawEmAberto = useMemo(
-        () => (lancamentos as any[]).filter((l) => (l.status === "em_aberto" || l.status === "EM_ABERTO") && l.empresa_id === empresaIdDoUsuario).length,
-        [lancamentos, empresaIdDoUsuario],
-    );
+    const rawEmAberto = useMemo(() => {
+        return (lancamentos as any[]).filter((l) => {
+            const loteRelacionado = (lotes as any[]).find(lote => lote.empresa_id === l.empresa_id);
+            const effectiveStatus = (loteRelacionado && (l.status === "EM_ABERTO" || l.status === "em_aberto"))
+                ? loteRelacionado.status
+                : l.status;
+            return (effectiveStatus === "em_aberto" || effectiveStatus === "EM_ABERTO") && l.empresa_id === empresaIdDoUsuario;
+        }).length;
+    }, [lancamentos, empresaIdDoUsuario, lotes]);
     const temFiltroAtivo = nomeFiltro.trim() !== "" || funcaoFiltro !== "todos";
 
     const diasDaSemanaBase = useMemo(() => {
@@ -407,7 +422,7 @@ const RhDiaristasPainel = () => {
             // Se não exigir aprovação financeira, já pula para o próximo status ou finaliza
             if ((regraFechamento as any)?.enviar_financeiro === false) {
                 const finalStatus = (regraFechamento as any)?.auto_fechar ? "PAGO" : "FECHADO_FINANCEIRO";
-                
+
                 await supabase
                     .from("diaristas_lotes_fechamento")
                     .update({ status: finalStatus, updated_at: new Date().toISOString() })
@@ -417,7 +432,7 @@ const RhDiaristasPainel = () => {
                     .from("lancamentos_diaristas")
                     .update({ status: finalStatus, updated_at: new Date().toISOString() })
                     .eq("lote_fechamento_id", loteId);
-                
+
                 await supabase.from("diaristas_logs_fechamento").insert({
                     empresa_id: (lotes as any[]).find(l => l.id === loteId)?.empresa_id,
                     tenant_id: perfil?.tenant_id,
@@ -469,14 +484,14 @@ const RhDiaristasPainel = () => {
                     .from("diaristas_lotes_fechamento")
                     .update({ status: "PAGO", updated_at: new Date().toISOString() })
                     .eq("id", loteId);
-                
+
                 if (updateError) throw updateError;
 
                 await supabase
                     .from("lancamentos_diaristas")
                     .update({ status: "PAGO", updated_at: new Date().toISOString() })
                     .eq("lote_fechamento_id", loteId);
-                
+
                 // Log adicional de encerramento automático
                 await supabase.from("diaristas_logs_fechamento").insert({
                     empresa_id: (lotes as any[]).find(l => l.id === loteId)?.empresa_id,
@@ -1001,18 +1016,18 @@ const RhDiaristasPainel = () => {
                                             </h3>
                                         </div>
                                         <div>
-                                                <span className={cn(
-                                                    "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold",
-                                                    statusCicloAtual === "FINALIZADO" ? "bg-emerald-100 text-emerald-700" : "bg-primary/10 text-primary"
-                                                )}>
-                                                    {statusCicloAtual !== "FINALIZADO" && (
-                                                        <span className="relative flex h-2 w-2">
-                                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
-                                                        </span>
-                                                    )}
-                                                    {statusCicloAtual}
-                                                </span>
+                                            <span className={cn(
+                                                "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold",
+                                                statusCicloAtual === "FINALIZADO" ? "bg-emerald-100 text-emerald-700" : "bg-primary/10 text-primary"
+                                            )}>
+                                                {statusCicloAtual !== "FINALIZADO" && (
+                                                    <span className="relative flex h-2 w-2">
+                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+                                                    </span>
+                                                )}
+                                                {statusCicloAtual}
+                                            </span>
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-6 pt-5 border-t border-border/50">
@@ -1070,7 +1085,7 @@ const RhDiaristasPainel = () => {
                                                         const c = ciclosMap.get(key);
                                                         c.lotesCount++;
                                                         c.valorTotal += Number(l.valor_total || l.total_valor || 0);
-                                                        
+
                                                         // Regra de status do ciclo histórico
                                                         if (l.status === 'AGUARDANDO_VALIDACAO_RH') {
                                                             c.status = 'PENDENTE RH';
@@ -1090,9 +1105,9 @@ const RhDiaristasPainel = () => {
                                                             <td className="px-4 py-3 text-center">
                                                                 <span className={cn(
                                                                     "px-2 py-0.5 text-[10px] font-bold rounded-full",
-                                                                    c.status === "FINALIZADO" ? "bg-emerald-100 text-emerald-700" : 
-                                                                    c.status === "PENDENTE RH" ? "bg-amber-100 text-amber-700" :
-                                                                    "bg-blue-100 text-blue-700"
+                                                                    c.status === "FINALIZADO" ? "bg-emerald-100 text-emerald-700" :
+                                                                        c.status === "PENDENTE RH" ? "bg-amber-100 text-amber-700" :
+                                                                            "bg-blue-100 text-blue-700"
                                                                 )}>
                                                                     {c.status}
                                                                 </span>
@@ -1173,9 +1188,9 @@ const RhDiaristasPainel = () => {
                                                                 )}
                                                                 {(() => {
                                                                     const podeReabrirConfig = (regraFechamento as any)?.permitir_reabertura !== false;
-                                                                    const reaberturasLote = (logsFechamento as any[]).filter(log => 
-                                                                        log.acao === 'REABRIU' && 
-                                                                        log.periodo_inicio === lote.periodo_inicio && 
+                                                                    const reaberturasLote = (logsFechamento as any[]).filter(log =>
+                                                                        log.acao === 'REABRIU' &&
+                                                                        log.periodo_inicio === lote.periodo_inicio &&
                                                                         log.periodo_fim === lote.periodo_fim &&
                                                                         log.empresa_id === lote.empresa_id
                                                                     ).length;
@@ -1197,12 +1212,12 @@ const RhDiaristasPainel = () => {
                                                                             onClick={() => {
                                                                                 const exigirMotivo = (regraFechamento as any)?.exigir_motivo !== false;
                                                                                 const motivo = prompt("Motivo da reabertura:" + (exigirMotivo ? " (Obrigatório)" : ""));
-                                                                                
+
                                                                                 if (exigirMotivo && !motivo) {
                                                                                     toast.error("É obrigatório informar o motivo para reabrir.");
                                                                                     return;
                                                                                 }
-                                                                                
+
                                                                                 reabrirMutation.mutate({ loteId: lote.id, motivo: motivo || "Não informado" });
                                                                             }}
                                                                         >
@@ -1232,7 +1247,7 @@ const RhDiaristasPainel = () => {
                                         Sincronizar
                                     </Button>
                                 </div>
-                                
+
                                 {(logsFechamento as any[]).length === 0 ? (
                                     <div className="flex flex-col items-center justify-center py-12 bg-muted/20 rounded-xl border border-dashed">
                                         <History className="h-10 w-10 text-muted-foreground/30 mb-3" />
@@ -1361,8 +1376,8 @@ const RhDiaristasPainel = () => {
                                                     <span className="text-sm font-semibold">Bloqueio Operacional</span>
                                                     <span className="text-xs text-muted-foreground">Bloquear edição da grade pelo encarregado após o fechamento.</span>
                                                 </div>
-                                                <Switch 
-                                                    checked={(regraFechamento as any)?.bloquear_edicao ?? true} 
+                                                <Switch
+                                                    checked={(regraFechamento as any)?.bloquear_edicao ?? true}
                                                     onCheckedChange={(val) => updateRegraMutation.mutate({ bloquear_edicao: val })}
                                                 />
                                             </div>
@@ -1387,8 +1402,8 @@ const RhDiaristasPainel = () => {
                                                 <span className="text-sm font-semibold">Permitir reabertura</span>
                                                 <span className="text-xs text-muted-foreground">Habilita a função de reabrir lotes após validação do RH.</span>
                                             </div>
-                                            <Switch 
-                                                checked={(regraFechamento as any)?.permitir_reabertura ?? true} 
+                                            <Switch
+                                                checked={(regraFechamento as any)?.permitir_reabertura ?? true}
                                                 onCheckedChange={(val) => updateRegraMutation.mutate({ permitir_reabertura: val })}
                                             />
                                         </div>
@@ -1397,11 +1412,11 @@ const RhDiaristasPainel = () => {
                                             <div className="flex flex-col gap-2 p-3 bg-muted/20 rounded-lg border border-border/50">
                                                 <span className="text-xs font-bold text-foreground uppercase tracking-tight">Limite por Período</span>
                                                 <div className="flex items-center gap-2 mt-1">
-                                                    <Input 
-                                                        type="number" 
-                                                        value={(regraFechamento as any)?.limite_reabertura || 2} 
+                                                    <Input
+                                                        type="number"
+                                                        value={(regraFechamento as any)?.limite_reabertura || 2}
                                                         onChange={(e) => updateRegraMutation.mutate({ limite_reabertura: Number(e.target.value) })}
-                                                        className="h-9 w-20 text-sm font-mono font-bold text-center" 
+                                                        className="h-9 w-20 text-sm font-mono font-bold text-center"
                                                     />
                                                     <span className="text-[10px] text-muted-foreground uppercase font-bold">Máximo</span>
                                                 </div>
@@ -1411,8 +1426,8 @@ const RhDiaristasPainel = () => {
                                                 <span className="text-xs font-bold text-foreground uppercase tracking-tight">Justificativa</span>
                                                 <div className="flex items-center justify-between mt-1">
                                                     <span className="text-[10px] uppercase font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded">Obrigatório</span>
-                                                    <Switch 
-                                                        checked={(regraFechamento as any)?.exigir_motivo ?? true} 
+                                                    <Switch
+                                                        checked={(regraFechamento as any)?.exigir_motivo ?? true}
                                                         onCheckedChange={(val) => updateRegraMutation.mutate({ exigir_motivo: val })}
                                                     />
                                                 </div>
@@ -1432,8 +1447,8 @@ const RhDiaristasPainel = () => {
                                                 <span className="text-sm font-semibold">Aprovação Financeira Obrigatória</span>
                                                 <span className="text-xs text-muted-foreground">Exigir validação do financeiro antes de liberar pagamento.</span>
                                             </div>
-                                            <Switch 
-                                                checked={(regraFechamento as any)?.enviar_financeiro ?? true} 
+                                            <Switch
+                                                checked={(regraFechamento as any)?.enviar_financeiro ?? true}
                                                 onCheckedChange={(val) => updateRegraMutation.mutate({ enviar_financeiro: val })}
                                             />
                                         </div>
@@ -1443,7 +1458,7 @@ const RhDiaristasPainel = () => {
                                                 <span className="text-sm font-semibold">Encerramento automático do fluxo</span>
                                                 <span className="text-xs text-muted-foreground mb-1">Define quando o lote é considerado <strong>CONCLUÍDO (PAGO)</strong>.</span>
                                             </div>
-                                            <Select 
+                                            <Select
                                                 value={(regraFechamento as any)?.auto_fechar ? "pago" : "aprovado"}
                                                 onValueChange={(val) => updateRegraMutation.mutate({ auto_fechar: val === "pago" })}
                                             >
