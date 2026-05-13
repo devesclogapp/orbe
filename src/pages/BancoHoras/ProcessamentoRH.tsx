@@ -19,6 +19,7 @@ import {
   Users,
   XCircle,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
@@ -43,6 +44,7 @@ const minutesToTime = (totalMinutes: number) => {
 
 const ProcessamentoRH = () => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { tenantId } = useTenant();
   const [selectedEmpresa, setSelectedEmpresa] = useState("all");
   const [selectedMonth, setSelectedMonth] = useState(format(new Date(), "yyyy-MM"));
@@ -227,6 +229,22 @@ const ProcessamentoRH = () => {
     [filteredPontos],
   );
 
+  const colaboradoresPendentesComplemento = useMemo(() => {
+    return (colaboradores as any[]).filter((colaborador) => {
+      const matchesEmpresa =
+        selectedEmpresa === "all" || colaborador.empresa_id === selectedEmpresa;
+
+      return (
+        matchesEmpresa &&
+        colaborador.tipo_colaborador !== "DIARISTA" &&
+        (colaborador.status_cadastro === "pendente_complemento" ||
+          colaborador.cadastro_provisorio)
+      );
+    });
+  }, [colaboradores, selectedEmpresa]);
+
+  const hasPendentesComplemento = colaboradoresPendentesComplemento.length > 0;
+
   const stats = useMemo(() => {
     const processados = (pontos as any[]).filter((ponto) => ponto.status_processamento === "processado").length;
     const inconsistentes = (pontos as any[]).filter((ponto) => ponto.status_processamento === "inconsistente").length;
@@ -269,6 +287,11 @@ const ProcessamentoRH = () => {
       return;
     }
 
+    if (hasPendentesComplemento) {
+      toast.error("Existem colaboradores pendentes de complemento cadastral.");
+      return;
+    }
+
     setIsProcessing(true);
     setProcessingResult(null);
 
@@ -303,6 +326,11 @@ const ProcessamentoRH = () => {
   const reprocessarPontos = async () => {
     if (!tenantId) {
       toast.error("Tenant nÃ£o identificado");
+      return;
+    }
+
+    if (hasPendentesComplemento) {
+      toast.error("Existem colaboradores pendentes de complemento cadastral.");
       return;
     }
 
@@ -376,12 +404,19 @@ const ProcessamentoRH = () => {
               </SelectContent>
             </Select>
 
-            <Button onClick={() => setProcessModalOpen(true)} disabled={isLoading || pendingCount === 0 || isProcessing}>
+            <Button
+              onClick={() => setProcessModalOpen(true)}
+              disabled={isLoading || pendingCount === 0 || isProcessing || hasPendentesComplemento}
+            >
               <Play className="mr-2 h-4 w-4" />
               Processar Pendentes
             </Button>
 
-            <Button variant="outline" onClick={reprocessarPontos} disabled={isLoading || isProcessing || stats.total === 0}>
+            <Button
+              variant="outline"
+              onClick={reprocessarPontos}
+              disabled={isLoading || isProcessing || stats.total === 0 || hasPendentesComplemento}
+            >
               <RotateCcw className="mr-2 h-4 w-4" />
               Reprocessar Período
             </Button>
@@ -391,6 +426,33 @@ const ProcessamentoRH = () => {
             </Button>
           </div>
         </section>
+
+        {hasPendentesComplemento ? (
+          <section className="esc-card border border-warning/30 bg-warning-soft/40 p-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="rounded-lg bg-warning-soft p-2">
+                  <AlertTriangle className="h-5 w-5 text-warning" />
+                </div>
+                <div className="space-y-1">
+                  <h2 className="font-display font-semibold text-foreground">
+                    Existem colaboradores pendentes de complemento cadastral
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    O processamento RH foi bloqueado atÃ© que o cadastro seja completado na Central de Cadastros.
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {colaboradoresPendentesComplemento.length} colaborador(es) pendente(s) no filtro atual.
+                  </p>
+                </div>
+              </div>
+
+              <Button variant="outline" onClick={() => navigate("/cadastros")}>
+                Ir para Central de Cadastros
+              </Button>
+            </div>
+          </section>
+        ) : null}
 
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
           <div className="esc-card p-4 flex items-center gap-3">

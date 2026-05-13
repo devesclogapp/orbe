@@ -41,6 +41,7 @@ import {
   ImportacaoModelosService,
   PontoService,
 } from "@/services/base.service";
+import { ensurePreCadastrosFromImportedPontos } from "@/services/preCadastroColaborador.service";
 
 type EmpresaOption = {
   id: string;
@@ -170,6 +171,10 @@ const Pontos = () => {
   const [selectedEmpresaId, setSelectedEmpresaId] = useState<string>("");
   const [clearModalOpen, setClearModalOpen] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [lastImportSummary, setLastImportSummary] = useState<{
+    novosDetectados: number;
+    preCadastrosCriados: number;
+  } | null>(null);
 
   const selectedMonth = `${selectedYear}-${selectedMonthNumber}`;
   const selectedDate = useMemo(
@@ -457,11 +462,26 @@ const empresaNome = getImportRowValue(row, "EMPRESA", "EMPRESAS", "RAZÃO SOCIAL
   const isLoading = isLoadingEmpresas || isLoadingRows;
 
   const handleImportPontos = async (importRows: Record<string, any>[]) => {
-    for (const row of importRows) {
+    const preCadastroResult = await ensurePreCadastrosFromImportedPontos(importRows, "planilha");
+
+    for (const row of preCadastroResult.rowsWithColaboradorId) {
       await PontoService.create(row);
     }
 
-    await queryClient.invalidateQueries({ queryKey: ["ponto"] });
+    setLastImportSummary({
+      novosDetectados: preCadastroResult.novosDetectados,
+      preCadastrosCriados: preCadastroResult.preCadastrosCriados,
+    });
+
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["ponto"] }),
+      queryClient.invalidateQueries({ queryKey: ["colaboradores_list"] }),
+      queryClient.invalidateQueries({ queryKey: ["colaboradores_all"] }),
+    ]);
+
+    toast.success(
+      `${preCadastroResult.novosDetectados} colaboradores novos detectados · ${preCadastroResult.preCadastrosCriados} pre-cadastros criados.`,
+    );
   };
 
   const handleClearImportacao = async () => {
@@ -588,6 +608,28 @@ const empresaNome = getImportRowValue(row, "EMPRESA", "EMPRESAS", "RAZÃO SOCIAL
             </div>
           </div>
         </section>
+
+        {lastImportSummary ? (
+          <section className="esc-card border border-primary/20 bg-primary/5 p-4 md:p-5">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="space-y-1">
+                <h2 className="font-display font-semibold text-foreground">
+                  Resumo da ultima importacao
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  {lastImportSummary.novosDetectados} colaboradores novos detectados
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {lastImportSummary.preCadastrosCriados} pre-cadastros criados
+                </p>
+              </div>
+
+              <Button variant="outline" onClick={() => navigate("/cadastros")}>
+                Ir para Central de Cadastros
+              </Button>
+            </div>
+          </section>
+        ) : null}
 
         {isLoading ? (
           <div className="flex flex-col items-center justify-center p-24 esc-card border-dashed">

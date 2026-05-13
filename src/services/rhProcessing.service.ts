@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import MotorExecutavel from "./operationalEngine/MotorIndex";
 import { CicloOperacionalService } from "./operationalEngine/CicloOperacionalService";
+import { ensurePreCadastroColaboradorFromPonto } from "./preCadastroColaborador.service";
 
 type Empresa = {
   id: string;
@@ -207,38 +208,28 @@ const createColaboradorFromPonto = async ({
   tenantId,
   empresaId,
   ponto,
+  colaboradores,
 }: {
   tenantId: string;
   empresaId: string;
   ponto: Ponto;
+  colaboradores: Colaborador[];
 }): Promise<Colaborador | null> => {
   const nome = (ponto.nome_colaborador || "").trim();
   if (!nome) return null;
 
-  const payload = {
-    tenant_id: tenantId,
-    empresa_id: empresaId,
+  const colaborador = await ensurePreCadastroColaboradorFromPonto({
+    tenantId,
+    empresaId,
     nome,
-    matricula: ponto.matricula_colaborador?.trim() || null,
     cpf: ponto.cpf_colaborador?.trim() || null,
+    matricula: ponto.matricula_colaborador?.trim() || null,
     cargo: ponto.cargo_colaborador?.trim() || "Pendente validação",
-    status: "pendente",
-    origem: AUTO_IMPORT_ORIGIN,
-    cadastro_provisorio: true,
-    tipo_contrato: "Hora",
-    tipo_colaborador: "CLT",
-    valor_base: 0,
-    flag_faturamento: false,
-    permitir_lancamento_operacional: false,
-  };
+    origemDetalhe: "planilha",
+    colaboradoresExistentes: colaboradores,
+  });
 
-  const { data, error } = await (supabase as any)
-    .from("colaboradores")
-    .insert(payload)
-    .select("*")
-    .single();
-  if (error) throw error;
-  return data as Colaborador;
+  return (colaborador as Colaborador | null) ?? null;
 };
 
 const createFallbackRegra = async (tenantId: string): Promise<Regra> => {
@@ -874,6 +865,7 @@ export const processRhPeriod = async ({
         tenantId,
         empresaId: resolvedEmpresaId,
         ponto,
+        colaboradores: colaboradoresRuntime,
       });
 
       if (colaborador) {

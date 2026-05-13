@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
 import { useOnboardingCallback } from "@/hooks/useOnboardingCallback";
 import { StatusChip } from "@/components/painel/StatusChip";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Plus, RefreshCw, Loader2, Pencil, Trash2, LayoutGrid, List, User, Briefcase, Building2, FileText, DollarSign, Receipt, CheckCircle2, MoreHorizontal, AlertTriangle } from "lucide-react";
 import { ColaboradorService, EmpresaService } from "@/services/base.service";
@@ -43,6 +44,31 @@ const getInitialColaboradorFormData = (defaultEmpresaId = "") => ({
   conta_digito: "",
   tipo_conta: "corrente",
 });
+
+const getColaboradorStatusMeta = (colaborador: any) => {
+  if (colaborador.status_cadastro === "pendente_complemento" || colaborador.cadastro_provisorio) {
+    return { status: "pendente" as const, label: "Pendente" };
+  }
+
+  return {
+    status: (colaborador.status || "ok") as "ok" | "inconsistente" | "ajustado" | "pendente" | "incompleto" | "positivo" | "critico",
+    label: undefined,
+  };
+};
+
+const getColaboradorOrigemMeta = (colaborador: any) => {
+  if (colaborador.origem_cadastro === "ponto_importado" || colaborador.origem === "importacao_ponto") {
+    return {
+      label: "Ponto",
+      className: "bg-info-soft text-info",
+    };
+  }
+
+  return {
+    label: "Manual",
+    className: "bg-muted text-muted-foreground",
+  };
+};
 
 const Colaboradores = () => {
   const queryClient = useQueryClient();
@@ -423,6 +449,7 @@ const Colaboradores = () => {
                   <th className="px-3 h-11 font-medium text-center"><span className="inline-flex items-center gap-1.5"><FileText className="h-3.5 w-3.5 text-muted-foreground" />Tipo</span></th>
                   <th className="px-3 h-11 font-medium text-right"><span className="inline-flex items-center gap-1.5"><DollarSign className="h-3.5 w-3.5 text-muted-foreground" />Valor base</span></th>
                   <th className="px-3 h-11 font-medium text-center"><span className="inline-flex items-center gap-1.5"><Receipt className="h-3.5 w-3.5 text-muted-foreground" />Faturamento</span></th>
+                  <th className="px-3 h-11 font-medium text-center">Origem</th>
                   <th className="px-5 h-11 font-medium text-center"><span className="inline-flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" />Status</span></th>
                   <th className="px-5 h-11 font-medium text-right"></th>
                 </tr>
@@ -439,6 +466,11 @@ const Colaboradores = () => {
                     <td className="px-5 h-[52px]">
                       <div className="font-medium text-foreground">{c.nome}</div>
                       <div className="text-xs text-muted-foreground">Mat. {c.matricula}</div>
+                      {getColaboradorStatusMeta(c).label ? (
+                        <div className="mt-1 text-[11px] text-warning-strong">
+                          Completar cadastro para liberar processamento RH
+                        </div>
+                      ) : null}
                     </td>
                     <td className="px-3 text-muted-foreground">{c.cargo}</td>
                     <td className="px-3 text-muted-foreground">{c.empresas?.nome || "—"}</td>
@@ -456,8 +488,16 @@ const Colaboradores = () => {
                       R$ {(c.valor_base || 0).toFixed(2).replace(".", ",")}
                     </td>
                     <td className="px-3 text-center text-muted-foreground">{c.flag_faturamento ? "Sim" : "Não"}</td>
+                    <td className="px-3 text-center">
+                      <Badge className={cn("font-semibold", getColaboradorOrigemMeta(c).className)}>
+                        {getColaboradorOrigemMeta(c).label}
+                      </Badge>
+                    </td>
                     <td className="px-5 text-center">
-                      {c.cadastro_provisorio ? <StatusChip status="pendente" label="Provisório" /> : <StatusChip status={c.status} />}
+                      <StatusChip
+                        status={getColaboradorStatusMeta(c).status}
+                        label={getColaboradorStatusMeta(c).label}
+                      />
                     </td>
                     <td className="px-5 text-right">
                       <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -488,12 +528,25 @@ const Colaboradores = () => {
                       <div className="h-10 w-10 rounded-full bg-primary-soft flex items-center justify-center text-primary font-bold">
                         {c.nome.substring(0, 1).toUpperCase()}
                       </div>
-                      {c.cadastro_provisorio ? <StatusChip status="pendente" label="Provisório" /> : <StatusChip status={c.status} />}
+                      <StatusChip
+                        status={getColaboradorStatusMeta(c).status}
+                        label={getColaboradorStatusMeta(c).label}
+                      />
                     </div>
                     <h3 className="font-display font-bold text-lg text-foreground mb-1">{c.nome}</h3>
+                    <div className="mb-3">
+                      <Badge className={cn("font-semibold", getColaboradorOrigemMeta(c).className)}>
+                        {getColaboradorOrigemMeta(c).label}
+                      </Badge>
+                    </div>
                     <div className="flex flex-col gap-1 text-xs text-muted-foreground">
                       <span className="flex items-center gap-2"><User className="h-3 w-3" /> {c.cargo}</span>
                       <span className="font-mono text-[10px]">MATRÍCULA {c.matricula}</span>
+                      {getColaboradorStatusMeta(c).label ? (
+                        <span className="text-warning-strong">
+                          Completar cadastro para liberar processamento RH
+                        </span>
+                      ) : null}
                     </div>
                   </div>
                   <div className="mt-6 pt-4 border-t border-border flex items-center justify-between">

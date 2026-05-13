@@ -67,6 +67,45 @@ export function validateUuidFields(data: Record<string, unknown>, ...fields: str
   }
 }
 
+function normalizeCpfDigits(value?: string | null) {
+  return String(value ?? '').replace(/\D/g, '').trim();
+}
+
+function hasDadosBancariosMinimosColaborador(payload: Record<string, any>) {
+  const tipoColaborador = String(payload.tipo_colaborador ?? '').trim().toUpperCase();
+  if (tipoColaborador === 'DIARISTA') {
+    return true;
+  }
+
+  const nomeBancario = String(payload.nome_completo ?? '').trim();
+  const bancoCodigo = String(payload.banco_codigo ?? '').trim();
+  const agencia = String(payload.agencia ?? '').trim();
+  const agenciaDigito = String(payload.agencia_digito ?? '').trim();
+  const conta = String(payload.conta ?? '').trim();
+  const contaDigito = String(payload.conta_digito ?? payload.digito_conta ?? '').trim();
+  const tipoConta = String(payload.tipo_conta ?? '').trim();
+
+  return Boolean(
+    nomeBancario &&
+    bancoCodigo &&
+    agencia &&
+    agenciaDigito &&
+    conta &&
+    contaDigito &&
+    tipoConta
+  );
+}
+
+function hasComplementoMinimoColaborador(payload: Record<string, any>) {
+  const cpf = normalizeCpfDigits(payload.cpf);
+  const telefone = String(payload.telefone ?? '').replace(/\D/g, '').trim();
+  const matricula = String(payload.matricula ?? '').trim();
+  const empresaId = cleanUuid(payload.empresa_id);
+  const cargo = String(payload.cargo ?? '').trim();
+
+  return Boolean(cpf && telefone && matricula && empresaId && cargo) && hasDadosBancariosMinimosColaborador(payload);
+}
+
 // Função helper para obter tenant_id de forma segura
 async function getCurrentTenantId(): Promise<string> {
   const { data: { user } } = await supabase.auth.getUser();
@@ -456,6 +495,11 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
       empresa_id: empresaIdClean,
       unidade_id: cleanUuid(payload.unidade_id),
       tenant_id: tenantId,
+      status_cadastro: payload.status_cadastro ?? 'completo',
+      origem_cadastro: payload.origem_cadastro ?? 'manual',
+      origem_detalhe: payload.origem_detalhe ?? null,
+      chave_pix: payload.chave_pix ?? null,
+      banco_validado: payload.banco_validado ?? false,
     };
 
     const { data, error } = await supabase
@@ -497,6 +541,14 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
   }
 
   async update(id: string, payload: Record<string, any>) {
+    const { data: current, error: currentError } = await supabase
+      .from('colaboradores')
+      .select('status_cadastro, cadastro_provisorio, origem_cadastro')
+      .eq('id', id)
+      .single();
+
+    if (currentError) throw currentError;
+
     const cleanedPayload: Record<string, any> = {
       nome: payload.nome,
       cpf: payload.cpf ?? null,
@@ -516,13 +568,25 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
       agencia_digito: payload.agencia_digito ?? null,
       conta: payload.conta ?? null,
       conta_digito: payload.conta_digito ?? null,
+      digito_conta: payload.conta_digito ?? payload.digito_conta ?? null,
       tipo_conta: payload.tipo_conta ?? null,
+      chave_pix: payload.chave_pix ?? null,
+      banco_validado: payload.banco_validado ?? false,
       unidade_id: cleanUuid(payload.unidade_id),
       deleted_at: payload.deleted_at ?? null,
     };
 
     if (!cleanedPayload.empresa_id) {
       throw new Error('Selecione uma empresa válida.');
+    }
+
+    if (
+      (current?.status_cadastro === 'pendente_complemento' || current?.cadastro_provisorio) &&
+      hasComplementoMinimoColaborador(cleanedPayload)
+    ) {
+      cleanedPayload.status_cadastro = 'completo';
+      cleanedPayload.cadastro_provisorio = false;
+      cleanedPayload.origem_cadastro = current?.origem_cadastro ?? 'manual';
     }
 
     const { data, error } = await supabase
@@ -3956,4 +4020,3 @@ class TaxasImpostosServiceClass extends BaseService<any> {
   constructor() { super('taxas_impostos'); }
 }
 export const TaxasImpostosService = new TaxasImpostosServiceClass();
-

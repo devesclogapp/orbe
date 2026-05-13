@@ -122,6 +122,48 @@ function sanitizeEmpresaPayload(form: Record<string, any>): Record<string, any> 
   return sanitized;
 }
 
+function getColaboradorStatusMeta(colaborador: any) {
+  if (colaborador.status_cadastro === "pendente_complemento" || colaborador.cadastro_provisorio) {
+    return { status: "pendente" as const, label: "Pendente" };
+  }
+
+  return {
+    status: (colaborador.status || "ok") as "ok" | "inconsistente" | "ajustado" | "pendente" | "incompleto" | "positivo" | "critico",
+    label: undefined,
+  };
+}
+
+function getColaboradorOrigemMeta(colaborador: any) {
+  if (colaborador.origem_cadastro === "ponto_importado" || colaborador.origem === "importacao_ponto") {
+    return {
+      label: "Ponto",
+      className: "bg-info-soft text-info",
+    };
+  }
+
+  return {
+    label: "Manual",
+    className: "bg-muted text-muted-foreground",
+  };
+}
+
+function getColaboradorPendenciasBancarias(colaborador: any) {
+  if (!colaborador || colaborador.tipo_colaborador === "DIARISTA") {
+    return [];
+  }
+
+  const pendencias: string[] = [];
+  if (!String(colaborador.nome_completo ?? "").trim()) pendencias.push("nome bancário");
+  if (!String(colaborador.banco_codigo ?? "").trim()) pendencias.push("banco");
+  if (!String(colaborador.agencia ?? "").trim()) pendencias.push("agência");
+  if (!String(colaborador.agencia_digito ?? "").trim()) pendencias.push("dígito da agência");
+  if (!String(colaborador.conta ?? "").trim()) pendencias.push("conta");
+  if (!String(colaborador.conta_digito ?? colaborador.digito_conta ?? "").trim()) pendencias.push("dígito da conta");
+  if (!String(colaborador.tipo_conta ?? "").trim()) pendencias.push("tipo de conta");
+
+  return pendencias;
+}
+
 function formatCNPJ(value: string): string {
   const digits = value.replace(/\D/g, '').slice(0, 14);
   if (digits.length <= 2) return digits;
@@ -258,6 +300,10 @@ const CentralCadastros = () => {
 
   const [editingColaborador, setEditingColaborador] = useState<any>(null);
   const [editingColaboradorIsProcessing, setEditingColaboradorIsProcessing] = useState(false);
+  const editingColaboradorPendenciasBancarias = useMemo(
+    () => getColaboradorPendenciasBancarias(editingColaborador),
+    [editingColaborador],
+  );
 
   const handleEditPhoneChangeCC = (raw: string) => {
     if (!editingColaborador) return;
@@ -1625,6 +1671,7 @@ const CentralCadastros = () => {
                           <th className="px-3 h-11 font-medium text-center">Contrato</th>
                           <th className="px-3 h-11 font-medium text-center">Valor base</th>
                           <th className="px-3 h-11 font-medium text-center">Faturamento</th>
+                          <th className="px-3 h-11 font-medium text-center">Origem</th>
                           <th className="px-5 h-11 font-medium text-center">Status</th>
                           <th className="px-3 h-11 font-medium text-center">Ações</th>
                         </tr>
@@ -1646,12 +1693,35 @@ const CentralCadastros = () => {
                               R$ {Number(colaborador.valor_base || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                             </td>
                             <td className="px-3 text-center">{colaborador.flag_faturamento ? "Sim" : "Não"}</td>
+                            <td className="px-3 text-center">
+                              <Badge className={cn("font-semibold", getColaboradorOrigemMeta(colaborador).className)}>
+                                {getColaboradorOrigemMeta(colaborador).label}
+                              </Badge>
+                            </td>
                             <td className="px-5 text-center">
-                              <StatusChip status={colaborador.status} />
+                              <StatusChip
+                                status={getColaboradorStatusMeta(colaborador).status}
+                                label={getColaboradorStatusMeta(colaborador).label}
+                              />
                             </td>
                             <td className="px-3 text-center">
                               <div className="flex items-center justify-center gap-1">
-                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingColaborador({ ...colaborador, telefone: formatPhoneForDisplayCC(colaborador.telefone || "") })}>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() =>
+                                    setEditingColaborador({
+                                      ...colaborador,
+                                      telefone: formatPhoneForDisplayCC(colaborador.telefone || ""),
+                                      nome_completo: colaborador.nome_completo || "",
+                                      conta_digito: colaborador.conta_digito || colaborador.digito_conta || "",
+                                      digito_conta: colaborador.digito_conta || colaborador.conta_digito || "",
+                                      chave_pix: colaborador.chave_pix || "",
+                                      banco_validado: colaborador.banco_validado ?? false,
+                                    })
+                                  }
+                                >
                                   <PencilLine className="h-4 w-4" />
                                 </Button>
                                 <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => { if (confirm("Confirmar exclusão?")) deleteColaboradorMutation.mutate(colaborador.id) }}>
@@ -3058,6 +3128,132 @@ const CentralCadastros = () => {
                 </div>
                 <Switch checked={editingColaborador?.flag_faturamento ?? true} onCheckedChange={(v) => setEditingColaborador({ ...editingColaborador, flag_faturamento: v })} />
               </div>
+              <div className="col-span-2 rounded-lg border border-border bg-muted/30 p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h3 className="font-medium text-foreground">Dados Bancários</h3>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {editingColaborador?.tipo_colaborador === "DIARISTA"
+                          ? "Use esta seção para manter os dados bancários no mesmo padrão usado em CNAB e pagamentos."
+                          : "Você pode salvar o cadastro básico agora. O status só sai de pendente quando os campos bancários obrigatórios estiverem completos."}
+                      </p>
+                    </div>
+                    <Badge
+                      className={cn(
+                        "font-semibold",
+                        editingColaborador?.tipo_colaborador !== "DIARISTA" && editingColaboradorPendenciasBancarias.length > 0
+                          ? "bg-warning-soft text-warning-strong"
+                          : "bg-success-soft text-success-strong"
+                      )}
+                    >
+                      {editingColaborador?.tipo_colaborador !== "DIARISTA" && editingColaboradorPendenciasBancarias.length > 0
+                        ? "Pendência bancária"
+                        : "Dados bancários"}
+                    </Badge>
+                  </div>
+
+                  {editingColaborador?.tipo_colaborador !== "DIARISTA" && editingColaboradorPendenciasBancarias.length > 0 && (
+                    <p className="mt-3 text-xs text-warning-strong">
+                      Faltando: {editingColaboradorPendenciasBancarias.join(", ")}.
+                    </p>
+                  )}
+
+                  <div className="mt-4 grid grid-cols-2 gap-4">
+                    <div className="col-span-2 space-y-1.5">
+                      <Label htmlFor="edit_colab_nome_bancario">Nome bancário</Label>
+                      <Input
+                        id="edit_colab_nome_bancario"
+                        value={editingColaborador?.nome_completo || ""}
+                        onChange={(e) => setEditingColaborador({ ...editingColaborador, nome_completo: e.target.value })}
+                        placeholder="Nome do titular como consta na conta"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="edit_colab_banco_codigo">Banco/código</Label>
+                      <Input
+                        id="edit_colab_banco_codigo"
+                        value={editingColaborador?.banco_codigo || ""}
+                        onChange={(e) => setEditingColaborador({ ...editingColaborador, banco_codigo: e.target.value.replace(/\D/g, "") })}
+                        placeholder="Ex: 341"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Tipo de conta</Label>
+                      <Select
+                        value={editingColaborador?.tipo_conta || "corrente"}
+                        onValueChange={(v) => setEditingColaborador({ ...editingColaborador, tipo_conta: v })}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="corrente">Corrente</SelectItem>
+                          <SelectItem value="poupanca">Poupança</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="edit_colab_agencia">Agência</Label>
+                      <Input
+                        id="edit_colab_agencia"
+                        value={editingColaborador?.agencia || ""}
+                        onChange={(e) => setEditingColaborador({ ...editingColaborador, agencia: e.target.value.replace(/\D/g, "") })}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="edit_colab_agencia_digito">Dígito agência</Label>
+                      <Input
+                        id="edit_colab_agencia_digito"
+                        value={editingColaborador?.agencia_digito || ""}
+                        onChange={(e) => setEditingColaborador({ ...editingColaborador, agencia_digito: e.target.value.toUpperCase() })}
+                        placeholder="Ex: 0 ou X"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="edit_colab_conta">Conta</Label>
+                      <Input
+                        id="edit_colab_conta"
+                        value={editingColaborador?.conta || ""}
+                        onChange={(e) => setEditingColaborador({ ...editingColaborador, conta: e.target.value.replace(/\D/g, "") })}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="edit_colab_conta_digito">Dígito conta</Label>
+                      <Input
+                        id="edit_colab_conta_digito"
+                        value={editingColaborador?.conta_digito || editingColaborador?.digito_conta || ""}
+                        onChange={(e) =>
+                          setEditingColaborador({
+                            ...editingColaborador,
+                            conta_digito: e.target.value.toUpperCase(),
+                            digito_conta: e.target.value.toUpperCase(),
+                          })
+                        }
+                        placeholder="Ex: 5 ou X"
+                      />
+                    </div>
+                    <div className="col-span-2 space-y-1.5">
+                      <Label htmlFor="edit_colab_chave_pix">Chave Pix</Label>
+                      <Input
+                        id="edit_colab_chave_pix"
+                        value={editingColaborador?.chave_pix || ""}
+                        onChange={(e) => setEditingColaborador({ ...editingColaborador, chave_pix: e.target.value })}
+                        placeholder="CPF, e-mail, telefone ou chave aleatória"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Banco validado?</Label>
+                      <Select
+                        value={editingColaborador?.banco_validado ? "sim" : "nao"}
+                        onValueChange={(v) => setEditingColaborador({ ...editingColaborador, banco_validado: v === "sim" })}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="sim">Sim</SelectItem>
+                          <SelectItem value="nao">Não</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
             </div>
           </div>
           <DialogFooter>
