@@ -102,6 +102,7 @@ export const CentralBancariaDiaristas = ({ onMetricsUpdate }: { onMetricsUpdate?
     const [openAjuste, setOpenAjuste] = useState(false);
     const [lancamentoParaAjuste, setLancamentoParaAjuste] = useState<Lancamento | null>(null);
     const [motivoReabrir, setMotivoReabrir] = useState("");
+    const [tipoReabertura, setTipoReabertura] = useState<"operacional" | "administrativa">("operacional");
     const [valorAjuste, setValorAjuste] = useState("");
     const [motivoAjuste, setMotivoAjuste] = useState("");
 
@@ -275,7 +276,14 @@ export const CentralBancariaDiaristas = ({ onMetricsUpdate }: { onMetricsUpdate?
 
     const reabrirMutation = useMutation({
         mutationFn: () =>
-            LoteFechamentoDiaristaService.reabrirPeriodo(selectedLote!.id, user!.id, userName, role ?? "admin", motivoReabrir),
+            LoteFechamentoDiaristaService.reabrirPeriodo(
+                selectedLote!.id,
+                user!.id,
+                userName,
+                role ?? "admin",
+                motivoReabrir,
+                tipoReabertura,
+            ),
 
         onSuccess: () => {
             toast.success("Período reaberto com sucesso. Registros voltaram para em_aberto.");
@@ -291,6 +299,7 @@ export const CentralBancariaDiaristas = ({ onMetricsUpdate }: { onMetricsUpdate?
             setOpenDetalhe(false);
             setSelectedLote(null);
             setMotivoReabrir("");
+            setTipoReabertura("operacional");
         },
         onError: (err: any) => toast.error("Erro ao reabrir período", { description: err.message }),
     });
@@ -866,7 +875,16 @@ export const CentralBancariaDiaristas = ({ onMetricsUpdate }: { onMetricsUpdate?
             </Dialog>
 
             {/* ── MODAL REABRIR PERÍODO (Admin only) ── */}
-            <Dialog open={openReabrir} onOpenChange={setOpenReabrir}>
+            <Dialog
+                open={openReabrir}
+                onOpenChange={(open) => {
+                    setOpenReabrir(open);
+                    if (!open) {
+                        setMotivoReabrir("");
+                        setTipoReabertura("operacional");
+                    }
+                }}
+            >
                 <DialogContent className="max-w-md">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2 text-amber-700">
@@ -881,6 +899,42 @@ export const CentralBancariaDiaristas = ({ onMetricsUpdate }: { onMetricsUpdate?
                     <div className="py-2 space-y-4">
                         <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-lg text-sm text-destructive">
                             ⚠️ Ação irreversível. Um novo fechamento será necessário. Registros serão desvinculados do lote.
+                        </div>
+                        <div className="space-y-2 rounded-lg border bg-slate-50 p-3">
+                            <Label className="text-xs font-bold">
+                                Tipo de reabertura <span className="text-red-500">*</span>
+                            </Label>
+                            <div className="space-y-2">
+                                <label className="flex cursor-pointer items-start gap-2 rounded-md border border-transparent p-2 hover:border-slate-200">
+                                    <input
+                                        type="radio"
+                                        name="tipo-reabertura-financeiro"
+                                        checked={tipoReabertura === "operacional"}
+                                        onChange={() => setTipoReabertura("operacional")}
+                                        className="mt-0.5"
+                                    />
+                                    <span className="text-sm">
+                                        <strong>Operacional</strong> - devolve para encarregado corrigir e fechar novamente
+                                    </span>
+                                </label>
+                                <label className="flex cursor-pointer items-start gap-2 rounded-md border border-transparent p-2 hover:border-slate-200">
+                                    <input
+                                        type="radio"
+                                        name="tipo-reabertura-financeiro"
+                                        checked={tipoReabertura === "administrativa"}
+                                        onChange={() => setTipoReabertura("administrativa")}
+                                        className="mt-0.5"
+                                    />
+                                    <span className="text-sm">
+                                        <strong>Administrativa</strong> - RH/Admin corrige internamente, sem devolver ao encarregado
+                                    </span>
+                                </label>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground">
+                                {tipoReabertura === "operacional"
+                                    ? "O lote volta para o fluxo do encarregado para correção e novo fechamento."
+                                    : "O lote fica em correção administrativa e o encarregado permanece bloqueado para novo fechamento."}
+                            </p>
                         </div>
                         <div className="space-y-2">
                             <Label htmlFor="motivo-reabrir">Justificativa (obrigatória)</Label>
