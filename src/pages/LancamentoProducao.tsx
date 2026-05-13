@@ -846,7 +846,7 @@ const LancamentoProducao = () => {
         };
 
         buscarRegraFinanceira();
-    }, [form.modalidade_financeira, form.forma_pagamento, formaPagamentoOptions]);
+    }, [form.modalidade_financeira, form.forma_pagamento]);
 
     const regraLookupHabilitada = !!form.empresa_id && !!form.data && !!form.tipo_servico;
 

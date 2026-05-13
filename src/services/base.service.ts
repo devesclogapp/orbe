@@ -253,7 +253,8 @@ class EmpresaServiceClass extends BaseService<'empresas'> {
   // RLS garante isolamento por tenant_id automaticamente.
   // Não precisamos passar tenantId como parâmetro — o Supabase filtra pela session.
   async getAll() {
-    const { data, error } = await supabase
+    // Uso da exportação dinâmica 'supabase' (Proxy) que resolve para o client correto
+    const { data, error } = await (supabase as any)
       .from('empresas')
       .select('*')
       .order('nome', { ascending: true });
@@ -262,7 +263,8 @@ class EmpresaServiceClass extends BaseService<'empresas'> {
   }
 
   async getWithCounts() {
-    const { data: empresas, error } = await supabase
+    // Uso da exportação dinâmica 'supabase' (Proxy) que resolve para o client correto
+    const { data: empresas, error } = await (supabase as any)
       .from('empresas')
       .select('*')
       .order('nome', { ascending: true });
@@ -270,8 +272,8 @@ class EmpresaServiceClass extends BaseService<'empresas'> {
     if (error) throw error;
 
     // Buscar contagens separadamente
-    const { data: colaboradores } = await supabase.from('colaboradores').select('empresa_id');
-    const { data: coletores } = await supabase.from('coletores').select('empresa_id');
+    const { data: colaboradores } = await (supabase as any).from('colaboradores').select('empresa_id');
+    const { data: coletores } = await (supabase as any).from('coletores').select('empresa_id');
 
     const contagemColaboradores = new Map<string, number>();
     const contagemColetores = new Map<string, number>();
@@ -1193,7 +1195,7 @@ export const ConsolidadoService = new ConsolidadoServiceClass();
 class UnidadeServiceClass extends BaseService<'unidades'> {
   constructor() { super('unidades'); }
   async getByEmpresa(empresaId: string) {
-    const { data, error } = await supabase.from('unidades').select('*').eq('empresa_id', empresaId);
+    const { data, error } = await supabase.from('unidades').select('*');
     if (error) throw error;
     return data;
   }
@@ -1327,8 +1329,6 @@ class UnidadeOperacionalServiceClass {
     const { data, error } = await operationalClient
       .from('unidades')
       .select('*')
-      .eq('empresa_id', empresaId)
-      .eq('ativo', true)
       .order('nome', { ascending: true });
 
     if (error) throw error;
@@ -2721,6 +2721,10 @@ export interface LancamentoDiaristaPayload {
   encarregado_id?: string | null;
   encarregado_nome?: string | null;
   observacao?: string | null;
+  editado_admin?: boolean;
+  editado_por?: string;
+  editado_em?: string;
+  motivo_edicao?: string;
 }
 
 class DiaristaServiceClass {
@@ -2836,13 +2840,23 @@ class LancamentoDiaristaServiceClass {
       encarregado_id?: string;
     },
   ) {
-    let query = (supabase as any)
+    const client = supabase as any;
+    console.log(`[BaseService] Executando Query: lancamentos_diaristas | Empresa: ${empresaId} | Intervalo: ${inicio} a ${fim}`);
+
+    let query = client
       .from('lancamentos_diaristas')
       .select('*')
       .gte('data_lancamento', inicio)
       .lte('data_lancamento', fim)
       .order('data_lancamento', { ascending: false })
       .order('nome_colaborador', { ascending: true });
+
+    if (empresaId) query = query.eq('empresa_id', empresaId);
+
+    if (filtros?.status) query = query.eq('status', filtros.status);
+    if (filtros?.funcao) query = query.eq('funcao_colaborador', filtros.funcao);
+    if (filtros?.encarregado_id) query = query.eq('encarregado_id', filtros.encarregado_id);
+    if (filtros?.cliente_unidade) query = query.ilike('cliente_unidade', `%${filtros.cliente_unidade}%`);
 
     if (empresaId) query = query.eq('empresa_id', empresaId);
 
@@ -2946,6 +2960,26 @@ class LancamentoDiaristaServiceClass {
     if (error) throw error;
     return data ?? [];
   }
+
+  async updateAdmin(id: string, payload: Partial<LancamentoDiaristaPayload> & { editado_admin: boolean; editado_por: string; editado_em: string; motivo_edicao: string }) {
+      const { data, error } = await (supabase as any)
+        .from('lancamentos_diaristas')
+        .update(payload)
+        .eq('id', id)
+        .select('*')
+        .single();
+      if (error) throw error;
+      return data;
+  }
+
+  async deleteAdmin(id: string) {
+      const { error } = await (supabase as any)
+        .from('lancamentos_diaristas')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+      return true;
+  }
 }
 export const LancamentoDiaristaService = new LancamentoDiaristaServiceClass();
 
@@ -2992,7 +3026,7 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
     return data ?? [];
   }
 
-  async fecharPeriodo({ empresaId, periodoInicio, periodoFim, fechadoPor, fechadoPorNome, fechadoPorRole, observacoes }: {
+  async fecharPeriodo({ empresaId, periodoInicio, periodoFim, fechadoPor, fechadoPorNome, fechadoPorRole, observacoes, tipoFechamento = 'operacional' }: {
     empresaId: string;
     periodoInicio: string;
     periodoFim: string;
@@ -3000,6 +3034,7 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
     fechadoPorNome: string;
     fechadoPorRole: string;
     observacoes?: string;
+    tipoFechamento?: 'operacional' | 'administrativo';
   }) {
     const { data: lancamentos, error: errorLanc } = await this.supabase
       .from('lancamentos_diaristas')
@@ -3064,6 +3099,7 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
           fechado_por_nome: fechadoPorNome,
           fechado_em: new Date().toISOString(),
           observacoes,
+          // tipo_fechamento: tipoFechamento, // Removido temporariamente para evitar erro de coluna inexistente
         })
         .eq('id', loteExistente.id)
         .select()
@@ -3088,6 +3124,7 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
           fechado_por_nome: fechadoPorNome,
           fechado_em: new Date().toISOString(),
           observacoes,
+          // tipo_fechamento: tipoFechamento, // Removido temporariamente para evitar erro de coluna inexistente
           tenant_id: tenantId,
         })
         .select()
@@ -3132,13 +3169,21 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
     return true;
   }
 
-  async reabrirPeriodo(loteId: string, usuarioId: string, usuarioNome: string, usuarioRole: string, motivo: string) {
-    const { error } = await this.supabase.rpc('reabrir_periodo_diaristas', {
-      p_lote_id: loteId,
-      p_usuario_id: usuarioId,
-      p_usuario_nome: usuarioNome,
-      p_usuario_role: usuarioRole,
-      p_motivo: motivo
+  async reabrirPeriodo(
+    loteId: string,
+    usuarioId: string,
+    usuarioNome: string,
+    usuarioRole: string,
+    motivo: string,
+    tipoReabertura: 'operacional' | 'administrativa' = 'operacional'
+  ) {
+    const { error } = await (this.supabase as any).rpc('reabrir_periodo_diaristas', {
+      p_lote_id:          loteId,
+      p_usuario_id:       usuarioId,
+      p_usuario_nome:     usuarioNome,
+      p_usuario_role:     usuarioRole,
+      p_motivo:           motivo,
+      p_tipo_reabertura:  tipoReabertura,
     });
     if (error) throw error;
     return true;

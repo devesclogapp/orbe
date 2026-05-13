@@ -166,11 +166,19 @@ const DiaristasLancamento = () => {
         retry: 0,
     });
 
-    /* Lançamentos já existentes na semana (para indicador visual) */
     const { data: lancamentosExistentes = [] } = useQuery({
         queryKey: ["lancamentos_diaristas_semana", empresaIdSelecionada, inicioISO, fimISO],
-        queryFn: () =>
-            LancamentoDiaristaService.getByPeriodo(empresaIdSelecionada, inicioISO, fimISO),
+        queryFn: async () => {
+            console.log(`[DiaristasLancamento] Fetching lancamentos: ${empresaIdSelecionada}, ${inicioISO} to ${fimISO}`);
+            try {
+                const data = await LancamentoDiaristaService.getByPeriodo(empresaIdSelecionada, inicioISO, fimISO);
+                console.log(`[DiaristasLancamento] Lancamentos retornados:`, data);
+                return data;
+            } catch (err) {
+                console.error(`[DiaristasLancamento] Erro no fetch:`, err);
+                throw err;
+            }
+        },
         enabled: !!empresaIdSelecionada,
         throwOnError: false,
         retry: 0,
@@ -178,14 +186,24 @@ const DiaristasLancamento = () => {
 
     /* Histórico 14 dias */
     const fourteenDaysAgoStr = useMemo(() => format(subWeeks(new Date(), 2), "yyyy-MM-dd"), []);
-    
+
     const { data: lotes = [] } = useQuery({
         queryKey: ["lotes_fechamento_producao", fourteenDaysAgoStr, today, empresaIdSelecionada, user?.id],
-        queryFn: () => LoteFechamentoDiaristaService.getLotesPorPeriodo(
-            fourteenDaysAgoStr,
-            today,
-            empresaIdSelecionada
-        ),
+        queryFn: async () => {
+            console.log(`[DiaristasLancamento] Buscando lotes para empresa: ${empresaIdSelecionada}`);
+            try {
+                const result = await LoteFechamentoDiaristaService.getLotesPorPeriodo(
+                    fourteenDaysAgoStr,
+                    today,
+                    empresaIdSelecionada
+                );
+                console.log('[DEBUG lotes result]', result);
+                return result;
+            } catch (err) {
+                console.error('[DEBUG lotes error]', err);
+                return [];
+            }
+        },
         enabled: !!empresaIdSelecionada && !!user?.id,
     });
 
@@ -203,7 +221,7 @@ const DiaristasLancamento = () => {
             l.periodo_fim === fimISO &&
             ["AGUARDANDO_VALIDACAO_RH", "VALIDADO_RH", "AGUARDANDO_FINANCEIRO", "FECHADO_FINANCEIRO", "PAGO"].includes(l.status)
         );
-        
+
         // Se houver lote ativo e a configuração de bloquear edição estiver ativa (ou não existir, default true)
         if (loteAtivo && (regraFechamento as any)?.bloquear_edicao !== false) {
             return true;
@@ -214,10 +232,12 @@ const DiaristasLancamento = () => {
 
     const { data: historicoRecente = [], isLoading: isLoadingHistorico } = useQuery({
         queryKey: ["historico_recente_diaristas", empresaIdSelecionada, user?.id],
-        queryFn: () =>
-            LancamentoDiaristaService.getByPeriodo(empresaIdSelecionada, fourteenDaysAgoStr, today, {
+        queryFn: () => {
+            console.log(`[DiaristasLancamento] Buscando histórico: empresaId=${empresaIdSelecionada}, userId=${user?.id}`);
+            return LancamentoDiaristaService.getByPeriodo(empresaIdSelecionada, fourteenDaysAgoStr, today, {
                 encarregado_id: user?.id,
-            }),
+            });
+        },
         enabled: !!empresaIdSelecionada && openHistorico && !!user?.id,
         throwOnError: false,
         retry: 0,
@@ -419,10 +439,12 @@ const DiaristasLancamento = () => {
     );
 
     // ─── Render ──────────────────────────────────────────────────────────────
+    console.log(`[DiaristasLancamento] Renderizando... Empresa: ${empresaIdSelecionada}, Diaristas: ${diaristasArr.length}`);
 
     return (
         <OperationalShell title="Lançamento de Diaristas" showBack={false} onBack={() => navigate("/producao")} hideFab={true}>
             <div className="max-w-5xl mx-auto space-y-5 pb-28">
+                <div className="bg-blue-500 text-white p-4">DEBUG: Renderizando grade...</div>
 
                 {/* Header: seletor de empresa + semana */}
                 <section className="esc-card p-5 space-y-4">
@@ -548,202 +570,202 @@ const DiaristasLancamento = () => {
                     </div>
                 ) : (
                     <>
-                {/* ── Grade semanal ── */}
-                {periodoBloqueado && (
-                    <div className="bg-amber-600/90 backdrop-blur-sm text-white p-4 rounded-xl flex items-center justify-center gap-3 mb-6 animate-pulse shadow-xl border border-amber-500/50">
-                        <div className="h-10 w-10 rounded-full bg-white/20 flex items-center justify-center">
-                            <Lock className="h-5 w-5" />
-                        </div>
-                        <div className="flex flex-col">
-                            <span className="font-black text-sm uppercase tracking-wider">Período sob Governança</span>
-                            <span className="text-[10px] opacity-90 font-medium">Os registros foram enviados para validação do RH e estão bloqueados para edição.</span>
-                        </div>
-                    </div>
-                )}
+                        {/* ── Grade semanal ── */}
+                        {periodoBloqueado && (
+                            <div className="bg-amber-600/90 backdrop-blur-sm text-white p-4 rounded-xl flex items-center justify-center gap-3 mb-6 animate-pulse shadow-xl border border-amber-500/50">
+                                <div className="h-10 w-10 rounded-full bg-white/20 flex items-center justify-center">
+                                    <Lock className="h-5 w-5" />
+                                </div>
+                                <div className="flex flex-col">
+                                    <span className="font-black text-sm uppercase tracking-wider">Período sob Governança</span>
+                                    <span className="text-[10px] opacity-90 font-medium">Os registros foram enviados para validação do RH e estão bloqueados para edição.</span>
+                                </div>
+                            </div>
+                        )}
 
-                <section className={cn(
-                    "esc-card overflow-hidden transition-all duration-500", 
-                    periodoBloqueado && "opacity-60 grayscale-[0.5] select-none pointer-events-none"
-                )}>
+                        <section className={cn(
+                            "esc-card overflow-hidden transition-all duration-500",
+                            periodoBloqueado && "opacity-60 grayscale-[0.5] select-none pointer-events-none"
+                        )}>
 
-                    {/* Cabeçalho */}
-                    <div className="p-4 border-b border-border flex items-center gap-2">
-                        <CalendarDays className="h-4 w-4 text-primary" />
-                        <h2 className="font-display font-bold text-foreground">Grade da Semana</h2>
-                        <span className="ml-auto text-xs text-muted-foreground">{diaristasArr.length} diarista(s)</span>
-                    </div>
+                            {/* Cabeçalho */}
+                            <div className="p-4 border-b border-border flex items-center gap-2">
+                                <CalendarDays className="h-4 w-4 text-primary" />
+                                <h2 className="font-display font-bold text-foreground">Grade da Semana</h2>
+                                <span className="ml-auto text-xs text-muted-foreground">{diaristasArr.length} diarista(s)</span>
+                            </div>
 
-                    {/* Cabeçalho da grade — labels dos dias */}
-                    <div className="overflow-x-auto relative">
-                        <table className={cn("w-full min-w-[600px]", periodoBloqueado && "cursor-not-allowed")}>
-                            <thead>
-                                    <tr className="border-b border-border bg-muted">
-                                        <th className="text-left text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-4 py-2.5 w-[200px] sticky left-0 bg-muted z-20 border-r border-border">
-                                            Diarista
-                                        </th>
-                                        {diasSemana.map((dia) => {
-                                            const dateISO = format(dia, "yyyy-MM-dd");
-                                            const futuro = isFuture(dia) && dateISO !== today;
+                            {/* Cabeçalho da grade — labels dos dias */}
+                            <div className="overflow-x-auto relative">
+                                <table className={cn("w-full min-w-[600px]", periodoBloqueado && "cursor-not-allowed")}>
+                                    <thead>
+                                        <tr className="border-b border-border bg-muted">
+                                            <th className="text-left text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-4 py-2.5 w-[200px] sticky left-0 bg-muted z-20 border-r border-border">
+                                                Diarista
+                                            </th>
+                                            {diasSemana.map((dia) => {
+                                                const dateISO = format(dia, "yyyy-MM-dd");
+                                                const futuro = isFuture(dia) && dateISO !== today;
+                                                return (
+                                                    <th
+                                                        key={dateISO}
+                                                        className={cn(
+                                                            "text-center text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-1 py-2.5 w-[80px]",
+                                                            isToday(dia) && "text-primary"
+                                                        )}
+                                                    >
+                                                        <div>{labelDia(dia)}</div>
+                                                        <div className={cn(
+                                                            "text-[11px] font-mono mt-0.5",
+                                                            isToday(dia) && "text-primary font-black",
+                                                            futuro && "opacity-40"
+                                                        )}>
+                                                            {format(dia, "dd/MM")}
+                                                        </div>
+                                                    </th>
+                                                );
+                                            })}
+                                            <th className="text-right text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-4 py-2.5 w-[110px]">
+                                                Total
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-border">
+                                        {diaristasArr.map((d) => {
+                                            const diasDiarista = grade[d.id] ?? {};
+                                            const totalDiarista = diasSemana.reduce((acc, dia) => {
+                                                const dateISO = format(dia, "yyyy-MM-dd");
+                                                const codigo = diasDiarista[dateISO] ?? "";
+                                                return acc + calcularValor(codigo, d.valor_diaria, regrasMarcacaoAtivas as any[]);
+                                            }, 0);
+                                            const teveAlgumaCelulaAtiva = Object.values(diasDiarista).some((c) => !!c);
+
                                             return (
-                                                <th
-                                                    key={dateISO}
+                                                <tr
+                                                    key={d.id}
                                                     className={cn(
-                                                        "text-center text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-1 py-2.5 w-[80px]",
-                                                        isToday(dia) && "text-primary"
+                                                        "hover:bg-muted/10 transition-colors",
+                                                        teveAlgumaCelulaAtiva && "bg-primary/5"
                                                     )}
                                                 >
-                                                    <div>{labelDia(dia)}</div>
-                                                    <div className={cn(
-                                                        "text-[11px] font-mono mt-0.5",
-                                                        isToday(dia) && "text-primary font-black",
-                                                        futuro && "opacity-40"
-                                                    )}>
-                                                        {format(dia, "dd/MM")}
-                                                    </div>
-                                                </th>
+                                                    {/* Nome + valor base */}
+                                                    <td className="px-4 py-3 sticky left-0 bg-card z-10 border-r border-border shadow-[2px_0_4px_rgba(0,0,0,0.06)]">
+                                                        <div className="flex items-center gap-2.5 min-w-0">
+                                                            <div className="h-8 w-8 shrink-0 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
+                                                                {d.nome?.substring(0, 1).toUpperCase()}
+                                                            </div>
+                                                            <div className="min-w-0">
+                                                                <p className="font-bold text-xs text-foreground truncate max-w-[110px]">{d.nome}</p>
+                                                                <p className="text-[10px] text-muted-foreground font-mono">
+                                                                    {formatCurrency(d.valor_diaria)}/dia
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+
+                                                    {/* Células dos dias */}
+                                                    {diasSemana.map((dia) => {
+                                                        const dateISO = format(dia, "yyyy-MM-dd");
+                                                        const codigo = diasDiarista[dateISO] ?? "";
+                                                        const futuro = isFuture(dia) && dateISO !== today;
+                                                        const jaLancado = !!(lancamentosExistentesMap[d.id]?.[dateISO]);
+                                                        const regra = (regrasMarcacao as any[]).find((r: any) => r.codigo === codigo);
+                                                        const isPresente = codigo === "P";
+                                                        const isMeia = codigo === "MP";
+                                                        const isFalta = codigo === "F";
+
+                                                        const statusDia = lancamentosExistentesMap[d.id]?.[dateISO]?.status;
+                                                        const statusVisual = (() => {
+                                                            if (statusDia === "EM_ABERTO" || statusDia === "em_aberto") {
+                                                                // Tenta encontrar um lote para a data deste lançamento
+                                                                const loteRel = (lotes as any[]).find(l =>
+                                                                    l.empresa_id === empresaIdSelecionada &&
+                                                                    dateISO >= l.periodo_inicio &&
+                                                                    dateISO <= l.periodo_fim
+                                                                );
+                                                                return loteRel ? loteRel.status : statusDia;
+                                                            }
+                                                            return statusDia;
+                                                        })();
+
+                                                        const isFechado = (statusVisual && statusVisual !== 'EM_ABERTO' && statusVisual !== 'em_aberto') || periodoBloqueado;
+                                                        const isDisabled = futuro || isFechado;
+
+                                                        return (
+                                                            <td key={dateISO} className="px-1 py-2 text-center">
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={isDisabled}
+                                                                    onClick={(e) => {
+                                                                        e.preventDefault();
+                                                                        if (!isDisabled) toggleMarcacao(d.id, dateISO);
+                                                                    }}
+                                                                    className={cn(
+                                                                        "mx-auto flex flex-col items-center justify-center rounded-lg transition-all select-none",
+                                                                        "w-14 h-12 text-xs font-black uppercase tracking-wider border-2",
+                                                                        isDisabled && "cursor-not-allowed",
+                                                                        isFechado && "pointer-events-none",
+                                                                        futuro
+                                                                            ? "opacity-20 border-transparent bg-transparent text-muted-foreground"
+                                                                            : !codigo
+                                                                                ? cn(
+                                                                                    "border-dashed border-border text-muted-foreground bg-transparent",
+                                                                                    !isDisabled && "hover:border-primary/40 hover:bg-primary/5",
+                                                                                    jaLancado && "border-amber-400/60 bg-amber-50/50 dark:bg-amber-900/10"
+                                                                                )
+                                                                                : isPresente
+                                                                                    ? "border-green-500 bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 shadow-sm"
+                                                                                    : isMeia
+                                                                                        ? "border-yellow-500 bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300 shadow-sm"
+                                                                                        : isFalta
+                                                                                            ? "border-red-500 bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 shadow-sm"
+                                                                                            : "border-primary bg-primary/10 text-primary shadow-sm",
+                                                                        isFechado && codigo && "opacity-80 saturate-50"
+                                                                    )}
+                                                                    title={
+                                                                        isFechado ? `Período fechado (${STATUS_DIARISTA_MAP[statusVisual]?.label || statusVisual})` :
+                                                                            futuro ? "Data futura" :
+                                                                                jaLancado ? `Já lançado (clique p/ alterar)` :
+                                                                                    regra ? `${regra.descricao} (×${regra.multiplicador})` :
+                                                                                        "Clique para marcar"
+                                                                    }
+                                                                >
+                                                                    {codigo ? (
+                                                                        <>
+                                                                            <span className="leading-none">{codigo}</span>
+                                                                            {regra && Number(regra.multiplicador) > 0 && (
+                                                                                <span className="text-[8px] font-medium opacity-70 mt-0.5">
+                                                                                    {formatCurrency(calcularValor(codigo, d.valor_diaria, regrasMarcacaoAtivas as any[])).replace("R$\u00a0", "")}
+                                                                                </span>
+                                                                            )}
+                                                                        </>
+                                                                    ) : (
+                                                                        <span className="text-[10px] font-medium opacity-40">
+                                                                            {jaLancado ? "✓" : "—"}
+                                                                        </span>
+                                                                    )}
+                                                                </button>
+                                                            </td>
+                                                        );
+                                                    })}
+
+                                                    {/* Total do diarista */}
+                                                    <td className="px-4 py-3 text-right">
+                                                        <p className={cn(
+                                                            "font-mono font-bold text-sm",
+                                                            totalDiarista > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"
+                                                        )}>
+                                                            {formatCurrency(totalDiarista)}
+                                                        </p>
+                                                    </td>
+                                                </tr>
                                             );
                                         })}
-                                        <th className="text-right text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-4 py-2.5 w-[110px]">
-                                            Total
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-border">
-                                    {diaristasArr.map((d) => {
-                                        const diasDiarista = grade[d.id] ?? {};
-                                        const totalDiarista = diasSemana.reduce((acc, dia) => {
-                                            const dateISO = format(dia, "yyyy-MM-dd");
-                                            const codigo = diasDiarista[dateISO] ?? "";
-                                            return acc + calcularValor(codigo, d.valor_diaria, regrasMarcacaoAtivas as any[]);
-                                        }, 0);
-                                        const teveAlgumaCelulaAtiva = Object.values(diasDiarista).some((c) => !!c);
-
-                                        return (
-                                            <tr
-                                                key={d.id}
-                                                className={cn(
-                                                    "hover:bg-muted/10 transition-colors",
-                                                    teveAlgumaCelulaAtiva && "bg-primary/5"
-                                                )}
-                                            >
-                                                {/* Nome + valor base */}
-                                                <td className="px-4 py-3 sticky left-0 bg-card z-10 border-r border-border shadow-[2px_0_4px_rgba(0,0,0,0.06)]">
-                                                    <div className="flex items-center gap-2.5 min-w-0">
-                                                        <div className="h-8 w-8 shrink-0 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
-                                                            {d.nome?.substring(0, 1).toUpperCase()}
-                                                        </div>
-                                                        <div className="min-w-0">
-                                                            <p className="font-bold text-xs text-foreground truncate max-w-[110px]">{d.nome}</p>
-                                                            <p className="text-[10px] text-muted-foreground font-mono">
-                                                                {formatCurrency(d.valor_diaria)}/dia
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                </td>
-
-                                                {/* Células dos dias */}
-                                                {diasSemana.map((dia) => {
-                                                    const dateISO = format(dia, "yyyy-MM-dd");
-                                                    const codigo = diasDiarista[dateISO] ?? "";
-                                                    const futuro = isFuture(dia) && dateISO !== today;
-                                                    const jaLancado = !!(lancamentosExistentesMap[d.id]?.[dateISO]);
-                                                    const regra = (regrasMarcacao as any[]).find((r: any) => r.codigo === codigo);
-                                                    const isPresente = codigo === "P";
-                                                    const isMeia = codigo === "MP";
-                                                    const isFalta = codigo === "F";
-
-                                                    const statusDia = lancamentosExistentesMap[d.id]?.[dateISO]?.status;
-                                                    const statusVisual = (() => {
-                                                        if (statusDia === "EM_ABERTO" || statusDia === "em_aberto") {
-                                                            // Tenta encontrar um lote para a data deste lançamento
-                                                            const loteRel = (lotes as any[]).find(l => 
-                                                                l.empresa_id === empresaIdSelecionada &&
-                                                                dateISO >= l.periodo_inicio &&
-                                                                dateISO <= l.periodo_fim
-                                                            );
-                                                            return loteRel ? loteRel.status : statusDia;
-                                                        }
-                                                        return statusDia;
-                                                    })();
-                                                    
-                                                    const isFechado = (statusVisual && statusVisual !== 'EM_ABERTO' && statusVisual !== 'em_aberto') || periodoBloqueado;
-                                                    const isDisabled = futuro || isFechado;
-
-                                                    return (
-                                                        <td key={dateISO} className="px-1 py-2 text-center">
-                                                            <button
-                                                                type="button"
-                                                                disabled={isDisabled}
-                                                                onClick={(e) => {
-                                                                    e.preventDefault();
-                                                                    if (!isDisabled) toggleMarcacao(d.id, dateISO);
-                                                                }}
-                                                                className={cn(
-                                                                    "mx-auto flex flex-col items-center justify-center rounded-lg transition-all select-none",
-                                                                    "w-14 h-12 text-xs font-black uppercase tracking-wider border-2",
-                                                                    isDisabled && "cursor-not-allowed",
-                                                                    isFechado && "pointer-events-none",
-                                                                    futuro
-                                                                        ? "opacity-20 border-transparent bg-transparent text-muted-foreground"
-                                                                        : !codigo
-                                                                            ? cn(
-                                                                                "border-dashed border-border text-muted-foreground bg-transparent",
-                                                                                !isDisabled && "hover:border-primary/40 hover:bg-primary/5",
-                                                                                jaLancado && "border-amber-400/60 bg-amber-50/50 dark:bg-amber-900/10"
-                                                                            )
-                                                                            : isPresente
-                                                                                ? "border-green-500 bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 shadow-sm"
-                                                                                : isMeia
-                                                                                    ? "border-yellow-500 bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300 shadow-sm"
-                                                                                    : isFalta
-                                                                                        ? "border-red-500 bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 shadow-sm"
-                                                                                        : "border-primary bg-primary/10 text-primary shadow-sm",
-                                                                    isFechado && codigo && "opacity-80 saturate-50"
-                                                                )}
-                                                                title={
-                                                                    isFechado ? `Período fechado (${STATUS_DIARISTA_MAP[statusVisual]?.label || statusVisual})` :
-                                                                        futuro ? "Data futura" :
-                                                                            jaLancado ? `Já lançado (clique p/ alterar)` :
-                                                                                regra ? `${regra.descricao} (×${regra.multiplicador})` :
-                                                                                    "Clique para marcar"
-                                                                }
-                                                            >
-                                                                {codigo ? (
-                                                                    <>
-                                                                        <span className="leading-none">{codigo}</span>
-                                                                        {regra && Number(regra.multiplicador) > 0 && (
-                                                                            <span className="text-[8px] font-medium opacity-70 mt-0.5">
-                                                                                {formatCurrency(calcularValor(codigo, d.valor_diaria, regrasMarcacaoAtivas as any[])).replace("R$\u00a0", "")}
-                                                                            </span>
-                                                                        )}
-                                                                    </>
-                                                                ) : (
-                                                                    <span className="text-[10px] font-medium opacity-40">
-                                                                        {jaLancado ? "✓" : "—"}
-                                                                    </span>
-                                                                )}
-                                                            </button>
-                                                        </td>
-                                                    );
-                                                })}
-
-                                                {/* Total do diarista */}
-                                                <td className="px-4 py-3 text-right">
-                                                    <p className={cn(
-                                                        "font-mono font-bold text-sm",
-                                                        totalDiarista > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"
-                                                    )}>
-                                                        {formatCurrency(totalDiarista)}
-                                                    </p>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
-                    </section>
-                </>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+                    </>
                 )}
 
                 {/* ── Bottom dock mobile-first ── */}
@@ -889,7 +911,7 @@ const DiaristasLancamento = () => {
                                             <StatusDiaristaBadge status={(() => {
                                                 if (h.status === "EM_ABERTO" || h.status === "em_aberto") {
                                                     // Tenta encontrar um lote para a data deste lançamento no histórico expandido de lotes
-                                                    const loteRel = (lotes as any[]).find(l => 
+                                                    const loteRel = (lotes as any[]).find(l =>
                                                         l.empresa_id === empresaIdSelecionada &&
                                                         h.data_lancamento >= l.periodo_inicio &&
                                                         h.data_lancamento <= l.periodo_fim

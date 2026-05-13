@@ -8,9 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import {
     Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import {
     LancamentoDiaristaService,
     LoteFechamentoDiaristaService,
@@ -86,6 +88,14 @@ const RhDiaristasPainel = () => {
     const [openFechamento, setOpenFechamento] = useState(false);
     const [obsLote, setObsLote] = useState("");
     const [confirmText, setConfirmText] = useState("");
+    const [cicloTab, setCicloTab] = useState<"ciclos" | "lotes" | "historico" | "configuracao">("ciclos");
+
+    // ── Estado: Modal Reabertura ────────────────────────────────────────────
+    const [openReabertura, setOpenReabertura] = useState(false);
+    const [motivoReabertura, setMotivoReabertura] = useState("");
+    const [tipoReabertura, setTipoReabertura] = useState<'operacional' | 'administrativa'>('operacional');
+    const [loteParaReabrir, setLoteParaReabrir] = useState<any>(null);
+    // ──────────────────────────────────────────────────────────────────
 
     const { data: perfil } = useQuery({
         queryKey: ["profile_usuario", user?.id],
@@ -136,11 +146,29 @@ const RhDiaristasPainel = () => {
 
     const periodoBloqueado = useMemo(() => {
         if (empresaFiltroId === "todos") return false;
+
         const loteAtivo = (lotes as any[]).find(l =>
             l.empresa_id === empresaFiltroId &&
-            ["AGUARDANDO_VALIDACAO_RH", "VALIDADO_RH", "AGUARDANDO_FINANCEIRO", "FECHADO_FINANCEIRO", "PAGO"].includes(l.status)
+            [
+                "AGUARDANDO_VALIDACAO_RH",
+                "VALIDADO_RH",
+                "AGUARDANDO_FINANCEIRO",
+                "FECHADO_FINANCEIRO",
+                "PAGO"
+            ].includes(l.status)
         );
         return !!loteAtivo;
+    }, [lotes, empresaFiltroId]);
+
+    // periodoBloqueadoAdministrativo: verdadeiro quando o lote foi reaberto
+    // em modo administrativo - usado para exibir aviso diferenciado
+    const loteEmCorrecaoAdmin = useMemo(() => {
+        if (empresaFiltroId === "todos") return null;
+        return (lotes as any[]).find(l =>
+            l.empresa_id === empresaFiltroId &&
+            l.status === "AGUARDANDO_VALIDACAO_RH" &&
+            l.tipo_reabertura === "administrativa"
+        ) ?? null;
     }, [lotes, empresaFiltroId]);
 
     const statusCicloAtual = useMemo(() => {
@@ -253,23 +281,189 @@ const RhDiaristasPainel = () => {
         }
     };
 
-    const [cicloTab, setCicloTab] = useState<"ciclos" | "lotes" | "historico" | "configuracao">("lotes");
+    const [loteParaEdicao, setLoteParaEdicao] = useState<any>(null);
+    const [openEdicao, setOpenEdicao] = useState(false);
+    const [editForm, setEditForm] = useState<any>({});
+    const [lancamentoEditando, setLancamentoEditando] = useState<any>(null);
+    const [valorAnterior, setValorAnterior] = useState(0);
 
-    const updateRegraMutation = useMutation({
-        mutationFn: (payload: any) => {
-            if (!(regraFechamento as any)?.id) {
-                // Se não existir, podemos tentar criar uma ou avisar. 
-                // Assumindo que deve existir via migration.
-                throw new Error("Regra de fechamento não encontrada no banco.");
+    const loteContext = useMemo(() => {
+        if (!lancamentoEditando?.lote_fechamento_id) return null;
+        return (lotes as any[]).find(l => l.id === lancamentoEditando.lote_fechamento_id);
+    }, [lancamentoEditando, lotes]);
+
+    const editarMutation = useMutation({
+        mutationFn: async (payload: any) => {
+            if (!lancamentoEditando) throw new Error("Lançamento não encontrado.");
+            if (!payload.motivo_edicao || payload.motivo_edicao.trim().length < 5) {
+                throw new Error("Motivo da alteração é obrigatório e deve ter ao menos 5 caracteres.");
             }
-            return DiaristaCicloService.updateRegraFechamento((regraFechamento as any).id, payload);
+
+            // ── PASSO 1: Capturar snapshot ANTES de qualquer mutação ──────────────
+            // Busca direto do banco (nunca do cache React Query)
+            // para garantir que os valores "anteriores" são os reais do DB.
+            const { data: snapshotDb, error: errSnapshot } = await supabase
+                .from("lancamentos_diaristas")
+                .select("valor_calculado, codigo_marcacao, lote_fechamento_id, empresa_id")
+                .eq("id", lancamentoEditando.id)
+                .single();
+
+            if (errSnapshot || !snapshotDb) {
+                throw new Error("Falha ao capturar o estado original do lançamento para auditoria.");
+            }
+
+            // Snapshot imutável — reflete exatamente o estado do DB pré-edição
+            const snapshotAnterior = {
+                valor: Number(snapshotDb.valor_calculado || 0),
+                marcacao: String(snapshotDb.codigo_marcacao || ""),
+                lote_id: snapshotDb.lote_fechamento_id as string | null,
+                empresa_id: snapshotDb.empresa_id as string
+            };
+
+            console.log("[ADMIN EDIT] Snapshot pré-edição:", snapshotAnterior);
+            console.log("[ADMIN EDIT] Payload novo:", {
+                valor_calculado: payload.valor_calculado,
+                codigo_marcacao: payload.codigo_marcacao
+            });
+
+            // ── PASSO 2: Buscar dados do lote do DB (não do cache) para auditoria ─
+            let loteDb: { id: string; periodo_inicio: string; periodo_fim: string } | null = null;
+
+            if (snapshotAnterior.lote_id) {
+                const { data: loteRaw } = await supabase
+                    .from("diaristas_lotes_fechamento")
+                    .select("id, periodo_inicio, periodo_fim")
+                    .eq("id", snapshotAnterior.lote_id)
+                    .maybeSingle();
+                loteDb = loteRaw ?? null;
+                console.log("[ADMIN EDIT] Lote por lote_id:", loteDb);
+            }
+
+            // Fallback: tenta encontrar lote pelo empresa_id + data do lançamento
+            if (!loteDb && snapshotAnterior.empresa_id) {
+                const { data: loteByEmpresa } = await (supabase as any)
+                    .from("diaristas_lotes_fechamento")
+                    .select("id, periodo_inicio, periodo_fim")
+                    .eq("empresa_id", snapshotAnterior.empresa_id)
+                    .lte("periodo_inicio", lancamentoEditando.data_lancamento)
+                    .gte("periodo_fim", lancamentoEditando.data_lancamento)
+                    .maybeSingle();
+                loteDb = loteByEmpresa ?? null;
+                console.log("[ADMIN EDIT] Lote por empresa+data (fallback):", loteDb);
+            }
+
+            // ── PASSO 3: Executar o update no banco ────────────────────────────────
+            const result = await LancamentoDiaristaService.updateAdmin(lancamentoEditando.id, {
+                data_lancamento: payload.data_lancamento,
+                codigo_marcacao: payload.codigo_marcacao,
+                quantidade_diaria: payload.quantidade_diaria,
+                valor_diaria_base: payload.valor_diaria_base,
+                valor_calculado: payload.valor_calculado,
+                observacao: payload.observacao,
+                editado_admin: true,
+                editado_por: user?.id,
+                editado_em: new Date().toISOString(),
+                motivo_edicao: payload.motivo_edicao,
+            });
+
+            console.log("[ADMIN EDIT] updateAdmin concluído:", result);
+
+            // ── PASSO 4: Registrar auditoria com valores pré-mutação ───────────────
+            // snapshotAnterior foi capturado ANTES do updateAdmin — correto.
+            const msgAuditoria =
+                `Editou lançamento do colaborador ${lancamentoEditando.nome_colaborador} ` +
+                `(Data: ${formatDate(lancamentoEditando.data_lancamento)}). ` +
+                `Valor: ${formatCurrency(snapshotAnterior.valor)} -> ${formatCurrency(payload.valor_calculado)}. ` +
+                `Marcação: ${snapshotAnterior.marcacao} -> ${payload.codigo_marcacao}. ` +
+                `Motivo: ${payload.motivo_edicao}`;
+
+            console.log("[ADMIN EDIT] Log de auditoria:", msgAuditoria);
+
+            const { error: logError } = await supabase.from("diaristas_logs_fechamento").insert({
+                empresa_id: snapshotAnterior.empresa_id,
+                tenant_id: perfil?.tenant_id,
+                usuario_id: user?.id,
+                usuario_nome: perfil?.full_name || perfil?.nome_completo || user?.email || "Admin",
+                usuario_role: role || "admin",
+                acao: "EDITOU_LANCAMENTO_ADMIN",
+                periodo_inicio: loteDb?.periodo_inicio ?? lancamentoEditando.data_lancamento,
+                periodo_fim: loteDb?.periodo_fim ?? lancamentoEditando.data_lancamento,
+                motivo: msgAuditoria
+            });
+
+            if (logError) {
+                console.error("[ADMIN EDIT] Erro ao inserir log de auditoria:", logError);
+            }
+
+            // ── PASSO 5: Recalcular via RPC SECURITY DEFINER ─────────────────────
+            // A RPC recalcular_valor_lote soma TODOS os lançamentos do lote
+            // (por lote_fechamento_id + por período) com SECURITY DEFINER,
+            // contornando qualquer RLS que possa bloquear o cliente.
+            const loteIdParaRecalculo = loteDb?.id ?? snapshotAnterior.lote_id;
+
+            if (loteIdParaRecalculo) {
+                const { data: rpcResult, error: rpcError } = await (supabase as any).rpc(
+                    "recalcular_valor_lote",
+                    { p_lote_id: loteIdParaRecalculo }
+                );
+                console.log("[ADMIN EDIT] RPC recalcular_valor_lote:", rpcResult, rpcError ?? "OK");
+
+                if (rpcError) {
+                    // RPC ainda não deployada — usa fallback direto
+                    console.warn("[ADMIN EDIT] RPC falhou, usando fallback direto:", rpcError);
+
+                    if (loteDb?.periodo_inicio && loteDb?.periodo_fim) {
+                        const { data: allLancs } = await (supabase as any)
+                            .from("lancamentos_diaristas")
+                            .select("valor_calculado")
+                            .eq("empresa_id", snapshotAnterior.empresa_id)
+                            .gte("data_lancamento", loteDb.periodo_inicio)
+                            .lte("data_lancamento", loteDb.periodo_fim);
+
+                        if (allLancs && allLancs.length > 0) {
+                            const novoTotal = allLancs.reduce(
+                                (acc: number, l: any) => acc + Number(l.valor_calculado || 0), 0
+                            );
+                            console.log("[ADMIN EDIT] Fallback novoTotal:", novoTotal, "lançamentos:", allLancs.length);
+
+                            const { error: updateErr } = await (supabase as any)
+                                .from("diaristas_lotes_fechamento")
+                                .update({ valor_total: novoTotal, updated_at: new Date().toISOString() })
+                                .eq("id", loteIdParaRecalculo);
+
+                            console.log("[ADMIN EDIT] Fallback update lote:", updateErr ?? "OK");
+                        }
+                    }
+                }
+            } else {
+                console.warn("[ADMIN EDIT] Sem lote para recalcular. loteDb:", loteDb, "lote_id:", snapshotAnterior.lote_id);
+            }
+
+            return result;
         },
         onSuccess: () => {
-            toast.success("Configuração atualizada com sucesso.");
-            refetchRegra();
+            toast.success("Edição administrativa registrada e totais recalculados.");
+            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel"] });
+            queryClient.invalidateQueries({ queryKey: ["lotes_fechamento_painel"] });
+            queryClient.invalidateQueries({ queryKey: ["lotes_fechamento"] });
+            queryClient.invalidateQueries({ queryKey: ["diaristas_logs_fechamento"] });
+            queryClient.invalidateQueries({ queryKey: ["lotes_fechamento_producao"] });
+            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_semana"] });
+            queryClient.invalidateQueries({ queryKey: ["historico_recente_diaristas"] });
+            queryClient.invalidateQueries({ queryKey: ["diaristas_lancamento"] });
+            queryClient.invalidateQueries({ queryKey: ["central_bancaria_diaristas"] });
+            refetchHistorico();
+            refetchLotes();
+            setOpenEdicao(false);
         },
-        onError: (err: any) => toast.error("Erro ao atualizar regra.", { description: err.message }),
+        onError: (err: any) => toast.error("Erro na edição admin.", { description: err.message }),
     });
+
+    // Recálculo automático
+    const recalcularValor = (qtd: number, base: number) => {
+        const novoValor = qtd * base;
+        setEditForm((prev: any) => ({ ...prev, quantidade_diaria: qtd, valor_diaria_base: base, valor_calculado: novoValor }));
+    };
 
     // Agrupar lançamentos por diarista
     const dadosAgrupados = useMemo(() => {
@@ -527,12 +721,21 @@ const RhDiaristasPainel = () => {
     });
 
     const reabrirMutation = useMutation({
-        mutationFn: ({ loteId, motivo }: { loteId: string, motivo: string }) => {
+        mutationFn: ({ loteId, motivo, tipo }: { loteId: string; motivo: string; tipo: 'operacional' | 'administrativa' }) => {
             if (!user?.id) throw new Error("Usuário não identificado.");
-            return LoteFechamentoDiaristaService.reabrirPeriodo(loteId, user.id, perfil?.nome_completo || user.email, role || "rh", motivo);
+            return LoteFechamentoDiaristaService.reabrirPeriodo(
+                loteId, user.id,
+                perfil?.nome_completo || user.email || "",
+                role || "rh",
+                motivo,
+                tipo
+            );
         },
-        onSuccess: () => {
-            toast.success("Lote reaberto com sucesso. Registros voltaram a Em Aberto.");
+        onSuccess: (_data, variables) => {
+            const msg = variables.tipo === 'administrativa'
+                ? "Lote reaberto em modo administrativo. Encarregado bloqueado — RH/Admin assume a correção."
+                : "Lote reaberto com sucesso. Registros voltaram a Em Aberto.";
+            toast.success(msg);
             queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel"] });
             queryClient.invalidateQueries({ queryKey: ["lotes_fechamento_painel"] });
             queryClient.invalidateQueries({ queryKey: ["lotes_fechamento"] });
@@ -542,6 +745,12 @@ const RhDiaristasPainel = () => {
             queryClient.invalidateQueries({ queryKey: ["historico_recente_diaristas"] });
             queryClient.invalidateQueries({ queryKey: ["diaristas_lancamento"] });
             refetchHistorico();
+            refetchLotes();
+            // Fechar modal
+            setOpenReabertura(false);
+            setMotivoReabertura("");
+            setTipoReabertura('operacional');
+            setLoteParaReabrir(null);
         },
         onError: (err: any) => toast.error("Erro ao reabrir lote.", { description: err.message }),
     });
@@ -588,6 +797,15 @@ const RhDiaristasPainel = () => {
             refetchHistorico();
         },
         onError: (err: any) => toast.error("Erro ao aprovar lote.", { description: err.message }),
+    });
+
+    const updateRegraMutation = useMutation({
+        mutationFn: (payload: any) => DiaristaCicloService.updateRegraFechamento(payload),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["regra_fechamento_diaristas"] });
+            toast.success("Configuração atualizada com sucesso.");
+        },
+        onError: (err: any) => toast.error("Erro ao salvar configuração.", { description: err.message })
     });
 
     const exportarXlsx = async () => {
@@ -719,47 +937,368 @@ const RhDiaristasPainel = () => {
                             </Button>
                             {/* C5: desabilitado baseado no rawEmAberto (sem filtros) + hint de explicação */}
                             {/* UX: cor amber/warning para diferenciar de ação primária comum */}
-                            {!periodoBloqueado && (
-                                <div className="relative group">
-                                    <Button
-                                        size="sm"
-                                        className={cn(
-                                            "h-8 font-bold transition-colors",
-                                            rawEmAberto > 0
-                                                ? "bg-amber-600 hover:bg-amber-700 text-white"
-                                                : "bg-muted text-muted-foreground cursor-not-allowed"
-                                        )}
-                                        onClick={() => setOpenFechamento(true)}
-                                        disabled={rawEmAberto === 0}
-                                    >
-                                        <Lock className="h-3.5 w-3.5 mr-1" /> Fechar período
-                                        {rawEmAberto > 0 && (
-                                            <span className="ml-1.5 bg-white/20 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                                                {rawEmAberto}
-                                            </span>
-                                        )}
-                                    </Button>
-                                    {rawEmAberto === 0 && (
-                                        <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block w-56 bg-popover border border-border rounded-lg shadow-lg p-2.5 text-xs text-muted-foreground z-50">
-                                            Nenhum lançamento <strong>em aberto</strong> no período selecionado.
-                                            {temFiltroAtivo && " (Você tem filtros ativos — limpe-os para ver todos.)"}
+                                                            {/* Bloqueio de fechamento se modo admin */}
+                                                            {!(loteEmCorrecaoAdmin && !isAdmin && !isRh) && !periodoBloqueado && (
+                                                                <div className="relative group">
+                                                                    <Button
+                                                                        size="sm"
+                                                                        className={cn(
+                                                                            "h-8 font-bold transition-colors",
+                                                                            rawEmAberto > 0
+                                                                                ? "bg-amber-600 hover:bg-amber-700 text-white"
+                                                                                : "bg-muted text-muted-foreground cursor-not-allowed"
+                                                                        )}
+                                                                        onClick={() => setOpenFechamento(true)}
+                                                                        disabled={rawEmAberto === 0}
+                                                                    >
+                                                                        <Lock className="h-3.5 w-3.5 mr-1" /> Fechar período
+                                                                        {rawEmAberto > 0 && (
+                                                                            <span className="ml-1.5 bg-white/20 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                                                                                {rawEmAberto}
+                                                                            </span>
+                                                                        )}
+                                                                    </Button>
+                                                                    {rawEmAberto === 0 && (
+                                                                        <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block w-56 bg-popover border border-border rounded-lg shadow-lg p-2.5 text-xs text-muted-foreground z-50">
+                                                                            Nenhum lançamento <strong>em aberto</strong> no período selecionado.
+                                                                            {temFiltroAtivo && " (Você tem filtros ativos — limpe-os para ver todos.)"}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                        </div>
+                    </div>
+
+                                     {/* Banner: Reabertura Administrativa ativa - Visível apenas para não-admin/rh */}
+                                    {loteEmCorrecaoAdmin && !isAdmin && !isRh && (
+                                        <div className="bg-red-50 border border-red-200 p-3 rounded-md mb-4">
+                                            <p className="text-sm text-red-800 font-semibold flex items-center gap-2">
+                                                <Lock className="h-4 w-4" />
+                                                Período em revisão administrativa
+                                            </p>
+                                            <p className="text-xs text-red-700/80 mt-1">
+                                                Este período está sendo ajustado pelo RH/Admin. O fechamento está bloqueado.
+                                            </p>
+                                        </div>
+                                    )}
+                    {loteEmCorrecaoAdmin && (isAdmin || isRh) && (
+                        <div className="flex items-center gap-2 px-3 py-2 bg-orange-500/10 border border-orange-500/30 rounded-md">
+                            <Settings className="h-3.5 w-3.5 text-orange-600" />
+                            <div className="flex-1">
+                                <span className="text-xs font-bold text-orange-800">🔒 Correção Administrativa ativa</span>
+                                <p className="text-[11px] text-orange-700/80 mt-0.5">Edite os lançamentos e revalide o período diretamente. O encarregado está bloqueado.</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {periodoBloqueado && !loteEmCorrecaoAdmin && (
+                        <div className="flex items-center gap-2 px-3 py-1 bg-muted rounded-md border border-border">
+                            <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="text-xs font-semibold text-muted-foreground">Período Bloqueado</span>
+                        </div>
+                    )}
+
+                    {/* Modal Reabertura — substitui prompt() inline */}
+                    <Dialog open={openReabertura} onOpenChange={(open) => {
+                        setOpenReabertura(open);
+                        if (!open) { setMotivoReabertura(""); setTipoReabertura('operacional'); setLoteParaReabrir(null); }
+                    }}>
+                        <DialogContent className="max-w-md">
+                            <DialogHeader>
+                                <DialogTitle className="flex items-center gap-2">
+                                    <RefreshCw className="h-4 w-4 text-amber-600" />
+                                    Reabrir Período
+                                </DialogTitle>
+                                <DialogDescription>
+                                    {loteParaReabrir && (
+                                        <span className="font-mono text-xs">
+                                            {loteParaReabrir.periodo_inicio ? format(new Date(loteParaReabrir.periodo_inicio + "T12:00:00"), "dd/MM/yy") : ""}
+                                            {" → "}
+                                            {loteParaReabrir.periodo_fim ? format(new Date(loteParaReabrir.periodo_fim + "T12:00:00"), "dd/MM/yy") : ""}
+                                        </span>
+                                    )}
+                                </DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-4 pt-2">
+                                 {/* Tipo de reabertura */}
+                                <div className="space-y-2 mt-4 p-3 border rounded-md bg-slate-50">
+                                    <Label className="text-xs font-bold">Tipo de reabertura</Label>
+                                    <div className="flex gap-4">
+                                        <div className="flex items-center gap-2 cursor-pointer" onClick={() => setTipoReabertura('operacional')}>
+                                            <input type="radio" checked={tipoReabertura === 'operacional'} readOnly />
+                                            <span className="text-sm">Operacional</span>
+                                        </div>
+                                        <div className="flex items-center gap-2 cursor-pointer" onClick={() => setTipoReabertura('administrativa')}>
+                                            <input type="radio" checked={tipoReabertura === 'administrativa'} readOnly />
+                                            <span className="text-sm">Administrativa</span>
+                                        </div>
+                                    </div>
+                                    <p className="text-[11px] text-muted-foreground mt-1">
+                                        {tipoReabertura === 'operacional' 
+                                            ? "Devolve para o encarregado. Fluxo normal."
+                                            : "⚠️ O encarregado não poderá fechar o período novamente. O RH/Admin edita e revalida diretamente."}
+                                    </p>
+                                </div>
+                                    {tipoReabertura === 'administrativa' && (
+                                        <div className="p-2.5 rounded-md bg-orange-500/8 border border-orange-500/20 text-[11px] text-orange-800">
+                                            ⚠️ O encarregado não poderá fechar o período novamente. O RH/Admin edita e revalida diretamente.
                                         </div>
                                     )}
                                 </div>
-                            )}
-                            {periodoBloqueado && (
-                                <div className="flex items-center gap-2 px-3 py-1 bg-muted rounded-md border border-border">
-                                    <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                                    <span className="text-xs font-semibold text-muted-foreground">Período Bloqueado</span>
+
+                                {/* Motivo */}
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-bold">
+                                        Motivo da reabertura <span className="text-red-500">*</span>
+                                    </Label>
+                                    <Textarea
+                                        placeholder="Descreva o motivo da reabertura (obrigatório)..."
+                                        value={motivoReabertura}
+                                        onChange={(e) => setMotivoReabertura(e.target.value)}
+                                        className="resize-none"
+                                        rows={3}
+                                    />
+                                </div>
+
+                                <DialogFooter className="gap-2">
+                                    <Button variant="outline" onClick={() => setOpenReabertura(false)} className="flex-1 h-10">
+                                        Cancelar
+                                    </Button>
+                                    <Button
+                                        onClick={() => {
+                                            if (!loteParaReabrir) return;
+                                            if (!motivoReabertura.trim()) {
+                                                toast.error("Informe o motivo da reabertura.");
+                                                return;
+                                            }
+                                             reabrirMutation.mutate({
+                                                loteId: loteParaReabrir.id,
+                                                motivo: motivoReabertura,
+                                                tipo: tipoReabertura
+                                            });
+                                        }}
+                                        disabled={reabrirMutation.isPending || !motivoReabertura.trim()}
+                                        className={cn(
+                                            "flex-[2] h-10",
+                                            tipoReabertura === 'administrativa'
+                                                ? "bg-orange-600 hover:bg-orange-700 text-white"
+                                                : "bg-amber-600 hover:bg-amber-700 text-white"
+                                        )}
+                                    >
+                                        {reabrirMutation.isPending ? (
+                                            <><Loader2 className="h-4 w-4 animate-spin mr-2" />Reabrindo...</>
+                                        ) : tipoReabertura === 'administrativa' ? (
+                                            <>🔒 Confirmar Reabertura Administrativa</>
+                                        ) : (
+                                            <>🔄 Confirmar Reabertura Operacional</>
+                                        )}
+                                    </Button>
+                                 </DialogFooter>
+                            </DialogContent>
+                        </Dialog>
+
+                    {/* Modal Edição Admin */}
+                    <Dialog open={openEdicao && !!lancamentoEditando} onOpenChange={(open) => {
+                        setOpenEdicao(open);
+                        if (!open) {
+                            setTimeout(() => {
+                                setLancamentoEditando(null);
+                                setEditForm({});
+                            }, 300);
+                        }
+                    }}>
+                        <DialogContent className="max-w-md">
+                            <DialogHeader>
+                                <DialogTitle>Edição administrativa</DialogTitle>
+                            </DialogHeader>
+                            {lancamentoEditando && (
+                                <div className="space-y-4 pt-4">
+                                    {/* Top Info & Status */}
+                                    <div className="flex items-center justify-between gap-2 border-b pb-4">
+                                        <div className="space-y-1">
+                                            <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Status Atual</p>
+                                            <StatusDiaristaBadge status={lancamentoEditando.status} />
+                                        </div>
+                                        <div className="text-right space-y-1">
+                                            <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Colaborador</p>
+                                            <p className="text-sm font-semibold truncate max-w-[180px]">{lancamentoEditando.nome_colaborador}</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Lote Context */}
+                                    {loteContext && (
+                                        <div className="p-3 bg-blue-500/5 border border-blue-500/10 rounded-md space-y-1">
+                                            <p className="text-[10px] uppercase font-bold text-blue-600/70 tracking-widest flex items-center gap-1.5">
+                                                <FileCheck className="h-3 w-3" /> Contexto do Lote
+                                            </p>
+                                            <div className="grid grid-cols-2 gap-2 text-xs">
+                                                <div className="flex flex-col">
+                                                    <span className="text-muted-foreground">ID do Lote:</span>
+                                                    <span className="font-mono font-medium">#{loteContext.id.slice(0, 8)}</span>
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className="text-muted-foreground">Período:</span>
+                                                    <span className="font-medium text-foreground">
+                                                        {format(new Date(loteContext.periodo_inicio + "T12:00:00"), "dd/MM")} - {format(new Date(loteContext.periodo_fim + "T12:00:00"), "dd/MM")}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Summary History */}
+                                    {(lancamentoEditando.editado_admin || lancamentoEditando.codigo_marcacao_original) && (
+                                        <div className="p-3 bg-amber-500/5 border border-amber-500/10 rounded-md space-y-2">
+                                            <p className="text-[10px] uppercase font-bold text-amber-600/70 tracking-widest flex items-center gap-1.5">
+                                                <History className="h-3 w-3" /> Histórico de Alterações
+                                            </p>
+                                            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
+                                                {lancamentoEditando.codigo_marcacao_original && (
+                                                    <div className="flex flex-col">
+                                                        <span className="text-muted-foreground">Marcação Original:</span>
+                                                        <span className="font-bold text-amber-700">{lancamentoEditando.codigo_marcacao_original}</span>
+                                                    </div>
+                                                )}
+                                                {lancamentoEditando.valor_calculado_original && (
+                                                    <div className="flex flex-col">
+                                                        <span className="text-muted-foreground">Valor Original:</span>
+                                                        <span className="font-bold text-amber-700">{formatCurrency(lancamentoEditando.valor_calculado_original)}</span>
+                                                    </div>
+                                                )}
+                                                {lancamentoEditando.editado_em && (
+                                                    <div className="col-span-2 pt-1 border-t border-amber-500/10">
+                                                        <p className="text-muted-foreground italic">
+                                                            Última edição admin em {format(new Date(lancamentoEditando.editado_em), "dd/MM HH:mm")} por {lancamentoEditando.editado_por_nome || "Admin"}.
+                                                        </p>
+                                                        {lancamentoEditando.motivo_edicao && (
+                                                            <p className="text-amber-800 mt-0.5"><b>Motivo:</b> {lancamentoEditando.motivo_edicao}</p>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="p-3 bg-red-500/5 border border-red-500/10 rounded-md text-xs text-red-800">
+                                        ⚠️ <b>Atenção Administrativa:</b> A edição reclassifica o lançamento e exige nova validação.
+                                    </div>
+
+                                    {/* Form Fields */}
+                                    <div className="space-y-4">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-1.5">
+                                                <Label className="text-xs font-bold">Marcação</Label>
+                                                <Select value={editForm.codigo_marcacao} onValueChange={(v) => {
+                                                    const qtd = v === "P" ? 1 : v === "MP" ? 0.5 : 0;
+                                                    recalcularValor(qtd, editForm.valor_diaria_base);
+                                                    setEditForm(prev => ({ ...prev, codigo_marcacao: v }));
+                                                }}>
+                                                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="P">P (Completa - 1.0)</SelectItem>
+                                                        <SelectItem value="MP">MP (Meia - 0.5)</SelectItem>
+                                                        <SelectItem value="AUS">AUS (Ausente - 0.0)</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                                <p className="text-[10px] text-muted-foreground font-medium">P = Integral | MP = 50%</p>
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <Label className="text-xs font-bold">Quantidade</Label>
+                                                <Input
+                                                    type="number"
+                                                    step="0.1"
+                                                    value={editForm.quantidade_diaria}
+                                                    onChange={(e) => recalcularValor(Number(e.target.value), editForm.valor_diaria_base)}
+                                                    className="h-9 font-mono"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-1.5">
+                                                <Label className="text-xs font-bold">Data do Lançamento</Label>
+                                                <Input
+                                                    type="date"
+                                                    value={editForm.data_lancamento}
+                                                    onChange={(e) => setEditForm(prev => ({ ...prev, data_lancamento: e.target.value }))}
+                                                    className="h-9"
+                                                />
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <Label className="text-xs font-bold">Valor Base (R$)</Label>
+                                                <Input
+                                                    type="number"
+                                                    value={editForm.valor_diaria_base}
+                                                    onChange={(e) => recalcularValor(editForm.quantidade_diaria, Number(e.target.value))}
+                                                    className="h-9 font-mono"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-1.5 bg-muted/30 p-3 rounded-lg border border-dashed border-border/60">
+                                            <Label className="text-xs font-bold text-muted-foreground">Valor Final Calculado</Label>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-xl font-mono font-bold text-foreground">
+                                                    {formatCurrency(editForm.valor_calculado)}
+                                                </span>
+                                                <Badge variant="outline" className="bg-background font-mono text-[10px]">
+                                                    {editForm.quantidade_diaria} x {formatCurrency(editForm.valor_diaria_base)}
+                                                </Badge>
+                                            </div>
+                                            <div className="text-[10px] flex items-center justify-between pt-1 border-t border-border/40 mt-2">
+                                                <span className="text-muted-foreground">Comparação com anterior:</span>
+                                                <span className={cn("font-bold", editForm.valor_calculado - valorAnterior !== 0 ? "text-amber-600" : "text-emerald-600")}>
+                                                    {editForm.valor_calculado - valorAnterior >= 0 ? "+" : ""}{formatCurrency(editForm.valor_calculado - valorAnterior)}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-1.5">
+                                            <Label className="text-xs font-bold">Observação Interna</Label>
+                                            <Input
+                                                value={editForm.observacao ?? ""}
+                                                onChange={(e) => setEditForm({ ...editForm, observacao: e.target.value })}
+                                                className="h-9"
+                                                placeholder="Notas extras sobre o serviço..."
+                                            />
+                                        </div>
+
+                                        <div className="space-y-1.5 p-3 bg-red-50 rounded-lg border border-red-200">
+                                            <Label className="text-xs font-bold text-red-900 flex items-center gap-1.5">
+                                                Motivo da Alteração Administrativa <span className="text-red-500">*</span>
+                                            </Label>
+                                            <Textarea
+                                                value={editForm.motivo_edicao ?? ""}
+                                                onChange={(e) => setEditForm({ ...editForm, motivo_edicao: e.target.value })}
+                                                placeholder="Justificativa obrigatória para auditoria (mín. 5 carac.)..."
+                                                className="bg-white resize-none"
+                                                rows={2}
+                                            />
+                                        </div>
+
+                                        <DialogFooter className="pt-2 gap-2">
+                                            <Button variant="outline" onClick={() => setOpenEdicao(false)} className="h-10 flex-1">Cancelar</Button>
+                                            <Button
+                                                onClick={() => editarMutation.mutate(editForm)}
+                                                disabled={editarMutation.isPending || !editForm.motivo_edicao || editForm.motivo_edicao.trim().length < 5}
+                                                className="h-10 flex-[2]"
+                                            >
+                                                {editarMutation.isPending ? (
+                                                    <>
+                                                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                                        Salvando...
+                                                    </>
+                                                ) : "Confirmar Alteração"}
+                                            </Button>
+                                        </DialogFooter>
+                                    </div>
                                 </div>
                             )}
-                        </div>
-                    </div>
-                </div>
 
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
-                    {/* Alternância de Visão */}
-                    <div className="flex bg-muted p-1 rounded-lg w-max mb-1 sm:mb-0">
+                        </DialogContent>
+                    </Dialog>
+
+                    <div className="flex gap-2">
                         <button
                             className={cn(
                                 "flex items-center px-4 py-1.5 text-sm font-medium rounded-md transition-colors",
@@ -802,827 +1341,838 @@ const RhDiaristasPainel = () => {
                             <span className="flex items-center gap-1.5"><span className="text-muted-foreground font-bold leading-none">-</span> Sem lançamento</span>
                         </div>
                     )}
-                </div>
 
-                {/* Tabela consolidada */}
-                <section className="esc-card overflow-x-auto">
-                    {(isLoading || isLoadingLotes) ? (
-                        <div className="flex flex-col items-center justify-center p-12 gap-3">
-                            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                            <p className="text-xs text-muted-foreground uppercase tracking-widest">Carregando...</p>
-                        </div>
-                    ) : dadosAgrupados.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center p-16 gap-3 text-center">
-                            <CalendarDays className="h-10 w-10 text-muted-foreground" />
-                            <p className="font-medium text-foreground">Nenhum lançamento encontrado</p>
-                            <p className="text-sm text-muted-foreground">Ajuste os filtros ou peça ao encarregado para registrar as presenças.</p>
-                        </div>
-                    ) : (
-                        <table className="w-full text-sm">
-                            <thead className="esc-table-header">
-                                {visao === "diarista" ? (
-                                    <tr className="text-left">
-                                        <th className="px-5 h-11 font-medium"></th>
-                                        <th className="px-3 h-11 font-medium">Diarista</th>
-                                        <th className="px-3 h-11 font-medium">Função</th>
-                                        <th className="px-3 h-11 font-medium text-center">Resumo Marcações</th>
-                                        <th className="px-3 h-11 font-medium text-center">Total diárias</th>
-                                        <th className="px-3 h-11 font-medium text-right">Valor total</th>
-                                        <th className="px-5 h-11 font-medium text-center">Status</th>
-                                    </tr>
-                                ) : visao === "grade_semanal" ? (
-                                    <tr className="text-left">
-                                        <th className="px-5 h-12 font-medium min-w-[220px] text-sm">Diarista</th>
-                                        {diasDaSemanaBase.map((d) => (
-                                            <th key={d.toISOString()} className={cn("px-3 h-12 text-center whitespace-nowrap min-w-[64px]", isToday(d) && "bg-blue-50/50 border-b-2 border-b-blue-400")}>
-                                                <div className="flex flex-col items-center">
-                                                    <span className="text-xs font-bold uppercase text-muted-foreground tracking-wider">{format(d, "eeeeee", { locale: ptBR })}</span>
-                                                    <span className="font-mono text-xs text-foreground">{format(d, "dd/MM")}</span>
-                                                </div>
-                                            </th>
-                                        ))}
-                                        <th className="px-3 h-12 font-medium text-center text-sm">Diárias</th>
-                                        <th className="px-5 h-12 font-medium text-right text-sm">Valor</th>
-                                    </tr>
-                                ) : (
-                                    <tr className="text-left">
-                                        <th className="px-5 h-11 font-medium"></th>
-                                        <th className="px-3 h-11 font-medium">Data</th>
-                                        <th className="px-3 h-11 font-medium text-center">Diaristas</th>
-                                        <th className="px-3 h-11 font-medium text-center">Total diárias</th>
-                                        <th className="px-3 h-11 font-medium text-right">Valor total</th>
-                                        <th className="px-5 h-11 font-medium text-center"></th>
-                                    </tr>
-                                )}
-                            </thead>
-                            <tbody>
-                                {visao === "diarista" ? (
-                                    dadosAgrupados.map((g) => (
-                                        <>
-                                            <tr
-                                                key={g.diarista_id}
-                                                className="border-t border-muted hover:bg-background cursor-pointer"
-                                                onClick={() => setExpandedId(expandedId === g.diarista_id ? null : g.diarista_id)}
-                                            >
-                                                <td className="px-5 h-12 w-8 text-muted-foreground">
-                                                    {expandedId === g.diarista_id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                                                </td>
-                                                <td className="px-3 font-medium text-foreground">{g.nome}</td>
-                                                <td className="px-3 text-muted-foreground">{g.funcao}</td>
-                                                <td className="px-3 text-center min-w-[120px]">
-                                                    <div className="flex flex-wrap gap-1 justify-center">
-                                                        {Object.entries(g.contagem).map(([cod, qtd]) => (
-                                                            <span key={cod} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground border">
-                                                                {qtd as number}x {cod}
-                                                            </span>
-                                                        ))}
+
+                    {/* Tabela consolidada */}
+                    <section className="esc-card overflow-x-auto">
+                        {(isLoading || isLoadingLotes) ? (
+                            <div className="flex flex-col items-center justify-center p-12 gap-3">
+                                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                                <p className="text-xs text-muted-foreground uppercase tracking-widest">Carregando...</p>
+                            </div>
+                        ) : dadosAgrupados.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center p-16 gap-3 text-center">
+                                <CalendarDays className="h-10 w-10 text-muted-foreground" />
+                                <p className="font-medium text-foreground">Nenhum lançamento encontrado</p>
+                                <p className="text-sm text-muted-foreground">Ajuste os filtros ou peça ao encarregado para registrar as presenças.</p>
+                            </div>
+                        ) : (
+                            <table className="w-full text-sm">
+                                <thead className="esc-table-header">
+                                    {visao === "diarista" ? (
+                                        <tr className="text-left">
+                                            <th className="px-5 h-11 font-medium"></th>
+                                            <th className="px-3 h-11 font-medium">Diarista</th>
+                                            <th className="px-3 h-11 font-medium">Função</th>
+                                            <th className="px-3 h-11 font-medium text-center">Resumo Marcações</th>
+                                            <th className="px-3 h-11 font-medium text-center">Total diárias</th>
+                                            <th className="px-3 h-11 font-medium text-right">Valor total</th>
+                                            <th className="px-5 h-11 font-medium text-center">Status</th>
+                                        </tr>
+                                    ) : visao === "grade_semanal" ? (
+                                        <tr className="text-left">
+                                            <th className="px-5 h-12 font-medium min-w-[220px] text-sm">Diarista</th>
+                                            {diasDaSemanaBase.map((d) => (
+                                                <th key={d.toISOString()} className={cn("px-3 h-12 text-center whitespace-nowrap min-w-[64px]", isToday(d) && "bg-blue-50/50 border-b-2 border-b-blue-400")}>
+                                                    <div className="flex flex-col items-center">
+                                                        <span className="text-xs font-bold uppercase text-muted-foreground tracking-wider">{format(d, "eeeeee", { locale: ptBR })}</span>
+                                                        <span className="font-mono text-xs text-foreground">{format(d, "dd/MM")}</span>
                                                     </div>
-                                                </td>
-                                                <td className="px-3 text-center font-mono">
-                                                    {g.totalDiarias.toFixed(1)}
-                                                </td>
-                                                <td className="px-3 text-right font-mono font-semibold text-foreground">
-                                                    {formatCurrency(g.valorTotal)}
-                                                </td>
-                                                <td className="px-5 text-center">
-                                                    <StatusDiaristaBadge status={g.status} />
-                                                </td>
-                                            </tr>
-                                            {expandedId === g.diarista_id && (
-                                                <tr key={`${g.diarista_id}-detail`} className="border-t border-muted/50 bg-muted/20">
-                                                    <td colSpan={8} className="px-5 py-4">
-                                                        <div className="space-y-2">
-                                                            <div className="grid grid-cols-7 gap-2 text-xs font-bold text-muted-foreground uppercase tracking-widest pb-1 border-b border-border/50">
-                                                                <span>Data</span>
-                                                                <span>Marcação</span>
-                                                                <span>Qtd</span>
-                                                                <span className="text-right">Diária base</span>
-                                                                <span className="text-right">Valor</span>
-                                                                <span>Cliente</span>
-                                                                <span>Observação</span>
-                                                            </div>
-                                                            {g.lancamentos.map((l: any) => (
-                                                                <div key={l.id} className="grid grid-cols-7 gap-2 text-xs items-center">
-                                                                    <span className="font-mono text-muted-foreground">{formatDate(l.data_lancamento)}</span>
-                                                                    <span className={cn(
-                                                                        "font-bold",
-                                                                        l.codigo_marcacao === "P" && "text-emerald-600",
-                                                                        l.codigo_marcacao === "MP" && "text-amber-600",
-                                                                    )}>{l.codigo_marcacao}</span>
-                                                                    <span className="font-mono">{l.quantidade_diaria}</span>
-                                                                    <span className="font-mono text-right text-muted-foreground">{formatCurrency(l.valor_diaria_base)}</span>
-                                                                    <span className="font-mono text-right font-semibold text-foreground">{formatCurrency(l.valor_calculado)}</span>
-                                                                    <span className="text-muted-foreground truncate">{l.cliente_unidade ?? "—"}</span>
-                                                                    <span className="text-muted-foreground truncate">{l.observacao ?? "—"}</span>
-                                                                </div>
+                                                </th>
+                                            ))}
+                                            <th className="px-3 h-12 font-medium text-center text-sm">Diárias</th>
+                                            <th className="px-5 h-12 font-medium text-right text-sm">Valor</th>
+                                        </tr>
+                                    ) : (
+                                        <tr className="text-left">
+                                            <th className="px-5 h-11 font-medium"></th>
+                                            <th className="px-3 h-11 font-medium">Data</th>
+                                            <th className="px-3 h-11 font-medium text-center">Diaristas</th>
+                                            <th className="px-3 h-11 font-medium text-center">Total diárias</th>
+                                            <th className="px-3 h-11 font-medium text-right">Valor total</th>
+                                            <th className="px-5 h-11 font-medium text-center"></th>
+                                        </tr>
+                                    )}
+                                </thead>
+                                <tbody>
+                                    {visao === "diarista" ? (
+                                        dadosAgrupados.map((g) => (
+                                            <>
+                                                <tr
+                                                    key={g.diarista_id}
+                                                    className="border-t border-muted hover:bg-background cursor-pointer"
+                                                    onClick={() => setExpandedId(expandedId === g.diarista_id ? null : g.diarista_id)}
+                                                >
+                                                    <td className="px-5 h-12 w-8 text-muted-foreground">
+                                                        {expandedId === g.diarista_id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                                    </td>
+                                                    <td className="px-3 font-medium text-foreground">{g.nome}</td>
+                                                    <td className="px-3 text-muted-foreground">{g.funcao}</td>
+                                                    <td className="px-3 text-center min-w-[120px]">
+                                                        <div className="flex flex-wrap gap-1 justify-center">
+                                                            {Object.entries(g.contagem).map(([cod, qtd]) => (
+                                                                <span key={cod} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground border">
+                                                                    {qtd as number}x {cod}
+                                                                </span>
                                                             ))}
                                                         </div>
                                                     </td>
-                                                </tr>
-                                            )}
-                                        </>
-                                    ))
-                                ) : visao === "grade_semanal" ? (
-                                    dadosAgrupados.map((g) => (
-                                        <tr key={g.diarista_id} className="border-t border-muted hover:bg-background">
-                                            <td className="px-5 h-14">
-                                                <div className="flex flex-col">
-                                                    <span className="font-medium text-sm text-foreground truncate max-w-[220px]">{g.nome}</span>
-                                                    <span className="text-xs text-muted-foreground truncate max-w-[220px]">{g.funcao}</span>
-                                                </div>
-                                            </td>
-                                            {diasDaSemanaBase.map((d) => {
-                                                const strDate = format(d, "yyyy-MM-dd");
-                                                const diaLancamentos = g.lancamentos.filter((l: any) => l.data_lancamento === strDate);
-
-                                                if (diaLancamentos.length === 0) {
-                                                    return (
-                                                        <td key={d.toISOString()} className={cn("px-3 text-center text-muted-foreground/40 font-medium text-sm", isToday(d) && "bg-blue-50/50")}>
-                                                            –
-                                                        </td>
-                                                    );
-                                                }
-
-                                                const codes = Array.from(new Set(diaLancamentos.map((l: any) => l.codigo_marcacao)));
-                                                const tooltipVal = diaLancamentos.map((l: any) => `${l.quantidade_diaria}x ${l.codigo_marcacao} = ${formatCurrency(l.valor_calculado)}`).join(' | ');
-
-                                                return (
-                                                    <td key={d.toISOString()} className={cn("px-3 text-center", isToday(d) && "bg-blue-50/50")} title={tooltipVal}>
-                                                        <div className="flex flex-col items-center gap-0.5 cursor-help">
-                                                            <span className={cn(
-                                                                "text-xs uppercase font-bold px-2 py-0.5 rounded",
-                                                                codes.includes("P") && "text-emerald-700 bg-emerald-500/15",
-                                                                codes.includes("MP") && "text-amber-700 bg-amber-500/15",
-                                                                (!codes.includes("P") && !codes.includes("MP")) && "bg-muted text-foreground"
-                                                            )}>
-                                                                {codes.join("+")}
-                                                            </span>
-                                                        </div>
+                                                    <td className="px-3 text-center font-mono">
+                                                        {g.totalDiarias.toFixed(1)}
                                                     </td>
-                                                );
-                                            })}
-                                            <td className="px-3 text-center font-mono font-bold text-sm">
-                                                {g.totalDiarias.toFixed(1)}
-                                            </td>
-                                            <td className="px-5 text-right font-mono font-semibold text-foreground text-sm">
-                                                {formatCurrency(g.valorTotal)}
-                                            </td>
-                                        </tr>
-                                    ))
-                                ) : (
-                                    dadosAgrupadosPorData.map((g) => (
-                                        <>
-                                            <tr
-                                                key={g.data_lancamento}
-                                                className="border-t border-muted hover:bg-background cursor-pointer"
-                                                onClick={() => setExpandedId(expandedId === g.data_lancamento ? null : g.data_lancamento)}
-                                            >
-                                                <td className="px-5 h-12 w-8 text-muted-foreground">
-                                                    {expandedId === g.data_lancamento ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                                                </td>
-                                                <td className="px-3 font-mono font-bold text-foreground">{formatDate(g.data_lancamento)}</td>
-                                                <td className="px-3 text-center">{g.totalDiaristas}</td>
-                                                <td className="px-3 text-center font-mono">{g.totalDiarias.toFixed(1)}</td>
-                                                <td className="px-3 text-right font-mono font-semibold text-foreground">
-                                                    {formatCurrency(g.valorTotal)}
-                                                </td>
-                                                <td className="px-5 text-center"></td>
-                                            </tr>
-                                            {expandedId === g.data_lancamento && (
-                                                <tr key={`${g.data_lancamento}-detail`} className="border-t border-muted/50 bg-muted/20">
-                                                    <td colSpan={6} className="px-5 py-4">
-                                                        <div className="space-y-2">
-                                                            <div className="grid grid-cols-7 gap-2 text-xs font-bold text-muted-foreground uppercase tracking-widest pb-1 border-b border-border/50">
-                                                                <span className="col-span-2">Colaborador / Função</span>
-                                                                <span className="text-center">Marcação / Qtd</span>
-                                                                <span className="text-right">Valor</span>
-                                                                <span>Cliente / Op.</span>
-                                                                <span className="text-center">Status</span>
-                                                            </div>
-                                                            {g.lancamentos.map((l: any) => (
-                                                                <div key={l.id} className="grid grid-cols-7 gap-2 text-xs items-center">
-                                                                    <div className="col-span-2 flex flex-col pt-1 pb-1">
-                                                                        <span className="font-bold text-foreground truncate">{l.nome_colaborador}</span>
-                                                                        <span className="text-[10px] text-muted-foreground truncate">{l.funcao_colaborador ?? "—"}</span>
-                                                                    </div>
-                                                                    <div className="text-center">
+                                                    <td className="px-3 text-right font-mono font-semibold text-foreground">
+                                                        {formatCurrency(g.valorTotal)}
+                                                    </td>
+                                                    <td className="px-5 text-center">
+                                                        <StatusDiaristaBadge status={g.status} />
+                                                    </td>
+                                                </tr>
+                                                {expandedId === g.diarista_id && (
+                                                    <tr key={`${g.diarista_id}-detail`} className="border-t border-muted/50 bg-muted/20">
+                                                        <td colSpan={8} className="px-5 py-4">
+                                                            <div className="space-y-2">
+                                                                <div className="grid grid-cols-7 gap-2 text-xs font-bold text-muted-foreground uppercase tracking-widest pb-1 border-b border-border/50">
+                                                                    <span>Data</span>
+                                                                    <span>Marcação</span>
+                                                                    <span>Qtd</span>
+                                                                    <span className="text-right">Diária base</span>
+                                                                    <span className="text-right">Valor</span>
+                                                                    <span>Cliente</span>
+                                                                    <span>Observação</span>
+                                                                </div>
+                                                                {g.lancamentos.map((l: any) => (
+                                                                    <div key={l.id} className="grid grid-cols-8 gap-2 text-xs items-center">
+                                                                        <span className="font-mono text-muted-foreground">{formatDate(l.data_lancamento)}</span>
                                                                         <span className={cn(
-                                                                            "font-bold mr-2",
+                                                                            "font-bold",
                                                                             l.codigo_marcacao === "P" && "text-emerald-600",
                                                                             l.codigo_marcacao === "MP" && "text-amber-600",
                                                                         )}>{l.codigo_marcacao}</span>
-                                                                        <span className="font-mono text-muted-foreground">{l.quantidade_diaria}</span>
+                                                                        <span className="font-mono">{l.quantidade_diaria}</span>
+                                                                        <span className="font-mono text-right text-muted-foreground">{formatCurrency(l.valor_diaria_base)}</span>
+                                                                        <span className="font-mono text-right font-semibold text-foreground">{formatCurrency(l.valor_calculado)}</span>
+                                                                        <span className="text-muted-foreground truncate">{l.cliente_unidade ?? "—"}</span>
+                                                                        <span className="text-muted-foreground truncate">{l.observacao ?? "—"}</span>
+                                                                        <div className="flex justify-end">
+                                                                            {g.status !== "PAGO" && (
+                                                                                <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => {
+                                                                                    if (l) {
+                                                                                        setLancamentoEditando(l);
+                                                                                        setValorAnterior(Number(l.valor_calculado));
+                                                                                        setEditForm({ ...l, motivo_edicao: "" });
+                                                                                        setOpenEdicao(true);
+                                                                                    }
+                                                                                }}>
+                                                                                    <Settings className="h-3 w-3" />
+                                                                                </Button>
+                                                                            )}
+                                                                        </div>
                                                                     </div>
-                                                                    <div className="text-right flex flex-col pt-1 pb-1">
-                                                                        <span className="font-mono font-semibold">{formatCurrency(l.valor_calculado)}</span>
-                                                                        <span className="text-[10px] font-mono text-muted-foreground">{formatCurrency(l.valor_diaria_base)} bs.</span>
-                                                                    </div>
-                                                                    <div className="flex flex-col pt-1 pb-1">
-                                                                        <span className="truncate text-muted-foreground">{l.cliente_unidade ?? "—"}</span>
-                                                                        <span className="truncate text-[10px] text-muted-foreground">{l.operacao_servico ?? "—"}</span>
-                                                                    </div>
-                                                                    <div className="text-center">
-                                                                        <StatusDiaristaBadge status={(() => {
-                                                                            // Sincronização visual profunda para o detalhamento
-                                                                            if (l.status === "EM_ABERTO" || l.status === "em_aberto") {
-                                                                                const loteRel = (lotes as any[]).find(lote => lote.empresa_id === l.empresa_id);
-                                                                                return loteRel ? loteRel.status : l.status;
-                                                                            }
-                                                                            return l.status;
-                                                                        })()} />
-                                                                    </div>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            )}
-                                        </>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
-                    )}
-                </section>
-
-                {/* ─── Ciclo de Fechamento ─────────────────────── */}
-                <section className="esc-card">
-                    <div className="px-5 pt-4 pb-3 border-b border-border/60 flex items-center gap-2">
-                        <CalendarClock className="h-4 w-4 text-muted-foreground" />
-                        <h2 className="text-sm font-semibold text-foreground">Ciclo de Fechamento</h2>
-                    </div>
-
-                    {/* Tabs */}
-                    <div className="flex border-b border-border/60 px-2">
-                        {(["ciclos", "lotes", "historico", "configuracao"] as const).map((tab) => (
-                            <button
-                                key={tab}
-                                onClick={() => setCicloTab(tab)}
-                                className={cn(
-                                    "flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors",
-                                    cicloTab === tab
-                                        ? "border-primary text-primary"
-                                        : "border-transparent text-muted-foreground hover:text-foreground"
-                                )}
-                            >
-                                {tab === "ciclos" && <><RefreshCw className="h-3.5 w-3.5" /> Ciclos</>}
-                                {tab === "lotes" && <><FileCheck className="h-3.5 w-3.5" /> Lotes</>}
-                                {tab === "historico" && <><History className="h-3.5 w-3.5" /> Histórico</>}
-                                {tab === "configuracao" && <><Settings className="h-3.5 w-3.5" /> Configuração</>}
-                            </button>
-                        ))}
-                    </div>
-
-                    <div className="p-5">
-                        {/* ── Aba: Ciclos ── */}
-                        {cicloTab === "ciclos" && (
-                            <div className="space-y-6">
-                                {/* Card Ciclo Atual (Semana atual baseada no seletor, ou o mais recente) */}
-                                <div className="esc-card p-5 border-l-4 border-l-primary/70 bg-gradient-to-r from-background to-muted/20">
-                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                        <div>
-                                            <p className="text-xs uppercase tracking-widest font-bold text-muted-foreground mb-1">
-                                                Ciclo de Operação Selecionado
-                                            </p>
-                                            <h3 className="text-xl font-display font-medium text-foreground">
-                                                {formatDate(inicio)} a {formatDate(fim)}
-                                            </h3>
-                                        </div>
-                                        <div>
-                                            <span className={cn(
-                                                "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold",
-                                                statusCicloAtual === "FINALIZADO" ? "bg-emerald-100 text-emerald-700" : "bg-primary/10 text-primary"
-                                            )}>
-                                                {statusCicloAtual !== "FINALIZADO" && (
-                                                    <span className="relative flex h-2 w-2">
-                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
-                                                    </span>
-                                                )}
-                                                {statusCicloAtual}
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-6 pt-5 border-t border-border/50">
-                                        <div>
-                                            <p className="text-[10px] uppercase font-bold text-muted-foreground">Diaristas</p>
-                                            <p className="text-lg font-mono font-bold text-foreground">{totalGeral.totalDiaristas}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-[10px] uppercase font-bold text-muted-foreground">Total Período</p>
-                                            <p className="text-lg font-mono font-bold text-foreground">{formatCurrency(
-                                                (lotes as any[]).reduce((acc, l) => acc + Number(l.valor_total || l.total_valor || 0), 0)
-                                            )}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-[10px] uppercase font-bold text-muted-foreground">Total Lotes</p>
-                                            <p className="text-lg font-mono font-bold text-foreground">{(lotes as any[]).length}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-[10px] uppercase font-bold text-amber-600/70">Pendências RH</p>
-                                            <p className="text-lg font-mono font-bold text-amber-600">{
-                                                (lotes as any[]).filter(l => l.status === "AGUARDANDO_VALIDACAO_RH").length
-                                            }</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-[10px] uppercase font-bold text-blue-600/70">Pend. Financeiro</p>
-                                            <p className="text-lg font-mono font-bold text-blue-600">{
-                                                (lotes as any[]).filter(l => l.status === "VALIDADO_RH" || l.status === "AGUARDANDO_FINANCEIRO").length
-                                            }</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-3">
-                                    <h3 className="text-sm font-semibold text-foreground">Histórico Consolidado de Ciclos</h3>
-                                    <div className="overflow-hidden rounded-lg border border-border">
-                                        <table className="w-full text-sm">
-                                            <thead className="esc-table-header">
-                                                <tr className="text-left">
-                                                    <th className="px-4 py-3 font-medium">Ciclo / Período</th>
-                                                    <th className="px-4 py-3 font-medium text-center">Status</th>
-                                                    <th className="px-4 py-3 font-medium text-center">Lotes no Ciclo</th>
-                                                    <th className="px-4 py-3 font-medium text-right">Valor Consolidado</th>
-                                                    <th className="px-4 py-3 font-medium text-right">Ação</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {/* Simulated grouping using available lotes for demonstration purposes of UI until a true model is defined */}
-                                                {(() => {
-                                                    const ciclosMap = new Map();
-                                                    (lotes as any[]).forEach(l => {
-                                                        const key = `${l.periodo_inicio}_${l.periodo_fim}`;
-                                                        if (!ciclosMap.has(key)) {
-                                                            ciclosMap.set(key, { periodo_inicio: l.periodo_inicio, periodo_fim: l.periodo_fim, lotesCount: 0, valorTotal: 0, status: 'FINALIZADO' });
-                                                        }
-                                                        const c = ciclosMap.get(key);
-                                                        c.lotesCount++;
-                                                        c.valorTotal += Number(l.valor_total || l.total_valor || 0);
-
-                                                        // Regra de status do ciclo histórico
-                                                        if (l.status === 'AGUARDANDO_VALIDACAO_RH') {
-                                                            c.status = 'PENDENTE RH';
-                                                        } else if (l.status === 'VALIDADO_RH' && c.status !== 'PENDENTE RH') {
-                                                            c.status = 'PENDENTE FINANCEIRO';
-                                                        } else if (!['PAGO', 'FECHADO_FINANCEIRO'].includes(l.status) && c.status === 'FINALIZADO') {
-                                                            c.status = 'EM ANDAMENTO';
-                                                        }
-                                                    });
-                                                    const list = Array.from(ciclosMap.values());
-                                                    if (list.length === 0) {
-                                                        return <tr><td colSpan={5} className="p-8 text-center text-muted-foreground">Nenhum ciclo histórico processado.</td></tr>;
-                                                    }
-                                                    return list.map((c, i) => (
-                                                        <tr key={i} className="border-t border-border hover:bg-muted/20">
-                                                            <td className="px-4 py-3 font-mono font-medium">{formatDate(c.periodo_inicio)} → {formatDate(c.periodo_fim)}</td>
-                                                            <td className="px-4 py-3 text-center">
-                                                                <span className={cn(
-                                                                    "px-2 py-0.5 text-[10px] font-bold rounded-full",
-                                                                    c.status === "FINALIZADO" ? "bg-emerald-100 text-emerald-700" :
-                                                                        c.status === "PENDENTE RH" ? "bg-amber-100 text-amber-700" :
-                                                                            "bg-blue-100 text-blue-700"
-                                                                )}>
-                                                                    {c.status}
-                                                                </span>
-                                                            </td>
-                                                            <td className="px-4 py-3 text-center text-muted-foreground">{c.lotesCount} emp.</td>
-                                                            <td className="px-4 py-3 text-right font-mono font-semibold">{formatCurrency(c.valorTotal)}</td>
-                                                            <td className="px-4 py-3 text-right"><Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => { setInicio(c.periodo_inicio); setFim(c.periodo_fim); setCicloTab("lotes"); }}>Ver lotes</Button></td>
-                                                        </tr>
-                                                    ));
-                                                })()}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* ── Aba: Lotes ── */}
-                        {cicloTab === "lotes" && (
-                            <div className="overflow-x-auto">
-                                {(lotes as any[]).length === 0 ? (
-                                    <div className="flex flex-col items-center justify-center py-10 gap-3 text-center">
-                                        <FileCheck className="h-10 w-10 text-muted-foreground/40" />
-                                        <p className="font-medium text-foreground">Nenhum lote encontrado</p>
-                                        <p className="text-sm text-muted-foreground">Feche um período para gerar um lote de governança.</p>
-                                    </div>
-                                ) : (
-                                    <table className="w-full text-sm">
-                                        <thead className="esc-table-header">
-                                            <tr className="text-left">
-                                                <th className="px-4 h-10 font-medium">Período</th>
-                                                <th className="px-4 h-10 font-medium">Empresa</th>
-                                                <th className="px-4 h-10 font-medium text-center">Registros</th>
-                                                <th className="px-4 h-10 font-medium text-right">Valor Total</th>
-                                                <th className="px-4 h-10 font-medium text-center">Status</th>
-                                                <th className="px-4 h-10 font-medium text-center">Ações</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {(lotes as any[]).map((lote: any) => {
-                                                const podeValidar = (isAdmin || isRh) && lote.status === "AGUARDANDO_VALIDACAO_RH";
-                                                const podeAprovar = isAdmin && lote.status === "VALIDADO_RH";
-                                                const podeReabrir = (isAdmin || isRh) && ["AGUARDANDO_VALIDACAO_RH", "VALIDADO_RH"].includes(lote.status);
-                                                return (
-                                                    <tr key={lote.id} className="border-t border-muted hover:bg-muted/30">
-                                                        <td className="px-4 py-3 font-mono text-xs">
-                                                            {lote.periodo_inicio ? format(new Date(lote.periodo_inicio + "T12:00:00"), "dd/MM/yy") : "—"}
-                                                            {" → "}
-                                                            {lote.periodo_fim ? format(new Date(lote.periodo_fim + "T12:00:00"), "dd/MM/yy") : "—"}
-                                                        </td>
-                                                        <td className="px-4 py-3 text-muted-foreground">{lote.empresa?.nome ?? lote.empresa_id ?? "—"}</td>
-                                                        <td className="px-4 py-3 text-center font-mono">{lote.total_registros ?? "—"}</td>
-                                                        <td className="px-4 py-3 text-right font-mono font-semibold">{lote.valor_total != null ? formatCurrency(lote.valor_total) : "—"}</td>
-                                                        <td className="px-4 py-3 text-center">
-                                                            <StatusDiaristaBadge status={lote.status} />
-                                                        </td>
-                                                        <td className="px-4 py-3">
-                                                            <div className="flex items-center justify-center gap-2">
-                                                                {podeValidar && (
-                                                                    <Button
-                                                                        size="sm"
-                                                                        className="h-7 text-xs bg-indigo-600 hover:bg-indigo-700 text-white"
-                                                                        disabled={validarMutation.isPending}
-                                                                        onClick={() => validarMutation.mutate(lote.id)}
-                                                                    >
-                                                                        {validarMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <><CheckCircle2 className="h-3 w-3 mr-1" />Validar RH</>}
-                                                                    </Button>
-                                                                )}
-                                                                {podeAprovar && (
-                                                                    <Button
-                                                                        size="sm"
-                                                                        className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
-                                                                        disabled={aprovarMutation.isPending}
-                                                                        onClick={() => aprovarMutation.mutate(lote.id)}
-                                                                    >
-                                                                        {aprovarMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Send className="h-3 w-3 mr-1" />Aprovar Financeiro</>}
-                                                                    </Button>
-                                                                )}
-                                                                {(() => {
-                                                                    const podeReabrirConfig = (regraFechamento as any)?.permitir_reabertura !== false;
-                                                                    const reaberturasLote = (logsFechamento as any[]).filter(log =>
-                                                                        log.acao === 'REABRIU' &&
-                                                                        log.periodo_inicio === lote.periodo_inicio &&
-                                                                        log.periodo_fim === lote.periodo_fim &&
-                                                                        log.empresa_id === lote.empresa_id
-                                                                    ).length;
-                                                                    const limiteAtingido = reaberturasLote >= ((regraFechamento as any)?.limite_reabertura || 2);
-                                                                    const exibirBotaoReabrir = (isAdmin || isRh) && ["AGUARDANDO_VALIDACAO_RH", "VALIDADO_RH"].includes(lote.status);
-
-                                                                    if (!exibirBotaoReabrir) return null;
-
-                                                                    const isDisabled = reabrirMutation.isPending || !podeReabrirConfig || limiteAtingido;
-                                                                    const tooltipMsg = !podeReabrirConfig ? "Reabertura desabilitada nas configurações" : limiteAtingido ? `Limite de ${regraFechamento?.limite_reabertura} reaberturas atingido` : "";
-
-                                                                    return (
-                                                                        <Button
-                                                                            size="sm"
-                                                                            variant="outline"
-                                                                            className="h-7 text-xs"
-                                                                            disabled={isDisabled}
-                                                                            title={tooltipMsg}
-                                                                            onClick={() => {
-                                                                                const exigirMotivo = (regraFechamento as any)?.exigir_motivo !== false;
-                                                                                const motivo = prompt("Motivo da reabertura:" + (exigirMotivo ? " (Obrigatório)" : ""));
-
-                                                                                if (exigirMotivo && !motivo) {
-                                                                                    toast.error("É obrigatório informar o motivo para reabrir.");
-                                                                                    return;
-                                                                                }
-
-                                                                                reabrirMutation.mutate({ loteId: lote.id, motivo: motivo || "Não informado" });
-                                                                            }}
-                                                                        >
-                                                                            <RefreshCw className="h-3 w-3 mr-1" />Reabrir
-                                                                            {reaberturasLote > 0 && <span className="ml-1 opacity-60">({reaberturasLote})</span>}
-                                                                        </Button>
-                                                                    );
-                                                                })()}
+                                                                ))}
                                                             </div>
                                                         </td>
                                                     </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                )}
-                            </div>
-                        )}
+                                                )}
+                                            </>
+                                        ))
+                                    ) : visao === "grade_semanal" ? (
+                                        dadosAgrupados.map((g) => (
+                                            <tr key={g.diarista_id} className="border-t border-muted hover:bg-background">
+                                                <td className="px-5 h-14">
+                                                    <div className="flex flex-col">
+                                                        <span className="font-medium text-sm text-foreground truncate max-w-[220px]">{g.nome}</span>
+                                                        <span className="text-xs text-muted-foreground truncate max-w-[220px]">{g.funcao}</span>
+                                                    </div>
+                                                </td>
+                                                {diasDaSemanaBase.map((d) => {
+                                                    const strDate = format(d, "yyyy-MM-dd");
+                                                    const diaLancamentos = g.lancamentos.filter((l: any) => l.data_lancamento === strDate);
 
-                        {/* ── Aba: Histórico ── */}
-                        {cicloTab === "historico" && (
-                            <div className="space-y-6">
-                                <div className="flex items-center justify-between">
-                                    <h3 className="text-base font-semibold text-foreground">Timeline de Governança</h3>
-                                    <div className="flex gap-2">
-                                        <Button variant="outline" size="sm" onClick={exportarAuditoriaXlsx}>
-                                            <Download className="h-3.5 w-3.5 mr-1.5" />
-                                            Exportar Auditoria
-                                        </Button>
-                                        <Button variant="outline" size="sm" onClick={() => refetchHistorico()} disabled={isFetchingLogs}>
-                                            <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", isFetchingLogs && "animate-spin")} />
-                                            Sincronizar
-                                        </Button>
+                                                    if (diaLancamentos.length === 0) {
+                                                        return (
+                                                            <td key={d.toISOString()} className={cn("px-3 text-center text-muted-foreground/40 font-medium text-sm", isToday(d) && "bg-blue-50/50")}>
+                                                                –
+                                                            </td>
+                                                        );
+                                                    }
+
+                                                    const codes = Array.from(new Set(diaLancamentos.map((l: any) => l.codigo_marcacao)));
+                                                    const tooltipVal = diaLancamentos.map((l: any) => `${l.quantidade_diaria}x ${l.codigo_marcacao} = ${formatCurrency(l.valor_calculado)}`).join(' | ');
+
+                                                    return (
+                                                        <td key={d.toISOString()} className={cn("px-3 text-center", isToday(d) && "bg-blue-50/50")} title={tooltipVal}>
+                                                            <div className="flex flex-col items-center gap-0.5 cursor-help">
+                                                                <span className={cn(
+                                                                    "text-xs uppercase font-bold px-2 py-0.5 rounded",
+                                                                    codes.includes("P") && "text-emerald-700 bg-emerald-500/15",
+                                                                    codes.includes("MP") && "text-amber-700 bg-amber-500/15",
+                                                                    (!codes.includes("P") && !codes.includes("MP")) && "bg-muted text-foreground"
+                                                                )}>
+                                                                    {codes.join("+")}
+                                                                </span>
+                                                            </div>
+                                                        </td>
+                                                    );
+                                                })}
+                                                <td className="px-3 text-center font-mono font-bold text-sm">
+                                                    {g.totalDiarias.toFixed(1)}
+                                                </td>
+                                                <td className="px-5 text-right font-mono font-semibold text-foreground text-sm">
+                                                    {formatCurrency(g.valorTotal)}
+                                                </td>
+                                            </tr>
+                                        ))
+                                    ) : (
+                                        dadosAgrupadosPorData.map((g) => (
+                                            <>
+                                                <tr
+                                                    key={g.data_lancamento}
+                                                    className="border-t border-muted hover:bg-background cursor-pointer"
+                                                    onClick={() => setExpandedId(expandedId === g.data_lancamento ? null : g.data_lancamento)}
+                                                >
+                                                    <td className="px-5 h-12 w-8 text-muted-foreground">
+                                                        {expandedId === g.data_lancamento ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                                    </td>
+                                                    <td className="px-3 font-mono font-bold text-foreground">{formatDate(g.data_lancamento)}</td>
+                                                    <td className="px-3 text-center">{g.totalDiaristas}</td>
+                                                    <td className="px-3 text-center font-mono">{g.totalDiarias.toFixed(1)}</td>
+                                                    <td className="px-3 text-right font-mono font-semibold text-foreground">
+                                                        {formatCurrency(g.valorTotal)}
+                                                    </td>
+                                                    <td className="px-5 text-center"></td>
+                                                </tr>
+                                                {expandedId === g.data_lancamento && (
+                                                    <tr key={`${g.data_lancamento}-detail`} className="border-t border-muted/50 bg-muted/20">
+                                                        <td colSpan={6} className="px-5 py-4">
+                                                            <div className="space-y-2">
+                                                                <div className="grid grid-cols-7 gap-2 text-xs font-bold text-muted-foreground uppercase tracking-widest pb-1 border-b border-border/50">
+                                                                    <span className="col-span-2">Colaborador / Função</span>
+                                                                    <span className="text-center">Marcação / Qtd</span>
+                                                                    <span className="text-right">Valor</span>
+                                                                    <span>Cliente / Op.</span>
+                                                                    <span className="text-center">Status</span>
+                                                                </div>
+                                                                {g.lancamentos.map((l: any) => (
+                                                                    <div key={l.id} className="grid grid-cols-7 gap-2 text-xs items-center">
+                                                                        <div className="col-span-2 flex flex-col pt-1 pb-1">
+                                                                            <span className="font-bold text-foreground truncate">{l.nome_colaborador}</span>
+                                                                            <span className="text-[10px] text-muted-foreground truncate">{l.funcao_colaborador ?? "—"}</span>
+                                                                        </div>
+                                                                        <div className="text-center">
+                                                                            <span className={cn(
+                                                                                "font-bold mr-2",
+                                                                                l.codigo_marcacao === "P" && "text-emerald-600",
+                                                                                l.codigo_marcacao === "MP" && "text-amber-600",
+                                                                            )}>{l.codigo_marcacao}</span>
+                                                                            <span className="font-mono text-muted-foreground">{l.quantidade_diaria}</span>
+                                                                        </div>
+                                                                        <div className="text-right flex flex-col pt-1 pb-1">
+                                                                            <span className="font-mono font-semibold">{formatCurrency(l.valor_calculado)}</span>
+                                                                            <span className="text-[10px] font-mono text-muted-foreground">{formatCurrency(l.valor_diaria_base)} bs.</span>
+                                                                        </div>
+                                                                        <div className="flex flex-col pt-1 pb-1">
+                                                                            <span className="truncate text-muted-foreground">{l.cliente_unidade ?? "—"}</span>
+                                                                            <span className="truncate text-[10px] text-muted-foreground">{l.operacao_servico ?? "—"}</span>
+                                                                        </div>
+                                                                        <div className="text-center">
+                                                                            <StatusDiaristaBadge status={(() => {
+                                                                                // Sincronização visual profunda para o detalhamento
+                                                                                if (l.status === "EM_ABERTO" || l.status === "em_aberto") {
+                                                                                    const loteRel = (lotes as any[]).find(lote => lote.empresa_id === l.empresa_id);
+                                                                                    return loteRel ? loteRel.status : l.status;
+                                                                                }
+                                                                                return l.status;
+                                                                            })()} />
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                            </>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        )}
+                    </section>
+
+                    {/* ─── Ciclo de Fechamento ─────────────────────── */}
+                    <section className="esc-card">
+                        <div className="px-5 pt-4 pb-3 border-b border-border/60 flex items-center gap-2">
+                            <CalendarClock className="h-4 w-4 text-muted-foreground" />
+                            <h2 className="text-sm font-semibold text-foreground">Ciclo de Fechamento</h2>
+                        </div>
+
+                        {/* Tabs */}
+                        <div className="flex border-b border-border/60 px-2">
+                            {(["ciclos", "lotes", "historico", "configuracao"] as const).map((tab) => (
+                                <button
+                                    key={tab}
+                                    onClick={() => setCicloTab(tab)}
+                                    className={cn(
+                                        "flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors",
+                                        cicloTab === tab
+                                            ? "border-primary text-primary"
+                                            : "border-transparent text-muted-foreground hover:text-foreground"
+                                    )}
+                                >
+                                    {tab === "ciclos" && <><RefreshCw className="h-3.5 w-3.5" /> Ciclos</>}
+                                    {tab === "lotes" && <><FileCheck className="h-3.5 w-3.5" /> Lotes</>}
+                                    {tab === "historico" && <><History className="h-3.5 w-3.5" /> Histórico</>}
+                                    {tab === "configuracao" && <><Settings className="h-3.5 w-3.5" /> Configuração</>}
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="p-5">
+                            {/* ── Aba: Ciclos ── */}
+                            {cicloTab === "ciclos" && (
+                                <div className="space-y-6">
+                                    {/* Card Ciclo Atual (Semana atual baseada no seletor, ou o mais recente) */}
+                                    <div className="esc-card p-5 border-l-4 border-l-primary/70 bg-gradient-to-r from-background to-muted/20">
+                                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                            <div>
+                                                <p className="text-xs uppercase tracking-widest font-bold text-muted-foreground mb-1">
+                                                    Ciclo de Operação Selecionado
+                                                </p>
+                                                <h3 className="text-xl font-display font-medium text-foreground">
+                                                    {formatDate(inicio)} a {formatDate(fim)}
+                                                </h3>
+                                            </div>
+                                            <div>
+                                                <span className={cn(
+                                                    "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold",
+                                                    statusCicloAtual === "FINALIZADO" ? "bg-emerald-100 text-emerald-700" : "bg-primary/10 text-primary"
+                                                )}>
+                                                    {statusCicloAtual !== "FINALIZADO" && (
+                                                        <span className="relative flex h-2 w-2">
+                                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+                                                        </span>
+                                                    )}
+                                                    {statusCicloAtual}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-6 pt-5 border-t border-border/50">
+                                            <div>
+                                                <p className="text-[10px] uppercase font-bold text-muted-foreground">Diaristas</p>
+                                                <p className="text-lg font-mono font-bold text-foreground">{totalGeral.totalDiaristas}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] uppercase font-bold text-muted-foreground">Total Período</p>
+                                                <p className="text-lg font-mono font-bold text-foreground">{formatCurrency(
+                                                    (lotes as any[]).reduce((acc, l) => acc + Number(l.valor_total || l.total_valor || 0), 0)
+                                                )}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] uppercase font-bold text-muted-foreground">Total Lotes</p>
+                                                <p className="text-lg font-mono font-bold text-foreground">{(lotes as any[]).length}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] uppercase font-bold text-amber-600/70">Pendências RH</p>
+                                                <p className="text-lg font-mono font-bold text-amber-600">{
+                                                    (lotes as any[]).filter(l => l.status === "AGUARDANDO_VALIDACAO_RH").length
+                                                }</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] uppercase font-bold text-blue-600/70">Pend. Financeiro</p>
+                                                <p className="text-lg font-mono font-bold text-blue-600">{
+                                                    (lotes as any[]).filter(l => l.status === "VALIDADO_RH" || l.status === "AGUARDANDO_FINANCEIRO").length
+                                                }</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        <h3 className="text-sm font-semibold text-foreground">Histórico Consolidado de Ciclos</h3>
+                                        <div className="overflow-hidden rounded-lg border border-border">
+                                            <table className="w-full text-sm">
+                                                <thead className="esc-table-header">
+                                                    <tr className="text-left">
+                                                        <th className="px-4 py-3 font-medium">Ciclo / Período</th>
+                                                        <th className="px-4 py-3 font-medium text-center">Status</th>
+                                                        <th className="px-4 py-3 font-medium text-center">Lotes no Ciclo</th>
+                                                        <th className="px-4 py-3 font-medium text-right">Valor Consolidado</th>
+                                                        <th className="px-4 py-3 font-medium text-right">Ação</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {/* Simulated grouping using available lotes for demonstration purposes of UI until a true model is defined */}
+                                                    {(() => {
+                                                        const ciclosMap = new Map();
+                                                        (lotes as any[]).forEach(l => {
+                                                            const key = `${l.periodo_inicio}_${l.periodo_fim}`;
+                                                            if (!ciclosMap.has(key)) {
+                                                                ciclosMap.set(key, { periodo_inicio: l.periodo_inicio, periodo_fim: l.periodo_fim, lotesCount: 0, valorTotal: 0, status: 'FINALIZADO' });
+                                                            }
+                                                            const c = ciclosMap.get(key);
+                                                            c.lotesCount++;
+                                                            c.valorTotal += Number(l.valor_total || l.total_valor || 0);
+
+                                                            // Regra de status do ciclo histórico
+                                                            if (l.status === 'AGUARDANDO_VALIDACAO_RH') {
+                                                                c.status = 'PENDENTE RH';
+                                                            } else if (l.status === 'VALIDADO_RH' && c.status !== 'PENDENTE RH') {
+                                                                c.status = 'PENDENTE FINANCEIRO';
+                                                            } else if (!['PAGO', 'FECHADO_FINANCEIRO'].includes(l.status) && c.status === 'FINALIZADO') {
+                                                                c.status = 'EM ANDAMENTO';
+                                                            }
+                                                        });
+                                                        const list = Array.from(ciclosMap.values());
+                                                        if (list.length === 0) {
+                                                            return <tr><td colSpan={5} className="p-8 text-center text-muted-foreground">Nenhum ciclo histórico processado.</td></tr>;
+                                                        }
+                                                        return list.map((c, i) => (
+                                                            <tr key={i} className="border-t border-border hover:bg-muted/20">
+                                                                <td className="px-4 py-3 font-mono font-medium">{formatDate(c.periodo_inicio)} → {formatDate(c.periodo_fim)}</td>
+                                                                <td className="px-4 py-3 text-center">
+                                                                    <span className={cn(
+                                                                        "px-2 py-0.5 text-[10px] font-bold rounded-full",
+                                                                        c.status === "FINALIZADO" ? "bg-emerald-100 text-emerald-700" :
+                                                                            c.status === "PENDENTE RH" ? "bg-amber-100 text-amber-700" :
+                                                                                "bg-blue-100 text-blue-700"
+                                                                    )}>
+                                                                        {c.status}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="px-4 py-3 text-center text-muted-foreground">{c.lotesCount} emp.</td>
+                                                                <td className="px-4 py-3 text-right font-mono font-semibold">{formatCurrency(c.valorTotal)}</td>
+                                                                <td className="px-4 py-3 text-right"><Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => { setInicio(c.periodo_inicio); setFim(c.periodo_fim); setCicloTab("lotes"); }}>Ver lotes</Button></td>
+                                                            </tr>
+                                                        ));
+                                                    })()}
+                                                </tbody>
+                                            </table>
+                                        </div>
                                     </div>
                                 </div>
+                            )}
 
-                                {groupedLogs.length === 0 ? (
-                                    <div className="flex flex-col items-center justify-center py-12 bg-muted/20 rounded-xl border border-dashed">
-                                        <History className="h-10 w-10 text-muted-foreground/30 mb-3" />
-                                        <p className="text-sm font-medium text-foreground">Nenhuma atividade registrada</p>
-                                        <p className="text-xs text-muted-foreground mt-1 max-w-[280px] text-center">
-                                            Ações de fechamento, validação e aprovação aparecerão aqui em ordem cronológica.
-                                        </p>
+                            {/* ── Aba: Lotes ── */}
+                            {cicloTab === "lotes" && (
+                                <div className="overflow-x-auto">
+                                    {(lotes as any[]).length === 0 ? (
+                                        <div className="flex flex-col items-center justify-center py-10 gap-3 text-center">
+                                            <FileCheck className="h-10 w-10 text-muted-foreground/40" />
+                                            <p className="font-medium text-foreground">Nenhum lote encontrado</p>
+                                            <p className="text-sm text-muted-foreground">Feche um período para gerar um lote de governança.</p>
+                                        </div>
+                                    ) : (
+                                        <table className="w-full text-sm">
+                                            <thead className="esc-table-header">
+                                                <tr className="text-left">
+                                                    <th className="px-4 h-10 font-medium">Período</th>
+                                                    <th className="px-4 h-10 font-medium">Empresa</th>
+                                                    <th className="px-4 h-10 font-medium text-center">Registros</th>
+                                                    <th className="px-4 h-10 font-medium text-right">Valor Total</th>
+                                                    <th className="px-4 h-10 font-medium text-center">Status</th>
+                                                    <th className="px-4 h-10 font-medium text-center">Ações</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {(lotes as any[]).map((lote: any) => {
+                                                    const podeValidar = (isAdmin || isRh) && lote.status === "AGUARDANDO_VALIDACAO_RH";
+                                                    const podeAprovar = isAdmin && lote.status === "VALIDADO_RH";
+                                                    const podeReabrir = (isAdmin || isRh) && ["AGUARDANDO_VALIDACAO_RH", "VALIDADO_RH"].includes(lote.status);
+                                                    return (
+                                                        <tr key={lote.id} className="border-t border-muted hover:bg-muted/30">
+                                                            <td className="px-4 py-3 font-mono text-xs">
+                                                                {lote.periodo_inicio ? format(new Date(lote.periodo_inicio + "T12:00:00"), "dd/MM/yy") : "—"}
+                                                                {" → "}
+                                                                {lote.periodo_fim ? format(new Date(lote.periodo_fim + "T12:00:00"), "dd/MM/yy") : "—"}
+                                                            </td>
+                                                            <td className="px-4 py-3 text-muted-foreground">{lote.empresa?.nome ?? lote.empresa_id ?? "—"}</td>
+                                                            <td className="px-4 py-3 text-center font-mono">{lote.total_registros ?? "—"}</td>
+                                                            <td className="px-4 py-3 text-right font-mono font-semibold">{lote.valor_total != null ? formatCurrency(lote.valor_total) : "—"}</td>
+                                                            <td className="px-4 py-3 text-center">
+                                                                <StatusDiaristaBadge status={lote.status} />
+                                                            </td>
+                                                            <td className="px-4 py-3">
+                                                                <div className="flex items-center justify-center gap-2">
+                                                                    {podeValidar && (
+                                                                        <Button
+                                                                            size="sm"
+                                                                            className="h-7 text-xs bg-indigo-600 hover:bg-indigo-700 text-white"
+                                                                            disabled={validarMutation.isPending}
+                                                                            onClick={() => validarMutation.mutate(lote.id)}
+                                                                        >
+                                                                            {validarMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <><CheckCircle2 className="h-3 w-3 mr-1" />Validar RH</>}
+                                                                        </Button>
+                                                                    )}
+                                                                    {podeAprovar && (
+                                                                        <Button
+                                                                            size="sm"
+                                                                            className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                                                                            disabled={aprovarMutation.isPending}
+                                                                            onClick={() => aprovarMutation.mutate(lote.id)}
+                                                                        >
+                                                                            {aprovarMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Send className="h-3 w-3 mr-1" />Aprovar Financeiro</>}
+                                                                        </Button>
+                                                                    )}
+                                                                    {(() => {
+                                                                        const podeReabrirConfig = (regraFechamento as any)?.permitir_reabertura !== false;
+                                                                        const reaberturasLote = (logsFechamento as any[]).filter(log =>
+                                                                            log.acao === 'REABRIU' &&
+                                                                            log.periodo_inicio === lote.periodo_inicio &&
+                                                                            log.periodo_fim === lote.periodo_fim &&
+                                                                            log.empresa_id === lote.empresa_id
+                                                                        ).length;
+                                                                        const limiteAtingido = reaberturasLote >= ((regraFechamento as any)?.limite_reabertura || 2);
+                                                                        const exibirBotaoReabrir = (isAdmin || isRh) && ["AGUARDANDO_VALIDACAO_RH", "VALIDADO_RH"].includes(lote.status);
+
+                                                                        if (!exibirBotaoReabrir) return null;
+
+                                                                        const isDisabled = reabrirMutation.isPending || !podeReabrirConfig || limiteAtingido;
+                                                                        const tooltipMsg = !podeReabrirConfig ? "Reabertura desabilitada nas configurações" : limiteAtingido ? `Limite de ${regraFechamento?.limite_reabertura} reaberturas atingido` : "";
+
+                                                                        return (
+                                                                            <Button
+                                                                                size="sm"
+                                                                                variant="outline"
+                                                                                className="h-7 text-xs"
+                                                                                disabled={isDisabled}
+                                                                                title={tooltipMsg}
+                                                                                onClick={() => {
+                                                                                    // Abre o modal de reabertura em vez do prompt() inline
+                                                                                    setLoteParaReabrir(lote);
+                                                                                    setMotivoReabertura("");
+                                                                                    setTipoReabertura('operacional');
+                                                                                    setOpenReabertura(true);
+                                                                                }}
+                                                                            >
+                                                                                <RefreshCw className="h-3 w-3 mr-1" />Reabrir
+                                                                                {reaberturasLote > 0 && <span className="ml-1 opacity-60">({reaberturasLote})</span>}
+                                                                            </Button>
+                                                                        );
+                                                                    })()}
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* ── Aba: Histórico ── */}
+                            {cicloTab === "historico" && (
+                                <div className="space-y-6">
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="text-base font-semibold text-foreground">Timeline de Governança</h3>
+                                        <div className="flex gap-2">
+                                            <Button variant="outline" size="sm" onClick={exportarAuditoriaXlsx}>
+                                                <Download className="h-3.5 w-3.5 mr-1.5" />
+                                                Exportar Auditoria
+                                            </Button>
+                                            <Button variant="outline" size="sm" onClick={() => refetchHistorico()} disabled={isFetchingLogs}>
+                                                <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", isFetchingLogs && "animate-spin")} />
+                                                Sincronizar
+                                            </Button>
+                                        </div>
                                     </div>
-                                ) : (
-                                    <div className="relative pl-6 space-y-8 before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-0.5 before:bg-border">
-                                        {groupedLogs.map((log: any, idx: number) => {
-                                            const isSistema = log.usuario_role === 'sistema';
-                                            const isFechou = log.acao === 'FECHOU';
-                                            const isValidou = log.acao === 'VALIDOU';
-                                            const isAprovou = log.acao === 'APROVOU' || log.acao === 'APROVOU_FINANCEIRO';
-                                            const isReabriu = log.acao === 'REABRIU';
-                                            const isEncerrou = log.acao === 'ENCERROU';
-                                            const isPagamento = log.acao === 'MARCOU_PAGO';
-                                            const isCnab = log.acao === 'GEROU_CNAB';
 
-                                            return (
-                                                <div key={log.id ?? idx} className="relative">
-                                                    {/* Dot */}
-                                                    <div className={cn(
-                                                        "absolute -left-[29px] top-1.5 h-6 w-6 rounded-full border-4 border-background flex items-center justify-center shadow-sm z-10",
-                                                        isFechou && "bg-amber-500",
-                                                        isValidou && "bg-blue-500",
-                                                        isAprovou && "bg-emerald-500",
-                                                        isReabriu && "bg-rose-500",
-                                                        isPagamento && "bg-emerald-600",
-                                                        isCnab && "bg-indigo-600",
-                                                        isEncerrou && "bg-slate-700",
-                                                        (!isFechou && !isValidou && !isAprovou && !isReabriu && !isEncerrou && !isPagamento && !isCnab) && "bg-muted-foreground"
-                                                    )}>
-                                                        {isFechou && <Lock className="h-3 w-3 text-white" />}
-                                                        {isValidou && <CheckCircle2 className="h-3 w-3 text-white" />}
-                                                        {isAprovou && <CheckCircle2 className="h-3 w-3 text-white" />}
-                                                        {isReabriu && <RefreshCw className="h-3 w-3 text-white" />}
-                                                        {isPagamento && <Banknote className="h-3 w-3 text-white" />}
-                                                        {isCnab && <FileCode2 className="h-3 w-3 text-white" />}
-                                                        {isEncerrou && <FileCheck className="h-3 w-3 text-white" />}
-                                                    </div>
+                                    {groupedLogs.length === 0 ? (
+                                        <div className="flex flex-col items-center justify-center py-12 bg-muted/20 rounded-xl border border-dashed">
+                                            <History className="h-10 w-10 text-muted-foreground/30 mb-3" />
+                                            <p className="text-sm font-medium text-foreground">Nenhuma atividade registrada</p>
+                                            <p className="text-xs text-muted-foreground mt-1 max-w-[280px] text-center">
+                                                Ações de fechamento, validação e aprovação aparecerão aqui em ordem cronológica.
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <div className="relative pl-6 space-y-8 before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-0.5 before:bg-border">
+                                            {groupedLogs.map((log: any, idx: number) => {
+                                                const isSistema = log.usuario_role === 'sistema';
+                                                const isFechou = log.acao === 'FECHOU';
+                                                const isValidou = log.acao === 'VALIDOU';
+                                                const isAprovou = log.acao === 'APROVOU' || log.acao === 'APROVOU_FINANCEIRO';
+                                                const isReabriu = log.acao === 'REABRIU';
+                                                const isEncerrou = log.acao === 'ENCERROU';
+                                                const isPagamento = log.acao === 'MARCOU_PAGO';
+                                                const isCnab = log.acao === 'GEROU_CNAB';
 
-                                                    <div className="flex flex-col gap-1">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className={cn(
-                                                                "text-xs font-black uppercase tracking-wider px-2 py-0.5 rounded",
-                                                                isFechou && "bg-amber-100 text-amber-800",
-                                                                isValidou && "bg-blue-100 text-blue-800",
-                                                                isAprovou && "bg-emerald-100 text-emerald-800",
-                                                                isReabriu && "bg-rose-100 text-rose-800",
-                                                                isPagamento && "bg-emerald-100 text-emerald-800",
-                                                                isCnab && "bg-indigo-100 text-indigo-800",
-                                                                isEncerrou && "bg-slate-200 text-slate-800",
-                                                            )}>
-                                                                {log.acao}
-                                                            </span>
-                                                            <span className="text-[10px] font-mono text-muted-foreground">
-                                                                {log.created_at ? format(new Date(log.created_at), "dd/MM/yy HH:mm", { locale: ptBR }) : "—"}
-                                                            </span>
-                                                            {log.count > 1 && (
-                                                                <span className="text-[10px] font-bold text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">
-                                                                    {log.count}x (agrupado)
-                                                                </span>
-                                                            )}
+                                                return (
+                                                    <div key={log.id ?? idx} className="relative">
+                                                        {/* Dot */}
+                                                        <div className={cn(
+                                                            "absolute -left-[29px] top-1.5 h-6 w-6 rounded-full border-4 border-background flex items-center justify-center shadow-sm z-10",
+                                                            isFechou && "bg-amber-500",
+                                                            isValidou && "bg-blue-500",
+                                                            isAprovou && "bg-emerald-500",
+                                                            isReabriu && "bg-rose-500",
+                                                            isPagamento && "bg-emerald-600",
+                                                            isCnab && "bg-indigo-600",
+                                                            isEncerrou && "bg-slate-700",
+                                                            (!isFechou && !isValidou && !isAprovou && !isReabriu && !isEncerrou && !isPagamento && !isCnab) && "bg-muted-foreground"
+                                                        )}>
+                                                            {isFechou && <Lock className="h-3 w-3 text-white" />}
+                                                            {isValidou && <CheckCircle2 className="h-3 w-3 text-white" />}
+                                                            {isAprovou && <CheckCircle2 className="h-3 w-3 text-white" />}
+                                                            {isReabriu && <RefreshCw className="h-3 w-3 text-white" />}
+                                                            {isPagamento && <Banknote className="h-3 w-3 text-white" />}
+                                                            {isCnab && <FileCode2 className="h-3 w-3 text-white" />}
+                                                            {isEncerrou && <FileCheck className="h-3 w-3 text-white" />}
                                                         </div>
-                                                        <div className="esc-card p-3 bg-card shadow-sm border-border/60">
-                                                            <div className="flex flex-col gap-2">
-                                                                <div className="flex justify-between items-start gap-4">
-                                                                    <div className="space-y-1">
-                                                                        <p className="text-sm font-medium text-foreground">
-                                                                            {isSistema ? "Ação Automática" : log.usuario_nome}
-                                                                            {!isSistema && <span className="text-[10px] text-muted-foreground ml-1.5 opacity-60">({log.usuario_role})</span>}
-                                                                        </p>
-                                                                        <p className="text-xs text-muted-foreground">
-                                                                            Período: <span className="font-mono font-semibold text-foreground">{formatDate(log.periodo_inicio)} → {formatDate(log.periodo_fim)}</span>
-                                                                        </p>
+
+                                                        <div className="flex flex-col gap-1">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className={cn(
+                                                                    "text-xs font-black uppercase tracking-wider px-2 py-0.5 rounded",
+                                                                    isFechou && "bg-amber-100 text-amber-800",
+                                                                    isValidou && "bg-blue-100 text-blue-800",
+                                                                    isAprovou && "bg-emerald-100 text-emerald-800",
+                                                                    isReabriu && "bg-rose-100 text-rose-800",
+                                                                    isPagamento && "bg-emerald-100 text-emerald-800",
+                                                                    isCnab && "bg-indigo-100 text-indigo-800",
+                                                                    isEncerrou && "bg-slate-200 text-slate-800",
+                                                                )}>
+                                                                    {log.acao}
+                                                                </span>
+                                                                <span className="text-[10px] font-mono text-muted-foreground">
+                                                                    {log.created_at ? format(new Date(log.created_at), "dd/MM/yy HH:mm", { locale: ptBR }) : "—"}
+                                                                </span>
+                                                                {log.count > 1 && (
+                                                                    <span className="text-[10px] font-bold text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">
+                                                                        {log.count}x (agrupado)
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <div className="esc-card p-3 bg-card shadow-sm border-border/60">
+                                                                <div className="flex flex-col gap-2">
+                                                                    <div className="flex justify-between items-start gap-4">
+                                                                        <div className="space-y-1">
+                                                                            <p className="text-sm font-medium text-foreground">
+                                                                                {isSistema ? "Ação Automática" : log.usuario_nome}
+                                                                                {!isSistema && <span className="text-[10px] text-muted-foreground ml-1.5 opacity-60">({log.usuario_role})</span>}
+                                                                            </p>
+                                                                            <p className="text-xs text-muted-foreground">
+                                                                                Período: <span className="font-mono font-semibold text-foreground">{formatDate(log.periodo_inicio)} → {formatDate(log.periodo_fim)}</span>
+                                                                            </p>
+                                                                        </div>
+                                                                        {(log.ip_address || log.user_agent) && (
+                                                                            <div className="flex flex-col items-end gap-1 opacity-60">
+                                                                                {log.ip_address && <p className="text-[9px] font-mono flex items-center gap-1"><Laptop className="w-2.5 h-2.5" /> {log.ip_address}</p>}
+                                                                                {log.user_agent && <p className="text-[9px] text-muted-foreground truncate max-w-[150px]" title={log.user_agent}>{log.user_agent}</p>}
+                                                                            </div>
+                                                                        )}
                                                                     </div>
-                                                                    {(log.ip_address || log.user_agent) && (
-                                                                        <div className="flex flex-col items-end gap-1 opacity-60">
-                                                                            {log.ip_address && <p className="text-[9px] font-mono flex items-center gap-1"><Laptop className="w-2.5 h-2.5" /> {log.ip_address}</p>}
-                                                                            {log.user_agent && <p className="text-[9px] text-muted-foreground truncate max-w-[150px]" title={log.user_agent}>{log.user_agent}</p>}
+                                                                    {log.motivo && (
+                                                                        <div className="p-2 bg-muted/30 rounded border-l-2 border-primary/30 text-xs italic text-muted-foreground">
+                                                                            "{log.motivo}"
                                                                         </div>
                                                                     )}
                                                                 </div>
-                                                                {log.motivo && (
-                                                                    <div className="p-2 bg-muted/30 rounded border-l-2 border-primary/30 text-xs italic text-muted-foreground">
-                                                                        "{log.motivo}"
-                                                                    </div>
-                                                                )}
                                                             </div>
                                                         </div>
                                                     </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {/* ── Aba: Configuração ── */}
-                        {cicloTab === "configuracao" && (
-                            <div className="space-y-6 py-4">
-                                <div className="flex items-center justify-between mb-2">
-                                    <div>
-                                        <h3 className="text-lg font-bold text-foreground">Configurações do Ciclo</h3>
-                                        <p className="text-sm text-muted-foreground">Gerencie as regras operacionais e automações do fechamento de diaristas.</p>
-                                    </div>
-                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-primary/5 border border-primary/10 rounded-lg">
-                                        <Settings className="h-4 w-4 text-primary" />
-                                        <span className="text-xs font-bold text-primary uppercase tracking-wider">Aba Operacional</span>
-                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
+                            )}
 
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                    {/* Card 1: Calendário e Fluxo */}
-                                    <div className="esc-card p-5 space-y-6 flex flex-col justify-between">
-                                        <div className="space-y-4">
-                                            <div className="flex items-center gap-2 pb-2 border-b border-border/50">
-                                                <Calendar className="h-4 w-4 text-muted-foreground" />
-                                                <h4 className="text-sm font-bold uppercase tracking-wider text-foreground">Calendário e Ciclo</h4>
+                            {/* ── Aba: Configuração ── */}
+                            {cicloTab === "configuracao" && (
+                                <div className="space-y-6 py-4">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div>
+                                            <h3 className="text-lg font-bold text-foreground">Configurações do Ciclo</h3>
+                                            <p className="text-sm text-muted-foreground">Gerencie as regras operacionais e automações do fechamento de diaristas.</p>
+                                        </div>
+                                        <div className="flex items-center gap-2 px-3 py-1.5 bg-primary/5 border border-primary/10 rounded-lg">
+                                            <Settings className="h-4 w-4 text-primary" />
+                                            <span className="text-xs font-bold text-primary uppercase tracking-wider">Aba Operacional</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                        {/* Card 1: Calendário e Fluxo */}
+                                        <div className="esc-card p-5 space-y-6 flex flex-col justify-between">
+                                            <div className="space-y-4">
+                                                <div className="flex items-center gap-2 pb-2 border-b border-border/50">
+                                                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                                                    <h4 className="text-sm font-bold uppercase tracking-wider text-foreground">Calendário e Ciclo</h4>
+                                                </div>
+
+                                                <div className="flex flex-col gap-2">
+                                                    <Label className="text-sm font-semibold">Dia padrão de fechamento</Label>
+                                                    <span className="text-xs text-muted-foreground mb-1">Define quando o ciclo encerra ou sugere o fechamento automático.</span>
+                                                    <Select
+                                                        value={(regraFechamento as any)?.dia_fechamento?.toString() || "0"}
+                                                        onValueChange={(val) => {
+                                                            updateRegraMutation.mutate({ dia_fechamento: Number(val) });
+                                                        }}
+                                                    >
+                                                        <SelectTrigger className="w-full h-10 text-sm">
+                                                            <SelectValue placeholder="Selecione o dia..." />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="5">Toda Sexta-feira</SelectItem>
+                                                            <SelectItem value="6">Todo Sábado</SelectItem>
+                                                            <SelectItem value="0">Fechamento Manual (sempre aberto)</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+
+                                                <div className="flex items-center justify-between gap-4 pt-2">
+                                                    <div className="flex flex-col gap-1">
+                                                        <span className="text-sm font-semibold">Bloqueio Operacional</span>
+                                                        <span className="text-xs text-muted-foreground">Bloquear edição da grade pelo encarregado após o fechamento.</span>
+                                                    </div>
+                                                    <Switch
+                                                        checked={(regraFechamento as any)?.bloquear_edicao ?? true}
+                                                        onCheckedChange={(val) => updateRegraMutation.mutate({ bloquear_edicao: val })}
+                                                    />
+                                                </div>
                                             </div>
 
-                                            <div className="flex flex-col gap-2">
-                                                <Label className="text-sm font-semibold">Dia padrão de fechamento</Label>
-                                                <span className="text-xs text-muted-foreground mb-1">Define quando o ciclo encerra ou sugere o fechamento automático.</span>
+                                            <div className="bg-muted/30 p-3 rounded-lg border border-border/50">
+                                                <p className="text-[10px] text-muted-foreground leading-relaxed uppercase font-bold tracking-tighter">
+                                                    Dica: O fechamento manual permite maior flexibilidade para operações sazonais.
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {/* Card 2: Regras de Reabertura */}
+                                        <div className="esc-card p-5 space-y-6">
+                                            <div className="flex items-center gap-2 pb-2 border-b border-border/50">
+                                                <RefreshCw className="h-4 w-4 text-muted-foreground" />
+                                                <h4 className="text-sm font-bold uppercase tracking-wider text-foreground">Políticas de Reabertura</h4>
+                                            </div>
+
+                                            <div className="flex items-center justify-between gap-4">
+                                                <div className="flex flex-col gap-1">
+                                                    <span className="text-sm font-semibold">Permitir reabertura</span>
+                                                    <span className="text-xs text-muted-foreground">Habilita a função de reabrir lotes após validação do RH.</span>
+                                                </div>
+                                                <Switch
+                                                    checked={(regraFechamento as any)?.permitir_reabertura ?? true}
+                                                    onCheckedChange={(val) => updateRegraMutation.mutate({ permitir_reabertura: val })}
+                                                />
+                                            </div>
+
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                                                <div className="flex flex-col gap-2 p-3 bg-muted/20 rounded-lg border border-border/50">
+                                                    <span className="text-xs font-bold text-foreground uppercase tracking-tight">Limite por Período</span>
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        <Input
+                                                            type="number"
+                                                            value={(regraFechamento as any)?.limite_reabertura || 2}
+                                                            onChange={(e) => updateRegraMutation.mutate({ limite_reabertura: Number(e.target.value) })}
+                                                            className="h-9 w-20 text-sm font-mono font-bold text-center"
+                                                        />
+                                                        <span className="text-[10px] text-muted-foreground uppercase font-bold">Máximo</span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex flex-col gap-2 p-3 bg-muted/20 rounded-lg border border-border/50">
+                                                    <span className="text-xs font-bold text-foreground uppercase tracking-tight">Justificativa</span>
+                                                    <div className="flex items-center justify-between mt-1">
+                                                        <span className="text-[10px] uppercase font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded">Obrigatório</span>
+                                                        <Switch
+                                                            checked={(regraFechamento as any)?.exigir_motivo ?? true}
+                                                            onCheckedChange={(val) => updateRegraMutation.mutate({ exigir_motivo: val })}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Card 3: Governança e Financeiro */}
+                                        <div className="esc-card p-5 space-y-6">
+                                            <div className="flex items-center gap-2 pb-2 border-b border-border/50">
+                                                <FileCheck className="h-4 w-4 text-muted-foreground" />
+                                                <h4 className="text-sm font-bold uppercase tracking-wider text-foreground">Governança & Financeiro</h4>
+                                            </div>
+
+                                            <div className="flex items-center justify-between gap-4">
+                                                <div className="flex flex-col gap-1">
+                                                    <span className="text-sm font-semibold">Aprovação Financeira Obrigatória</span>
+                                                    <span className="text-xs text-muted-foreground">Exigir validação do financeiro antes de liberar pagamento.</span>
+                                                </div>
+                                                <Switch
+                                                    checked={(regraFechamento as any)?.enviar_financeiro ?? true}
+                                                    onCheckedChange={(val) => updateRegraMutation.mutate({ enviar_financeiro: val })}
+                                                />
+                                            </div>
+
+                                            <div className="flex flex-col gap-3 pt-2">
+                                                <div className="flex flex-col gap-1">
+                                                    <span className="text-sm font-semibold">Encerramento automático do fluxo</span>
+                                                    <span className="text-xs text-muted-foreground mb-1">Define quando o lote é considerado <strong>CONCLUÍDO (PAGO)</strong>.</span>
+                                                </div>
                                                 <Select
-                                                    value={(regraFechamento as any)?.dia_fechamento?.toString() || "0"}
-                                                    onValueChange={(val) => {
-                                                        updateRegraMutation.mutate({ dia_fechamento: Number(val) });
-                                                    }}
+                                                    value={(regraFechamento as any)?.auto_fechar ? "pago" : "aprovado"}
+                                                    onValueChange={(val) => updateRegraMutation.mutate({ auto_fechar: val === "pago" })}
                                                 >
                                                     <SelectTrigger className="w-full h-10 text-sm">
-                                                        <SelectValue placeholder="Selecione o dia..." />
+                                                        <SelectValue placeholder="Selecione o gatilho..." />
                                                     </SelectTrigger>
                                                     <SelectContent>
-                                                        <SelectItem value="5">Toda Sexta-feira</SelectItem>
-                                                        <SelectItem value="6">Todo Sábado</SelectItem>
-                                                        <SelectItem value="0">Fechamento Manual (sempre aberto)</SelectItem>
+                                                        <SelectItem value="pago">Imediatamente após Aprovação Fin. → Status PAGO</SelectItem>
+                                                        <SelectItem value="aprovado">Aguardar confirmação bancária (Manual)</SelectItem>
                                                     </SelectContent>
                                                 </Select>
                                             </div>
+                                        </div>
 
-                                            <div className="flex items-center justify-between gap-4 pt-2">
-                                                <div className="flex flex-col gap-1">
-                                                    <span className="text-sm font-semibold">Bloqueio Operacional</span>
-                                                    <span className="text-xs text-muted-foreground">Bloquear edição da grade pelo encarregado após o fechamento.</span>
-                                                </div>
-                                                <Switch
-                                                    checked={(regraFechamento as any)?.bloquear_edicao ?? true}
-                                                    onCheckedChange={(val) => updateRegraMutation.mutate({ bloquear_edicao: val })}
-                                                />
+                                        {/* Card 4: Status do Sistema (Informativo) */}
+                                        <div className="esc-card p-5 bg-gradient-to-br from-background to-muted/10 border-dashed border-2 flex flex-col justify-center items-center text-center">
+                                            <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
+                                                <Loader2 className={cn("h-6 w-6 text-primary", updateRegraMutation.isPending && "animate-spin")} />
                                             </div>
+                                            <h4 className="text-sm font-bold text-foreground">Sincronização em Tempo Real</h4>
+                                            <p className="text-xs text-muted-foreground max-w-[200px] mt-1">Todas as alterações são aplicadas instantaneamente ao fluxo de trabalho.</p>
+                                            {updateRegraMutation.isPending && (
+                                                <span className="text-[10px] font-bold text-primary animate-pulse mt-4 uppercase">Salvando no banco...</span>
+                                            )}
                                         </div>
-
-                                        <div className="bg-muted/30 p-3 rounded-lg border border-border/50">
-                                            <p className="text-[10px] text-muted-foreground leading-relaxed uppercase font-bold tracking-tighter">
-                                                Dica: O fechamento manual permite maior flexibilidade para operações sazonais.
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    {/* Card 2: Regras de Reabertura */}
-                                    <div className="esc-card p-5 space-y-6">
-                                        <div className="flex items-center gap-2 pb-2 border-b border-border/50">
-                                            <RefreshCw className="h-4 w-4 text-muted-foreground" />
-                                            <h4 className="text-sm font-bold uppercase tracking-wider text-foreground">Políticas de Reabertura</h4>
-                                        </div>
-
-                                        <div className="flex items-center justify-between gap-4">
-                                            <div className="flex flex-col gap-1">
-                                                <span className="text-sm font-semibold">Permitir reabertura</span>
-                                                <span className="text-xs text-muted-foreground">Habilita a função de reabrir lotes após validação do RH.</span>
-                                            </div>
-                                            <Switch
-                                                checked={(regraFechamento as any)?.permitir_reabertura ?? true}
-                                                onCheckedChange={(val) => updateRegraMutation.mutate({ permitir_reabertura: val })}
-                                            />
-                                        </div>
-
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                                            <div className="flex flex-col gap-2 p-3 bg-muted/20 rounded-lg border border-border/50">
-                                                <span className="text-xs font-bold text-foreground uppercase tracking-tight">Limite por Período</span>
-                                                <div className="flex items-center gap-2 mt-1">
-                                                    <Input
-                                                        type="number"
-                                                        value={(regraFechamento as any)?.limite_reabertura || 2}
-                                                        onChange={(e) => updateRegraMutation.mutate({ limite_reabertura: Number(e.target.value) })}
-                                                        className="h-9 w-20 text-sm font-mono font-bold text-center"
-                                                    />
-                                                    <span className="text-[10px] text-muted-foreground uppercase font-bold">Máximo</span>
-                                                </div>
-                                            </div>
-
-                                            <div className="flex flex-col gap-2 p-3 bg-muted/20 rounded-lg border border-border/50">
-                                                <span className="text-xs font-bold text-foreground uppercase tracking-tight">Justificativa</span>
-                                                <div className="flex items-center justify-between mt-1">
-                                                    <span className="text-[10px] uppercase font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded">Obrigatório</span>
-                                                    <Switch
-                                                        checked={(regraFechamento as any)?.exigir_motivo ?? true}
-                                                        onCheckedChange={(val) => updateRegraMutation.mutate({ exigir_motivo: val })}
-                                                    />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Card 3: Governança e Financeiro */}
-                                    <div className="esc-card p-5 space-y-6">
-                                        <div className="flex items-center gap-2 pb-2 border-b border-border/50">
-                                            <FileCheck className="h-4 w-4 text-muted-foreground" />
-                                            <h4 className="text-sm font-bold uppercase tracking-wider text-foreground">Governança & Financeiro</h4>
-                                        </div>
-
-                                        <div className="flex items-center justify-between gap-4">
-                                            <div className="flex flex-col gap-1">
-                                                <span className="text-sm font-semibold">Aprovação Financeira Obrigatória</span>
-                                                <span className="text-xs text-muted-foreground">Exigir validação do financeiro antes de liberar pagamento.</span>
-                                            </div>
-                                            <Switch
-                                                checked={(regraFechamento as any)?.enviar_financeiro ?? true}
-                                                onCheckedChange={(val) => updateRegraMutation.mutate({ enviar_financeiro: val })}
-                                            />
-                                        </div>
-
-                                        <div className="flex flex-col gap-3 pt-2">
-                                            <div className="flex flex-col gap-1">
-                                                <span className="text-sm font-semibold">Encerramento automático do fluxo</span>
-                                                <span className="text-xs text-muted-foreground mb-1">Define quando o lote é considerado <strong>CONCLUÍDO (PAGO)</strong>.</span>
-                                            </div>
-                                            <Select
-                                                value={(regraFechamento as any)?.auto_fechar ? "pago" : "aprovado"}
-                                                onValueChange={(val) => updateRegraMutation.mutate({ auto_fechar: val === "pago" })}
-                                            >
-                                                <SelectTrigger className="w-full h-10 text-sm">
-                                                    <SelectValue placeholder="Selecione o gatilho..." />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="pago">Imediatamente após Aprovação Fin. → Status PAGO</SelectItem>
-                                                    <SelectItem value="aprovado">Aguardar confirmação bancária (Manual)</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                    </div>
-
-                                    {/* Card 4: Status do Sistema (Informativo) */}
-                                    <div className="esc-card p-5 bg-gradient-to-br from-background to-muted/10 border-dashed border-2 flex flex-col justify-center items-center text-center">
-                                        <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
-                                            <Loader2 className={cn("h-6 w-6 text-primary", updateRegraMutation.isPending && "animate-spin")} />
-                                        </div>
-                                        <h4 className="text-sm font-bold text-foreground">Sincronização em Tempo Real</h4>
-                                        <p className="text-xs text-muted-foreground max-w-[200px] mt-1">Todas as alterações são aplicadas instantaneamente ao fluxo de trabalho.</p>
-                                        {updateRegraMutation.isPending && (
-                                            <span className="text-[10px] font-bold text-primary animate-pulse mt-4 uppercase">Salvando no banco...</span>
-                                        )}
                                     </div>
                                 </div>
-                            </div>
-                        )}
-                    </div>
-                </section>
+                            )}
+                        </div>
+                    </section>
 
-                {/* Diálogo de Confirmação de Fechamento */}
-                <Dialog open={openFechamento} onOpenChange={setOpenFechamento}>
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>Confirmar Fechamento de Período</DialogTitle>
-                            <DialogDescription>
-                                Você está prestes a fechar o período de <strong>{inicio}</strong> a <strong>{fim}</strong>.
-                                Isso irá consolidar <strong>{rawEmAberto}</strong> lançamentos em aberto.
-                                Após o fechamento, o lote será enviado para validação do RH.
-                            </DialogDescription>
-                        </DialogHeader>
-                        <div className="space-y-2">
-                            <Label>Observações (opcional)</Label>
-                            <Input value={obsLote} onChange={(e) => setObsLote(e.target.value)} placeholder="Ex: Ajustes manuais aplicados" />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Para confirmar, digite <span className="font-bold text-amber-600">FECHAR</span></Label>
-                            <Input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} />
-                        </div>
-                        <DialogFooter>
-                            <Button variant="ghost" onClick={() => setOpenFechamento(false)}>Cancelar</Button>
-                            <Button
-                                className="bg-amber-600 hover:bg-amber-700"
-                                disabled={confirmText !== "FECHAR" || fecharMutation.isPending}
-                                onClick={() => fecharMutation.mutate()}
-                            >
-                                {fecharMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirmar e Fechar"}
-                            </Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
+                    {/* Diálogo de Confirmação de Fechamento */}
+                    <Dialog open={openFechamento} onOpenChange={setOpenFechamento}>
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>Confirmar Fechamento de Período</DialogTitle>
+                                <DialogDescription>
+                                    Você está prestes a fechar o período de <strong>{inicio}</strong> a <strong>{fim}</strong>.
+                                    Isso irá consolidar <strong>{rawEmAberto}</strong> lançamentos em aberto.
+                                    Após o fechamento, o lote será enviado para validação do RH.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-2">
+                                <Label>Observações (opcional)</Label>
+                                <Input value={obsLote} onChange={(e) => setObsLote(e.target.value)} placeholder="Ex: Ajustes manuais aplicados" />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Para confirmar, digite <span className="font-bold text-amber-600">FECHAR</span></Label>
+                                <Input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} />
+                            </div>
+                            <DialogFooter>
+                                <Button variant="ghost" onClick={() => setOpenFechamento(false)}>Cancelar</Button>
+                                <Button
+                                    className="bg-amber-600 hover:bg-amber-700"
+                                    disabled={confirmText !== "FECHAR" || fecharMutation.isPending}
+                                    onClick={() => fecharMutation.mutate()}
+                                >
+                                    {fecharMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirmar e Fechar"}
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                </div>
             </div>
-        </AppShell>
+        </AppShell >
     );
 };
 

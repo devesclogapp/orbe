@@ -40,20 +40,21 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return;
       }
 
+      console.log("[TenantContext] Buscando profile para:", user.id);
+      
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("tenant_id, role")
         .eq("user_id", user.id)
         .single();
 
-      console.log("[TenantContext] Profile carregado:", { profile, profileError, userId: user.id });
+      console.log("[TenantContext] Resultado profile:", { profile, profileError });
       
       if (profileError || !profile?.tenant_id) {
-        console.warn("[TenantContext] Usuário sem tenant vinculado:", user.email, "Profile:", profile);
-        if (!silent) {
-          setTenant(null);
-          setRole(null);
-        }
+        console.warn("[TenantContext] Usuário sem tenant, continuando renderização.");
+        setTenant(null);
+        setRole(null);
+        setLoading(false);
         hasResolvedInitialLoad.current = true;
         return;
       }
@@ -69,9 +70,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       if (tenantError || !tenantData) {
         console.warn("[TenantContext] Tenant não encontrado:", profile.tenant_id);
-        if (!silent) {
-          setTenant(null);
-        }
+        setTenant(null);
         hasResolvedInitialLoad.current = true;
         return;
       }
@@ -133,7 +132,6 @@ export const useTenant = () => {
   return context;
 };
 
-// Hook legado — mantido por compatibilidade mas simplificado
 export const useTenantFilter = () => {
   const { tenantId } = useTenant();
   return useMemo(() => {
