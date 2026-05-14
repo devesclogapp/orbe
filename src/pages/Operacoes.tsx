@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { addMonths, format, startOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -6,7 +6,6 @@ import {
   PlayCircle,
   RefreshCw,
   AlertTriangle,
-  BarChart3,
   Building2,
   Calculator,
   Calendar as CalendarIcon,
@@ -21,19 +20,15 @@ import {
   Package2,
   Receipt,
   Scale,
-  Settings2,
-  ShoppingCart,
   TrendingUp,
   Upload,
   Users,
-  UtensilsCrossed,
   Wallet,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/layout/AppShell";
-import { CustosExtrasTableBlock } from "@/components/operacoes/CustosExtrasTableBlock";
 import { OperacoesTableBlock } from "@/components/operacoes/OperacoesTableBlock";
 import { SpreadsheetUploadModal } from "@/components/shared/SpreadsheetUploadModal";
 import { Badge } from "@/components/ui/badge";
@@ -45,12 +40,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import {
   AIService,
-  CustoExtraOperacionalService,
   EmpresaService,
   FornecedorService,
   LogSincronizacaoService,
@@ -64,6 +58,32 @@ import { processarOperacao } from "@/utils/financeiro";
 type EmpresaOption = {
   id: string;
   nome: string;
+};
+
+type OperacoesBaseItem = {
+  data_operacao?: string | null;
+  empresa_id?: string | null;
+  [key: string]: unknown;
+};
+
+type ImportLogItem = {
+  id: string;
+  data?: string | null;
+  origem?: string | null;
+  empresa_id?: string | null;
+  contagem_registros?: number | null;
+  status?: string | null;
+  empresas?: { nome?: string | null } | null;
+};
+
+type IssueItem = {
+  id?: string | null;
+  data?: string | null;
+  empresa_id?: string | null;
+  tipo_servico?: string | null;
+  quantidade?: number | string | null;
+  status?: string | null;
+  colaboradores?: { nome?: string | null } | null;
 };
 
 type ProcessDayResponse = {
@@ -110,29 +130,6 @@ type ImportedOperationPayload = {
   valor_faturamento_nf: number;
   avaliacao_json: Record<string, unknown>;
   status: "pendente";
-  origem_dado: "importacao";
-};
-
-type CategoriaCustoExtra =
-  | "MERENDA"
-  | "ADMINISTRATIVO"
-  | "OPERACIONAL"
-  | "FORNECEDOR";
-
-type ImportedExtraCostPayload = {
-  data: string | null;
-  empresa_nome: string | null;
-  categoria_custo: CategoriaCustoExtra;
-  descricao: string;
-  valor_unitario: number;
-  quantidade: number;
-  total: number;
-  forma_pagamento: string | null;
-  data_vencimento: string | null;
-  status_pagamento: "PENDENTE" | "ATRASADO" | "RECEBIDO" | null;
-  operacao_id: string | null;
-  tipo_lancamento: "DESPESA";
-  avaliacao_json: Record<string, unknown>;
   origem_dado: "importacao";
 };
 
@@ -321,123 +318,6 @@ const normalizeImportedSheetRows = (rows: SpreadsheetRow[]) => {
   return normalizedRows;
 };
 
-const EXTRA_COST_BLOCK_CATEGORY_MAP: Record<string, CategoriaCustoExtra> = {
-  "CUSTOS COM MERENDA": "MERENDA",
-  "CUSTOS ADMINISTRATIVO": "ADMINISTRATIVO",
-  "CUSTOS COM OPERACIONAL": "OPERACIONAL",
-  "CUSTOS COM FORNECEDOR": "FORNECEDOR",
-};
-
-const normalizeCategoryBlockTitle = (value: unknown) =>
-  normalizeLookupText(value).replace(/:$/g, "");
-
-const normalizePaymentStatus = (value: RowValue): ImportedExtraCostPayload["status_pagamento"] => {
-  const normalized = normalizeLookupText(value);
-  if (normalized.includes("RECEB")) return "RECEBIDO";
-  if (normalized.includes("ATRAS")) return "ATRASADO";
-  if (normalized.includes("PEND")) return "PENDENTE";
-  return null;
-};
-
-const getRowNumericKeys = (row: SpreadsheetRow) =>
-  Object.keys(row)
-    .filter((key) => key !== SHEET_ORIGIN_FIELD && /^\d+$/.test(key))
-    .sort((a, b) => Number(a) - Number(b));
-
-const rowToCellArray = (row: SpreadsheetRow) =>
-  getRowNumericKeys(row).map((key) => row[key]);
-
-const parseCustosExtrasImport = (rows: SpreadsheetRow[]) => {
-  const sheetRows = rows.filter((row) => normalizeLookupText(row[SHEET_ORIGIN_FIELD]).includes("CUSTOS EXTRAS"));
-  if (sheetRows.length === 0) return [];
-
-  const matrix = sheetRows.map(rowToCellArray);
-  const titleRow = matrix[0] ?? [];
-  const headerRow = matrix[1] ?? [];
-
-  const blockStarts = titleRow
-    .map((cell, index) => {
-      const normalized = normalizeCategoryBlockTitle(cell);
-      const categoria = EXTRA_COST_BLOCK_CATEGORY_MAP[normalized];
-      return categoria ? { start: index, categoria } : null;
-    })
-    .filter((item): item is { start: number; categoria: CategoriaCustoExtra } => Boolean(item))
-    .sort((a, b) => a.start - b.start);
-
-  if (blockStarts.length === 0) return [];
-
-  return blockStarts.flatMap((block, blockIndex) => {
-    const end = (blockStarts[blockIndex + 1]?.start ?? headerRow.length) - 1;
-    const headerEntries = headerRow
-      .slice(block.start, end + 1)
-      .map((cell, offset) => ({
-        absoluteIndex: block.start + offset,
-        normalized: normalizeLookupText(cell),
-      }));
-
-    const findHeaderIndex = (...aliases: string[]) =>
-      headerEntries.find((entry) =>
-        aliases.some((alias) => entry.normalized.includes(normalizeLookupText(alias))),
-      )?.absoluteIndex;
-
-    const idIndex = findHeaderIndex("ID");
-    const dataIndex = findHeaderIndex("DATA");
-    const empresaIndex = findHeaderIndex("EMPRESA");
-    const descricaoIndex = findHeaderIndex("DESCRICAO");
-    const unitarioIndex = findHeaderIndex("VALOR UNITARIO", "UNITARIO");
-    const quantidadeIndex = findHeaderIndex("QUANTIDADE", "QTD");
-    const totalIndex = findHeaderIndex("TOTAL");
-    const formaPagamentoIndex = findHeaderIndex("FORMA DE PAGAMENTO", "FORMA PGTO", "PAGAMENTO");
-    const vencimentoIndex = findHeaderIndex("VENCIMENTO", "DATA VENCIMENTO");
-    const statusIndex = findHeaderIndex("STATUS PGTO", "STATUS PAGTO", "STATUS");
-
-    return matrix.slice(2).flatMap((row, rowOffset) => {
-      const cells = row.slice(block.start, end + 1);
-      const hasMeaningfulData = cells.some((cell) => cell !== null && cell !== "" && cell !== 0);
-      if (!hasMeaningfulData) return [];
-
-      const descricaoRaw = descricaoIndex !== undefined ? row[descricaoIndex] : null;
-      const totalLabel = normalizeLookupText(descricaoRaw);
-      if (totalLabel === "TOTAL") return [];
-
-      const valorUnitario = unitarioIndex !== undefined ? parseNumericCell(row[unitarioIndex]) : 0;
-      const quantidade = quantidadeIndex !== undefined ? parseNumericCell(row[quantidadeIndex]) : 0;
-      const totalBruto = totalIndex !== undefined ? parseNumericCell(row[totalIndex]) : 0;
-      const total = totalBruto || valorUnitario * quantidade;
-      const descricao = String(descricaoRaw ?? "").trim();
-
-      if (!descricao && total === 0 && valorUnitario === 0 && quantidade === 0) return [];
-
-      return [{
-        data: dataIndex !== undefined ? parseExcelDate(row[dataIndex]) : null,
-        empresa_nome: empresaIndex !== undefined ? String(row[empresaIndex] ?? "").trim() || null : null,
-        categoria_custo: block.categoria,
-        descricao: descricao || `${block.categoria} sem descricao`,
-        valor_unitario: valorUnitario,
-        quantidade,
-        total,
-        forma_pagamento: formaPagamentoIndex !== undefined ? String(row[formaPagamentoIndex] ?? "").trim() || null : null,
-        data_vencimento: vencimentoIndex !== undefined ? parseExcelDate(row[vencimentoIndex]) : null,
-        status_pagamento: statusIndex !== undefined ? normalizePaymentStatus(row[statusIndex]) : null,
-        operacao_id: null,
-        tipo_lancamento: "DESPESA" as const,
-        avaliacao_json: {
-          origem_importacao: "planilha",
-          contexto_importacao: {
-            origem_aba: row[SHEET_ORIGIN_FIELD] ?? "CUSTOS EXTRAS",
-            bloco_categoria: block.categoria,
-            linha_planilha: rowOffset + 3,
-          },
-          linha_original: normalizeSpreadsheetRow(sheetRows[rowOffset + 2] ?? {}),
-          referencia_original: {
-            id: idIndex !== undefined ? row[idIndex] : null,
-          },
-        },
-        origem_dado: "importacao" as const,
-      }];
-    });
-  });
-};
 
 type TopKpiCardProps = {
   label: string;
@@ -570,10 +450,7 @@ const Operacoes = () => {
   );
   const [sheetYear, setSheetYear] = useState<string>(String(new Date().getFullYear()));
   const [sheetMonthNumber, setSheetMonthNumber] = useState<string>("all");
-  const [custosYear, setCustosYear] = useState<string>(String(new Date().getFullYear()));
-  const [custosMonthNumber, setCustosMonthNumber] = useState<string>("all");
   const [selectedEmpresaId, setSelectedEmpresaId] = useState<string>("");
-  const [activeArea, setActiveArea] = useState<"operacoes" | "custos-extras">("operacoes");
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
 
@@ -584,38 +461,24 @@ const Operacoes = () => {
     [isAllMonthsSelected, selectedMonthNumber, selectedYear],
   );
   const dateValue = format(selectedDate, "yyyy-MM-dd");
-  const monthValue = selectedMonth;
-  const matchesSelectedPeriod = (value: unknown) => {
+  const matchesSelectedPeriod = useCallback((value: unknown) => {
     const referencia = String(value ?? "");
     if (!referencia.startsWith(selectedYear)) return false;
     if (isAllMonthsSelected) return true;
-    return referencia.startsWith(monthValue);
-  };
+    return referencia.startsWith(selectedMonth);
+  }, [isAllMonthsSelected, selectedMonth, selectedYear]);
   const monthLabelCapitalized = isAllMonthsSelected
     ? `Todos os meses de ${selectedYear}`
     : format(selectedDate, "MMMM/yyyy", { locale: ptBR }).replace(/^\w/, (char) => char.toUpperCase());
 
   const sheetMonth = `${sheetYear}-${sheetMonthNumber}`;
   const isAllSheetMonthsSelected = sheetMonthNumber === "all";
-  const sheetDateValue = useMemo(
-    () => new Date(`${sheetYear}-${isAllSheetMonthsSelected ? "01" : sheetMonthNumber}-01T12:00:00`),
-    [isAllSheetMonthsSelected, sheetMonthNumber, sheetYear],
-  );
-  const sheetMonthMatches = (value: unknown) => {
+  const sheetMonthMatches = useCallback((value: unknown) => {
     const referencia = String(value ?? "");
     if (!referencia.startsWith(sheetYear)) return false;
     if (isAllSheetMonthsSelected) return true;
     return referencia.startsWith(sheetMonth);
-  };
-
-  const custosMonth = `${custosYear}-${custosMonthNumber}`;
-  const isAllCustosMonthsSelected = custosMonthNumber === "all";
-  const custosMonthMatches = (value: unknown) => {
-    const referencia = String(value ?? "");
-    if (!referencia.startsWith(custosYear)) return false;
-    if (isAllCustosMonthsSelected) return true;
-    return referencia.startsWith(custosMonth);
-  };
+  }, [isAllSheetMonthsSelected, sheetMonth, sheetYear]);
 
   const { data: empresas = [], isLoading: isLoadingEmpresas } = useQuery<EmpresaOption[]>({
     queryKey: ["empresas"],
@@ -632,24 +495,18 @@ const Operacoes = () => {
     setConfirmClear(false);
   }, [selectedEmpresaId, selectedMonth]);
 
-  const { data: operacoesBase = [], isLoading: isLoadingOperacoesBase } = useQuery<any[]>({
+  const { data: operacoesBase = [], isLoading: isLoadingOperacoesBase } = useQuery<OperacoesBaseItem[]>({
     queryKey: ["operacoes-base", selectedEmpresaId],
     queryFn: () => OperacaoService.getAllPainel(selectedEmpresaId === "all" ? undefined : selectedEmpresaId),
     enabled: !!selectedEmpresaId,
   });
 
-  const { data: custosExtras = [], isLoading: isLoadingCustosExtras } = useQuery<any[]>({
-    queryKey: ["custos-extras", selectedEmpresaId],
-    queryFn: () => CustoExtraOperacionalService.getAll(selectedEmpresaId === "all" ? undefined : selectedEmpresaId),
-    enabled: !!selectedEmpresaId,
-  });
-
-  const { data: logsImportacao = [], isLoading: isLoadingLogs } = useQuery<any[]>({
+  const { data: logsImportacao = [], isLoading: isLoadingLogs } = useQuery<ImportLogItem[]>({
     queryKey: ["importacoes"],
     queryFn: () => LogSincronizacaoService.getWithEmpresa(),
   });
 
-  const { data: issues = [], isLoading: isLoadingIssues } = useQuery<any[]>({
+  const { data: issues = [], isLoading: isLoadingIssues } = useQuery<IssueItem[]>({
     queryKey: ["inconsistencias"],
     queryFn: () => OperacaoService.getInconsistencies(),
   });
@@ -661,7 +518,7 @@ const Operacoes = () => {
         const sameEmpresa = selectedEmpresaId === "all" || issue.empresa_id === selectedEmpresaId;
         return sameDate && sameEmpresa;
       }),
-    [issues, selectedEmpresaId, selectedMonthNumber, selectedYear]
+    [issues, matchesSelectedPeriod, selectedEmpresaId]
   );
 
   const filteredLogs = useMemo(
@@ -671,7 +528,7 @@ const Operacoes = () => {
         const sameEmpresa = selectedEmpresaId === "all" || log.empresa_id === selectedEmpresaId;
         return sameDate && sameEmpresa;
       }),
-    [logsImportacao, selectedEmpresaId, selectedMonthNumber, selectedYear]
+    [logsImportacao, matchesSelectedPeriod, selectedEmpresaId]
   );
 
   const operacoesKpiDataset = useMemo(
@@ -681,7 +538,7 @@ const Operacoes = () => {
         const sameEmpresa = selectedEmpresaId === "all" || item.empresa_id === selectedEmpresaId;
         return sameDate && sameEmpresa;
       }),
-    [operacoesBase, selectedEmpresaId, selectedMonthNumber, selectedYear]
+    [matchesSelectedPeriod, operacoesBase, selectedEmpresaId]
   );
 
   const operacoesSheetDataset = useMemo(
@@ -691,49 +548,17 @@ const Operacoes = () => {
         const sameEmpresa = selectedEmpresaId === "all" || item.empresa_id === selectedEmpresaId;
         return sameDate && sameEmpresa;
       }),
-    [operacoesBase, selectedEmpresaId, sheetMonthNumber, sheetYear]
+    [operacoesBase, selectedEmpresaId, sheetMonthMatches]
   );
 
   const operacoesTabela = useMemo(
-    () => operacoesSheetDataset.map((item) => processarOperacao(item, empresas as any[])),
+    () => operacoesSheetDataset.map((item) => processarOperacao(item, empresas)),
     [operacoesSheetDataset, empresas]
   );
 
   const operacoesTabelaKpis = useMemo(
-    () => operacoesKpiDataset.map((item) => processarOperacao(item, empresas as any[])),
+    () => operacoesKpiDataset.map((item) => processarOperacao(item, empresas)),
     [operacoesKpiDataset, empresas]
-  );
-
-  const custosExtrasKpiDataset = useMemo(
-    () =>
-      custosExtras.filter((item) => {
-        if (!item.data) return false;
-        return matchesSelectedPeriod(item.data);
-      }),
-    [custosExtras, selectedMonthNumber, selectedYear]
-  );
-
-  const custosExtrasSheetDataset = useMemo(
-    () =>
-      custosExtras.filter((item) => {
-        if (!item.data) return false;
-        return custosMonthMatches(item.data);
-      }),
-    [custosExtras, custosMonthNumber, custosYear]
-  );
-
-  const totalCalculado = useMemo(
-    () =>
-      operacoesTabela.reduce((acc, op) => {
-        const totalLinha = Number(op.totalFinalCalculado ?? op.valor_total_label ?? op.valor_total ?? 0);
-        return acc + (Number.isFinite(totalLinha) ? totalLinha : 0);
-      }, 0),
-    [operacoesTabela]
-  );
-
-  const totalCustosExtras = useMemo(
-    () => custosExtrasKpiDataset.reduce((acc, item) => acc + Number(item.total ?? 0), 0),
-    [custosExtrasKpiDataset]
   );
 
   const operacoesKpis = useMemo(() => {
@@ -799,58 +624,16 @@ const Operacoes = () => {
     };
   }, [operacoesTabelaKpis]);
 
-  const custosExtrasKpis = useMemo(() => {
-    let maiorCusto = 0;
-    let totalCritico = 0;
-    let merenda = 0;
-    let administrativo = 0;
-    let operacional = 0;
-    let fornecedor = 0;
-    let recebido = 0;
-
-    custosExtrasKpiDataset.forEach((item) => {
-      const total = Number(item.total ?? 0);
-      const status = String(item.status_pagamento ?? "").toUpperCase();
-      const categoria = String(item.categoria_custo ?? "").toUpperCase();
-
-      maiorCusto = Math.max(maiorCusto, total);
-      if (status === "PENDENTE" || status === "ATRASADO") totalCritico += total;
-      if (status === "RECEBIDO") recebido += total;
-
-      if (categoria === "MERENDA") merenda += total;
-      if (categoria === "ADMINISTRATIVO") administrativo += total;
-      if (categoria === "OPERACIONAL") operacional += total;
-      if (categoria === "FORNECEDOR") fornecedor += total;
-    });
-
-    return {
-      total: totalCustosExtras,
-      maiorCusto,
-      custoCriticoPercentual: totalCustosExtras > 0 ? (totalCritico / totalCustosExtras) * 100 : 0,
-      lancamentos: custosExtrasKpiDataset.length,
-      recebido,
-      merenda,
-      administrativo,
-      operacional,
-      fornecedor,
-      custoMedio: custosExtrasKpiDataset.length > 0 ? totalCustosExtras / custosExtrasKpiDataset.length : 0,
-    };
-  }, [custosExtrasKpiDataset, totalCustosExtras]);
-
-  const isLoading = isLoadingEmpresas || isLoadingOperacoesBase || isLoadingCustosExtras || isLoadingLogs || isLoadingIssues;
+  const isLoading = isLoadingEmpresas || isLoadingOperacoesBase || isLoadingLogs || isLoadingIssues;
 
   const clearMutation = useMutation({
     mutationFn: () =>
-      activeArea === "operacoes"
-        ? OperacaoProducaoService.deleteImported(selectedEmpresaId === "all" ? undefined : selectedEmpresaId)
-        : CustoExtraOperacionalService.deleteImported(selectedEmpresaId === "all" ? undefined : selectedEmpresaId),
+      OperacaoProducaoService.deleteImported(selectedEmpresaId === "all" ? undefined : selectedEmpresaId),
     onSuccess: (deletedCount: number) => {
       if (deletedCount === 0) {
         toast.warning("Nenhum registro foi removido.", {
           description:
-            activeArea === "operacoes"
-              ? "Se havia itens importados visiveis, verifique se a policy de DELETE da tabela operacoes_producao ja foi aplicada no banco."
-              : "Nao havia custos extras importados para o recorte atual.",
+            "Se havia itens importados visiveis, verifique se a policy de DELETE da tabela operacoes_producao ja foi aplicada no banco.",
         });
         setConfirmClear(false);
         return;
@@ -864,7 +647,6 @@ const Operacoes = () => {
       });
       queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
-      queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
       queryClient.invalidateQueries({ queryKey: ["importacoes"] });
       setConfirmClear(false);
     },
@@ -1106,41 +888,6 @@ const Operacoes = () => {
     }
   };
 
-  const handleImportCustosExtras = async (data: SpreadsheetRow[]) => {
-    if (!selectedEmpresaId || selectedEmpresaId === "all") {
-      toast.warning("Selecione uma empresa especifica antes de importar", {
-        description: "Os custos extras serao vinculados a empresa selecionada.",
-      });
-      return;
-    }
-
-    try {
-      const importedCosts = parseCustosExtrasImport(data);
-
-      if (importedCosts.length === 0) {
-        toast.warning("Nenhuma linha valida foi encontrada em CUSTOS EXTRAS.", {
-          description: "Verifique se a planilha contem a aba CUSTOS EXTRAS e os blocos internos esperados.",
-        });
-        return;
-      }
-
-      const replacedCount = await CustoExtraOperacionalService.replaceImportedBatch(selectedEmpresaId, importedCosts);
-
-      toast.success(`${replacedCount} custo(s) extra(s) importado(s) com sucesso!`, {
-        description: "Os blocos da planilha foram convertidos em despesas independentes da base de faturamento.",
-      });
-
-      await queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
-      setImportModalOpen(false);
-    } catch (error) {
-      console.error("Erro ao processar importacao de custos extras:", error);
-      toast.error("Erro na importacao de custos extras.", {
-        description: getImportErrorMessage(error),
-      });
-      queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
-    }
-  };
-
   return (
     <AppShell
       title="Operacoes"
@@ -1206,34 +953,17 @@ const Operacoes = () => {
               <Badge
                 className={cn(
                   "h-10 w-fit px-3 rounded-md font-semibold",
-                  activeArea === "operacoes" && filteredIssues.length > 0
+                  filteredIssues.length > 0
                     ? "bg-warning-soft text-warning-strong"
-                    : "bg-success-soft text-success-strong"
+                    : "bg-success-soft text-success-strong",
                 )}
               >
-                {activeArea === "operacoes"
-                  ? (filteredIssues.length > 0 ? `${filteredIssues.length} inconsistencia(s) em aberto` : "Base operacional consistente")
-                  : `${custosExtras.length} despesa(s) extra(s) na empresa`}
+                {filteredIssues.length > 0 ? `${filteredIssues.length} inconsistencia(s) em aberto` : "Base operacional consistente"}
               </Badge>
             </div>
 
             <div className="w-full overflow-x-auto">
-              <Tabs value={activeArea} onValueChange={(value) => setActiveArea(value as "operacoes" | "custos-extras")}>
-                <div className="flex min-w-max items-center justify-end gap-2">
-                  <TabsList className="h-11 rounded-2xl border border-[#E5E7EB] bg-[#F3F4F6] p-1 shadow-sm">
-                    <TabsTrigger
-                      value="operacoes"
-                      className="rounded-xl px-4 font-display font-semibold text-[#6B7280] data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-sm"
-                    >
-                      Volume
-                    </TabsTrigger>
-                    <TabsTrigger
-                      value="custos-extras"
-                      className="rounded-xl px-4 font-display font-semibold text-[#6B7280] data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-sm"
-                    >
-                      Custos Extras
-                    </TabsTrigger>
-                  </TabsList>
+              <div className="flex min-w-max items-center justify-end gap-2">
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => navigate("/operacional/dashboard")}>
@@ -1270,7 +1000,7 @@ const Operacoes = () => {
                         <FileUp className="h-4 w-4" />
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>{activeArea === "operacoes" ? "Importar operacoes" : "Importar custos extras"}</TooltipContent>
+                    <TooltipContent>Importar operacoes</TooltipContent>
                   </Tooltip>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -1289,8 +1019,7 @@ const Operacoes = () => {
                     </TooltipTrigger>
                     <TooltipContent>{processMutation.isPending ? "Processando..." : "Processar dia"}</TooltipContent>
                   </Tooltip>
-                </div>
-              </Tabs>
+              </div>
             </div>
           </div>
         </section>
@@ -1302,7 +1031,7 @@ const Operacoes = () => {
               Carregando a base operacional...
             </p>
           </div>
-        ) : activeArea === "operacoes" ? (
+        ) : (
           <>
             <div className="space-y-4">
               <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
@@ -1559,157 +1288,15 @@ const Operacoes = () => {
               </TabsContent>
             </Tabs>
           </>
-        ) : (
-          <>
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
-                <div className="xl:col-span-1">
-                  <TopKpiCard
-                    label="Total de Custos"
-                    value={formatCurrency(custosExtrasKpis.total)}
-                    helper="Soma financeira do recorte"
-                    variant="primary"
-                    icon={Wallet}
-                    iconColor="bg-white/20 text-white"
-                  />
-                </div>
-                <div className="xl:col-span-4 grid grid-cols-2 lg:grid-cols-4 gap-4">
-                  <TopKpiCard
-                    label="Maior Custo"
-                    value={formatCurrency(custosExtrasKpis.maiorCusto)}
-                    helper="Lancamento maximo"
-                    size="small"
-                    icon={BarChart3}
-                    iconColor="bg-purple-100 text-purple-700"
-                  />
-                  <TopKpiCard
-                    label="Custo Critico (%)"
-                    value={formatPercent(custosExtrasKpis.custoCriticoPercentual)}
-                    helper="Valores pendentes"
-                    size="small"
-                    variant="warning"
-                    iconColor="bg-warning-soft text-warning-strong"
-                  />
-                  <TopKpiCard
-                    label="Recebido"
-                    value={formatCurrency(custosExtrasKpis.recebido)}
-                    helper="Custos pagos"
-                    size="small"
-                    variant="success"
-                    icon={HandCoins}
-                    iconColor="bg-success-soft text-success-strong"
-                  />
-                  <TopKpiCard
-                    label="Lancamentos"
-                    value={formatInteger(custosExtrasKpis.lancamentos)}
-                    helper="Qtd. registrada"
-                    size="small"
-                    icon={Receipt}
-                    iconColor="bg-blue-100 text-blue-700"
-                  />
-                </div>
-              </div>
-
-              <div className="esc-card p-4 space-y-3">
-                <h3 className="font-display font-medium text-sm text-muted-foreground">Rateio por Categorias</h3>
-                <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-                  <TopKpiCard
-                    label="Merenda"
-                    value={formatCurrency(custosExtrasKpis.merenda)}
-                    size="xs"
-                    variant="muted"
-                    icon={UtensilsCrossed}
-                  />
-                  <TopKpiCard
-                    label="Administrativo"
-                    value={formatCurrency(custosExtrasKpis.administrativo)}
-                    size="xs"
-                    variant="muted"
-                    icon={FileBadge2}
-                  />
-                  <TopKpiCard
-                    label="Operacional"
-                    value={formatCurrency(custosExtrasKpis.operacional)}
-                    size="xs"
-                    variant="muted"
-                    icon={Settings2}
-                  />
-                  <TopKpiCard
-                    label="Fornecedor"
-                    value={formatCurrency(custosExtrasKpis.fornecedor)}
-                    size="xs"
-                    variant="muted"
-                    icon={ShoppingCart}
-                  />
-                  <TopKpiCard
-                    label="Custo medio"
-                    value={formatCurrency(custosExtrasKpis.custoMedio)}
-                    size="xs"
-                    variant="muted"
-                    icon={Calculator}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <section className="esc-card p-5 space-y-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex-1">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h2 className="font-display font-semibold text-foreground">Custos Extras</h2>
-                      <p className="text-sm text-muted-foreground">
-                        Tabela de despesas separada da base de faturamento, com importacao baseada nos blocos internos da planilha.
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Select value={custosYear} onValueChange={setCustosYear}>
-                        <SelectTrigger className="w-[100px] h-8 shrink-0 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium text-xs">
-                          <SelectValue placeholder="Ano" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {YEAR_OPTIONS.map((year) => (
-                            <SelectItem key={year} value={year}>
-                              {year}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Select value={custosMonthNumber} onValueChange={setCustosMonthNumber}>
-                        <SelectTrigger className="w-[140px] h-8 shrink-0 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium text-xs">
-                          <SelectValue placeholder="Mes" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {MONTH_FILTER_OPTIONS.map((option) => (
-                            <SelectItem key={option.value} value={option.value}>
-                              {option.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </div>
-                <Badge className="bg-info-soft text-info-strong">
-                  Tipo de lancamento: DESPESA
-                </Badge>
-              </div>
-              <CustosExtrasTableBlock data={custosExtrasSheetDataset} />
-            </section>
-          </>
         )}
       </div>
 
       <SpreadsheetUploadModal
         open={importModalOpen}
         onOpenChange={setImportModalOpen}
-        title={activeArea === "operacoes" ? "Importar Operacoes via Planilha" : "Importar Custos Extras via Planilha"}
-        description={
-          activeArea === "operacoes"
-            ? "O sistema lera a coluna DATA de cada linha automaticamente. Cada linha sera importada na sua propria data. Linhas sem DATA valida serao ignoradas. A coluna COL sera gravada como quantidade de colaboradores."
-            : "A importacao procurara a aba CUSTOS EXTRAS e os blocos CUSTOS COM MERENDA, CUSTOS ADMINISTRATIVO, CUSTOS COM OPERACIONAL e CUSTOS COM FORNECEDOR. Cada linha herdara a categoria do bloco."
-        }
-        onUpload={activeArea === "operacoes" ? handleImportOperacoes : handleImportCustosExtras}
+        title="Importar Operacoes via Planilha"
+        description="O sistema lera a coluna DATA de cada linha automaticamente. Cada linha sera importada na sua propria data. Linhas sem DATA valida serao ignoradas. A coluna COL sera gravada como quantidade de colaboradores."
+        onUpload={handleImportOperacoes}
       />
     </AppShell>
   );
