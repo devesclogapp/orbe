@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Clock,
   Download,
+  Eye,
   FileSpreadsheet,
   Loader2,
   Maximize2,
@@ -787,7 +788,7 @@ const PainelGeral = () => {
                     <tr
                       key={saldo.id}
                       className={cn(
-                        "group border-t border-muted hover:bg-muted/40 cursor-pointer transition-all duration-150 relative",
+                        "group border-t border-muted hover:bg-muted/40 hover:shadow-[inset_4px_0_0_0_rgba(253,76,0,0.95)] cursor-pointer transition-all duration-150 relative",
                         rowPriorityClass(saldo),
                       )}
                       onClick={(e) => {
@@ -813,12 +814,13 @@ const PainelGeral = () => {
                             </span>
                           )}
                         </div>
-                        <div className="flex flex-col">
-                          <div className="text-xs text-muted-foreground">Mat. {saldo.matricula || "-"}</div>
-                          <div className="text-[10px] text-primary/0 group-hover:text-primary/70 transition-colors mt-0.5 font-medium">
-                            Clique para abrir extrato
+                          <div className="flex flex-col">
+                            <div className="text-xs text-muted-foreground">Mat. {saldo.matricula || "-"}</div>
+                            <div className="mt-0.5 flex items-center gap-1 text-[10px] text-primary/0 transition-colors group-hover:text-primary/70 font-medium">
+                              <Eye className="h-3 w-3" />
+                              Clique para abrir extrato
+                            </div>
                           </div>
-                        </div>
                       </td>
                       <td className="px-3 text-muted-foreground">
                         <div className="flex items-center gap-2">

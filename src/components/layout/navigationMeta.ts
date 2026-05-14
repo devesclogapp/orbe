@@ -8,32 +8,39 @@ type RouteMeta = {
 };
 
 const routeMeta: RouteMeta[] = [
-  // Entradas Operacionais
+  // Dashboard
   { pattern: "/operacional/dashboard", label: "Dashboard operacional", section: "Dashboard" },
+  { pattern: "/central", label: "Central Operacional", section: "Dashboard" },
+  { pattern: "/operacional", label: "Operacional", section: "Dashboard" },
+  { pattern: "/", label: "Dashboard", section: "Dashboard" },
+
+  // Entradas Operacionais
   { pattern: "/operacional/pontos", label: "Pontos Recebidos", section: "Entradas Operacionais" },
   { pattern: "/operacional/operacoes", label: "Operações Recebidas", section: "Entradas Operacionais" },
-  { pattern: "/producao", label: "Lançamento de Produção", section: "Entradas Operacionais" },
+  { pattern: "/producao", label: "Lançamentos Operacionais", section: "Entradas Operacionais" },
   { pattern: "/producao/diaristas", label: "Diaristas Recebidos", section: "Entradas Operacionais", parentPath: "/producao" },
+  { pattern: "/producao/custos-extras", label: "Custos Extras", section: "Entradas Operacionais", parentPath: "/producao" },
+  { pattern: "/producao/servicos-extras", label: "Serviços Extras", section: "Entradas Operacionais", parentPath: "/producao" },
+  { pattern: "/importacoes", label: "Importações", section: "Entradas Operacionais" },
+  { pattern: "/inconsistencias", label: "Inconsistências", section: "Entradas Operacionais", parentPath: "/operacional/operacoes" },
+  { pattern: "/processamento", label: "Redirecionamento operacional", section: "Entradas Operacionais", parentPath: "/operacional/operacoes" },
+  { pattern: "/processamento/legado", label: "Redirecionamento operacional", section: "Entradas Operacionais", parentPath: "/operacional/operacoes" },
 
   // Processamento RH
+  { pattern: "/cadastros", label: "Central de Cadastros", section: "Processamento RH" },
+  { pattern: "/colaboradores", label: "Colaboradores", section: "Processamento RH", parentPath: "/cadastros" },
+  { pattern: "/empresas", label: "Empresas / Clientes", section: "Processamento RH", parentPath: "/cadastros" },
+  { pattern: "/transportadoras", label: "Transportadoras", section: "Processamento RH", parentPath: "/cadastros" },
+  { pattern: "/fornecedores", label: "Fornecedores", section: "Processamento RH", parentPath: "/cadastros" },
+  { pattern: "/servicos", label: "Serviços", section: "Processamento RH", parentPath: "/cadastros" },
+  { pattern: "/coletores", label: "Coletores REP", section: "Processamento RH", parentPath: "/cadastros" },
+  { pattern: "/banco-horas/processamento", label: "Processamento RH", section: "Processamento RH", parentPath: "/banco-horas" },
   { pattern: "/banco-horas", label: "Banco de Horas", section: "Processamento RH" },
   { pattern: "/banco-horas/regras", label: "Regras de Banco", section: "Processamento RH", parentPath: "/banco-horas" },
   { pattern: "/banco-horas/extrato/:id", label: "Extrato do colaborador", section: "Processamento RH", parentPath: "/banco-horas" },
   { pattern: "/rh/diaristas", label: "Painel de Diaristas", section: "Processamento RH" },
-  { pattern: "/rh/diaristas/cadastros", label: "Cadastro de Diaristas", section: "Processamento RH", parentPath: "/rh/diaristas" },
-  { pattern: "/cadastros/regras-operacionais", label: "Regras Operacionais", section: "Processamento RH", parentPath: "/cadastros" },
+  { pattern: "/rh/diaristas/cadastros", label: "Central de Cadastros", section: "Processamento RH", parentPath: "/rh/diaristas" },
   { pattern: "/fechamento", label: "Fechamento Mensal", section: "Processamento RH" },
-
-  // Cadastros e Estrutura
-  { pattern: "/cadastros", label: "Central de Cadastros", section: "Cadastros e Estrutura" },
-  { pattern: "/colaboradores", label: "Colaboradores", section: "Cadastros e Estrutura", parentPath: "/cadastros" },
-  { pattern: "/empresas", label: "Empresas / Clientes", section: "Cadastros e Estrutura", parentPath: "/cadastros" },
-  { pattern: "/transportadoras", label: "Transportadoras", section: "Cadastros e Estrutura", parentPath: "/cadastros" },
-  { pattern: "/fornecedores", label: "Fornecedores", section: "Cadastros e Estrutura", parentPath: "/cadastros" },
-  { pattern: "/servicos", label: "Serviços", section: "Cadastros e Estrutura", parentPath: "/cadastros" },
-  { pattern: "/coletores", label: "Coletores REP", section: "Cadastros e Estrutura", parentPath: "/cadastros" },
-  { pattern: "/importacoes", label: "Importações", section: "Cadastros e Estrutura", parentPath: "/cadastros" },
-  { pattern: "/inconsistencias", label: "Inconsistências", section: "Entradas Operacionais", parentPath: "/operacional/operacoes" },
 
   // Financeiro
   { pattern: "/financeiro", label: "Central Financeira", section: "Financeiro" },
@@ -47,37 +54,30 @@ const routeMeta: RouteMeta[] = [
   { pattern: "/financeiro/remessa/historico", label: "Histórico de Remessas", section: "Financeiro", parentPath: "/bancario" },
   { pattern: "/financeiro/retorno", label: "Retorno Bancário", section: "Financeiro", parentPath: "/bancario" },
 
-  // Relatórios e Governança
-  { pattern: "/relatorios", label: "Central de Relatórios", section: "Relatórios e Governança" },
-  { pattern: "/relatorios/legado", label: "Relatórios (legado)", section: "Relatórios e Governança", parentPath: "/relatorios" },
-  { pattern: "/relatorios/detalhe/:id", label: "Visualização de Relatório", section: "Relatórios e Governança", parentPath: "/relatorios" },
-  { pattern: "/relatorios/agendamentos", label: "Agendamentos", section: "Relatórios e Governança", parentPath: "/relatorios" },
-  { pattern: "/relatorios/layouts", label: "Layouts de Exportação", section: "Relatórios e Governança", parentPath: "/relatorios" },
-  { pattern: "/relatorios/integracao", label: "Integração Contábil", section: "Relatórios e Governança", parentPath: "/relatorios" },
-  { pattern: "/relatorios/mapeamento", label: "Mapeamento Contábil", section: "Relatórios e Governança", parentPath: "/relatorios/integracao" },
-  { pattern: "/relatorios/integracao/logs", label: "Logs de Integração", section: "Relatórios e Governança", parentPath: "/relatorios/integracao" },
-  { pattern: "/governanca", label: "Central de Governança", section: "Relatórios e Governança" },
-  { pattern: "/governanca/usuarios", label: "Usuários", section: "Relatórios e Governança", parentPath: "/governanca" },
-  { pattern: "/admin/usuarios-acessos", label: "Gestão de Usuários e Acessos", section: "Relatórios e Governança", parentPath: "/governanca" },
-  { pattern: "/governanca/perfis", label: "Perfis", section: "Relatórios e Governança", parentPath: "/governanca" },
-  { pattern: "/governanca/auditoria", label: "Auditoria", section: "Relatórios e Governança", parentPath: "/governanca" },
+  // Governança
+  { pattern: "/relatorios", label: "Central de Relatórios", section: "Governança" },
+  { pattern: "/relatorios/legado", label: "Relatórios (legado)", section: "Governança", parentPath: "/relatorios" },
+  { pattern: "/relatorios/detalhe/:id", label: "Visualização de Relatório", section: "Governança", parentPath: "/relatorios" },
+  { pattern: "/relatorios/agendamentos", label: "Agendamentos", section: "Governança", parentPath: "/relatorios" },
+  { pattern: "/relatorios/layouts", label: "Layouts de Exportação", section: "Governança", parentPath: "/relatorios" },
+  { pattern: "/relatorios/integracao", label: "Integração Contábil", section: "Governança", parentPath: "/relatorios" },
+  { pattern: "/relatorios/mapeamento", label: "Mapeamento Contábil", section: "Governança", parentPath: "/relatorios/integracao" },
+  { pattern: "/relatorios/integracao/logs", label: "Logs de Integração", section: "Governança", parentPath: "/relatorios/integracao" },
+  { pattern: "/governanca", label: "Governança", section: "Governança" },
+  { pattern: "/governanca/usuarios", label: "Usuários", section: "Governança", parentPath: "/governanca" },
+  { pattern: "/admin/usuarios-acessos", label: "Gestão de Usuários", section: "Governança", parentPath: "/governanca" },
+  { pattern: "/governanca/perfis", label: "Perfis", section: "Governança", parentPath: "/governanca" },
+  { pattern: "/governanca/auditoria", label: "Auditoria", section: "Governança", parentPath: "/governanca" },
+  { pattern: "/governanca/automacao", label: "Automação Operacional", section: "Governança", parentPath: "/governanca" },
+
+  // Configurações
+  { pattern: "/cadastros/regras-operacionais", label: "Regras Operacionais", section: "Configurações", parentPath: "/configuracoes" },
+  { pattern: "/configuracoes", label: "Preferências e Conta", section: "Configurações" },
 
   // Ambiente Externo
   { pattern: "/cliente/dashboard", label: "Portal do Cliente", section: "Ambiente Externo" },
   { pattern: "/cliente/relatorios", label: "Relatórios do Cliente", section: "Ambiente Externo", parentPath: "/cliente/dashboard" },
   { pattern: "/cliente/aprovacoes", label: "Aprovações do Cliente", section: "Ambiente Externo", parentPath: "/cliente/dashboard" },
-
-  // Central Operacional
-  { pattern: "/central", label: "Central Operacional", section: "Dashboard" },
-
-  // Sistema
-  { pattern: "/configuracoes", label: "Preferências e Conta", section: "Sistema" },
-
-  // Legado / Redirecionamentos
-  { pattern: "/operacional", label: "Operacional", section: "Dashboard" },
-  { pattern: "/processamento", label: "Redirecionamento operacional", section: "Entradas Operacionais", parentPath: "/operacional/operacoes" },
-  { pattern: "/processamento/legado", label: "Redirecionamento operacional", section: "Entradas Operacionais", parentPath: "/operacional/operacoes" },
-  { pattern: "/", label: "Dashboard", section: "Dashboard" },
 ];
 
 export const getRouteMeta = (pathname: string) =>

@@ -11,10 +11,12 @@ import {
   ArrowUpRight,
   Banknote,
   CalendarClock,
+  ChevronRight,
   ChevronLeft,
   Download,
   Edit3,
   Filter,
+  RefreshCcw,
   HandCoins,
   History,
   Loader2,
@@ -146,12 +148,13 @@ const statusClassMap: Record<string, string> = {
   cancelado: "bg-slate-100 text-slate-500 border-slate-200",
 };
 
-const actionMetaMap: Record<ActionType, { label: string; title: string; description: string; confirmLabel: string; examples: { cause: string; effect: string }[] }> = {
+const actionMetaMap: Record<ActionType, { label: string; title: string; description: string; confirmLabel: string; icon: any; examples: { cause: string; effect: string }[] }> = {
   ajuste_manual: {
     label: "Ajustar",
     title: "Ajuste manual",
     description: "Informe minutos positivos ou negativos e registre a observacao obrigatoria para auditoria.",
     confirmLabel: "Salvar ajuste",
+    icon: Edit3,
     examples: [
       { cause: "colaborador esqueceu de bater ponto", effect: "RH adiciona +30min manualmente" },
       { cause: "ponto foi lançado errado", effect: "RH remove -1h manualmente" },
@@ -165,6 +168,7 @@ const actionMetaMap: Record<ActionType, { label: string; title: string; descript
     title: "Compensar horas",
     description: "O sistema lancara uma compensacao incremental abatendo o saldo disponivel do evento selecionado.",
     confirmLabel: "Confirmar compensacao",
+    icon: RefreshCcw,
     examples: [
       { cause: "colaborador saiu mais cedo", effect: "saldo positivo abatido" },
       { cause: "colaborador utilizou horas acumuladas", effect: "banco reduzido internamente" },
@@ -176,6 +180,7 @@ const actionMetaMap: Record<ActionType, { label: string; title: string; descript
     title: "Pagar horas",
     description: "O saldo sera abatido, o evento ficara marcado como pago e o reflexo futuro no financeiro sera sinalizado.",
     confirmLabel: "Confirmar pagamento",
+    icon: Banknote,
     examples: [
       { cause: "empresa decidiu pagar horas extras", effect: "saldo convertido em pagamento" },
       { cause: "fechamento mensal aprovado", effect: "horas positivas enviadas ao financeiro" },
@@ -187,6 +192,7 @@ const actionMetaMap: Record<ActionType, { label: string; title: string; descript
     title: "Lancar folga",
     description: "Informe a data da folga para registrar o abatimento do banco de horas com trilha de auditoria.",
     confirmLabel: "Confirmar folga",
+    icon: CalendarClock,
     examples: [
       { cause: "colaborador tirou folga usando banco", effect: "saldo abatido automaticamente" },
       { cause: "folga compensatória aprovada", effect: "horas convertidas em descanso" },
@@ -602,22 +608,32 @@ const ExtratoColaborador = () => {
                             {evento.actions.length === 0 ? (
                               <span className="text-xs text-muted-foreground">Sem acao</span>
                             ) : (
-                              evento.actions.map((action) => (
-                                <Button
-                                  key={action.key}
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-8"
-                                  disabled={Boolean(loadingAction)}
-                                  onClick={() => openActionDialog(evento, action.key)}
-                                >
-                                  {loadingAction === action.key ? (
-                                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                                  ) : null}
-                                  {action.label}
-                                </Button>
-                              ))
+                              evento.actions.map((action) => {
+                                const ActionIcon = actionMetaMap[action.key].icon;
+
+                                return (
+                                  <Button
+                                    key={action.key}
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 gap-1.5"
+                                    disabled={Boolean(loadingAction)}
+                                    onClick={() => openActionDialog(evento, action.key)}
+                                  >
+                                    {loadingAction === action.key ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                      <ActionIcon className="h-3.5 w-3.5" />
+                                    )}
+                                    {action.label}
+                                  </Button>
+                                );
+                              })
                             )}
+                          </div>
+                          <div className="mt-2 flex items-center justify-end gap-1 text-[11px] font-medium text-muted-foreground">
+                            <span>Fluxo rastreável</span>
+                            <ChevronRight className="h-3.5 w-3.5" />
                           </div>
                         </td>
                       </tr>
@@ -630,14 +646,26 @@ const ExtratoColaborador = () => {
         </section>
       </div>
 
-      <Dialog open={Boolean(actionDialog)} onOpenChange={(open) => !open && closeActionDialog()}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{actionDialog ? actionMetaMap[actionDialog.action].title : "Acao operacional"}</DialogTitle>
-            <DialogDescription>
-              {actionDialog ? actionMetaMap[actionDialog.action].description : ""}
-            </DialogDescription>
-          </DialogHeader>
+        <Dialog open={Boolean(actionDialog)} onOpenChange={(open) => !open && closeActionDialog()}>
+          <DialogContent>
+            <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {actionDialog ? (
+                <>
+                  {(() => {
+                    const DialogIcon = actionMetaMap[actionDialog.action].icon;
+                    return <DialogIcon className="h-4 w-4 text-primary" />;
+                  })()}
+                  {actionMetaMap[actionDialog.action].title}
+                </>
+              ) : (
+                "Acao operacional"
+              )}
+            </DialogTitle>
+              <DialogDescription>
+                {actionDialog ? actionMetaMap[actionDialog.action].description : ""}
+              </DialogDescription>
+            </DialogHeader>
 
           {actionDialog && (
             <div className="space-y-4">
@@ -727,6 +755,11 @@ const ExtratoColaborador = () => {
             >
               {actionDialog && actionLoading[actionDialog.evento.id] === actionDialog.action ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : actionDialog ? (
+                (() => {
+                  const ConfirmIcon = actionMetaMap[actionDialog.action].icon;
+                  return <ConfirmIcon className="mr-2 h-4 w-4" />;
+                })()
               ) : null}
               {actionDialog ? actionMetaMap[actionDialog.action].confirmLabel : "Confirmar"}
             </Button>
