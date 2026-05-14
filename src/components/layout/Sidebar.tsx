@@ -92,7 +92,7 @@ const groups: MenuGroup[] = [
     items: [
       { icon: ClipboardCheck, label: "Operacoes Recebidas", to: "/operacional/operacoes", module: "operacoes_recebidas", pulseKey: "operacoes_recebidas" },
       { icon: Clock, label: "Pontos Recebidos", to: "/operacional/pontos", module: "pontos_recebidos", pulseKey: "pontos_recebidos" },
-      { icon: UserCheck, label: "Diaristas Recebidos", to: "/producao/diaristas", module: "diaristas_recebidos", pulseKey: "diaristas_recebidos" },
+      { icon: UserCheck, label: "Diaristas Recebidos", to: "/operacional/diaristas", module: "diaristas_recebidos", pulseKey: "diaristas_recebidos" },
       { icon: Wallet, label: "Custos Extras", to: "/producao/custos-extras", module: "central_operacional", pulseKey: "custos_extras" },
       { icon: Wrench, label: "Servicos Extras", to: "/producao/servicos-extras", module: "central_operacional", pulseKey: "servicos_extras" },
     ],

@@ -135,6 +135,7 @@ const App = () => (
                         <Route path="/operacional/dashboard" element={<AuthGuard><Dashboard /></AuthGuard>} />
                         <Route path="/operacional/pontos" element={<AuthGuard><Pontos /></AuthGuard>} />
                         <Route path="/operacional/operacoes" element={<AuthGuard><Operacoes /></AuthGuard>} />
+                        <Route path="/operacional/diaristas" element={<AuthGuard><RhDiaristasPainel /></AuthGuard>} />
                         <Route path="/producao" element={<AuthGuard><LancamentoProducao /></AuthGuard>} />
                         <Route path="/producao/diaristas" element={<AuthGuard><DiaristasLancamento /></AuthGuard>} />
                         <Route path="/producao/custos-extras" element={<AuthGuard><CustosExtrasLancamento /></AuthGuard>} />

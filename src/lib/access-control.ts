@@ -169,6 +169,7 @@ export const ROUTE_ACCESS_RULES: Array<{
   { prefix: "/producao", module: "central_operacional" },
   { prefix: "/operacional/operacoes", module: "operacoes_recebidas" },
   { prefix: "/operacional/pontos", module: "pontos_recebidos" },
+  { prefix: "/operacional/diaristas", module: "diaristas_recebidos" },
   { prefix: "/producao/diaristas", module: "diaristas_recebidos" },
   { prefix: "/rh/diaristas", module: "diaristas_recebidos" },
   { prefix: "/banco-horas/regras", module: "regras_de_banco" },
