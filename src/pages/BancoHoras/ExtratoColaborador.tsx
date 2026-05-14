@@ -12,7 +12,6 @@ import {
   Banknote,
   CalendarClock,
   ChevronLeft,
-  Clock,
   Download,
   Edit3,
   Filter,
@@ -27,7 +26,11 @@ import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { ColaboradorService } from "@/services/base.service";
 import { BHEventoService } from "@/services/v4.service";
@@ -40,7 +43,12 @@ const getEventBalance = (evento: any) => Number(evento?.saldo_resultante ?? even
 const getEventStatus = (evento: any) => String(evento?.status ?? "ativo").trim().toLowerCase();
 const getEventSource = (evento: any) => String(evento?.origem ?? "manual").trim();
 
-type ActionType = "compensado" | "pago" | "ajustado";
+type ActionType = "ajuste_manual" | "compensacao" | "pagamento" | "folga";
+
+type ActionDialogState = {
+  action: ActionType;
+  evento: any;
+} | null;
 
 const formatMinutes = (mins: number) => {
   const abs = Math.abs(mins);
@@ -58,7 +66,7 @@ const formatBalance = (mins: number) => {
 };
 
 const formatDate = (value?: string | null) => {
-  if (!value) return "—";
+  if (!value) return "-";
   return format(new Date(`${value}T00:00:00`), "dd/MM/yyyy", { locale: ptBR });
 };
 
@@ -83,19 +91,19 @@ const getVisualType = (evento: any) => {
 
 const visualTypeMap = {
   credito: {
-    label: "Crédito",
+    label: "Credito",
     icon: ArrowUpRight,
     chip: "bg-emerald-50 text-emerald-700 border-emerald-200",
     amount: "text-emerald-700",
   },
   debito: {
-    label: "Débito",
+    label: "Debito",
     icon: ArrowDownRight,
     chip: "bg-rose-50 text-rose-700 border-rose-200",
     amount: "text-rose-700",
   },
   compensacao: {
-    label: "Compensação",
+    label: "Compensacao",
     icon: HandCoins,
     chip: "bg-sky-50 text-sky-700 border-sky-200",
     amount: "text-sky-700",
@@ -138,6 +146,33 @@ const statusClassMap: Record<string, string> = {
   cancelado: "bg-slate-100 text-slate-500 border-slate-200",
 };
 
+const actionMetaMap: Record<ActionType, { label: string; title: string; description: string; confirmLabel: string }> = {
+  ajuste_manual: {
+    label: "Ajustar",
+    title: "Ajuste manual",
+    description: "Informe minutos positivos ou negativos e registre a observacao obrigatoria para auditoria.",
+    confirmLabel: "Salvar ajuste",
+  },
+  compensacao: {
+    label: "Compensar",
+    title: "Compensar horas",
+    description: "O sistema lancara uma compensacao incremental abatendo o saldo disponivel do evento selecionado.",
+    confirmLabel: "Confirmar compensacao",
+  },
+  pagamento: {
+    label: "Pagar",
+    title: "Pagar horas",
+    description: "O saldo sera abatido, o evento ficara marcado como pago e o reflexo futuro no financeiro sera sinalizado.",
+    confirmLabel: "Confirmar pagamento",
+  },
+  folga: {
+    label: "Folga",
+    title: "Lancar folga",
+    description: "Informe a data da folga para registrar o abatimento do banco de horas com trilha de auditoria.",
+    confirmLabel: "Confirmar folga",
+  },
+};
+
 const getAvailableActions = (evento: any): Array<{ key: ActionType; label: string }> => {
   const status = getEventStatus(evento);
   const tipo = getEventType(evento);
@@ -150,12 +185,13 @@ const getAvailableActions = (evento: any): Array<{ key: ActionType; label: strin
   const actions: Array<{ key: ActionType; label: string }> = [];
 
   if (minutos > 0 && tipo !== "pagamento") {
-    actions.push({ key: "compensado", label: "Compensar" });
-    actions.push({ key: "pago", label: "Pagar" });
+    actions.push({ key: "compensacao", label: "Compensar" });
+    actions.push({ key: "pagamento", label: "Pagar" });
+    actions.push({ key: "folga", label: "Folga" });
   }
 
   if (tipo !== "ajuste_manual") {
-    actions.push({ key: "ajustado", label: "Ajustar" });
+    actions.push({ key: "ajuste_manual", label: "Ajustar" });
   }
 
   return actions;
@@ -169,6 +205,10 @@ const ExtratoColaborador = () => {
     to: endOfMonth(new Date()),
   });
   const [actionLoading, setActionLoading] = useState<Record<string, ActionType | null>>({});
+  const [actionDialog, setActionDialog] = useState<ActionDialogState>(null);
+  const [actionMinutes, setActionMinutes] = useState("0");
+  const [actionObservation, setActionObservation] = useState("");
+  const [actionDate, setActionDate] = useState(new Date().toISOString().slice(0, 10));
 
   const { data: colaborador } = useQuery({
     queryKey: ["colaborador", id],
@@ -251,44 +291,49 @@ const ExtratoColaborador = () => {
     return acc;
   }, 0);
 
-  const handleEventAction = async (evento: any, action: ActionType) => {
+  const openActionDialog = (evento: any, action: ActionType) => {
+    setActionDialog({ evento, action });
+    setActionObservation("");
+    setActionMinutes("0");
+    setActionDate(new Date().toISOString().slice(0, 10));
+  };
+
+  const closeActionDialog = () => {
+    setActionDialog(null);
+    setActionObservation("");
+    setActionMinutes("0");
+    setActionDate(new Date().toISOString().slice(0, 10));
+  };
+
+  const handleConfirmAction = async () => {
+    if (!actionDialog) return;
+
+    const { evento, action } = actionDialog;
     setActionLoading((current) => ({ ...current, [evento.id]: action }));
 
-    const payloadByAction: Record<ActionType, Record<string, any>> = {
-      compensado: {
-        status: "compensado",
-        observacao: getEventDescription(evento)
-          ? `${getEventDescription(evento)} | Marcado como compensado no extrato`
-          : "Marcado como compensado no extrato",
-      },
-      pago: {
-        status: "pago",
-        observacao: getEventDescription(evento)
-          ? `${getEventDescription(evento)} | Marcado como pago no extrato`
-          : "Marcado como pago no extrato",
-      },
-      ajustado: {
-        status: "ajustado",
-        observacao: getEventDescription(evento)
-          ? `${getEventDescription(evento)} | Ajuste manual sinalizado no extrato`
-          : "Ajuste manual sinalizado no extrato",
-      },
-    };
-
     try {
-      await BHEventoService.update(evento.id, payloadByAction[action] as any);
+      await BHEventoService.registrarAcaoExtrato({
+        eventoId: evento.id,
+        tipo: action,
+        observacao: actionObservation,
+        minutos: action === "ajuste_manual" ? Number(actionMinutes) : undefined,
+        dataFolga: action === "folga" ? actionDate : undefined,
+      });
+
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["bh_eventos", id] }),
         queryClient.invalidateQueries({ queryKey: ["bh_eventos_all", id] }),
+        queryClient.invalidateQueries({ queryKey: ["bh_saldos"] }),
       ]);
 
-      toast.success(`${action === "compensado" ? "Compensação" : action === "pago" ? "Pagamento" : "Ajuste"} aplicado`, {
-        description: `O evento de ${formatDate(getEventDate(evento).slice(0, 10))} foi atualizado sem recalcular histórico.`,
+      toast.success(`${actionMetaMap[action].label} registrado`, {
+        description: `A movimentacao de ${formatDate(getEventDate(evento).slice(0, 10))} foi aplicada de forma incremental.`,
       });
+      closeActionDialog();
     } catch (error) {
       console.error(error);
-      toast.error("Não foi possível atualizar o evento", {
-        description: "A ação foi cancelada e o histórico não foi alterado.",
+      toast.error("Nao foi possivel concluir a acao", {
+        description: error instanceof Error ? error.message : "A acao foi cancelada e o historico nao foi alterado.",
       });
     } finally {
       setActionLoading((current) => ({ ...current, [evento.id]: null }));
@@ -307,13 +352,13 @@ const ExtratoColaborador = () => {
     doc.text("Extrato de Banco de Horas", 14, 18);
     doc.setFontSize(10);
     doc.setTextColor(100, 116, 139);
-    doc.text(`${colaborador.nome} | Matrícula ${colaborador.matricula || "—"}`, 14, 25);
+    doc.text(`${colaborador.nome} | Matricula ${colaborador.matricula || "-"}`, 14, 25);
 
     const periodText =
       dateRange?.from && dateRange?.to
         ? `${format(dateRange.from, "dd/MM/yyyy")} a ${format(dateRange.to, "dd/MM/yyyy")}`
-        : "Período completo";
-    doc.text(`Período: ${periodText}`, 205, 18);
+        : "Periodo completo";
+    doc.text(`Periodo: ${periodText}`, 205, 18);
     doc.text(`Saldo atual: ${formatBalance(totalMinutos)}`, 205, 25);
 
     const tableData = processedEventos.map((evento) => [
@@ -327,7 +372,7 @@ const ExtratoColaborador = () => {
 
     autoTable(doc, {
       startY: 42,
-      head: [["Data", "Evento", "Minutos", "Saldo após", "Vencimento", "Status"]],
+      head: [["Data", "Evento", "Minutos", "Saldo apos", "Vencimento", "Status"]],
       body: tableData,
       headStyles: { fillColor: [51, 65, 85] },
       alternateRowStyles: { fillColor: [248, 250, 252] },
@@ -343,7 +388,7 @@ const ExtratoColaborador = () => {
   return (
     <AppShell
       title="Extrato do Colaborador"
-      subtitle={colaborador ? `${colaborador.nome} — Mat. ${colaborador.matricula || "Sem matrícula"}` : "Carregando..."}
+      subtitle={colaborador ? `${colaborador.nome} - Mat. ${colaborador.matricula || "Sem matricula"}` : "Carregando..."}
     >
       <div className="space-y-6">
         <div className="flex items-center justify-between">
@@ -372,14 +417,14 @@ const ExtratoColaborador = () => {
                       format(dateRange.from, "dd/MM/yy")
                     )
                   ) : (
-                    <span>Filtrar período</span>
+                    <span>Filtrar periodo</span>
                   )}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="end">
                 <div className="flex items-center justify-between border-b border-muted bg-muted/20 p-3">
                   <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Selecionar período
+                    Selecionar periodo
                   </span>
                   {dateRange && (
                     <Button variant="ghost" size="icon" className="h-6 w-6" onClick={clearFilter}>
@@ -412,19 +457,19 @@ const ExtratoColaborador = () => {
             <h3 className="font-display text-2xl font-bold text-primary">{formatBalance(totalMinutos)}</h3>
           </div>
           <div className="esc-card p-5">
-            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Créditos no Período</p>
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Creditos no Periodo</p>
             <h3 className="font-display text-xl font-bold text-emerald-700">+{formatBalance(totalCreditosPeriodo).replace("+", "")}</h3>
           </div>
           <div className="esc-card p-5">
-            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Débitos no Período</p>
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Debitos no Periodo</p>
             <h3 className="font-display text-xl font-bold text-rose-700">-{formatBalance(totalDebitosPeriodo).replace("+", "").replace("-", "")}</h3>
           </div>
           <div className="esc-card p-5">
-            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Atenção de Vencimento</p>
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Atencao de Vencimento</p>
             <h3 className="font-display text-lg font-bold text-amber-700">
               {formatBalance(minutosAVencer30d)} / {formatBalance(minutosVencidos)}
             </h3>
-            <p className="mt-1 text-xs text-muted-foreground">A vencer em 30 dias / já vencido</p>
+            <p className="mt-1 text-xs text-muted-foreground">A vencer em 30 dias / ja vencido</p>
           </div>
         </div>
 
@@ -433,13 +478,13 @@ const ExtratoColaborador = () => {
             <div className="flex items-center gap-2">
               <History className="h-4 w-4 text-muted-foreground" />
               <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Extrato Bancário de Horas
+                Extrato Bancario de Horas
               </span>
             </div>
             {dateRange?.from && (
               <span className="text-[10px] font-medium italic text-muted-foreground">
                 Mostrando de {format(dateRange.from, "dd/MM/yyyy")}
-                {dateRange.to ? ` até ${format(dateRange.to, "dd/MM/yyyy")}` : ""}
+                {dateRange.to ? ` ate ${format(dateRange.to, "dd/MM/yyyy")}` : ""}
               </span>
             )}
           </div>
@@ -451,7 +496,7 @@ const ExtratoColaborador = () => {
           ) : processedEventos.length === 0 ? (
             <div className="flex flex-col items-center gap-2 p-12 text-center italic text-muted-foreground">
               <History className="h-8 w-8 opacity-20" />
-              <p>Nenhum evento registrado no período selecionado.</p>
+              <p>Nenhum evento registrado no periodo selecionado.</p>
               {dateRange && (
                 <Button variant="link" size="sm" onClick={clearFilter}>
                   Limpar filtros
@@ -467,10 +512,10 @@ const ExtratoColaborador = () => {
                     <th className="h-11 px-3 font-medium">Evento</th>
                     <th className="h-11 px-3 font-medium">Origem</th>
                     <th className="h-11 px-3 text-center font-medium">Minutos</th>
-                    <th className="h-11 px-3 text-center font-medium">Saldo Após</th>
+                    <th className="h-11 px-3 text-center font-medium">Saldo Apos</th>
                     <th className="h-11 px-3 text-center font-medium">Vencimento</th>
                     <th className="h-11 px-3 text-center font-medium">Status</th>
-                    <th className="h-11 px-5 text-right font-medium">Ações</th>
+                    <th className="h-11 px-5 text-right font-medium">Acoes</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -483,7 +528,7 @@ const ExtratoColaborador = () => {
                         <td className="px-5 py-4">
                           <div className="font-medium text-foreground">{evento.displayDate}</div>
                           <div className="text-xs text-muted-foreground">
-                            {evento.description || "Sem observação"}
+                            {evento.description || "Sem observacao"}
                           </div>
                         </td>
                         <td className="px-3 py-4">
@@ -506,18 +551,22 @@ const ExtratoColaborador = () => {
                           <span className="font-display font-semibold text-foreground">{evento.displayBalance}</span>
                         </td>
                         <td className="px-3 py-4 text-center">
-                          <span className={cn(
-                            "inline-flex rounded-full border px-2.5 py-1 text-xs font-medium",
-                            evento.data_vencimento ? "border-amber-200 bg-amber-50 text-amber-700" : "border-slate-200 bg-slate-50 text-slate-500",
-                          )}>
+                          <span
+                            className={cn(
+                              "inline-flex rounded-full border px-2.5 py-1 text-xs font-medium",
+                              evento.data_vencimento ? "border-amber-200 bg-amber-50 text-amber-700" : "border-slate-200 bg-slate-50 text-slate-500",
+                            )}
+                          >
                             {evento.displayDueDate}
                           </span>
                         </td>
                         <td className="px-3 py-4 text-center">
-                          <span className={cn(
-                            "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold",
-                            statusClassMap[getEventStatus(evento)] || statusClassMap.ativo,
-                          )}>
+                          <span
+                            className={cn(
+                              "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold",
+                              statusClassMap[getEventStatus(evento)] || statusClassMap.ativo,
+                            )}
+                          >
                             <ShieldCheck className="h-3.5 w-3.5" />
                             {evento.displayStatus}
                           </span>
@@ -525,7 +574,7 @@ const ExtratoColaborador = () => {
                         <td className="px-5 py-4">
                           <div className="flex justify-end gap-2">
                             {evento.actions.length === 0 ? (
-                              <span className="text-xs text-muted-foreground">Sem ação</span>
+                              <span className="text-xs text-muted-foreground">Sem acao</span>
                             ) : (
                               evento.actions.map((action) => (
                                 <Button
@@ -534,7 +583,7 @@ const ExtratoColaborador = () => {
                                   size="sm"
                                   className="h-8"
                                   disabled={Boolean(loadingAction)}
-                                  onClick={() => handleEventAction(evento, action.key)}
+                                  onClick={() => openActionDialog(evento, action.key)}
                                 >
                                   {loadingAction === action.key ? (
                                     <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
@@ -554,6 +603,93 @@ const ExtratoColaborador = () => {
           )}
         </section>
       </div>
+
+      <Dialog open={Boolean(actionDialog)} onOpenChange={(open) => !open && closeActionDialog()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{actionDialog ? actionMetaMap[actionDialog.action].title : "Acao operacional"}</DialogTitle>
+            <DialogDescription>
+              {actionDialog ? actionMetaMap[actionDialog.action].description : ""}
+            </DialogDescription>
+          </DialogHeader>
+
+          {actionDialog && (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-muted bg-muted/30 p-3 text-sm">
+                <p className="font-medium text-foreground">{actionDialog.evento.displayDate}</p>
+                <p className="text-muted-foreground">
+                  Evento {actionDialog.evento.displayType} · saldo atual {formatBalance(totalMinutos)}
+                </p>
+                <p className="text-muted-foreground">
+                  Referencia selecionada: {actionDialog.evento.displayMinutes}
+                </p>
+              </div>
+
+              {actionDialog.action === "ajuste_manual" && (
+                <div className="space-y-2">
+                  <Label htmlFor="bh_action_minutes">Minutos do ajuste</Label>
+                  <Input
+                    id="bh_action_minutes"
+                    type="number"
+                    step="1"
+                    value={actionMinutes}
+                    onChange={(event) => setActionMinutes(event.target.value)}
+                    placeholder="Ex: 30 ou -15"
+                  />
+                </div>
+              )}
+
+              {actionDialog.action === "folga" && (
+                <div className="space-y-2">
+                  <Label htmlFor="bh_action_date">Data da folga</Label>
+                  <Input
+                    id="bh_action_date"
+                    type="date"
+                    value={actionDate}
+                    onChange={(event) => setActionDate(event.target.value)}
+                  />
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label htmlFor="bh_action_observation">Observacao</Label>
+                <Textarea
+                  id="bh_action_observation"
+                  value={actionObservation}
+                  onChange={(event) => setActionObservation(event.target.value)}
+                  placeholder="Descreva o motivo da acao para auditoria."
+                  rows={4}
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={closeActionDialog}
+              disabled={Boolean(actionDialog ? actionLoading[actionDialog.evento.id] : null)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleConfirmAction}
+              disabled={Boolean(
+                !actionDialog ||
+                !actionObservation.trim() ||
+                (actionDialog.action === "ajuste_manual" && Number(actionMinutes) === 0) ||
+                (actionDialog.action === "folga" && !actionDate) ||
+                (actionDialog ? actionLoading[actionDialog.evento.id] : null),
+              )}
+            >
+              {actionDialog && actionLoading[actionDialog.evento.id] === actionDialog.action ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : null}
+              {actionDialog ? actionMetaMap[actionDialog.action].confirmLabel : "Confirmar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 };
