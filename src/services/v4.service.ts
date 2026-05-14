@@ -3,6 +3,10 @@ import { BaseService } from './base.service';
 import { CicloOperacionalService } from './operationalEngine/CicloOperacionalService';
 
 const ALERT_WINDOW_DAYS = 30;
+const NEAR_DUE_WINDOW_DAYS = 7;
+const CRITICAL_DEBIT_THRESHOLD = -90;
+const EXCESS_BANK_THRESHOLD = 2400;
+const OLD_BALANCE_WINDOW_DAYS = 60;
 const EXTRATO_EVENT_ORIGIN = 'extrato_colaborador';
 
 type ExtratoActionType = 'ajuste_manual' | 'compensacao' | 'pagamento' | 'folga';
@@ -304,21 +308,25 @@ class BHEventoServiceClass extends BaseService<'banco_horas_eventos'> {
       if (updateError) throw updateError;
     }
 
-    await AuditoriaService.log('registrar_acao_extrato_banco_horas', 'banco_horas', 'medio', {
-      tipo_acao: input.tipo,
-      colaborador_id: eventoOrigem.colaborador_id,
-      empresa_id: eventoOrigem.empresa_id ?? null,
-      evento_origem_id: eventoOrigem.id,
-      evento_resultante_id: novoEvento.id,
-      tipo_legado: legacyTipo,
-      minutos_aplicados: deltaMinutos,
-      saldo_anterior: saldoAnterior,
-      saldo_resultante: saldoResultante,
-      executado_por: contexto.userId,
-      executado_por_nome: contexto.userName,
-      data_evento: dataEvento,
-      observacao,
-    });
+    try {
+      await AuditoriaService.log('registrar_acao_extrato_banco_horas', 'banco_horas', 'medio', {
+        tipo_acao: input.tipo,
+        colaborador_id: eventoOrigem.colaborador_id,
+        empresa_id: eventoOrigem.empresa_id ?? null,
+        evento_origem_id: eventoOrigem.id,
+        evento_resultante_id: novoEvento.id,
+        tipo_legado: legacyTipo,
+        minutos_aplicados: deltaMinutos,
+        saldo_anterior: saldoAnterior,
+        saldo_resultante: saldoResultante,
+        executado_por: contexto.userId,
+        executado_por_nome: contexto.userName,
+        data_evento: dataEvento,
+        observacao,
+      });
+    } catch (auditError) {
+      console.warn('[BHEventoService] Auditoria central nao registrada para acao do extrato:', auditError);
+    }
 
     return novoEvento;
   }
@@ -368,6 +376,10 @@ class BHEventoServiceClass extends BaseService<'banco_horas_eventos'> {
       saldo_from_saldos: boolean;
       minutos_vencidos: number;
       minutos_a_vencer_30d: number;
+      minutos_a_vencer_7d: number;
+      saldo_antigo_minutos: number;
+      proximo_vencimento: string | null;
+      dias_para_vencer: number | null;
       hasMovement: boolean;
     }>();
 
@@ -380,6 +392,10 @@ class BHEventoServiceClass extends BaseService<'banco_horas_eventos'> {
         saldo_from_saldos: true,
         minutos_vencidos: 0,
         minutos_a_vencer_30d: 0,
+        minutos_a_vencer_7d: 0,
+        saldo_antigo_minutos: 0,
+        proximo_vencimento: null,
+        dias_para_vencer: null,
         hasMovement: true,
       });
     }
@@ -390,11 +406,18 @@ class BHEventoServiceClass extends BaseService<'banco_horas_eventos'> {
     const in30Days = new Date(today);
     in30Days.setDate(in30Days.getDate() + ALERT_WINDOW_DAYS);
 
+    const in7Days = new Date(today);
+    in7Days.setDate(in7Days.getDate() + NEAR_DUE_WINDOW_DAYS);
+
+    const oldBalanceLimit = new Date(today);
+    oldBalanceLimit.setDate(oldBalanceLimit.getDate() - OLD_BALANCE_WINDOW_DAYS);
+
     const cycleAggregates = new Map<string, {
       colaborador_id: string;
       empresa_id: string | null;
       saldo_minutos: number;
       data_vencimento: string | null;
+      data_referencia: string | null;
     }>();
 
     for (const evento of eventosData || []) {
@@ -406,6 +429,10 @@ class BHEventoServiceClass extends BaseService<'banco_horas_eventos'> {
         saldo_from_saldos: false,
         minutos_vencidos: 0,
         minutos_a_vencer_30d: 0,
+        minutos_a_vencer_7d: 0,
+        saldo_antigo_minutos: 0,
+        proximo_vencimento: null,
+        dias_para_vencer: null,
         hasMovement: false,
       };
 
@@ -426,10 +453,13 @@ class BHEventoServiceClass extends BaseService<'banco_horas_eventos'> {
         empresa_id: evento.empresa_id ?? null,
         saldo_minutos: 0,
         data_vencimento: evento.data_vencimento ?? null,
+        data_referencia: this.getEventDate(evento).slice(0, 10) || null,
       };
       cycle.saldo_minutos += quantidadeMinutos;
       cycle.empresa_id = cycle.empresa_id ?? evento.empresa_id ?? null;
       cycle.data_vencimento = cycle.data_vencimento ?? evento.data_vencimento ?? null;
+      cycle.data_referencia =
+        cycle.data_referencia ?? (this.getEventDate(evento).slice(0, 10) || null);
       cycleAggregates.set(cycleKey, cycle);
     }
 
@@ -441,11 +471,25 @@ class BHEventoServiceClass extends BaseService<'banco_horas_eventos'> {
 
       const vencimento = new Date(cycle.data_vencimento);
       vencimento.setHours(0, 0, 0, 0);
+      const diffDays = Math.ceil((vencimento.getTime() - today.getTime()) / 86400000);
+
+      if (current.proximo_vencimento === null || vencimento < new Date(`${current.proximo_vencimento}T00:00:00`)) {
+        current.proximo_vencimento = cycle.data_vencimento;
+        current.dias_para_vencer = diffDays;
+      }
 
       if (vencimento < today) {
         current.minutos_vencidos += cycle.saldo_minutos;
       } else if (vencimento <= in30Days) {
         current.minutos_a_vencer_30d += cycle.saldo_minutos;
+        if (vencimento <= in7Days) {
+          current.minutos_a_vencer_7d += cycle.saldo_minutos;
+        }
+      }
+
+      const dataReferencia = cycle.data_referencia ? new Date(`${cycle.data_referencia}T00:00:00`) : null;
+      if (dataReferencia && dataReferencia <= oldBalanceLimit) {
+        current.saldo_antigo_minutos += cycle.saldo_minutos;
       }
     }
 
@@ -458,11 +502,11 @@ class BHEventoServiceClass extends BaseService<'banco_horas_eventos'> {
     const { data: colaboradoresData, error: colaboradoresError } = includeWithoutMovement
       ? await supabase
           .from('colaboradores')
-          .select('id, nome, matricula, empresa_id')
+          .select('id, nome, matricula, empresa_id, status_cadastro, cadastro_provisorio, valor_hora, salario_base, valor_diaria, valor_base')
           .order('nome', { ascending: true })
       : await supabase
           .from('colaboradores')
-          .select('id, nome, matricula, empresa_id')
+          .select('id, nome, matricula, empresa_id, status_cadastro, cadastro_provisorio, valor_hora, salario_base, valor_diaria, valor_base')
           .in('id', collaboratorIds)
           .order('nome', { ascending: true });
 
@@ -497,6 +541,10 @@ class BHEventoServiceClass extends BaseService<'banco_horas_eventos'> {
           saldo_from_saldos: false,
           minutos_vencidos: 0,
           minutos_a_vencer_30d: 0,
+          minutos_a_vencer_7d: 0,
+          saldo_antigo_minutos: 0,
+          proximo_vencimento: null,
+          dias_para_vencer: null,
           hasMovement: false,
         };
 
@@ -504,7 +552,17 @@ class BHEventoServiceClass extends BaseService<'banco_horas_eventos'> {
           return null;
         }
 
-        const status = this.getStatus(aggregate.saldo_minutos);
+        const valorHoraEstimado = this.getEstimatedHourlyValue(colaborador);
+        const estimativaValor = Math.max(aggregate.saldo_minutos, 0) / 60 * valorHoraEstimado;
+        const statusData = this.getStatus({
+          totalMinutes: aggregate.saldo_minutos,
+          minutesExpired: aggregate.minutos_vencidos,
+          minutesDueSoon: aggregate.minutos_a_vencer_7d,
+          oldBalanceMinutes: aggregate.saldo_antigo_minutos,
+          hasPendingRh:
+            colaborador.status_cadastro === 'pendente_complemento' ||
+            Boolean(colaborador.cadastro_provisorio),
+        });
 
         return {
           id: colaborador.id,
@@ -515,13 +573,111 @@ class BHEventoServiceClass extends BaseService<'banco_horas_eventos'> {
           saldo_minutos: aggregate.saldo_minutos,
           minutos_vencidos: aggregate.minutos_vencidos,
           minutos_a_vencer_30d: aggregate.minutos_a_vencer_30d,
+          minutos_a_vencer_7d: aggregate.minutos_a_vencer_7d,
+          saldo_antigo_minutos: aggregate.saldo_antigo_minutos,
           saldo_formatado: this.formatMinutes(aggregate.saldo_minutos),
           vencido_formatado: this.formatMinutes(aggregate.minutos_vencidos),
           a_vencer_formatado: this.formatMinutes(aggregate.minutos_a_vencer_30d),
-          status,
+          a_vencer_7d_formatado: this.formatMinutes(aggregate.minutos_a_vencer_7d),
+          saldo_antigo_formatado: this.formatMinutes(aggregate.saldo_antigo_minutos),
+          proximo_vencimento: aggregate.proximo_vencimento,
+          dias_para_vencer: aggregate.dias_para_vencer,
+          status: statusData.status,
+          status_label: statusData.label,
+          status_priority: statusData.priority,
+          precisa_acao_rh: statusData.status === 'aguardando_rh',
+          valor_hora_estimado: valorHoraEstimado,
+          estimativa_valor: Number(estimativaValor.toFixed(2)),
         };
       })
+      .sort((a, b) => {
+        if (a.status_priority !== b.status_priority) {
+          return b.status_priority - a.status_priority;
+        }
+
+        if (a.saldo_minutos !== b.saldo_minutos) {
+          return a.saldo_minutos - b.saldo_minutos;
+        }
+
+        return String(a.nome || '').localeCompare(String(b.nome || ''));
+      })
       .filter((row): row is NonNullable<typeof row> => Boolean(row));
+  }
+
+  async getTimelineOperacional(limit = 60) {
+    const { data: eventos, error } = await supabase
+      .from('banco_horas_eventos')
+      .select('id, colaborador_id, empresa_id, tipo_evento, tipo, status, descricao, observacao, data_evento, created_at, quantidade_minutos, minutos, origem, saldo_anterior, saldo_atual, saldo_resultante, referencia_evento_id, registro_ponto_id, executado_por, executado_por_nome, contexto_operacao, data_vencimento, data_folga')
+      .or('is_teste.is.null,is_teste.eq.false')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) throw error;
+
+    const colaboradorIds = Array.from(new Set((eventos || []).map((evento) => evento.colaborador_id).filter(Boolean))) as string[];
+    const empresaIds = Array.from(new Set((eventos || []).map((evento) => evento.empresa_id).filter(Boolean))) as string[];
+    const executorIds = Array.from(new Set((eventos || []).map((evento) => evento.executado_por).filter(Boolean))) as string[];
+
+    const [{ data: colaboradores }, { data: empresas }, { data: profiles }] = await Promise.all([
+      colaboradorIds.length > 0
+        ? supabase.from('colaboradores').select('id, nome, matricula').in('id', colaboradorIds)
+        : Promise.resolve({ data: [], error: null }),
+      empresaIds.length > 0
+        ? supabase.from('empresas').select('id, nome').in('id', empresaIds)
+        : Promise.resolve({ data: [], error: null }),
+      executorIds.length > 0
+        ? supabase.from('profiles').select('user_id, full_name').in('user_id', executorIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    const colaboradorMap = new Map((colaboradores || []).map((colaborador) => [colaborador.id, colaborador]));
+    const empresaMap = new Map((empresas || []).map((empresa) => [empresa.id, empresa.nome]));
+    const profileMap = new Map((profiles || []).map((profile) => [profile.user_id, profile.full_name]));
+
+    return (eventos || []).map((evento) => {
+      const categoria = this.getTimelineCategory(evento.tipo_evento ?? evento.tipo ?? '');
+      const colaborador = colaboradorMap.get(evento.colaborador_id);
+      const minutos = this.getEventMinutes(evento);
+      const timelineStatus = this.getTimelineStatus({
+        tipoEvento: String(evento.tipo_evento ?? evento.tipo ?? ''),
+        status: String(evento.status ?? ''),
+        minutos,
+        dataVencimento: evento.data_vencimento ?? null,
+      });
+
+      return {
+        id: evento.id,
+        categoria,
+        categoria_label: this.getTimelineCategoryLabel(categoria),
+        origem: evento.origem ?? null,
+        colaborador_id: evento.colaborador_id,
+        colaborador_nome: colaborador?.nome ?? 'Colaborador nao identificado',
+        matricula: colaborador?.matricula ?? null,
+        empresa_id: evento.empresa_id,
+        empresa_nome: empresaMap.get(evento.empresa_id ?? '') ?? 'Sem empresa',
+        descricao: evento.descricao ?? evento.observacao ?? 'Movimento operacional',
+        observacao: evento.observacao ?? null,
+        status: evento.status ?? 'ativo',
+        status_timeline: timelineStatus.status,
+        status_timeline_label: timelineStatus.label,
+        data_evento: evento.data_evento ?? null,
+        data_vencimento: evento.data_vencimento ?? null,
+        data_folga: evento.data_folga ?? null,
+        created_at: evento.created_at ?? null,
+        minutos,
+        minutos_formatados: this.formatMinutes(minutos),
+        tipo_evento: evento.tipo_evento ?? evento.tipo ?? 'evento',
+        executado_por: evento.executado_por ?? null,
+        executado_por_nome: evento.executado_por_nome ?? profileMap.get(evento.executado_por ?? '') ?? 'Sistema',
+        saldo_anterior: Number(evento.saldo_anterior ?? 0),
+        saldo_resultante: Number(evento.saldo_resultante ?? evento.saldo_atual ?? 0),
+        saldo_anterior_formatado: this.formatMinutes(Number(evento.saldo_anterior ?? 0)),
+        saldo_resultante_formatado: this.formatMinutes(Number(evento.saldo_resultante ?? evento.saldo_atual ?? 0)),
+        referencia_evento_id: evento.referencia_evento_id ?? null,
+        registro_ponto_id: evento.registro_ponto_id ?? null,
+        contexto_operacao: evento.contexto_operacao ?? null,
+      };
+    });
   }
 
   private formatMinutes(totalMinutes: number) {
@@ -532,10 +688,120 @@ class BHEventoServiceClass extends BaseService<'banco_horas_eventos'> {
     return `${sign}${hours}h ${minutes}m`;
   }
 
-  private getStatus(totalMinutes: number) {
-    if (totalMinutes < -120) return 'critico';
-    if (totalMinutes > 0) return 'positivo';
-    return 'ok';
+  private getEstimatedHourlyValue(colaborador: any) {
+    const directValue = Number(colaborador?.valor_hora ?? 0);
+    if (directValue > 0) return directValue;
+
+    const salaryBase = Number(colaborador?.salario_base ?? 0);
+    if (salaryBase > 0) return salaryBase / 220;
+
+    const dailyValue = Number(colaborador?.valor_diaria ?? 0);
+    if (dailyValue > 0) return dailyValue / 8;
+
+    const baseValue = Number(colaborador?.valor_base ?? 0);
+    if (baseValue > 0) return baseValue / 8;
+
+    return 0;
+  }
+
+  private getStatus(params: {
+    totalMinutes: number;
+    minutesExpired: number;
+    minutesDueSoon: number;
+    oldBalanceMinutes: number;
+    hasPendingRh: boolean;
+  }) {
+    if (params.hasPendingRh) {
+      return { status: 'aguardando_rh', label: 'Aguardando acao RH', priority: 110 };
+    }
+
+    if (params.totalMinutes <= CRITICAL_DEBIT_THRESHOLD) {
+      return { status: 'debito_critico', label: 'Debito Critico', priority: 100 };
+    }
+
+    if (params.minutesExpired > 0 || params.minutesDueSoon > 0) {
+      return { status: 'horas_a_vencer', label: 'Horas a vencer', priority: 90 };
+    }
+
+    if (params.totalMinutes < 0) {
+      return { status: 'debito_leve', label: 'Debito Leve', priority: 70 };
+    }
+
+    if (params.totalMinutes >= EXCESS_BANK_THRESHOLD || params.oldBalanceMinutes > 0) {
+      return { status: 'excesso_banco', label: 'Excesso de banco', priority: 60 };
+    }
+
+    if (params.totalMinutes > 0) {
+      return { status: 'saldo_positivo', label: 'Saldo Positivo', priority: 50 };
+    }
+
+    return { status: 'ok', label: 'OK', priority: 10 };
+  }
+
+  private getTimelineCategory(tipoEvento: string) {
+    if (tipoEvento === 'pagamento') return 'pagamentos';
+    if (tipoEvento === 'folga') return 'folgas';
+    if (tipoEvento === 'ajuste_manual' || tipoEvento === 'compensacao') return 'ajustes';
+    if (tipoEvento === 'vencimento') return 'vencimentos';
+    return 'creditos_rh';
+  }
+
+  private getTimelineCategoryLabel(categoria: string) {
+    if (categoria === 'pagamentos') return 'Pagamentos';
+    if (categoria === 'folgas') return 'Folgas';
+    if (categoria === 'ajustes') return 'Ajustes';
+    if (categoria === 'vencimentos') return 'Vencimentos';
+    return 'Creditos RH';
+  }
+
+  private getTimelineStatus(params: {
+    tipoEvento: string;
+    status: string;
+    minutos: number;
+    dataVencimento: string | null;
+  }) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const dueDate = params.dataVencimento ? new Date(`${params.dataVencimento}T00:00:00`) : null;
+    if (dueDate) {
+      dueDate.setHours(0, 0, 0, 0);
+    }
+
+    const isNearDue =
+      dueDate &&
+      dueDate >= today &&
+      dueDate <= new Date(today.getTime() + NEAR_DUE_WINDOW_DAYS * 86400000);
+
+    if (params.status === 'pago' || params.tipoEvento === 'pagamento') {
+      return { status: 'pago', label: 'Pago' };
+    }
+
+    if (params.tipoEvento === 'folga') {
+      return { status: 'folga_lancada', label: 'Folga lancada' };
+    }
+
+    if (params.status === 'compensado' || params.tipoEvento === 'compensacao') {
+      return { status: 'compensado', label: 'Compensado' };
+    }
+
+    if (params.tipoEvento === 'vencimento' || (dueDate && dueDate < today && params.minutos > 0)) {
+      return { status: 'vencido', label: 'Vencido' };
+    }
+
+    if (isNearDue && params.minutos > 0) {
+      return { status: 'proximo_vencimento', label: 'Proximo do vencimento' };
+    }
+
+    if (params.minutos <= CRITICAL_DEBIT_THRESHOLD) {
+      return { status: 'critico', label: 'Critico' };
+    }
+
+    if (params.tipoEvento === 'ajuste_manual' || params.status === 'ajustado') {
+      return { status: 'em_analise', label: 'Em analise' };
+    }
+
+    return { status: 'ok', label: 'OK' };
   }
 }
 export const BHEventoService = new BHEventoServiceClass();
@@ -583,13 +849,47 @@ class AuditoriaServiceClass extends BaseService<'auditoria'> {
 
   async log(acao: string, modulo: string, impacto: 'baixo' | 'medio' | 'critico', detalhes?: Record<string, unknown>) {
     const { data: { user } } = await supabase.auth.getUser();
-    return this.create({
+    let tenant_id: string | undefined;
+
+    if (user?.id) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('user_id', user.id)
+        .single();
+      if (profile?.tenant_id) {
+        tenant_id = profile.tenant_id;
+      }
+    }
+
+    const payload = {
       acao,
       modulo,
       impacto,
       detalhes: detalhes || {},
       user_id: user?.id || null
-    });
+    } as Record<string, unknown>;
+
+    if (tenant_id) {
+      payload.tenant_id = tenant_id;
+    }
+
+    try {
+      return await this.create(payload as any);
+    } catch (error) {
+      const message = String((error as { message?: string | null })?.message ?? '').toLowerCase();
+      const missingTenantColumn =
+        message.includes("tenant_id") &&
+        (message.includes("auditoria") || message.includes("schema cache"));
+
+      if (missingTenantColumn && 'tenant_id' in payload) {
+        const fallbackPayload = { ...payload };
+        delete fallbackPayload.tenant_id;
+        return this.create(fallbackPayload as any);
+      }
+
+      throw error;
+    }
   }
 }
 export const AuditoriaService = new AuditoriaServiceClass();

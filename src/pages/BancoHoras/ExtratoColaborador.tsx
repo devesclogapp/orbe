@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, endOfMonth, startOfMonth } from "date-fns";
@@ -146,30 +146,52 @@ const statusClassMap: Record<string, string> = {
   cancelado: "bg-slate-100 text-slate-500 border-slate-200",
 };
 
-const actionMetaMap: Record<ActionType, { label: string; title: string; description: string; confirmLabel: string }> = {
+const actionMetaMap: Record<ActionType, { label: string; title: string; description: string; confirmLabel: string; examples: { cause: string; effect: string }[] }> = {
   ajuste_manual: {
     label: "Ajustar",
     title: "Ajuste manual",
     description: "Informe minutos positivos ou negativos e registre a observacao obrigatoria para auditoria.",
     confirmLabel: "Salvar ajuste",
+    examples: [
+      { cause: "colaborador esqueceu de bater ponto", effect: "RH adiciona +30min manualmente" },
+      { cause: "ponto foi lançado errado", effect: "RH remove -1h manualmente" },
+      { cause: "acordo interno aprovado pela gestão", effect: "RH ajusta saldo conforme autorização" },
+      { cause: "erro de importação da planilha", effect: "RH corrige o banco sem reprocessar tudo" },
+      { cause: "compensação excepcional", effect: "gestor autorizou abatimento específico" },
+    ],
   },
   compensacao: {
     label: "Compensar",
     title: "Compensar horas",
     description: "O sistema lancara uma compensacao incremental abatendo o saldo disponivel do evento selecionado.",
     confirmLabel: "Confirmar compensacao",
+    examples: [
+      { cause: "colaborador saiu mais cedo", effect: "saldo positivo abatido" },
+      { cause: "colaborador utilizou horas acumuladas", effect: "banco reduzido internamente" },
+      { cause: "acordo de compensação aprovado", effect: "RH consome o saldo disponível" },
+    ],
   },
   pagamento: {
     label: "Pagar",
     title: "Pagar horas",
     description: "O saldo sera abatido, o evento ficara marcado como pago e o reflexo futuro no financeiro sera sinalizado.",
     confirmLabel: "Confirmar pagamento",
+    examples: [
+      { cause: "empresa decidiu pagar horas extras", effect: "saldo convertido em pagamento" },
+      { cause: "fechamento mensal aprovado", effect: "horas positivas enviadas ao financeiro" },
+      { cause: "colaborador não irá compensar", effect: "saldo encerrado via pagamento" },
+    ],
   },
   folga: {
     label: "Folga",
     title: "Lancar folga",
     description: "Informe a data da folga para registrar o abatimento do banco de horas com trilha de auditoria.",
     confirmLabel: "Confirmar folga",
+    examples: [
+      { cause: "colaborador tirou folga usando banco", effect: "saldo abatido automaticamente" },
+      { cause: "folga compensatória aprovada", effect: "horas convertidas em descanso" },
+      { cause: "banco utilizado para ausência autorizada", effect: "sistema registra abatimento" },
+    ],
   },
 };
 
@@ -205,6 +227,7 @@ const ExtratoColaborador = () => {
     to: endOfMonth(new Date()),
   });
   const [actionLoading, setActionLoading] = useState<Record<string, ActionType | null>>({});
+  const isExecuting = useRef(false);
   const [actionDialog, setActionDialog] = useState<ActionDialogState>(null);
   const [actionMinutes, setActionMinutes] = useState("0");
   const [actionObservation, setActionObservation] = useState("");
@@ -306,7 +329,8 @@ const ExtratoColaborador = () => {
   };
 
   const handleConfirmAction = async () => {
-    if (!actionDialog) return;
+    if (!actionDialog || isExecuting.current) return;
+    isExecuting.current = true;
 
     const { evento, action } = actionDialog;
     setActionLoading((current) => ({ ...current, [evento.id]: action }));
@@ -332,11 +356,13 @@ const ExtratoColaborador = () => {
       closeActionDialog();
     } catch (error) {
       console.error(error);
+      const msg = error instanceof Error ? error.message : (error as { message?: string })?.message || "A acao foi cancelada e o historico nao foi alterado.";
       toast.error("Nao foi possivel concluir a acao", {
-        description: error instanceof Error ? error.message : "A acao foi cancelada e o historico nao foi alterado.",
+        description: msg,
       });
     } finally {
       setActionLoading((current) => ({ ...current, [evento.id]: null }));
+      isExecuting.current = false;
     }
   };
 
@@ -661,6 +687,23 @@ const ExtratoColaborador = () => {
                   rows={4}
                 />
               </div>
+
+              {actionMetaMap[actionDialog.action].examples && actionMetaMap[actionDialog.action].examples.length > 0 && (
+                <div className="rounded-lg border border-primary/10 bg-primary/5 p-3 text-sm">
+                  <p className="mb-2 font-medium text-primary">Exemplos de uso:</p>
+                  <ul className="space-y-2">
+                    {actionMetaMap[actionDialog.action].examples.map((example, i) => (
+                      <li key={i} className="flex gap-2 text-muted-foreground leading-tight">
+                        <span className="text-primary/70 shrink-0 mt-0.5">•</span>
+                        <span>
+                          <span className="font-medium text-foreground/80">{example.cause}</span>
+                          <span className="opacity-75"> → {example.effect}</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
 
