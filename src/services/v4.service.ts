@@ -1,6 +1,8 @@
 import { supabase } from '@/lib/supabase';
 import { BaseService } from './base.service';
 
+const ALERT_WINDOW_DAYS = 30;
+
 class BHRegraServiceClass extends BaseService<'banco_horas_regras'> {
   constructor() { super('banco_horas_regras'); }
 
@@ -21,6 +23,14 @@ export const BHRegraService = new BHRegraServiceClass();
 class BHEventoServiceClass extends BaseService<'banco_horas_eventos'> {
   constructor() { super('banco_horas_eventos'); }
 
+  private getEventMinutes(evento: any) {
+    return Number(evento?.minutos ?? evento?.quantidade_minutos ?? 0);
+  }
+
+  private getEventDate(evento: any) {
+    return String(evento?.data_evento ?? evento?.data ?? evento?.created_at ?? '');
+  }
+
   async getByColaborador(collabId: string, startDate?: Date, endDate?: Date) {
     let query = supabase
       .from('banco_horas_eventos')
@@ -28,13 +38,15 @@ class BHEventoServiceClass extends BaseService<'banco_horas_eventos'> {
       .eq('colaborador_id', collabId);
 
     if (startDate) {
-      query = query.gte('data', startDate.toISOString());
+      query = query.gte('data_evento', startDate.toISOString().split('T')[0]);
     }
     if (endDate) {
-      query = query.lte('data', endDate.toISOString());
+      query = query.lte('data_evento', endDate.toISOString().split('T')[0]);
     }
 
-    const { data, error } = await query.order('data', { ascending: false });
+    const { data, error } = await query
+      .order('data_evento', { ascending: false })
+      .order('created_at', { ascending: false });
     if (error) throw error;
     return data;
   }
@@ -51,7 +63,7 @@ class BHEventoServiceClass extends BaseService<'banco_horas_eventos'> {
         .select('colaborador_id, empresa_id, saldo_atual_minutos'),
       supabase
         .from('banco_horas_eventos')
-        .select('colaborador_id, empresa_id, quantidade_minutos, data_vencimento')
+        .select('colaborador_id, empresa_id, quantidade_minutos, minutos, data_vencimento, ciclo_trimestral, tipo_evento, status, data_evento, created_at')
         .or('is_teste.is.null,is_teste.eq.false'),
     ]);
 
@@ -84,7 +96,14 @@ class BHEventoServiceClass extends BaseService<'banco_horas_eventos'> {
     today.setHours(0, 0, 0, 0);
 
     const in30Days = new Date(today);
-    in30Days.setDate(in30Days.getDate() + 30);
+    in30Days.setDate(in30Days.getDate() + ALERT_WINDOW_DAYS);
+
+    const cycleAggregates = new Map<string, {
+      colaborador_id: string;
+      empresa_id: string | null;
+      saldo_minutos: number;
+      data_vencimento: string | null;
+    }>();
 
     for (const evento of eventosData || []) {
       if (!evento.colaborador_id) continue;
@@ -98,7 +117,7 @@ class BHEventoServiceClass extends BaseService<'banco_horas_eventos'> {
         hasMovement: false,
       };
 
-      const quantidadeMinutos = Number(evento.quantidade_minutos ?? 0);
+      const quantidadeMinutos = this.getEventMinutes(evento);
 
       if (!current.saldo_from_saldos) {
         current.saldo_minutos += quantidadeMinutos;
@@ -107,18 +126,35 @@ class BHEventoServiceClass extends BaseService<'banco_horas_eventos'> {
       current.empresa_id = current.empresa_id ?? evento.empresa_id ?? null;
       current.hasMovement = true;
 
-      if (evento.data_vencimento && quantidadeMinutos > 0) {
-        const vencimento = new Date(evento.data_vencimento);
-        vencimento.setHours(0, 0, 0, 0);
-
-        if (vencimento < today) {
-          current.minutos_vencidos += quantidadeMinutos;
-        } else if (vencimento <= in30Days) {
-          current.minutos_a_vencer_30d += quantidadeMinutos;
-        }
-      }
-
       aggregates.set(evento.colaborador_id, current);
+
+      const cycleKey = `${evento.colaborador_id}:${evento.ciclo_trimestral || this.getEventDate(evento).slice(0, 7)}`;
+      const cycle = cycleAggregates.get(cycleKey) || {
+        colaborador_id: evento.colaborador_id,
+        empresa_id: evento.empresa_id ?? null,
+        saldo_minutos: 0,
+        data_vencimento: evento.data_vencimento ?? null,
+      };
+      cycle.saldo_minutos += quantidadeMinutos;
+      cycle.empresa_id = cycle.empresa_id ?? evento.empresa_id ?? null;
+      cycle.data_vencimento = cycle.data_vencimento ?? evento.data_vencimento ?? null;
+      cycleAggregates.set(cycleKey, cycle);
+    }
+
+    for (const cycle of cycleAggregates.values()) {
+      if (!cycle.colaborador_id || !cycle.data_vencimento || cycle.saldo_minutos <= 0) continue;
+
+      const current = aggregates.get(cycle.colaborador_id);
+      if (!current) continue;
+
+      const vencimento = new Date(cycle.data_vencimento);
+      vencimento.setHours(0, 0, 0, 0);
+
+      if (vencimento < today) {
+        current.minutos_vencidos += cycle.saldo_minutos;
+      } else if (vencimento <= in30Days) {
+        current.minutos_a_vencer_30d += cycle.saldo_minutos;
+      }
     }
 
     const collaboratorIds = Array.from(aggregates.keys());

@@ -43,7 +43,9 @@ type Regra = {
   tolerancia_hora_extra?: number | null;
   limite_diario_banco?: number | null;
   prazo_compensacao_dias?: number | null;
+  validade_horas?: number | null;
   regra_compensacao?: string | null;
+  regra_vencimento?: string | null;
   origem_ponto?: string | null;
 };
 
@@ -103,6 +105,7 @@ const RH_EVENT_ORIGIN = "processamento_rh";
 const EXTRA_RATE = 1.5;
 const AUTO_IMPORT_ORIGIN = "importacao_ponto";
 const DEFAULT_RULE_NAME = "Regra padrão automática 8h";
+const VENCIMENTO_ALERT_WINDOW_DAYS = 30;
 
 const normalizeText = (value?: string | null) =>
   value
@@ -150,6 +153,69 @@ const getPeriodRange = (month: string) => {
     .toISOString()
     .split("T")[0];
   return { year, monthNumber, startDate, endDate };
+};
+
+const getEventoMinutos = (evento: any) =>
+  Number(evento?.minutos ?? evento?.quantidade_minutos ?? 0);
+
+const getEventoData = (evento: any) =>
+  String(evento?.data_evento ?? evento?.data ?? evento?.created_at ?? "");
+
+const getEventoTipo = (evento: any) =>
+  String(evento?.tipo_evento ?? evento?.tipo ?? "");
+
+const getQuarterFromDate = (dateStr: string) => {
+  const date = new Date(`${dateStr}T00:00:00`);
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth();
+  const quarter = Math.floor(month / 3) + 1;
+  return { year, quarter };
+};
+
+const getCicloTrimestral = (dateStr: string) => {
+  const { year, quarter } = getQuarterFromDate(dateStr);
+  return `${year}-T${quarter}`;
+};
+
+const getQuarterEndDate = (dateStr: string) => {
+  const { year, quarter } = getQuarterFromDate(dateStr);
+  const month = quarter * 3;
+  return new Date(Date.UTC(year, month, 0));
+};
+
+const formatIsoDate = (date: Date) => date.toISOString().split("T")[0];
+
+const calculateDataVencimento = (dateStr: string, regra: Regra | null) => {
+  const quarterEnd = getQuarterEndDate(dateStr);
+  const prazoDias = Number(
+    regra?.prazo_compensacao_dias ?? regra?.validade_horas ?? 0,
+  );
+
+  if (prazoDias > 0) {
+    quarterEnd.setUTCDate(quarterEnd.getUTCDate() + prazoDias);
+  }
+
+  return formatIsoDate(quarterEnd);
+};
+
+const isWithinAlertWindow = (dateStr?: string | null) => {
+  if (!dateStr) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const limit = new Date(today);
+  limit.setDate(limit.getDate() + VENCIMENTO_ALERT_WINDOW_DAYS);
+
+  const target = new Date(`${dateStr}T00:00:00`);
+  target.setHours(0, 0, 0, 0);
+
+  return target >= today && target <= limit;
+};
+
+const resolveOperationalEventType = (ponto: Ponto, saldoDia: number) => {
+  if (saldoDia > 0) return "hora_extra";
+  if (ponto.status === "Ausente" || ponto.status === "Falta") return "falta";
+  return "atraso";
 };
 
 const getEmpresaFromPonto = (ponto: Ponto, empresas: Empresa[]) => {
@@ -600,6 +666,93 @@ const upsertSaldo = async (saldo: RhSaldo) => {
   if (error) throw error;
 };
 
+const processarVencimentosPendentes = async ({
+  tenantId,
+  colaboradorId,
+  empresaId,
+  saldoAtual,
+}: {
+  tenantId: string;
+  colaboradorId: string;
+  empresaId: string | null;
+  saldoAtual: number;
+}) => {
+  const today = formatIsoDate(new Date());
+
+  const { data: eventos, error } = await (supabase as any)
+    .from("banco_horas_eventos")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .eq("colaborador_id", colaboradorId)
+    .lt("data_vencimento", today)
+    .order("data_evento", { ascending: true })
+    .order("data", { ascending: true })
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+
+  const ciclos = new Map<
+    string,
+    { saldo: number; dataVencimento: string | null }
+  >();
+
+  for (const evento of eventos ?? []) {
+    const ciclo = evento.ciclo_trimestral || getCicloTrimestral(getEventoData(evento).slice(0, 10));
+    const atual = ciclos.get(ciclo) || {
+      saldo: 0,
+      dataVencimento: evento.data_vencimento ?? null,
+    };
+    atual.saldo += getEventoMinutos(evento);
+    atual.dataVencimento = atual.dataVencimento ?? evento.data_vencimento ?? null;
+    ciclos.set(ciclo, atual);
+  }
+
+  let saldoCorrente = saldoAtual;
+  let houveMudanca = false;
+
+  for (const [ciclo, resumo] of Array.from(ciclos.entries()).sort((a, b) =>
+    a[0].localeCompare(b[0]),
+  )) {
+    if (!resumo.dataVencimento || resumo.saldo <= 0) continue;
+
+    const minutosVencidos = resumo.saldo;
+    saldoCorrente -= minutosVencidos;
+
+    const payload = {
+      tenant_id: tenantId,
+      colaborador_id: colaboradorId,
+      empresa_id: empresaId,
+      registro_ponto_id: null,
+      data: resumo.dataVencimento,
+      data_evento: resumo.dataVencimento,
+      tipo: "vencimento",
+      tipo_evento: "vencimento",
+      quantidade_minutos: -minutosVencidos,
+      minutos: -minutosVencidos,
+      saldo_anterior: saldoCorrente + minutosVencidos,
+      saldo_atual: saldoCorrente,
+      saldo_resultante: saldoCorrente,
+      origem: RH_EVENT_ORIGIN,
+      descricao: `Vencimento automático do ciclo ${ciclo}`,
+      observacao: `Horas expiradas automaticamente ao fim do ciclo trimestral ${ciclo}.`,
+      ciclo_trimestral: ciclo,
+      data_vencimento: resumo.dataVencimento,
+      status: "vencido",
+    };
+
+    const { error: insertError } = await (supabase as any)
+      .from("banco_horas_eventos")
+      .insert(payload);
+    if (insertError) throw insertError;
+
+    houveMudanca = true;
+  }
+
+  return {
+    saldoAtualizado: saldoCorrente,
+    houveMudanca,
+  };
+};
+
 const upsertFechamentoMensal = async ({
   tenantId,
   colaborador,
@@ -629,8 +782,8 @@ const upsertFechamentoMensal = async ({
     .eq("tenant_id", tenantId)
     .eq("colaborador_id", colaborador.id)
     .eq("origem", RH_EVENT_ORIGIN)
-    .gte("data", startDate)
-    .lte("data", endDate);
+    .gte("data_evento", startDate)
+    .lte("data_evento", endDate);
   if (eventosError) throw eventosError;
 
   const diasTrabalhados = (pontos ?? []).filter(
@@ -650,12 +803,12 @@ const upsertFechamentoMensal = async ({
     0,
   );
   const bancoCredito = (eventos ?? [])
-    .filter((evento: any) => evento.quantidade_minutos > 0)
-    .reduce((acc: number, evento: any) => acc + Number(evento.quantidade_minutos), 0);
+    .filter((evento: any) => getEventoMinutos(evento) > 0)
+    .reduce((acc: number, evento: any) => acc + getEventoMinutos(evento), 0);
   const bancoDebito = Math.abs(
     (eventos ?? [])
-      .filter((evento: any) => evento.quantidade_minutos < 0)
-      .reduce((acc: number, evento: any) => acc + Number(evento.quantidade_minutos), 0),
+      .filter((evento: any) => getEventoMinutos(evento) < 0)
+      .reduce((acc: number, evento: any) => acc + getEventoMinutos(evento), 0),
   );
   const valorHoraExtra = (pontos ?? []).reduce(
     (acc: number, ponto: any) => acc + Number(ponto.valor_hora_extra ?? 0),
@@ -922,6 +1075,16 @@ export const processRhPeriod = async ({
     }
 
     const calculo = calculateCompensation({ ponto, regra, colaborador });
+    const dataVencimentoCalculada =
+      calculo.saldoDia > 0 ? calculateDataVencimento(ponto.data, regra) : null;
+
+    if (isWithinAlertWindow(dataVencimentoCalculada) && calculo.saldoDia > 0) {
+      alertas.push({
+        tipo: "horas_proximas_vencimento",
+        descricao: `Horas deste evento vencem em até ${VENCIMENTO_ALERT_WINDOW_DAYS} dias (${dataVencimentoCalculada}).`,
+      });
+    }
+
     const inconsistencias = buildInconsistencias({
       ponto,
       empresaId: resolvedEmpresaId,
@@ -963,6 +1126,10 @@ export const processRhPeriod = async ({
     if (colaborador && calculo.saldoDia !== 0) {
       const saldoAnterior = saldoAcumulado;
       saldoAcumulado += calculo.saldoDia;
+      const tipoEvento = resolveOperationalEventType(ponto, calculo.saldoDia);
+      const cicloTrimestral = getCicloTrimestral(ponto.data);
+      const dataVencimento =
+        calculo.saldoDia > 0 ? calculateDataVencimento(ponto.data, regra) : null;
 
       const eventoPayload = {
         tenant_id: tenantId,
@@ -970,24 +1137,28 @@ export const processRhPeriod = async ({
         empresa_id: resolvedEmpresaId,
         registro_ponto_id: ponto.id,
         data: ponto.data,
-        tipo: calculo.saldoDia > 0 ? "credito" : "debito",
+        data_evento: ponto.data,
+        tipo: tipoEvento,
+        tipo_evento: tipoEvento,
         quantidade_minutos: calculo.saldoDia,
+        minutos: calculo.saldoDia,
         saldo_anterior: saldoAnterior,
         saldo_atual: saldoAcumulado,
+        saldo_resultante: saldoAcumulado,
         origem: RH_EVENT_ORIGIN,
         descricao:
           calculo.saldoDia > 0
             ? "Crédito diário gerado no processamento RH"
             : "Débito diário gerado no processamento RH",
-        data_vencimento:
-          calculo.saldoDia > 0 && Number(regra?.prazo_compensacao_dias ?? 0) > 0
-            ? new Date(
-                new Date(`${ponto.data}T00:00:00`).getTime() +
-                  Number(regra?.prazo_compensacao_dias ?? 0) * 24 * 60 * 60 * 1000,
-              )
-                .toISOString()
-                .split("T")[0]
-            : null,
+        observacao:
+          tipoEvento === "hora_extra"
+            ? "Evento automático de hora extra gerado a partir do ponto processado."
+            : tipoEvento === "falta"
+              ? "Evento automático de falta gerado a partir do ponto processado."
+              : "Evento automático de atraso gerado a partir do ponto processado.",
+        ciclo_trimestral: cicloTrimestral,
+        data_vencimento: dataVencimento,
+        status: "ativo",
       };
 
       const { error: eventoError } = await (supabase as any)
@@ -1066,6 +1237,33 @@ export const processRhPeriod = async ({
   }
 
   for (const colaborador of colaboradoresAfetados.values()) {
+    const saldoAtualColaborador = Number(
+      saldosMap.get(colaborador.id)?.saldo_atual_minutos ?? 0,
+    );
+    const vencimentoResult = await processarVencimentosPendentes({
+      tenantId,
+      colaboradorId: colaborador.id,
+      empresaId: colaborador.empresa_id ?? null,
+      saldoAtual: saldoAtualColaborador,
+    });
+
+    if (vencimentoResult.houveMudanca) {
+      const saldoAtualizado = saldosMap.get(colaborador.id);
+      const novoSaldo: RhSaldo = {
+        tenant_id: tenantId,
+        empresa_id: colaborador.empresa_id ?? null,
+        colaborador_id: colaborador.id,
+        saldo_atual_minutos: vencimentoResult.saldoAtualizado,
+        horas_positivas_minutos: Number(saldoAtualizado?.horas_positivas_minutos ?? 0),
+        horas_negativas_minutos: Number(saldoAtualizado?.horas_negativas_minutos ?? 0),
+        ultima_movimentacao: new Date().toISOString(),
+        ultima_atualizacao: new Date().toISOString(),
+      };
+
+      await upsertSaldo(novoSaldo);
+      saldosMap.set(colaborador.id, novoSaldo);
+    }
+
     await upsertFechamentoMensal({
       tenantId,
       colaborador,
@@ -1126,21 +1324,22 @@ const recomputeSaldoFromEvents = async (tenantId: string, colaboradorId: string)
     .select("*")
     .eq("tenant_id", tenantId)
     .eq("colaborador_id", colaboradorId)
+    .order("data_evento", { ascending: true })
     .order("data", { ascending: true })
     .order("created_at", { ascending: true });
   if (error) throw error;
 
   const total = (eventos ?? []).reduce(
-    (acc: number, evento: any) => acc + Number(evento.quantidade_minutos ?? 0),
+    (acc: number, evento: any) => acc + getEventoMinutos(evento),
     0,
   );
   const positivos = (eventos ?? [])
-    .filter((evento: any) => Number(evento.quantidade_minutos ?? 0) > 0)
-    .reduce((acc: number, evento: any) => acc + Number(evento.quantidade_minutos ?? 0), 0);
+    .filter((evento: any) => getEventoMinutos(evento) > 0)
+    .reduce((acc: number, evento: any) => acc + getEventoMinutos(evento), 0);
   const negativos = Math.abs(
     (eventos ?? [])
-      .filter((evento: any) => Number(evento.quantidade_minutos ?? 0) < 0)
-      .reduce((acc: number, evento: any) => acc + Number(evento.quantidade_minutos ?? 0), 0),
+      .filter((evento: any) => getEventoMinutos(evento) < 0)
+      .reduce((acc: number, evento: any) => acc + getEventoMinutos(evento), 0),
   );
 
   if ((eventos ?? []).length === 0) {
@@ -1160,8 +1359,8 @@ const recomputeSaldoFromEvents = async (tenantId: string, colaboradorId: string)
     saldo_atual_minutos: total,
     horas_positivas_minutos: positivos,
     horas_negativas_minutos: negativos,
-    ultima_movimentacao: eventos?.[eventos.length - 1]?.data
-      ? new Date(`${eventos[eventos.length - 1].data}T00:00:00`).toISOString()
+    ultima_movimentacao: getEventoData(eventos?.[eventos.length - 1]).slice(0, 10)
+      ? new Date(`${getEventoData(eventos?.[eventos.length - 1]).slice(0, 10)}T00:00:00`).toISOString()
       : null,
     ultima_atualizacao: new Date().toISOString(),
   });
@@ -1201,6 +1400,7 @@ export const reprocessRhPeriod = async ({
   const colaboradorIds = Array.from(
     new Set((pontos ?? []).map((ponto: any) => ponto.colaborador_id).filter(Boolean)),
   ) as string[];
+  const cicloTrimestralPeriodo = getCicloTrimestral(startDate);
 
   if (pontoIds.length > 0) {
     await (supabase as any)
@@ -1208,6 +1408,17 @@ export const reprocessRhPeriod = async ({
       .delete()
       .in("registro_ponto_id", pontoIds)
       .eq("origem", RH_EVENT_ORIGIN);
+
+    if (colaboradorIds.length > 0) {
+      await (supabase as any)
+        .from("banco_horas_eventos")
+        .delete()
+        .eq("tenant_id", tenantId)
+        .eq("origem", RH_EVENT_ORIGIN)
+        .eq("tipo_evento", "vencimento")
+        .eq("ciclo_trimestral", cicloTrimestralPeriodo)
+        .in("colaborador_id", colaboradorIds);
+    }
 
     await (supabase as any)
       .from("processamento_rh_inconsistencias")
