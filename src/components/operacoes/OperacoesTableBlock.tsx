@@ -773,7 +773,7 @@ export const OperacoesTableBlock = ({
       const selectedOperationalRule = (regrasOperacionais as any[]).find((rule) => rule.id === selectedOperationalRuleId);
       if (!selectedOperationalRule) throw new Error("A regra operacional escolhida não foi encontrada.");
 
-      if (selectedOperationalRule.ativo !== true) throw new Error("A regra operacional escolhida estÃ¡ inativa.");
+      if (selectedOperationalRule.ativo !== true) throw new Error("A regra operacional escolhida está inativa.");
 
       const editableRows = filteredData.filter(isEditableOperation);
       if (editableRows.length === 0) {
@@ -1325,10 +1325,10 @@ export const OperacoesTableBlock = ({
                 <SelectValue placeholder="Selecione a forma de pagamento" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="DEPÃ“SITO">DepÃ³sito</SelectItem>
+                <SelectItem value="DEPÓSITO">Depósito</SelectItem>
                 <SelectItem value="DEPOSITO MENSAL">Depósito Mensal</SelectItem>
                 <SelectItem value="PIX">PIX</SelectItem>
-                <SelectItem value="TRANSFERÃŠNCIA">TransferÃªncia</SelectItem>
+                <SelectItem value="TRANSFERÊNCIA">Transferência</SelectItem>
                 <SelectItem value="BOLETO">Boleto</SelectItem>
               </SelectContent>
             </Select>

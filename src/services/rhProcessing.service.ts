@@ -85,6 +85,7 @@ type ProcessParams = {
   empresas: Empresa[];
   colaboradores: Colaborador[];
   regras: Regra[];
+  executionType?: "manual" | "automatica";
 };
 
 type ProcessResult = {
@@ -101,6 +102,7 @@ type ProcessResult = {
 const RH_EVENT_ORIGIN = "processamento_rh";
 const EXTRA_RATE = 1.5;
 const AUTO_IMPORT_ORIGIN = "importacao_ponto";
+const DEFAULT_RULE_NAME = "Regra padrão automática 8h";
 
 const normalizeText = (value?: string | null) =>
   value
@@ -236,7 +238,7 @@ const createFallbackRegra = async (tenantId: string): Promise<Regra> => {
   const payload = {
     tenant_id: tenantId,
     empresa_id: null,
-    nome: "Regra padrao automatica 8h",
+    nome: DEFAULT_RULE_NAME,
     prazo_compensacao_dias: 60,
     tipo: "acumula",
     status: "ativo",
@@ -717,6 +719,7 @@ const insertLog = async ({
   durationMs,
   reprocessado,
   registrosLimpados,
+  executionType,
 }: {
   tenantId: string;
   month: string;
@@ -729,6 +732,7 @@ const insertLog = async ({
   durationMs: number;
   reprocessado?: boolean;
   registrosLimpados?: number;
+  executionType?: "manual" | "automatica";
 }) => {
   const { data: authData } = await supabase.auth.getUser();
   const [year, monthNumber] = month.split("-").map(Number);
@@ -748,6 +752,7 @@ const insertLog = async ({
     duracao_ms: durationMs,
     reprocessado: Boolean(reprocessado),
     registros_limpados: registrosLimpados ?? 0,
+    tipo_execucao: executionType ?? "manual",
   });
   if (error) throw error;
 };
@@ -759,6 +764,7 @@ export const processRhPeriod = async ({
   empresas,
   colaboradores,
   regras,
+  executionType = "manual",
 }: ProcessParams): Promise<ProcessResult> => {
   const startedAt = Date.now();
   const pontos = await loadPontosPendentes({ tenantId, month, empresaId });
@@ -892,6 +898,7 @@ export const processRhPeriod = async ({
 
     const { rule: abstractRegra, isFallback } = MotorExecutavel.resolveRule(motorCtx, regrasRuntime);
     let regra = abstractRegra.payload as Regra;
+    let regraAplicadaNome = abstractRegra.nome || regra?.nome || DEFAULT_RULE_NAME;
 
     if (isFallback) {
       const existingFallback = regrasRuntime.find(r => r.nome === regra.nome && r.origem_ponto === "automatica");
@@ -901,14 +908,16 @@ export const processRhPeriod = async ({
       } else {
         regra = existingFallback as Regra;
       }
+      regraAplicadaNome = regra?.nome || abstractRegra.nome || DEFAULT_RULE_NAME;
       alertas.push({
         tipo: "regra_padrao_aplicada",
-        descricao: "Regra resolvida via Motor Seguro: " + abstractRegra.nome,
+        descricao: `Regra resolvida via Motor Seguro: ${regraAplicadaNome}`,
       });
     } else {
+      regraAplicadaNome = regra?.nome || abstractRegra.nome || DEFAULT_RULE_NAME;
       alertas.push({
         tipo: "motor_regra_aplicada",
-        descricao: `Motor aplicou regra: ${abstractRegra.nome} via prioridade ${abstractRegra.prioridade}`,
+        descricao: `Motor aplicou regra: ${regraAplicadaNome} via prioridade ${abstractRegra.prioridade}`,
       });
     }
 
@@ -1026,6 +1035,7 @@ export const processRhPeriod = async ({
       ).padStart(2, "0")}`,
       saldo_dia: calculo.saldoDia,
       saldo_acumulado_minutos: saldoAcumulado,
+      regra_aplicada: regraAplicadaNome,
       jornada_calculada: calculo.jornadaHours,
       valor_hora: Number(calculo.valorHoraBase.toFixed(2)),
       valor_dia: Number(calculo.valorDia.toFixed(2)),
@@ -1095,6 +1105,7 @@ export const processRhPeriod = async ({
     totalCreditos,
     totalDebitos,
     durationMs,
+    executionType,
   });
 
   return {
@@ -1161,11 +1172,13 @@ export const reprocessRhPeriod = async ({
   month,
   empresaId,
   colaboradores,
+  executionType = "manual",
 }: {
   tenantId: string;
   month: string;
   empresaId?: string | null;
   colaboradores: Colaborador[];
+  executionType?: "manual" | "automatica";
 }) => {
   const startedAt = Date.now();
   const { startDate, endDate } = getPeriodRange(month);
@@ -1209,6 +1222,7 @@ export const reprocessRhPeriod = async ({
         horas_calculadas: null,
         saldo_dia: null,
         saldo_acumulado_minutos: 0,
+        regra_aplicada: null,
         jornada_calculada: null,
         valor_hora: null,
         valor_dia: 0,
@@ -1262,6 +1276,7 @@ export const reprocessRhPeriod = async ({
     durationMs,
     reprocessado: true,
     registrosLimpados: pontoIds.length,
+    executionType,
   });
 
   return {

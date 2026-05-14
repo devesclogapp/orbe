@@ -1882,11 +1882,11 @@ const RegrasOperacionais = () => {
       queryClient.invalidateQueries({ queryKey: ["regras_operacionais"] });
       queryClient.invalidateQueries({ queryKey: ["regras_operacionais_grid"] });
       setRuleToDelete(null);
-      toast.success("Regra operacional excluÃ­da.");
+      toast.success("Regra operacional excluída.");
       if (editingId) resetForm();
     },
     onError: (error: any) => {
-      toast.error("NÃ£o foi possÃ­vel excluir a regra.", {
+      toast.error("Não foi possível excluir a regra.", {
         description: error.message,
       });
     },
@@ -2356,14 +2356,14 @@ const RegrasOperacionais = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir regra operacional?</AlertDialogTitle>
             <AlertDialogDescription>
-              Essa aÃ§Ã£o remove o registro definitivamente da base operacional e nÃ£o pode ser desfeita.
+              Essa ação remove o registro definitivamente da base operacional e não pode ser desfeita.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
             {ruleToDelete && (
               <>
                 {ruleToDelete.empresas?.nome ?? "Global"} • {ruleToDelete.tipos_servico_operacional?.nome ?? "Todos"} •{" "}
-                {ruleToDelete.fornecedores?.nome ?? "Todos"} • inÃ­cio em {formatDate(ruleToDelete.vigencia_inicio)}
+                {ruleToDelete.fornecedores?.nome ?? "Todos"} • início em {formatDate(ruleToDelete.vigencia_inicio)}
               </>
             )}
           </div>

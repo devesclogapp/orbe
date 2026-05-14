@@ -1237,7 +1237,7 @@ const CentralCadastros = () => {
       const ignoredColumns = getIgnoredTechnicalColumns(rows);
 
       if (ignoredColumns.length > 0) {
-        warnings.push(`Colunas tÃ©cnicas ignoradas automaticamente: ${ignoredColumns.join(", ")}.`);
+        warnings.push(`Colunas técnicas ignoradas automaticamente: ${ignoredColumns.join(", ")}.`);
       }
 
       rows.forEach((row, index) => {
@@ -1444,7 +1444,7 @@ const CentralCadastros = () => {
       coletores: {
         label: "Coletores",
         description: "Envie uma planilha compatível com o modelo da aba Coletores.",
-        unsupportedMessage: "Modelo de importaÃ§Ã£o de coletores ainda nÃ£o configurado.",
+        unsupportedMessage: "Modelo de importação de coletores ainda não configurado.",
       },
       transportadoras: {
         label: "Transportadoras",

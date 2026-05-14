@@ -305,15 +305,15 @@ const Configuracoes = () => {
             <div className="space-y-1">
               <div className="flex items-center gap-2 text-warning-strong">
                 <AlertTriangle className="h-4 w-4" />
-                <span className="text-sm font-semibold">ManutenÃ§Ã£o do ambiente</span>
+                <span className="text-sm font-semibold">Manutenção do ambiente</span>
               </div>
               <p className="text-sm text-muted-foreground">
-                Resets operacionais e financeiros controlados ficam isolados em uma Ã¡rea segura, com auditoria persistente e confirmaÃ§Ã£o dupla.
+                Resets operacionais e financeiros controlados ficam isolados em uma área segura, com auditoria persistente e confirmação dupla.
               </p>
             </div>
             <Button variant="outline" onClick={() => setActiveTab("manutencao")}>
               <AlertTriangle className="h-4 w-4 mr-2" />
-              Abrir ManutenÃ§Ã£o do Ambiente
+              Abrir Manutenção do Ambiente
             </Button>
           </section>
         </TabsContent>

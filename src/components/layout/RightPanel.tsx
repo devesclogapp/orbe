@@ -176,8 +176,8 @@ const ColaboradorPanel = ({ id, onClose }: { id: string; onClose: () => void }) 
         </div>
         <div className="rounded-lg border border-border overflow-hidden bg-background/50">
           <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-border bg-card/60">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">MÃªs {competencia}</span>
-            <span className="text-[11px] text-muted-foreground">CompetÃªncia ativa</span>
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Mês {competencia}</span>
+            <span className="text-[11px] text-muted-foreground">Competência ativa</span>
           </div>
 
           <div className="p-3 space-y-3">
@@ -188,7 +188,7 @@ const ColaboradorPanel = ({ id, onClose }: { id: string; onClose: () => void }) 
 
             <div className="rounded-md bg-secondary/30 p-3">
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold mb-2">
-                Top clientes do mÃªs
+                Top clientes do mês
               </div>
               {topClientes.length > 0 ? (
                 <ul className="space-y-2">
@@ -202,7 +202,7 @@ const ColaboradorPanel = ({ id, onClose }: { id: string; onClose: () => void }) 
                   ))}
                 </ul>
               ) : (
-                <p className="text-xs text-muted-foreground italic text-center py-2">Sem faturamento neste mÃªs.</p>
+                <p className="text-xs text-muted-foreground italic text-center py-2">Sem faturamento neste mês.</p>
               )}
             </div>
           </div>
@@ -249,9 +249,9 @@ const ColaboradorPanel = ({ id, onClose }: { id: string; onClose: () => void }) 
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
-                          <span className="esc-chip bg-secondary text-foreground">{item.tipo_servico || "OperaÃ§Ã£o"}</span>
+                          <span className="esc-chip bg-secondary text-foreground">{item.tipo_servico || "Operação"}</span>
                           <span className="font-display font-semibold text-sm text-foreground">
-                            {item.produto || item.transportadora || "InconsistÃªncia operacional"}
+                            {item.produto || item.transportadora || "Inconsistência operacional"}
                           </span>
                         </div>
                         <p className="text-xs text-muted-foreground leading-snug">
@@ -266,7 +266,7 @@ const ColaboradorPanel = ({ id, onClose }: { id: string; onClose: () => void }) 
             ) : (
               <div className="p-3 flex items-center gap-2 text-xs text-success-strong bg-success-soft/60">
                 <CheckCircle2 className="h-4 w-4 shrink-0" />
-                Nenhuma inconsistÃªncia aberta para este colaborador.
+                Nenhuma inconsistência aberta para este colaborador.
               </div>
             )}
           </div>
@@ -274,7 +274,7 @@ const ColaboradorPanel = ({ id, onClose }: { id: string; onClose: () => void }) 
           <div className="border-t border-border px-3 py-2.5 text-[11px] text-muted-foreground flex items-center justify-between">
             <span className="inline-flex items-center gap-1.5">
               <LoaderCircle className="h-3.5 w-3.5 text-info" />
-              AnÃ¡lise contextual ao abrir o colaborador
+              Análise contextual ao abrir o colaborador
             </span>
             <span>Agora</span>
           </div>

@@ -35,6 +35,32 @@ import { ColaboradorService, EmpresaService } from "@/services/base.service";
 import { BHRegraService } from "@/services/v4.service";
 import { processRhPeriod, reprocessRhPeriod, rhProcessingUtils } from "@/services/rhProcessing.service";
 
+const ENGINE_EVENT_TYPES = new Set([
+  "motor_regra_aplicada",
+  "colaborador_criado_automaticamente",
+  "empresa_criada_automaticamente",
+  "regra_padrao_aplicada",
+]);
+
+const inconsistenciaLabelMap: Record<string, string> = {
+  atraso_excessivo: "Atraso excessivo",
+  colaborador_criado_automaticamente: "Colaborador criado automaticamente",
+  empresa_criada_automaticamente: "Empresa criada automaticamente",
+  entrada_ausente: "Ponto incompleto",
+  falta: "Falta",
+  intervalo_invalido: "Jornada inválida",
+  jornada_invalida: "Jornada inválida",
+  motor_regra_aplicada: "Motor: regra aplicada",
+  regra_inexistente: "Regra ausente",
+  regra_padrao_aplicada: "Motor: regra padrão aplicada",
+  saida_ausente: "Ponto incompleto",
+};
+
+const getInconsistenciaLabel = (tipo?: string | null) => {
+  if (!tipo) return "—";
+  return inconsistenciaLabelMap[tipo] || tipo.replaceAll("_", " ");
+};
+
 const minutesToTime = (totalMinutes: number) => {
   const hours = Math.floor(Math.abs(totalMinutes) / 60);
   const minutes = Math.abs(totalMinutes) % 60;
@@ -62,6 +88,19 @@ const ProcessamentoRH = () => {
   const { data: colaboradores = [] } = useQuery({
     queryKey: ["colaboradores_all"],
     queryFn: () => ColaboradorService.getWithEmpresa(),
+  });
+
+  const { data: profiles = [] } = useQuery({
+    queryKey: ["profiles_log_names", tenantId],
+    queryFn: async () => {
+      if (!tenantId) return [];
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("user_id, full_name")
+        .eq("tenant_id", tenantId);
+      if (error) return [];
+      return data || [];
+    },
   });
 
   const { data: regras = [] } = useQuery({
@@ -170,6 +209,11 @@ const ProcessamentoRH = () => {
     [empresas],
   );
 
+  const profileMap = useMemo(
+    () => new Map((profiles as any[]).map((profile) => [profile.user_id, profile.full_name])),
+    [profiles],
+  );
+
   const filteredPontos = useMemo(() => {
     return (pontos as any[]).filter((ponto) => {
       const nome = ponto.nome_colaborador || "";
@@ -245,6 +289,16 @@ const ProcessamentoRH = () => {
 
   const hasPendentesComplemento = colaboradoresPendentesComplemento.length > 0;
 
+  const eventosMotor = useMemo(
+    () => (inconsistencias as any[]).filter((item) => ENGINE_EVENT_TYPES.has(item.tipo)),
+    [inconsistencias],
+  );
+
+  const inconsistenciasReais = useMemo(
+    () => (inconsistencias as any[]).filter((item) => !ENGINE_EVENT_TYPES.has(item.tipo)),
+    [inconsistencias],
+  );
+
   const stats = useMemo(() => {
     const processados = (pontos as any[]).filter((ponto) => ponto.status_processamento === "processado").length;
     const inconsistentes = (pontos as any[]).filter((ponto) => ponto.status_processamento === "inconsistente").length;
@@ -283,12 +337,7 @@ const ProcessamentoRH = () => {
 
   const processarPontos = async () => {
     if (!tenantId) {
-      toast.error("Tenant nÃ£o identificado");
-      return;
-    }
-
-    if (hasPendentesComplemento) {
-      toast.error("Existem colaboradores pendentes de complemento cadastral.");
+      toast.error("Tenant não identificado");
       return;
     }
 
@@ -303,6 +352,7 @@ const ProcessamentoRH = () => {
         empresas: empresas as any[],
         colaboradores: colaboradores as any[],
         regras: regras as any[],
+        executionType: "manual",
       });
 
       setProcessingResult(result);
@@ -311,7 +361,7 @@ const ProcessamentoRH = () => {
       if (result.totalProcessados === 0) {
         toast.info("Nenhum registro pendente encontrado para processar.");
       } else {
-        toast.success(`Processamento concluÃ­do: ${result.totalProcessados} registros processados.`);
+        toast.success(`Processamento concluído: ${result.totalProcessados} registros processados.`);
       }
 
       setProcessModalOpen(false);
@@ -325,12 +375,7 @@ const ProcessamentoRH = () => {
 
   const reprocessarPontos = async () => {
     if (!tenantId) {
-      toast.error("Tenant nÃ£o identificado");
-      return;
-    }
-
-    if (hasPendentesComplemento) {
-      toast.error("Existem colaboradores pendentes de complemento cadastral.");
+      toast.error("Tenant não identificado");
       return;
     }
 
@@ -343,10 +388,11 @@ const ProcessamentoRH = () => {
         month: selectedMonth,
         empresaId: selectedEmpresa === "all" ? null : selectedEmpresa,
         colaboradores: colaboradores as any[],
+        executionType: "manual",
       });
 
       await invalidateRhQueries();
-      toast.warning(`PerÃ­odo reaberto: ${result.registrosLimpados} registros limpos para novo processamento.`);
+      toast.warning(`Período reaberto: ${result.registrosLimpados} registros limpos para novo processamento.`);
     } catch (error: any) {
       console.error(error);
       toast.error(`Erro ao reprocessar: ${error.message}`);
@@ -406,7 +452,7 @@ const ProcessamentoRH = () => {
 
             <Button
               onClick={() => setProcessModalOpen(true)}
-              disabled={isLoading || pendingCount === 0 || isProcessing || hasPendentesComplemento}
+              disabled={isLoading || pendingCount === 0 || isProcessing}
             >
               <Play className="mr-2 h-4 w-4" />
               Processar Pendentes
@@ -415,7 +461,7 @@ const ProcessamentoRH = () => {
             <Button
               variant="outline"
               onClick={reprocessarPontos}
-              disabled={isLoading || isProcessing || stats.total === 0 || hasPendentesComplemento}
+              disabled={isLoading || isProcessing || stats.total === 0}
             >
               <RotateCcw className="mr-2 h-4 w-4" />
               Reprocessar Período
@@ -436,10 +482,16 @@ const ProcessamentoRH = () => {
                 </div>
                 <div className="space-y-1">
                   <h2 className="font-display font-semibold text-foreground">
-                    Existem colaboradores pendentes de complemento cadastral
+                    Processamento executado parcialmente.
                   </h2>
                   <p className="text-sm text-muted-foreground">
-                    O processamento RH foi bloqueado atÃ© que o cadastro seja completado na Central de Cadastros.
+                    Existem colaboradores pendentes de complemento cadastral.
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Os registros válidos foram processados normalmente.
+                  </p>
+                  <p className="hidden">
+                    O processamento RH foi bloqueado até que o cadastro seja completado na Central de Cadastros.
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {colaboradoresPendentesComplemento.length} colaborador(es) pendente(s) no filtro atual.
@@ -556,7 +608,8 @@ const ProcessamentoRH = () => {
           <TabsList className="w-full justify-start">
             <TabsTrigger value="pontos">Histórico Diário</TabsTrigger>
             <TabsTrigger value="colaboradores">Acumulado por Colaborador</TabsTrigger>
-            <TabsTrigger value="inconsistencias">Inconsistências ({inconsistencias.length})</TabsTrigger>
+            <TabsTrigger value="inconsistencias">Inconsistências ({inconsistenciasReais.length})</TabsTrigger>
+            <TabsTrigger value="eventos">Eventos do Motor ({eventosMotor.length})</TabsTrigger>
             <TabsTrigger value="logs">Logs ({logs.length})</TabsTrigger>
           </TabsList>
 
@@ -575,10 +628,11 @@ const ProcessamentoRH = () => {
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-muted/30">
-                      <tr className="text-left">
-                        <th className="px-4 py-3 font-medium">Data</th>
-                        <th className="px-4 py-3 font-medium">Colaborador</th>
-                        <th className="px-4 py-3 font-medium">Empresa</th>
+                      <tr className="text-center">
+                        <th className="px-4 py-3 font-medium text-center">Data</th>
+                        <th className="px-4 py-3 font-medium text-center">Colaborador</th>
+                        <th className="px-4 py-3 font-medium text-center">Empresa</th>
+                        <th className="px-4 py-3 font-medium text-center">Regra Aplicada</th>
                         <th className="px-4 py-3 font-medium text-center">Entrada</th>
                         <th className="px-4 py-3 font-medium text-center">Saída</th>
                         <th className="px-4 py-3 font-medium text-center">Horas</th>
@@ -599,12 +653,17 @@ const ProcessamentoRH = () => {
 
                         return (
                           <tr key={ponto.id} className="border-t border-muted hover:bg-muted/20">
-                            <td className="px-4 py-3">{format(new Date(ponto.data), "dd/MM/yyyy")}</td>
-                            <td className="px-4 py-3">
+                            <td className="px-4 py-3 text-center">{format(new Date(ponto.data), "dd/MM/yyyy")}</td>
+                            <td className="px-4 py-3 text-center">
                               <div className="font-medium">{ponto.nome_colaborador || "Sem vínculo"}</div>
                               <div className="text-xs text-muted-foreground">{ponto.matricula_colaborador || "-"}</div>
                             </td>
-                            <td className="px-4 py-3 text-muted-foreground">{empresaNome}</td>
+                            <td className="px-4 py-3 text-center text-muted-foreground">{empresaNome}</td>
+                            <td className="px-4 py-3 text-center">
+                              <span className="inline-flex rounded-full border border-muted-foreground/15 bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">
+                                {ponto.regra_aplicada || "—"}
+                              </span>
+                            </td>
                             <td className="px-4 py-3 text-center font-mono">{ponto.entrada?.slice(0, 5) || "-"}</td>
                             <td className="px-4 py-3 text-center font-mono">{ponto.saida?.slice(0, 5) || "-"}</td>
                             <td className="px-4 py-3 text-center">{minutesToTime(workedMinutes)}</td>
@@ -635,7 +694,7 @@ const ProcessamentoRH = () => {
 
                       {filteredPontos.length === 0 && (
                         <tr>
-                          <td colSpan={11} className="p-12 text-center text-muted-foreground">
+                          <td colSpan={12} className="p-12 text-center text-muted-foreground">
                             Nenhum ponto encontrado no período selecionado.
                           </td>
                         </tr>
@@ -675,14 +734,20 @@ const ProcessamentoRH = () => {
                         <td className="px-4 py-3 text-center text-success">{minutesToTime(item.positivas)}</td>
                         <td className="px-4 py-3 text-center text-error">{minutesToTime(item.negativas)}</td>
                         <td className="px-4 py-3 text-center">
-                          <span className={cn("font-display font-semibold", item.saldoPeriodo > 0 ? "text-success" : item.saldoPeriodo < 0 ? "text-error" : "text-muted-foreground")}>
-                            {minutesToTime(item.saldoPeriodo)}
-                          </span>
+                          <div className="inline-flex min-w-[112px] flex-col rounded-xl border border-success/20 bg-success-soft/60 px-3 py-2">
+                            <span className="text-[11px] uppercase tracking-[0.12em] text-success/80">Período</span>
+                            <span className={cn("font-display font-semibold", item.saldoPeriodo > 0 ? "text-success" : item.saldoPeriodo < 0 ? "text-error" : "text-muted-foreground")}>
+                              {minutesToTime(item.saldoPeriodo)}
+                            </span>
+                          </div>
                         </td>
                         <td className="px-4 py-3 text-center">
-                          <span className={cn("font-display font-semibold", item.saldoAtual > 0 ? "text-primary" : item.saldoAtual < 0 ? "text-error" : "text-muted-foreground")}>
-                            {minutesToTime(item.saldoAtual)}
-                          </span>
+                          <div className="inline-flex min-w-[112px] flex-col rounded-xl border border-primary/20 bg-primary-soft/60 px-3 py-2">
+                            <span className="text-[11px] uppercase tracking-[0.12em] text-primary/80">Atual</span>
+                            <span className={cn("font-display font-semibold", item.saldoAtual > 0 ? "text-primary" : item.saldoAtual < 0 ? "text-error" : "text-muted-foreground")}>
+                              {minutesToTime(item.saldoAtual)}
+                            </span>
+                          </div>
                         </td>
                         <td className="px-4 py-3 text-center text-muted-foreground">
                           {item.ultimoProcessamento ? format(new Date(item.ultimoProcessamento), "dd/MM/yyyy HH:mm") : "—"}
@@ -694,6 +759,46 @@ const ProcessamentoRH = () => {
                       <tr>
                         <td colSpan={8} className="p-12 text-center text-muted-foreground">
                           Nenhum colaborador encontrado para o filtro atual.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </TabsContent>
+
+          <TabsContent value="eventos" className="mt-4">
+            <section className="esc-card overflow-hidden mb-4">
+              <div className="esc-table-header px-5 py-3 border-b border-muted">
+                <h3 className="font-semibold text-sm">Eventos do Motor</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/30">
+                    <tr className="text-left">
+                      <th className="px-4 py-3 font-medium">Data</th>
+                      <th className="px-4 py-3 font-medium">Tipo</th>
+                      <th className="px-4 py-3 font-medium">Descrição</th>
+                      <th className="px-4 py-3 font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {eventosMotor.map((item) => (
+                      <tr key={item.id} className="border-t border-muted">
+                        <td className="px-4 py-3">{item.created_at ? format(new Date(item.created_at), "dd/MM/yyyy HH:mm") : "—"}</td>
+                        <td className="px-4 py-3">{getInconsistenciaLabel(item.tipo)}</td>
+                        <td className="px-4 py-3">{item.descricao}</td>
+                        <td className="px-4 py-3">
+                          <Badge className="bg-primary-soft text-primary">Evento</Badge>
+                        </td>
+                      </tr>
+                    ))}
+
+                    {eventosMotor.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="p-12 text-center text-muted-foreground">
+                          Nenhum evento do motor encontrado.
                         </td>
                       </tr>
                     )}
@@ -719,10 +824,10 @@ const ProcessamentoRH = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {(inconsistencias as any[]).map((item) => (
+                    {inconsistenciasReais.map((item) => (
                       <tr key={item.id} className="border-t border-muted">
                         <td className="px-4 py-3">{item.created_at ? format(new Date(item.created_at), "dd/MM/yyyy HH:mm") : "—"}</td>
-                        <td className="px-4 py-3">{item.tipo}</td>
+                        <td className="px-4 py-3">{getInconsistenciaLabel(item.tipo)}</td>
                         <td className="px-4 py-3">{item.descricao}</td>
                         <td className="px-4 py-3">
                           <Badge className={cn(item.resolvida ? "bg-success-soft text-success" : "bg-warning-soft text-warning")}>
@@ -732,7 +837,7 @@ const ProcessamentoRH = () => {
                       </tr>
                     ))}
 
-                    {(inconsistencias as any[]).length === 0 && (
+                    {inconsistenciasReais.length === 0 && (
                       <tr>
                         <td colSpan={4} className="p-12 text-center text-muted-foreground">
                           Nenhuma inconsistência encontrada.
@@ -755,11 +860,13 @@ const ProcessamentoRH = () => {
                   <thead className="bg-muted/30">
                     <tr className="text-left">
                       <th className="px-4 py-3 font-medium">Execução</th>
+                      <th className="px-4 py-3 font-medium">Usuário Executor</th>
+                      <th className="px-4 py-3 font-medium">Empresa</th>
+                      <th className="px-4 py-3 font-medium">Período Processado</th>
+                      <th className="px-4 py-3 font-medium">Tipo Execução</th>
                       <th className="px-4 py-3 font-medium">Registros</th>
                       <th className="px-4 py-3 font-medium">Processados</th>
                       <th className="px-4 py-3 font-medium">Inconsistências</th>
-                      <th className="px-4 py-3 font-medium">Horas +</th>
-                      <th className="px-4 py-3 font-medium">Horas -</th>
                       <th className="px-4 py-3 font-medium">Duração</th>
                     </tr>
                   </thead>
@@ -770,18 +877,24 @@ const ProcessamentoRH = () => {
                           <div>{log.executado_em ? format(new Date(log.executado_em), "dd/MM/yyyy HH:mm") : "—"}</div>
                           <div className="text-xs text-muted-foreground">{log.reprocessado ? "Reprocessamento" : "Processamento incremental"}</div>
                         </td>
+                        <td className="px-4 py-3">{profileMap.get(log.usuario_id) || "Sistema"}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{empresaMap.get(log.empresa_id) || "Todas"}</td>
+                        <td className="px-4 py-3">{`${String(log.periodo_mes || "").padStart(2, "0")}/${log.periodo_ano || "—"}`}</td>
+                        <td className="px-4 py-3">
+                          <Badge className={cn(log.tipo_execucao === "automatica" ? "bg-primary-soft text-primary" : "bg-muted text-foreground")}>
+                            {log.tipo_execucao === "automatica" ? "Automática" : "Manual"}
+                          </Badge>
+                        </td>
                         <td className="px-4 py-3">{log.total_registros}</td>
                         <td className="px-4 py-3 text-success">{log.total_processados}</td>
                         <td className="px-4 py-3 text-warning">{log.total_inconsistencias}</td>
-                        <td className="px-4 py-3 text-success">{minutesToTime(Number(log.total_horas_positivas || 0))}</td>
-                        <td className="px-4 py-3 text-error">{minutesToTime(Number(log.total_horas_negativas || 0))}</td>
                         <td className="px-4 py-3 text-muted-foreground">{Number(log.duracao_ms || 0) > 0 ? `${(Number(log.duracao_ms) / 1000).toFixed(1)}s` : "—"}</td>
                       </tr>
                     ))}
 
                     {(logs as any[]).length === 0 && (
                       <tr>
-                        <td colSpan={7} className="p-12 text-center text-muted-foreground">
+                        <td colSpan={9} className="p-12 text-center text-muted-foreground">
                           Nenhum log de processamento encontrado.
                         </td>
                       </tr>
