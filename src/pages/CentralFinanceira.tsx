@@ -34,6 +34,7 @@ import {
   EmpresaService,
   ResultadosService,
 } from "@/services/base.service";
+import { RHFinanceiroService } from "@/services/rhFinanceiro.service";
 
 const CentralFinanceira = () => {
   const navigate = useNavigate();
@@ -50,6 +51,7 @@ const CentralFinanceira = () => {
   const [fechamentoParaReabrir, setFechamentoParaReabrir] = useState<any>(null);
   const [motivoReabrir, setMotivoReabrir] = useState("");
   const [openConfirmAprovacao, setOpenConfirmAprovacao] = useState(false);
+  const [rhLoteSelecionado, setRhLoteSelecionado] = useState<any>(null);
 
   const { data: empresas = [], isLoading: loadingEmps } = useQuery<any[]>({
     queryKey: ["empresas"],
@@ -80,6 +82,18 @@ const CentralFinanceira = () => {
   const { data: fechamentos = [], isLoading: loadingFechamentos } = useQuery<any[]>({
     queryKey: ["fechamentos"],
     queryFn: () => ResultadosService.getSummary(),
+  });
+
+  const { data: lotesRh = [], isLoading: loadingRhLotes } = useQuery<any[]>({
+    queryKey: ["rh-financeiro-lotes", selectedMonth, selectedEmpresaId],
+    queryFn: () => RHFinanceiroService.listLotesRecebidos(selectedMonth, selectedEmpresaId),
+    enabled: !!selectedEmpresaId,
+  });
+
+  const { data: rhLoteDetalhe, isLoading: loadingRhLoteDetalhe } = useQuery({
+    queryKey: ["rh-financeiro-lote-detalhe", rhLoteSelecionado?.id],
+    queryFn: () => RHFinanceiroService.getLoteDetalhe(rhLoteSelecionado!.id),
+    enabled: !!rhLoteSelecionado?.id,
   });
 
   const reprocessMutation = useMutation({
@@ -150,7 +164,9 @@ const CentralFinanceira = () => {
 
   const totalFaturavel = competencia?.valor_total_faturado || 0;
   const pendingCount = clientes.filter((cliente: any) => cliente.status !== "aprovado").length;
-  const isLoading = loadingEmps || loadingComp || loadingCons || loadingFechamentos;
+  const lotesRhPendentes = lotesRh.filter((lote: any) => lote.status === "AGUARDANDO_FINANCEIRO");
+  const lotesRhValorTotal = lotesRhPendentes.reduce((acc: number, lote: any) => acc + Number(lote.valor_total || 0), 0);
+  const isLoading = loadingEmps || loadingComp || loadingCons || loadingFechamentos || loadingRhLotes;
 
   const handleApproveBatch = () => {
     const ids = filteredClientes.map((cliente: any) => cliente.id);
@@ -260,7 +276,7 @@ const CentralFinanceira = () => {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-4">
               <MetricCard
                 label="Total faturável"
                 value={`R$ ${Number(totalFaturavel).toLocaleString("pt-BR")}`}
@@ -275,6 +291,7 @@ const CentralFinanceira = () => {
                 value={competencia?.contagem_inconsistencias?.toString() || "0"}
                 icon={AlertTriangle}
               />
+              <MetricCard label="Lotes do RH" value={lotesRhPendentes.length.toString()} icon={FileCheck} />
             </div>
 
             <Tabs defaultValue="visao-geral" className="space-y-4">
@@ -388,6 +405,70 @@ const CentralFinanceira = () => {
                     </div>
                   </section>
                 </div>
+
+                <section className="esc-card overflow-hidden">
+                  <header className="px-5 py-4 border-b border-border flex items-center justify-between">
+                    <div>
+                      <h2 className="font-display font-semibold text-foreground">Lotes recebidos do RH</h2>
+                      <p className="text-sm text-muted-foreground">
+                        Entregas oficiais do RH aguardando anÃ¡lise financeira nesta competÃªncia.
+                      </p>
+                    </div>
+                    <Badge className="bg-info-soft text-info-strong">
+                      {lotesRhPendentes.length} na fila
+                    </Badge>
+                  </header>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="esc-table-header">
+                        <tr className="text-left text-muted-foreground">
+                          <th className="px-5 h-10 font-medium">CompetÃªncia</th>
+                          <th className="px-3 h-10 font-medium">Origem</th>
+                          <th className="px-3 h-10 font-medium text-center">Quantidade</th>
+                          <th className="px-3 h-10 font-medium text-right">Valor total</th>
+                          <th className="px-3 h-10 font-medium text-center">Status</th>
+                          <th className="px-5 h-10 font-medium text-right">AÃ§Ã£o</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {lotesRhPendentes.map((lote: any) => (
+                          <tr key={lote.id} className="border-t border-muted hover:bg-background transition-colors">
+                            <td className="px-5 h-12 font-medium text-foreground">{lote.competencia}</td>
+                            <td className="px-3 text-muted-foreground">{lote.origem} · {lote.tipo === "BANCO_HORAS" ? "Banco de Horas" : "Folha VariÃ¡vel"}</td>
+                            <td className="px-3 text-center text-muted-foreground">{lote.total_colaboradores}</td>
+                            <td className="px-3 text-right font-display font-semibold">
+                              R$ {Number(lote.valor_total || 0).toLocaleString("pt-BR")}
+                            </td>
+                            <td className="px-3 text-center">
+                              <Badge className="bg-warning-soft text-warning-strong">{lote.status}</Badge>
+                            </td>
+                            <td className="px-5 text-right">
+                              <Button variant="ghost" size="sm" onClick={() => setRhLoteSelecionado(lote)}>
+                                Analisar
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+
+                        {lotesRhPendentes.length === 0 && (
+                          <tr>
+                            <td colSpan={6} className="p-8 text-center text-muted-foreground italic">
+                              Nenhum lote do RH aguardando Financeiro para os filtros atuais.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {lotesRhPendentes.length > 0 ? (
+                    <div className="border-t border-border px-5 py-3 text-sm text-muted-foreground">
+                      Total da fila RH: <strong className="text-foreground">{lotesRhPendentes.length}</strong> lote(s) ·{" "}
+                      <strong className="text-foreground">R$ {Number(lotesRhValorTotal).toLocaleString("pt-BR")}</strong>
+                    </div>
+                  ) : null}
+                </section>
               </TabsContent>
 
               <TabsContent value="faturamento" className="space-y-4">
@@ -655,6 +736,88 @@ const CentralFinanceira = () => {
             <Button onClick={confirmarAprovacao} disabled={approveMutation.isPending}>
               {approveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileCheck className="h-4 w-4 mr-2" />}
               Aprovar {filteredClientes.length} item(s)
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(rhLoteSelecionado)} onOpenChange={(open) => !open && setRhLoteSelecionado(null)}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileCheck className="h-5 w-5 text-primary" />
+              Analisar lote recebido do RH
+            </DialogTitle>
+            <DialogDescription>
+              {rhLoteSelecionado ? `${rhLoteSelecionado.competencia} · ${rhLoteSelecionado.origem} · ${rhLoteSelecionado.tipo}` : "Carregando lote"}
+            </DialogDescription>
+          </DialogHeader>
+
+          {loadingRhLoteDetalhe ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : rhLoteDetalhe ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+                <div className="rounded-xl border border-border bg-muted/30 p-4">
+                  <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">CompetÃªncia</div>
+                  <div className="mt-2 font-display text-lg font-bold text-foreground">{rhLoteDetalhe.competencia}</div>
+                </div>
+                <div className="rounded-xl border border-border bg-muted/30 p-4">
+                  <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Origem</div>
+                  <div className="mt-2 font-display text-lg font-bold text-foreground">{rhLoteDetalhe.origem}</div>
+                </div>
+                <div className="rounded-xl border border-border bg-muted/30 p-4">
+                  <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Quantidade</div>
+                  <div className="mt-2 font-display text-lg font-bold text-foreground">{rhLoteDetalhe.total_colaboradores}</div>
+                </div>
+                <div className="rounded-xl border border-border bg-muted/30 p-4">
+                  <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Valor total</div>
+                  <div className="mt-2 font-display text-lg font-bold text-foreground">
+                    R$ {Number(rhLoteDetalhe.valor_total || 0).toLocaleString("pt-BR")}
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-border overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="esc-table-header">
+                    <tr className="text-left text-muted-foreground">
+                      <th className="px-4 h-10 font-medium">Colaborador</th>
+                      <th className="px-3 h-10 font-medium">Tipo evento</th>
+                      <th className="px-3 h-10 font-medium text-center">Horas</th>
+                      <th className="px-3 h-10 font-medium text-right">Valor</th>
+                      <th className="px-4 h-10 font-medium text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(rhLoteDetalhe.itens || []).map((item: any) => (
+                      <tr key={item.id} className="border-t border-muted">
+                        <td className="px-4 py-3 font-medium text-foreground">{item.nome_colaborador}</td>
+                        <td className="px-3 py-3 text-muted-foreground">{String(item.tipo_evento || "").replaceAll("_", " ")}</td>
+                        <td className="px-3 py-3 text-center text-muted-foreground">
+                          {item.horas ?? (Number(item.minutos || 0) / 60).toFixed(2)}
+                        </td>
+                        <td className="px-3 py-3 text-right font-display font-semibold">
+                          R$ {Number(item.valor_calculado || 0).toLocaleString("pt-BR")}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <Badge className="bg-warning-soft text-warning-strong">{item.status}</Badge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <div className="py-12 text-center text-muted-foreground">Nenhum detalhe disponÃ­vel para este lote.</div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRhLoteSelecionado(null)}>
+              Fechar
             </Button>
           </DialogFooter>
         </DialogContent>

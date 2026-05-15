@@ -2795,7 +2795,7 @@ class DiaristaServiceClass {
   async getByEmpresa(empresaId: string, apenasAtivos = true) {
     let query = supabase
       .from('colaboradores')
-      .select('id, nome, cpf, telefone, cargo, valor_base, status, empresa_id, permitir_lancamento_operacional, deleted_at, banco_codigo, agencia, agencia_digito, conta, digito_conta, tipo_conta, nome_completo, observacoes')
+      .select('id, nome, matricula, cpf, telefone, cargo, valor_base, status, empresa_id, permitir_lancamento_operacional, deleted_at, banco_codigo, agencia, agencia_digito, conta, digito_conta, tipo_conta, chave_pix, nome_completo, observacoes')
       .eq('empresa_id', empresaId)
       .eq('tipo_colaborador', 'DIARISTA')
       .eq('permitir_lancamento_operacional', true)
@@ -2836,6 +2836,7 @@ class DiaristaServiceClass {
       conta:          payload.conta?.trim()           || null,
       digito_conta:   payload.digito_conta?.trim()    || null,
       tipo_conta:     payload.tipo_conta              || 'corrente',
+      chave_pix:      payload.chave_pix?.trim()       || null,
       nome_completo:  payload.nome_completo?.trim()   || null,
       observacoes:    payload.observacoes?.trim()      || null,
     };
@@ -2868,6 +2869,7 @@ class DiaristaServiceClass {
     if (payload.conta !== undefined)          mapped.conta          = payload.conta?.trim()           || null;
     if (payload.digito_conta !== undefined)   mapped.digito_conta   = payload.digito_conta?.trim()    || null;
     if (payload.tipo_conta !== undefined)     mapped.tipo_conta     = payload.tipo_conta              || 'corrente';
+    if (payload.chave_pix !== undefined)      mapped.chave_pix      = payload.chave_pix?.trim()       || null;
     if (payload.nome_completo !== undefined)  mapped.nome_completo  = payload.nome_completo?.trim()   || null;
     if (payload.observacoes !== undefined)    mapped.observacoes    = payload.observacoes?.trim()     || null;
 

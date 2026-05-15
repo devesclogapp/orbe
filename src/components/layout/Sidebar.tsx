@@ -90,11 +90,9 @@ const groups: MenuGroup[] = [
     label: "Entradas",
     stageKey: "entradas",
     items: [
-      { icon: ClipboardCheck, label: "Operacoes Recebidas", to: "/operacional/operacoes", module: "operacoes_recebidas", pulseKey: "operacoes_recebidas" },
+      { icon: ClipboardCheck, label: "Operações Recebidas", to: "/operacional/operacoes", module: "operacoes_recebidas", pulseKey: "operacoes_recebidas" },
       { icon: Clock, label: "Pontos Recebidos", to: "/operacional/pontos", module: "pontos_recebidos", pulseKey: "pontos_recebidos" },
       { icon: UserCheck, label: "Diaristas Recebidos", to: "/operacional/diaristas", module: "diaristas_recebidos", pulseKey: "diaristas_recebidos" },
-      { icon: Wallet, label: "Custos Extras", to: "/producao/custos-extras", module: "central_operacional", pulseKey: "custos_extras" },
-      { icon: Wrench, label: "Servicos Extras", to: "/producao/servicos-extras", module: "central_operacional", pulseKey: "servicos_extras" },
     ],
   },
   {
@@ -102,11 +100,18 @@ const groups: MenuGroup[] = [
     label: "RH",
     stageKey: "rh",
     items: [
-      { icon: LayoutGrid, label: "Central de Cadastros", to: "/cadastros", module: "central_de_cadastros", pulseKey: "central_de_cadastros" },
-      { icon: Activity, label: "Processamento RH", to: "/banco-horas/processamento", module: "processamento_rh", pulseKey: "processamento_rh" },
+      { icon: LayoutGrid, label: "Cadastros", to: "/cadastros", module: "central_de_cadastros", pulseKey: "central_de_cadastros" },
+      { icon: Activity, label: "Processamento", to: "/banco-horas/processamento", module: "processamento_rh", pulseKey: "processamento_rh" },
       { icon: Scale, label: "Banco de Horas", to: "/banco-horas", end: true, module: "banco_de_horas", pulseKey: "banco_de_horas" },
-      { icon: FilePlus, label: "Regras de Banco", to: "/banco-horas/regras", module: "regras_de_banco", pulseKey: "regras_de_banco" },
       { icon: CalendarCheck, label: "Fechamento Mensal", to: "/fechamento", module: "fechamento_mensal", pulseKey: "fechamento_mensal" },
+    ],
+  },
+  {
+    id: "operacao",
+    label: "Operação",
+    items: [
+      { icon: Wallet, label: "Custos Extras", to: "/producao/custos-extras", module: "central_operacional", pulseKey: "custos_extras" },
+      { icon: Wrench, label: "Serviços Extras", to: "/producao/servicos-extras", module: "central_operacional", pulseKey: "servicos_extras" },
     ],
   },
   {
@@ -114,28 +119,27 @@ const groups: MenuGroup[] = [
     label: "Financeiro",
     stageKey: "financeiro",
     items: [
-      { icon: Wallet, label: "Central Financeira", to: "/financeiro", end: true, module: "central_financeira", pulseKey: "central_financeira" },
+      { icon: Wallet, label: "Central", to: "/financeiro", end: true, module: "central_financeira", pulseKey: "central_financeira" },
       { icon: TrendingUp, label: "Faturamento", to: "/financeiro/faturamento", module: "faturamento", pulseKey: "faturamento" },
-      { icon: Banknote, label: "Pagamentos e Remessas", to: "/bancario", module: "pagamentos_remessas", pulseKey: "pagamentos_remessas" },
-      { icon: ArrowRightLeft, label: "Regras de Calculo", to: "/financeiro/regras", module: "regras_de_calculo", pulseKey: "regras_de_calculo" },
+      { icon: Banknote, label: "Bancário", to: "/bancario", module: "pagamentos_remessas", pulseKey: "pagamentos_remessas" },
     ],
   },
   {
     id: "governanca",
-    label: "Governanca",
+    label: "Governança",
     items: [
-      { icon: BarChart3, label: "Central de Relatorios", to: "/relatorios", module: "central_de_relatorios", pulseKey: "central_de_relatorios" },
-      { icon: Shield, label: "Gestao de Usuarios", to: "/admin/usuarios-acessos", module: "governanca" },
-      { icon: Zap, label: "Automacao Operacional", to: "/governanca/automacao", module: "automacao_operacional", pulseKey: "automacao_operacional" },
-      { icon: Database, label: "Governanca", to: "/governanca", module: "governanca", pulseKey: "governanca" },
+      { icon: BarChart3, label: "Relatórios", to: "/relatorios", module: "central_de_relatorios", pulseKey: "central_de_relatorios" },
+      { icon: Shield, label: "Usuários", to: "/admin/usuarios-acessos", module: "governanca" },
+      { icon: Zap, label: "Automação", to: "/governanca/automacao", module: "automacao_operacional", pulseKey: "automacao_operacional" },
+      { icon: Database, label: "Governança", to: "/governanca", module: "governanca", pulseKey: "governanca" },
     ],
   },
   {
     id: "configuracoes",
-    label: "Configuracoes",
+    label: "Configurações",
     items: [
-      { icon: Wrench, label: "Regras Operacionais", to: "/cadastros/regras-operacionais", module: "regras_operacionais", pulseKey: "regras_operacionais" },
-      { icon: Settings, label: "Preferencias", to: "/configuracoes?tab=preferencias" },
+      { icon: Wrench, label: "Regras", to: "/cadastros/regras-operacionais", module: "regras_operacionais", pulseKey: "regras_operacionais" },
+      { icon: Settings, label: "Preferências", to: "/configuracoes?tab=preferencias" },
     ],
   },
 ];
@@ -289,15 +293,15 @@ export const Sidebar = () => {
                 <section key={group.id}>
                   <button
                     onClick={() => toggleGroup(group.id)}
-                    className="flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-left hover:bg-secondary/60"
+                    className="flex w-full items-center justify-between rounded-md px-2 py-2 my-1 text-left bg-muted/40 hover:bg-muted/80 transition-colors"
                   >
                     <div className="flex items-center gap-2">
                       {group.stageKey ? (
-                        <span className={cn("h-5 w-px rounded-full", stageLineTone[stageTone])} />
+                        <span className={cn("h-4 w-1 rounded-sm", stageLineTone[stageTone])} />
                       ) : (
-                        <span className="h-5 w-px rounded-full bg-slate-300/20" />
+                        <span className="h-4 w-1 rounded-sm bg-slate-300/40" />
                       )}
-                      <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                      <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground/80">
                         {group.label}
                       </span>
                     </div>
@@ -310,7 +314,7 @@ export const Sidebar = () => {
                   </button>
 
                   {isOpen ? (
-                    <div className="relative mt-1 space-y-1 pl-3">
+                    <div className="relative mt-1 mb-3 space-y-1 pl-3">
                       {group.stageKey ? (
                         <span className={cn("absolute bottom-2 left-[13px] top-1 w-px", stageLineTone[stageTone])} />
                       ) : null}
@@ -402,9 +406,9 @@ const SidebarItem = ({
       end={item.end}
       className={({ isActive }) =>
         cn(
-          "relative ml-3 flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+          "relative ml-3 flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] transition-colors",
           isActive
-            ? "bg-primary/6 text-foreground ring-1 ring-inset ring-primary/10"
+            ? "bg-primary/6 text-foreground ring-1 ring-inset ring-primary/10 font-medium"
             : "text-sidebar-foreground hover:bg-secondary/60 hover:text-foreground",
         )
       }
@@ -414,7 +418,7 @@ const SidebarItem = ({
           <div className={cn("flex h-4 w-4 shrink-0 items-center justify-center", isActive ? "text-primary/80" : "text-muted-foreground/70")}>
             <Icon className="h-4 w-4" strokeWidth={1.75} />
           </div>
-          <span className={cn("min-w-0 flex-1 truncate", isActive && "font-medium text-foreground")}>{item.label}</span>
+          <span className="min-w-0 flex-1 truncate">{item.label}</span>
           {pulse && pulse.count > 0 ? (
             <button
               type="button"

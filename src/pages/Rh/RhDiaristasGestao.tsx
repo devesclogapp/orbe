@@ -1,10 +1,13 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -15,12 +18,25 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { Pencil, Plus, RefreshCw, Trash2, Loader2, Users, Landmark, AlertCircle, ArrowLeft } from "lucide-react";
+import { Pencil, Plus, RefreshCw, Trash2, Loader2, Users, Landmark, AlertCircle, ArrowLeft, Building2, Check, CheckCircle2, Circle, Search } from "lucide-react";
 
 const FUNCOES = ["Diarista", "Auxiliar de carga", "Ajudante", "Conferente", "Operador eventual", "Serviço extra"] as const;
 
+const BANK_OPTIONS = [
+    { code: "001", name: "Banco do Brasil" },
+    { code: "033", name: "Santander" },
+    { code: "104", name: "Caixa Econômica Federal" },
+    { code: "237", name: "Bradesco" },
+    { code: "260", name: "Nu Pagamentos" },
+    { code: "341", name: "Itaú" },
+    { code: "422", name: "Safra" },
+    { code: "748", name: "Sicredi" },
+    { code: "756", name: "Sicoob" },
+] as const;
+
 const emptyForm = {
     nome: "",
+    matricula: "",
     cpf: "",
     telefone: "",
     funcao: "Diarista" as string,
@@ -35,7 +51,15 @@ const emptyForm = {
     conta: "",
     digito_conta: "",
     tipo_conta: "corrente" as "corrente" | "poupanca",
+    chave_pix: "",
     nome_completo: "",
+};
+
+const onlyDigits = (value: string) => value.replace(/\D/g, "");
+
+const getBankLabel = (code?: string | null) => {
+    const bank = BANK_OPTIONS.find((item) => item.code === code);
+    return bank ? `${bank.code} - ${bank.name}` : code ? `${code} - Banco não mapeado` : "Selecionar banco";
 };
 
 const RhDiaristasGestao = () => {
@@ -45,6 +69,7 @@ const RhDiaristasGestao = () => {
     const [open, setOpen] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [form, setForm] = useState({ ...emptyForm });
+    const [bankSelectorOpen, setBankSelectorOpen] = useState(false);
 
     const { data: perfil } = useQuery({
         queryKey: ["profile_usuario", user?.id],
@@ -62,6 +87,10 @@ const RhDiaristasGestao = () => {
     });
 
     const empresaIdPadrao = (empresas as any[])[0]?.id ?? "";
+    const empresaMap = useMemo(
+        () => new Map((empresas as any[]).map((empresa: any) => [empresa.id, empresa.nome])),
+        [empresas],
+    );
 
     const { data: diaristas = [], isLoading, isFetching } = useQuery({
         queryKey: ["diaristas_gestao", empresaIdPadrao],
@@ -78,6 +107,7 @@ const RhDiaristasGestao = () => {
         setEditingId(d.id);
         setForm({
             nome: d.nome,
+            matricula: d.matricula ?? "",
             cpf: d.cpf ?? "",
             telefone: d.telefone ?? "",
             funcao: d.funcao,
@@ -91,10 +121,62 @@ const RhDiaristasGestao = () => {
             conta: d.conta ?? "",
             digito_conta: d.digito_conta ?? "",
             tipo_conta: d.tipo_conta ?? "corrente",
-            nome_completo: d.nome_completo ?? "",
+            chave_pix: d.chave_pix ?? "",
+            nome_completo: d.nome ?? d.nome_completo ?? "",
         });
         setOpen(true);
     };
+
+    const bankValidation = useMemo(() => {
+        const bancoOk = /^\d{3}$/.test(form.banco_codigo);
+        const agenciaOk = /^\d{3,6}$/.test(form.agencia);
+        const agenciaDigitoOk = /^[0-9Xx]{1,2}$/.test(form.agencia_digito);
+        const contaOk = /^\d{3,20}$/.test(form.conta);
+        const contaDigitoOk = /^[0-9Xx]{1,2}$/.test(form.digito_conta);
+        const tipoContaOk = ["corrente", "poupanca"].includes(form.tipo_conta);
+        const pixOk = form.chave_pix.trim().length > 0;
+
+        const hasAnyBankData = [
+            form.banco_codigo,
+            form.agencia,
+            form.agencia_digito,
+            form.conta,
+            form.digito_conta,
+            form.tipo_conta,
+            form.chave_pix,
+        ].some((value) => String(value || "").trim().length > 0);
+
+        const requiredComplete = bancoOk && agenciaOk && agenciaDigitoOk && contaOk && contaDigitoOk && tipoContaOk;
+        const hasInvalidFormat = [
+            form.banco_codigo && !bancoOk,
+            form.agencia && !agenciaOk,
+            form.agencia_digito && !agenciaDigitoOk,
+            form.conta && !contaOk,
+            form.digito_conta && !contaDigitoOk,
+            form.tipo_conta && !tipoContaOk,
+        ].some(Boolean);
+
+        let badge = { label: "Dados incompletos", variant: "secondary" as const };
+        if (requiredComplete) {
+            badge = { label: "Dados válidos", variant: "success" as const };
+        } else if (hasInvalidFormat) {
+            badge = { label: "Formato inválido", variant: "warning" as const };
+        } else if (hasAnyBankData) {
+            badge = { label: "Dados incompletos", variant: "info" as const };
+        }
+
+        const checklist = [
+            { key: "banco", label: "banco", done: bancoOk },
+            { key: "agencia", label: "agência", done: agenciaOk },
+            { key: "agencia_digito", label: "dígito agência", done: agenciaDigitoOk },
+            { key: "conta", label: "conta", done: contaOk },
+            { key: "digito_conta", label: "dígito conta", done: contaDigitoOk },
+            { key: "tipo_conta", label: "tipo conta", done: tipoContaOk },
+            { key: "pix", label: "pix", done: pixOk, optional: true },
+        ];
+
+        return { bancoOk, agenciaOk, agenciaDigitoOk, contaOk, contaDigitoOk, badge, checklist };
+    }, [form]);
 
 
     const saveMutation = useMutation({
@@ -119,7 +201,8 @@ const RhDiaristasGestao = () => {
                 conta: form.conta.trim() || null,
                 digito_conta: form.digito_conta.trim() || null,
                 tipo_conta: form.tipo_conta || null,
-                nome_completo: form.nome_completo.trim() || null,
+                chave_pix: form.chave_pix.trim() || null,
+                nome_completo: form.nome.trim() || null,
             };
             return editingId
                 ? DiaristaService.update(editingId, payload)
@@ -272,11 +355,33 @@ const RhDiaristasGestao = () => {
             </div>
 
             <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) reset(); }}>
-                <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-                    <DialogHeader>
+                <DialogContent className="max-w-2xl p-0 overflow-hidden">
+                    <div className="sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur">
+                    <DialogHeader className="px-6 pt-6 pb-4">
                         <DialogTitle>{editingId ? "Editar diarista" : "Novo diarista"}</DialogTitle>
                         <DialogDescription>Preencha os dados do diarista. Os dados bancários são obrigatórios para geração de CNAB.</DialogDescription>
                     </DialogHeader>
+                        <div className="mx-6 mb-4 rounded-xl border border-border bg-muted/30 px-4 py-3">
+                            <div className="flex flex-wrap items-start gap-3">
+                                <div className="min-w-[220px] flex-1">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Colaborador</p>
+                                    <p className="mt-1 text-sm font-semibold text-foreground">{form.nome || "Nome ainda não informado"}</p>
+                                </div>
+                                <div className="min-w-[120px]">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Matrícula</p>
+                                    <p className="mt-1 text-sm text-foreground">{form.matricula || "Não informada"}</p>
+                                </div>
+                                <div className="min-w-[180px]">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Empresa</p>
+                                    <p className="mt-1 flex items-center gap-2 text-sm text-foreground">
+                                        <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                                        {empresaMap.get(form.empresa_id || empresaIdPadrao) || "Não selecionada"}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="max-h-[76vh] overflow-y-auto px-6 pb-6">
                     <div className="space-y-4 py-2">
 
                         {/* ── Dados pessoais ── */}
@@ -343,30 +448,86 @@ const RhDiaristasGestao = () => {
                                 <span className="text-xs font-normal text-muted-foreground ml-1">(necessário para CNAB)</span>
                             </p>
                             <div className="space-y-3">
+                                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-muted/20 px-4 py-3">
+                                    <div>
+                                        <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Status da validação</p>
+                                        <Badge variant={bankValidation.badge.variant} className="mt-2">{bankValidation.badge.label}</Badge>
+                                    </div>
+                                    <div className="grid min-w-[260px] grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                                        {bankValidation.checklist.map((item) => (
+                                            <div key={item.key} className="flex items-center gap-2 text-muted-foreground">
+                                                {item.done ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <Circle className="h-4 w-4 text-amber-500" />}
+                                                <span className={cn(item.done && "text-foreground")}>
+                                                    {item.label}
+                                                    {item.optional ? <span className="ml-1 text-[10px] text-muted-foreground">opcional</span> : null}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
                                 <div className="space-y-1.5">
-                                    <Label>Nome completo (bancário)</Label>
+                                    <Label>Nome do titular</Label>
                                     <Input
                                         placeholder="Como consta na conta bancária"
-                                        value={form.nome_completo}
-                                        onChange={(e) => setForm({ ...form, nome_completo: e.target.value })}
+                                        value={form.nome}
+                                        readOnly
+                                        aria-readonly="true"
+                                        className="cursor-not-allowed border-dashed bg-muted text-muted-foreground"
                                     />
+                                    <p className="text-xs text-muted-foreground">Preenchido automaticamente com o nome do colaborador e bloqueado para evitar edição bancária no colaborador errado.</p>
                                 </div>
-                                <div className="grid grid-cols-3 gap-3">
-                                    <div className="space-y-1.5">
-                                        <Label>Banco (código)</Label>
-                                        <Input
-                                            placeholder="Ex: 341"
-                                            maxLength={3}
-                                            value={form.banco_codigo}
-                                            onChange={(e) => setForm({ ...form, banco_codigo: e.target.value.replace(/\D/g, '') })}
-                                        />
-                                    </div>
+                                <div className="space-y-1.5">
+                                    <Label>Banco</Label>
+                                    <Popover open={bankSelectorOpen} onOpenChange={setBankSelectorOpen}>
+                                        <PopoverTrigger asChild>
+                                            <Button variant="outline" className="w-full justify-between font-normal">
+                                                <span className="truncate">{getBankLabel(form.banco_codigo)}</span>
+                                                <Search className="h-4 w-4 text-muted-foreground" />
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-[360px] p-0" align="start">
+                                            <Command>
+                                                <CommandInput placeholder="Buscar banco por código ou nome..." />
+                                                <CommandList>
+                                                    <CommandEmpty>Nenhum banco encontrado.</CommandEmpty>
+                                                    <CommandGroup>
+                                                        {BANK_OPTIONS.map((bank) => (
+                                                            <CommandItem
+                                                                key={bank.code}
+                                                                value={`${bank.code} ${bank.name}`}
+                                                                onSelect={() => {
+                                                                    setForm({ ...form, banco_codigo: bank.code });
+                                                                    setBankSelectorOpen(false);
+                                                                }}
+                                                            >
+                                                                <Check className={cn("mr-2 h-4 w-4", form.banco_codigo === bank.code ? "opacity-100" : "opacity-0")} />
+                                                                <span>{bank.code} - {bank.name}</span>
+                                                            </CommandItem>
+                                                        ))}
+                                                    </CommandGroup>
+                                                </CommandList>
+                                            </Command>
+                                        </PopoverContent>
+                                    </Popover>
+                                </div>
+                                <div className="grid grid-cols-4 gap-3">
                                     <div className="space-y-1.5">
                                         <Label>Agência</Label>
                                         <Input
                                             placeholder="0001"
                                             value={form.agencia}
-                                            onChange={(e) => setForm({ ...form, agencia: e.target.value.replace(/\D/g, '') })}
+                                            onChange={(e) => setForm({ ...form, agencia: onlyDigits(e.target.value) })}
+                                            className={cn(form.agencia && !bankValidation.agenciaOk && "border-amber-400 focus-visible:ring-amber-400")}
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label>Díg. agência</Label>
+                                        <Input
+                                            placeholder="0"
+                                            maxLength={2}
+                                            value={form.agencia_digito}
+                                            onChange={(e) => setForm({ ...form, agencia_digito: onlyDigits(e.target.value).slice(0, 2) })}
+                                            className={cn(form.agencia_digito && !bankValidation.agenciaDigitoOk && "border-amber-400 focus-visible:ring-amber-400")}
                                         />
                                     </div>
                                     <div className="space-y-1.5">
@@ -386,7 +547,8 @@ const RhDiaristasGestao = () => {
                                         <Input
                                             placeholder="00000000"
                                             value={form.conta}
-                                            onChange={(e) => setForm({ ...form, conta: e.target.value.replace(/\D/g, '') })}
+                                            onChange={(e) => setForm({ ...form, conta: onlyDigits(e.target.value) })}
+                                            className={cn(form.conta && !bankValidation.contaOk && "border-amber-400 focus-visible:ring-amber-400")}
                                         />
                                     </div>
                                     <div className="space-y-1.5">
@@ -395,9 +557,18 @@ const RhDiaristasGestao = () => {
                                             placeholder="0"
                                             maxLength={2}
                                             value={form.digito_conta}
-                                            onChange={(e) => setForm({ ...form, digito_conta: e.target.value.replace(/\D/g, '') })}
+                                            onChange={(e) => setForm({ ...form, digito_conta: onlyDigits(e.target.value).slice(0, 2) })}
+                                            className={cn(form.digito_conta && !bankValidation.contaDigitoOk && "border-amber-400 focus-visible:ring-amber-400")}
                                         />
                                     </div>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label>Pix</Label>
+                                    <Input
+                                        placeholder="Chave pix"
+                                        value={form.chave_pix}
+                                        onChange={(e) => setForm({ ...form, chave_pix: e.target.value })}
+                                    />
                                 </div>
                             </div>
                         </div>
@@ -413,6 +584,7 @@ const RhDiaristasGestao = () => {
                             {saveMutation.isPending ? "Salvando..." : editingId ? "Salvar alterações" : "Cadastrar"}
                         </Button>
                     </DialogFooter>
+                    </div>
                 </DialogContent>
             </Dialog>
         </AppShell>

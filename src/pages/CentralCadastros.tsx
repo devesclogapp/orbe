@@ -2,16 +2,21 @@ import { type ElementType, type ReactNode, useEffect, useMemo, useState } from "
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
+  AlertTriangle,
   ArrowRight,
   Boxes,
   Building2,
   Check,
+  CheckCircle2,
   ChevronRight,
+  Circle,
   Clock,
   Cpu,
   Database,
   ExternalLink,
   Globe,
+  Info,
+  Landmark,
   Loader2,
   Pencil,
   PencilLine,
@@ -52,6 +57,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DialogDescription } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import {
   ColaboradorService,
@@ -95,6 +101,86 @@ const TECHNICAL_COLUMNS = [
   "USER_ID",
   "AUTH_ID",
 ];
+
+const BANK_OPTIONS = [
+  { code: "001", name: "Banco do Brasil" },
+  { code: "033", name: "Santander" },
+  { code: "104", name: "Caixa Econômica Federal" },
+  { code: "237", name: "Bradesco" },
+  { code: "260", name: "Nu Pagamentos" },
+  { code: "341", name: "Itaú" },
+  { code: "422", name: "Safra" },
+  { code: "748", name: "Sicredi" },
+  { code: "756", name: "Sicoob" },
+] as const;
+
+const onlyDigits = (value: string) => value.replace(/\D/g, "");
+const normalizeAccountDigit = (value: string) => value.replace(/[^0-9xX]/g, "").toUpperCase().slice(0, 2);
+
+function getBankLabel(code?: string | null) {
+  const bank = BANK_OPTIONS.find((item) => item.code === code);
+  return bank ? `${bank.code} - ${bank.name}` : "Selecione o banco";
+}
+
+function getColaboradorBankValidation(colaborador: any) {
+  const bancoCodigo = String(colaborador?.banco_codigo ?? "").trim();
+  const agencia = String(colaborador?.agencia ?? "").trim();
+  const agenciaDigito = String(colaborador?.agencia_digito ?? "").trim();
+  const conta = String(colaborador?.conta ?? "").trim();
+  const contaDigito = String(colaborador?.conta_digito ?? colaborador?.digito_conta ?? "").trim();
+  const tipoConta = String(colaborador?.tipo_conta ?? "").trim();
+  const chavePix = String(colaborador?.chave_pix ?? "").trim();
+
+  const bancoOk = /^\d{3}$/.test(bancoCodigo);
+  const agenciaOk = /^\d{3,6}$/.test(agencia);
+  const agenciaDigitoOk = /^[0-9X]{1,2}$/i.test(agenciaDigito);
+  const contaOk = /^\d{3,20}$/.test(conta);
+  const contaDigitoOk = /^[0-9X]{1,2}$/i.test(contaDigito);
+  const tipoContaOk = ["corrente", "poupanca"].includes(tipoConta);
+  const pixOk = chavePix.length > 0;
+
+  const hasAnyBankData = [bancoCodigo, agencia, agenciaDigito, conta, contaDigito, tipoConta, chavePix].some(Boolean);
+  const requiredComplete = bancoOk && agenciaOk && agenciaDigitoOk && contaOk && contaDigitoOk && tipoContaOk;
+  const hasInvalidFormat = [
+    bancoCodigo && !bancoOk,
+    agencia && !agenciaOk,
+    agenciaDigito && !agenciaDigitoOk,
+    conta && !contaOk,
+    contaDigito && !contaDigitoOk,
+    tipoConta && !tipoContaOk,
+  ].some(Boolean);
+
+  let badge = { label: "Dados incompletos", className: "bg-muted text-muted-foreground" };
+  if (requiredComplete) {
+    badge = { label: "Dados válidos", className: "bg-success-soft text-success-strong" };
+  } else if (hasInvalidFormat) {
+    badge = { label: "Formato inválido", className: "bg-warning-soft text-warning-strong" };
+  } else if (hasAnyBankData) {
+    badge = { label: "Preenchimento em andamento", className: "bg-info-soft text-info" };
+  }
+
+  const checklist = [
+    { key: "banco", label: "Banco", done: bancoOk },
+    { key: "agencia", label: "Agência", done: agenciaOk },
+    { key: "agencia_digito", label: "Dígito da agência", done: agenciaDigitoOk },
+    { key: "conta", label: "Conta", done: contaOk },
+    { key: "conta_digito", label: "Dígito da conta", done: contaDigitoOk },
+    { key: "tipo_conta", label: "Tipo de conta", done: tipoContaOk },
+    { key: "pix", label: "Pix (opcional)", done: pixOk, optional: true },
+  ];
+
+  return {
+    bancoOk,
+    agenciaOk,
+    agenciaDigitoOk,
+    contaOk,
+    contaDigitoOk,
+    hasAnyBankData,
+    isValid: requiredComplete,
+    badge,
+    checklist,
+  };
+}
 
 function normalizeOperationTypeValue(value: unknown) {
   return String(value ?? "")
@@ -162,6 +248,49 @@ function getColaboradorPendenciasBancarias(colaborador: any) {
   if (!String(colaborador.tipo_conta ?? "").trim()) pendencias.push("tipo de conta");
 
   return pendencias;
+}
+
+function getBankFieldError(validation: any, field: "banco_codigo" | "agencia" | "agencia_digito" | "conta" | "conta_digito") {
+  if (!validation?.hasAnyBankData) return "";
+  if (!validation?.isValid && !validation?.bancoOk && field === "banco_codigo") return "Banco inválido";
+  if (!validation?.isValid && !validation?.agenciaOk && field === "agencia") return "Agência incompleta";
+  if (!validation?.isValid && !validation?.agenciaDigitoOk && field === "agencia_digito") return "DV inválido";
+  if (!validation?.isValid && !validation?.contaOk && field === "conta") return "Conta incompleta";
+  if (!validation?.isValid && !validation?.contaDigitoOk && field === "conta_digito") return "DV inválido";
+  return "";
+}
+
+function getBankBadgeUi(validation: any, colaborador: any) {
+  const hasAnyBankData = [
+    colaborador?.banco_codigo,
+    colaborador?.agencia,
+    colaborador?.agencia_digito,
+    colaborador?.conta,
+    colaborador?.conta_digito ?? colaborador?.digito_conta,
+    colaborador?.chave_pix,
+  ].some((value) => String(value ?? "").trim().length > 0);
+
+  if (validation?.isValid) {
+    return {
+      label: "Dados válidos",
+      className: "border border-emerald-200 bg-emerald-100 text-emerald-900",
+      Icon: CheckCircle2,
+    };
+  }
+
+  if (!validation?.bancoOk || !validation?.agenciaOk || !validation?.agenciaDigitoOk || !validation?.contaOk || !validation?.contaDigitoOk) {
+    return {
+      label: hasAnyBankData ? "Formato inválido" : "Dados incompletos",
+      className: "border border-amber-200 bg-amber-100 text-amber-900",
+      Icon: AlertTriangle,
+    };
+  }
+
+  return {
+    label: "Dados incompletos",
+    className: "border border-amber-200 bg-amber-100 text-amber-900",
+    Icon: AlertTriangle,
+  };
 }
 
 function formatCNPJ(value: string): string {
@@ -272,7 +401,14 @@ const CentralCadastros = () => {
     tipo_conta: "corrente",
   });
   const [colaboradorIsProcessing, setColaboradorIsProcessing] = useState(false);
-  const [colaboradorBankNameLocked, setColaboradorBankNameLocked] = useState(true);
+  const colaboradorBankValidation = useMemo(
+    () => getColaboradorBankValidation(colaboradorForm),
+    [colaboradorForm],
+  );
+  const colaboradorBankBadgeUi = useMemo(
+    () => getBankBadgeUi(colaboradorBankValidation, colaboradorForm),
+    [colaboradorBankValidation, colaboradorForm],
+  );
 
   const normalizePhoneCC = (value: string) => value.replace(/\D/g, "");
 
@@ -303,6 +439,14 @@ const CentralCadastros = () => {
   const editingColaboradorPendenciasBancarias = useMemo(
     () => getColaboradorPendenciasBancarias(editingColaborador),
     [editingColaborador],
+  );
+  const editingColaboradorBankValidation = useMemo(
+    () => getColaboradorBankValidation(editingColaborador),
+    [editingColaborador],
+  );
+  const editingColaboradorBankBadgeUi = useMemo(
+    () => getBankBadgeUi(editingColaboradorBankValidation, editingColaborador),
+    [editingColaboradorBankValidation, editingColaborador],
   );
 
   const handleEditPhoneChangeCC = (raw: string) => {
@@ -2507,7 +2651,21 @@ const CentralCadastros = () => {
                     </div>
                     <div className="col-span-2 flex items-center justify-between rounded-md border border-border p-3">
                       <div>
-                        <Label className="cursor-pointer">Gera faturamento</Label>
+                        <div className="flex items-center gap-2">
+                          <Label className="cursor-pointer">Gera faturamento</Label>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button type="button" className="text-muted-foreground transition-colors hover:text-foreground" aria-label="Informações sobre faturamento">
+                                  <Info className="h-3.5 w-3.5" />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs text-xs">
+                                Quando ativo, o colaborador participa dos cálculos financeiros e fechamento operacional.
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
                         <p className="text-xs text-muted-foreground mt-0.5">Colaborador entra no cálculo financeiro.</p>
                       </div>
                       <Switch checked={colaboradorForm.flag_faturamento} onCheckedChange={(v) => setColaboradorForm({ ...colaboradorForm, flag_faturamento: v })} />
@@ -2518,6 +2676,105 @@ const CentralCadastros = () => {
             )}
 
             {colaboradorStep === 3 && (
+              <div className="space-y-4 py-2">
+                <div className="rounded-xl border border-border bg-muted/30 px-4 py-3">
+                  <div className="flex flex-wrap items-start gap-3">
+                    <div className="min-w-[220px] flex-1">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Colaborador</p>
+                      <p className="mt-1 text-sm font-semibold text-foreground">{colaboradorForm.nome || "Nome não informado"}</p>
+                    </div>
+                    <div className="min-w-[120px]">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Matrícula</p>
+                      <p className="mt-1 text-sm text-foreground">{colaboradorForm.matricula || "Será definida após o cadastro"}</p>
+                    </div>
+                    <div className="min-w-[180px]">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Empresa</p>
+                      <p className="mt-1 flex items-center gap-2 text-sm text-foreground">
+                        <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                        {empresas.find((empresa) => empresa.id === colaboradorForm.empresa_id)?.nome || "Não selecionada"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-border bg-muted/30 p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h3 className="flex items-center gap-2 font-medium text-foreground">
+                        <Landmark className="h-4 w-4 text-primary" />
+                        Dados Bancários
+                      </h3>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        O titular acompanha automaticamente o nome do colaborador neste cadastro.
+                      </p>
+                    </div>
+                    <Badge className={cn("font-semibold", colaboradorBankBadgeUi.className)}>
+                      <colaboradorBankBadgeUi.Icon className="mr-1 h-3.5 w-3.5" />
+                      {colaboradorBankBadgeUi.label}
+                    </Badge>
+                  </div>
+                  <div className="mt-4 grid gap-3 rounded-xl border border-border bg-background/70 px-4 py-3 md:grid-cols-2">
+                    {colaboradorBankValidation.checklist.map((item) => (
+                      <div key={item.key} className={cn("flex items-center gap-2 text-sm", item.optional ? "text-slate-400" : "text-muted-foreground")}>
+                        {item.done ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <Circle className={cn("h-4 w-4", item.optional ? "text-slate-300" : "text-amber-500")} />}
+                        <span className={cn(item.done && "text-foreground", item.optional && !item.done && "text-slate-400")}>
+                          {item.label}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    <div className="col-span-2 space-y-1">
+                      <Label>Titular da conta</Label>
+                      <Input value={colaboradorForm.nome} readOnly aria-readonly="true" className="h-9 cursor-not-allowed border-dashed bg-muted px-3 text-muted-foreground" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Banco <span className="text-destructive">*</span></Label>
+                      <Select value={colaboradorForm.banco_codigo} onValueChange={(value) => setColaboradorForm({ ...colaboradorForm, banco_codigo: value })}>
+                        <SelectTrigger className={cn("h-9", getBankFieldError(colaboradorBankValidation, "banco_codigo") && "border-rose-300 focus:ring-rose-200")}><SelectValue placeholder="Selecione o banco" /></SelectTrigger>
+                        <SelectContent>
+                          {BANK_OPTIONS.map((bank) => (
+                            <SelectItem key={bank.code} value={bank.code}>{bank.code} - {bank.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {getBankFieldError(colaboradorBankValidation, "banco_codigo") ? <p className="text-[11px] text-rose-500">{getBankFieldError(colaboradorBankValidation, "banco_codigo")}</p> : null}
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Tipo de conta <span className="text-destructive">*</span></Label>
+                      <Select value={colaboradorForm.tipo_conta} onValueChange={(v) => setColaboradorForm({ ...colaboradorForm, tipo_conta: v })}>
+                        <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="corrente">Conta corrente</SelectItem>
+                          <SelectItem value="poupanca">Conta poupança</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Agência <span className="text-destructive">*</span></Label>
+                      <div className="flex gap-2">
+                        <Input value={colaboradorForm.agencia} onChange={(e) => setColaboradorForm({ ...colaboradorForm, agencia: onlyDigits(e.target.value) })} className={cn("h-9 flex-1 px-3", getBankFieldError(colaboradorBankValidation, "agencia") && "border-rose-300 focus:ring-rose-200")} placeholder="Ex.: 1234" />
+                        <Input value={colaboradorForm.agencia_digito} onChange={(e) => setColaboradorForm({ ...colaboradorForm, agencia_digito: normalizeAccountDigit(e.target.value) })} className={cn("h-9 w-16 px-3", getBankFieldError(colaboradorBankValidation, "agencia_digito") && "border-rose-300 focus:ring-rose-200")} placeholder="DV" />
+                      </div>
+                      {getBankFieldError(colaboradorBankValidation, "agencia") || getBankFieldError(colaboradorBankValidation, "agencia_digito") ? <p className="text-[11px] text-rose-500">{getBankFieldError(colaboradorBankValidation, "agencia") || getBankFieldError(colaboradorBankValidation, "agencia_digito")}</p> : null}
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Conta <span className="text-destructive">*</span></Label>
+                      <div className="flex gap-2">
+                        <Input value={colaboradorForm.conta} onChange={(e) => setColaboradorForm({ ...colaboradorForm, conta: onlyDigits(e.target.value) })} className={cn("h-9 flex-1 px-3", getBankFieldError(colaboradorBankValidation, "conta") && "border-rose-300 focus:ring-rose-200")} placeholder="Número da conta" />
+                        <Input value={colaboradorForm.conta_digito} onChange={(e) => setColaboradorForm({ ...colaboradorForm, conta_digito: normalizeAccountDigit(e.target.value) })} className={cn("h-9 w-16 px-3", getBankFieldError(colaboradorBankValidation, "conta_digito") && "border-rose-300 focus:ring-rose-200")} placeholder="DV" />
+                      </div>
+                      {getBankFieldError(colaboradorBankValidation, "conta") || getBankFieldError(colaboradorBankValidation, "conta_digito") ? <p className="text-[11px] text-rose-500">{getBankFieldError(colaboradorBankValidation, "conta") || getBankFieldError(colaboradorBankValidation, "conta_digito")}</p> : null}
+                    </div>
+                    <div className="col-span-2 space-y-1">
+                      <Label>Pix <span className="text-muted-foreground">(opcional)</span></Label>
+                      <Input value={colaboradorForm.chave_pix || ""} onChange={(e) => setColaboradorForm({ ...colaboradorForm, chave_pix: e.target.value })} className="h-9 px-3" placeholder="CPF, e-mail, telefone ou chave aleatória" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {false && colaboradorStep === 3 && (
               <div className="grid grid-cols-2 gap-4 py-2">
                 <div className="col-span-2 space-y-1.5">
                   <div className="flex items-center justify-between">
@@ -2582,7 +2839,7 @@ const CentralCadastros = () => {
                 <Button onClick={() => {
                   if (validateColaboradorStep2()) {
                     setColaboradorStep(3);
-                    setColaboradorForm(prev => ({ ...prev, nome_completo: prev.nome_completo || prev.nome }));
+                    setColaboradorForm(prev => ({ ...prev, nome_completo: prev.nome }));
                   }
                 }} disabled={colaboradorIsProcessing}>Próximo</Button>
               </>
@@ -2592,7 +2849,11 @@ const CentralCadastros = () => {
                 <Button variant="outline" onClick={() => setColaboradorStep(2)}>Voltar</Button>
                 <Button onClick={() => {
                   if (!validateColaboradorStep3()) return;
-                  const payload = { ...colaboradorForm, nome_completo: colaboradorForm.nome_completo || colaboradorForm.nome };
+                  const payload = {
+                    ...colaboradorForm,
+                    nome_completo: colaboradorForm.nome,
+                    banco_validado: colaboradorBankValidation.isValid,
+                  };
                   createColaboradorMutation.mutate(payload);
                 }} disabled={colaboradorIsProcessing}>
                   {colaboradorIsProcessing ? "Salvando..." : "Cadastrar"}
@@ -3123,12 +3384,130 @@ const CentralCadastros = () => {
               </div>
               <div className="col-span-2 flex items-center justify-between rounded-md border border-border p-3">
                 <div>
-                  <Label className="cursor-pointer">Gera faturamento</Label>
+                  <div className="flex items-center gap-2">
+                    <Label className="cursor-pointer">Gera faturamento</Label>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button type="button" className="text-muted-foreground transition-colors hover:text-foreground" aria-label="Informações sobre faturamento">
+                            <Info className="h-3.5 w-3.5" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs text-xs">
+                          Quando ativo, o colaborador participa dos cálculos financeiros e fechamento operacional.
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
                   <p className="text-xs text-muted-foreground mt-0.5">Colaborador entra no cálculo financeiro.</p>
                 </div>
                 <Switch checked={editingColaborador?.flag_faturamento ?? true} onCheckedChange={(v) => setEditingColaborador({ ...editingColaborador, flag_faturamento: v })} />
               </div>
               <div className="col-span-2 rounded-lg border border-border bg-muted/30 p-4">
+                <div className="rounded-xl border border-border bg-background/70 px-4 py-3">
+                  <div className="flex flex-wrap items-start gap-3">
+                    <div className="min-w-[220px] flex-1">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Colaborador</p>
+                      <p className="mt-1 text-sm font-semibold text-foreground">{editingColaborador?.nome || "Nome não informado"}</p>
+                    </div>
+                    <div className="min-w-[120px]">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Matrícula</p>
+                      <p className="mt-1 text-sm text-foreground">{editingColaborador?.matricula || "Não informada"}</p>
+                    </div>
+                    <div className="min-w-[180px]">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Empresa</p>
+                      <p className="mt-1 flex items-center gap-2 text-sm text-foreground">
+                        <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                        {empresas.find((empresa) => empresa.id === editingColaborador?.empresa_id)?.nome || "Não selecionada"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="flex items-center gap-2 font-medium text-foreground">
+                      <Landmark className="h-4 w-4 text-primary" />
+                      Dados Bancários
+                    </h3>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      O titular da conta acompanha automaticamente o nome do colaborador neste cadastro.
+                    </p>
+                  </div>
+                  <Badge className={cn("font-semibold", editingColaboradorBankBadgeUi.className)}>
+                    <editingColaboradorBankBadgeUi.Icon className="mr-1 h-3.5 w-3.5" />
+                    {editingColaboradorBankBadgeUi.label}
+                  </Badge>
+                </div>
+
+                <div className="mt-4 grid gap-3 rounded-xl border border-border bg-background/70 px-4 py-3 md:grid-cols-2">
+                  {editingColaboradorBankValidation.checklist.map((item) => (
+                    <div key={item.key} className={cn("flex items-center gap-2 text-sm", item.optional ? "text-slate-400" : "text-muted-foreground")}>
+                      {item.done ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <Circle className={cn("h-4 w-4", item.optional ? "text-slate-300" : "text-amber-500")} />}
+                      <span className={cn(item.done && "text-foreground", item.optional && !item.done && "text-slate-400")}>
+                        {item.label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <div className="col-span-2 space-y-1">
+                    <Label>Titular da conta</Label>
+                    <Input value={editingColaborador?.nome || ""} readOnly aria-readonly="true" className="h-9 cursor-not-allowed border-dashed bg-muted px-3 text-muted-foreground" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Banco</Label>
+                    <Select
+                      value={editingColaborador?.banco_codigo || ""}
+                      onValueChange={(value) => setEditingColaborador({ ...editingColaborador, banco_codigo: value })}
+                    >
+                      <SelectTrigger className={cn("h-9", getBankFieldError(editingColaboradorBankValidation, "banco_codigo") && "border-rose-300 focus:ring-rose-200")}><SelectValue placeholder="Selecione o banco" /></SelectTrigger>
+                      <SelectContent>
+                        {BANK_OPTIONS.map((bank) => (
+                          <SelectItem key={bank.code} value={bank.code}>{bank.code} - {bank.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {getBankFieldError(editingColaboradorBankValidation, "banco_codigo") ? <p className="text-[11px] text-rose-500">{getBankFieldError(editingColaboradorBankValidation, "banco_codigo")}</p> : null}
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Tipo de conta</Label>
+                    <Select
+                      value={editingColaborador?.tipo_conta || "corrente"}
+                      onValueChange={(v) => setEditingColaborador({ ...editingColaborador, tipo_conta: v })}
+                    >
+                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="corrente">Conta corrente</SelectItem>
+                        <SelectItem value="poupanca">Conta poupança</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Agência</Label>
+                    <div className="flex gap-2">
+                      <Input value={editingColaborador?.agencia || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, agencia: onlyDigits(e.target.value) })} className={cn("h-9 flex-1 px-3", getBankFieldError(editingColaboradorBankValidation, "agencia") && "border-rose-300 focus:ring-rose-200")} placeholder="Ex.: 1234" />
+                      <Input value={editingColaborador?.agencia_digito || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, agencia_digito: normalizeAccountDigit(e.target.value) })} className={cn("h-9 w-16 px-3", getBankFieldError(editingColaboradorBankValidation, "agencia_digito") && "border-rose-300 focus:ring-rose-200")} placeholder="DV" />
+                    </div>
+                    {getBankFieldError(editingColaboradorBankValidation, "agencia") || getBankFieldError(editingColaboradorBankValidation, "agencia_digito") ? <p className="text-[11px] text-rose-500">{getBankFieldError(editingColaboradorBankValidation, "agencia") || getBankFieldError(editingColaboradorBankValidation, "agencia_digito")}</p> : null}
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Conta</Label>
+                    <div className="flex gap-2">
+                      <Input value={editingColaborador?.conta || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, conta: onlyDigits(e.target.value) })} className={cn("h-9 flex-1 px-3", getBankFieldError(editingColaboradorBankValidation, "conta") && "border-rose-300 focus:ring-rose-200")} placeholder="Número da conta" />
+                      <Input value={editingColaborador?.conta_digito || editingColaborador?.digito_conta || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, conta_digito: normalizeAccountDigit(e.target.value), digito_conta: normalizeAccountDigit(e.target.value) })} className={cn("h-9 w-16 px-3", getBankFieldError(editingColaboradorBankValidation, "conta_digito") && "border-rose-300 focus:ring-rose-200")} placeholder="DV" />
+                    </div>
+                    {getBankFieldError(editingColaboradorBankValidation, "conta") || getBankFieldError(editingColaboradorBankValidation, "conta_digito") ? <p className="text-[11px] text-rose-500">{getBankFieldError(editingColaboradorBankValidation, "conta") || getBankFieldError(editingColaboradorBankValidation, "conta_digito")}</p> : null}
+                  </div>
+                  <div className="col-span-2 space-y-1">
+                    <Label>Pix <span className="text-muted-foreground">(opcional)</span></Label>
+                    <Input value={editingColaborador?.chave_pix || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, chave_pix: e.target.value })} className="h-9 px-3" placeholder="CPF, e-mail, telefone ou chave aleatória" />
+                  </div>
+                </div>
+
+                {false && (
+                  <>
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <h3 className="font-medium text-foreground">Dados Bancários</h3>
@@ -3253,6 +3632,8 @@ const CentralCadastros = () => {
                       </Select>
                     </div>
                   </div>
+                  </>
+                )}
                 </div>
             </div>
           </div>
@@ -3264,6 +3645,8 @@ const CentralCadastros = () => {
                 id: editingColaborador.id,
                 payload: {
                   ...colaboradorPayload,
+                  nome_completo: editingColaborador.nome,
+                  banco_validado: editingColaboradorBankValidation.isValid,
                   valor_base: Number(editingColaborador.valor_base) || 0,
                 },
               });

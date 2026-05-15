@@ -526,9 +526,44 @@ const Dashboard = () => {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <div className="h-2 w-2 rounded-full bg-success animate-pulse" />
-              Consolidacao atualizada em {lastSync}
+
+            <div className="flex items-center gap-4">
+              {alerts.length > 0 && (
+                <div className="hidden md:flex gap-2">
+                  {alerts.slice(0, 2).map((alert, index) => (
+                    <div 
+                      key={alert.id}
+                      onClick={alert.onClick}
+                      className={cn(
+                        "flex items-center gap-2 px-3 py-1.5 rounded-lg border text-[11px] font-medium cursor-pointer transition-colors hover:shadow-sm",
+                        alert.tipo === 'destructive' 
+                          ? "border-destructive/20 bg-destructive/5 text-destructive hover:bg-destructive/10" 
+                          : alert.tipo === 'warning'
+                          ? "border-warning/30 bg-warning/10 text-warning-strong hover:bg-warning/20"
+                          : "border-primary/20 bg-primary/5 text-primary hover:bg-primary/10"
+                      )}
+                      title={alert.descricao}
+                    >
+                      {alert.tipo === 'destructive' ? (
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                      ) : (
+                        <AlertCircle className="h-3.5 w-3.5" />
+                      )}
+                      <span>{alert.titulo}</span>
+                    </div>
+                  ))}
+                  {alerts.length > 2 && (
+                    <div className="flex items-center px-2 py-1.5 rounded-lg border border-muted bg-muted/30 text-[11px] font-medium text-muted-foreground">
+                      +{alerts.length - 2} alertas
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 text-xs text-muted-foreground whitespace-nowrap pl-4 border-l">
+                <div className="h-2 w-2 rounded-full bg-success animate-pulse" />
+                Consolidacao atualizada em {lastSync}
+              </div>
             </div>
           </div>
         </section>
@@ -632,50 +667,6 @@ const Dashboard = () => {
                 />
               </div>
             </div>
-
-            {/* Seção de Alertas Automáticos */}
-            {alerts.length > 0 && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-sm flex items-center gap-2">
-                    <AlertCircle className="h-4 w-4 text-amber-500" />
-                    Alertas do Período
-                  </h3>
-                  <Button variant="ghost" size="sm" onClick={() => setAlertsExpanded(!alertsExpanded)}>
-                    {alertsExpanded ? "Ocultar" : "Mostrar"}
-                  </Button>
-                </div>
-                
-                {alertsExpanded && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
-                    {alerts.map((alert) => (
-                      <button
-                        key={alert.id}
-                        onClick={alert.onClick}
-                        className={cn(
-                          "flex items-start gap-3 p-3 rounded-lg border text-left transition-all hover:shadow-md cursor-pointer",
-                          alert.tipo === 'error' ? "border-red-200 bg-red-50 hover:bg-red-100" :
-                          alert.tipo === 'warning' ? "border-amber-200 bg-amber-50 hover:bg-amber-100" :
-                          "border-blue-200 bg-blue-50 hover:bg-blue-100"
-                        )}
-                      >
-                        {alert.tipo === 'error' ? (
-                          <AlertTriangle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
-                        ) : alert.tipo === 'warning' ? (
-                          <AlertCircle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
-                        ) : (
-                          <Activity className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
-                        )}
-                        <div>
-                          <p className="text-sm font-medium">{alert.titulo}</p>
-                          <p className="text-xs text-muted-foreground">{alert.descricao}</p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* Filtro ativo exibido */}
             {activeFilter && (

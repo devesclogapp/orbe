@@ -212,10 +212,12 @@ export const useOperationalPulse = () => {
         ciclosRhPendentes,
         financeiroPendencias,
         remessasPendentes,
+        lotesRhPendentes,
         automacaoCritica,
         automacaoAtencao,
         pontosDetalhe,
         financeiroDetalhe,
+        lotesRhDetalhe,
         ciclosDetalhe,
       ] = await Promise.all([
         safeCount("operacoes", (q) => q.eq("status", "pendente"), { tenantId }),
@@ -234,6 +236,7 @@ export const useOperationalPulse = () => {
         safeCount("ciclos_operacionais", (q) => q.eq("status", "fechado").eq("status_rh", "pendente"), { tenantId }),
         safeCount("financeiro_consolidados_cliente", (q) => q.neq("status", "aprovado"), { tenantId, skipTenant: true }),
         safeCount("ciclos_operacionais", (q) => q.or("status_financeiro.eq.validado_financeiro,status_remessa.eq.nao_gerada,status_remessa.eq.pronta"), { tenantId }),
+        safeCount("rh_financeiro_lotes", (q) => q.eq("status", "AGUARDANDO_FINANCEIRO"), { tenantId }),
         safeCount("ciclos_operacionais", (q) => q.in("status_automacao", ["bloqueado_automacao", "inconsistencias_detectadas"]), { tenantId }),
         safeCount("ciclos_operacionais", (q) => q.eq("status_automacao", "aguardando_validacao"), { tenantId }),
         safeSelect(
@@ -247,6 +250,12 @@ export const useOperationalPulse = () => {
           "id,status,valor_total,clientes(nome)",
           (q) => q.neq("status", "aprovado").order("valor_total", { ascending: false }).limit(6),
           { tenantId, skipTenant: true },
+        ),
+        safeSelect(
+          "rh_financeiro_lotes",
+          "id,competencia,origem,tipo,status,valor_total,total_colaboradores",
+          (q) => q.eq("status", "AGUARDANDO_FINANCEIRO").order("created_at", { ascending: false }).limit(6),
+          { tenantId },
         ),
         safeSelect(
           "ciclos_operacionais",
@@ -334,6 +343,22 @@ export const useOperationalPulse = () => {
         })
         .filter((item) => item.subtitle !== "Aprovado");
 
+      const lotesRhDetailsMapped: OperationalDetail[] = lotesRhDetalhe.map((item: any) => {
+        const valor = Number(item.valor_total || 0);
+        const tipoLabel = item.tipo === "BANCO_HORAS" ? "Banco de Horas" : "Folha Variavel";
+
+        return {
+          id: item.id,
+          title: `${item.competencia} · ${tipoLabel}`,
+          subtitle: "Origem RH",
+          detail:
+            `${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valor)} · ${Number(item.total_colaboradores || 0)} colaborador(es)`,
+          route: "/financeiro",
+          tone: "blue",
+          actionLabel: "Analisar lote",
+        };
+      });
+
       const fechamentoDetails: OperationalDetail[] = ciclosDetalhe.map((item: any) => {
         const inconsistencias = Number(item.total_inconsistencias || 0);
         const aguardandoRh = item.status_rh === "pendente";
@@ -377,10 +402,10 @@ export const useOperationalPulse = () => {
         dashboard: createPulse({
           critical: operacoesComAlerta + pontosInconsistentes + custosAtrasados + bancoHorasCritico + automacaoCritica,
           warning: operacoesPendentes + pontosPendentes + diaristasRh + custosPendentes + servicosPendentes + financeiroPendencias,
-          waiting: diaristasFinanceiro + remessasPendentes + ciclosRhPendentes,
+          waiting: diaristasFinanceiro + remessasPendentes + ciclosRhPendentes + lotesRhPendentes,
           healthy: 1,
           hint: "Resumo operacional",
-          details: [...bhDetails.slice(0, 2), ...processamentoDetails.slice(0, 2), ...financeiroDetailsMapped.slice(0, 2)],
+          details: [...bhDetails.slice(0, 2), ...processamentoDetails.slice(0, 2), ...lotesRhDetailsMapped.slice(0, 2)],
         }),
         operacoes_recebidas: createPulse({
           critical: operacoesComAlerta,
@@ -475,13 +500,13 @@ export const useOperationalPulse = () => {
         }),
         central_financeira: createPulse({
           warning: financeiroPendencias,
-          waiting: remessasPendentes,
-          healthy: financeiroPendencias + remessasPendentes === 0 ? 1 : 0,
+          waiting: remessasPendentes + lotesRhPendentes,
+          healthy: financeiroPendencias + remessasPendentes + lotesRhPendentes === 0 ? 1 : 0,
           warningLabel: "Pendencias",
-          waitingLabel: "Fila bancaria",
+          waitingLabel: "Fila financeira",
           healthyLabel: "Saudavel",
           hint: "Itens com impacto financeiro imediato",
-          details: [...financeiroDetailsMapped, ...fechamentoDetails.filter((item) => item.subtitle === "Aguardando financeiro" || item.subtitle === "Aguardando remessa")].slice(0, 6),
+          details: [...lotesRhDetailsMapped, ...financeiroDetailsMapped, ...fechamentoDetails.filter((item) => item.subtitle === "Aguardando financeiro" || item.subtitle === "Aguardando remessa")].slice(0, 6),
         }),
         faturamento: createPulse({
           warning: financeiroPendencias,
@@ -492,12 +517,12 @@ export const useOperationalPulse = () => {
           details: financeiroDetailsMapped,
         }),
         pagamentos_remessas: createPulse({
-          waiting: remessasPendentes + diaristasFinanceiro,
-          healthy: remessasPendentes + diaristasFinanceiro === 0 ? 1 : 0,
+          waiting: remessasPendentes + diaristasFinanceiro + lotesRhPendentes,
+          healthy: remessasPendentes + diaristasFinanceiro + lotesRhPendentes === 0 ? 1 : 0,
           waitingLabel: "Pronto para envio",
           healthyLabel: "Sem fila",
           hint: "Pagamentos, remessas e lotes prontos",
-          details: fechamentoDetails.filter((item) => item.subtitle === "Aguardando financeiro" || item.subtitle === "Aguardando remessa"),
+          details: [...lotesRhDetailsMapped, ...fechamentoDetails.filter((item) => item.subtitle === "Aguardando financeiro" || item.subtitle === "Aguardando remessa")].slice(0, 6),
         }),
         regras_de_calculo: emptyItem(),
         central_de_relatorios: emptyItem(),

@@ -11,6 +11,7 @@ import {
   FileCheck,
   Loader2,
   Play,
+  Send,
   RefreshCw,
   RotateCcw,
   Search,
@@ -33,6 +34,7 @@ import { supabase } from "@/lib/supabase";
 import { useTenant } from "@/contexts/TenantContext";
 import { ColaboradorService, EmpresaService } from "@/services/base.service";
 import { BHRegraService } from "@/services/v4.service";
+import { RHFinanceiroService } from "@/services/rhFinanceiro.service";
 import { processRhPeriod, reprocessRhPeriod, rhProcessingUtils } from "@/services/rhProcessing.service";
 
 const ENGINE_EVENT_TYPES = new Set([
@@ -79,6 +81,9 @@ const ProcessamentoRH = () => {
   const [activeTab, setActiveTab] = useState("pontos");
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingResult, setProcessingResult] = useState<any>(null);
+  const [approvalModalOpen, setApprovalModalOpen] = useState(false);
+  const [approvalValidation, setApprovalValidation] = useState<any>(null);
+  const [isApprovingCompetencia, setIsApprovingCompetencia] = useState(false);
 
   const { data: empresas = [], isLoading: isLoadingEmpresas } = useQuery({
     queryKey: ["empresas"],
@@ -332,7 +337,59 @@ const ProcessamentoRH = () => {
       queryClient.invalidateQueries({ queryKey: ["processamento_rh_inconsistencias"] }),
       queryClient.invalidateQueries({ queryKey: ["banco_horas_saldos"] }),
       queryClient.invalidateQueries({ queryKey: ["bh_saldos"] }),
+      queryClient.invalidateQueries({ queryKey: ["rh-financeiro-lotes"] }),
+      queryClient.invalidateQueries({ queryKey: ["operational-pulse"] }),
     ]);
+  };
+
+  const validarAprovacaoCompetencia = async () => {
+    if (selectedEmpresa === "all") {
+      toast.error("Selecione uma empresa especifica para aprovar a competencia.");
+      return;
+    }
+
+    setIsApprovingCompetencia(true);
+    try {
+      const validation = await RHFinanceiroService.validateCompetenciaApproval(selectedEmpresa, selectedMonth);
+      setApprovalValidation(validation);
+      setApprovalModalOpen(true);
+    } catch (error: any) {
+      toast.error(error.message || "Nao foi possivel validar a aprovacao da competencia.");
+    } finally {
+      setIsApprovingCompetencia(false);
+    }
+  };
+
+  const aprovarCompetencia = async () => {
+    if (selectedEmpresa === "all") {
+      toast.error("Selecione uma empresa especifica para aprovar a competencia.");
+      return;
+    }
+
+    setIsApprovingCompetencia(true);
+    try {
+      const result = await RHFinanceiroService.approveCompetencia(selectedEmpresa, selectedMonth);
+      await invalidateRhQueries();
+
+      const mensagens: string[] = [];
+      if (result.lotesCriados.length > 0) {
+        mensagens.push(`${result.lotesCriados.length} lote(s) criado(s)`);
+      }
+      if (result.lotesExistentes.length > 0) {
+        mensagens.push(`${result.lotesExistentes.length} lote(s) ja existiam`);
+      }
+
+      toast.success("Competencia aprovada e entregue ao Financeiro.", {
+        description: mensagens.join(" · ") || "A fila financeira foi atualizada.",
+      });
+
+      setApprovalModalOpen(false);
+      setApprovalValidation(null);
+    } catch (error: any) {
+      toast.error(error.message || "Nao foi possivel aprovar a competencia.");
+    } finally {
+      setIsApprovingCompetencia(false);
+    }
   };
 
   const processarPontos = async () => {
@@ -465,6 +522,15 @@ const ProcessamentoRH = () => {
             >
               <RotateCcw className="mr-2 h-4 w-4" />
               Reprocessar Período
+            </Button>
+
+            <Button
+              variant="secondary"
+              onClick={validarAprovacaoCompetencia}
+              disabled={isLoading || isProcessing || isApprovingCompetencia || stats.processados === 0}
+            >
+              {isApprovingCompetencia ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+              Aprovar CompetÃªncia
             </Button>
 
             <Button variant="outline" size="icon" onClick={() => refetch()}>
@@ -951,6 +1017,118 @@ const ProcessamentoRH = () => {
                 <>
                   <Play className="mr-2 h-4 w-4" />
                   Iniciar Processamento
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={approvalModalOpen} onOpenChange={setApprovalModalOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Aprovar competÃªncia do RH</DialogTitle>
+            <DialogDescription>
+              A aprovaÃ§Ã£o oficializa a entrega do resultado processado ao Financeiro na competÃªncia {selectedMonth}.
+            </DialogDescription>
+          </DialogHeader>
+
+{approvalValidation ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="rounded-xl border border-red-300/70 bg-red-50 p-4">
+                  <p className="text-xs uppercase tracking-[0.14em] text-red-700/80">Bloqueios críticos</p>
+                  <p className="mt-2 text-2xl font-display font-bold text-red-700">{approvalValidation.resumo.bloqueiosCriticos}</p>
+                  <p className="mt-1 text-xs text-red-700/75">Impedem a aprovação da competência.</p>
+                </div>
+                <div className="rounded-xl border border-sky-200 bg-slate-50 p-4">
+                  <p className="text-xs uppercase tracking-[0.14em] text-sky-700/80">Avisos operacionais</p>
+                  <p className="mt-2 text-2xl font-display font-bold text-sky-800">{approvalValidation.resumo.avisosOperacionais}</p>
+                  <p className="mt-1 text-xs text-slate-600">Apenas informativos. Não bloqueiam a aprovação.</p>
+                </div>
+              </div>
+
+              {approvalValidation.impedimentos.length > 0 ? (
+                <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
+                  <p className="font-semibold text-foreground">A competência não pode ser aprovada agora.</p>
+                  <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
+                    {approvalValidation.impedimentos.map((item: string, index: number) => (
+                      <li key={`${item}-${index}`}>• {item}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-success/30 bg-success-soft/40 p-4">
+                  <p className="font-semibold text-foreground">Nenhum bloqueio crítico encontrado.</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    A aprovação permanece liberada mesmo com avisos operacionais. Ao confirmar, o RH vai criar o lote financeiro em status <strong>AGUARDANDO_FINANCEIRO</strong>.
+                  </p>
+                </div>
+              )}
+
+              {approvalValidation.bloqueiosCriticos.length > 0 ? (
+                <section className="space-y-2">
+                  <h3 className="text-sm font-semibold text-foreground">Bloqueios críticos</h3>
+                  <p className="text-xs text-muted-foreground">Impedem a aprovação.</p>
+                  <div className="max-h-52 overflow-y-auto rounded-xl border border-amber-200 bg-amber-50/40">
+                    <table className="w-full text-sm">
+                      <tbody>
+                        {approvalValidation.bloqueiosCriticos.map((item: any) => (
+                          <tr key={item.id} className="border-t border-border first:border-t-0">
+                            <td className="px-4 py-3 font-medium">{item.nome}</td>
+                            <td className="px-4 py-3">
+                              <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">{item.categoria}</Badge>
+                            </td>
+                            <td className="px-4 py-3 text-muted-foreground">{item.motivo}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              ) : null}
+
+              {approvalValidation.avisosOperacionais.length > 0 ? (
+                <section className="space-y-2">
+                  <h3 className="text-sm font-semibold text-foreground">Avisos operacionais</h3>
+                  <p className="text-xs text-muted-foreground">Apenas informativos.</p>
+                  <div className="max-h-52 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50/70">
+                    <table className="w-full text-sm">
+                      <tbody>
+                        {approvalValidation.avisosOperacionais.map((item: any) => (
+                          <tr key={item.id} className="border-t border-border first:border-t-0">
+                            <td className="px-4 py-3 font-medium">{item.nome}</td>
+                            <td className="px-4 py-3">
+                              <Badge className="bg-sky-100 text-sky-800 hover:bg-sky-100">{item.categoria}</Badge>
+                            </td>
+                            <td className="px-4 py-3 text-muted-foreground">{item.motivo}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              ) : null}
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setApprovalModalOpen(false)} disabled={isApprovingCompetencia}>
+              Fechar
+            </Button>
+            <Button
+              onClick={aprovarCompetencia}
+              disabled={isApprovingCompetencia || Boolean(approvalValidation?.impedimentos?.length)}
+            >
+              {isApprovingCompetencia ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Aprovando...
+                </>
+              ) : (
+                <>
+                  <Send className="mr-2 h-4 w-4" />
+                  Confirmar aprovaÃ§Ã£o
                 </>
               )}
             </Button>
