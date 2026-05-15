@@ -57,6 +57,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DialogDescription } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import {
@@ -250,6 +251,91 @@ function getColaboradorPendenciasBancarias(colaborador: any) {
   return pendencias;
 }
 
+type OperacionalPriority = "critico" | "atencao" | "ok";
+type OperacionalQuickFilter =
+  | "apenas_pendentes"
+  | "bloqueiam_aprovacao"
+  | "sem_banco"
+  | "sem_contrato"
+  | "sem_pix"
+  | "criticos";
+
+function hasContratoPendente(colaborador: any) {
+  return !String(colaborador?.tipo_contrato ?? "").trim();
+}
+
+function hasPixPendente(colaborador: any) {
+  return !String(colaborador?.chave_pix ?? "").trim();
+}
+
+function getColaboradorCompletude(colaborador: any) {
+  const cpfClean = String(colaborador?.cpf ?? "").replace(/\D/g, "");
+  const telClean = String(colaborador?.telefone ?? "").replace(/\D/g, "");
+
+  const checks = [
+    Boolean(String(colaborador?.nome ?? "").trim()),
+    cpfClean.length === 11,
+    telClean.length >= 10,
+    Boolean(colaborador?.empresa_id),
+    Boolean(String(colaborador?.tipo_colaborador ?? "").trim()),
+    Boolean(String(colaborador?.cargo ?? "").trim()),
+    Boolean(String(colaborador?.tipo_contrato ?? "").trim()),
+    getColaboradorBankValidation(colaborador).isValid,
+  ];
+
+  const total = checks.length;
+  const done = checks.filter(Boolean).length;
+  return Math.round((done / total) * 100);
+}
+
+function getColaboradorOperationalMeta(colaborador: any): {
+  priority: OperacionalPriority;
+  bloqueiaRh: boolean;
+  bloqueiaFinanceiro: boolean;
+  bloqueios: string[];
+} {
+  const cadastroPendente = colaborador?.status_cadastro === "pendente_complemento" || Boolean(colaborador?.cadastro_provisorio);
+  const semBanco = !getColaboradorBankValidation(colaborador).isValid;
+  const semContrato = hasContratoPendente(colaborador);
+  const semPix = hasPixPendente(colaborador);
+  const semTelefone = !String(colaborador?.telefone ?? "").trim();
+
+  const bloqueiaRh = semContrato;
+  const bloqueiaFinanceiro = semBanco || semContrato;
+
+  const bloqueios: string[] = [];
+  if (bloqueiaRh) bloqueios.push("RH");
+  if (bloqueiaFinanceiro) bloqueios.push("Financeiro");
+
+  const critico = semBanco || semContrato;
+  const atencao = !critico && (semPix || semTelefone || cadastroPendente);
+
+  return {
+    priority: critico ? "critico" : atencao ? "atencao" : "ok",
+    bloqueiaRh,
+    bloqueiaFinanceiro,
+    bloqueios,
+  };
+}
+
+function formatOperacionalLastUpdate(value?: string | null) {
+  if (!value) return "Sem registro";
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return "Sem registro";
+
+  const now = new Date();
+  const sameDay = dt.toDateString() === now.toDateString();
+  const hhmm = dt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  if (sameDay) return `Hoje ${hhmm}`;
+
+  return dt.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function getBankFieldError(validation: any, field: "banco_codigo" | "agencia" | "agencia_digito" | "conta" | "conta_digito") {
   if (!validation?.hasAnyBankData) return "";
   if (!validation?.isValid && !validation?.bancoOk && field === "banco_codigo") return "Banco inválido";
@@ -280,7 +366,7 @@ function getBankBadgeUi(validation: any, colaborador: any) {
 
   if (!validation?.bancoOk || !validation?.agenciaOk || !validation?.agenciaDigitoOk || !validation?.contaOk || !validation?.contaDigitoOk) {
     return {
-      label: hasAnyBankData ? "Formato inválido" : "Dados incompletos",
+      label: hasAnyBankData ? "Formato inválido" : "Incompleto",
       className: "border border-amber-200 bg-amber-100 text-amber-900",
       Icon: AlertTriangle,
     };
@@ -373,10 +459,12 @@ const CentralCadastros = () => {
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<CadastroTabValue>("colaboradores");
+  const [operacionalFilters, setOperacionalFilters] = useState<OperacionalQuickFilter[]>([]);
   const [configType, setConfigType] = useState<"operacao" | "produto" | "dia">("operacao");
   const [editingConfig, setEditingConfig] = useState<any>(null);
   const [configForm, setConfigForm] = useState<any>({});
   const [configFormErrors, setConfigFormErrors] = useState<any>({});
+  const [selectedColaboradorDrawer, setSelectedColaboradorDrawer] = useState<any>(null);
 
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteModalType, setDeleteModalType] = useState<"transportadora" | "fornecedor" | "servico" | null>(null);
@@ -1724,6 +1812,49 @@ const CentralCadastros = () => {
     [coletores]
   );
 
+  const toggleOperacionalFilter = (filter: OperacionalQuickFilter) => {
+    setOperacionalFilters((prev) => (
+      prev.includes(filter) ? [] : [filter]
+    ));
+  };
+
+  const colaboradoresOperacionais = useMemo(() => (
+    colaboradores.map((colaborador) => {
+      const operational = getColaboradorOperationalMeta(colaborador);
+      return {
+        ...colaborador,
+        completude: getColaboradorCompletude(colaborador),
+        ...operational,
+      };
+    })
+  ), [colaboradores]);
+
+  const colaboradoresFiltrados = useMemo(() => {
+    if (operacionalFilters.length === 0) return colaboradoresOperacionais;
+
+    return colaboradoresOperacionais.filter((colaborador) => operacionalFilters.every((filter) => {
+      if (filter === "apenas_pendentes") return colaborador.status_cadastro === "pendente_complemento" || Boolean(colaborador.cadastro_provisorio);
+      if (filter === "bloqueiam_aprovacao") return colaborador.bloqueiaRh;
+      if (filter === "sem_banco") return !getColaboradorBankValidation(colaborador).isValid;
+      if (filter === "sem_contrato") return hasContratoPendente(colaborador);
+      if (filter === "sem_pix") return hasPixPendente(colaborador);
+      if (filter === "criticos") return colaborador.priority === "critico";
+      return true;
+    }));
+  }, [colaboradoresOperacionais, operacionalFilters]);
+
+  const operacionalResumo = useMemo(() => {
+    const total = colaboradoresFiltrados.length;
+    const aguardandoComplemento = colaboradoresFiltrados.filter((item) => item.status_cadastro === "pendente_complemento" || Boolean(item.cadastro_provisorio)).length;
+    const bloqueiamRh = colaboradoresFiltrados.filter((item) => item.bloqueiaRh).length;
+    const bloqueiamFinanceiro = colaboradoresFiltrados.filter((item) => item.bloqueiaFinanceiro).length;
+    const completudeMedia = total > 0
+      ? Math.round(colaboradoresFiltrados.reduce((acc, item) => acc + item.completude, 0) / total)
+      : 0;
+
+    return { aguardandoComplemento, bloqueiamRh, bloqueiamFinanceiro, completudeMedia };
+  }, [colaboradoresFiltrados]);
+
   return (
     <AppShell
       title="Central de Cadastros"
@@ -1802,76 +1933,129 @@ const CentralCadastros = () => {
                       </Button>
                     </div>
                   </div>
+                  <div className="px-5 py-4 border-b border-border space-y-4">
+                    <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
+                      <div className="grid gap-4 md:grid-cols-3">
+                        <div>
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Colaboradores pendentes</p>
+                          <p className="text-2xl font-display font-semibold text-foreground">{operacionalResumo.aguardandoComplemento}</p>
+                          <p className="text-xs text-muted-foreground">aguardando complemento</p>
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Bloqueios</p>
+                          <p className="text-sm text-foreground">{operacionalResumo.bloqueiamRh} bloqueiam RH</p>
+                          <p className="text-sm text-foreground">{operacionalResumo.bloqueiamFinanceiro} bloqueiam financeiro</p>
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Completude cadastral</p>
+                          <p className="text-2xl font-display font-semibold text-foreground">{operacionalResumo.completudeMedia}%</p>
+                          <div className="mt-2 h-2 rounded-full bg-muted">
+                            <div className="h-2 rounded-full bg-primary transition-all" style={{ width: `${operacionalResumo.completudeMedia}%` }} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { key: "apenas_pendentes" as const, label: "Apenas pendentes" },
+                        { key: "bloqueiam_aprovacao" as const, label: "Bloqueiam aprovação" },
+                        { key: "sem_banco" as const, label: "Sem banco" },
+                        { key: "sem_contrato" as const, label: "Sem contrato" },
+                        { key: "sem_pix" as const, label: "Sem PIX" },
+                        { key: "criticos" as const, label: "Críticos" },
+                      ].map((filter) => (
+                        <Button
+                          key={filter.key}
+                          size="sm"
+                          variant="outline"
+                          className={cn(
+                            "rounded-full transition-colors border",
+                            operacionalFilters.includes(filter.key)
+                              ? "bg-muted/50 text-foreground border-border"
+                              : "bg-transparent text-muted-foreground border-dashed border-border/60 hover:bg-muted/30"
+                          )}
+                          onClick={() => toggleOperacionalFilter(filter.key)}
+                        >
+                          {filter.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
                   <div className="max-h-[60vh] overflow-y-scroll pr-1">
                     <table className="w-full text-sm">
                       <thead className="esc-table-header">
                         <tr className="text-left">
-                          <th className="px-5 h-11 font-medium text-center">Nome</th>
-                          <th className="px-3 h-11 font-medium text-center">CPF</th>
-                          <th className="px-3 h-11 font-medium text-center">Telefone</th>
+                          <th className="px-3 h-11 font-medium text-center">Prioridade</th>
+                          <th className="px-5 h-11 font-medium text-left">Colaborador</th>
                           <th className="px-3 h-11 font-medium text-center">Empresa</th>
-                          <th className="px-3 h-11 font-medium text-center">Tipo</th>
-                          <th className="px-3 h-11 font-medium text-center">Cargo</th>
                           <th className="px-3 h-11 font-medium text-center">Contrato</th>
-                          <th className="px-3 h-11 font-medium text-center">Valor base</th>
-                          <th className="px-3 h-11 font-medium text-center">Faturamento</th>
-                          <th className="px-3 h-11 font-medium text-center">Origem</th>
+                          <th className="px-3 h-11 font-medium text-center">Completude</th>
+                          <th className="px-3 h-11 font-medium text-center">Bloqueios</th>
                           <th className="px-5 h-11 font-medium text-center">Status</th>
-                          <th className="px-3 h-11 font-medium text-center">Ações</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {colaboradores.map((colaborador) => (
-                          <tr key={colaborador.id} className="border-t border-muted hover:bg-background">
-                            <td className="px-5 h-[56px] text-center">
-                              <div className="font-medium text-foreground">{colaborador.nome}</div>
-                              <div className="text-xs text-muted-foreground">Mat. {colaborador.matricula}</div>
+                        {colaboradoresFiltrados.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="px-5 py-8 text-center text-muted-foreground">
+                              Nenhum colaborador encontrado com os filtros operacionais atuais.
                             </td>
-                            <td className="px-3 text-muted-foreground font-mono text-xs text-center">{colaborador.cpf || "—"}</td>
-                            <td className="px-3 text-muted-foreground text-center">{colaborador.telefone || "—"}</td>
-                            <td className="px-3 text-muted-foreground text-center">{colaborador.empresas?.nome || "—"}</td>
-                            <td className="px-3 text-muted-foreground text-center">{colaborador.tipo_colaborador || "—"}</td>
-                            <td className="px-3 text-muted-foreground text-center">{colaborador.cargo || "—"}</td>
-                            <td className="px-3 text-center">{colaborador.tipo_contrato}</td>
-                            <td className="px-3 font-display font-medium text-center">
-                              R$ {Number(colaborador.valor_base || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                            </td>
-                            <td className="px-3 text-center">{colaborador.flag_faturamento ? "Sim" : "Não"}</td>
+                          </tr>
+                        ) : colaboradoresFiltrados.map((colaborador) => (
+                          <tr
+                            key={colaborador.id}
+                            className="border-t border-border/50 hover:bg-muted/30 transition-colors cursor-pointer group"
+                            onClick={() => setSelectedColaboradorDrawer(colaborador)}
+                          >
                             <td className="px-3 text-center">
-                              <Badge className={cn("font-semibold", getColaboradorOrigemMeta(colaborador).className)}>
-                                {getColaboradorOrigemMeta(colaborador).label}
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  "font-medium border tracking-tight shadow-none",
+                                  colaborador.priority === "critico" && "bg-rose-50 text-rose-700 border-rose-200",
+                                  colaborador.priority === "atencao" && "bg-amber-50 text-amber-700 border-amber-200",
+                                  colaborador.priority === "ok" && "bg-slate-50 text-slate-600 border-slate-200",
+                                )}
+                              >
+                                {colaborador.priority === "critico" ? "Crítico" : colaborador.priority === "atencao" ? "Atenção" : "OK"}
                               </Badge>
                             </td>
-                            <td className="px-5 text-center">
-                              <StatusChip
-                                status={getColaboradorStatusMeta(colaborador).status}
-                                label={getColaboradorStatusMeta(colaborador).label}
-                              />
-                            </td>
-                            <td className="px-3 text-center">
-                              <div className="flex items-center justify-center gap-1">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8"
-                                  onClick={() =>
-                                    setEditingColaborador({
-                                      ...colaborador,
-                                      telefone: formatPhoneForDisplayCC(colaborador.telefone || ""),
-                                      nome_completo: colaborador.nome_completo || "",
-                                      conta_digito: colaborador.conta_digito || colaborador.digito_conta || "",
-                                      digito_conta: colaborador.digito_conta || colaborador.conta_digito || "",
-                                      chave_pix: colaborador.chave_pix || "",
-                                      banco_validado: colaborador.banco_validado ?? false,
-                                    })
-                                  }
-                                >
-                                  <PencilLine className="h-4 w-4" />
-                                </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => { if (confirm("Confirmar exclusão?")) deleteColaboradorMutation.mutate(colaborador.id) }}>
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
+                            <td className="px-5 h-[56px] text-left">
+                              <div className="font-semibold text-foreground">{colaborador.nome}</div>
+                              <div className="text-[11px] text-muted-foreground/70 uppercase font-mono tracking-wide">
+                                Mat. {colaborador.matricula || "S/N"}
                               </div>
+                            </td>
+                            <td className="px-3 text-muted-foreground text-center">{colaborador.empresas?.nome || "—"}</td>
+                            <td className="px-3 text-center font-medium">{colaborador.tipo_contrato}</td>
+                            <td className="px-3 text-center font-display font-medium">{colaborador.completude}%</td>
+                            <td className="px-3 text-center">
+                              <div className="flex flex-wrap items-center justify-center gap-1">
+                                {colaborador.bloqueios.length > 0 ? (
+                                  colaborador.bloqueios.map(b => (
+                                    <Badge key={b} variant="outline" className={cn(
+                                      "text-[10px] uppercase font-semibold h-5 px-1.5",
+                                      b === "RH" ? "bg-purple-50 text-purple-700 border-purple-200" : "bg-blue-50 text-blue-700 border-blue-200"
+                                    )}>
+                                      {b}
+                                    </Badge>
+                                  ))
+                                ) : (
+                                  <span className="text-muted-foreground text-xs">—</span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-5 text-center">
+                              {getColaboradorStatusMeta(colaborador).status === "pendente" ? (
+                                <Badge className="bg-amber-500 text-amber-950 hover:bg-amber-600 font-semibold shadow-none border-transparent">
+                                  Aguardando complemento
+                                </Badge>
+                              ) : (
+                                <StatusChip
+                                  status={getColaboradorStatusMeta(colaborador).status}
+                                  label={getColaboradorStatusMeta(colaborador).label}
+                                />
+                              )}
                             </td>
                           </tr>
                         ))}
@@ -1879,6 +2063,128 @@ const CentralCadastros = () => {
                     </table>
                   </div>
                 </section>
+
+                {/* Drawer Operacional do Colaborador */}
+                <Sheet open={!!selectedColaboradorDrawer} onOpenChange={(open) => !open && setSelectedColaboradorDrawer(null)}>
+                  <SheetContent side="right" className="w-[400px] sm:w-[540px] overflow-y-auto bg-background p-0 border-l border-border/50">
+                    {selectedColaboradorDrawer && (
+                      <div className="flex flex-col min-h-full">
+                        <div className="px-6 py-5 border-b border-border/50 bg-muted/20">
+                          <SheetHeader className="text-left">
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <SheetTitle className="text-xl font-display">{selectedColaboradorDrawer.nome}</SheetTitle>
+                                <div className="text-sm text-muted-foreground font-mono mt-1">
+                                  Matrícula: {selectedColaboradorDrawer.matricula || "S/N"} • {selectedColaboradorDrawer.cpf ? "CPF preenchido" : "Sem CPF"}
+                                </div>
+                              </div>
+                              <Badge className={cn("font-semibold", getColaboradorOrigemMeta(selectedColaboradorDrawer).className)}>
+                                {getColaboradorOrigemMeta(selectedColaboradorDrawer).label}
+                              </Badge>
+                            </div>
+                          </SheetHeader>
+                        </div>
+
+                        <div className="flex-1 p-6 space-y-8">
+                          {/* Completude & Bloqueios */}
+                          <div className="space-y-4">
+                            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Saúde do Cadastro</h3>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="p-4 rounded-xl border border-border/50 bg-muted/10 hover:bg-muted/30 transition-colors">
+                                <div className="text-xs text-muted-foreground mb-1">Completude</div>
+                                <div className="text-2xl font-display font-semibold">
+                                  {selectedColaboradorDrawer.completude}%
+                                </div>
+                                <div className="mt-2 h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                                  <div className="h-full bg-primary" style={{ width: `${selectedColaboradorDrawer.completude}%` }} />
+                                </div>
+                              </div>
+                              <div className="p-4 rounded-xl border border-border/50 bg-muted/10 hover:bg-muted/30 transition-colors">
+                                <div className="text-xs text-muted-foreground mb-2">Status Operacional</div>
+                                <div>
+                                  {getColaboradorStatusMeta(selectedColaboradorDrawer).status === "pendente" ? (
+                                    <Badge className="bg-amber-500 text-amber-950 hover:bg-amber-600 font-semibold shadow-none border-transparent">
+                                      Aguardando complemento
+                                    </Badge>
+                                  ) : (
+                                    <StatusChip
+                                      status={getColaboradorStatusMeta(selectedColaboradorDrawer).status}
+                                      label={getColaboradorStatusMeta(selectedColaboradorDrawer).label}
+                                    />
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Impacto RH/Financeiro */}
+                          {selectedColaboradorDrawer.bloqueios.length > 0 && (
+                            <div className="space-y-3">
+                              <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Impacto Operacional</h3>
+                              <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4 flex gap-3 items-start">
+                                <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+                                <div>
+                                  <div className="font-medium text-destructive">Bloqueios ativos</div>
+                                  <div className="text-sm text-destructive/80 mt-1">
+                                    Este cadastro impede aprovações e ações fechadas no {selectedColaboradorDrawer.bloqueios.join(" e ")}.
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Detalhes Operacionais */}
+                          <div className="space-y-3">
+                            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Dados Relevantes</h3>
+                            <div className="rounded-xl border border-border/50 divide-y divide-border/50 bg-muted/5">
+                              <div className="flex justify-between p-3 text-sm">
+                                <span className="text-muted-foreground">Empresa</span>
+                                <span className="font-medium">{selectedColaboradorDrawer.empresas?.nome || "Não vinculada"}</span>
+                              </div>
+                              <div className="flex justify-between p-3 text-sm">
+                                <span className="text-muted-foreground">Telefone</span>
+                                <span className="font-medium">{selectedColaboradorDrawer.telefone || "Não informado"}</span>
+                              </div>
+                              <div className="flex justify-between p-3 text-sm">
+                                <span className="text-muted-foreground">Tipo e Contrato</span>
+                                <span className="font-medium">{selectedColaboradorDrawer.tipo_colaborador} / {selectedColaboradorDrawer.tipo_contrato || "N/D"}</span>
+                              </div>
+                              <div className="flex justify-between p-3 text-sm">
+                                <span className="text-muted-foreground">Função/Cargo</span>
+                                <span className="font-medium">{selectedColaboradorDrawer.cargo || "Não definido"}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="p-6 border-t border-border/50 bg-muted/20 flex justify-end gap-3 mt-auto sticky top-[100vh]">
+                          <Button variant="outline" onClick={() => {
+                            if (confirm("Confirmar exclusão desta pessoa?")) {
+                              deleteColaboradorMutation.mutate(selectedColaboradorDrawer.id);
+                              setSelectedColaboradorDrawer(null);
+                            }
+                          }}>
+                            Remover
+                          </Button>
+                          <Button onClick={() => {
+                            setEditingColaborador({
+                              ...selectedColaboradorDrawer,
+                              telefone: formatPhoneForDisplayCC(selectedColaboradorDrawer.telefone || ""),
+                              nome_completo: selectedColaboradorDrawer.nome_completo || "",
+                              conta_digito: selectedColaboradorDrawer.conta_digito || selectedColaboradorDrawer.digito_conta || "",
+                              digito_conta: selectedColaboradorDrawer.digito_conta || selectedColaboradorDrawer.conta_digito || "",
+                              chave_pix: selectedColaboradorDrawer.chave_pix || "",
+                              banco_validado: selectedColaboradorDrawer.banco_validado ?? false,
+                            });
+                            setSelectedColaboradorDrawer(null);
+                          }}>
+                            Editar Cadastro
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </SheetContent>
+                </Sheet>
               </TabsContent>
 
               <TabsContent value="empresas" className="space-y-4 min-h-[400px]">
@@ -2707,67 +3013,67 @@ const CentralCadastros = () => {
                         O titular acompanha automaticamente o nome do colaborador neste cadastro.
                       </p>
                     </div>
-                    <Badge className={cn("font-semibold", colaboradorBankBadgeUi.className)}>
-                      <colaboradorBankBadgeUi.Icon className="mr-1 h-3.5 w-3.5" />
+                    <Badge className={cn("px-1.5 py-0 text-xs font-medium", colaboradorBankBadgeUi.className)}>
+                      <colaboradorBankBadgeUi.Icon className="mr-1 h-3 w-3" />
                       {colaboradorBankBadgeUi.label}
                     </Badge>
                   </div>
-                  <div className="mt-4 grid gap-3 rounded-xl border border-border bg-background/70 px-4 py-3 md:grid-cols-2">
+                  <div className="mt-3 grid gap-2 rounded-xl border border-border bg-background/70 px-3 py-2 md:grid-cols-2">
                     {colaboradorBankValidation.checklist.map((item) => (
-                      <div key={item.key} className={cn("flex items-center gap-2 text-sm", item.optional ? "text-slate-400" : "text-muted-foreground")}>
-                        {item.done ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <Circle className={cn("h-4 w-4", item.optional ? "text-slate-300" : "text-amber-500")} />}
+                      <div key={item.key} className={cn("flex items-center gap-1.5 text-xs", item.optional ? "text-slate-400" : "text-muted-foreground")}>
+                        {item.done ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> : <Circle className={cn("h-3.5 w-3.5", item.optional ? "text-slate-300" : "text-amber-500")} />}
                         <span className={cn(item.done && "text-foreground", item.optional && !item.done && "text-slate-400")}>
                           {item.label}
                         </span>
                       </div>
                     ))}
                   </div>
-                  <div className="mt-4 grid grid-cols-2 gap-3">
-                    <div className="col-span-2 space-y-1">
-                      <Label>Titular da conta</Label>
-                      <Input value={colaboradorForm.nome} readOnly aria-readonly="true" className="h-9 cursor-not-allowed border-dashed bg-muted px-3 text-muted-foreground" />
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <div className="col-span-2 space-y-0.5">
+                      <Label className="text-xs">Titular da conta</Label>
+                      <Input value={colaboradorForm.nome} readOnly aria-readonly="true" className="h-8 cursor-not-allowed border-dashed bg-muted px-2 text-xs text-muted-foreground" />
                     </div>
-                    <div className="space-y-1">
-                      <Label>Banco <span className="text-destructive">*</span></Label>
+                    <div className="space-y-0.5">
+                      <Label className="text-xs">Banco <span className="text-destructive">*</span></Label>
                       <Select value={colaboradorForm.banco_codigo} onValueChange={(value) => setColaboradorForm({ ...colaboradorForm, banco_codigo: value })}>
-                        <SelectTrigger className={cn("h-9", getBankFieldError(colaboradorBankValidation, "banco_codigo") && "border-rose-300 focus:ring-rose-200")}><SelectValue placeholder="Selecione o banco" /></SelectTrigger>
+                        <SelectTrigger className={cn("h-8 text-xs", getBankFieldError(colaboradorBankValidation, "banco_codigo") && "border-rose-300 focus:ring-rose-200")}><SelectValue placeholder="Selecione" /></SelectTrigger>
                         <SelectContent>
                           {BANK_OPTIONS.map((bank) => (
                             <SelectItem key={bank.code} value={bank.code}>{bank.code} - {bank.name}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
-                      {getBankFieldError(colaboradorBankValidation, "banco_codigo") ? <p className="text-[11px] text-rose-500">{getBankFieldError(colaboradorBankValidation, "banco_codigo")}</p> : null}
+                      {getBankFieldError(colaboradorBankValidation, "banco_codigo") ? <p className="text-[10px] text-rose-500">{getBankFieldError(colaboradorBankValidation, "banco_codigo")}</p> : null}
                     </div>
-                    <div className="space-y-1">
-                      <Label>Tipo de conta <span className="text-destructive">*</span></Label>
+                    <div className="space-y-0.5">
+                      <Label className="text-xs">Tipo de conta <span className="text-destructive">*</span></Label>
                       <Select value={colaboradorForm.tipo_conta} onValueChange={(v) => setColaboradorForm({ ...colaboradorForm, tipo_conta: v })}>
-                        <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                        <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="corrente">Conta corrente</SelectItem>
-                          <SelectItem value="poupanca">Conta poupança</SelectItem>
+                          <SelectItem value="corrente">Corrente</SelectItem>
+                          <SelectItem value="poupanca">Poupança</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="space-y-1">
-                      <Label>Agência <span className="text-destructive">*</span></Label>
-                      <div className="flex gap-2">
-                        <Input value={colaboradorForm.agencia} onChange={(e) => setColaboradorForm({ ...colaboradorForm, agencia: onlyDigits(e.target.value) })} className={cn("h-9 flex-1 px-3", getBankFieldError(colaboradorBankValidation, "agencia") && "border-rose-300 focus:ring-rose-200")} placeholder="Ex.: 1234" />
-                        <Input value={colaboradorForm.agencia_digito} onChange={(e) => setColaboradorForm({ ...colaboradorForm, agencia_digito: normalizeAccountDigit(e.target.value) })} className={cn("h-9 w-16 px-3", getBankFieldError(colaboradorBankValidation, "agencia_digito") && "border-rose-300 focus:ring-rose-200")} placeholder="DV" />
+                    <div className="space-y-0.5">
+                      <Label className="text-xs">Agência <span className="text-destructive">*</span></Label>
+                      <div className="flex gap-1">
+                        <Input value={colaboradorForm.agencia} onChange={(e) => setColaboradorForm({ ...colaboradorForm, agencia: onlyDigits(e.target.value) })} className={cn("h-8 flex-1 px-2 text-xs", getBankFieldError(colaboradorBankValidation, "agencia") && "border-rose-300 focus:ring-rose-200")} placeholder="Agência" />
+                        <Input value={colaboradorForm.agencia_digito} onChange={(e) => setColaboradorForm({ ...colaboradorForm, agencia_digito: normalizeAccountDigit(e.target.value) })} className={cn("h-8 w-12 px-1 text-center text-xs", getBankFieldError(colaboradorBankValidation, "agencia_digito") && "border-rose-300 focus:ring-rose-200")} placeholder="Díg." />
                       </div>
-                      {getBankFieldError(colaboradorBankValidation, "agencia") || getBankFieldError(colaboradorBankValidation, "agencia_digito") ? <p className="text-[11px] text-rose-500">{getBankFieldError(colaboradorBankValidation, "agencia") || getBankFieldError(colaboradorBankValidation, "agencia_digito")}</p> : null}
+                      {getBankFieldError(colaboradorBankValidation, "agencia") || getBankFieldError(colaboradorBankValidation, "agencia_digito") ? <p className="text-[10px] text-rose-500">{getBankFieldError(colaboradorBankValidation, "agencia") || getBankFieldError(colaboradorBankValidation, "agencia_digito")}</p> : null}
                     </div>
-                    <div className="space-y-1">
-                      <Label>Conta <span className="text-destructive">*</span></Label>
-                      <div className="flex gap-2">
-                        <Input value={colaboradorForm.conta} onChange={(e) => setColaboradorForm({ ...colaboradorForm, conta: onlyDigits(e.target.value) })} className={cn("h-9 flex-1 px-3", getBankFieldError(colaboradorBankValidation, "conta") && "border-rose-300 focus:ring-rose-200")} placeholder="Número da conta" />
-                        <Input value={colaboradorForm.conta_digito} onChange={(e) => setColaboradorForm({ ...colaboradorForm, conta_digito: normalizeAccountDigit(e.target.value) })} className={cn("h-9 w-16 px-3", getBankFieldError(colaboradorBankValidation, "conta_digito") && "border-rose-300 focus:ring-rose-200")} placeholder="DV" />
+                    <div className="space-y-0.5">
+                      <Label className="text-xs">Conta <span className="text-destructive">*</span></Label>
+                      <div className="flex gap-1">
+                        <Input value={colaboradorForm.conta} onChange={(e) => setColaboradorForm({ ...colaboradorForm, conta: onlyDigits(e.target.value) })} className={cn("h-8 flex-1 px-2 text-xs", getBankFieldError(colaboradorBankValidation, "conta") && "border-rose-300 focus:ring-rose-200")} placeholder="Conta" />
+                        <Input value={colaboradorForm.conta_digito} onChange={(e) => setColaboradorForm({ ...colaboradorForm, conta_digito: normalizeAccountDigit(e.target.value) })} className={cn("h-8 w-12 px-1 text-center text-xs", getBankFieldError(colaboradorBankValidation, "conta_digito") && "border-rose-300 focus:ring-rose-200")} placeholder="Díg." />
                       </div>
-                      {getBankFieldError(colaboradorBankValidation, "conta") || getBankFieldError(colaboradorBankValidation, "conta_digito") ? <p className="text-[11px] text-rose-500">{getBankFieldError(colaboradorBankValidation, "conta") || getBankFieldError(colaboradorBankValidation, "conta_digito")}</p> : null}
+                      {getBankFieldError(colaboradorBankValidation, "conta") || getBankFieldError(colaboradorBankValidation, "conta_digito") ? <p className="text-[10px] text-rose-500">{getBankFieldError(colaboradorBankValidation, "conta") || getBankFieldError(colaboradorBankValidation, "conta_digito")}</p> : null}
                     </div>
-                    <div className="col-span-2 space-y-1">
-                      <Label>Pix <span className="text-muted-foreground">(opcional)</span></Label>
-                      <Input value={colaboradorForm.chave_pix || ""} onChange={(e) => setColaboradorForm({ ...colaboradorForm, chave_pix: e.target.value })} className="h-9 px-3" placeholder="CPF, e-mail, telefone ou chave aleatória" />
+                    <div className="col-span-2 space-y-0.5">
+                      <Label className="text-xs">Pix <span className="text-muted-foreground">(opcional)</span></Label>
+                      <Input value={colaboradorForm.chave_pix || ""} onChange={(e) => setColaboradorForm({ ...colaboradorForm, chave_pix: e.target.value })} className="h-8 px-2 text-xs" placeholder="Chave Pix" />
                     </div>
                   </div>
                 </div>
@@ -3408,11 +3714,11 @@ const CentralCadastros = () => {
                   <div className="flex flex-wrap items-start gap-3">
                     <div className="min-w-[220px] flex-1">
                       <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Colaborador</p>
-                      <p className="mt-1 text-sm font-semibold text-foreground">{editingColaborador?.nome || "Nome não informado"}</p>
+                      <p className="mt-0.5 text-base font-bold text-foreground">{editingColaborador?.nome || "Nome não informado"}</p>
                     </div>
                     <div className="min-w-[120px]">
                       <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Matrícula</p>
-                      <p className="mt-1 text-sm text-foreground">{editingColaborador?.matricula || "Não informada"}</p>
+                      <p className="mt-0.5 text-xs text-foreground">{editingColaborador?.matricula || "Não informada"}</p>
                     </div>
                     <div className="min-w-[180px]">
                       <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Empresa</p>
@@ -3434,16 +3740,16 @@ const CentralCadastros = () => {
                       O titular da conta acompanha automaticamente o nome do colaborador neste cadastro.
                     </p>
                   </div>
-                  <Badge className={cn("font-semibold", editingColaboradorBankBadgeUi.className)}>
-                    <editingColaboradorBankBadgeUi.Icon className="mr-1 h-3.5 w-3.5" />
+                  <Badge className={cn("px-1.5 py-0 text-xs font-medium", editingColaboradorBankBadgeUi.className)}>
+                    <editingColaboradorBankBadgeUi.Icon className="mr-1 h-3 w-3" />
                     {editingColaboradorBankBadgeUi.label}
                   </Badge>
                 </div>
 
-                <div className="mt-4 grid gap-3 rounded-xl border border-border bg-background/70 px-4 py-3 md:grid-cols-2">
+                <div className="mt-3 grid gap-2 rounded-xl border border-border bg-background/70 px-3 py-2 md:grid-cols-2">
                   {editingColaboradorBankValidation.checklist.map((item) => (
-                    <div key={item.key} className={cn("flex items-center gap-2 text-sm", item.optional ? "text-slate-400" : "text-muted-foreground")}>
-                      {item.done ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <Circle className={cn("h-4 w-4", item.optional ? "text-slate-300" : "text-amber-500")} />}
+                    <div key={item.key} className={cn("flex items-center gap-1.5 text-xs", item.optional ? "text-slate-400" : "text-muted-foreground")}>
+                      {item.done ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> : <Circle className={cn("h-3.5 w-3.5", item.optional ? "text-slate-300" : "text-amber-500")} />}
                       <span className={cn(item.done && "text-foreground", item.optional && !item.done && "text-slate-400")}>
                         {item.label}
                       </span>
@@ -3451,190 +3757,190 @@ const CentralCadastros = () => {
                   ))}
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <div className="col-span-2 space-y-1">
-                    <Label>Titular da conta</Label>
-                    <Input value={editingColaborador?.nome || ""} readOnly aria-readonly="true" className="h-9 cursor-not-allowed border-dashed bg-muted px-3 text-muted-foreground" />
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <div className="col-span-2 space-y-0.5">
+                    <Label className="text-xs">Titular da conta</Label>
+                    <Input value={editingColaborador?.nome || ""} readOnly aria-readonly="true" className="h-8 cursor-not-allowed border-dashed bg-muted px-2 text-xs text-muted-foreground" />
                   </div>
-                  <div className="space-y-1">
-                    <Label>Banco</Label>
+                  <div className="space-y-0.5">
+                    <Label className="text-xs">Banco <span className="text-destructive">*</span></Label>
                     <Select
                       value={editingColaborador?.banco_codigo || ""}
                       onValueChange={(value) => setEditingColaborador({ ...editingColaborador, banco_codigo: value })}
                     >
-                      <SelectTrigger className={cn("h-9", getBankFieldError(editingColaboradorBankValidation, "banco_codigo") && "border-rose-300 focus:ring-rose-200")}><SelectValue placeholder="Selecione o banco" /></SelectTrigger>
+                      <SelectTrigger className={cn("h-8 text-xs", getBankFieldError(editingColaboradorBankValidation, "banco_codigo") && "border-rose-300 focus:ring-rose-200")}><SelectValue placeholder="Selecione" /></SelectTrigger>
                       <SelectContent>
                         {BANK_OPTIONS.map((bank) => (
                           <SelectItem key={bank.code} value={bank.code}>{bank.code} - {bank.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                    {getBankFieldError(editingColaboradorBankValidation, "banco_codigo") ? <p className="text-[11px] text-rose-500">{getBankFieldError(editingColaboradorBankValidation, "banco_codigo")}</p> : null}
+                    {getBankFieldError(editingColaboradorBankValidation, "banco_codigo") ? <p className="text-[10px] text-rose-500">{getBankFieldError(editingColaboradorBankValidation, "banco_codigo")}</p> : null}
                   </div>
-                  <div className="space-y-1">
-                    <Label>Tipo de conta</Label>
+                  <div className="space-y-0.5">
+                    <Label className="text-xs">Tipo de conta <span className="text-destructive">*</span></Label>
                     <Select
                       value={editingColaborador?.tipo_conta || "corrente"}
                       onValueChange={(v) => setEditingColaborador({ ...editingColaborador, tipo_conta: v })}
                     >
-                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="corrente">Conta corrente</SelectItem>
-                        <SelectItem value="poupanca">Conta poupança</SelectItem>
+                        <SelectItem value="corrente">Corrente</SelectItem>
+                        <SelectItem value="poupanca">Poupança</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-1">
-                    <Label>Agência</Label>
-                    <div className="flex gap-2">
-                      <Input value={editingColaborador?.agencia || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, agencia: onlyDigits(e.target.value) })} className={cn("h-9 flex-1 px-3", getBankFieldError(editingColaboradorBankValidation, "agencia") && "border-rose-300 focus:ring-rose-200")} placeholder="Ex.: 1234" />
-                      <Input value={editingColaborador?.agencia_digito || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, agencia_digito: normalizeAccountDigit(e.target.value) })} className={cn("h-9 w-16 px-3", getBankFieldError(editingColaboradorBankValidation, "agencia_digito") && "border-rose-300 focus:ring-rose-200")} placeholder="DV" />
+                  <div className="space-y-0.5">
+                    <Label className="text-xs">Agência <span className="text-destructive">*</span></Label>
+                    <div className="flex gap-1">
+                      <Input value={editingColaborador?.agencia || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, agencia: onlyDigits(e.target.value) })} className={cn("h-8 flex-1 px-2 text-xs", getBankFieldError(editingColaboradorBankValidation, "agencia") && "border-rose-300 focus:ring-rose-200")} placeholder="Agência" />
+                      <Input value={editingColaborador?.agencia_digito || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, agencia_digito: normalizeAccountDigit(e.target.value) })} className={cn("h-8 w-12 px-1 text-center text-xs", getBankFieldError(editingColaboradorBankValidation, "agencia_digito") && "border-rose-300 focus:ring-rose-200")} placeholder="Díg." />
                     </div>
-                    {getBankFieldError(editingColaboradorBankValidation, "agencia") || getBankFieldError(editingColaboradorBankValidation, "agencia_digito") ? <p className="text-[11px] text-rose-500">{getBankFieldError(editingColaboradorBankValidation, "agencia") || getBankFieldError(editingColaboradorBankValidation, "agencia_digito")}</p> : null}
+                    {getBankFieldError(editingColaboradorBankValidation, "agencia") || getBankFieldError(editingColaboradorBankValidation, "agencia_digito") ? <p className="text-[10px] text-rose-500">{getBankFieldError(editingColaboradorBankValidation, "agencia") || getBankFieldError(editingColaboradorBankValidation, "agencia_digito")}</p> : null}
                   </div>
-                  <div className="space-y-1">
-                    <Label>Conta</Label>
-                    <div className="flex gap-2">
-                      <Input value={editingColaborador?.conta || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, conta: onlyDigits(e.target.value) })} className={cn("h-9 flex-1 px-3", getBankFieldError(editingColaboradorBankValidation, "conta") && "border-rose-300 focus:ring-rose-200")} placeholder="Número da conta" />
-                      <Input value={editingColaborador?.conta_digito || editingColaborador?.digito_conta || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, conta_digito: normalizeAccountDigit(e.target.value), digito_conta: normalizeAccountDigit(e.target.value) })} className={cn("h-9 w-16 px-3", getBankFieldError(editingColaboradorBankValidation, "conta_digito") && "border-rose-300 focus:ring-rose-200")} placeholder="DV" />
+                  <div className="space-y-0.5">
+                    <Label className="text-xs">Conta <span className="text-destructive">*</span></Label>
+                    <div className="flex gap-1">
+                      <Input value={editingColaborador?.conta || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, conta: onlyDigits(e.target.value) })} className={cn("h-8 flex-1 px-2 text-xs", getBankFieldError(editingColaboradorBankValidation, "conta") && "border-rose-300 focus:ring-rose-200")} placeholder="Conta" />
+                      <Input value={editingColaborador?.conta_digito || editingColaborador?.digito_conta || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, conta_digito: normalizeAccountDigit(e.target.value), digito_conta: normalizeAccountDigit(e.target.value) })} className={cn("h-8 w-12 px-1 text-center text-xs", getBankFieldError(editingColaboradorBankValidation, "conta_digito") && "border-rose-300 focus:ring-rose-200")} placeholder="Díg." />
                     </div>
-                    {getBankFieldError(editingColaboradorBankValidation, "conta") || getBankFieldError(editingColaboradorBankValidation, "conta_digito") ? <p className="text-[11px] text-rose-500">{getBankFieldError(editingColaboradorBankValidation, "conta") || getBankFieldError(editingColaboradorBankValidation, "conta_digito")}</p> : null}
+                    {getBankFieldError(editingColaboradorBankValidation, "conta") || getBankFieldError(editingColaboradorBankValidation, "conta_digito") ? <p className="text-[10px] text-rose-500">{getBankFieldError(editingColaboradorBankValidation, "conta") || getBankFieldError(editingColaboradorBankValidation, "conta_digito")}</p> : null}
                   </div>
-                  <div className="col-span-2 space-y-1">
-                    <Label>Pix <span className="text-muted-foreground">(opcional)</span></Label>
-                    <Input value={editingColaborador?.chave_pix || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, chave_pix: e.target.value })} className="h-9 px-3" placeholder="CPF, e-mail, telefone ou chave aleatória" />
+                  <div className="col-span-2 space-y-0.5">
+                    <Label className="text-xs">Pix <span className="text-muted-foreground">(opcional)</span></Label>
+                    <Input value={editingColaborador?.chave_pix || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, chave_pix: e.target.value })} className="h-8 px-2 text-xs" placeholder="Chave Pix" />
                   </div>
                 </div>
 
                 {false && (
                   <>
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <h3 className="font-medium text-foreground">Dados Bancários</h3>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {editingColaborador?.tipo_colaborador === "DIARISTA"
-                          ? "Use esta seção para manter os dados bancários no mesmo padrão usado em CNAB e pagamentos."
-                          : "Você pode salvar o cadastro básico agora. O status só sai de pendente quando os campos bancários obrigatórios estiverem completos."}
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h3 className="font-medium text-foreground">Dados Bancários</h3>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {editingColaborador?.tipo_colaborador === "DIARISTA"
+                            ? "Use esta seção para manter os dados bancários no mesmo padrão usado em CNAB e pagamentos."
+                            : "Você pode salvar o cadastro básico agora. O status só sai de pendente quando os campos bancários obrigatórios estiverem completos."}
+                        </p>
+                      </div>
+                      <Badge
+                        className={cn(
+                          "font-semibold",
+                          editingColaborador?.tipo_colaborador !== "DIARISTA" && editingColaboradorPendenciasBancarias.length > 0
+                            ? "bg-warning-soft text-warning-strong"
+                            : "bg-success-soft text-success-strong"
+                        )}
+                      >
+                        {editingColaborador?.tipo_colaborador !== "DIARISTA" && editingColaboradorPendenciasBancarias.length > 0
+                          ? "Pendência bancária"
+                          : "Dados bancários"}
+                      </Badge>
+                    </div>
+
+                    {editingColaborador?.tipo_colaborador !== "DIARISTA" && editingColaboradorPendenciasBancarias.length > 0 && (
+                      <p className="mt-3 text-xs text-warning-strong">
+                        Faltando: {editingColaboradorPendenciasBancarias.join(", ")}.
                       </p>
-                    </div>
-                    <Badge
-                      className={cn(
-                        "font-semibold",
-                        editingColaborador?.tipo_colaborador !== "DIARISTA" && editingColaboradorPendenciasBancarias.length > 0
-                          ? "bg-warning-soft text-warning-strong"
-                          : "bg-success-soft text-success-strong"
-                      )}
-                    >
-                      {editingColaborador?.tipo_colaborador !== "DIARISTA" && editingColaboradorPendenciasBancarias.length > 0
-                        ? "Pendência bancária"
-                        : "Dados bancários"}
-                    </Badge>
-                  </div>
+                    )}
 
-                  {editingColaborador?.tipo_colaborador !== "DIARISTA" && editingColaboradorPendenciasBancarias.length > 0 && (
-                    <p className="mt-3 text-xs text-warning-strong">
-                      Faltando: {editingColaboradorPendenciasBancarias.join(", ")}.
-                    </p>
-                  )}
-
-                  <div className="mt-4 grid grid-cols-2 gap-4">
-                    <div className="col-span-2 space-y-1.5">
-                      <Label htmlFor="edit_colab_nome_bancario">Nome bancário</Label>
-                      <Input
-                        id="edit_colab_nome_bancario"
-                        value={editingColaborador?.nome_completo || ""}
-                        onChange={(e) => setEditingColaborador({ ...editingColaborador, nome_completo: e.target.value })}
-                        placeholder="Nome do titular como consta na conta"
-                      />
+                    <div className="mt-4 grid grid-cols-2 gap-4">
+                      <div className="col-span-2 space-y-1.5">
+                        <Label htmlFor="edit_colab_nome_bancario">Nome bancário</Label>
+                        <Input
+                          id="edit_colab_nome_bancario"
+                          value={editingColaborador?.nome_completo || ""}
+                          onChange={(e) => setEditingColaborador({ ...editingColaborador, nome_completo: e.target.value })}
+                          placeholder="Nome do titular como consta na conta"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="edit_colab_banco_codigo">Banco/código</Label>
+                        <Input
+                          id="edit_colab_banco_codigo"
+                          value={editingColaborador?.banco_codigo || ""}
+                          onChange={(e) => setEditingColaborador({ ...editingColaborador, banco_codigo: e.target.value.replace(/\D/g, "") })}
+                          placeholder="Ex: 341"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Tipo de conta</Label>
+                        <Select
+                          value={editingColaborador?.tipo_conta || "corrente"}
+                          onValueChange={(v) => setEditingColaborador({ ...editingColaborador, tipo_conta: v })}
+                        >
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="corrente">Corrente</SelectItem>
+                            <SelectItem value="poupanca">Poupança</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="edit_colab_agencia">Agência</Label>
+                        <Input
+                          id="edit_colab_agencia"
+                          value={editingColaborador?.agencia || ""}
+                          onChange={(e) => setEditingColaborador({ ...editingColaborador, agencia: e.target.value.replace(/\D/g, "") })}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="edit_colab_agencia_digito">Dígito agência</Label>
+                        <Input
+                          id="edit_colab_agencia_digito"
+                          value={editingColaborador?.agencia_digito || ""}
+                          onChange={(e) => setEditingColaborador({ ...editingColaborador, agencia_digito: e.target.value.toUpperCase() })}
+                          placeholder="Ex: 0 ou X"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="edit_colab_conta">Conta</Label>
+                        <Input
+                          id="edit_colab_conta"
+                          value={editingColaborador?.conta || ""}
+                          onChange={(e) => setEditingColaborador({ ...editingColaborador, conta: e.target.value.replace(/\D/g, "") })}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="edit_colab_conta_digito">Dígito conta</Label>
+                        <Input
+                          id="edit_colab_conta_digito"
+                          value={editingColaborador?.conta_digito || editingColaborador?.digito_conta || ""}
+                          onChange={(e) =>
+                            setEditingColaborador({
+                              ...editingColaborador,
+                              conta_digito: e.target.value.toUpperCase(),
+                              digito_conta: e.target.value.toUpperCase(),
+                            })
+                          }
+                          placeholder="Ex: 5 ou X"
+                        />
+                      </div>
+                      <div className="col-span-2 space-y-1.5">
+                        <Label htmlFor="edit_colab_chave_pix">Chave Pix</Label>
+                        <Input
+                          id="edit_colab_chave_pix"
+                          value={editingColaborador?.chave_pix || ""}
+                          onChange={(e) => setEditingColaborador({ ...editingColaborador, chave_pix: e.target.value })}
+                          placeholder="CPF, e-mail, telefone ou chave aleatória"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Banco validado?</Label>
+                        <Select
+                          value={editingColaborador?.banco_validado ? "sim" : "nao"}
+                          onValueChange={(v) => setEditingColaborador({ ...editingColaborador, banco_validado: v === "sim" })}
+                        >
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="sim">Sim</SelectItem>
+                            <SelectItem value="nao">Não</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="edit_colab_banco_codigo">Banco/código</Label>
-                      <Input
-                        id="edit_colab_banco_codigo"
-                        value={editingColaborador?.banco_codigo || ""}
-                        onChange={(e) => setEditingColaborador({ ...editingColaborador, banco_codigo: e.target.value.replace(/\D/g, "") })}
-                        placeholder="Ex: 341"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Tipo de conta</Label>
-                      <Select
-                        value={editingColaborador?.tipo_conta || "corrente"}
-                        onValueChange={(v) => setEditingColaborador({ ...editingColaborador, tipo_conta: v })}
-                      >
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="corrente">Corrente</SelectItem>
-                          <SelectItem value="poupanca">Poupança</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="edit_colab_agencia">Agência</Label>
-                      <Input
-                        id="edit_colab_agencia"
-                        value={editingColaborador?.agencia || ""}
-                        onChange={(e) => setEditingColaborador({ ...editingColaborador, agencia: e.target.value.replace(/\D/g, "") })}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="edit_colab_agencia_digito">Dígito agência</Label>
-                      <Input
-                        id="edit_colab_agencia_digito"
-                        value={editingColaborador?.agencia_digito || ""}
-                        onChange={(e) => setEditingColaborador({ ...editingColaborador, agencia_digito: e.target.value.toUpperCase() })}
-                        placeholder="Ex: 0 ou X"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="edit_colab_conta">Conta</Label>
-                      <Input
-                        id="edit_colab_conta"
-                        value={editingColaborador?.conta || ""}
-                        onChange={(e) => setEditingColaborador({ ...editingColaborador, conta: e.target.value.replace(/\D/g, "") })}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="edit_colab_conta_digito">Dígito conta</Label>
-                      <Input
-                        id="edit_colab_conta_digito"
-                        value={editingColaborador?.conta_digito || editingColaborador?.digito_conta || ""}
-                        onChange={(e) =>
-                          setEditingColaborador({
-                            ...editingColaborador,
-                            conta_digito: e.target.value.toUpperCase(),
-                            digito_conta: e.target.value.toUpperCase(),
-                          })
-                        }
-                        placeholder="Ex: 5 ou X"
-                      />
-                    </div>
-                    <div className="col-span-2 space-y-1.5">
-                      <Label htmlFor="edit_colab_chave_pix">Chave Pix</Label>
-                      <Input
-                        id="edit_colab_chave_pix"
-                        value={editingColaborador?.chave_pix || ""}
-                        onChange={(e) => setEditingColaborador({ ...editingColaborador, chave_pix: e.target.value })}
-                        placeholder="CPF, e-mail, telefone ou chave aleatória"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Banco validado?</Label>
-                      <Select
-                        value={editingColaborador?.banco_validado ? "sim" : "nao"}
-                        onValueChange={(v) => setEditingColaborador({ ...editingColaborador, banco_validado: v === "sim" })}
-                      >
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="sim">Sim</SelectItem>
-                          <SelectItem value="nao">Não</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
                   </>
                 )}
-                </div>
+              </div>
             </div>
           </div>
           <DialogFooter>

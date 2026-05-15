@@ -60,7 +60,7 @@ const inconsistenciaLabelMap: Record<string, string> = {
 
 const getInconsistenciaLabel = (tipo?: string | null) => {
   if (!tipo) return "—";
-  return inconsistenciaLabelMap[tipo] || tipo.replaceAll("_", " ");
+  return inconsistenciaLabelMap[tipo] || tipo.split("_").join(" ");
 };
 
 const minutesToTime = (totalMinutes: number) => {
@@ -530,7 +530,7 @@ const ProcessamentoRH = () => {
               disabled={isLoading || isProcessing || isApprovingCompetencia || stats.processados === 0}
             >
               {isApprovingCompetencia ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-              Aprovar CompetÃªncia
+              Aprovar Competência
             </Button>
 
             <Button variant="outline" size="icon" onClick={() => refetch()}>
@@ -1027,13 +1027,13 @@ const ProcessamentoRH = () => {
       <Dialog open={approvalModalOpen} onOpenChange={setApprovalModalOpen}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Aprovar competÃªncia do RH</DialogTitle>
+            <DialogTitle>Aprovar competência do RH</DialogTitle>
             <DialogDescription>
-              A aprovaÃ§Ã£o oficializa a entrega do resultado processado ao Financeiro na competÃªncia {selectedMonth}.
+              A aprovação oficializa a entrega do resultado processado ao Financeiro na competência {selectedMonth}.
             </DialogDescription>
           </DialogHeader>
 
-{approvalValidation ? (
+          {approvalValidation ? (
             <div className="space-y-4">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="rounded-xl border border-red-300/70 bg-red-50 p-4">
@@ -1128,7 +1128,7 @@ const ProcessamentoRH = () => {
               ) : (
                 <>
                   <Send className="mr-2 h-4 w-4" />
-                  Confirmar aprovaÃ§Ã£o
+                  Confirmar aprovação
                 </>
               )}
             </Button>

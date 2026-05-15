@@ -262,6 +262,30 @@ const summarizeItems = (items: any[]) => {
   };
 };
 
+const appendLoteHistorico = async (payload: {
+  tenantId: string;
+  loteId: string;
+  userId: string;
+  userName: string;
+  acao: string;
+  statusAnterior?: string | null;
+  statusNovo: string;
+  observacao?: string | null;
+}) => {
+  const { error } = await (supabase as any).from("rh_financeiro_lote_historico").insert({
+    tenant_id: payload.tenantId,
+    lote_id: payload.loteId,
+    usuario_id: payload.userId,
+    usuario_nome: payload.userName,
+    acao: payload.acao,
+    status_anterior: payload.statusAnterior ?? null,
+    status_novo: payload.statusNovo,
+    observacao: payload.observacao ?? null,
+  });
+
+  if (error) throw error;
+};
+
 class RHFinanceiroServiceClass {
   async validateCompetenciaApproval(empresaId: string, competencia: string): Promise<ApprovalBlockers> {
     if (!empresaId) {
@@ -422,7 +446,7 @@ class RHFinanceiroServiceClass {
       throw new Error(validation.impedimentos.join(" "));
     }
 
-    const { tenantId, userId } = await getCurrentSessionContext();
+    const { tenantId, userId, userName } = await getCurrentSessionContext();
     const { pontos, colaboradores } = await loadCompetenciaContext(tenantId, empresaId, competencia);
 
     const tiposParaCriar = [
@@ -456,6 +480,16 @@ class RHFinanceiroServiceClass {
       if (loteExistenteError) throw loteExistenteError;
       if (loteExistente) {
         lotesExistentes.push(loteExistente);
+        await appendLoteHistorico({
+          tenantId,
+          loteId: loteExistente.id,
+          userId,
+          userName,
+          acao: "APROVOU_RH",
+          statusAnterior: loteExistente.status || RH_LOTE_STATUS,
+          statusNovo: loteExistente.status || RH_LOTE_STATUS,
+          observacao: "RH aprovou competencia. Lote ja existente mantido para analise financeira.",
+        });
         continue;
       }
 
@@ -496,6 +530,26 @@ class RHFinanceiroServiceClass {
         .from("rh_financeiro_lote_itens")
         .insert(itensPayload);
       if (itensError) throw itensError;
+
+      await appendLoteHistorico({
+        tenantId,
+        loteId: lote.id,
+        userId,
+        userName,
+        acao: "APROVOU_RH",
+        statusNovo: RH_LOTE_STATUS,
+        observacao: "RH aprovou competencia e encaminhou lote ao Financeiro.",
+      });
+
+      await appendLoteHistorico({
+        tenantId,
+        loteId: lote.id,
+        userId,
+        userName,
+        acao: "CRIOU_LOTE",
+        statusNovo: RH_LOTE_STATUS,
+        observacao: `Lote ${entry.tipo} criado com ${itensPayload.length} item(ns) e enviado para analise financeira.`,
+      });
 
       lotesCriados.push({ ...lote, itens_count: itensPayload.length });
       totalItens += itensPayload.length;
@@ -544,6 +598,184 @@ class RHFinanceiroServiceClass {
 
     if (error) throw error;
     return data;
+  }
+
+  async getLogsLote(loteId: string) {
+    const { tenantId } = await getCurrentSessionContext();
+    const { data, error } = await (supabase as any)
+      .from("rh_financeiro_lote_historico")
+      .select("*")
+      .eq("tenant_id", tenantId)
+      .eq("lote_id", loteId)
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+    return (data || []) as Array<{
+      id: string;
+      usuario_nome: string | null;
+      acao: string;
+      status_anterior: string | null;
+      status_novo: string;
+      observacao: string | null;
+      created_at: string;
+    }>;
+  }
+
+  async iniciarAnalise(loteId: string): Promise<void> {
+    const { tenantId, userId, userName } = await getCurrentSessionContext();
+
+    const { data: lote, error: loteError } = await (supabase as any)
+      .from("rh_financeiro_lotes")
+      .select("id, status")
+      .eq("tenant_id", tenantId)
+      .eq("id", loteId)
+      .single();
+
+    if (loteError) throw loteError;
+    if (!lote) throw new Error("Lote não encontrado.");
+
+    const statusAnterior = lote.status as string;
+    if (!["AGUARDANDO_FINANCEIRO", "DEVOLVIDO_RH"].includes(statusAnterior)) {
+      throw new Error(`Lote no status "${statusAnterior}" não pode ser iniciado para análise.`);
+    }
+
+    const agora = new Date().toISOString();
+
+    const { error: updateError } = await (supabase as any)
+      .from("rh_financeiro_lotes")
+      .update({
+        status: "EM_ANALISE_FINANCEIRA",
+        analisado_por: userId,
+        analisado_em: agora,
+        updated_at: agora,
+      })
+      .eq("tenant_id", tenantId)
+      .eq("id", loteId);
+
+    if (updateError) throw updateError;
+
+    await (supabase as any).from("rh_financeiro_lote_historico").insert({
+      tenant_id: tenantId,
+      lote_id: loteId,
+      usuario_id: userId,
+      usuario_nome: userName,
+      acao: "INICIOU_ANALISE",
+      status_anterior: statusAnterior,
+      status_novo: "EM_ANALISE_FINANCEIRA",
+      observacao: "Analista financeiro iniciou revisão do lote.",
+    });
+  }
+
+  async aprovarFinanceiro(loteId: string, observacao?: string): Promise<void> {
+    const { tenantId, userId, userName } = await getCurrentSessionContext();
+
+    const { data: lote, error: loteError } = await (supabase as any)
+      .from("rh_financeiro_lotes")
+      .select("id, status, total_colaboradores, valor_total, itens:rh_financeiro_lote_itens(id)")
+      .eq("tenant_id", tenantId)
+      .eq("id", loteId)
+      .single();
+
+    if (loteError) throw loteError;
+    if (!lote) throw new Error("Lote não encontrado.");
+
+    const statusAnterior = lote.status as string;
+    if (!["AGUARDANDO_FINANCEIRO", "EM_ANALISE_FINANCEIRA"].includes(statusAnterior)) {
+      throw new Error(`Lote no status "${statusAnterior}" não pode ser aprovado.`);
+    }
+
+    const totalItens = Array.isArray(lote.itens) ? lote.itens.length : 0;
+    if (totalItens === 0) {
+      throw new Error("Não é possível aprovar um lote sem itens financeiros.");
+    }
+
+    const agora = new Date().toISOString();
+
+    const { error: updateError } = await (supabase as any)
+      .from("rh_financeiro_lotes")
+      .update({
+        status: "AGUARDANDO_PAGAMENTO",
+        aprovado_por: userId,
+        aprovado_em: agora,
+        observacao_financeiro: observacao || null,
+        updated_at: agora,
+      })
+      .eq("tenant_id", tenantId)
+      .eq("id", loteId);
+
+    if (updateError) throw updateError;
+
+    await appendLoteHistorico({
+      tenantId,
+      loteId,
+      userId,
+      userName,
+      acao: "APROVOU_FINANCEIRO",
+      statusAnterior,
+      statusNovo: "APROVADO_FINANCEIRO",
+      observacao: observacao || "Lote aprovado pelo Financeiro.",
+    });
+
+    await appendLoteHistorico({
+      tenantId,
+      loteId,
+      userId,
+      userName,
+      acao: "PREPAROU_CNAB",
+      statusAnterior: "APROVADO_FINANCEIRO",
+      statusNovo: "AGUARDANDO_PAGAMENTO",
+      observacao: "Lote encaminhado para preparação bancária/CNAB.",
+    });
+  }
+
+  async devolverAoRH(loteId: string, motivo: string): Promise<void> {
+    if (!motivo?.trim()) {
+      throw new Error("O motivo da devolução é obrigatório.");
+    }
+
+    const { tenantId, userId, userName } = await getCurrentSessionContext();
+
+    const { data: lote, error: loteError } = await (supabase as any)
+      .from("rh_financeiro_lotes")
+      .select("id, status")
+      .eq("tenant_id", tenantId)
+      .eq("id", loteId)
+      .single();
+
+    if (loteError) throw loteError;
+    if (!lote) throw new Error("Lote não encontrado.");
+
+    const statusAnterior = lote.status as string;
+    if (!["AGUARDANDO_FINANCEIRO", "EM_ANALISE_FINANCEIRA"].includes(statusAnterior)) {
+      throw new Error(`Lote no status "${statusAnterior}" não pode ser devolvido.`);
+    }
+
+    const agora = new Date().toISOString();
+
+    const { error: updateError } = await (supabase as any)
+      .from("rh_financeiro_lotes")
+      .update({
+        status: "DEVOLVIDO_RH",
+        devolvido_por: userId,
+        devolvido_em: agora,
+        motivo_devolucao: motivo.trim(),
+        updated_at: agora,
+      })
+      .eq("tenant_id", tenantId)
+      .eq("id", loteId);
+
+    if (updateError) throw updateError;
+
+    await (supabase as any).from("rh_financeiro_lote_historico").insert({
+      tenant_id: tenantId,
+      lote_id: loteId,
+      usuario_id: userId,
+      usuario_nome: userName,
+      acao: "DEVOLVEU",
+      status_anterior: statusAnterior,
+      status_novo: "DEVOLVIDO_RH",
+      observacao: motivo.trim(),
+    });
   }
 
   async getPendingSummary() {

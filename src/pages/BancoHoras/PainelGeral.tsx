@@ -190,11 +190,11 @@ const PainelGeral = () => {
         if (a.status === "debito_critico" || a.status === "debito_pendente") {
           return a.saldo_minutos - b.saldo_minutos; // Maior negativo primeiro
         }
-        
+
         if (a.status === "horas_a_vencer") {
-           const aVencerA = Number(a.minutos_vencidos || 0) + Number(a.minutos_a_vencer_30d || 0);
-           const aVencerB = Number(b.minutos_vencidos || 0) + Number(b.minutos_a_vencer_30d || 0);
-           return aVencerB - aVencerA; // Maior quantidade a vencer primeiro
+          const aVencerA = Number(a.minutos_vencidos || 0) + Number(a.minutos_a_vencer_30d || 0);
+          const aVencerB = Number(b.minutos_vencidos || 0) + Number(b.minutos_a_vencer_30d || 0);
+          return aVencerB - aVencerA; // Maior quantidade a vencer primeiro
         }
 
         if (a.status === "saldo_positivo") {
@@ -303,23 +303,23 @@ const PainelGeral = () => {
     const payload = rows.map((saldo) =>
       kind === "financeiro"
         ? [
-            saldo.nome,
-            saldo.matricula,
-            saldo.empresa,
-            saldo.saldo_formatado,
-            saldo.status_label,
-            Number(saldo.valor_hora_estimado || 0).toFixed(2),
-            Number(saldo.estimativa_valor || 0).toFixed(2),
-          ]
+          saldo.nome,
+          saldo.matricula,
+          saldo.empresa,
+          saldo.saldo_formatado,
+          saldo.status_label,
+          Number(saldo.valor_hora_estimado || 0).toFixed(2),
+          Number(saldo.estimativa_valor || 0).toFixed(2),
+        ]
         : [
-            saldo.nome,
-            saldo.matricula,
-            saldo.empresa,
-            saldo.saldo_formatado,
-            saldo.vencido_formatado,
-            saldo.a_vencer_formatado,
-            saldo.status_label,
-          ],
+          saldo.nome,
+          saldo.matricula,
+          saldo.empresa,
+          saldo.saldo_formatado,
+          saldo.vencido_formatado,
+          saldo.a_vencer_formatado,
+          saldo.status_label,
+        ],
     );
 
     const csvContent =
@@ -455,8 +455,8 @@ const PainelGeral = () => {
           ))}
         </div>
 
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[55%_1fr]">
-          <section className="esc-card border border-orange-200 bg-orange-50/70 p-3 max-h-[140px] flex flex-col justify-center">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <section className="esc-card border border-orange-200 bg-orange-50/70 p-3 h-[130px] flex flex-col justify-center transition-colors hover:border-orange-300">
             <div className="flex items-start gap-2">
               <div className="rounded-lg bg-orange-100 p-1.5 shrink-0">
                 <CalendarClock className="h-3.5 w-3.5 text-orange-700" />
@@ -472,7 +472,7 @@ const PainelGeral = () => {
                     </span>
                   ) : null}
                 </div>
-                <div className="flex flex-col gap-1 mt-1.5">
+                <div className="flex flex-col gap-1 mt-1.5 flex-1 overflow-y-auto pr-1 custom-scrollbar">
                   <div className={compactBullet}>
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
                     <span className="truncate">
@@ -504,7 +504,7 @@ const PainelGeral = () => {
             </div>
           </section>
 
-          <section className="esc-card p-3 max-h-[140px] flex flex-col">
+          <section className="esc-card p-3 h-[130px] flex flex-col hover:border-rose-200 transition-colors">
             <div className="flex items-center gap-2 mb-2">
               <div className="rounded-lg bg-rose-100 p-1.5 shrink-0">
                 <Users className="h-3.5 w-3.5 text-rose-700" />
@@ -513,7 +513,7 @@ const PainelGeral = () => {
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground leading-tight">
                   Priorizacao visual
                 </p>
-                <h2 className="font-display text-sm font-semibold text-foreground leading-tight">
+                <h2 className="font-display text-sm font-semibold text-foreground leading-tight mt-0.5">
                   {colaboradoresEmRisco} colaborador(es) no radar
                 </h2>
               </div>
@@ -532,12 +532,12 @@ const PainelGeral = () => {
                 <div
                   key={saldo.id}
                   className={cn(
-                    "flex items-center justify-between rounded-lg border px-3 py-2",
+                    "flex items-center justify-between rounded-md px-2 py-1.5 border-b border-border/40 last:border-0 hover:bg-muted/50 transition-colors",
                     saldo.status === "debito_critico"
-                      ? "border-rose-300 bg-rose-50"
+                      ? "bg-rose-50/50"
                       : saldo.status === "horas_a_vencer"
-                        ? "border-orange-200 bg-orange-50"
-                        : "border-border bg-background",
+                        ? "bg-orange-50/50"
+                        : "bg-transparent",
                   )}
                 >
                   <div>
@@ -547,13 +547,15 @@ const PainelGeral = () => {
                   <div className="text-right">
                     <p
                       className={cn(
-                        "font-display text-base font-semibold",
+                        "font-medium text-sm leading-tight text-right",
                         saldo.saldo_minutos < 0 ? "text-rose-700" : "text-foreground",
                       )}
                     >
                       {saldo.saldo_formatado}
                     </p>
-                    <StatusChip status={saldo.status} label={saldo.status_label} />
+                    <div className="scale-75 origin-right -mt-0.5 -mb-1">
+                      <StatusChip status={saldo.status} label={saldo.status_label} />
+                    </div>
                   </div>
                 </div>
               ))}
@@ -564,45 +566,49 @@ const PainelGeral = () => {
               )}
             </div>
           </section>
-        </div>
 
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[55%_1fr]">
-          <section className="esc-card p-5">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Visao financeira
-                </p>
-                <h3 className="font-display text-xl font-semibold text-foreground">
-                  Contabilidade operacional de horas
-                </h3>
+          <section className="esc-card p-3 h-[130px] flex flex-col hover:border-primary/20 transition-colors">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="rounded-lg bg-emerald-100 p-1.5 shrink-0">
+                <Wallet className="h-3.5 w-3.5 text-emerald-700" />
               </div>
-              <div className="rounded-xl bg-primary-soft px-3 py-2 text-right">
-                <p className="text-[11px] uppercase tracking-wider text-primary">Impacto folha</p>
-                <p className="font-display text-lg font-semibold text-primary">
-                  {formatCurrency(
-                    filteredSaldos.reduce(
-                      (acc, saldo: any) => acc + Number(saldo.estimativa_valor || 0),
-                      0,
-                    ),
-                  )}
-                </p>
+              <div className="flex-1 flex justify-between items-center pr-1">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground leading-tight">
+                    Visão financeira
+                  </p>
+                  <h2 className="font-display text-sm font-semibold text-foreground leading-tight mt-0.5">
+                    Contabilidade de horas
+                  </h2>
+                </div>
+                <div className="text-right">
+                  <p className="font-display text-base font-semibold text-primary leading-none">
+                    {formatCurrency(
+                      filteredSaldos.reduce(
+                        (acc, saldo: any) => acc + Number(saldo.estimativa_valor || 0),
+                        0,
+                      ),
+                    )}
+                  </p>
+                  <p className="text-[9px] uppercase tracking-wider text-primary/70 mt-0.5">Impacto folha</p>
+                </div>
               </div>
             </div>
 
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
+
+            <div className="flex-1 overflow-y-auto pr-1 space-y-1 custom-scrollbar">
               {custoPorColaborador.map((saldo: any) => (
-                <div key={saldo.id} className="rounded-xl border border-border/70 bg-background px-4 py-3">
-                  <div className="flex items-start justify-between gap-3">
+                <div key={saldo.id} className="flex flex-col justify-center rounded-md px-2 py-1.5 border-b border-border/40 last:border-0 hover:bg-muted/50 transition-colors">
+                  <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium text-foreground">{saldo.nome}</p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-sm font-medium leading-tight text-foreground">{saldo.nome}</p>
+                      <p className="text-[10px] text-muted-foreground">
                         {saldo.empresa || "Sem empresa"} • {saldo.saldo_formatado}
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="font-semibold text-foreground">{formatCurrency(saldo.estimativa_valor)}</p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="font-medium text-sm text-foreground leading-tight">{formatCurrency(saldo.estimativa_valor)}</p>
+                      <p className="text-[10px] text-muted-foreground">
                         {formatCurrency(saldo.valor_hora_estimado)}/h
                       </p>
                     </div>
@@ -611,40 +617,50 @@ const PainelGeral = () => {
               ))}
 
               {custoPorColaborador.length === 0 && (
-                <div className="rounded-xl border border-dashed border-border px-4 py-6 text-sm text-muted-foreground md:col-span-2">
+                <div className="rounded-lg border border-dashed border-border px-3 py-4 text-xs text-muted-foreground">
                   Sem exposicao financeira calculavel no recorte atual.
                 </div>
               )}
             </div>
           </section>
 
-          <section className="esc-card p-5">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Custo por empresa
-            </p>
-            <div className="mt-4 space-y-3">
+          <section className="esc-card p-3 h-[130px] flex flex-col hover:border-indigo-200 transition-colors">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="rounded-lg bg-indigo-100 p-1.5 shrink-0">
+                <Building2 className="h-3.5 w-3.5 text-indigo-700" />
+              </div>
+              <div className="flex-1">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground leading-tight">
+                  Custo por empresa
+                </p>
+                <h2 className="font-display text-sm font-semibold text-foreground leading-tight mt-0.5">
+                  Análise consolidada
+                </h2>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto pr-1 space-y-1 custom-scrollbar">
               {custoPorEmpresa.map((empresa) => (
-                <div key={empresa.empresa} className="rounded-xl border border-border/70 bg-background px-4 py-3">
-                  <div className="flex items-center justify-between gap-3">
+                <div key={empresa.empresa} className="flex flex-col justify-center rounded-md px-2 py-1.5 border-b border-border/40 last:border-0 hover:bg-muted/50 transition-colors">
+                  <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium text-foreground">{empresa.empresa}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {formatTotal(empresa.horas)} em banco • {empresa.pessoas} colaborador(es)
+                      <p className="text-sm font-medium leading-tight text-foreground">{empresa.empresa}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {formatTotal(empresa.horas)} em banco • {empresa.pessoas} colab.
                       </p>
                     </div>
-                    <p className="font-semibold text-foreground">{formatCurrency(empresa.valor)}</p>
+                    <p className="font-medium text-sm text-foreground">{formatCurrency(empresa.valor)}</p>
                   </div>
                 </div>
               ))}
 
               {custoPorEmpresa.length === 0 && (
-                <div className="rounded-xl border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
+                <div className="rounded-lg border border-dashed border-border px-3 py-4 text-xs text-muted-foreground">
                   Sem custo consolidado por empresa neste momento.
                 </div>
               )}
             </div>
           </section>
-        </div>
+        </div >
 
         <div className="flex flex-col gap-4 rounded-2xl border border-border/70 bg-background/70 p-4">
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
@@ -814,13 +830,13 @@ const PainelGeral = () => {
                             </span>
                           )}
                         </div>
-                          <div className="flex flex-col">
-                            <div className="text-xs text-muted-foreground">Mat. {saldo.matricula || "-"}</div>
-                            <div className="mt-0.5 flex items-center gap-1 text-[10px] text-primary/0 transition-colors group-hover:text-primary/70 font-medium">
-                              <Eye className="h-3 w-3" />
-                              Clique para abrir extrato
-                            </div>
+                        <div className="flex flex-col">
+                          <div className="text-xs text-muted-foreground">Mat. {saldo.matricula || "-"}</div>
+                          <div className="mt-0.5 flex items-center gap-1 text-[10px] text-primary/0 transition-colors group-hover:text-primary/70 font-medium">
+                            <Eye className="h-3 w-3" />
+                            Clique para abrir extrato
                           </div>
+                        </div>
                       </td>
                       <td className="px-3 text-muted-foreground">
                         <div className="flex items-center gap-2">
@@ -958,7 +974,7 @@ const PainelGeral = () => {
             </div>
           )}
         </section>
-      </div>
+      </div >
 
       <Dialog open={Boolean(selectedTimelineEvent)} onOpenChange={(open) => !open && setSelectedTimelineEvent(null)}>
         <DialogContent className="max-w-3xl">
@@ -1050,7 +1066,7 @@ const PainelGeral = () => {
               </DialogDescription>
             </DialogHeader>
           </div>
-          
+
           <div className="flex-1 overflow-y-auto p-6 pt-4 space-y-2 custom-scrollbar">
             {filteredSaldos.filter((s: any) => rowPriorityClass(s) !== "").length > 0 ? (
               filteredSaldos
@@ -1097,7 +1113,7 @@ const PainelGeral = () => {
         </DialogContent>
       </Dialog>
 
-    </AppShell>
+    </AppShell >
   );
 };
 

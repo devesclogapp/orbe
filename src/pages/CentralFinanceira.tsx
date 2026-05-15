@@ -5,16 +5,22 @@ import {
   AlertTriangle,
   ArrowRight,
   Building2,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   ExternalLink,
   FileCheck,
   Filter,
+  History,
   Loader2,
   Printer,
   RefreshCw,
+  RotateCcw,
   Search,
   UnlockKeyhole,
   Users,
   Wallet,
+  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -46,12 +52,17 @@ const CentralFinanceira = () => {
   const [selectedEmpresaId, setSelectedEmpresaId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // states dos dialogs de confirmação
+  // dialogs financeiro
   const [openReabrir, setOpenReabrir] = useState(false);
   const [fechamentoParaReabrir, setFechamentoParaReabrir] = useState<any>(null);
   const [motivoReabrir, setMotivoReabrir] = useState("");
   const [openConfirmAprovacao, setOpenConfirmAprovacao] = useState(false);
   const [rhLoteSelecionado, setRhLoteSelecionado] = useState<any>(null);
+  // etapa 2 — análise financeira
+  const [openDevolucao, setOpenDevolucao] = useState(false);
+  const [motivoDevolucao, setMotivoDevolucao] = useState("");
+  const [observacaoAprovacao, setObservacaoAprovacao] = useState("");
+  const [showLogHistorico, setShowLogHistorico] = useState(false);
 
   const { data: empresas = [], isLoading: loadingEmps } = useQuery<any[]>({
     queryKey: ["empresas"],
@@ -94,6 +105,12 @@ const CentralFinanceira = () => {
     queryKey: ["rh-financeiro-lote-detalhe", rhLoteSelecionado?.id],
     queryFn: () => RHFinanceiroService.getLoteDetalhe(rhLoteSelecionado!.id),
     enabled: !!rhLoteSelecionado?.id,
+  });
+
+  const { data: logsDoLote = [], isLoading: loadingLogs } = useQuery({
+    queryKey: ["rh-lote-historico", rhLoteSelecionado?.id],
+    queryFn: () => RHFinanceiroService.getLogsLote(rhLoteSelecionado!.id),
+    enabled: !!rhLoteSelecionado?.id && showLogHistorico,
   });
 
   const reprocessMutation = useMutation({
@@ -164,9 +181,53 @@ const CentralFinanceira = () => {
 
   const totalFaturavel = competencia?.valor_total_faturado || 0;
   const pendingCount = clientes.filter((cliente: any) => cliente.status !== "aprovado").length;
-  const lotesRhPendentes = lotesRh.filter((lote: any) => lote.status === "AGUARDANDO_FINANCEIRO");
+  // lotes que requerem ação do Financeiro
+  const lotesRhPendentes = lotesRh.filter((lote: any) =>
+    ["AGUARDANDO_FINANCEIRO", "EM_ANALISE_FINANCEIRA", "DEVOLVIDO_RH"].includes(lote.status)
+  );
   const lotesRhValorTotal = lotesRhPendentes.reduce((acc: number, lote: any) => acc + Number(lote.valor_total || 0), 0);
   const isLoading = loadingEmps || loadingComp || loadingCons || loadingFechamentos || loadingRhLotes;
+
+  // helpers status
+  const invalidateLotes = () => {
+    queryClient.invalidateQueries({ queryKey: ["rh-financeiro-lotes"] });
+    queryClient.invalidateQueries({ queryKey: ["rh-financeiro-lote-detalhe", rhLoteSelecionado?.id] });
+    queryClient.invalidateQueries({ queryKey: ["rh-lote-historico", rhLoteSelecionado?.id] });
+  };
+
+  const iniciarAnaliseMutation = useMutation({
+    mutationFn: (id: string) => RHFinanceiroService.iniciarAnalise(id),
+    onSuccess: () => {
+      toast.success("Análise iniciada", { description: "Lote marcado como Em Análise Financeira." });
+      invalidateLotes();
+    },
+    onError: (err: any) => toast.error("Erro ao iniciar análise", { description: err.message }),
+  });
+
+  const aprovarFinanceiroMutation = useMutation({
+    mutationFn: ({ id, obs }: { id: string; obs: string }) =>
+      RHFinanceiroService.aprovarFinanceiro(id, obs),
+    onSuccess: () => {
+      toast.success("Lote aprovado!", { description: "Liberado para a próxima etapa bancária." });
+      invalidateLotes();
+      setObservacaoAprovacao("");
+      setRhLoteSelecionado(null);
+    },
+    onError: (err: any) => toast.error("Erro ao aprovar", { description: err.message }),
+  });
+
+  const devolverRHMutation = useMutation({
+    mutationFn: ({ id, motivo }: { id: string; motivo: string }) =>
+      RHFinanceiroService.devolverAoRH(id, motivo),
+    onSuccess: () => {
+      toast.warning("Lote devolvido ao RH", { description: "O RH foi notificado e o lote reaparece na fila deles." });
+      invalidateLotes();
+      setOpenDevolucao(false);
+      setMotivoDevolucao("");
+      setRhLoteSelecionado(null);
+    },
+    onError: (err: any) => toast.error("Erro ao devolver", { description: err.message }),
+  });
 
   const handleApproveBatch = () => {
     const ids = filteredClientes.map((cliente: any) => cliente.id);
@@ -297,6 +358,14 @@ const CentralFinanceira = () => {
             <Tabs defaultValue="visao-geral" className="space-y-4">
               <TabsList className="bg-muted/50 p-1 rounded-xl border border-border/50 flex flex-wrap h-auto">
                 <TabsTrigger value="visao-geral">Visão geral</TabsTrigger>
+                <TabsTrigger value="lotes-rh" className="relative">
+                  Lotes do RH
+                  {lotesRhPendentes.length > 0 && (
+                    <span className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-info text-white text-[10px] font-bold px-1">
+                      {lotesRhPendentes.length}
+                    </span>
+                  )}
+                </TabsTrigger>
                 <TabsTrigger value="faturamento">Faturamento</TabsTrigger>
                 <TabsTrigger value="fechamento">Fechamento</TabsTrigger>
               </TabsList>
@@ -405,69 +474,110 @@ const CentralFinanceira = () => {
                     </div>
                   </section>
                 </div>
+              </TabsContent>
 
+              <TabsContent value="lotes-rh" className="space-y-4">
                 <section className="esc-card overflow-hidden">
                   <header className="px-5 py-4 border-b border-border flex items-center justify-between">
                     <div>
                       <h2 className="font-display font-semibold text-foreground">Lotes recebidos do RH</h2>
                       <p className="text-sm text-muted-foreground">
-                        Entregas oficiais do RH aguardando anÃ¡lise financeira nesta competÃªncia.
+                        Entregas oficiais enviadas pelo RH para análise e aprovação financeira.
                       </p>
                     </div>
-                    <Badge className="bg-info-soft text-info-strong">
-                      {lotesRhPendentes.length} na fila
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      {lotesRhPendentes.length > 0 && (
+                        <Badge className="bg-warning-soft text-warning-strong">
+                          {lotesRhPendentes.length} aguardando
+                        </Badge>
+                      )}
+                      <Badge className="bg-muted text-muted-foreground">
+                        {lotesRh.length} total
+                      </Badge>
+                    </div>
                   </header>
 
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead className="esc-table-header">
                         <tr className="text-left text-muted-foreground">
-                          <th className="px-5 h-10 font-medium">CompetÃªncia</th>
-                          <th className="px-3 h-10 font-medium">Origem</th>
-                          <th className="px-3 h-10 font-medium text-center">Quantidade</th>
+                          <th className="px-5 h-10 font-medium">Competência</th>
+                          <th className="px-3 h-10 font-medium">Empresa</th>
+                          <th className="px-3 h-10 font-medium">Tipo</th>
+                          <th className="px-3 h-10 font-medium text-center">Colaboradores</th>
                           <th className="px-3 h-10 font-medium text-right">Valor total</th>
                           <th className="px-3 h-10 font-medium text-center">Status</th>
-                          <th className="px-5 h-10 font-medium text-right">AÃ§Ã£o</th>
+                          <th className="px-5 h-10 font-medium text-right">Ação</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {lotesRhPendentes.map((lote: any) => (
-                          <tr key={lote.id} className="border-t border-muted hover:bg-background transition-colors">
-                            <td className="px-5 h-12 font-medium text-foreground">{lote.competencia}</td>
-                            <td className="px-3 text-muted-foreground">{lote.origem} · {lote.tipo === "BANCO_HORAS" ? "Banco de Horas" : "Folha VariÃ¡vel"}</td>
-                            <td className="px-3 text-center text-muted-foreground">{lote.total_colaboradores}</td>
-                            <td className="px-3 text-right font-display font-semibold">
-                              R$ {Number(lote.valor_total || 0).toLocaleString("pt-BR")}
-                            </td>
-                            <td className="px-3 text-center">
-                              <Badge className="bg-warning-soft text-warning-strong">{lote.status}</Badge>
-                            </td>
-                            <td className="px-5 text-right">
-                              <Button variant="ghost" size="sm" onClick={() => setRhLoteSelecionado(lote)}>
-                                Analisar
-                              </Button>
-                            </td>
-                          </tr>
-                        ))}
-
-                        {lotesRhPendentes.length === 0 && (
+                        {loadingRhLotes ? (
                           <tr>
-                            <td colSpan={6} className="p-8 text-center text-muted-foreground italic">
-                              Nenhum lote do RH aguardando Financeiro para os filtros atuais.
+                            <td colSpan={7} className="p-8 text-center">
+                              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground mx-auto" />
                             </td>
                           </tr>
+                        ) : lotesRh.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="p-8 text-center text-muted-foreground italic">
+                              Nenhum lote do RH encontrado para os filtros atuais.
+                            </td>
+                          </tr>
+                        ) : (
+                          lotesRh.map((lote: any) => {
+                            const isAguardando = lote.status === "AGUARDANDO_FINANCEIRO";
+                            const isEmAnalise = lote.status === "EM_ANALISE_FINANCEIRA";
+                            const isAguardandoPagamento = lote.status === "AGUARDANDO_PAGAMENTO";
+                            const isDevolvido = lote.status === "DEVOLVIDO_RH";
+                            return (
+                              <tr key={lote.id} className="border-t border-muted hover:bg-background transition-colors">
+                                <td className="px-5 h-12 font-medium text-foreground">{lote.competencia}</td>
+                                <td className="px-3 text-muted-foreground text-xs">{lote.empresa?.nome || "—"}</td>
+                                <td className="px-3 text-muted-foreground">
+                                  {lote.tipo === "BANCO_HORAS" ? "Banco de Horas" : "Folha Variável"}
+                                </td>
+                                <td className="px-3 text-center text-muted-foreground">{lote.total_colaboradores}</td>
+                                <td className="px-3 text-right font-display font-semibold">
+                                  R$ {Number(lote.valor_total || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                </td>
+                                <td className="px-3 text-center">
+                                  <Badge className={cn(
+                                    isAguardando && "bg-warning-soft text-warning-strong",
+                                    isEmAnalise && "bg-info-soft text-info-strong",
+                                    isAguardandoPagamento && "bg-success-soft text-success-strong",
+                                    isDevolvido && "bg-destructive/10 text-destructive",
+                                    !isAguardando && !isEmAnalise && !isAguardandoPagamento && !isDevolvido && "bg-muted text-muted-foreground",
+                                  )}>
+                                    {lote.status === "AGUARDANDO_FINANCEIRO" ? "Aguardando Financeiro" :
+                                      lote.status === "EM_ANALISE_FINANCEIRA" ? "Em Análise Financeira" :
+                                      lote.status === "AGUARDANDO_PAGAMENTO" ? "Aguardando Pagamento" :
+                                      lote.status === "DEVOLVIDO_RH" ? "Devolvido ao RH" :
+                                      lote.status}
+                                  </Badge>
+                                </td>
+                                <td className="px-5 text-right">
+                                  <Button variant="ghost" size="sm" onClick={() => setRhLoteSelecionado(lote)}>
+                                    Analisar
+                                  </Button>
+                                </td>
+                              </tr>
+                            );
+                          })
                         )}
                       </tbody>
                     </table>
                   </div>
 
-                  {lotesRhPendentes.length > 0 ? (
-                    <div className="border-t border-border px-5 py-3 text-sm text-muted-foreground">
-                      Total da fila RH: <strong className="text-foreground">{lotesRhPendentes.length}</strong> lote(s) ·{" "}
-                      <strong className="text-foreground">R$ {Number(lotesRhValorTotal).toLocaleString("pt-BR")}</strong>
+                  {lotesRhPendentes.length > 0 && (
+                    <div className="border-t border-border px-5 py-3 text-sm text-muted-foreground flex items-center justify-between">
+                      <span>
+                        Fila do Financeiro:
+                        <strong className="text-foreground ml-1">{lotesRhPendentes.length}</strong> lote(s) ·
+                        <strong className="text-foreground ml-1">R$ {Number(lotesRhValorTotal).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong>
+                      </span>
+                      <span className="text-xs text-muted-foreground">Filtre por empresa/competência acima para refinar</span>
                     </div>
-                  ) : null}
+                  )}
                 </section>
               </TabsContent>
 
@@ -741,83 +851,282 @@ const CentralFinanceira = () => {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(rhLoteSelecionado)} onOpenChange={(open) => !open && setRhLoteSelecionado(null)}>
-        <DialogContent className="max-w-4xl">
+      <Dialog
+        open={Boolean(rhLoteSelecionado)}
+        onOpenChange={(open) => {
+          if (!open) { setRhLoteSelecionado(null); setObservacaoAprovacao(""); setShowLogHistorico(false); }
+        }}
+      >
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileCheck className="h-5 w-5 text-primary" />
-              Analisar lote recebido do RH
+              Análise do Lote — Financeiro
             </DialogTitle>
             <DialogDescription>
-              {rhLoteSelecionado ? `${rhLoteSelecionado.competencia} · ${rhLoteSelecionado.origem} · ${rhLoteSelecionado.tipo}` : "Carregando lote"}
+              {rhLoteSelecionado
+                ? `${rhLoteSelecionado.competencia} · ${rhLoteSelecionado.empresa?.nome || ""} · ${rhLoteSelecionado.tipo === "BANCO_HORAS" ? "Banco de Horas" : "Folha Variável"}`
+                : "Carregando lote…"}
             </DialogDescription>
           </DialogHeader>
 
           {loadingRhLoteDetalhe ? (
-            <div className="flex items-center justify-center py-12">
+            <div className="flex items-center justify-center py-16">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
           ) : rhLoteDetalhe ? (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-                <div className="rounded-xl border border-border bg-muted/30 p-4">
-                  <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">CompetÃªncia</div>
-                  <div className="mt-2 font-display text-lg font-bold text-foreground">{rhLoteDetalhe.competencia}</div>
-                </div>
-                <div className="rounded-xl border border-border bg-muted/30 p-4">
-                  <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Origem</div>
-                  <div className="mt-2 font-display text-lg font-bold text-foreground">{rhLoteDetalhe.origem}</div>
-                </div>
-                <div className="rounded-xl border border-border bg-muted/30 p-4">
-                  <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Quantidade</div>
-                  <div className="mt-2 font-display text-lg font-bold text-foreground">{rhLoteDetalhe.total_colaboradores}</div>
-                </div>
-                <div className="rounded-xl border border-border bg-muted/30 p-4">
-                  <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Valor total</div>
-                  <div className="mt-2 font-display text-lg font-bold text-foreground">
-                    R$ {Number(rhLoteDetalhe.valor_total || 0).toLocaleString("pt-BR")}
+            <div className="space-y-5">
+              {/* Status atual + motivo devolução */}
+              {(() => {
+                const st = rhLoteDetalhe.status as string;
+                const cfg: Record<string, { label: string; cls: string }> = {
+                  AGUARDANDO_FINANCEIRO: { label: "Aguardando Financeiro", cls: "bg-warning-soft text-warning-strong" },
+                  EM_ANALISE_FINANCEIRA: { label: "Em Análise Financeira", cls: "bg-info-soft text-info-strong" },
+                  APROVADO_FINANCEIRO: { label: "Aprovado pelo Financeiro", cls: "bg-success-soft text-success-strong" },
+                  AGUARDANDO_PAGAMENTO: { label: "Aguardando Pagamento/CNAB", cls: "bg-success-soft text-success-strong" },
+                  DEVOLVIDO_RH: { label: "Devolvido ao RH", cls: "bg-destructive/10 text-destructive" },
+                };
+                const c = cfg[st] || { label: st, cls: "bg-muted text-muted-foreground" };
+                return (
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Badge className={cn("text-xs font-semibold px-3 py-1 rounded-full", c.cls)}>{c.label}</Badge>
+                    {rhLoteDetalhe.motivo_devolucao && (
+                      <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                        <span className="font-semibold">Motivo:</span> {rhLoteDetalhe.motivo_devolucao}
+                      </div>
+                    )}
                   </div>
+                );
+              })()}
+
+              {/* Metadados */}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {[
+                  { label: "Competência", value: rhLoteDetalhe.competencia },
+                  { label: "Empresa", value: rhLoteDetalhe.empresa?.nome || "—" },
+                  { label: "Colaboradores", value: String(rhLoteDetalhe.total_colaboradores) },
+                  { label: "Valor total", value: `R$ ${Number(rhLoteDetalhe.valor_total || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` },
+                ].map((item) => (
+                  <div key={item.label} className="rounded-xl border border-border bg-muted/30 p-4">
+                    <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{item.label}</div>
+                    <div className="mt-1.5 font-display font-bold text-foreground">{item.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Resumo de itens */}
+              {(() => {
+                const itens = rhLoteDetalhe.itens || [];
+                const total = itens.length;
+                const rejeit = itens.filter((i: any) => i.status === "REJEITADO").length;
+                const pend = itens.filter((i: any) => i.status === "PENDENTE").length;
+                const valT = itens.reduce((a: number, i: any) => a + Number(i.valor_calculado || 0), 0);
+                return (
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    {[
+                      { label: "Total itens", value: String(total), cls: "" },
+                      { label: "Faturáveis", value: String(total - rejeit), cls: "text-success" },
+                      { label: "Pendentes", value: String(pend), cls: "text-warning" },
+                      { label: "Valor faturável", value: `R$ ${valT.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`, cls: "text-primary" },
+                    ].map((s) => (
+                      <div key={s.label} className="rounded-xl border border-border bg-muted/20 p-3 text-center">
+                        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{s.label}</div>
+                        <div className={cn("mt-1.5 font-display text-lg font-bold", s.cls)}>{s.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* Tabela de itens */}
+              <div className="rounded-xl border border-border overflow-hidden">
+                <div className="px-4 py-2.5 border-b border-border bg-muted/20 flex items-center justify-between">
+                  <span className="text-sm font-semibold text-foreground">Itens do lote</span>
+                  <span className="text-xs text-muted-foreground">{(rhLoteDetalhe.itens || []).length} registros</span>
+                </div>
+                <div className="overflow-x-auto max-h-56 overflow-y-auto">
+                  <table className="w-full text-sm">
+                    <thead className="esc-table-header sticky top-0">
+                      <tr className="text-left text-muted-foreground">
+                        <th className="px-4 h-9 font-medium">Colaborador</th>
+                        <th className="px-3 h-9 font-medium">Evento</th>
+                        <th className="px-3 h-9 font-medium text-center">Horas</th>
+                        <th className="px-3 h-9 font-medium text-right">Valor</th>
+                        <th className="px-4 h-9 font-medium text-center">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(rhLoteDetalhe.itens || []).length === 0 ? (
+                        <tr><td colSpan={5} className="p-8 text-center text-muted-foreground italic">Nenhum item neste lote.</td></tr>
+                      ) : (
+                        (rhLoteDetalhe.itens || []).map((item: any) => (
+                          <tr key={item.id} className="border-t border-muted hover:bg-background transition-colors">
+                            <td className="px-4 py-2.5 font-medium text-foreground">{item.nome_colaborador}</td>
+                            <td className="px-3 py-2.5 text-muted-foreground text-xs capitalize">{String(item.tipo_evento || "").split("_").join(" ")}</td>
+                            <td className="px-3 py-2.5 text-center text-muted-foreground font-mono">
+                              {Number(item.horas ?? Number(item.minutos || 0) / 60).toFixed(2)}h
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-display font-semibold">
+                              R$ {Number(item.valor_calculado || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                            </td>
+                            <td className="px-4 py-2.5 text-center">
+                              <Badge className={cn("text-[10px]",
+                                item.status === "APROVADO" && "bg-success-soft text-success-strong",
+                                item.status === "PENDENTE" && "bg-warning-soft text-warning-strong",
+                                item.status === "REJEITADO" && "bg-destructive/10 text-destructive",
+                                item.status === "EM_ANALISE" && "bg-info-soft text-info-strong",
+                              )}>{item.status}</Badge>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
 
+              {/* Observação ao aprovar */}
+              {["AGUARDANDO_FINANCEIRO", "EM_ANALISE_FINANCEIRA"].includes(rhLoteDetalhe.status) && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="obs-aprov" className="text-sm">Observação ao aprovar (opcional)</Label>
+                  <Textarea
+                    id="obs-aprov"
+                    rows={2}
+                    placeholder="Registre aqui qualquer nota para o histórico…"
+                    value={observacaoAprovacao}
+                    onChange={(e) => setObservacaoAprovacao(e.target.value)}
+                    className="resize-none text-sm"
+                  />
+                </div>
+              )}
+
+              {/* Histórico colapsável */}
               <div className="rounded-xl border border-border overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="esc-table-header">
-                    <tr className="text-left text-muted-foreground">
-                      <th className="px-4 h-10 font-medium">Colaborador</th>
-                      <th className="px-3 h-10 font-medium">Tipo evento</th>
-                      <th className="px-3 h-10 font-medium text-center">Horas</th>
-                      <th className="px-3 h-10 font-medium text-right">Valor</th>
-                      <th className="px-4 h-10 font-medium text-center">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(rhLoteDetalhe.itens || []).map((item: any) => (
-                      <tr key={item.id} className="border-t border-muted">
-                        <td className="px-4 py-3 font-medium text-foreground">{item.nome_colaborador}</td>
-                        <td className="px-3 py-3 text-muted-foreground">{String(item.tipo_evento || "").replaceAll("_", " ")}</td>
-                        <td className="px-3 py-3 text-center text-muted-foreground">
-                          {item.horas ?? (Number(item.minutos || 0) / 60).toFixed(2)}
-                        </td>
-                        <td className="px-3 py-3 text-right font-display font-semibold">
-                          R$ {Number(item.valor_calculado || 0).toLocaleString("pt-BR")}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <Badge className="bg-warning-soft text-warning-strong">{item.status}</Badge>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <button
+                  type="button"
+                  className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/30 transition-colors"
+                  onClick={() => setShowLogHistorico((v) => !v)}
+                >
+                  <span className="flex items-center gap-2"><History className="h-4 w-4 text-muted-foreground" />Histórico do lote</span>
+                  {showLogHistorico ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                </button>
+                {showLogHistorico && (
+                  <div className="border-t border-border">
+                    {loadingLogs ? (
+                      <div className="p-4 flex justify-center"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+                    ) : logsDoLote.length === 0 ? (
+                      <div className="p-4 text-center text-sm text-muted-foreground italic">Nenhum evento registrado ainda.</div>
+                    ) : (
+                      <ul className="divide-y divide-border">
+                        {logsDoLote.map((log) => (
+                          <li key={log.id} className="flex items-start gap-3 px-4 py-3">
+                            <span className="mt-0.5">
+                              {log.acao === "APROVOU" && <CheckCircle2 className="h-3.5 w-3.5 text-success" />}
+                              {log.acao === "DEVOLVEU" && <RotateCcw className="h-3.5 w-3.5 text-destructive" />}
+                              {log.acao !== "APROVOU" && log.acao !== "DEVOLVEU" && <History className="h-3.5 w-3.5 text-muted-foreground" />}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs text-muted-foreground">
+                                {new Date(log.created_at).toLocaleString("pt-BR")} · <span className="font-medium text-foreground">{log.usuario_nome || "Sistema"}</span>
+                              </div>
+                              {log.observacao && <div className="text-sm text-foreground mt-0.5">{log.observacao}</div>}
+                              <div className="text-[11px] text-muted-foreground mt-1">
+                                {log.status_anterior} → <span className="font-medium text-foreground">{log.status_novo}</span>
+                              </div>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           ) : (
-            <div className="py-12 text-center text-muted-foreground">Nenhum detalhe disponÃ­vel para este lote.</div>
+            <div className="py-12 text-center text-muted-foreground">Nenhum detalhe disponível para este lote.</div>
           )}
 
+          <DialogFooter className="flex-wrap gap-2 sm:justify-between pt-4 border-t border-border">
+            {/* Esquerda: Devolver */}
+            <div className="flex gap-2">
+              {rhLoteDetalhe && ["AGUARDANDO_FINANCEIRO", "EM_ANALISE_FINANCEIRA"].includes(rhLoteDetalhe.status) && (
+                <Button
+                  variant="outline"
+                  className="text-destructive border-destructive/40 hover:bg-destructive/5"
+                  onClick={() => setOpenDevolucao(true)}
+                  disabled={devolverRHMutation.isPending}
+                >
+                  <XCircle className="h-4 w-4 mr-2" />
+                  Devolver ao RH
+                </Button>
+              )}
+            </div>
+            {/* Direita: Fechar / Iniciar / Aprovar */}
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setRhLoteSelecionado(null)}>Fechar</Button>
+              {rhLoteDetalhe && ["AGUARDANDO_FINANCEIRO", "DEVOLVIDO_RH"].includes(rhLoteDetalhe.status) && (
+                <Button variant="outline" onClick={() => iniciarAnaliseMutation.mutate(rhLoteDetalhe.id)} disabled={iniciarAnaliseMutation.isPending}>
+                  {iniciarAnaliseMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Search className="h-4 w-4 mr-2" />}
+                  Iniciar Análise
+                </Button>
+              )}
+              {rhLoteDetalhe && ["AGUARDANDO_FINANCEIRO", "EM_ANALISE_FINANCEIRA"].includes(rhLoteDetalhe.status) && (
+                <Button
+                  className="bg-success hover:bg-success/90 text-white"
+                  onClick={() => aprovarFinanceiroMutation.mutate({ id: rhLoteDetalhe.id, obs: observacaoAprovacao })}
+                  disabled={aprovarFinanceiroMutation.isPending || (rhLoteDetalhe.itens || []).length === 0}
+                >
+                  {aprovarFinanceiroMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
+                  Aprovar Financeiro
+                </Button>
+              )}
+              {rhLoteDetalhe?.status === "AGUARDANDO_PAGAMENTO" && (
+                <div className="flex items-center gap-2 rounded-lg bg-success-soft px-3 py-2 text-sm font-semibold text-success-strong">
+                  <CheckCircle2 className="h-4 w-4" /> Pronto para etapa bancária/CNAB
+                </div>
+              )}
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sub-dialog: Devolver ao RH */}
+      <Dialog open={openDevolucao} onOpenChange={(v) => { setOpenDevolucao(v); if (!v) setMotivoDevolucao(""); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <RotateCcw className="h-5 w-5" />
+              Devolver lote ao RH
+            </DialogTitle>
+            <DialogDescription>O lote retornará para a fila do RH com o motivo registrado.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="rounded-lg border border-warning/40 bg-warning-soft/40 px-4 py-3 text-sm text-warning-strong">
+              ⚠️ O motivo ficará visível para o RH e será registrado no histórico de auditoria.
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="motivo-dev" className="text-sm font-medium">
+                Motivo <span className="text-destructive">*</span>
+              </Label>
+              <Textarea
+                id="motivo-dev"
+                rows={4}
+                placeholder="Descreva o que precisa ser corrigido pelo RH…"
+                value={motivoDevolucao}
+                onChange={(e) => setMotivoDevolucao(e.target.value)}
+                className="resize-none"
+              />
+            </div>
+          </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRhLoteSelecionado(null)}>
-              Fechar
+            <Button variant="outline" onClick={() => { setOpenDevolucao(false); setMotivoDevolucao(""); }}>Cancelar</Button>
+            <Button
+              variant="destructive"
+              disabled={!motivoDevolucao.trim() || devolverRHMutation.isPending}
+              onClick={() => devolverRHMutation.mutate({ id: rhLoteSelecionado!.id, motivo: motivoDevolucao })}
+            >
+              {devolverRHMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RotateCcw className="h-4 w-4 mr-2" />}
+              Confirmar devolução
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -827,5 +1136,4 @@ const CentralFinanceira = () => {
 };
 
 export default CentralFinanceira;
-
 
