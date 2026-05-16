@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
   ArrowRight,
@@ -44,6 +44,7 @@ import { RHFinanceiroService } from "@/services/rhFinanceiro.service";
 
 const CentralFinanceira = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [filterMonth, setFilterMonth] = useState(new Date().toISOString().substring(0, 7));
   const [filterEmpresaId, setFilterEmpresaId] = useState<string | null>(null);
@@ -58,11 +59,14 @@ const CentralFinanceira = () => {
   const [motivoReabrir, setMotivoReabrir] = useState("");
   const [openConfirmAprovacao, setOpenConfirmAprovacao] = useState(false);
   const [rhLoteSelecionado, setRhLoteSelecionado] = useState<any>(null);
-  // etapa 2 — análise financeira
+  // etapa 2 - análise financeira
   const [openDevolucao, setOpenDevolucao] = useState(false);
   const [motivoDevolucao, setMotivoDevolucao] = useState("");
   const [observacaoAprovacao, setObservacaoAprovacao] = useState("");
   const [showLogHistorico, setShowLogHistorico] = useState(false);
+  const deepLinkLoteId = searchParams.get("rhLoteId");
+  const deepLinkCompetencia = searchParams.get("competencia");
+  const deepLinkEmpresaId = searchParams.get("empresaId");
 
   const { data: empresas = [], isLoading: loadingEmps } = useQuery<any[]>({
     queryKey: ["empresas"],
@@ -77,6 +81,24 @@ const CentralFinanceira = () => {
       }
     }
   }, [empresas, filterEmpresaId, selectedEmpresaId]);
+
+  useEffect(() => {
+    if (!deepLinkLoteId) return;
+    if (deepLinkCompetencia) {
+      setFilterMonth(deepLinkCompetencia);
+      setSelectedMonth(deepLinkCompetencia);
+    }
+    if (deepLinkEmpresaId) {
+      setFilterEmpresaId(deepLinkEmpresaId);
+      setSelectedEmpresaId(deepLinkEmpresaId);
+    }
+    setRhLoteSelecionado({ id: deepLinkLoteId });
+    const next = new URLSearchParams(searchParams);
+    next.delete("rhLoteId");
+    next.delete("competencia");
+    next.delete("empresaId");
+    setSearchParams(next, { replace: true });
+  }, [deepLinkLoteId, deepLinkCompetencia, deepLinkEmpresaId, searchParams, setSearchParams]);
 
   const { data: competencia, isLoading: loadingComp } = useQuery<any>({
     queryKey: ["competencia", selectedMonth, selectedEmpresaId],
@@ -185,7 +207,9 @@ const CentralFinanceira = () => {
   const lotesRhPendentes = lotesRh.filter((lote: any) =>
     ["AGUARDANDO_FINANCEIRO", "EM_ANALISE_FINANCEIRA", "DEVOLVIDO_RH"].includes(lote.status)
   );
+  const lotesRhProntosBancario = lotesRh.filter((lote: any) => lote.status === "AGUARDANDO_PAGAMENTO");
   const lotesRhValorTotal = lotesRhPendentes.reduce((acc: number, lote: any) => acc + Number(lote.valor_total || 0), 0);
+  const lotesRhValorBancario = lotesRhProntosBancario.reduce((acc: number, lote: any) => acc + Number(lote.valor_total || 0), 0);
   const isLoading = loadingEmps || loadingComp || loadingCons || loadingFechamentos || loadingRhLotes;
 
   // helpers status
@@ -360,7 +384,7 @@ const CentralFinanceira = () => {
                 <TabsTrigger value="visao-geral">Visão geral</TabsTrigger>
                 <TabsTrigger value="lotes-rh" className="relative">
                   Lotes do RH
-                  {lotesRhPendentes.length > 0 && (
+                  {(lotesRhPendentes.length > 0 || lotesRhProntosBancario.length > 0) && (
                     <span className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-info text-white text-[10px] font-bold px-1">
                       {lotesRhPendentes.length}
                     </span>
@@ -486,7 +510,7 @@ const CentralFinanceira = () => {
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      {lotesRhPendentes.length > 0 && (
+                      {(lotesRhPendentes.length > 0 || lotesRhProntosBancario.length > 0) && (
                         <Badge className="bg-warning-soft text-warning-strong">
                           {lotesRhPendentes.length} aguardando
                         </Badge>
@@ -532,7 +556,7 @@ const CentralFinanceira = () => {
                             return (
                               <tr key={lote.id} className="border-t border-muted hover:bg-background transition-colors">
                                 <td className="px-5 h-12 font-medium text-foreground">{lote.competencia}</td>
-                                <td className="px-3 text-muted-foreground text-xs">{lote.empresa?.nome || "—"}</td>
+                                <td className="px-3 text-muted-foreground text-xs">{lote.empresa?.nome || "-"}</td>
                                 <td className="px-3 text-muted-foreground">
                                   {lote.tipo === "BANCO_HORAS" ? "Banco de Horas" : "Folha Variável"}
                                 </td>
@@ -568,14 +592,14 @@ const CentralFinanceira = () => {
                     </table>
                   </div>
 
-                  {lotesRhPendentes.length > 0 && (
-                    <div className="border-t border-border px-5 py-3 text-sm text-muted-foreground flex items-center justify-between">
+                  {(lotesRhPendentes.length > 0 || lotesRhProntosBancario.length > 0) && (
+                    <div className="border-t border-border px-5 py-3 text-sm text-muted-foreground flex flex-wrap items-center justify-between gap-2">
                       <span>
                         Fila do Financeiro:
                         <strong className="text-foreground ml-1">{lotesRhPendentes.length}</strong> lote(s) ·
                         <strong className="text-foreground ml-1">R$ {Number(lotesRhValorTotal).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong>
                       </span>
-                      <span className="text-xs text-muted-foreground">Filtre por empresa/competência acima para refinar</span>
+                      <span>Prontos para Bancário/CNAB:<strong className="text-foreground ml-1">{lotesRhProntosBancario.length}</strong> lote(s) ·<strong className="text-foreground ml-1">R$ {Number(lotesRhValorBancario).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong></span>
                     </div>
                   )}
                 </section>
@@ -797,7 +821,7 @@ const CentralFinanceira = () => {
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-lg text-sm text-destructive">
-              ⚠️ Atenção: a reabertura anula o fechamento e permite alterações nos registros.
+              Atenção: a reabertura anula o fechamento e permite alterações nos registros.
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="motivo-reabrir-fin">Justificativa (obrigatória)</Label>
@@ -861,12 +885,12 @@ const CentralFinanceira = () => {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileCheck className="h-5 w-5 text-primary" />
-              Análise do Lote — Financeiro
+              Análise do Lote - Financeiro
             </DialogTitle>
             <DialogDescription>
               {rhLoteSelecionado
                 ? `${rhLoteSelecionado.competencia} · ${rhLoteSelecionado.empresa?.nome || ""} · ${rhLoteSelecionado.tipo === "BANCO_HORAS" ? "Banco de Horas" : "Folha Variável"}`
-                : "Carregando lote…"}
+                : "Carregando lote..."}
             </DialogDescription>
           </DialogHeader>
 
@@ -903,7 +927,7 @@ const CentralFinanceira = () => {
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {[
                   { label: "Competência", value: rhLoteDetalhe.competencia },
-                  { label: "Empresa", value: rhLoteDetalhe.empresa?.nome || "—" },
+                  { label: "Empresa", value: rhLoteDetalhe.empresa?.nome || "-" },
                   { label: "Colaboradores", value: String(rhLoteDetalhe.total_colaboradores) },
                   { label: "Valor total", value: `R$ ${Number(rhLoteDetalhe.valor_total || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` },
                 ].map((item) => (
@@ -992,7 +1016,7 @@ const CentralFinanceira = () => {
                   <Textarea
                     id="obs-aprov"
                     rows={2}
-                    placeholder="Registre aqui qualquer nota para o histórico…"
+                    placeholder="Registre aqui qualquer nota para o histórico..."
                     value={observacaoAprovacao}
                     onChange={(e) => setObservacaoAprovacao(e.target.value)}
                     className="resize-none text-sm"
@@ -1031,7 +1055,7 @@ const CentralFinanceira = () => {
                               </div>
                               {log.observacao && <div className="text-sm text-foreground mt-0.5">{log.observacao}</div>}
                               <div className="text-[11px] text-muted-foreground mt-1">
-                                {log.status_anterior} → <span className="font-medium text-foreground">{log.status_novo}</span>
+                                {log.status_anterior} {" -> "} <span className="font-medium text-foreground">{log.status_novo}</span>
                               </div>
                             </div>
                           </li>
@@ -1081,9 +1105,15 @@ const CentralFinanceira = () => {
                 </Button>
               )}
               {rhLoteDetalhe?.status === "AGUARDANDO_PAGAMENTO" && (
-                <div className="flex items-center gap-2 rounded-lg bg-success-soft px-3 py-2 text-sm font-semibold text-success-strong">
-                  <CheckCircle2 className="h-4 w-4" /> Pronto para etapa bancária/CNAB
-                </div>
+                <>
+                  <div className="flex items-center gap-2 rounded-lg bg-success-soft px-3 py-2 text-sm font-semibold text-success-strong">
+                    <CheckCircle2 className="h-4 w-4" /> Pronto para etapa bancária/CNAB
+                  </div>
+                  <Button variant="outline" onClick={() => navigate("/bancario")}>
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Ir para Bancário/CNAB
+                  </Button>
+                </>
               )}
             </div>
           </DialogFooter>
@@ -1102,7 +1132,7 @@ const CentralFinanceira = () => {
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div className="rounded-lg border border-warning/40 bg-warning-soft/40 px-4 py-3 text-sm text-warning-strong">
-              ⚠️ O motivo ficará visível para o RH e será registrado no histórico de auditoria.
+              Atenção: o motivo ficará visível para o RH e será registrado no histórico de auditoria.
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="motivo-dev" className="text-sm font-medium">
@@ -1111,7 +1141,7 @@ const CentralFinanceira = () => {
               <Textarea
                 id="motivo-dev"
                 rows={4}
-                placeholder="Descreva o que precisa ser corrigido pelo RH…"
+                placeholder="Descreva o que precisa ser corrigido pelo RH..."
                 value={motivoDevolucao}
                 onChange={(e) => setMotivoDevolucao(e.target.value)}
                 className="resize-none"
@@ -1136,4 +1166,6 @@ const CentralFinanceira = () => {
 };
 
 export default CentralFinanceira;
+
+
 

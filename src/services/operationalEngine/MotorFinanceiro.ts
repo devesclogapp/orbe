@@ -44,6 +44,22 @@ export const MotorFinanceiro = {
       // E Consolidado de Colaborador e Diarista
       const consolidadosCliente: Record<string, { total: number, ops: number, ids: string[] }> = {};
       const consolidadosColab: Record<string, { total: number, ids: string[] }> = {};
+      const colaboradorIds = Array.from(new Set((operacoes || []).map((op: any) => op.colaborador_id).filter(Boolean)));
+      const colaboradoresPorId = new Map<string, any>();
+
+      if (colaboradorIds.length > 0) {
+        const { data: colaboradores, error: colabError } = await supabase
+          .from("colaboradores")
+          .select("id, modelo_calculo, tipo_contrato, salario_base, valor_hora, valor_diaria, valor_base")
+          .in("id", colaboradorIds)
+          .eq("empresa_id", empresaId)
+          .eq("tenant_id", tenantId);
+
+        if (colabError) throw colabError;
+        for (const col of colaboradores || []) {
+          colaboradoresPorId.set(col.id, col);
+        }
+      }
 
       for (const op of operacoes) {
         // FATURAMENTO (Cliente/Transportadora)
@@ -63,8 +79,29 @@ export const MotorFinanceiro = {
           if (!consolidadosColab[op.colaborador_id]) {
             consolidadosColab[op.colaborador_id] = { total: 0, ids: [] };
           }
-          // Diaristas ou valores diretos de producao in loco
-          const colabTotal = Number(op.custo_com_iss || op.valor_total || 0);
+          const colaborador = colaboradoresPorId.get(op.colaborador_id);
+          const modelo = String(colaborador?.modelo_calculo || "").trim();
+          const tipoContrato = String(colaborador?.tipo_contrato || "").trim();
+          const quantidade = Number(op.quantidade || 0);
+          const horas = quantidade > 0 ? quantidade : 0;
+
+          let colabTotal = Number(op.custo_com_iss || op.valor_total || 0);
+          if (modelo === "Mensal") {
+            colabTotal = Number(colaborador?.salario_base || colaborador?.valor_base || colabTotal || 0);
+          } else if (modelo === "Horista") {
+            colabTotal = horas * Number(colaborador?.valor_hora || colaborador?.valor_base || 0);
+          } else if (modelo === "Diária") {
+            colabTotal = quantidade * Number(colaborador?.valor_diaria || colaborador?.valor_base || 0);
+          } else if (modelo === "Produção") {
+            colabTotal = Number(op.custo_com_iss || op.valor_total || colaborador?.valor_base || 0);
+          } else if (tipoContrato === "Mensal") {
+            colabTotal = Number(colaborador?.salario_base || colaborador?.valor_base || colabTotal || 0);
+          } else if (tipoContrato === "Hora") {
+            colabTotal = horas * Number(colaborador?.valor_hora || colaborador?.valor_base || 0);
+          } else if (tipoContrato === "Operação") {
+            colabTotal = Number(op.custo_com_iss || op.valor_total || colaborador?.valor_base || 0);
+          }
+
           consolidadosColab[op.colaborador_id].total += colabTotal;
           consolidadosColab[op.colaborador_id].ids.push(op.id);
         }

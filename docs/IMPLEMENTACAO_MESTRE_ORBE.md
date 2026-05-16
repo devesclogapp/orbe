@@ -183,3 +183,27 @@ Entregáveis:
 - RH, Financeiro e CNAB funcionando em fluxo contínuo.
 - Governança com rastreabilidade completa.
 - Arquitetura preparada para escalar automações.
+
+## 14. Checkpoint de Execução (Status Atual)
+### 14.1 Prioridade 1 — RH → Financeiro
+- Concluído: aprovação RH com validação de bloqueios críticos e separação de avisos.
+- Concluído: geração de lote `rh_financeiro_lotes` por competência/origem/tipo com prevenção de duplicidade.
+- Concluído: Central Financeira com status `AGUARDANDO_FINANCEIRO`, `EM_ANALISE_FINANCEIRA`, `APROVADO_FINANCEIRO`, `DEVOLVIDO_RH`, `AGUARDANDO_PAGAMENTO`.
+- Concluído: ações Financeiro (iniciar análise, aprovar, devolver com motivo obrigatório).
+- Concluído: logs de governança por transição (RH, criação de lote, análise, aprovação, devolução, preparo CNAB).
+
+### 14.2 Prioridade 2 — Modelo de Cálculo do Colaborador
+- Concluído: inclusão e uso de `regime_trabalho` e `modelo_calculo`.
+- Concluído: campos dinâmicos por modelo (Mensal/Horista/Diária/Produção) no cadastro.
+- Concluído: compatibilidade com legado (CLT→Mensal, Diarista→Diária).
+
+### 14.3 Prioridade 3 — Fechamento
+- Concluído: bloqueio de fechamento operacional com inconsistências críticas.
+- Concluído: bloqueio quando automação não está pronta para fechamento.
+- Concluído: visibilidade de bloqueios e status por competência na tela de fechamento.
+- Concluído: guarda de validação financeira no backend (exige ciclo fechado, RH validado e sem inconsistências).
+
+### 14.4 Prioridade 4 — Preparação CNAB
+- Concluído: lote aprovado em Financeiro transita para `AGUARDANDO_PAGAMENTO`.
+- Concluído: encaminhamento para fluxo bancário/CNAB com rastreabilidade.
+- Pendente: validação final integrada ponta a ponta em ambiente com dados reais/homologação.

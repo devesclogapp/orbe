@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -23,7 +24,7 @@ import {
   Upload,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { CentralBancariaDiaristas } from "./Financeiro/CentralBancariaDiaristas";
 
 import { AppShell } from "@/components/layout/AppShell";
@@ -44,6 +45,9 @@ import { supabase } from "@/lib/supabase";
 import { EmpresaService } from "@/services/base.service";
 import { CNAB240BBWriter } from "@/services/cnab/CNAB240BBWriter";
 import { CNABService, ContaBancariaService, CnabRemessaArquivoService } from "@/services/financial.service";
+import { RHFinanceiroService } from "@/services/rhFinanceiro.service";
+
+const REQUIRE_RH_LOTE_FOR_CNAB = String(import.meta.env.VITE_REQUIRE_RH_LOTE_FOR_CNAB || "false").toLowerCase() === "true";
 
 const statusBadge = (status: string) => {
   switch (status) {
@@ -77,9 +81,10 @@ const statusBadge = (status: string) => {
 
 const CentralBancaria = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const [competencia, setCompetencia] = useState("");
-  const [empresaId, setEmpresaId] = useState("");
+  const [competencia, setCompetencia] = useState(searchParams.get("competencia") || "");
+  const [empresaId, setEmpresaId] = useState(searchParams.get("empresaId") || "");
   const [contaId, setContaId] = useState("");
   const [isValidating, setIsValidating] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -88,6 +93,7 @@ const CentralBancaria = () => {
   const [historySearch, setHistorySearch] = useState("");
   const [markingEnviadoId, setMarkingEnviadoId] = useState<string | null>(null);
   const [observacaoEnvio, setObservacaoEnvio] = useState("");
+  const [loteRhSelecionadoId, setLoteRhSelecionadoId] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState("remessa");
   const [diaristasMetrics, setDiaristasMetrics] = useState({ totalRemessas: 0, totalTitulos: 0, totalValor: 0, remessasComErro: 0 });
@@ -115,10 +121,95 @@ const CentralBancaria = () => {
     enabled: !!empresaId,
   });
 
+  useEffect(() => {
+    if (!empresaId) return;
+    if (contaId) return;
+    if ((contas || []).length === 1) {
+      setContaId(contas[0].id);
+      toast.success("Conta bancária sugerida automaticamente para a empresa selecionada.");
+    }
+  }, [empresaId, contas, contaId]);
+
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (competencia) {
+      next.set("competencia", competencia);
+    } else {
+      next.delete("competencia");
+    }
+    if (empresaId) {
+      next.set("empresaId", empresaId);
+    } else {
+      next.delete("empresaId");
+    }
+    if (next.toString() !== searchParams.toString()) {
+      setSearchParams(next, { replace: true });
+    }
+  }, [competencia, empresaId, searchParams, setSearchParams]);
+
   const { data: remessas = [], isLoading: loadingRemessas } = useQuery<any[]>({
     queryKey: ["cnab-remessas-arquivos"],
     queryFn: () => CnabRemessaArquivoService.listarHistorico(),
   });
+  const { data: lotesRh = [], isLoading: loadingLotesRh } = useQuery<any[]>({
+    queryKey: ["rh-financeiro-lotes-bancario", competencia, empresaId],
+    queryFn: () => RHFinanceiroService.listLotesRecebidos(competencia || undefined, empresaId || undefined),
+  });
+
+  const lotesRhProntosCnab = useMemo(
+    () => (lotesRh || []).filter((lote: any) => lote.status === "AGUARDANDO_PAGAMENTO"),
+    [lotesRh]
+  );
+  const lotesRhProntosValor = useMemo(
+    () => lotesRhProntosCnab.reduce((acc: number, lote: any) => acc + Number(lote.valor_total || 0), 0),
+    [lotesRhProntosCnab]
+  );
+
+  const aplicarLoteRhNaRemessa = (lote: any) => {
+    setLoteRhSelecionadoId(lote.id);
+    setCompetencia(lote.competencia || "");
+    setEmpresaId(lote.empresa_id || "");
+    setContaId("");
+    setValidation(null);
+    toast.success("Lote aplicado ao formulário de remessa.");
+  };
+  const abrirLoteNoFinanceiro = (lote: any) => {
+    const params = new URLSearchParams();
+    params.set("rhLoteId", String(lote.id));
+    if (lote.competencia) params.set("competencia", String(lote.competencia));
+    if (lote.empresa_id) params.set("empresaId", String(lote.empresa_id));
+    navigate(`/financeiro?${params.toString()}`);
+  };
+
+  const limparLoteRhSelecionado = () => {
+    setLoteRhSelecionadoId(null);
+    setCompetencia("");
+    setEmpresaId("");
+    setContaId("");
+    setValidation(null);
+  };
+
+  const limparFiltrosRemessa = () => {
+    setLoteRhSelecionadoId(null);
+    setCompetencia("");
+    setEmpresaId("");
+    setContaId("");
+    setValidation(null);
+  };
+
+  useEffect(() => {
+    if (!loteRhSelecionadoId) return;
+    const loteSelecionado = lotesRhProntosCnab.find((l: any) => l.id === loteRhSelecionadoId);
+    if (!loteSelecionado) {
+      setLoteRhSelecionadoId(null);
+      return;
+    }
+    const mudouCompetencia = !!competencia && competencia !== loteSelecionado.competencia;
+    const mudouEmpresa = !!empresaId && empresaId !== loteSelecionado.empresa_id;
+    if (mudouCompetencia || mudouEmpresa) {
+      setLoteRhSelecionadoId(null);
+    }
+  }, [loteRhSelecionadoId, lotesRhProntosCnab, competencia, empresaId]);
 
   const formattedCompetencias = useMemo(() => {
     const unique = competencias.filter(
@@ -149,8 +240,12 @@ const CentralBancaria = () => {
   const totalTitulos = activeTab === "diaristas" ? diaristasMetrics.totalTitulos : remessas.reduce((acc, remessa) => acc + Number(remessa.lotes_remessa?.quantidade_titulos || 0), 0);
   const totalValor = activeTab === "diaristas" ? diaristasMetrics.totalValor : remessas.reduce((acc, remessa) => acc + Number(remessa.total_valor || remessa.lotes_remessa?.valor_total || 0), 0);
   const remessasComErro = activeTab === "diaristas" ? diaristasMetrics.remessasComErro : remessas.filter((remessa) => remessa.status === "erro_homologacao").length;
+  const totalLotesRhProntos = lotesRhProntosCnab.length;
 
   const handleValidate = async () => {
+    if (REQUIRE_RH_LOTE_FOR_CNAB && !loteRhSelecionadoId) {
+      return toast.error("Selecione um lote do RH na fila para validar a remessa.");
+    }
     if (!competencia) return toast.error("Selecione a competência");
     if (!empresaId) return toast.error("Selecione uma empresa");
     if (!contaId) return toast.error("Selecione a conta bancária");
@@ -183,6 +278,9 @@ const CentralBancaria = () => {
   };
 
   const handleGenerate = async () => {
+    if (REQUIRE_RH_LOTE_FOR_CNAB && !loteRhSelecionadoId) {
+      return toast.error("Selecione um lote do RH na fila para gerar o CNAB.");
+    }
     if (!contaId) return toast.error("Selecione a conta bancária");
     setIsGenerating(true);
     try {
@@ -273,7 +371,11 @@ const CentralBancaria = () => {
               icon={Banknote}
               accent
             />
-            <MetricCard label={activeTab === "diaristas" ? "Pendentes de Pgto" : "Lotes com erro"} value={remessasComErro.toString()} icon={AlertCircle} />
+            <MetricCard
+              label={activeTab === "diaristas" ? "Pendentes de Pgto" : "Lotes RH prontos CNAB"}
+              value={(activeTab === "diaristas" ? remessasComErro : totalLotesRhProntos).toString()}
+              icon={AlertCircle}
+            />
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
@@ -285,7 +387,87 @@ const CentralBancaria = () => {
             </TabsList>
 
             <TabsContent value="remessa">
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              <div className="space-y-6">
+                <Card className="p-4 border-border bg-card">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Fila RH para Bancário/CNAB</p>
+                      <p className="text-sm text-foreground">
+                        {loadingLotesRh
+                          ? "Carregando lotes..."
+                          : `${lotesRhProntosCnab.length} lote(s) pronto(s) · ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(lotesRhProntosValor)}`}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => navigate("/financeiro")}>
+                        Ver lotes no Financeiro
+                      </Button>
+                    </div>
+                  </div>
+                  {!loadingLotesRh && lotesRhProntosCnab.length > 0 && (
+                    <div className="mt-4 overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="esc-table-header">
+                          <tr className="text-left">
+                            <th className="px-3 h-10 font-medium">Competência</th>
+                            <th className="px-3 h-10 font-medium">Empresa</th>
+                            <th className="px-3 h-10 font-medium text-right">Valor</th>
+                            <th className="px-3 h-10 font-medium text-center">Colaboradores</th>
+                            <th className="px-3 h-10 font-medium text-center">Status</th>
+                            <th className="px-3 h-10 font-medium text-right">Ação</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {lotesRhProntosCnab.slice(0, 6).map((lote: any) => (
+                            <tr key={lote.id} className="border-t border-muted">
+                              <td className="px-3 h-11 font-medium text-foreground">{lote.competencia}</td>
+                              <td className="px-3 h-11 text-muted-foreground">{lote.empresa?.nome || "-"}</td>
+                              <td className="px-3 h-11 text-right font-semibold text-foreground">
+                                {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(lote.valor_total || 0))}
+                              </td>
+                              <td className="px-3 h-11 text-center">{Number(lote.total_colaboradores || 0)}</td>
+                              <td className="px-3 h-11 text-center">
+                                <Badge className="bg-success-soft text-success-strong">Aguardando Pagamento/CNAB</Badge>
+                              </td>
+                              <td className="px-3 h-11 text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  <Button
+                                    variant={loteRhSelecionadoId === lote.id ? "default" : "outline"}
+                                    size="sm"
+                                    onClick={() => aplicarLoteRhNaRemessa(lote)}
+                                  >
+                                    Usar na remessa
+                                  </Button>
+                                  <Button variant="outline" size="sm" onClick={() => abrirLoteNoFinanceiro(lote)}>
+                                    Ver no financeiro
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  {!loadingLotesRh && lotesRhProntosCnab.length === 0 && (
+                    <div className="mt-4 rounded-lg border border-dashed border-border bg-muted/20 p-4 text-sm text-muted-foreground">
+                      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <span>
+                          {competencia || empresaId
+                            ? "Nenhum lote do RH aguardando pagamento/CNAB para os filtros atuais."
+                            : "Nenhum lote do RH aguardando pagamento/CNAB no momento."}
+                        </span>
+                        {(competencia || empresaId) && (
+                          <Button variant="outline" size="sm" onClick={limparFiltrosRemessa}>
+                            Limpar filtros
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </Card>
+
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                 <Card className="lg:col-span-5 p-8 space-y-6 shadow-sm border-border bg-card/50 backdrop-blur-sm">
                   <div className="flex items-center gap-3 border-b border-border/50 pb-4">
                     <div className="p-2 bg-primary/10 rounded-lg text-primary">
@@ -298,6 +480,16 @@ const CentralBancaria = () => {
                   </div>
 
                   <div className="space-y-5">
+                    {loteRhSelecionadoId && (
+                      <div className="rounded-lg border border-success/30 bg-success/5 p-3 text-xs text-success-strong flex items-center justify-between gap-2">
+                        <span>
+                          Lote RH aplicado ao formulário de remessa.
+                        </span>
+                        <Button variant="outline" size="sm" onClick={limparLoteRhSelecionado}>
+                          Limpar seleção
+                        </Button>
+                      </div>
+                    )}
                     <div className="space-y-2">
                       <label className="text-[11px] font-bold text-muted-foreground uppercase flex items-center gap-2">
                         <Calendar className="w-3 h-3" /> Competência
@@ -485,6 +677,7 @@ const CentralBancaria = () => {
                     </div>
                   )}
                 </Card>
+                </div>
               </div>
             </TabsContent>
 
@@ -718,3 +911,7 @@ const CentralBancaria = () => {
 };
 
 export default CentralBancaria;
+
+
+
+

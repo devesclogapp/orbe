@@ -91,6 +91,23 @@ const Fechamento = () => {
     actionMutation.mutate({ action, id, obs });
   };
 
+  const getCriticalBlockers = (c: CicloOperacional) => {
+    const blockers: string[] = [];
+    if ((c.total_inconsistencias || 0) > 0) blockers.push("Existem inconsistências críticas no ciclo.");
+    if (c.status_automacao !== "pronto_para_fechamento") blockers.push("Motor operacional ainda não liberou o fechamento.");
+    if (c.status_rh === "rejeitado_rh") blockers.push("RH rejeitou o ciclo. Ajuste obrigatório antes de avançar.");
+    if (c.status_financeiro === "rejeitado_financeiro") blockers.push("Financeiro rejeitou o ciclo. Ajuste obrigatório antes de avançar.");
+    return blockers;
+  };
+
+  const competenciaSummary = {
+    entradasPendentes: list.filter((c) => c.status !== "fechado" && c.status_automacao !== "pronto_para_fechamento").length,
+    rhPendentes: list.filter((c) => c.status === "fechado" && c.status_rh !== "validado_rh").length,
+    financeiroPendentes: list.filter((c) => c.status_rh === "validado_rh" && c.status_financeiro !== "validado_financeiro").length,
+    bancarioPendentes: list.filter((c) => c.status_financeiro === "validado_financeiro" && c.status_remessa !== "pronta" && c.status_remessa !== "remetida").length,
+    fechados: list.filter((c) => c.status_financeiro === "validado_financeiro" && (c.status_remessa === "pronta" || c.status_remessa === "remetida")).length,
+  };
+
   return (
     <AppShell title="Fechamento Mensal" subtitle={`Ciclos Operacionais da Competência ${currentMonth}`}>
       {isLoading ? (
@@ -99,6 +116,36 @@ const Fechamento = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-6">
+          <section className="esc-card p-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+              <div className="rounded-lg border border-border bg-muted/20 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Entradas</p>
+                <p className="text-lg font-semibold text-foreground">{competenciaSummary.entradasPendentes}</p>
+                <p className="text-xs text-muted-foreground">pendentes de liberaÃ§Ã£o</p>
+              </div>
+              <div className="rounded-lg border border-border bg-muted/20 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">RH</p>
+                <p className="text-lg font-semibold text-foreground">{competenciaSummary.rhPendentes}</p>
+                <p className="text-xs text-muted-foreground">aguardando aprovaÃ§Ã£o</p>
+              </div>
+              <div className="rounded-lg border border-border bg-muted/20 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Financeiro</p>
+                <p className="text-lg font-semibold text-foreground">{competenciaSummary.financeiroPendentes}</p>
+                <p className="text-xs text-muted-foreground">aguardando aprovaÃ§Ã£o</p>
+              </div>
+              <div className="rounded-lg border border-border bg-muted/20 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">BancÃ¡rio</p>
+                <p className="text-lg font-semibold text-foreground">{competenciaSummary.bancarioPendentes}</p>
+                <p className="text-xs text-muted-foreground">preparaÃ§Ã£o remessa</p>
+              </div>
+              <div className="rounded-lg border border-success/30 bg-success-soft/30 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-success-strong/80">Fechado</p>
+                <p className="text-lg font-semibold text-success-strong">{competenciaSummary.fechados}</p>
+                <p className="text-xs text-success-strong/80">prontos no fluxo</p>
+              </div>
+            </div>
+          </section>
+
           {list.map((c) => (
             <article key={c.id} className="esc-card p-6 flex flex-col gap-5">
               <div className="flex items-center justify-between border-b border-border pb-4">
@@ -148,6 +195,17 @@ const Fechamento = () => {
                 </div>
               </div>
 
+              {getCriticalBlockers(c).length > 0 && (
+                <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-destructive">Bloqueios críticos</p>
+                  <ul className="mt-2 space-y-1 text-sm text-destructive">
+                    {getCriticalBlockers(c).map((item, idx) => (
+                      <li key={`${c.id}-blocker-${idx}`}>• {item}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               <div className="flex items-center justify-between pt-4 border-t border-border bg-muted/30 -mx-6 px-6 pb-2 -mb-2 rounded-b-xl">
                 <span className="text-xs text-muted-foreground flex items-center gap-1.5">
                   {(c.status === "fechado" || c.status === "enviado_financeiro") ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
@@ -164,10 +222,10 @@ const Fechamento = () => {
                   {c.status !== "fechado" && c.status !== "enviado_financeiro" && (
                     <Button
                       size="sm"
-                      disabled={(c.total_inconsistencias || 0) > 0 || actionMutation.isPending || c.status_automacao !== 'pronto_para_fechamento'}
+                      disabled={getCriticalBlockers(c).length > 0 || actionMutation.isPending}
                       onClick={() => handleAction('fechar', c.id)}
                     >
-                      {actionMutation.isPending ? "Processando..." : c.status_automacao !== 'pronto_para_fechamento' ? "Bloqueado pelo Motor" : "1. Fechar Operacional"}
+                      {actionMutation.isPending ? "Processando..." : getCriticalBlockers(c).length > 0 ? "Bloqueado por pendências" : "1. Fechar Operacional"}
                     </Button>
                   )}
 
@@ -193,6 +251,12 @@ const Fechamento = () => {
                   )}
                 </div>
               </div>
+
+              {c.status_financeiro !== "validado_financeiro" && (
+                <div className="text-xs text-muted-foreground">
+                  Fechamento final da competência permanece bloqueado até <strong>aprovação financeira</strong>.
+                </div>
+              )}
             </article>
           ))}
           {list.length === 0 && (

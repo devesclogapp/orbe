@@ -47,6 +47,10 @@ const CentralGovernanca = () => {
       offset: 0
     }),
   });
+  const { data: transicoesDia, isLoading: loadingTransicoesDia } = useQuery({
+    queryKey: ["governance_transicoes_diarias"],
+    queryFn: () => GovernanceService.getTransicoesDiarias(),
+  });
 
   const loading = loadingDocs && loadingTimeline; // Just initial load
 
@@ -160,6 +164,38 @@ const CentralGovernanca = () => {
                 </div>
               </div>
             )}
+
+            {/* TRANSIÇÕES DIÁRIAS RH -> FINANCEIRO -> CNAB */}
+            <section className="esc-card p-4 md:p-5">
+              <div className="mb-3">
+                <h3 className="font-display font-semibold text-foreground">Transições Diárias do Fluxo</h3>
+                <p className="text-xs text-muted-foreground">
+                  Contadores de hoje para aprovação RH, aprovação financeira, preparo CNAB e devoluções ao RH.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <MetricCard
+                  label="Aprovou RH"
+                  value={loadingTransicoesDia ? "..." : String(transicoesDia?.aprovouRh || 0)}
+                  icon={RefreshCcw}
+                />
+                <MetricCard
+                  label="Aprovou Financeiro"
+                  value={loadingTransicoesDia ? "..." : String(transicoesDia?.aprovouFinanceiro || 0)}
+                  icon={Wallet}
+                />
+                <MetricCard
+                  label="Preparou CNAB"
+                  value={loadingTransicoesDia ? "..." : String(transicoesDia?.preparouCnab || 0)}
+                  icon={FileText}
+                />
+                <MetricCard
+                  label="Devolveu ao RH"
+                  value={loadingTransicoesDia ? "..." : String(transicoesDia?.devolveuRh || 0)}
+                  icon={XCircle}
+                />
+              </div>
+            </section>
 
             {/* TIMELINE CORPORATIVA */}
             <section className="esc-card overflow-hidden">

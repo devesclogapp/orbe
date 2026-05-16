@@ -19,4 +19,28 @@ export default defineConfig(({ mode }) => ({
     },
     dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime", "@tanstack/react-query", "@tanstack/query-core"],
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+
+          if (id.includes("node_modules/xlsx")) return "vendor-xlsx";
+          if (id.includes("node_modules/jspdf") || id.includes("node_modules/jspdf-autotable")) return "vendor-pdf";
+          if (id.includes("node_modules/@supabase/supabase-js")) return "vendor-supabase";
+          if (
+            id.includes("node_modules/react") ||
+            id.includes("node_modules/react-dom") ||
+            id.includes("node_modules/react-router-dom")
+          ) {
+            return "vendor-react";
+          }
+          if (id.includes("node_modules/@tanstack")) return "vendor-query";
+          if (id.includes("node_modules/lucide-react")) return "vendor-icons";
+
+          return "vendor-misc";
+        },
+      },
+    },
+  },
 }));

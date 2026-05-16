@@ -726,6 +726,24 @@ class RHFinanceiroServiceClass {
       statusNovo: "AGUARDANDO_PAGAMENTO",
       observacao: "Lote encaminhado para preparação bancária/CNAB.",
     });
+
+    try {
+      await supabase.rpc("log_audit", {
+        p_action: "RH_LOTE_ENCAMINHADO_BANCARIO",
+        p_details: JSON.stringify({
+          lote_id: loteId,
+          tenant_id: tenantId,
+          usuario_id: userId,
+          usuario_nome: userName,
+          status_anterior: statusAnterior,
+          status_novo: "AGUARDANDO_PAGAMENTO",
+          observacao: observacao || null,
+          origem: "RH_FINANCEIRO",
+        }),
+      });
+    } catch {
+      // Auditoria global nunca bloqueia o fluxo principal.
+    }
   }
 
   async devolverAoRH(loteId: string, motivo: string): Promise<void> {

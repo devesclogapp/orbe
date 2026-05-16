@@ -170,7 +170,7 @@ export class CicloOperacionalService {
   static async fecharSemana(cicloId: string, usuarioId: string): Promise<CicloOperacional> {
     const { data: ciclo, error: errFetch } = await supabase
       .from('ciclos_operacionais')
-      .select('status, tenant_id, status_automacao')
+      .select('status, tenant_id, status_automacao, total_inconsistencias')
       .eq('id', cicloId)
       .single();
       
@@ -178,6 +178,14 @@ export class CicloOperacionalService {
     
     if (ciclo.status === 'fechado' || ciclo.status === 'enviado_financeiro') {
       throw new Error("Ciclo j√° est√° fechado.");
+    }
+
+    if ((ciclo.total_inconsistencias || 0) > 0) {
+      throw new Error("N√£o √© poss√≠vel fechar: existem inconsist√™ncias cr√≠ticas no ciclo.");
+    }
+
+    if (ciclo.status_automacao !== 'pronto_para_fechamento') {
+      throw new Error("N√£o √© poss√≠vel fechar: o motor operacional ainda n√£o liberou esta semana.");
     }
 
     const { data, error } = await supabase
@@ -287,21 +295,33 @@ export class CicloOperacionalService {
   /**
    * Workflow Financeiro - Validar
    */
-  static async validarFinanceiro(cicloId: string, usuarioId: string, observacao: string = 'Valida√ß√£o financeira conclu√≠da'): Promise<CicloOperacional> {
+  static async validarFinanceiro(cicloId: string, usuarioId: string, observacao: string = 'ValidaÁ„o financeira concluÌda'): Promise<CicloOperacional> {
     const { data: ciclo, error: errFetch } = await supabase
       .from('ciclos_operacionais')
-      .select('status_rh, tenant_id')
+      .select('status, status_rh, total_inconsistencias, status_remessa, tenant_id')
       .eq('id', cicloId)
       .single();
-    if (errFetch || !ciclo) throw new Error("Ciclo n√£o encontrado");
+    if (errFetch || !ciclo) throw new Error("Ciclo n„o encontrado");
     
+    if (ciclo.status !== 'fechado') {
+      throw new Error("O ciclo precisa estar fechado operacionalmente antes da validaÁ„o Financeira.");
+    }
+
     if (ciclo.status_rh !== 'validado_rh') {
-       throw new Error("O ciclo precisa estar validado pelo RH antes da valida√ß√£o Financeira.");
+       throw new Error("O ciclo precisa estar validado pelo RH antes da validaÁ„o Financeira.");
+    }
+
+    if ((ciclo.total_inconsistencias || 0) > 0) {
+      throw new Error("N„o È possÌvel validar no Financeiro: existem inconsistÍncias no ciclo.");
     }
 
     const { data, error } = await supabase
       .from('ciclos_operacionais')
-      .update({ status_financeiro: 'validado_financeiro' })
+      .update({
+        status_financeiro: 'validado_financeiro',
+        status: 'enviado_financeiro',
+        status_remessa: ciclo.status_remessa === 'nao_gerada' ? 'pronta' : ciclo.status_remessa
+      })
       .eq('id', cicloId)
       .select()
       .single();
@@ -348,4 +368,5 @@ export class CicloOperacionalService {
     });
   }
 }
+
 

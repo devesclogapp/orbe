@@ -33,6 +33,13 @@ export interface TimelineFilters {
   offset?: number;
 }
 
+export interface GovernancaTransicoesDiarias {
+  aprovouRh: number;
+  aprovouFinanceiro: number;
+  preparouCnab: number;
+  devolveuRh: number;
+}
+
 class GovernanceServiceClass {
   async getIndicadoresGlobais(tenantId?: string): Promise<KPIIndicadoresGlobais> {
     const { data, error } = await supabase.rpc('get_executive_governance_kpis', {
@@ -77,6 +84,58 @@ class GovernanceServiceClass {
     }
 
     return data as TimelineEvent[];
+  }
+
+  async getTransicoesDiarias(tenantId?: string): Promise<GovernancaTransicoesDiarias> {
+    let effectiveTenantId = tenantId || null;
+
+    if (!effectiveTenantId) {
+      const { data: authData } = await supabase.auth.getUser();
+      const userId = authData.user?.id;
+      if (userId) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("tenant_id")
+          .eq("user_id", userId)
+          .maybeSingle();
+        effectiveTenantId = profile?.tenant_id || null;
+      }
+    }
+
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+
+    let query = (supabase as any)
+      .from("rh_financeiro_lote_historico")
+      .select("acao, created_at")
+      .gte("created_at", start.toISOString())
+      .lte("created_at", end.toISOString())
+      .in("acao", ["APROVOU_RH", "APROVOU_FINANCEIRO", "PREPAROU_CNAB", "DEVOLVEU"]);
+
+    if (effectiveTenantId) {
+      query = query.eq("tenant_id", effectiveTenantId);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      console.error("Erro ao carregar transições diárias de governança:", error);
+      return {
+        aprovouRh: 0,
+        aprovouFinanceiro: 0,
+        preparouCnab: 0,
+        devolveuRh: 0,
+      };
+    }
+
+    const rows = data || [];
+    return {
+      aprovouRh: rows.filter((r: any) => r.acao === "APROVOU_RH").length,
+      aprovouFinanceiro: rows.filter((r: any) => r.acao === "APROVOU_FINANCEIRO").length,
+      preparouCnab: rows.filter((r: any) => r.acao === "PREPAROU_CNAB").length,
+      devolveuRh: rows.filter((r: any) => r.acao === "DEVOLVEU").length,
+    };
   }
 
   // Prepara arquitetura de exportação

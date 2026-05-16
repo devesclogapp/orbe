@@ -106,6 +106,26 @@ function hasComplementoMinimoColaborador(payload: Record<string, any>) {
   return Boolean(cpf && telefone && matricula && empresaId && cargo) && hasDadosBancariosMinimosColaborador(payload);
 }
 
+function inferRegimeTrabalho(tipoColaborador?: string | null): string {
+  const tipo = String(tipoColaborador ?? "").trim().toUpperCase();
+  if (tipo === "CLT") return "CLT";
+  if (tipo === "INTERMITENTE") return "Intermitente";
+  if (tipo === "DIARISTA") return "Diarista";
+  if (tipo === "PRODUÇÃO" || tipo === "PRODUCAO") return "Freelancer";
+  if (tipo === "TERCEIRIZADO") return "Terceirizado";
+  return "CLT";
+}
+
+function inferModeloCalculo(tipoColaborador?: string | null): string {
+  const tipo = String(tipoColaborador ?? "").trim().toUpperCase();
+  if (tipo === "CLT") return "Mensal";
+  if (tipo === "DIARISTA") return "Diária";
+  if (tipo === "PRODUÇÃO" || tipo === "PRODUCAO") return "Produção";
+  if (tipo === "INTERMITENTE") return "Horista";
+  if (tipo === "TERCEIRIZADO") return "Produção";
+  return "Mensal";
+}
+
 // Função helper para obter tenant_id de forma segura
 async function getCurrentTenantId(): Promise<string> {
   const { data: { user } } = await supabase.auth.getUser();
@@ -493,6 +513,8 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
       ...payload,
       cpf: cpfClean,
       empresa_id: empresaIdClean,
+      regime_trabalho: payload.regime_trabalho ?? inferRegimeTrabalho(payload.tipo_colaborador),
+      modelo_calculo: payload.modelo_calculo ?? inferModeloCalculo(payload.tipo_colaborador),
       unidade_id: cleanUuid(payload.unidade_id),
       tenant_id: tenantId,
       status_cadastro: payload.status_cadastro ?? 'completo',
@@ -558,6 +580,8 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
       empresa_id: cleanUuid(payload.empresa_id),
       tipo_contrato: payload.tipo_contrato ?? null,
       tipo_colaborador: payload.tipo_colaborador ?? null,
+      regime_trabalho: payload.regime_trabalho ?? inferRegimeTrabalho(payload.tipo_colaborador),
+      modelo_calculo: payload.modelo_calculo ?? inferModeloCalculo(payload.tipo_colaborador),
       valor_base: Number(payload.valor_base) || 0,
       flag_faturamento: payload.flag_faturamento ?? false,
       permitir_lancamento_operacional: payload.permitir_lancamento_operacional ?? false,
@@ -575,6 +599,16 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
       unidade_id: cleanUuid(payload.unidade_id),
       deleted_at: payload.deleted_at ?? null,
     };
+
+    if (payload.salario_base != null) {
+      cleanedPayload.salario_base = Number(payload.salario_base) || 0;
+    }
+    if (payload.valor_hora != null) {
+      cleanedPayload.valor_hora = Number(payload.valor_hora) || 0;
+    }
+    if (payload.valor_diaria != null) {
+      cleanedPayload.valor_diaria = Number(payload.valor_diaria) || 0;
+    }
 
     if (!cleanedPayload.empresa_id) {
       throw new Error('Selecione uma empresa válida.');

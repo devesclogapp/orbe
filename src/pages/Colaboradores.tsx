@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
@@ -30,9 +30,17 @@ const getInitialColaboradorFormData = (defaultEmpresaId = "") => ({
   cargo: "",
   matricula: "",
   empresa_id: defaultEmpresaId,
-  tipo_contrato: "Hora" as "Hora" | "Operação",
+  regime_trabalho: "CLT",
+  modelo_calculo: "Mensal",
+  tipo_contrato: "Hora" as "Hora" | "Operação" | "Mensal",
   tipo_colaborador: "CLT",
   valor_base: "22",
+  salario_base: "",
+  valor_hora: "",
+  valor_diaria: "",
+  carga_referencia: "220",
+  estimativa_mensal: "",
+  regra_operacional: "",
   flag_faturamento: true,
   permitir_lancamento_operacional: false,
   status: "ativo",
@@ -70,6 +78,26 @@ const getColaboradorOrigemMeta = (colaborador: any) => {
   };
 };
 
+const inferRegimeTrabalho = (tipoColaborador?: string) => {
+  const tipo = String(tipoColaborador || "").toUpperCase();
+  if (tipo === "CLT") return "CLT";
+  if (tipo === "INTERMITENTE") return "Intermitente";
+  if (tipo === "DIARISTA") return "Diarista";
+  if (tipo === "PRODUÇÃO" || tipo === "PRODUCAO") return "Freelancer";
+  if (tipo === "TERCEIRIZADO") return "Terceirizado";
+  return "CLT";
+};
+
+const inferModeloCalculo = (tipoColaborador?: string) => {
+  const tipo = String(tipoColaborador || "").toUpperCase();
+  if (tipo === "CLT") return "Mensal";
+  if (tipo === "DIARISTA") return "Diária";
+  if (tipo === "INTERMITENTE") return "Horista";
+  if (tipo === "PRODUÇÃO" || tipo === "PRODUCAO") return "Produção";
+  if (tipo === "TERCEIRIZADO") return "Produção";
+  return "Mensal";
+};
+
 const Colaboradores = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -82,7 +110,8 @@ const Colaboradores = () => {
   // Filter states
   const [searchText, setSearchText] = useState("");
   const [selectedEmpresa, setSelectedEmpresa] = useState("all");
-  const [selectedContrato, setSelectedContrato] = useState("all");
+  const [selectedRegime, setSelectedRegime] = useState("all");
+  const [selectedModelo, setSelectedModelo] = useState("all");
   const [isProcessing, setIsProcessing] = useState(false);
 
   // Queries
@@ -186,9 +215,17 @@ const Colaboradores = () => {
       cargo: c.cargo || "",
       matricula: c.matricula || "",
       empresa_id: c.empresa_id || "",
+      regime_trabalho: c.regime_trabalho || "CLT",
+      modelo_calculo: c.modelo_calculo || "Mensal",
       tipo_contrato: c.tipo_contrato || "Hora",
       tipo_colaborador: c.tipo_colaborador || "CLT",
       valor_base: String(c.valor_base || 0),
+      salario_base: c.salario_base != null ? String(c.salario_base) : "",
+      valor_hora: c.valor_hora != null ? String(c.valor_hora) : "",
+      valor_diaria: c.valor_diaria != null ? String(c.valor_diaria) : "",
+      carga_referencia: c.carga_referencia != null ? String(c.carga_referencia) : "220",
+      estimativa_mensal: c.estimativa_mensal != null ? String(c.estimativa_mensal) : "",
+      regra_operacional: c.regra_operacional || "",
       flag_faturamento: c.flag_faturamento ?? true,
       permitir_lancamento_operacional: c.permitir_lancamento_operacional ?? false,
       status: c.status || "ativo",
@@ -236,41 +273,55 @@ const Colaboradores = () => {
   };
 
   const validateStep2 = () => {
-    if (!form.tipo_colaborador) {
-      toast.error("Tipo de colaborador é obrigatório.", { icon: null });
+    if (!form.regime_trabalho) {
+      toast.error("Regime de trabalho é obrigatório.", { icon: null });
+      return false;
+    }
+    if (!form.modelo_calculo) {
+      toast.error("Modelo de cálculo é obrigatório.", { icon: null });
       return false;
     }
     if (!form.status) {
       toast.error("Status é obrigatório.", { icon: null });
       return false;
     }
-    if (form.tipo_colaborador === "DIARISTA") {
-      if (!form.cargo.trim()) {
-        toast.error("Função operacional é obrigatória.", { icon: null });
+
+    if (!form.cargo.trim()) {
+      toast.error("Cargo/Função é obrigatório.", { icon: null });
+      return false;
+    }
+
+    if (!form.matricula.trim() && form.regime_trabalho === "CLT") {
+      toast.error("Matrícula é obrigatória para CLT.", { icon: null });
+      return false;
+    }
+
+    if (form.modelo_calculo === "Mensal") {
+      if (!form.salario_base || Number(form.salario_base) <= 0) {
+        toast.error("Salário base é obrigatório.", { icon: null });
         return false;
       }
-      if (!form.valor_base || Number(form.valor_base) <= 0) {
+    } else if (form.modelo_calculo === "Horista") {
+      if (!form.valor_hora || Number(form.valor_hora) <= 0) {
+        toast.error("Valor hora é obrigatório.", { icon: null });
+        return false;
+      }
+      if (!form.carga_referencia || Number(form.carga_referencia) <= 0) {
+        toast.error("Carga referência é obrigatória.", { icon: null });
+        return false;
+      }
+    } else if (form.modelo_calculo === "Diária") {
+      if (!form.valor_diaria || Number(form.valor_diaria) <= 0) {
         toast.error("Valor da diária é obrigatório.", { icon: null });
         return false;
       }
-    } else {
-      if (!form.cargo.trim()) {
-        toast.error("Cargo é obrigatório.", { icon: null });
-        return false;
-      }
-      if (!form.matricula.trim()) {
-        toast.error("Matrícula é obrigatória.", { icon: null });
-        return false;
-      }
-      if (!form.tipo_contrato) {
-        toast.error("Tipo de contrato é obrigatório.", { icon: null });
-        return false;
-      }
+    } else if (form.modelo_calculo === "Produção") {
       if (!form.valor_base || Number(form.valor_base) <= 0) {
-        toast.error("Valor base é obrigatório.", { icon: null });
+        toast.error("Valor de operação é obrigatório.", { icon: null });
         return false;
       }
     }
+
     return true;
   };
 
@@ -313,14 +364,30 @@ const Colaboradores = () => {
       toast.error("Selecione uma empresa");
       return;
     }
-    if (form.tipo_colaborador !== "DIARISTA") {
-      if (!form.cargo.trim()) {
-        toast.error("Preencha o cargo");
-        return;
-      }
+    if (!form.cargo.trim()) {
+      toast.error("Preencha o cargo/função");
+      return;
     }
+
     const cpfNormalized = form.cpf.replace(/\D/g, "");
     const telefoneNormalized = normalizePhone(form.telefone);
+    const valorBaseNumerico = Number(form.valor_base) || 0;
+    const salarioBaseNumerico = Number(form.salario_base) || 0;
+    const valorHoraNumerico = Number(form.valor_hora) || 0;
+    const valorDiariaNumerico = Number(form.valor_diaria) || 0;
+
+    const tipoColaborador =
+      form.regime_trabalho === "CLT" ? "CLT" :
+      form.regime_trabalho === "Diarista" ? "DIARISTA" :
+      form.regime_trabalho === "Intermitente" ? "INTERMITENTE" :
+      form.regime_trabalho === "Terceirizado" ? "TERCEIRIZADO" : "PRODUÇÃO";
+
+    const valorBaseFinal =
+      form.modelo_calculo === "Mensal" ? salarioBaseNumerico :
+      form.modelo_calculo === "Diária" ? valorDiariaNumerico :
+      form.modelo_calculo === "Horista" ? valorHoraNumerico :
+      valorBaseNumerico;
+
     setIsProcessing(true);
     createMutation.mutate({
       nome: form.nome.trim(),
@@ -329,11 +396,18 @@ const Colaboradores = () => {
       cargo: form.cargo?.trim() || null,
       matricula: form.matricula?.trim() || null,
       empresa_id: form.empresa_id || empresaOptions[0]?.id,
-      tipo_contrato: form.tipo_colaborador === "DIARISTA" ? null : form.tipo_contrato,
-      tipo_colaborador: form.tipo_colaborador,
-      valor_base: Number(form.valor_base) || 0,
-      flag_faturamento: form.tipo_colaborador !== "DIARISTA" ? form.flag_faturamento : false,
-      permitir_lancamento_operacional: form.permitir_lancamento_operacional,
+      regime_trabalho: form.regime_trabalho,
+      modelo_calculo: form.modelo_calculo,
+      tipo_contrato: form.modelo_calculo === "Produção" ? "Operação" : form.tipo_contrato,
+      tipo_colaborador: tipoColaborador,
+      valor_base: valorBaseFinal,
+      salario_base: form.modelo_calculo === "Mensal" ? salarioBaseNumerico : null,
+      valor_hora: form.modelo_calculo === "Horista" ? valorHoraNumerico : null,
+      valor_diaria: form.modelo_calculo === "Diária" ? valorDiariaNumerico : null,
+      flag_faturamento: form.modelo_calculo !== "Diária" ? form.flag_faturamento : false,
+      permitir_lancamento_operacional: ["Diária", "Produção", "Horista"].includes(form.modelo_calculo)
+        ? true
+        : form.permitir_lancamento_operacional,
       status: form.status,
       nome_completo: form.nome_completo?.trim() || null,
       banco_codigo: form.banco_codigo?.trim() || null,
@@ -374,17 +448,30 @@ const Colaboradores = () => {
               </SelectContent>
             </Select>
 
-            <Select value={selectedContrato} onValueChange={setSelectedContrato}>
-              <SelectTrigger className="w-[180px] h-10">
-                <SelectValue placeholder="Tipo" />
+            <Select value={selectedRegime} onValueChange={setSelectedRegime}>
+              <SelectTrigger className="w-[190px] h-10">
+                <SelectValue placeholder="Regime" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todos os tipos</SelectItem>
-                <SelectItem value="DIARISTA">Diarista</SelectItem>
+                <SelectItem value="all">Todos os regimes</SelectItem>
                 <SelectItem value="CLT">CLT</SelectItem>
-                <SelectItem value="INTERMITENTE">Intermitente</SelectItem>
-                <SelectItem value="PRODUÇÃO">Produção</SelectItem>
-                <SelectItem value="TERCEIRIZADO">Terceirizado</SelectItem>
+                <SelectItem value="Intermitente">Intermitente</SelectItem>
+                <SelectItem value="Diarista">Diarista</SelectItem>
+                <SelectItem value="Terceirizado">Terceirizado</SelectItem>
+                <SelectItem value="Freelancer">Freelancer</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={selectedModelo} onValueChange={setSelectedModelo}>
+              <SelectTrigger className="w-[180px] h-10">
+                <SelectValue placeholder="Modelo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os modelos</SelectItem>
+                <SelectItem value="Mensal">Mensal</SelectItem>
+                <SelectItem value="Horista">Horista</SelectItem>
+                <SelectItem value="Diária">Diária</SelectItem>
+                <SelectItem value="Produção">Produção</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -459,8 +546,9 @@ const Colaboradores = () => {
                   const matchesSearch = c.nome.toLowerCase().includes(searchText.toLowerCase()) ||
                     (c.matricula || "").toLowerCase().includes(searchText.toLowerCase());
                   const matchesEmpresa = selectedEmpresa === "all" || c.empresa_id === selectedEmpresa;
-                  const matchesContrato = selectedContrato === "all" || c.tipo_colaborador === selectedContrato;
-                  return matchesSearch && matchesEmpresa && matchesContrato;
+                  const matchesRegime = selectedRegime === "all" || c.regime_trabalho === selectedRegime;
+                  const matchesModelo = selectedModelo === "all" || c.modelo_calculo === selectedModelo;
+                  return matchesSearch && matchesEmpresa && matchesRegime && matchesModelo;
                 }).map((c: any) => (
                   <tr key={c.id} className="border-t border-muted hover:bg-background group">
                     <td className="px-5 h-[52px]">
@@ -473,15 +561,13 @@ const Colaboradores = () => {
                       ) : null}
                     </td>
                     <td className="px-3 text-muted-foreground">{c.cargo}</td>
-                    <td className="px-3 text-muted-foreground">{c.empresas?.nome || "—"}</td>
+                    <td className="px-3 text-muted-foreground">{c.empresas?.nome || "-"}</td>
                     <td className="px-3 text-center">
                       <span className={cn(
                         "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide",
-                        c.tipo_colaborador === "DIARISTA"
-                          ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
-                          : "bg-muted text-muted-foreground"
+                        c.modelo_calculo === "Diária" ? "bg-blue-500/10 text-blue-600 dark:text-blue-400" : "bg-muted text-muted-foreground"
                       )}>
-                        {c.tipo_colaborador || c.tipo_contrato || "—"}
+                        {c.regime_trabalho ? `${c.regime_trabalho} - ${c.modelo_calculo}` : (c.tipo_colaborador || c.tipo_contrato || "-")}
                       </span>
                     </td>
                     <td className="px-3 text-right font-display font-medium">
@@ -519,8 +605,9 @@ const Colaboradores = () => {
                 const matchesSearch = (c.nome || "").toLowerCase().includes(searchText.toLowerCase()) ||
                   (c.matricula || "").toLowerCase().includes(searchText.toLowerCase());
                 const matchesEmpresa = selectedEmpresa === "all" || c.empresa_id === selectedEmpresa;
-                const matchesContrato = selectedContrato === "all" || c.tipo_colaborador === selectedContrato;
-                return matchesSearch && matchesEmpresa && matchesContrato;
+                const matchesRegime = selectedRegime === "all" || c.regime_trabalho === selectedRegime;
+                const matchesModelo = selectedModelo === "all" || c.modelo_calculo === selectedModelo;
+                return matchesSearch && matchesEmpresa && matchesRegime && matchesModelo;
               }).map((c: any) => (
                 <article key={c.id} className="esc-card p-5 group flex flex-col justify-between">
                   <div>
@@ -615,7 +702,7 @@ const Colaboradores = () => {
                         <SelectTrigger><SelectValue placeholder="Selecione uma empresa" /></SelectTrigger>
                         <SelectContent>
                           {empresaOptions.map((e) => (
-                            <SelectItem key={e.id} value={e.id}>{e.nome} — {e.cidade}/{e.estado}</SelectItem>
+                            <SelectItem key={e.id} value={e.id}>{e.nome} - {e.cidade}/{e.estado}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -626,15 +713,27 @@ const Colaboradores = () => {
                 {step === 2 && (
                   <div className="grid grid-cols-2 gap-4 py-2">
                     <div className="space-y-1.5">
-                      <Label>Tipo de colaborador <span className="text-destructive">*</span></Label>
-                      <Select value={form.tipo_colaborador} onValueChange={(v) => setForm({ ...form, tipo_colaborador: v, permitir_lancamento_operacional: v === "DIARISTA" ? true : form.permitir_lancamento_operacional })}>
+                      <Label>Regime de trabalho <span className="text-destructive">*</span></Label>
+                      <Select value={form.regime_trabalho} onValueChange={(v) => setForm({ ...form, regime_trabalho: v })}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="DIARISTA">DIARISTA</SelectItem>
                           <SelectItem value="CLT">CLT</SelectItem>
-                          <SelectItem value="INTERMITENTE">INTERMITENTE</SelectItem>
-                          <SelectItem value="PRODUÇÃO">PRODUÇÃO</SelectItem>
-                          <SelectItem value="TERCEIRIZADO">TERCEIRIZADO</SelectItem>
+                          <SelectItem value="Intermitente">Intermitente</SelectItem>
+                          <SelectItem value="Diarista">Diarista</SelectItem>
+                          <SelectItem value="Terceirizado">Terceirizado</SelectItem>
+                          <SelectItem value="Freelancer">Freelancer</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Modelo de cálculo <span className="text-destructive">*</span></Label>
+                      <Select value={form.modelo_calculo} onValueChange={(v) => setForm({ ...form, modelo_calculo: v, permitir_lancamento_operacional: ["Diária", "Produção", "Horista"].includes(v) ? true : form.permitir_lancamento_operacional })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Mensal">Mensal</SelectItem>
+                          <SelectItem value="Horista">Horista</SelectItem>
+                          <SelectItem value="Diária">Diária</SelectItem>
+                          <SelectItem value="Produção">Produção</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -649,11 +748,11 @@ const Colaboradores = () => {
                         </SelectContent>
                       </Select>
                     </div>
-                    {form.tipo_colaborador === "DIARISTA" ? (
+                    {form.modelo_calculo === "Diária" ? (
                       <>
                         <div className="space-y-1.5">
                           <Label htmlFor="valor">Valor da diária (R$) <span className="text-destructive">*</span></Label>
-                          <Input id="valor" type="number" value={form.valor_base} onChange={(e) => setForm({ ...form, valor_base: e.target.value })} />
+                          <Input id="valor" type="number" value={form.valor_diaria} onChange={(e) => setForm({ ...form, valor_diaria: e.target.value, valor_base: e.target.value })} />
                         </div>
                         <div className="space-y-1.5">
                           <Label htmlFor="cargo">Função operacional <span className="text-destructive">*</span></Label>
@@ -665,6 +764,65 @@ const Colaboradores = () => {
                             <p className="text-xs text-muted-foreground mt-0.5">Diarista aparecerá na tela de lançamentos.</p>
                           </div>
                           <Switch checked={form.permitir_lancamento_operacional} onCheckedChange={(v) => setForm({ ...form, permitir_lancamento_operacional: v })} />
+                        </div>
+                      </>
+                    ) : form.modelo_calculo === "Mensal" ? (
+                      <>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="salario_base">Salário base (R$) <span className="text-destructive">*</span></Label>
+                          <Input id="salario_base" type="number" value={form.salario_base} onChange={(e) => setForm({ ...form, salario_base: e.target.value, valor_base: e.target.value })} />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="matricula">Matrícula <span className="text-destructive">*</span></Label>
+                          <Input id="matricula" value={form.matricula} onChange={(e) => setForm({ ...form, matricula: e.target.value })} />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="cargo">Cargo <span className="text-destructive">*</span></Label>
+                          <Input id="cargo" value={form.cargo} onChange={(e) => setForm({ ...form, cargo: e.target.value })} />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label>Tipo de contrato</Label>
+                          <Select value={form.tipo_contrato} onValueChange={(v: "Hora" | "Operação" | "Mensal") => setForm({ ...form, tipo_contrato: v })}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Mensal">Mensal</SelectItem>
+                              <SelectItem value="Hora">Por hora</SelectItem>
+                              <SelectItem value="Operação">Por operação</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="col-span-2 flex items-center justify-between rounded-md border border-border p-3">
+                          <div>
+                            <Label className="cursor-pointer">Gera faturamento</Label>
+                            <p className="text-xs text-muted-foreground mt-0.5">Colaborador entra no cálculo financeiro.</p>
+                          </div>
+                          <Switch checked={form.flag_faturamento} onCheckedChange={(v) => setForm({ ...form, flag_faturamento: v })} />
+                        </div>
+                      </>
+                    ) : form.modelo_calculo === "Horista" ? (
+                      <>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="valor_hora">Valor hora (R$) <span className="text-destructive">*</span></Label>
+                          <Input id="valor_hora" type="number" value={form.valor_hora} onChange={(e) => setForm({ ...form, valor_hora: e.target.value, valor_base: e.target.value })} />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="carga_referencia">Carga referência (h/mês) <span className="text-destructive">*</span></Label>
+                          <Input id="carga_referencia" type="number" value={form.carga_referencia} onChange={(e) => setForm({ ...form, carga_referencia: e.target.value })} />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="estimativa_mensal">Estimativa mensal (R$)</Label>
+                          <Input id="estimativa_mensal" type="number" value={form.estimativa_mensal} onChange={(e) => setForm({ ...form, estimativa_mensal: e.target.value })} />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="cargo">Cargo <span className="text-destructive">*</span></Label>
+                          <Input id="cargo" value={form.cargo} onChange={(e) => setForm({ ...form, cargo: e.target.value })} />
+                        </div>
+                        <div className="col-span-2 flex items-center justify-between rounded-md border border-border p-3">
+                          <div>
+                            <Label className="cursor-pointer">Gera faturamento</Label>
+                            <p className="text-xs text-muted-foreground mt-0.5">Colaborador entra no cálculo financeiro.</p>
+                          </div>
+                          <Switch checked={form.flag_faturamento} onCheckedChange={(v) => setForm({ ...form, flag_faturamento: v })} />
                         </div>
                       </>
                     ) : (
@@ -689,8 +847,12 @@ const Colaboradores = () => {
                           </Select>
                         </div>
                         <div className="space-y-1.5">
-                          <Label htmlFor="valor">Valor base (R$) <span className="text-destructive">*</span></Label>
+                          <Label htmlFor="valor">Valor da operação (R$) <span className="text-destructive">*</span></Label>
                           <Input id="valor" type="number" value={form.valor_base} onChange={(e) => setForm({ ...form, valor_base: e.target.value })} />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="regra_operacional">Regra operacional (opcional)</Label>
+                          <Input id="regra_operacional" value={form.regra_operacional} onChange={(e) => setForm({ ...form, regra_operacional: e.target.value })} placeholder="Ex: volume x tabela X" />
                         </div>
                         <div className="col-span-2 flex items-center justify-between rounded-md border border-border p-3">
                           <div>
@@ -761,24 +923,36 @@ const Colaboradores = () => {
                     <SelectTrigger><SelectValue placeholder="Selecione uma empresa" /></SelectTrigger>
                     <SelectContent>
                       {empresaOptions.map((e) => (
-                        <SelectItem key={e.id} value={e.id}>{e.nome} — {e.cidade}/{e.estado}</SelectItem>
+                        <SelectItem key={e.id} value={e.id}>{e.nome} - {e.cidade}/{e.estado}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Tipo de colaborador <span className="text-destructive">*</span></Label>
-                  <Select value={form.tipo_colaborador} onValueChange={(v) => setForm({ ...form, tipo_colaborador: v, permitir_lancamento_operacional: v === "DIARISTA" ? true : form.permitir_lancamento_operacional })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="DIARISTA">DIARISTA</SelectItem>
-                      <SelectItem value="CLT">CLT</SelectItem>
-                      <SelectItem value="INTERMITENTE">INTERMITENTE</SelectItem>
-                      <SelectItem value="PRODUÇÃO">PRODUÇÃO</SelectItem>
-                      <SelectItem value="TERCEIRIZADO">TERCEIRIZADO</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                      <Label>Regime de trabalho <span className="text-destructive">*</span></Label>
+                      <Select value={form.regime_trabalho} onValueChange={(v) => setForm({ ...form, regime_trabalho: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="CLT">CLT</SelectItem>
+                          <SelectItem value="Intermitente">Intermitente</SelectItem>
+                          <SelectItem value="Diarista">Diarista</SelectItem>
+                          <SelectItem value="Terceirizado">Terceirizado</SelectItem>
+                          <SelectItem value="Freelancer">Freelancer</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Modelo de cálculo <span className="text-destructive">*</span></Label>
+                      <Select value={form.modelo_calculo} onValueChange={(v) => setForm({ ...form, modelo_calculo: v, permitir_lancamento_operacional: ["Diária", "Produção", "Horista"].includes(v) ? true : form.permitir_lancamento_operacional })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Mensal">Mensal</SelectItem>
+                          <SelectItem value="Horista">Horista</SelectItem>
+                          <SelectItem value="Diária">Diária</SelectItem>
+                          <SelectItem value="Produção">Produção</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                 <div className="space-y-1.5">
                   <Label>Status <span className="text-destructive">*</span></Label>
                   <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
@@ -790,11 +964,11 @@ const Colaboradores = () => {
                     </SelectContent>
                   </Select>
                 </div>
-                {form.tipo_colaborador === "DIARISTA" ? (
+                {form.modelo_calculo === "Diária" ? (
                   <>
                     <div className="space-y-1.5">
                       <Label htmlFor="valor">Valor da diária (R$) <span className="text-destructive">*</span></Label>
-                      <Input id="valor" type="number" value={form.valor_base} onChange={(e) => setForm({ ...form, valor_base: e.target.value })} />
+                      <Input id="valor" type="number" value={form.valor_diaria} onChange={(e) => setForm({ ...form, valor_diaria: e.target.value, valor_base: e.target.value })} />
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="cargo">Função operacional <span className="text-destructive">*</span></Label>
@@ -806,6 +980,65 @@ const Colaboradores = () => {
                         <p className="text-xs text-muted-foreground mt-0.5">Diarista aparecerá na tela de lançamentos.</p>
                       </div>
                       <Switch checked={form.permitir_lancamento_operacional} onCheckedChange={(v) => setForm({ ...form, permitir_lancamento_operacional: v })} />
+                    </div>
+                  </>
+                ) : form.modelo_calculo === "Mensal" ? (
+                  <>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="salario_base">Salário base (R$) <span className="text-destructive">*</span></Label>
+                      <Input id="salario_base" type="number" value={form.salario_base} onChange={(e) => setForm({ ...form, salario_base: e.target.value, valor_base: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="matricula">Matrícula <span className="text-destructive">*</span></Label>
+                      <Input id="matricula" value={form.matricula} onChange={(e) => setForm({ ...form, matricula: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="cargo">Cargo <span className="text-destructive">*</span></Label>
+                      <Input id="cargo" value={form.cargo} onChange={(e) => setForm({ ...form, cargo: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Tipo de contrato</Label>
+                      <Select value={form.tipo_contrato} onValueChange={(v: "Hora" | "Operação" | "Mensal") => setForm({ ...form, tipo_contrato: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Mensal">Mensal</SelectItem>
+                          <SelectItem value="Hora">Por hora</SelectItem>
+                          <SelectItem value="Operação">Por operação</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="col-span-2 flex items-center justify-between rounded-md border border-border p-3">
+                      <div>
+                        <Label className="cursor-pointer">Gera faturamento</Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">Colaborador entra no cálculo financeiro.</p>
+                      </div>
+                      <Switch checked={form.flag_faturamento} onCheckedChange={(v) => setForm({ ...form, flag_faturamento: v })} />
+                    </div>
+                  </>
+                ) : form.modelo_calculo === "Horista" ? (
+                  <>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="valor_hora">Valor hora (R$) <span className="text-destructive">*</span></Label>
+                      <Input id="valor_hora" type="number" value={form.valor_hora} onChange={(e) => setForm({ ...form, valor_hora: e.target.value, valor_base: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="carga_referencia">Carga referência (h/mês) <span className="text-destructive">*</span></Label>
+                      <Input id="carga_referencia" type="number" value={form.carga_referencia} onChange={(e) => setForm({ ...form, carga_referencia: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="estimativa_mensal">Estimativa mensal (R$)</Label>
+                      <Input id="estimativa_mensal" type="number" value={form.estimativa_mensal} onChange={(e) => setForm({ ...form, estimativa_mensal: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="cargo">Cargo <span className="text-destructive">*</span></Label>
+                      <Input id="cargo" value={form.cargo} onChange={(e) => setForm({ ...form, cargo: e.target.value })} />
+                    </div>
+                    <div className="col-span-2 flex items-center justify-between rounded-md border border-border p-3">
+                      <div>
+                        <Label className="cursor-pointer">Gera faturamento</Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">Colaborador entra no cálculo financeiro.</p>
+                      </div>
+                      <Switch checked={form.flag_faturamento} onCheckedChange={(v) => setForm({ ...form, flag_faturamento: v })} />
                     </div>
                   </>
                 ) : (
@@ -825,12 +1058,17 @@ const Colaboradores = () => {
                         <SelectContent>
                           <SelectItem value="Hora">Por hora</SelectItem>
                           <SelectItem value="Operação">Por operação</SelectItem>
+                          <SelectItem value="Mensal">Mensal</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-1.5">
-                      <Label htmlFor="valor">Valor base (R$) <span className="text-destructive">*</span></Label>
+                      <Label htmlFor="valor">Valor da operação (R$) <span className="text-destructive">*</span></Label>
                       <Input id="valor" type="number" value={form.valor_base} onChange={(e) => setForm({ ...form, valor_base: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="regra_operacional">Regra operacional (opcional)</Label>
+                      <Input id="regra_operacional" value={form.regra_operacional} onChange={(e) => setForm({ ...form, regra_operacional: e.target.value })} placeholder="Ex: volume x tabela X" />
                     </div>
                     <div className="col-span-2 flex items-center justify-between rounded-md border border-border p-3">
                       <div>
@@ -918,5 +1156,8 @@ const Colaboradores = () => {
 };
 
 export default Colaboradores;
+
+
+
 
 
