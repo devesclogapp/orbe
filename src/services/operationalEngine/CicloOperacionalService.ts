@@ -295,24 +295,24 @@ export class CicloOperacionalService {
   /**
    * Workflow Financeiro - Validar
    */
-  static async validarFinanceiro(cicloId: string, usuarioId: string, observacao: string = 'Validação financeira concluída'): Promise<CicloOperacional> {
+  static async validarFinanceiro(cicloId: string, usuarioId: string, observacao: string = 'ValidaÃ§Ã£o financeira concluÃ­da'): Promise<CicloOperacional> {
     const { data: ciclo, error: errFetch } = await supabase
       .from('ciclos_operacionais')
       .select('status, status_rh, total_inconsistencias, status_remessa, tenant_id')
       .eq('id', cicloId)
       .single();
-    if (errFetch || !ciclo) throw new Error("Ciclo não encontrado");
+    if (errFetch || !ciclo) throw new Error("Ciclo nÃ£o encontrado");
     
     if (ciclo.status !== 'fechado') {
-      throw new Error("O ciclo precisa estar fechado operacionalmente antes da validação Financeira.");
+      throw new Error("O ciclo precisa estar fechado operacionalmente antes da validaÃ§Ã£o Financeira.");
     }
 
     if (ciclo.status_rh !== 'validado_rh') {
-       throw new Error("O ciclo precisa estar validado pelo RH antes da validação Financeira.");
+       throw new Error("O ciclo precisa estar validado pelo RH antes da validaÃ§Ã£o Financeira.");
     }
 
     if ((ciclo.total_inconsistencias || 0) > 0) {
-      throw new Error("Não é possível validar no Financeiro: existem inconsistências no ciclo.");
+      throw new Error("NÃ£o Ã© possÃ­vel validar no Financeiro: existem inconsistÃªncias no ciclo.");
     }
 
     const { data, error } = await supabase

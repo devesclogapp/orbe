@@ -277,7 +277,7 @@ const Pontos = () => {
       importRows.forEach((row, index) => {
         const lineNumber = index + 2;
         const idRaw = getImportRowValue(row, "ID");
-const empresaNome = getImportRowValue(row, "EMPRESA", "EMPRESAS", "RAZÃO SOCIAL", "RAZAO SOCIAL", "CLIENTE", "NOME DA EMPRESA", "NOME DA CLIENTE");
+        const empresaNome = getImportRowValue(row, "EMPRESA", "EMPRESAS", "RAZÃO SOCIAL", "RAZAO SOCIAL", "CLIENTE", "NOME DA EMPRESA", "NOME DA CLIENTE");
         const colaboradorNome = getImportRowValue(row, "COLABORADOR", "NOME", "FUNCIONÁRIO", "FUNCIONARIO", "TRABALHADOR", "NOME DO COLABORADOR", "NOME DO FUNCIONÁRIO");
         const matricula = getImportRowValue(row, "MATRICULA", "MATRÍCULA", "CODIGO", "CÓDIGO", "CÓDIGO DO COLABORADOR");
         const cpf = getImportRowValue(row, "CPF", "DOCUMENTO", "CPF DO COLABORADOR");
@@ -309,9 +309,9 @@ const empresaNome = getImportRowValue(row, "EMPRESA", "EMPRESAS", "RAZÃO SOCIAL
 
         // Matching de empresa - mais tolerante
         let empresa: any = null;
-        
+
         // ========== DADOS BRUTOS - SEM VALIDAÇÃO DE EXISTÊNCIA ==========
-        
+
         // Tentar encontrar empresa para vínculo, mas se não encontrar, aceitar null
         let empresaId: string | null = null;
         let empresaEncontrada: any = null;
@@ -325,9 +325,9 @@ const empresaNome = getImportRowValue(row, "EMPRESA", "EMPRESAS", "RAZÃO SOCIAL
           if (!empresaEncontrada) {
             empresaEncontrada = empresas.find((e: any) => {
               const normalized = normalizeCompanyText(e.nome || "");
-              return normalized.includes(normalizedEmpresaNome) || 
-                     normalizedEmpresaNome.includes(normalized) ||
-                     normalized.replace(/\s/g, '').includes(normalizedEmpresaNome.replace(/\s/g, ''));
+              return normalized.includes(normalizedEmpresaNome) ||
+                normalizedEmpresaNome.includes(normalized) ||
+                normalized.replace(/\s/g, '').includes(normalizedEmpresaNome.replace(/\s/g, ''));
             });
           }
           empresaId = empresaEncontrada?.id || null;
@@ -337,9 +337,9 @@ const empresaNome = getImportRowValue(row, "EMPRESA", "EMPRESAS", "RAZÃO SOCIAL
         let colaboradorId: string | null = null;
         if (colaboradorNome) {
           const normalizedColaboradorNome = normalizeText(colaboradorNome);
-          
+
           // Buscar por qualquer método possível
-          const found = 
+          const found =
             (matricula
               ? empresaId ? colaboradorByMatricula.get(`${matricula.trim()}::${empresaId}`) : null
               : null) ??
@@ -350,7 +350,7 @@ const empresaNome = getImportRowValue(row, "EMPRESA", "EMPRESAS", "RAZÃO SOCIAL
             (cpf ? colaboradorByCpfGlobal.get(normalizeCpf(cpf)) : null) ??
             (empresaId ? colaboradorByNome.get(`${normalizedColaboradorNome}::${empresaId}`) : null) ??
             colaboradorByNomeGlobal.get(normalizedColaboradorNome);
-          
+
           if (found?.id) {
             colaboradorId = found.id;
           }
@@ -477,6 +477,8 @@ const empresaNome = getImportRowValue(row, "EMPRESA", "EMPRESAS", "RAZÃO SOCIAL
       queryClient.invalidateQueries({ queryKey: ["ponto"] }),
       queryClient.invalidateQueries({ queryKey: ["colaboradores_list"] }),
       queryClient.invalidateQueries({ queryKey: ["colaboradores_all"] }),
+      queryClient.invalidateQueries({ queryKey: ["empresas"] }),
+      queryClient.invalidateQueries({ queryKey: ["operational-pulse"] }),
     ]);
 
     toast.success(
@@ -705,14 +707,14 @@ const empresaNome = getImportRowValue(row, "EMPRESA", "EMPRESAS", "RAZÃO SOCIAL
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => setClearModalOpen(false)}
               disabled={isClearing}
             >
               Cancelar
             </Button>
-            <Button 
+            <Button
               variant="destructive"
               onClick={handleClearImportacao}
               disabled={isClearing}

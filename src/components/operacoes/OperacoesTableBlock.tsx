@@ -711,7 +711,7 @@ export const OperacoesTableBlock = ({
   const updateStatusPagamentoMutation = useMutation({
     mutationFn: async ({ item, statusPagamento }: { item: any; statusPagamento: StatusPagamento }) => {
       if (!isEditableOperation(item)) {
-        throw new Error("Somente operacoes editaveis podem ter o status de pagamento alterado.");
+        throw new Error("Somente operações editáveis podem ter o status de pagamento alterado.");
       }
 
       const today = new Date().toISOString().split("T")[0];
@@ -912,7 +912,7 @@ export const OperacoesTableBlock = ({
       return 0;
     }
 
-    // 1. Data de operacao (Crescente)
+    // 1. Data de operação (Crescente)
     const dateA = a.data_operacao || "";
     const dateB = b.data_operacao || "";
     if (dateA !== dateB) return dateA.localeCompare(dateB);
@@ -1500,7 +1500,7 @@ export const OperacoesTableBlock = ({
     return (
       <div className="p-12 text-center text-muted-foreground min-h-[300px] flex flex-col items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
-        Carregando operacoes...
+        Carregando operações...
       </div>
     );
   }
@@ -1757,7 +1757,7 @@ export const OperacoesTableBlock = ({
                     {visibleCols.fornecedor && <th className="px-3 py-2.5 font-semibold ">{renderInteractiveHeader("fornecedor", "FORNECEDOR")}</th>}
                     {visibleCols.transportadora && <th className="px-3 py-2.5 font-semibold ">{renderInteractiveHeader("transportadora", "TRANSPORTADORA", Truck)}</th>}
                     {visibleCols.placa && renderHeaderCell("placa", "PLACA", "px-3 py-2.5 font-semibold text-center")}
-                    {visibleCols.servico && <th className="px-3 py-2.5 font-semibold ">{renderInteractiveHeader("servico", "SERVICO", Settings2)}</th>}
+                    {visibleCols.servico && <th className="px-3 py-2.5 font-semibold ">{renderInteractiveHeader("servico", "SERVIÇO", Settings2)}</th>}
                     {visibleCols.qtdCol && renderHeaderCell("qtdCol", <span className="inline-flex items-center justify-center gap-1.5 w-full"><User className="h-3.5 w-3.5 text-muted-foreground" />QTD. COL.</span>, "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.formaPagamento && renderHeaderCell("formaPagamento", "FORMA PAGAMENTO", "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.nf && renderHeaderCell("nf", "NF", "px-3 py-2.5 font-semibold text-center")}
@@ -2002,7 +2002,7 @@ export const OperacoesTableBlock = ({
                   {filteredData.length === 0 && (
                     <tr>
                       <td colSpan={22} className="p-12 text-center text-muted-foreground italic">
-                        {filterByDate ? "Nenhuma operacao atende aos filtros atuais nesta data." : "Nenhuma operacao atende aos filtros atuais."}
+                        {filterByDate ? "Nenhuma operação atende aos filtros atuais nesta data." : "Nenhuma operação atende aos filtros atuais."}
                       </td>
                     </tr>
                   )}
@@ -2113,12 +2113,12 @@ export const OperacoesTableBlock = ({
                 )}
                 {bulkField === "modalidade_financeira" && (
                   <p className="text-xs text-muted-foreground">
-                    Use apenas em excecoes. Sem override manual, a modalidade continua automatica pela origem da operacao.
+                    Use apenas em exceções. Sem override manual, a modalidade continua automática pela origem da operação.
                   </p>
                 )}
                 {bulkField === "data_vencimento" && (
                   <p className="text-xs text-muted-foreground">
-                    Campo pensado para ajustes pontuais. Quando vazio, o vencimento segue a regra financeira automatica.
+                    Campo pensado para ajustes pontuais. Quando vazio, o vencimento segue a regra financeira automática.
                   </p>
                 )}
                 {bulkField === "status_pagamento" && (
@@ -2208,20 +2208,20 @@ export const OperacoesTableBlock = ({
       <Sheet open={!!selectedOpDetails} onOpenChange={(value) => !value && setSelectedOpDetails(null)}>
         <SheetContent className="sm:max-w-md overflow-y-auto">
           <SheetHeader>
-            <SheetTitle>Detalhes da operacao</SheetTitle>
-            <SheetDescription>Informacoes completas relativas a operacao do dia.</SheetDescription>
+            <SheetTitle>Detalhes da operação</SheetTitle>
+            <SheetDescription>Informações completas relativas à operação do dia.</SheetDescription>
           </SheetHeader>
 
           {selectedOpDetails && (
             <div className="mt-6 space-y-6">
               <div className="space-y-1">
-                <p className="text-sm font-medium text-foreground">Fornecedor / Operacao</p>
+                <p className="text-sm font-medium text-foreground">Fornecedor / Operação</p>
                 <p className="text-sm text-muted-foreground">{selectedOpDetails.fornecedores?.nome || selectedOpDetails.produto_label || "Sem fornecedor"}</p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <p className="text-sm font-medium text-foreground">Data da operacao</p>
+                  <p className="text-sm font-medium text-foreground">Data da operação</p>
                   <p className="text-sm text-muted-foreground font-mono">
                     {selectedOpDetails.data_operacao ? new Date(selectedOpDetails.data_operacao + "T00:00:00").toLocaleDateString("pt-BR") : "—"}
                   </p>
@@ -2231,7 +2231,7 @@ export const OperacoesTableBlock = ({
                   <p className="text-sm text-muted-foreground">{selectedOpDetails.quantidade_colaboradores ?? 1} col.</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-sm font-medium text-foreground">Servico</p>
+                  <p className="text-sm font-medium text-foreground">Serviço</p>
                   <p className="text-sm text-muted-foreground">{selectedOpDetails.tipos_servico_operacional?.nome || selectedOpDetails.tipo_servico_label || "Sem servico"}</p>
                 </div>
                 <div className="space-y-1">
@@ -2285,7 +2285,7 @@ export const OperacoesTableBlock = ({
       <Sheet open={!!editingItem} onOpenChange={(value) => !value && closeEditor()}>
         <SheetContent className="sm:max-w-2xl overflow-y-auto">
           <SheetHeader>
-            <SheetTitle>Editar operacao na tela operacional</SheetTitle>
+            <SheetTitle>Editar operação na tela operacional</SheetTitle>
             <SheetDescription>
               Ajuste os campos da planilha diretamente aqui. O valor unitário continua vindo das regras operacionais.
             </SheetDescription>

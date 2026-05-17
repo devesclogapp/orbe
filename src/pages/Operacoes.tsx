@@ -873,7 +873,7 @@ const Operacoes = () => {
         description:
           datasImportadas.length === 1
             ? `${ignoredRows > 0 ? `${ignoredRows} linha(s) sem data valida foram ignoradas. ` : ""}${adjustedTimeRows > 0 ? `${adjustedTimeRows} linha(s) com fim menor que inicio foram ajustadas. ` : ""}Dados atualizados para ${format(new Date(`${datasImportadas[0]}T12:00:00`), "dd/MM/yyyy")}.`
-            : `${ignoredRows > 0 ? `${ignoredRows} linha(s) sem data valida foram ignoradas. ` : ""}${adjustedTimeRows > 0 ? `${adjustedTimeRows} linha(s) com fim menor que inicio foram ajustadas. ` : ""}Todas as linhas importadas ja estao disponiveis na base de Operacoes.`,
+            : `${ignoredRows > 0 ? `${ignoredRows} linha(s) sem data valida foram ignoradas. ` : ""}${adjustedTimeRows > 0 ? `${adjustedTimeRows} linha(s) com fim menor que inicio foram ajustadas. ` : ""}Todas as linhas importadas ja estao disponiveis na base de Operações.`,
       });
       await queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       await queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
@@ -890,7 +890,7 @@ const Operacoes = () => {
 
   return (
     <AppShell
-      title="Operacoes"
+      title="Operações"
       subtitle={`Analise mensal de operacoes · ${monthLabelCapitalized}`}
     >
       <div className="space-y-6">
@@ -1127,7 +1127,7 @@ const Operacoes = () => {
                     iconColor="bg-teal-100 text-teal-700"
                   />
                   <TopKpiCard
-                    label="Operacoes"
+                  label="Operações"
                     value={formatInteger(operacoesKpis.operacoesCount)}
                     size="xs"
                     variant="muted"
@@ -1294,7 +1294,7 @@ const Operacoes = () => {
       <SpreadsheetUploadModal
         open={importModalOpen}
         onOpenChange={setImportModalOpen}
-        title="Importar Operacoes via Planilha"
+        title="Importar Operações via Planilha"
         description="O sistema lera a coluna DATA de cada linha automaticamente. Cada linha sera importada na sua propria data. Linhas sem DATA valida serao ignoradas. A coluna COL sera gravada como quantidade de colaboradores."
         onUpload={handleImportOperacoes}
       />

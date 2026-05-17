@@ -19,7 +19,8 @@ type Status =
   | "compensado"
   | "folga_lancada"
   | "vencido"
-  | "proximo_vencimento";
+  | "proximo_vencimento"
+  | "dados_completos";
 
 const styles: Record<Status, string> = {
   ok: "bg-success-soft text-success-strong",
@@ -41,6 +42,7 @@ const styles: Record<Status, string> = {
   folga_lancada: "border border-indigo-200 bg-indigo-50 text-indigo-700",
   vencido: "border border-rose-300 bg-rose-100 text-rose-800",
   proximo_vencimento: "border border-amber-200 bg-amber-50 text-amber-700",
+  dados_completos: "border border-emerald-300 bg-emerald-100 text-emerald-800 font-semibold",
 };
 
 const labels: Record<Status, string> = {
@@ -63,6 +65,7 @@ const labels: Record<Status, string> = {
   folga_lancada: "Folga lancada",
   vencido: "Vencido",
   proximo_vencimento: "Proximo do vencimento",
+  dados_completos: "Dados completos",
 };
 
 export const StatusChip = ({ status, label }: { status: Status; label?: string }) => (

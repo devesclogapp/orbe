@@ -1,4 +1,4 @@
-﻿# Documentação de Implementação — Mestre ORBE
+# Documentação de Implementação — Mestre ORBE
 
 ## 1. Objetivo
 Este documento traduz a visão do arquivo mestre para um plano técnico executável no projeto ORBE, preservando o fluxo oficial:

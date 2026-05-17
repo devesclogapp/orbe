@@ -1,0 +1,1 @@
+const { execSync } = require('child_process'); try { const out = execSync('npx supabase db psql -c \'SELECT * FROM diaristas_lancamentos LIMIT 2\'', {cwd:'y:/2026/ERP ESC LOG/Orbe'}).toString(); console.log(out); } catch(e) { console.log(e.message); }

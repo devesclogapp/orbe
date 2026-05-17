@@ -121,22 +121,22 @@ const Fechamento = () => {
               <div className="rounded-lg border border-border bg-muted/20 px-3 py-2">
                 <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Entradas</p>
                 <p className="text-lg font-semibold text-foreground">{competenciaSummary.entradasPendentes}</p>
-                <p className="text-xs text-muted-foreground">pendentes de liberaÃ§Ã£o</p>
+                <p className="text-xs text-muted-foreground">pendentes de liberação</p>
               </div>
               <div className="rounded-lg border border-border bg-muted/20 px-3 py-2">
                 <p className="text-[11px] uppercase tracking-wide text-muted-foreground">RH</p>
                 <p className="text-lg font-semibold text-foreground">{competenciaSummary.rhPendentes}</p>
-                <p className="text-xs text-muted-foreground">aguardando aprovaÃ§Ã£o</p>
+                <p className="text-xs text-muted-foreground">aguardando aprovação</p>
               </div>
               <div className="rounded-lg border border-border bg-muted/20 px-3 py-2">
                 <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Financeiro</p>
                 <p className="text-lg font-semibold text-foreground">{competenciaSummary.financeiroPendentes}</p>
-                <p className="text-xs text-muted-foreground">aguardando aprovaÃ§Ã£o</p>
+                <p className="text-xs text-muted-foreground">aguardando aprovação</p>
               </div>
               <div className="rounded-lg border border-border bg-muted/20 px-3 py-2">
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">BancÃ¡rio</p>
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Bancário</p>
                 <p className="text-lg font-semibold text-foreground">{competenciaSummary.bancarioPendentes}</p>
-                <p className="text-xs text-muted-foreground">preparaÃ§Ã£o remessa</p>
+                <p className="text-xs text-muted-foreground">preparação remessa</p>
               </div>
               <div className="rounded-lg border border-success/30 bg-success-soft/30 px-3 py-2">
                 <p className="text-[11px] uppercase tracking-wide text-success-strong/80">Fechado</p>

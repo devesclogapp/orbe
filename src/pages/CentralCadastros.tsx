@@ -106,10 +106,10 @@ const TECHNICAL_COLUMNS = [
 const BANK_OPTIONS = [
   { code: "001", name: "Banco do Brasil" },
   { code: "033", name: "Santander" },
-  { code: "104", name: "Caixa EconÃ´mica Federal" },
+  { code: "104", name: "Caixa Econômica Federal" },
   { code: "237", name: "Bradesco" },
   { code: "260", name: "Nu Pagamentos" },
-  { code: "341", name: "ItaÃº" },
+  { code: "341", name: "Itaú" },
   { code: "422", name: "Safra" },
   { code: "748", name: "Sicredi" },
   { code: "756", name: "Sicoob" },
@@ -153,19 +153,19 @@ function getColaboradorBankValidation(colaborador: any) {
 
   let badge = { label: "Dados incompletos", className: "bg-muted text-muted-foreground" };
   if (requiredComplete) {
-    badge = { label: "Dados vÃ¡lidos", className: "bg-success-soft text-success-strong" };
+    badge = { label: "Dados válidos", className: "bg-success-soft text-success-strong" };
   } else if (hasInvalidFormat) {
-    badge = { label: "Formato invÃ¡lido", className: "bg-warning-soft text-warning-strong" };
+    badge = { label: "Formato inválido", className: "bg-warning-soft text-warning-strong" };
   } else if (hasAnyBankData) {
     badge = { label: "Preenchimento em andamento", className: "bg-info-soft text-info" };
   }
 
   const checklist = [
     { key: "banco", label: "Banco", done: bancoOk },
-    { key: "agencia", label: "AgÃªncia", done: agenciaOk },
-    { key: "agencia_digito", label: "DÃ­gito da agÃªncia", done: agenciaDigitoOk },
+    { key: "agencia", label: "Agência", done: agenciaOk },
+    { key: "agencia_digito", label: "Dígito da agência", done: agenciaDigitoOk },
     { key: "conta", label: "Conta", done: contaOk },
-    { key: "conta_digito", label: "DÃ­gito da conta", done: contaDigitoOk },
+    { key: "conta_digito", label: "Dígito da conta", done: contaDigitoOk },
     { key: "tipo_conta", label: "Tipo de conta", done: tipoContaOk },
     { key: "pix", label: "Pix (opcional)", done: pixOk, optional: true },
   ];
@@ -214,8 +214,14 @@ function getColaboradorStatusMeta(colaborador: any) {
     return { status: "pendente" as const, label: "Pendente" };
   }
 
+  // Check if all data is complete (100% completude)
+  const completude = getColaboradorCompletude(colaborador);
+  if (completude === 100) {
+    return { status: "dados_completos" as const, label: "Dados completos" };
+  }
+
   return {
-    status: (colaborador.status || "ok") as "ok" | "inconsistente" | "ajustado" | "pendente" | "incompleto" | "positivo" | "critico",
+    status: (colaborador.status || "ok") as "ok" | "inconsistente" | "ajustado" | "pendente" | "incompleto" | "positivo" | "critico" | "dados_completos",
     label: undefined,
   };
 }
@@ -240,12 +246,12 @@ function getColaboradorPendenciasBancarias(colaborador: any) {
   }
 
   const pendencias: string[] = [];
-  if (!String(colaborador.nome_completo ?? "").trim()) pendencias.push("nome bancÃ¡rio");
+  if (!String(colaborador.nome_completo ?? "").trim()) pendencias.push("nome bancário");
   if (!String(colaborador.banco_codigo ?? "").trim()) pendencias.push("banco");
-  if (!String(colaborador.agencia ?? "").trim()) pendencias.push("agÃªncia");
-  if (!String(colaborador.agencia_digito ?? "").trim()) pendencias.push("dÃ­gito da agÃªncia");
+  if (!String(colaborador.agencia ?? "").trim()) pendencias.push("agência");
+  if (!String(colaborador.agencia_digito ?? "").trim()) pendencias.push("dígito da agência");
   if (!String(colaborador.conta ?? "").trim()) pendencias.push("conta");
-  if (!String(colaborador.conta_digito ?? colaborador.digito_conta ?? "").trim()) pendencias.push("dÃ­gito da conta");
+  if (!String(colaborador.conta_digito ?? colaborador.digito_conta ?? "").trim()) pendencias.push("dígito da conta");
   if (!String(colaborador.tipo_conta ?? "").trim()) pendencias.push("tipo de conta");
 
   return pendencias;
@@ -340,11 +346,11 @@ function formatOperacionalLastUpdate(value?: string | null) {
 
 function getBankFieldError(validation: any, field: "banco_codigo" | "agencia" | "agencia_digito" | "conta" | "conta_digito") {
   if (!validation?.hasAnyBankData) return "";
-  if (!validation?.isValid && !validation?.bancoOk && field === "banco_codigo") return "Banco invÃ¡lido";
-  if (!validation?.isValid && !validation?.agenciaOk && field === "agencia") return "AgÃªncia incompleta";
-  if (!validation?.isValid && !validation?.agenciaDigitoOk && field === "agencia_digito") return "DV invÃ¡lido";
+  if (!validation?.isValid && !validation?.bancoOk && field === "banco_codigo") return "Banco inválido";
+  if (!validation?.isValid && !validation?.agenciaOk && field === "agencia") return "Agência incompleta";
+  if (!validation?.isValid && !validation?.agenciaDigitoOk && field === "agencia_digito") return "DV inválido";
   if (!validation?.isValid && !validation?.contaOk && field === "conta") return "Conta incompleta";
-  if (!validation?.isValid && !validation?.contaDigitoOk && field === "conta_digito") return "DV invÃ¡lido";
+  if (!validation?.isValid && !validation?.contaDigitoOk && field === "conta_digito") return "DV inválido";
   return "";
 }
 
@@ -360,7 +366,7 @@ function getBankBadgeUi(validation: any, colaborador: any) {
 
   if (validation?.isValid) {
     return {
-      label: "Dados vÃ¡lidos",
+      label: "Dados válidos",
       className: "border border-emerald-200 bg-emerald-100 text-emerald-900",
       Icon: CheckCircle2,
     };
@@ -368,7 +374,7 @@ function getBankBadgeUi(validation: any, colaborador: any) {
 
   if (!validation?.bancoOk || !validation?.agenciaOk || !validation?.agenciaDigitoOk || !validation?.contaOk || !validation?.contaDigitoOk) {
     return {
-      label: hasAnyBankData ? "Formato invÃ¡lido" : "Incompleto",
+      label: hasAnyBankData ? "Formato inválido" : "Incompleto",
       className: "border border-amber-200 bg-amber-100 text-amber-900",
       Icon: AlertTriangle,
     };
@@ -391,10 +397,10 @@ function formatCNPJ(value: string): string {
 }
 
 function validateCNPJ(cnpj: string): { valid: boolean; reason?: string } {
-  if (!cnpj || cnpj.trim() === '') return { valid: false, reason: 'CNPJ Ã© obrigatÃ³rio.' };
+  if (!cnpj || cnpj.trim() === '') return { valid: false, reason: 'CNPJ é obrigatório.' };
   const digits = cnpj.replace(/\D/g, '');
-  if (digits.length !== 14) return { valid: false, reason: 'CNPJ deve ter 14 dÃ­gitos.' };
-  if (/^(.)\1+$/.test(digits)) return { valid: false, reason: 'CNPJ invÃ¡lido.' };
+  if (digits.length !== 14) return { valid: false, reason: 'CNPJ deve ter 14 dígitos.' };
+  if (/^(.)\1+$/.test(digits)) return { valid: false, reason: 'CNPJ inválido.' };
   return { valid: true };
 }
 
@@ -415,7 +421,7 @@ const parseBooleanLike = (value: string, defaultValue = true) => {
   const normalized = normalizeText(value);
   if (!normalized) return defaultValue;
   if (["SIM", "TRUE", "1", "ATIVO", "ATIVA", "YES"].includes(normalized)) return true;
-  if (["NAO", "NÃƒO", "FALSE", "0", "INATIVO", "INATIVA", "NO"].includes(normalized)) return false;
+  if (["NAO", "NÒO", "FALSE", "0", "INATIVO", "INATIVA", "NO"].includes(normalized)) return false;
   return defaultValue;
 };
 
@@ -458,7 +464,7 @@ const inferRegimeTrabalho = (tipoColaborador?: string) => {
   if (tipo === "INTERMITENTE") return "Intermitente";
   if (tipo === "DIARISTA") return "Diarista";
   if (tipo === "TERCEIRIZADO") return "Terceirizado";
-  if (tipo === "PRODUÃ‡ÃƒO" || tipo === "PRODUCAO") return "Freelancer";
+  if (tipo === "PRODUÇÃO" || tipo === "PRODUCAO") return "Freelancer";
   return "CLT";
 };
 
@@ -467,17 +473,17 @@ const inferModeloCalculo = (tipoColaborador?: string, tipoContrato?: string) => 
   const contrato = String(tipoContrato || "").toUpperCase();
   if (contrato === "MENSAL") return "Mensal";
   if (contrato === "HORA") return "Horista";
-  if (contrato === "OPERAÃ‡ÃƒO" || contrato === "OPERACAO") return "ProduÃ§Ã£o";
-  if (tipo === "DIARISTA") return "DiÃ¡ria";
+  if (contrato === "OPERAÇÃO" || contrato === "OPERACAO") return "Produção";
+  if (tipo === "DIARISTA") return "Diária";
   if (tipo === "INTERMITENTE") return "Horista";
-  if (tipo === "PRODUÃ‡ÃƒO" || tipo === "PRODUCAO" || tipo === "TERCEIRIZADO") return "ProduÃ§Ã£o";
+  if (tipo === "PRODUÇÃO" || tipo === "PRODUCAO" || tipo === "TERCEIRIZADO") return "Produção";
   return "Mensal";
 };
 
 const getTipoContratoByModelo = (modelo?: string) => {
   if (modelo === "Mensal") return "Mensal";
   if (modelo === "Horista") return "Hora";
-  if (modelo === "ProduÃ§Ã£o") return "OperaÃ§Ã£o";
+  if (modelo === "Produção") return "Operação";
   return "Hora";
 };
 
@@ -550,8 +556,8 @@ const CentralCadastros = () => {
 
   const validatePhoneCC = (value: string) => {
     const digits = normalizePhoneCC(value);
-    if (!digits) return "Telefone Ã© obrigatÃ³rio.";
-    if (!/^\d{10,11}$/.test(digits)) return "Telefone invÃ¡lido.";
+    if (!digits) return "Telefone é obrigatório.";
+    if (!/^\d{10,11}$/.test(digits)) return "Telefone inválido.";
     return null;
   };
 
@@ -559,6 +565,27 @@ const CentralCadastros = () => {
     const digits = normalizePhoneCC(raw);
     if (digits.length > 11) return;
     setColaboradorForm(prev => ({ ...prev, telefone: formatPhoneForDisplayCC(digits) }));
+  };
+
+  const formatCurrencyBRL = (value: number | string): string => {
+    const num = typeof value === "string" ? Number(String(value).replace(/[^\d.,\-]/g, "").replace(/\./g, "").replace(",", ".")) : value;
+    if (!Number.isFinite(num) || num === 0) return "";
+    return num.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const parseCurrencyBRL = (display: string): number => {
+    if (!display) return 0;
+    const cleaned = display.replace(/[^\d,\-]/g, "").replace(",", ".");
+    const num = Number(cleaned);
+    return Number.isFinite(num) ? num : 0;
+  };
+
+  const handleCurrencyInput = (raw: string, setter: (val: string) => void) => {
+    const digitsOnly = raw.replace(/[^\d]/g, "");
+    if (!digitsOnly) { setter(""); return; }
+    const cents = Number(digitsOnly);
+    const reais = cents / 100;
+    setter(reais.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   };
 
   const [editingColaborador, setEditingColaborador] = useState<any>(null);
@@ -601,8 +628,8 @@ const CentralCadastros = () => {
     },
     onError: (err: any) => {
       const msg = err?.message || '';
-      if (msg.includes('duplicate') || msg.includes('jÃ¡ existe') || msg.includes('cpf')) {
-        toast.error("JÃ¡ existe um colaborador cadastrado com este CPF.");
+      if (msg.includes('duplicate') || msg.includes('já existe') || msg.includes('cpf')) {
+        toast.error("Já existe um colaborador cadastrado com este CPF.");
       } else {
         toast.error(msg || "Erro ao atualizar colaborador.");
       }
@@ -631,8 +658,8 @@ const CentralCadastros = () => {
     },
     onError: (err: any) => {
       const msg = err?.message || '';
-      if (msg.includes('duplicate') || msg.includes('unique') || msg.includes('jÃ¡ existe')) {
-        toast.error("JÃ¡ existe uma empresa cadastrada com este CNPJ.", { duration: 5000 });
+      if (msg.includes('duplicate') || msg.includes('unique') || msg.includes('já existe')) {
+        toast.error("Já existe uma empresa cadastrada com este CNPJ.", { duration: 5000 });
       } else {
         toast.error("Erro ao atualizar empresa.", { description: msg });
       }
@@ -723,12 +750,12 @@ const CentralCadastros = () => {
     const codigo = String(payload?.codigo ?? "").trim();
 
     if (!nome || !codigo) {
-      toast.error("Preencha nome e cÃ³digo do tipo de operaÃ§Ã£o.");
+      toast.error("Preencha nome e código do tipo de operação.");
       return false;
     }
 
     if (!user?.id) {
-      toast.error("Sua sessÃ£o expirou. Entre novamente para continuar.");
+      toast.error("Sua sessão expirou. Entre novamente para continuar.");
       return false;
     }
 
@@ -747,7 +774,7 @@ const CentralCadastros = () => {
       });
 
     if (hasDuplicate) {
-      toast.error("JÃ¡ existe um tipo de operaÃ§Ã£o com este nome ou cÃ³digo.");
+      toast.error("Já existe um tipo de operação com este nome ou código.");
       return false;
     }
 
@@ -877,10 +904,10 @@ const CentralCadastros = () => {
     },
     onError: (err: any) => {
       const msg = err?.message || '';
-      if (msg.includes('duplicate') || msg.includes('jÃ¡ existe') || msg.includes('cpf')) {
-        toast.error("JÃ¡ existe um colaborador cadastrado com este CPF.");
+      if (msg.includes('duplicate') || msg.includes('já existe') || msg.includes('cpf')) {
+        toast.error("Já existe um colaborador cadastrado com este CPF.");
       } else {
-        toast.error(msg || "Erro ao cadastrar colaborador. Verifique os campos obrigatÃ³rios.");
+        toast.error(msg || "Erro ao cadastrar colaborador. Verifique os campos obrigatórios.");
       }
     },
     onSettled: () => setColaboradorIsProcessing(false),
@@ -888,16 +915,16 @@ const CentralCadastros = () => {
 
   const validateColaboradorStep1 = () => {
     if (!colaboradorForm.nome.trim()) {
-      toast.error("Nome completo Ã© obrigatÃ³rio.", { icon: null });
+      toast.error("Nome completo é obrigatório.", { icon: null });
       return false;
     }
     if (!colaboradorForm.cpf.trim()) {
-      toast.error("CPF Ã© obrigatÃ³rio.", { icon: null });
+      toast.error("CPF é obrigatório.", { icon: null });
       return false;
     }
     const cpfClean = colaboradorForm.cpf.replace(/\D/g, "");
     if (cpfClean.length !== 11) {
-      toast.error("CPF invÃ¡lido.", { icon: null });
+      toast.error("CPF inválido.", { icon: null });
       return false;
     }
     const phoneError = validatePhoneCC(colaboradorForm.telefone);
@@ -906,7 +933,7 @@ const CentralCadastros = () => {
       return false;
     }
     if (!colaboradorForm.empresa_id && !empresaId) {
-      toast.error("Empresa Ã© obrigatÃ³ria.", { icon: null });
+      toast.error("Empresa é obrigatória.", { icon: null });
       return false;
     }
     return true;
@@ -914,49 +941,49 @@ const CentralCadastros = () => {
 
   const validateColaboradorStep2 = () => {
     if (!colaboradorForm.tipo_colaborador) {
-      toast.error("Tipo de colaborador Ã© obrigatÃ³rio.", { icon: null });
+      toast.error("Tipo de colaborador é obrigatório.", { icon: null });
       return false;
     }
     if (!colaboradorForm.status) {
-      toast.error("Status Ã© obrigatÃ³rio.", { icon: null });
+      toast.error("Status é obrigatório.", { icon: null });
       return false;
     }
     if (!colaboradorForm.cargo.trim()) {
-      toast.error("Cargo/FunÃ§Ã£o Ã© obrigatÃ³rio.", { icon: null });
+      toast.error("Cargo/Função é obrigatório.", { icon: null });
       return false;
     }
     if (!colaboradorForm.regime_trabalho) {
-      toast.error("Regime de trabalho Ã© obrigatÃ³rio.", { icon: null });
+      toast.error("Regime de trabalho é obrigatório.", { icon: null });
       return false;
     }
     if (!colaboradorForm.modelo_calculo) {
-      toast.error("Modelo de cÃ¡lculo Ã© obrigatÃ³rio.", { icon: null });
+      toast.error("Modelo de cálculo é obrigatório.", { icon: null });
       return false;
     }
     if (!colaboradorForm.matricula.trim() && colaboradorForm.regime_trabalho === "CLT") {
-      toast.error("MatrÃ­cula Ã© obrigatÃ³ria para CLT.", { icon: null });
+      toast.error("Matrícula é obrigatória para CLT.", { icon: null });
       return false;
     }
     if (colaboradorForm.modelo_calculo === "Mensal" && (!colaboradorForm.salario_base || Number(colaboradorForm.salario_base) <= 0)) {
-      toast.error("SalÃ¡rio base mensal Ã© obrigatÃ³rio.", { icon: null });
+      toast.error("Salário base mensal é obrigatório.", { icon: null });
       return false;
     }
     if (colaboradorForm.modelo_calculo === "Horista") {
       if (!colaboradorForm.valor_hora || Number(colaboradorForm.valor_hora) <= 0) {
-        toast.error("Valor hora Ã© obrigatÃ³rio.", { icon: null });
+        toast.error("Valor hora é obrigatório.", { icon: null });
         return false;
       }
       if (!colaboradorForm.carga_referencia || Number(colaboradorForm.carga_referencia) <= 0) {
-        toast.error("Carga horÃ¡ria referÃªncia Ã© obrigatÃ³ria.", { icon: null });
+        toast.error("Carga horária referência é obrigatória.", { icon: null });
         return false;
       }
     }
-    if (colaboradorForm.modelo_calculo === "DiÃ¡ria" && (!colaboradorForm.valor_diaria || Number(colaboradorForm.valor_diaria) <= 0)) {
-      toast.error("Valor da diÃ¡ria Ã© obrigatÃ³rio.", { icon: null });
+    if (colaboradorForm.modelo_calculo === "Diária" && (!colaboradorForm.valor_diaria || Number(colaboradorForm.valor_diaria) <= 0)) {
+      toast.error("Valor da diária é obrigatório.", { icon: null });
       return false;
     }
-    if (colaboradorForm.modelo_calculo === "ProduÃ§Ã£o" && !colaboradorForm.regra_operacional?.trim() && (!colaboradorForm.valor_base || Number(colaboradorForm.valor_base) <= 0)) {
-      toast.error("Informe valor por operaÃ§Ã£o ou regra operacional.", { icon: null });
+    if (colaboradorForm.modelo_calculo === "Produção" && !colaboradorForm.regra_operacional?.trim() && (!colaboradorForm.valor_base || Number(colaboradorForm.valor_base) <= 0)) {
+      toast.error("Informe valor por operação ou regra operacional.", { icon: null });
       return false;
     }
     return true;
@@ -966,28 +993,28 @@ const CentralCadastros = () => {
     const hasBankField = colaboradorForm.nome_completo || colaboradorForm.banco_codigo || colaboradorForm.agencia || colaboradorForm.conta;
     if (colaboradorForm.flag_faturamento && hasBankField) {
       if (!colaboradorForm.nome_completo?.trim()) {
-        toast.error("Nome completo da conta Ã© obrigatÃ³rio.", { icon: null });
+        toast.error("Nome completo da conta é obrigatório.", { icon: null });
         return false;
       }
       if (!colaboradorForm.banco_codigo?.trim()) {
-        toast.error("CÃ³digo do banco Ã© obrigatÃ³rio.", { icon: null });
+        toast.error("Código do banco é obrigatório.", { icon: null });
         return false;
       }
       if (!colaboradorForm.tipo_conta) {
-        toast.error("Tipo de conta Ã© obrigatÃ³rio.", { icon: null });
+        toast.error("Tipo de conta é obrigatório.", { icon: null });
         return false;
       }
       if (!colaboradorForm.agencia?.trim()) {
-        toast.error("AgÃªncia Ã© obrigatÃ³ria.", { icon: null });
+        toast.error("Agência é obrigatória.", { icon: null });
         return false;
       }
       if (!colaboradorForm.conta?.trim()) {
-        toast.error("Conta Ã© obrigatÃ³ria.", { icon: null });
+        toast.error("Conta é obrigatória.", { icon: null });
         return false;
       }
     }
     if (!hasBankField && colaboradorForm.flag_faturamento) {
-      toast.warning("Para faturamento, preencha os dados bancÃ¡rios.", { icon: null, duration: 3000 });
+      toast.warning("Para faturamento, preencha os dados bancários.", { icon: null, duration: 3000 });
     }
     return true;
   };
@@ -995,7 +1022,7 @@ const CentralCadastros = () => {
   const deleteColaboradorMutation = useMutation({
     mutationFn: (id: string) => ColaboradorService.delete(id),
     onSuccess: async () => {
-      toast.success("Colaborador excluÃ­do com sucesso");
+      toast.success("Colaborador excluído com sucesso");
       await queryClient.cancelQueries({ queryKey: ["colaboradores_list"] });
       queryClient.removeQueries({ queryKey: ["colaboradores_list"] });
       await queryClient.invalidateQueries({ queryKey: ["colaboradores_list"] });
@@ -1021,8 +1048,8 @@ const CentralCadastros = () => {
     },
     onError: (err: any) => {
       const msg = err?.message || '';
-      if (msg.includes('duplicate') || msg.includes('unique') || msg.includes('jÃ¡ existe')) {
-        toast.error("JÃ¡ existe uma empresa cadastrada com este CNPJ.", { duration: 5000 });
+      if (msg.includes('duplicate') || msg.includes('unique') || msg.includes('já existe')) {
+        toast.error("Já existe uma empresa cadastrada com este CNPJ.", { duration: 5000 });
       } else {
         toast.error("Erro ao salvar empresa.", { description: msg });
       }
@@ -1038,7 +1065,7 @@ const CentralCadastros = () => {
       return result;
     },
     onSuccess: async () => {
-      toast.success("Empresa excluÃ­da com sucesso");
+      toast.success("Empresa excluída com sucesso");
       await queryClient.cancelQueries({ queryKey: ["empresas"] });
       queryClient.removeQueries({ queryKey: ["empresas"] });
       await queryClient.invalidateQueries({ queryKey: ["empresas"] });
@@ -1065,7 +1092,7 @@ const CentralCadastros = () => {
   const deleteColetorMutation = useMutation({
     mutationFn: (id: string) => ColetorService.delete(id),
     onSuccess: async () => {
-      toast.success("Coletor excluÃ­do com sucesso");
+      toast.success("Coletor excluído com sucesso");
       await queryClient.cancelQueries({ queryKey: ["coletores"] });
       queryClient.removeQueries({ queryKey: ["coletores"] });
       await queryClient.invalidateQueries({ queryKey: ["coletores"] });
@@ -1127,7 +1154,7 @@ const CentralCadastros = () => {
 
     if (Object.keys(errors).length > 0) {
       setTransportadoraFormErrors(errors);
-      toast.error("Preencha os campos obrigatÃ³rios.");
+      toast.error("Preencha os campos obrigatórios.");
       return;
     }
 
@@ -1152,7 +1179,7 @@ const CentralCadastros = () => {
   const submitFornecedorForm = () => {
     if (!fornecedorForm.nome?.trim()) {
       setFornecedorFormErrors({ nome: 'Informe o nome do fornecedor.' });
-      toast.error("Preencha os campos obrigatÃ³rios.");
+      toast.error("Preencha os campos obrigatórios.");
       return;
     }
     setFornecedorFormErrors({});
@@ -1182,18 +1209,18 @@ const CentralCadastros = () => {
   const getServicoErrorMessage = (err: any) => {
     const msg = (err?.message || err?.error || "").toLowerCase();
     if (msg.includes("duplicate key value") || msg.includes("unique") || err?.code === '23505') {
-      return "JÃ¡ existe um tipo de serviÃ§o com este nome.";
+      return "Já existe um tipo de serviço com este nome.";
     }
     if (msg.includes("check constraint")) {
-      return "Informe o nome do tipo de serviÃ§o.";
+      return "Informe o nome do tipo de serviço.";
     }
-    return err?.message || "Erro ao processar tipo de serviÃ§o.";
+    return err?.message || "Erro ao processar tipo de serviço.";
   };
 
   const submitServicoForm = () => {
     if (!servicoForm.nome?.trim()) {
-      setServicoFormErrors({ nome: "Informe o nome do tipo de serviÃ§o." });
-      toast.error("Preencha os campos obrigatÃ³rios.");
+      setServicoFormErrors({ nome: "Informe o nome do tipo de serviço." });
+      toast.error("Preencha os campos obrigatórios.");
       return;
     }
     setServicoFormErrors({});
@@ -1203,7 +1230,7 @@ const CentralCadastros = () => {
   const createServicoMutation = useMutation({
     mutationFn: (payload: any) => TipoServicoOperacionalService.create(payload),
     onSuccess: async () => {
-      toast.success("Tipo de serviÃ§o cadastrado com sucesso");
+      toast.success("Tipo de serviço cadastrado com sucesso");
       setServicoModalOpen(false);
       setServicoForm({ nome: "", descricao: "", ativo: true, empresa_id: empresaId || "" });
       await new Promise(r => setTimeout(r, 500));
@@ -1251,7 +1278,7 @@ const CentralCadastros = () => {
   const deleteProdutoCargaMutation = useMutation({
     mutationFn: (id: string) => ProdutoCargaService.delete(id),
     onSuccess: async () => {
-      toast.success("Produto excluÃ­do com sucesso");
+      toast.success("Produto excluído com sucesso");
       await queryClient.invalidateQueries({ queryKey: ["produtos_carga_all"] });
     },
     onError: (err: any) => toast.error("Erro ao excluir produto", { description: err.message }),
@@ -1297,7 +1324,7 @@ const CentralCadastros = () => {
       return result;
     },
     onSuccess: async () => {
-      toast.success("Fornecedor excluÃ­do com sucesso");
+      toast.success("Fornecedor excluído com sucesso");
       await queryClient.cancelQueries({ queryKey: ["fornecedores"] });
       queryClient.removeQueries({ queryKey: ["fornecedores"] });
       await queryClient.invalidateQueries({ queryKey: ["fornecedores"] });
@@ -1341,7 +1368,7 @@ const CentralCadastros = () => {
       return result;
     },
     onSuccess: async () => {
-      toast.success("Transportadora excluÃ­da com sucesso");
+      toast.success("Transportadora excluída com sucesso");
       await queryClient.cancelQueries({ queryKey: ["transportadoras"] });
       queryClient.removeQueries({ queryKey: ["transportadoras"] });
       await queryClient.invalidateQueries({ queryKey: ["transportadoras"] });
@@ -1368,7 +1395,7 @@ const CentralCadastros = () => {
   const updateServicoMutation = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: any }) => TipoServicoOperacionalService.update(id, payload),
     onSuccess: async () => {
-      toast.success("Tipo de serviÃ§o atualizado com sucesso");
+      toast.success("Tipo de serviço atualizado com sucesso");
       setEditingServico(null);
       await queryClient.invalidateQueries({ queryKey: ["tipos_servico_operacional"] });
       const data = await queryClient.fetchQuery({ queryKey: ["tipos_servico_operacional"], queryFn: () => TipoServicoOperacionalService.getAllActive() });
@@ -1385,20 +1412,20 @@ const CentralCadastros = () => {
       return result;
     },
     onSuccess: async () => {
-      toast.success("Tipo de serviÃ§o excluÃ­do com sucesso");
+      toast.success("Tipo de serviço excluído com sucesso");
       await queryClient.cancelQueries({ queryKey: ["tipos_servico_operacional"] });
       queryClient.removeQueries({ queryKey: ["tipos_servico_operacional"] });
       await queryClient.invalidateQueries({ queryKey: ["tipos_servico_operacional"] });
       const data = await queryClient.fetchQuery({ queryKey: ["tipos_servico_operacional"], queryFn: () => TipoServicoOperacionalService.getAllActive() });
       queryClient.setQueryData(["tipos_servico_operacional"], data);
     },
-    onError: (err: any) => toast.error(err?.message || "Erro ao excluir tipo de serviÃ§o", { description: err.message }),
+    onError: (err: any) => toast.error(err?.message || "Erro ao excluir tipo de serviço", { description: err.message }),
   });
 
   const toggleServicoAtivoMutation = useMutation({
     mutationFn: ({ id, ativo }: { id: string; ativo: boolean }) => TipoServicoOperacionalService.toggleAtivo(id, ativo),
     onSuccess: async (_data, { ativo }) => {
-      toast.success(ativo ? "Tipo de serviÃ§o ativado com sucesso" : "Tipo de serviÃ§o desativado com sucesso");
+      toast.success(ativo ? "Tipo de serviço ativado com sucesso" : "Tipo de serviço desativado com sucesso");
       await queryClient.cancelQueries({ queryKey: ["tipos_servico_operacional"] });
       queryClient.removeQueries({ queryKey: ["tipos_servico_operacional"] });
       await queryClient.invalidateQueries({ queryKey: ["tipos_servico_operacional"] });
@@ -1419,19 +1446,19 @@ const CentralCadastros = () => {
   const submitConfigForm = () => {
     const errors: any = {};
     if (configType === "operacao") {
-      if (!configForm.nome?.trim()) errors.nome = "Nome da operaÃ§Ã£o Ã© obrigatÃ³rio.";
-      if (!configForm.codigo?.trim()) errors.codigo = "CÃ³digo Ã© obrigatÃ³rio.";
+      if (!configForm.nome?.trim()) errors.nome = "Nome da operação é obrigatório.";
+      if (!configForm.codigo?.trim()) errors.codigo = "Código é obrigatório.";
     } else if (configType === "produto") {
-      if (!configForm.categoria?.trim()) errors.categoria = "Categoria do produto Ã© obrigatÃ³ria.";
-      if (configForm.icms === undefined || configForm.icms === null || configForm.icms === "") errors.icms = "AlÃ­quota Ã© obrigatÃ³ria.";
+      if (!configForm.categoria?.trim()) errors.categoria = "Categoria do produto é obrigatória.";
+      if (configForm.icms === undefined || configForm.icms === null || configForm.icms === "") errors.icms = "Alíquota é obrigatória.";
     } else if (configType === "dia") {
-      if (!configForm.nome?.trim()) errors.nome = "DescriÃ§Ã£o do dia Ã© obrigatÃ³ria.";
-      if (configForm.fator === undefined || configForm.fator === null || configForm.fator === "") errors.fator = "Fator de cÃ¡lculo Ã© obrigatÃ³rio.";
+      if (!configForm.nome?.trim()) errors.nome = "Descrição do dia é obrigatória.";
+      if (configForm.fator === undefined || configForm.fator === null || configForm.fator === "") errors.fator = "Fator de cálculo é obrigatório.";
     }
 
     if (Object.keys(errors).length > 0) {
       setConfigFormErrors(errors);
-      toast.error("Preencha os campos obrigatÃ³rios.");
+      toast.error("Preencha os campos obrigatórios.");
       return;
     }
 
@@ -1466,7 +1493,7 @@ const CentralCadastros = () => {
     let count = 0;
     try {
       for (const row of data) {
-        // Tenta descobrir o tipo de importaÃ§Ã£o pelas colunas
+        // Tenta descobrir o tipo de importação pelas colunas
         const hasIcms = 'ICMS' in row || 'icms' in row;
         const hasCategoria = 'Categoria' in row || 'categoria' in row;
         const hasFator = 'Fator' in row || 'fator' in row;
@@ -1482,18 +1509,18 @@ const CentralCadastros = () => {
         } else if (hasFator) {
           // Importa Dia
           await ConfigTipoDiaService.create({
-            nome: row['Nome'] || row['nome'] || row['DescriÃ§Ã£o'] || '',
+            nome: row['Nome'] || row['nome'] || row['Descrição'] || '',
             fator: Number(row['Fator'] || row['fator'] || 1),
             status: 'ativo',
             empresa_id: empresaId
           });
         } else {
           // Importa Operacao default
-          const nome = row['Nome'] || row['nome'] || row['OperaÃ§Ã£o'] || '';
+          const nome = row['Nome'] || row['nome'] || row['Operação'] || '';
           if (!nome) continue;
           await ConfigTipoOperacaoService.create({
             nome,
-            codigo: row['CÃ³digo'] || row['codigo'] || '',
+            codigo: row['Código'] || row['codigo'] || '',
             status: 'ativo',
             empresa_id: empresaId
           });
@@ -1505,7 +1532,7 @@ const CentralCadastros = () => {
       queryClient.invalidateQueries({ queryKey: ["config_produtos"] });
       queryClient.invalidateQueries({ queryKey: ["config_tipos_dia"] });
     } catch (e: any) {
-      toast.error("Erro parcial na importaÃ§Ã£o. Alguns registros podem ter falhado.", { description: e.message });
+      toast.error("Erro parcial na importação. Alguns registros podem ter falhado.", { description: e.message });
       queryClient.invalidateQueries({ queryKey: ["config_tipos_operacao"] });
       queryClient.invalidateQueries({ queryKey: ["config_produtos"] });
       queryClient.invalidateQueries({ queryKey: ["config_tipos_dia"] });
@@ -1532,7 +1559,7 @@ const CentralCadastros = () => {
       const ignoredColumns = getIgnoredTechnicalColumns(rows);
 
       if (ignoredColumns.length > 0) {
-        warnings.push(`Colunas tÃ©cnicas ignoradas automaticamente: ${ignoredColumns.join(", ")}.`);
+        warnings.push(`Colunas técnicas ignoradas automaticamente: ${ignoredColumns.join(", ")}.`);
       }
 
       rows.forEach((row, index) => {
@@ -1582,7 +1609,7 @@ const CentralCadastros = () => {
     > = {
       colaboradores: {
         label: "Colaboradores",
-        description: "Envie uma planilha compatÃ­vel com o modelo da aba Colaboradores.",
+        description: "Envie uma planilha compatível com o modelo da aba Colaboradores.",
         downloadUrl: modeloImportacaoAtivo?.drive_url,
         expectedColumns: ["NOME", "CPF", "TELEFONE", "EMPRESA", "TIPO", "CARGO", "CONTRATO", "VALOR BASE", "FATURAMENTO", "STATUS"],
         templateFileName: "modelo_operadores_colaboradores.xlsx",
@@ -1608,19 +1635,19 @@ const CentralCadastros = () => {
                 : tipoNormalizado === "TERCEIRIZADO"
                   ? "TERCEIRIZADO"
                   : tipoNormalizado === "PRODUCAO"
-                    ? "PRODUÃ‡ÃƒO"
+                    ? "PRODUÇÃO"
                     : "CLT";
             const tipoContrato = tipoColaborador === "DIARISTA"
               ? null
-              : contratoNormalizado === "OPERACAO" || contratoNormalizado === "OPERAÃ‡ÃƒO"
-                ? "OperaÃ§Ã£o"
+              : contratoNormalizado === "OPERACAO" || contratoNormalizado === "OPERAÇÃO"
+                ? "Operação"
                 : "Hora";
             const status = statusNormalizado === "INATIVO" ? "inativo" : statusNormalizado === "PENDENTE" ? "pendente" : "ativo";
 
             if (!nome) return { error: `Linha ${index + 2}: informe o campo NOME.` };
             if (!empresaNome) return { error: `Linha ${index + 2}: informe o campo EMPRESA.` };
-            if (!empresa?.id) return { error: `Linha ${index + 2}: empresa "${empresaNome}" nÃ£o encontrada neste tenant.` };
-            if (tipoColaborador !== "DIARISTA" && !cargo) return { error: `Linha ${index + 2}: CARGO Ã© obrigatÃ³rio para colaboradores nÃ£o diaristas.` };
+            if (!empresa?.id) return { error: `Linha ${index + 2}: empresa "${empresaNome}" não encontrada neste tenant.` };
+            if (tipoColaborador !== "DIARISTA" && !cargo) return { error: `Linha ${index + 2}: CARGO é obrigatório para colaboradores não diaristas.` };
 
             const cpfClean = cpf ? String(cpf).replace(/\D/g, '') : '';
             const telefoneClean = telefone ? String(telefone).replace(/\D/g, '') : '';
@@ -1658,7 +1685,7 @@ const CentralCadastros = () => {
 
             return {
               payload,
-              preview: { NOME: nome, EMPRESA: empresa.nome, TIPO: tipoColaborador, CARGO: cargo || "â€”", STATUS: status },
+              preview: { NOME: nome, EMPRESA: empresa.nome, TIPO: tipoColaborador, CARGO: cargo || "—", STATUS: status },
             };
           });
         },
@@ -1675,7 +1702,7 @@ const CentralCadastros = () => {
               imported++;
             } catch (err: any) {
               const msg = err?.message || "";
-              if (msg.includes("duplicate") || msg.includes("unique") || msg.includes("jÃ¡ existe") || msg.includes("cpf")) {
+              if (msg.includes("duplicate") || msg.includes("unique") || msg.includes("já existe") || msg.includes("cpf")) {
                 duplicates++;
               } else {
                 errors++;
@@ -1689,17 +1716,17 @@ const CentralCadastros = () => {
           await queryClient.invalidateQueries({ queryKey: ["colaboradores_list"] });
 
           if (errors > 0 && imported === 0) {
-            throw new Error("ImportaÃ§Ã£o bloqueada. Corrija os erros indicados.");
+            throw new Error("Importação bloqueada. Corrija os erros indicados.");
           }
 
           toast.success(
-            `ImportaÃ§Ã£o concluÃ­da: ${imported} colaborador(es) importado(s), ${ignored} ignorado(s), ${duplicates} duplicado(s), ${errors} erro(s).`
+            `Importação concluída: ${imported} colaborador(es) importado(s), ${ignored} ignorado(s), ${duplicates} duplicado(s), ${errors} erro(s).`
           );
         },
       },
       empresas: {
         label: "Empresas",
-        description: "Envie uma planilha compatÃ­vel com o modelo da aba Empresas.",
+        description: "Envie uma planilha compatível com o modelo da aba Empresas.",
         downloadUrl: modeloImportacaoAtivo?.drive_url,
         expectedColumns: ["NOME", "CNPJ", "UNIDADE", "CIDADE/UF", "STATUS"],
         templateFileName: "modelo_empresas.xlsx",
@@ -1738,12 +1765,12 @@ const CentralCadastros = () => {
       },
       coletores: {
         label: "Coletores",
-        description: "Envie uma planilha compatÃ­vel com o modelo da aba Coletores.",
-        unsupportedMessage: "Modelo de importaÃ§Ã£o de coletores ainda nÃ£o configurado.",
+        description: "Envie uma planilha compatível com o modelo da aba Coletores.",
+        unsupportedMessage: "Modelo de importação de coletores ainda não configurado.",
       },
       transportadoras: {
         label: "Transportadoras",
-        description: "Envie uma planilha compatÃ­vel com o modelo da aba Transportadoras.",
+        description: "Envie uma planilha compatível com o modelo da aba Transportadoras.",
         downloadUrl: modeloImportacaoAtivo?.drive_url,
         expectedColumns: ["NOME", "CNPJ/CPF", "TELEFONE", "EMAIL", "ENDERECO", "STATUS"],
         templateFileName: "modelo_transportadoras.xlsx",
@@ -1763,7 +1790,7 @@ const CentralCadastros = () => {
             };
             return {
               payload,
-              preview: { NOME: nome, DOCUMENTO: payload.documento || "Ã¢â‚¬â€", STATUS: ativo ? "Ativo" : "Inativo" },
+              preview: { NOME: nome, DOCUMENTO: payload.documento || "—", STATUS: ativo ? "Ativo" : "Inativo" },
             };
           }),
         onUpload: async (rows) => {
@@ -1773,7 +1800,7 @@ const CentralCadastros = () => {
       },
       fornecedores: {
         label: "Fornecedores",
-        description: "Envie uma planilha compatÃ­vel com o modelo da aba Fornecedores.",
+        description: "Envie uma planilha compatível com o modelo da aba Fornecedores.",
         expectedColumns: ["NOME", "CNPJ/CPF", "TELEFONE", "EMAIL", "ENDERECO", "STATUS"],
         downloadUrl: modeloImportacaoAtivo?.drive_url,
         templateFileName: "modelo_fornecedores.xlsx",
@@ -1793,7 +1820,7 @@ const CentralCadastros = () => {
             };
             return {
               payload,
-              preview: { NOME: nome, DOCUMENTO: payload.documento || "Ã¢â‚¬â€", STATUS: ativo ? "Ativo" : "Inativo" },
+              preview: { NOME: nome, DOCUMENTO: payload.documento || "—", STATUS: ativo ? "Ativo" : "Inativo" },
             };
           }),
         onUpload: async (rows) => {
@@ -1802,8 +1829,8 @@ const CentralCadastros = () => {
         },
       },
       servicos: {
-        label: "ServiÃ§os",
-        description: "Envie uma planilha compatÃ­vel com o modelo da aba ServiÃ§os.",
+        label: "Serviços",
+        description: "Envie uma planilha compatível com o modelo da aba Serviços.",
         downloadUrl: modeloImportacaoAtivo?.drive_url,
         expectedColumns: ["NOME", "DESCRICAO", "STATUS"],
         templateFileName: "modelo_servicos.xlsx",
@@ -1814,7 +1841,7 @@ const CentralCadastros = () => {
             const ativo = parseBooleanLike(getRowValue(row, "STATUS"), true);
             const payload = {
               nome,
-              descricao: getRowValue(row, "DESCRICAO", "DESCRIÃ‡ÃƒO") || null,
+              descricao: getRowValue(row, "DESCRICAO", "DESCRIÇÃO") || null,
               ativo,
               empresa_id: empresaId || null,
             };
@@ -1829,9 +1856,9 @@ const CentralCadastros = () => {
         },
       },
       parametros: {
-        label: "ParÃ¢metros Operacionais",
-        description: "Envie uma planilha compatÃ­vel com o modelo da aba ParÃ¢metros Operacionais.",
-        unsupportedMessage: "Modelo de importaÃ§Ã£o de parÃ¢metros operacionais ainda nÃ£o configurado.",
+        label: "Parâmetros Operacionais",
+        description: "Envie uma planilha compatível com o modelo da aba Parâmetros Operacionais.",
+        unsupportedMessage: "Modelo de importação de parâmetros operacionais ainda não configurado.",
       },
     };
 
@@ -1845,7 +1872,7 @@ const CentralCadastros = () => {
       : deleteModalType === "fornecedor"
         ? "Este fornecedor"
         : deleteModalType === "servico"
-          ? "Este serviÃ§o"
+          ? "Este serviço"
           : "Este registro");
 
   const handleContextualImport = async (rows: Record<string, any>[]) => {
@@ -1921,15 +1948,15 @@ const CentralCadastros = () => {
   return (
     <AppShell
       title="Central de Cadastros"
-      subtitle="Entidades operacionais e parÃ¢metros do motor no mesmo contexto"
+      subtitle="Entidades operacionais e parâmetros do motor no mesmo contexto"
     >
       <div className="space-y-6">
         <section className="esc-card p-4 md:p-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <h2 className="font-display font-semibold text-foreground">AdministraÃ§Ã£o Operacional</h2>
+              <h2 className="font-display font-semibold text-foreground">Administração Operacional</h2>
               <p className="text-sm text-muted-foreground">
-                Organize empresas, equipe, dispositivos e parÃ¢metros sem alternar entre mÃ³dulos soltos.
+                Organize empresas, equipe, dispositivos e parâmetros sem alternar entre módulos soltos.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -1944,7 +1971,7 @@ const CentralCadastros = () => {
 
               <Button variant="outline" size="sm" onClick={() => navigate("/colaboradores")}>
                 <ExternalLink className="h-4 w-4 mr-2" />
-                GestÃ£o detalhada
+                Gestão detalhada
               </Button>
             </div>
           </div>
@@ -1959,12 +1986,12 @@ const CentralCadastros = () => {
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-4">
               <MetricCard label="Empresas" value={empresas.length.toString()} icon={Building2} />
               <MetricCard label="Colaboradores" value={colaboradores.length.toString()} icon={Users} />
-              <MetricCard label="FaturÃ¡veis" value={colaboradoresFaturaveis.toString()} icon={Boxes} />
+              <MetricCard label="Faturáveis" value={colaboradoresFaturaveis.toString()} icon={Boxes} />
               <MetricCard label="Coletores" value={coletores.length.toString()} icon={Cpu} />
               <MetricCard label="Online" value={coletoresOnline.toString()} icon={Database} />
               <MetricCard label="Transportadoras" value={transportadoras.length.toString()} icon={Truck} />
               <MetricCard label="Fornecedores" value={fornecedores.length.toString()} icon={Store} />
-              <MetricCard label="ServiÃ§os" value={tiposServico.length.toString()} icon={Wrench} />
+              <MetricCard label="Serviços" value={tiposServico.length.toString()} icon={Wrench} />
             </div>
 
             <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as CadastroTabValue)} className="space-y-4">
@@ -1974,8 +2001,8 @@ const CentralCadastros = () => {
                 <CadastroTabTrigger value="coletores" icon={Cpu}>Coletores</CadastroTabTrigger>
                 <CadastroTabTrigger value="transportadoras" icon={Truck}>Transportadoras</CadastroTabTrigger>
                 <CadastroTabTrigger value="fornecedores" icon={Store}>Fornecedores</CadastroTabTrigger>
-                <CadastroTabTrigger value="servicos" icon={Wrench}>ServiÃ§os</CadastroTabTrigger>
-                <CadastroTabTrigger value="parametros" icon={Settings2}>ParÃ¢metros operacionais</CadastroTabTrigger>
+                <CadastroTabTrigger value="servicos" icon={Wrench}>Serviços</CadastroTabTrigger>
+                <CadastroTabTrigger value="parametros" icon={Settings2}>Parâmetros operacionais</CadastroTabTrigger>
               </TabsList>
 
               <TabsContent value="colaboradores" className="space-y-4 min-h-[400px]">
@@ -1984,7 +2011,7 @@ const CentralCadastros = () => {
                     <div>
                       <h2 className="font-display font-semibold text-foreground">Equipe operacional</h2>
                       <p className="text-sm text-muted-foreground">
-                        VÃ­nculo com empresa, contrato e impacto financeiro lado a lado.
+                        Vínculo com empresa, contrato e impacto financeiro lado a lado.
                       </p>
                     </div>
                     <div className="flex gap-2">
@@ -1992,7 +2019,7 @@ const CentralCadastros = () => {
                         <Plus className="h-4 w-4 mr-1.5" /> Novo colaborador
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => navigate("/colaboradores")}>
-                        <Settings2 className="h-4 w-4 mr-1.5" /> GestÃ£o completa
+                        <Settings2 className="h-4 w-4 mr-1.5" /> Gestão completa
                       </Button>
                     </div>
                   </div>
@@ -2021,11 +2048,11 @@ const CentralCadastros = () => {
                     <div className="flex flex-wrap gap-2">
                       {[
                         { key: "apenas_pendentes" as const, label: "Apenas pendentes" },
-                        { key: "bloqueiam_aprovacao" as const, label: "Bloqueiam aprovaÃ§Ã£o" },
+                        { key: "bloqueiam_aprovacao" as const, label: "Bloqueiam aprovação" },
                         { key: "sem_banco" as const, label: "Sem banco" },
                         { key: "sem_contrato" as const, label: "Sem contrato" },
                         { key: "sem_pix" as const, label: "Sem PIX" },
-                        { key: "criticos" as const, label: "CrÃ­ticos" },
+                        { key: "criticos" as const, label: "Críticos" },
                       ].map((filter) => (
                         <Button
                           key={filter.key}
@@ -2080,7 +2107,7 @@ const CentralCadastros = () => {
                                   colaborador.priority === "ok" && "bg-slate-50 text-slate-600 border-slate-200",
                                 )}
                               >
-                                {colaborador.priority === "critico" ? "CrÃ­tico" : colaborador.priority === "atencao" ? "AtenÃ§Ã£o" : "OK"}
+                                {colaborador.priority === "critico" ? "Crítico" : colaborador.priority === "atencao" ? "Atenção" : "OK"}
                               </Badge>
                             </td>
                             <td className="px-5 h-[56px] text-left">
@@ -2089,7 +2116,7 @@ const CentralCadastros = () => {
                                 Mat. {colaborador.matricula || "S/N"}
                               </div>
                             </td>
-                            <td className="px-3 text-muted-foreground text-center">{colaborador.empresas?.nome || "â€”"}</td>
+                            <td className="px-3 text-muted-foreground text-center">{colaborador.empresas?.nome || "—"}</td>
                             <td className="px-3 text-center font-medium">{colaborador.modelo_calculo || colaborador.tipo_contrato || "N/D"}</td>
                             <td className="px-3 text-center font-display font-medium">{colaborador.completude}%</td>
                             <td className="px-3 text-center">
@@ -2104,21 +2131,27 @@ const CentralCadastros = () => {
                                     </Badge>
                                   ))
                                 ) : (
-                                  <span className="text-muted-foreground text-xs">â€”</span>
+                                  <span className="text-muted-foreground text-xs">—</span>
                                 )}
                               </div>
                             </td>
                             <td className="px-5 text-center">
-                              {getColaboradorStatusMeta(colaborador).status === "pendente" ? (
-                                <Badge className="bg-amber-500 text-amber-950 hover:bg-amber-600 font-semibold shadow-none border-transparent">
-                                  Aguardando complemento
-                                </Badge>
-                              ) : (
-                                <StatusChip
-                                  status={getColaboradorStatusMeta(colaborador).status}
-                                  label={getColaboradorStatusMeta(colaborador).label}
-                                />
-                              )}
+                              {(() => {
+                                const statusMeta = getColaboradorStatusMeta(colaborador);
+                                if (statusMeta.status === "pendente") {
+                                  return (
+                                    <Badge className="bg-amber-500 text-amber-950 hover:bg-amber-600 font-semibold shadow-none border-transparent">
+                                      Aguardando complemento
+                                    </Badge>
+                                  );
+                                }
+                                return (
+                                  <StatusChip
+                                    status={statusMeta.status}
+                                    label={statusMeta.label}
+                                  />
+                                );
+                              })()}
                             </td>
                           </tr>
                         ))}
@@ -2138,7 +2171,7 @@ const CentralCadastros = () => {
                               <div>
                                 <SheetTitle className="text-xl font-display">{selectedColaboradorDrawer.nome}</SheetTitle>
                                 <div className="text-sm text-muted-foreground font-mono mt-1">
-                                  MatrÃ­cula: {selectedColaboradorDrawer.matricula || "S/N"} â€¢ {selectedColaboradorDrawer.cpf ? "CPF preenchido" : "Sem CPF"}
+                                  Matrícula: {selectedColaboradorDrawer.matricula || "S/N"} • {selectedColaboradorDrawer.cpf ? "CPF preenchido" : "Sem CPF"}
                                 </div>
                               </div>
                               <Badge className={cn("font-semibold", getColaboradorOrigemMeta(selectedColaboradorDrawer).className)}>
@@ -2151,7 +2184,7 @@ const CentralCadastros = () => {
                         <div className="flex-1 p-6 space-y-8">
                           {/* Completude & Bloqueios */}
                           <div className="space-y-4">
-                            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">SaÃºde do Cadastro</h3>
+                            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Saúde do Cadastro</h3>
                             <div className="grid grid-cols-2 gap-4">
                               <div className="p-4 rounded-xl border border-border/50 bg-muted/10 hover:bg-muted/30 transition-colors">
                                 <div className="text-xs text-muted-foreground mb-1">Completude</div>
@@ -2165,16 +2198,22 @@ const CentralCadastros = () => {
                               <div className="p-4 rounded-xl border border-border/50 bg-muted/10 hover:bg-muted/30 transition-colors">
                                 <div className="text-xs text-muted-foreground mb-2">Status Operacional</div>
                                 <div>
-                                  {getColaboradorStatusMeta(selectedColaboradorDrawer).status === "pendente" ? (
-                                    <Badge className="bg-amber-500 text-amber-950 hover:bg-amber-600 font-semibold shadow-none border-transparent">
-                                      Aguardando complemento
-                                    </Badge>
-                                  ) : (
-                                    <StatusChip
-                                      status={getColaboradorStatusMeta(selectedColaboradorDrawer).status}
-                                      label={getColaboradorStatusMeta(selectedColaboradorDrawer).label}
-                                    />
-                                  )}
+                                  {(() => {
+                                    const statusMeta = getColaboradorStatusMeta(selectedColaboradorDrawer);
+                                    if (statusMeta.status === "pendente") {
+                                      return (
+                                        <Badge className="bg-amber-500 text-amber-950 hover:bg-amber-600 font-semibold shadow-none border-transparent">
+                                          Aguardando complemento
+                                        </Badge>
+                                      );
+                                    }
+                                    return (
+                                      <StatusChip
+                                        status={statusMeta.status}
+                                        label={statusMeta.label}
+                                      />
+                                    );
+                                  })()}
                                 </div>
                               </div>
                             </div>
@@ -2189,7 +2228,7 @@ const CentralCadastros = () => {
                                 <div>
                                   <div className="font-medium text-destructive">Bloqueios ativos</div>
                                   <div className="text-sm text-destructive/80 mt-1">
-                                    Este cadastro impede aprovaÃ§Ãµes e aÃ§Ãµes fechadas no {selectedColaboradorDrawer.bloqueios.join(" e ")}.
+                                    Este cadastro impede aprovações e ações fechadas no {selectedColaboradorDrawer.bloqueios.join(" e ")}.
                                   </div>
                                 </div>
                               </div>
@@ -2202,19 +2241,19 @@ const CentralCadastros = () => {
                             <div className="rounded-xl border border-border/50 divide-y divide-border/50 bg-muted/5">
                               <div className="flex justify-between p-3 text-sm">
                                 <span className="text-muted-foreground">Empresa</span>
-                                <span className="font-medium">{selectedColaboradorDrawer.empresas?.nome || "NÃ£o vinculada"}</span>
+                                <span className="font-medium">{selectedColaboradorDrawer.empresas?.nome || "Não vinculada"}</span>
                               </div>
                               <div className="flex justify-between p-3 text-sm">
                                 <span className="text-muted-foreground">Telefone</span>
-                                <span className="font-medium">{selectedColaboradorDrawer.telefone || "NÃ£o informado"}</span>
+                                <span className="font-medium">{selectedColaboradorDrawer.telefone || "Não informado"}</span>
                               </div>
                               <div className="flex justify-between p-3 text-sm">
                                 <span className="text-muted-foreground">Tipo e Contrato</span>
                                 <span className="font-medium">{selectedColaboradorDrawer.regime_trabalho || selectedColaboradorDrawer.tipo_colaborador} / {selectedColaboradorDrawer.modelo_calculo || selectedColaboradorDrawer.tipo_contrato || "N/D"}</span>
                               </div>
                               <div className="flex justify-between p-3 text-sm">
-                                <span className="text-muted-foreground">FunÃ§Ã£o/Cargo</span>
-                                <span className="font-medium">{selectedColaboradorDrawer.cargo || "NÃ£o definido"}</span>
+                                <span className="text-muted-foreground">Função/Cargo</span>
+                                <span className="font-medium">{selectedColaboradorDrawer.cargo || "Não definido"}</span>
                               </div>
                             </div>
                           </div>
@@ -2222,7 +2261,7 @@ const CentralCadastros = () => {
 
                         <div className="p-6 border-t border-border/50 bg-muted/20 flex justify-end gap-3 mt-auto sticky top-[100vh]">
                           <Button variant="outline" onClick={() => {
-                            if (confirm("Confirmar exclusÃ£o desta pessoa?")) {
+                            if (confirm("Confirmar exclusão desta pessoa?")) {
                               deleteColaboradorMutation.mutate(selectedColaboradorDrawer.id);
                               setSelectedColaboradorDrawer(null);
                             }
@@ -2258,7 +2297,7 @@ const CentralCadastros = () => {
                     <div>
                       <h2 className="font-display font-semibold text-foreground">Empresas cadastradas</h2>
                       <p className="text-sm text-muted-foreground">
-                        Unidades operacionais e seus vÃ­nculos.
+                        Unidades operacionais e seus vínculos.
                       </p>
                     </div>
                     <div className="flex gap-2">
@@ -2266,7 +2305,7 @@ const CentralCadastros = () => {
                         <Plus className="h-4 w-4 mr-1.5" /> Nova empresa
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => navigate("/empresas")}>
-                        <Settings2 className="h-4 w-4 mr-1.5" /> GestÃ£o completa
+                        <Settings2 className="h-4 w-4 mr-1.5" /> Gestão completa
                       </Button>
                     </div>
                   </div>
@@ -2281,7 +2320,7 @@ const CentralCadastros = () => {
                           <th className="px-3 h-11 font-medium text-center">Colaboradores</th>
                           <th className="px-3 h-11 font-medium text-center">Coletores</th>
                           <th className="px-5 h-11 font-medium text-center">Status</th>
-                          <th className="px-3 h-11 font-medium text-center">AÃ§Ãµes</th>
+                          <th className="px-3 h-11 font-medium text-center">Ações</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2295,9 +2334,9 @@ const CentralCadastros = () => {
                           empresas.map((empresa) => (
                             <tr key={empresa.id} className="border-t border-muted hover:bg-background">
                               <td className="px-5 h-[56px] font-medium text-foreground text-center">{empresa.nome}</td>
-                              <td className="px-3 text-muted-foreground text-center">{empresa.cnpj || "â€”"}</td>
-                              <td className="px-3 text-muted-foreground text-center">{empresa.unidade || "â€”"}</td>
-                              <td className="px-3 text-muted-foreground text-center">{empresa.cidade}/{empresa.estado}</td>
+                              <td className="px-3 text-muted-foreground text-center">{empresa.cnpj || "Não informado"}</td>
+                              <td className="px-3 text-muted-foreground text-center">{empresa.unidade || "Não informado"}</td>
+                              <td className="px-3 text-muted-foreground text-center">{empresa.cidade && empresa.estado ? `${empresa.cidade}/${empresa.estado}` : "Não informado"}</td>
                               <td className="px-3 text-center font-display font-medium">{empresa.total_colaboradores}</td>
                               <td className="px-3 text-center font-display font-medium">{empresa.total_coletores}</td>
                               <td className="px-5 text-center">
@@ -2333,7 +2372,7 @@ const CentralCadastros = () => {
                                   }}>
                                     <PencilLine className="h-4 w-4" />
                                   </Button>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => { if (confirm("Confirmar exclusÃ£o?")) deleteEmpresaMutation.mutate(empresa.id) }}>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => { if (confirm("Confirmar exclusão?")) deleteEmpresaMutation.mutate(empresa.id) }}>
                                     <Trash2 className="h-4 w-4" />
                                   </Button>
                                 </div>
@@ -2354,7 +2393,7 @@ const CentralCadastros = () => {
                     <div>
                       <h2 className="font-display font-semibold text-foreground">Coletores REP</h2>
                       <p className="text-sm text-muted-foreground">
-                        Estado do dispositivo e vÃ­nculo com a unidade operacional.
+                        Estado do dispositivo e vínculo com a unidade operacional.
                       </p>
                     </div>
                     <div className="flex gap-2">
@@ -2362,7 +2401,7 @@ const CentralCadastros = () => {
                         <Plus className="h-4 w-4 mr-1.5" /> Novo coletor
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => navigate("/coletores")}>
-                        <Settings2 className="h-4 w-4 mr-1.5" /> GestÃ£o completa
+                        <Settings2 className="h-4 w-4 mr-1.5" /> Gestão completa
                       </Button>
                     </div>
                   </div>
@@ -2371,11 +2410,11 @@ const CentralCadastros = () => {
                       <thead className="esc-table-header">
                         <tr className="text-left">
                           <th className="px-5 h-11 font-medium text-center">Modelo</th>
-                          <th className="px-3 h-11 font-medium text-center">SÃ©rie</th>
+                          <th className="px-3 h-11 font-medium text-center">Série</th>
                           <th className="px-3 h-11 font-medium text-center">Empresa</th>
                           <th className="px-3 h-11 font-medium text-center">Ãšltima sync</th>
                           <th className="px-5 h-11 font-medium text-center">Status</th>
-                          <th className="px-3 h-11 font-medium text-center">AÃ§Ãµes</th>
+                          <th className="px-3 h-11 font-medium text-center">Ações</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2383,7 +2422,7 @@ const CentralCadastros = () => {
                           <tr key={coletor.id} className="border-t border-muted hover:bg-background">
                             <td className="px-5 h-[56px] font-medium text-foreground text-center">{coletor.modelo}</td>
                             <td className="px-3 text-muted-foreground text-center">{coletor.serie}</td>
-                            <td className="px-3 text-muted-foreground text-center">{coletor.empresas?.nome || "â€”"}</td>
+                            <td className="px-3 text-muted-foreground text-center">{coletor.empresas?.nome || "—"}</td>
                             <td className="px-3 text-center text-muted-foreground">
                               {coletor.ultima_sync ? new Date(coletor.ultima_sync).toLocaleString("pt-BR") : "Nunca"}
                             </td>
@@ -2404,7 +2443,7 @@ const CentralCadastros = () => {
                                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(`/coletores?id=${coletor.id}`)}>
                                   <PencilLine className="h-4 w-4" />
                                 </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => { if (confirm("Confirmar exclusÃ£o?")) deleteColetorMutation.mutate(coletor.id) }}>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => { if (confirm("Confirmar exclusão?")) deleteColetorMutation.mutate(coletor.id) }}>
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
                               </div>
@@ -2423,7 +2462,7 @@ const CentralCadastros = () => {
                     <div>
                       <h2 className="font-display font-semibold text-foreground">Transportadoras</h2>
                       <p className="text-sm text-muted-foreground">
-                        Empresas de transporte cadastradas para operaÃ§Ãµes logÃ­sticas.
+                        Empresas de transporte cadastradas para operações logísticas.
                       </p>
                     </div>
                     <div className="flex gap-2">
@@ -2431,7 +2470,7 @@ const CentralCadastros = () => {
                         <Plus className="h-4 w-4 mr-1.5" /> Nova transportadora
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => navigate("/transportadoras")}>
-                        <Settings2 className="h-4 w-4 mr-1.5" /> GestÃ£o completa
+                        <Settings2 className="h-4 w-4 mr-1.5" /> Gestão completa
                       </Button>
                     </div>
                   </div>
@@ -2443,9 +2482,9 @@ const CentralCadastros = () => {
                           <th className="px-3 h-11 font-medium text-center">CNPJ/CPF</th>
                           <th className="px-3 h-11 font-medium text-center">Telefone</th>
                           <th className="px-3 h-11 font-medium text-center">Email</th>
-                          <th className="px-3 h-11 font-medium text-center">EndereÃ§o</th>
+                          <th className="px-3 h-11 font-medium text-center">Endereço</th>
                           <th className="px-5 h-11 font-medium text-center">Status</th>
-                          <th className="px-3 h-11 font-medium text-center">AÃ§Ãµes</th>
+                          <th className="px-3 h-11 font-medium text-center">Ações</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2459,10 +2498,10 @@ const CentralCadastros = () => {
                           transportadoras.map((transportadora) => (
                             <tr key={transportadora.id} className="border-t border-muted hover:bg-background">
                               <td className="px-5 h-[56px] font-medium text-foreground text-center">{transportadora.nome}</td>
-                              <td className="px-3 text-muted-foreground text-center">{transportadora.documento || "â€”"}</td>
-                              <td className="px-3 text-muted-foreground text-center">{transportadora.telefone || "â€”"}</td>
-                              <td className="px-3 text-muted-foreground text-center">{transportadora.email || "â€”"}</td>
-                              <td className="px-3 text-muted-foreground text-center text-xs">{transportadora.endereco || "â€”"}</td>
+                              <td className="px-3 text-muted-foreground text-center">{transportadora.documento || "—"}</td>
+                              <td className="px-3 text-muted-foreground text-center">{transportadora.telefone || "—"}</td>
+                              <td className="px-3 text-muted-foreground text-center">{transportadora.email || "—"}</td>
+                              <td className="px-3 text-muted-foreground text-center text-xs">{transportadora.endereco || "—"}</td>
                               <td className="px-5 text-center">
                                 <Badge className={cn(
                                   "font-semibold",
@@ -2479,7 +2518,7 @@ const CentralCadastros = () => {
                                   <Button variant="ghost" size="icon" className="h-8 w-8 text-amber-600 hover:text-amber-700" onClick={() => toggleTransportadoraAtivoMutation.mutate({ id: transportadora.id, ativo: !transportadora.ativo })} title={transportadora.ativo ? "Desativar" : "Ativar"}>
                                     {transportadora.ativo ? <PowerOff className="h-4 w-4" /> : <ToggleRight className="h-4 w-4" />}
                                   </Button>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={async () => { const result = await TransportadoraClienteService.deleteWithCheck(transportadora.id); if (!result.success) { setItemToDelete(transportadora); setDeleteModalType("transportadora"); setDeleteErrorDetails(result.detalhes || []); setDeleteModalOpen(true); } else if (confirm("Confirmar exclusÃ£o definitiva? Esta aÃ§Ã£o nÃ£o pode ser desfeita.")) { deleteTransportadoraMutation.mutate(transportadora.id); } }}>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={async () => { const result = await TransportadoraClienteService.deleteWithCheck(transportadora.id); if (!result.success) { setItemToDelete(transportadora); setDeleteModalType("transportadora"); setDeleteErrorDetails(result.detalhes || []); setDeleteModalOpen(true); } else if (confirm("Confirmar exclusão definitiva? Esta ação não pode ser desfeita.")) { deleteTransportadoraMutation.mutate(transportadora.id); } }}>
                                     <Trash2 className="h-4 w-4" />
                                   </Button>
                                 </div>
@@ -2499,7 +2538,7 @@ const CentralCadastros = () => {
                     <div>
                       <h2 className="font-display font-semibold text-foreground">Fornecedores</h2>
                       <p className="text-sm text-muted-foreground">
-                        Fornecedores de produtos e serviÃ§os para operaÃ§Ãµes.
+                        Fornecedores de produtos e serviços para operações.
                       </p>
                     </div>
                     <div className="flex gap-2">
@@ -2507,7 +2546,7 @@ const CentralCadastros = () => {
                         <Plus className="h-4 w-4 mr-1.5" /> Novo fornecedor
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => navigate("/fornecedores")}>
-                        <Settings2 className="h-4 w-4 mr-1.5" /> GestÃ£o completa
+                        <Settings2 className="h-4 w-4 mr-1.5" /> Gestão completa
                       </Button>
                     </div>
                   </div>
@@ -2519,10 +2558,10 @@ const CentralCadastros = () => {
                           <th className="px-3 h-11 font-medium text-center">CNPJ/CPF</th>
                           <th className="px-3 h-11 font-medium text-center">Telefone</th>
                           <th className="px-3 h-11 font-medium text-center">Email</th>
-                          <th className="px-3 h-11 font-medium text-center">EndereÃ§o</th>
+                          <th className="px-3 h-11 font-medium text-center">Endereço</th>
                           <th className="px-3 h-11 font-medium text-center">Produtos Associados</th>
                           <th className="px-5 h-11 font-medium text-center">Status</th>
-                          <th className="px-3 h-11 font-medium text-center">AÃ§Ãµes</th>
+                          <th className="px-3 h-11 font-medium text-center">Ações</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2536,16 +2575,16 @@ const CentralCadastros = () => {
                           fornecedores.map((fornecedor) => (
                             <tr key={fornecedor.id} className="border-t border-muted hover:bg-background">
                               <td className="px-5 h-[56px] font-medium text-foreground text-center">{fornecedor.nome}</td>
-                              <td className="px-3 text-muted-foreground text-center">{fornecedor.documento || "â€”"}</td>
-                              <td className="px-3 text-muted-foreground text-center">{fornecedor.telefone || "â€”"}</td>
-                              <td className="px-3 text-muted-foreground text-center">{fornecedor.email || "â€”"}</td>
-                              <td className="px-3 text-muted-foreground text-center text-xs">{fornecedor.endereco || "â€”"}</td>
+                              <td className="px-3 text-muted-foreground text-center">{fornecedor.documento || "—"}</td>
+                              <td className="px-3 text-muted-foreground text-center">{fornecedor.telefone || "—"}</td>
+                              <td className="px-3 text-muted-foreground text-center">{fornecedor.email || "—"}</td>
+                              <td className="px-3 text-muted-foreground text-center text-xs">{fornecedor.endereco || "—"}</td>
                               <td className="px-3 text-muted-foreground text-center text-xs">
                                 {fornecedor.produtos_carga?.length > 0 ? (
                                   <span className="bg-primary/10 text-primary px-2 py-0.5 rounded font-medium border border-primary/20">
                                     {fornecedor.produtos_carga.map((p: any) => p.nome).join(", ")}
                                   </span>
-                                ) : "â€”"}
+                                ) : "—"}
                               </td>
                               <td className="px-5 text-center">
                                 <Badge className={cn(
@@ -2563,7 +2602,7 @@ const CentralCadastros = () => {
                                   <Button variant="ghost" size="icon" className="h-8 w-8 text-amber-600 hover:text-amber-700" onClick={() => toggleFornecedorAtivoMutation.mutate({ id: fornecedor.id, ativo: !fornecedor.ativo })} title={fornecedor.ativo ? "Desativar" : "Ativar"}>
                                     {fornecedor.ativo ? <PowerOff className="h-4 w-4" /> : <ToggleRight className="h-4 w-4" />}
                                   </Button>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={async () => { const result = await FornecedorService.deleteWithCheck(fornecedor.id); if (!result.success) { setItemToDelete(fornecedor); setDeleteModalType("fornecedor"); setDeleteErrorDetails(result.detalhes || []); setDeleteModalOpen(true); } else if (confirm("Confirmar exclusÃ£o definitiva? Esta aÃ§Ã£o nÃ£o pode ser desfeita.")) { deleteFornecedorMutation.mutate(fornecedor.id); } }}>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={async () => { const result = await FornecedorService.deleteWithCheck(fornecedor.id); if (!result.success) { setItemToDelete(fornecedor); setDeleteModalType("fornecedor"); setDeleteErrorDetails(result.detalhes || []); setDeleteModalOpen(true); } else if (confirm("Confirmar exclusão definitiva? Esta ação não pode ser desfeita.")) { deleteFornecedorMutation.mutate(fornecedor.id); } }}>
                                     <Trash2 className="h-4 w-4" />
                                   </Button>
                                 </div>
@@ -2581,17 +2620,17 @@ const CentralCadastros = () => {
                 <section className="esc-card overflow-hidden">
                   <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-3">
                     <div>
-                      <h2 className="font-display font-semibold text-foreground">Tipos de ServiÃ§o</h2>
+                      <h2 className="font-display font-semibold text-foreground">Tipos de Serviço</h2>
                       <p className="text-sm text-muted-foreground">
-                        Categorias de serviÃ§os operacionais disponÃ­veis.
+                        Categorias de serviços operacionais disponíveis.
                       </p>
                     </div>
                     <div className="flex gap-2">
                       <Button size="sm" onClick={() => setServicoModalOpen(true)}>
-                        <Plus className="h-4 w-4 mr-1.5" /> Novo tipo de serviÃ§o
+                        <Plus className="h-4 w-4 mr-1.5" /> Novo tipo de serviço
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => navigate("/servicos")}>
-                        <Settings2 className="h-4 w-4 mr-1.5" /> GestÃ£o completa
+                        <Settings2 className="h-4 w-4 mr-1.5" /> Gestão completa
                       </Button>
                     </div>
                   </div>
@@ -2600,23 +2639,23 @@ const CentralCadastros = () => {
                       <thead className="esc-table-header">
                         <tr className="text-left">
                           <th className="px-5 h-11 font-medium text-center">Nome</th>
-                          <th className="px-3 h-11 font-medium text-center">DescriÃ§Ã£o</th>
+                          <th className="px-3 h-11 font-medium text-center">Descrição</th>
                           <th className="px-5 h-11 font-medium text-center">Status</th>
-                          <th className="px-3 h-11 font-medium text-center">AÃ§Ãµes</th>
+                          <th className="px-3 h-11 font-medium text-center">Ações</th>
                         </tr>
                       </thead>
                       <tbody>
                         {tiposServico.length === 0 ? (
                           <tr>
                             <td colSpan={4} className="px-5 py-8 text-center text-muted-foreground">
-                              Nenhum tipo de serviÃ§o cadastrado
+                              Nenhum tipo de serviço cadastrado
                             </td>
                           </tr>
                         ) : (
                           tiposServico.map((servico) => (
                             <tr key={servico.id} className="border-t border-muted hover:bg-background">
                               <td className="px-5 h-[56px] font-medium text-foreground text-center">{servico.nome}</td>
-                              <td className="px-3 text-muted-foreground text-center">{servico.descricao || "â€”"}</td>
+                              <td className="px-3 text-muted-foreground text-center">{servico.descricao || "—"}</td>
                               <td className="px-5 text-center">
                                 <Badge className={cn(
                                   "font-semibold",
@@ -2633,7 +2672,7 @@ const CentralCadastros = () => {
                                   <Button variant="ghost" size="icon" className="h-8 w-8 text-amber-600 hover:text-amber-700" onClick={() => toggleServicoAtivoMutation.mutate({ id: servico.id, ativo: !servico.ativo })} title={servico.ativo ? "Desativar" : "Ativar"}>
                                     {servico.ativo ? <PowerOff className="h-4 w-4" /> : <ToggleRight className="h-4 w-4" />}
                                   </Button>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={async () => { const result = await TipoServicoOperacionalService.deleteWithCheck(servico.id); if (!result.success) { setItemToDelete(servico); setDeleteModalType("servico"); setDeleteErrorDetails(result.detalhes || []); setDeleteModalOpen(true); } else if (confirm("Confirmar exclusÃ£o definitiva? Esta aÃ§Ã£o nÃ£o pode ser desfeita.")) { deleteServicoMutation.mutate(servico.id); } }}>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={async () => { const result = await TipoServicoOperacionalService.deleteWithCheck(servico.id); if (!result.success) { setItemToDelete(servico); setDeleteModalType("servico"); setDeleteErrorDetails(result.detalhes || []); setDeleteModalOpen(true); } else if (confirm("Confirmar exclusão definitiva? Esta ação não pode ser desfeita.")) { deleteServicoMutation.mutate(servico.id); } }}>
                                     <Trash2 className="h-4 w-4" />
                                   </Button>
                                 </div>
@@ -2651,19 +2690,19 @@ const CentralCadastros = () => {
 
                 <Tabs defaultValue="operacao" className="space-y-4">
                   <TabsList className="bg-muted p-1 h-9 rounded-lg">
-                    <TabsTrigger value="operacao" className="text-xs py-1 px-4">Tipos de operaÃ§Ã£o</TabsTrigger>
+                    <TabsTrigger value="operacao" className="text-xs py-1 px-4">Tipos de operação</TabsTrigger>
                     <TabsTrigger value="produtos" className="text-xs py-1 px-4">Produtos</TabsTrigger>
                     <TabsTrigger value="dia" className="text-xs py-1 px-4">Tipos de dia</TabsTrigger>
                   </TabsList>
 
                   <TabsContent value="operacao">
                     <ConfigTable<any>
-                      title="Tipos de OperaÃ§Ã£o"
+                      title="Tipos de Operação"
                       data={tiposOperacao}
                       columns={[
                         { header: "Nome", accessorKey: "nome" },
                         {
-                          header: "CÃ³digo",
+                          header: "Código",
                           accessorKey: "codigo",
                           cell: (item) => <code className="bg-muted px-2 py-0.5 rounded text-xs font-mono">{item.codigo}</code>,
                         },
@@ -2707,14 +2746,14 @@ const CentralCadastros = () => {
                               <th className="px-5 h-11 font-medium">Nome</th>
                               <th className="px-3 h-11 font-medium">Categoria</th>
                               <th className="px-3 h-11 font-medium">Fornecedor</th>
-                              <th className="px-3 h-11 font-medium text-center">AÃ§Ãµes</th>
+                              <th className="px-3 h-11 font-medium text-center">Ações</th>
                             </tr>
                           </thead>
                           <tbody>
                             {produtosOptions.length === 0 ? (
                               <tr>
                                 <td colSpan={4} className="px-5 py-8 text-center text-muted-foreground">
-                                  Nenhum produto cadastrado. Clique em "Novo produto" para comeÃ§ar.
+                                  Nenhum produto cadastrado. Clique em "Novo produto" para começar.
                                 </td>
                               </tr>
                             ) : (
@@ -2723,8 +2762,8 @@ const CentralCadastros = () => {
                                 return (
                                   <tr key={prod.id} className="border-t border-muted hover:bg-background">
                                     <td className="px-5 h-12 font-medium text-foreground">{prod.nome}</td>
-                                    <td className="px-3 text-muted-foreground">{prod.categoria || "â€”"}</td>
-                                    <td className="px-3 text-muted-foreground">{fornecedorNome || "â€”"}</td>
+                                    <td className="px-3 text-muted-foreground">{prod.categoria || "—"}</td>
+                                    <td className="px-3 text-muted-foreground">{fornecedorNome || "—"}</td>
                                     <td className="px-3 text-center">
                                       <div className="flex items-center justify-center gap-1">
                                         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
@@ -2756,7 +2795,7 @@ const CentralCadastros = () => {
                       title="Tipos de Dia"
                       data={tiposDia}
                       columns={[
-                        { header: "DescriÃ§Ã£o", accessorKey: "nome" },
+                        { header: "Descrição", accessorKey: "nome" },
                         {
                           header: "Fator",
                           accessorKey: "fator",
@@ -2799,7 +2838,7 @@ const CentralCadastros = () => {
           <DialogHeader>
             <DialogTitle>
               {editingConfig ? "Editar" : "Novo"}{" "}
-              {configType === "operacao" ? "Tipo de OperaÃ§Ã£o" : configType === "produto" ? "Produto" : "Tipo de Dia"}
+              {configType === "operacao" ? "Tipo de Operação" : configType === "produto" ? "Produto" : "Tipo de Dia"}
             </DialogTitle>
             <DialogDescription>
               Preencha os detalhes abaixo para salvar o registro no sistema.
@@ -2810,7 +2849,7 @@ const CentralCadastros = () => {
             {configType === "operacao" && (
               <>
                 <div className="space-y-1.5">
-                  <Label htmlFor="op_nome">Nome da operaÃ§Ã£o <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="op_nome">Nome da operação <span className="text-destructive">*</span></Label>
                   <Input
                     id="op_nome"
                     value={configForm.nome || ""}
@@ -2821,7 +2860,7 @@ const CentralCadastros = () => {
                   {configFormErrors.nome ? <p className="text-sm text-destructive" role="alert">{configFormErrors.nome}</p> : null}
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="op_codigo">CÃ³digo <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="op_codigo">Código <span className="text-destructive">*</span></Label>
                   <Input
                     id="op_codigo"
                     value={configForm.codigo || ""}
@@ -2848,7 +2887,7 @@ const CentralCadastros = () => {
                   {configFormErrors.categoria ? <p className="text-sm text-destructive" role="alert">{configFormErrors.categoria}</p> : null}
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="prod_icms">AlÃ­quota ICMS (%) <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="prod_icms">Alíquota ICMS (%) <span className="text-destructive">*</span></Label>
                   <Input
                     id="prod_icms"
                     type="number"
@@ -2865,7 +2904,7 @@ const CentralCadastros = () => {
             {configType === "dia" && (
               <>
                 <div className="space-y-1.5">
-                  <Label htmlFor="dia_nome">DescriÃ§Ã£o do dia <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="dia_nome">Descrição do dia <span className="text-destructive">*</span></Label>
                   <Input
                     id="dia_nome"
                     value={configForm.nome || ""}
@@ -2876,7 +2915,7 @@ const CentralCadastros = () => {
                   {configFormErrors.nome ? <p className="text-sm text-destructive" role="alert">{configFormErrors.nome}</p> : null}
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="dia_fator">Fator de cÃ¡lculo <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="dia_fator">Fator de cálculo <span className="text-destructive">*</span></Label>
                   <Input
                     id="dia_fator"
                     type="number"
@@ -2913,7 +2952,7 @@ const CentralCadastros = () => {
           <DialogHeader>
             <DialogTitle>Novo colaborador</DialogTitle>
             <DialogDescription>
-              {colaboradorStep === 1 ? "Dados pessoais e vÃ­nculo institucional." : colaboradorStep === 2 ? "Dados contratuais e informaÃ§Ãµes de pagamento." : "Dados bancÃ¡rios para depÃ³sito."}
+              {colaboradorStep === 1 ? "Dados pessoais e vínculo institucional." : colaboradorStep === 2 ? "Dados contratuais e informações de pagamento." : "Dados bancários para depósito."}
             </DialogDescription>
             <div className="flex items-center gap-2 mt-2">
               <div className={cn("h-1.5 flex-1 rounded-full transition-colors", colaboradorStep >= 1 ? "bg-primary" : "bg-muted")} />
@@ -2943,7 +2982,7 @@ const CentralCadastros = () => {
                     <SelectTrigger><SelectValue placeholder="Selecione uma empresa" /></SelectTrigger>
                     <SelectContent>
                       {empresas.map((e) => (
-                        <SelectItem key={e.id} value={e.id}>{e.nome} â€” {e.cidade}/{e.estado}</SelectItem>
+                        <SelectItem key={e.id} value={e.id}>{e.nome} — {e.cidade}/{e.estado}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -2972,7 +3011,7 @@ const CentralCadastros = () => {
                       <SelectItem value="DIARISTA">DIARISTA</SelectItem>
                       <SelectItem value="CLT">CLT</SelectItem>
                       <SelectItem value="INTERMITENTE">INTERMITENTE</SelectItem>
-                      <SelectItem value="PRODUÃ‡ÃƒO">PRODUÃ‡ÃƒO</SelectItem>
+                      <SelectItem value="PRODUÇÃO">PRODUÇÃO</SelectItem>
                       <SelectItem value="TERCEIRIZADO">TERCEIRIZADO</SelectItem>
                     </SelectContent>
                   </Select>
@@ -2989,11 +3028,11 @@ const CentralCadastros = () => {
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="colab_cargo">Cargo/FunÃ§Ã£o <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="colab_cargo">Cargo/Função <span className="text-destructive">*</span></Label>
                   <Input id="colab_cargo" value={colaboradorForm.cargo} onChange={(e) => setColaboradorForm({ ...colaboradorForm, cargo: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="colab_matricula">MatrÃ­cula</Label>
+                  <Label htmlFor="colab_matricula">Matrícula</Label>
                   <Input id="colab_matricula" value={colaboradorForm.matricula} onChange={(e) => setColaboradorForm({ ...colaboradorForm, matricula: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
@@ -3010,20 +3049,20 @@ const CentralCadastros = () => {
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Modelo de cÃ¡lculo <span className="text-destructive">*</span></Label>
+                  <Label>Modelo de cálculo <span className="text-destructive">*</span></Label>
                   <Select value={colaboradorForm.modelo_calculo} onValueChange={(v) => setColaboradorForm({ ...colaboradorForm, modelo_calculo: v, tipo_contrato: getTipoContratoByModelo(v) })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Mensal">Mensal</SelectItem>
                       <SelectItem value="Horista">Horista</SelectItem>
-                      <SelectItem value="DiÃ¡ria">DiÃ¡ria</SelectItem>
-                      <SelectItem value="ProduÃ§Ã£o">ProduÃ§Ã£o</SelectItem>
+                      <SelectItem value="Diária">Diária</SelectItem>
+                      <SelectItem value="Produção">Produção</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 {colaboradorForm.modelo_calculo === "Mensal" && (
                   <div className="space-y-1.5">
-                    <Label>SalÃ¡rio base mensal (R$) <span className="text-destructive">*</span></Label>
+                    <Label>Salário base mensal (R$) <span className="text-destructive">*</span></Label>
                     <Input type="number" value={colaboradorForm.salario_base} onChange={(e) => setColaboradorForm({ ...colaboradorForm, salario_base: e.target.value })} />
                   </div>
                 )}
@@ -3034,7 +3073,7 @@ const CentralCadastros = () => {
                       <Input type="number" value={colaboradorForm.valor_hora} onChange={(e) => setColaboradorForm({ ...colaboradorForm, valor_hora: e.target.value })} />
                     </div>
                     <div className="space-y-1.5">
-                      <Label>Carga horÃ¡ria referÃªncia <span className="text-destructive">*</span></Label>
+                      <Label>Carga horária referência <span className="text-destructive">*</span></Label>
                       <Input type="number" value={colaboradorForm.carga_referencia} onChange={(e) => setColaboradorForm({ ...colaboradorForm, carga_referencia: e.target.value })} />
                     </div>
                     <div className="space-y-1.5">
@@ -3043,16 +3082,16 @@ const CentralCadastros = () => {
                     </div>
                   </>
                 )}
-                {colaboradorForm.modelo_calculo === "DiÃ¡ria" && (
+                {colaboradorForm.modelo_calculo === "Diária" && (
                   <div className="space-y-1.5">
-                    <Label>Valor da diÃ¡ria (R$) <span className="text-destructive">*</span></Label>
+                    <Label>Valor da diária (R$) <span className="text-destructive">*</span></Label>
                     <Input type="number" value={colaboradorForm.valor_diaria} onChange={(e) => setColaboradorForm({ ...colaboradorForm, valor_diaria: e.target.value })} />
                   </div>
                 )}
-                {colaboradorForm.modelo_calculo === "ProduÃ§Ã£o" && (
+                {colaboradorForm.modelo_calculo === "Produção" && (
                   <>
                     <div className="space-y-1.5">
-                      <Label>Valor por operaÃ§Ã£o (R$)</Label>
+                      <Label>Valor por operação (R$)</Label>
                       <Input type="number" value={colaboradorForm.valor_base} onChange={(e) => setColaboradorForm({ ...colaboradorForm, valor_base: e.target.value })} />
                     </div>
                     <div className="space-y-1.5">
@@ -3063,7 +3102,7 @@ const CentralCadastros = () => {
                 )}
                 <div className="col-span-2 flex items-center justify-between rounded-md border border-border p-3">
                   <div>
-                    <Label className="cursor-pointer">Permitir lanÃ§amento operacional</Label>
+                    <Label className="cursor-pointer">Permitir lançamento operacional</Label>
                     <p className="text-xs text-muted-foreground mt-0.5">Habilita o colaborador nas telas operacionais.</p>
                   </div>
                   <Switch checked={colaboradorForm.permitir_lancamento_operacional} onCheckedChange={(v) => setColaboradorForm({ ...colaboradorForm, permitir_lancamento_operacional: v })} />
@@ -3075,17 +3114,17 @@ const CentralCadastros = () => {
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <button type="button" className="text-muted-foreground transition-colors hover:text-foreground" aria-label="InformaÃ§Ãµes sobre faturamento">
+                            <button type="button" className="text-muted-foreground transition-colors hover:text-foreground" aria-label="Informações sobre faturamento">
                               <Info className="h-3.5 w-3.5" />
                             </button>
                           </TooltipTrigger>
                           <TooltipContent className="max-w-xs text-xs">
-                            Quando ativo, o colaborador participa dos cÃ¡lculos financeiros e fechamento operacional.
+                            Quando ativo, o colaborador participa dos cálculos financeiros e fechamento operacional.
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">Colaborador entra no cÃ¡lculo financeiro.</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Colaborador entra no cálculo financeiro.</p>
                   </div>
                   <Switch checked={colaboradorForm.flag_faturamento} onCheckedChange={(v) => setColaboradorForm({ ...colaboradorForm, flag_faturamento: v })} />
                 </div>
@@ -3098,17 +3137,17 @@ const CentralCadastros = () => {
                   <div className="flex flex-wrap items-start gap-3">
                     <div className="min-w-[220px] flex-1">
                       <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Colaborador</p>
-                      <p className="mt-1 text-sm font-semibold text-foreground">{colaboradorForm.nome || "Nome nÃ£o informado"}</p>
+                      <p className="mt-1 text-sm font-semibold text-foreground">{colaboradorForm.nome || "Nome não informado"}</p>
                     </div>
                     <div className="min-w-[120px]">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">MatrÃ­cula</p>
-                      <p className="mt-1 text-sm text-foreground">{colaboradorForm.matricula || "SerÃ¡ definida apÃ³s o cadastro"}</p>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Matrícula</p>
+                      <p className="mt-1 text-sm text-foreground">{colaboradorForm.matricula || "Será definida após o cadastro"}</p>
                     </div>
                     <div className="min-w-[180px]">
                       <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Empresa</p>
                       <p className="mt-1 flex items-center gap-2 text-sm text-foreground">
                         <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-                        {empresas.find((empresa) => empresa.id === colaboradorForm.empresa_id)?.nome || "NÃ£o selecionada"}
+                        {empresas.find((empresa) => empresa.id === colaboradorForm.empresa_id)?.nome || "Não selecionada"}
                       </p>
                     </div>
                   </div>
@@ -3118,7 +3157,7 @@ const CentralCadastros = () => {
                     <div>
                       <h3 className="flex items-center gap-2 font-medium text-foreground">
                         <Landmark className="h-4 w-4 text-primary" />
-                        Dados BancÃ¡rios
+                        Dados Bancários
                       </h3>
                       <p className="mt-1 text-xs text-muted-foreground">
                         O titular acompanha automaticamente o nome do colaborador neste cadastro.
@@ -3162,15 +3201,15 @@ const CentralCadastros = () => {
                         <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="corrente">Corrente</SelectItem>
-                          <SelectItem value="poupanca">PoupanÃ§a</SelectItem>
+                          <SelectItem value="poupanca">Poupança</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-0.5">
-                      <Label className="text-xs">AgÃªncia <span className="text-destructive">*</span></Label>
+                      <Label className="text-xs">Agência <span className="text-destructive">*</span></Label>
                       <div className="flex gap-1">
-                        <Input value={colaboradorForm.agencia} onChange={(e) => setColaboradorForm({ ...colaboradorForm, agencia: onlyDigits(e.target.value) })} className={cn("h-8 flex-1 px-2 text-xs", getBankFieldError(colaboradorBankValidation, "agencia") && "border-rose-300 focus:ring-rose-200")} placeholder="AgÃªncia" />
-                        <Input value={colaboradorForm.agencia_digito} onChange={(e) => setColaboradorForm({ ...colaboradorForm, agencia_digito: normalizeAccountDigit(e.target.value) })} className={cn("h-8 w-12 px-1 text-center text-xs", getBankFieldError(colaboradorBankValidation, "agencia_digito") && "border-rose-300 focus:ring-rose-200")} placeholder="DÃ­g." />
+                        <Input value={colaboradorForm.agencia} onChange={(e) => setColaboradorForm({ ...colaboradorForm, agencia: onlyDigits(e.target.value) })} className={cn("h-8 flex-1 px-2 text-xs", getBankFieldError(colaboradorBankValidation, "agencia") && "border-rose-300 focus:ring-rose-200")} placeholder="Agência" />
+                        <Input value={colaboradorForm.agencia_digito} onChange={(e) => setColaboradorForm({ ...colaboradorForm, agencia_digito: normalizeAccountDigit(e.target.value) })} className={cn("h-8 w-12 px-1 text-center text-xs", getBankFieldError(colaboradorBankValidation, "agencia_digito") && "border-rose-300 focus:ring-rose-200")} placeholder="Díg." />
                       </div>
                       {getBankFieldError(colaboradorBankValidation, "agencia") || getBankFieldError(colaboradorBankValidation, "agencia_digito") ? <p className="text-[10px] text-rose-500">{getBankFieldError(colaboradorBankValidation, "agencia") || getBankFieldError(colaboradorBankValidation, "agencia_digito")}</p> : null}
                     </div>
@@ -3178,7 +3217,7 @@ const CentralCadastros = () => {
                       <Label className="text-xs">Conta <span className="text-destructive">*</span></Label>
                       <div className="flex gap-1">
                         <Input value={colaboradorForm.conta} onChange={(e) => setColaboradorForm({ ...colaboradorForm, conta: onlyDigits(e.target.value) })} className={cn("h-8 flex-1 px-2 text-xs", getBankFieldError(colaboradorBankValidation, "conta") && "border-rose-300 focus:ring-rose-200")} placeholder="Conta" />
-                        <Input value={colaboradorForm.conta_digito} onChange={(e) => setColaboradorForm({ ...colaboradorForm, conta_digito: normalizeAccountDigit(e.target.value) })} className={cn("h-8 w-12 px-1 text-center text-xs", getBankFieldError(colaboradorBankValidation, "conta_digito") && "border-rose-300 focus:ring-rose-200")} placeholder="DÃ­g." />
+                        <Input value={colaboradorForm.conta_digito} onChange={(e) => setColaboradorForm({ ...colaboradorForm, conta_digito: normalizeAccountDigit(e.target.value) })} className={cn("h-8 w-12 px-1 text-center text-xs", getBankFieldError(colaboradorBankValidation, "conta_digito") && "border-rose-300 focus:ring-rose-200")} placeholder="Díg." />
                       </div>
                       {getBankFieldError(colaboradorBankValidation, "conta") || getBankFieldError(colaboradorBankValidation, "conta_digito") ? <p className="text-[10px] text-rose-500">{getBankFieldError(colaboradorBankValidation, "conta") || getBankFieldError(colaboradorBankValidation, "conta_digito")}</p> : null}
                     </div>
@@ -3212,11 +3251,11 @@ const CentralCadastros = () => {
                     value={colaboradorBankNameLocked ? colaboradorForm.nome : colaboradorForm.nome_completo}
                     onChange={(e) => setColaboradorForm({ ...colaboradorForm, nome_completo: e.target.value })}
                     disabled={colaboradorBankNameLocked}
-                    placeholder="Nome conforme documento bancÃ¡rio"
+                    placeholder="Nome conforme documento bancário"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="banco_codigo">CÃ³d. Banco <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="banco_codigo">Cód. Banco <span className="text-destructive">*</span></Label>
                   <Input id="banco_codigo" value={colaboradorForm.banco_codigo} onChange={(e) => setColaboradorForm({ ...colaboradorForm, banco_codigo: e.target.value })} placeholder="Ex: 341" />
                 </div>
                 <div className="space-y-1.5">
@@ -3225,22 +3264,22 @@ const CentralCadastros = () => {
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="corrente">Corrente</SelectItem>
-                      <SelectItem value="poupanca">PoupanÃ§a</SelectItem>
+                      <SelectItem value="poupanca">Poupança</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="agÃªncia">AgÃªncia <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="agência">Agência <span className="text-destructive">*</span></Label>
                   <div className="flex gap-2">
                     <Input id="agencia" value={colaboradorForm.agencia} onChange={(e) => setColaboradorForm({ ...colaboradorForm, agencia: e.target.value })} className="flex-1" />
-                    <Input id="agencia_digito" value={colaboradorForm.agencia_digito} onChange={(e) => setColaboradorForm({ ...colaboradorForm, agencia_digito: e.target.value })} className="w-16" placeholder="DÃ­g." />
+                    <Input id="agencia_digito" value={colaboradorForm.agencia_digito} onChange={(e) => setColaboradorForm({ ...colaboradorForm, agencia_digito: e.target.value })} className="w-16" placeholder="Díg." />
                   </div>
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="conta">Conta <span className="text-destructive">*</span></Label>
                   <div className="flex gap-2">
                     <Input id="conta" value={colaboradorForm.conta} onChange={(e) => setColaboradorForm({ ...colaboradorForm, conta: e.target.value })} className="flex-1" />
-                    <Input id="conta_digito" value={colaboradorForm.conta_digito} onChange={(e) => setColaboradorForm({ ...colaboradorForm, conta_digito: e.target.value })} className="w-16" placeholder="DÃ­g." />
+                    <Input id="conta_digito" value={colaboradorForm.conta_digito} onChange={(e) => setColaboradorForm({ ...colaboradorForm, conta_digito: e.target.value })} className="w-16" placeholder="Díg." />
                   </div>
                 </div>
               </div>
@@ -3249,7 +3288,7 @@ const CentralCadastros = () => {
 
           <div className="flex justify-end gap-2 pt-4 border-t">
             <Button variant="outline" onClick={() => { setColaboradorModalOpen(false); setColaboradorStep(1); }}>Cancelar</Button>
-            {colaboradorStep === 1 && <Button onClick={() => { if (validateColaboradorStep1()) setColaboradorStep(2); }} disabled={colaboradorIsProcessing}>PrÃ³ximo</Button>}
+            {colaboradorStep === 1 && <Button onClick={() => { if (validateColaboradorStep1()) setColaboradorStep(2); }} disabled={colaboradorIsProcessing}>Próximo</Button>}
             {colaboradorStep === 2 && (
               <>
                 <Button variant="outline" onClick={() => setColaboradorStep(1)}>Voltar</Button>
@@ -3258,7 +3297,7 @@ const CentralCadastros = () => {
                     setColaboradorStep(3);
                     setColaboradorForm(prev => ({ ...prev, nome_completo: prev.nome }));
                   }
-                }} disabled={colaboradorIsProcessing}>PrÃ³ximo</Button>
+                }} disabled={colaboradorIsProcessing}>Próximo</Button>
               </>
             )}
             {colaboradorStep === 3 && (
@@ -3269,9 +3308,9 @@ const CentralCadastros = () => {
                   const tipoContrato = getTipoContratoByModelo(colaboradorForm.modelo_calculo);
                   const valorBase =
                     colaboradorForm.modelo_calculo === "Mensal" ? Number(colaboradorForm.salario_base || 0) :
-                    colaboradorForm.modelo_calculo === "Horista" ? Number(colaboradorForm.valor_hora || 0) :
-                    colaboradorForm.modelo_calculo === "DiÃ¡ria" ? Number(colaboradorForm.valor_diaria || 0) :
-                    Number(colaboradorForm.valor_base || 0);
+                      colaboradorForm.modelo_calculo === "Horista" ? Number(colaboradorForm.valor_hora || 0) :
+                        colaboradorForm.modelo_calculo === "Diária" ? Number(colaboradorForm.valor_diaria || 0) :
+                          Number(colaboradorForm.valor_base || 0);
                   const payload = {
                     ...colaboradorForm,
                     tipo_contrato: tipoContrato,
@@ -3300,7 +3339,7 @@ const CentralCadastros = () => {
           <DialogHeader>
             <DialogTitle>{editingEmpresa ? "Editar Empresa" : "Nova Empresa"}</DialogTitle>
             <DialogDescription>
-              {editingEmpresa ? "Atualize as informaÃ§Ãµes da unidade operacional." : "Cadastre uma nova unidade operacional no sistema."}
+              {editingEmpresa ? "Atualize as informações da unidade operacional." : "Cadastre uma nova unidade operacional no sistema."}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -3375,28 +3414,28 @@ const CentralCadastros = () => {
               {empresaFormErrors.estado && <p className="text-xs text-destructive mt-1">{empresaFormErrors.estado}</p>}
             </div>
             <div className="col-span-full border-t pt-4 mt-2">
-              <h4 className="text-sm font-semibold mb-3">Dados BancÃ¡rios</h4>
+              <h4 className="text-sm font-semibold mb-3">Dados Bancários</h4>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <Label htmlFor="emp_banco">CÃ³d. Banco</Label>
+                  <Label htmlFor="emp_banco">Cód. Banco</Label>
                   <Input id="emp_banco" value={empresaForm.banco_codigo} onChange={(e) => setEmpresaForm({ ...empresaForm, banco_codigo: e.target.value })} placeholder="Ex: 341" />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="emp_agencia">AgÃªncia</Label>
+                  <Label htmlFor="emp_agencia">Agência</Label>
                   <div className="flex gap-2">
                     <Input id="emp_agencia" value={empresaForm.agencia} onChange={(e) => setEmpresaForm({ ...empresaForm, agencia: e.target.value })} className="flex-1" />
-                    <Input id="emp_agencia_digito" value={empresaForm.agencia_digito} onChange={(e) => setEmpresaForm({ ...empresaForm, agencia_digito: e.target.value })} className="w-16" placeholder="DÃ­g." />
+                    <Input id="emp_agencia_digito" value={empresaForm.agencia_digito} onChange={(e) => setEmpresaForm({ ...empresaForm, agencia_digito: e.target.value })} className="w-16" placeholder="Díg." />
                   </div>
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="emp_conta">Conta</Label>
                   <div className="flex gap-2">
                     <Input id="emp_conta" value={empresaForm.conta} onChange={(e) => setEmpresaForm({ ...empresaForm, conta: e.target.value })} className="flex-1" />
-                    <Input id="emp_conta_digito" value={empresaForm.conta_digito} onChange={(e) => setEmpresaForm({ ...empresaForm, conta_digito: e.target.value })} className="w-16" placeholder="DÃ­g." />
+                    <Input id="emp_conta_digito" value={empresaForm.conta_digito} onChange={(e) => setEmpresaForm({ ...empresaForm, conta_digito: e.target.value })} className="w-16" placeholder="Díg." />
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="emp_convenio">ConvÃªnio</Label>
+                  <Label htmlFor="emp_convenio">Convênio</Label>
                   <Input id="emp_convenio" value={empresaForm.convenios_bancario} onChange={(e) => setEmpresaForm({ ...empresaForm, convenios_bancario: e.target.value })} />
                 </div>
               </div>
@@ -3413,11 +3452,11 @@ const CentralCadastros = () => {
             <Button onClick={() => {
               const errors: Record<string, string> = {};
 
-              if (!empresaForm.nome?.trim()) errors.nome = "Nome da empresa Ã© obrigatÃ³rio.";
-              if (!empresaForm.cnpj?.trim()) errors.cnpj = "CNPJ Ã© obrigatÃ³rio.";
-              if (!empresaForm.unidade?.trim()) errors.unidade = "Unidade Ã© obrigatÃ³ria.";
-              if (!empresaForm.cidade?.trim()) errors.cidade = "Cidade Ã© obrigatÃ³ria.";
-              if (!empresaForm.estado?.trim()) errors.estado = "Estado Ã© obrigatÃ³rio.";
+              if (!empresaForm.nome?.trim()) errors.nome = "Nome da empresa é obrigatório.";
+              if (!empresaForm.cnpj?.trim()) errors.cnpj = "CNPJ é obrigatório.";
+              if (!empresaForm.unidade?.trim()) errors.unidade = "Unidade é obrigatória.";
+              if (!empresaForm.cidade?.trim()) errors.cidade = "Cidade é obrigatória.";
+              if (!empresaForm.estado?.trim()) errors.estado = "Estado é obrigatório.";
 
               const cnpjValidation = validateCNPJ(empresaForm.cnpj);
               if (!cnpjValidation.valid && empresaForm.cnpj.trim()) {
@@ -3426,7 +3465,7 @@ const CentralCadastros = () => {
 
               if (Object.keys(errors).length > 0) {
                 setEmpresaFormErrors(errors);
-                toast.error("Preencha todos os campos obrigatÃ³rios.");
+                toast.error("Preencha todos os campos obrigatórios.");
                 return;
               }
 
@@ -3438,7 +3477,7 @@ const CentralCadastros = () => {
                 createEmpresaMutation.mutate(sanitized);
               }
             }} disabled={createEmpresaMutation.isPending || updateEmpresaMutation.isPending}>
-              {(createEmpresaMutation.isPending || updateEmpresaMutation.isPending) ? "Salvando..." : editingEmpresa ? "Salvar alteraÃ§Ãµes" : "Salvar"}
+              {(createEmpresaMutation.isPending || updateEmpresaMutation.isPending) ? "Salvando..." : editingEmpresa ? "Salvar alterações" : "Salvar"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -3449,7 +3488,7 @@ const CentralCadastros = () => {
           <DialogHeader>
             <DialogTitle>Novo Coletor</DialogTitle>
             <DialogDescription>
-              Cadastre um novo dispositivo de ponto eletrÃ´nico REP.
+              Cadastre um novo dispositivo de ponto eletrônico REP.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -3458,7 +3497,7 @@ const CentralCadastros = () => {
               <Input id="col_modelo" value={coletorForm.modelo} onChange={(e) => setColetorForm({ ...coletorForm, modelo: e.target.value })} placeholder="Ex: Rep-1000" />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="col_serie">NÃºmero de SÃ©rie</Label>
+              <Label htmlFor="col_serie">Número de Série</Label>
               <Input id="col_serie" value={coletorForm.serie} onChange={(e) => setColetorForm({ ...coletorForm, serie: e.target.value })} placeholder="Ex: REP001234" />
             </div>
             <div className="space-y-1.5">
@@ -3467,7 +3506,7 @@ const CentralCadastros = () => {
                 <SelectTrigger><SelectValue placeholder="Selecione uma empresa" /></SelectTrigger>
                 <SelectContent>
                   {empresas.map((e) => (
-                    <SelectItem key={e.id} value={e.id}>{e.nome} â€” {e.cidade}/{e.estado}</SelectItem>
+                    <SelectItem key={e.id} value={e.id}>{e.nome} — {e.cidade}/{e.estado}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -3490,7 +3529,7 @@ const CentralCadastros = () => {
           <DialogHeader>
             <DialogTitle>Nova Transportadora</DialogTitle>
             <DialogDescription>
-              Cadastre uma nova empresa de transporte para operaÃ§Ãµes logÃ­sticas.
+              Cadastre uma nova empresa de transporte para operações logísticas.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -3515,8 +3554,8 @@ const CentralCadastros = () => {
               {transportadoraFormErrors.email ? <p className="text-sm text-destructive">{transportadoraFormErrors.email}</p> : null}
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="trans_endereco">EndereÃ§o</Label>
-              <Input id="trans_endereco" value={transportadoraForm.endereco} onChange={(e) => handleTransportadoraFormChange("endereco", e.target.value)} placeholder="Rua, nÃºmero, bairro, cidade" />
+              <Label htmlFor="trans_endereco">Endereço</Label>
+              <Input id="trans_endereco" value={transportadoraForm.endereco} onChange={(e) => handleTransportadoraFormChange("endereco", e.target.value)} placeholder="Rua, número, bairro, cidade" />
             </div>
           </div>
           <DialogFooter>
@@ -3533,7 +3572,7 @@ const CentralCadastros = () => {
           <DialogHeader>
             <DialogTitle>Novo Fornecedor</DialogTitle>
             <DialogDescription>
-              Cadastre um novo fornecedor de produtos ou serviÃ§os.
+              Cadastre um novo fornecedor de produtos ou serviços.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -3558,8 +3597,8 @@ const CentralCadastros = () => {
               {fornecedorFormErrors.email ? <p className="text-sm text-destructive" role="alert">{fornecedorFormErrors.email}</p> : null}
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="forn_endereco">EndereÃ§o</Label>
-              <Input id="forn_endereco" value={fornecedorForm.endereco} onChange={(e) => handleFornecedorFormChange("endereco", e.target.value)} placeholder="Rua, nÃºmero, bairro, cidade" />
+              <Label htmlFor="forn_endereco">Endereço</Label>
+              <Input id="forn_endereco" value={fornecedorForm.endereco} onChange={(e) => handleFornecedorFormChange("endereco", e.target.value)} placeholder="Rua, número, bairro, cidade" />
             </div>
           </div>
           <DialogFooter>
@@ -3574,9 +3613,9 @@ const CentralCadastros = () => {
       <Dialog open={servicoModalOpen} onOpenChange={setServicoModalOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Novo Tipo de ServiÃ§o</DialogTitle>
+            <DialogTitle>Novo Tipo de Serviço</DialogTitle>
             <DialogDescription>
-              Cadastre uma nova categoria de serviÃ§o operacional.
+              Cadastre uma nova categoria de serviço operacional.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -3589,8 +3628,8 @@ const CentralCadastros = () => {
               {servicoFormErrors.nome ? <p className="text-sm text-destructive" role="alert">{servicoFormErrors.nome}</p> : null}
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="serv_descricao">DescriÃ§Ã£o</Label>
-              <Input id="serv_descricao" value={servicoForm.descricao} onChange={(e) => setServicoForm({ ...servicoForm, descricao: e.target.value })} placeholder="DescriÃ§Ã£o do tipo de serviÃ§o" />
+              <Label htmlFor="serv_descricao">Descrição</Label>
+              <Input id="serv_descricao" value={servicoForm.descricao} onChange={(e) => setServicoForm({ ...servicoForm, descricao: e.target.value })} placeholder="Descrição do tipo de serviço" />
             </div>
           </div>
           <DialogFooter>
@@ -3636,7 +3675,7 @@ const CentralCadastros = () => {
               <Input id="edit_forn_email" type="email" value={editingFornecedor?.email || ""} onChange={(e) => setEditingFornecedor({ ...editingFornecedor, email: e.target.value })} />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="edit_forn_endereco">EndereÃ§o</Label>
+              <Label htmlFor="edit_forn_endereco">Endereço</Label>
               <Input id="edit_forn_endereco" value={editingFornecedor?.endereco || ""} onChange={(e) => setEditingFornecedor({ ...editingFornecedor, endereco: e.target.value })} />
             </div>
             <div className="grid gap-2">
@@ -3710,7 +3749,7 @@ const CentralCadastros = () => {
               <Input id="edit_trans_email" type="email" value={editingTransportadora?.email || ""} onChange={(e) => setEditingTransportadora({ ...editingTransportadora, email: e.target.value })} />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="edit_trans_endereco">EndereÃ§o</Label>
+              <Label htmlFor="edit_trans_endereco">Endereço</Label>
               <Input id="edit_trans_endereco" value={editingTransportadora?.endereco || ""} onChange={(e) => setEditingTransportadora({ ...editingTransportadora, endereco: e.target.value })} />
             </div>
             <div className="flex items-center gap-2">
@@ -3755,7 +3794,7 @@ const CentralCadastros = () => {
                   <SelectTrigger><SelectValue placeholder="Selecione uma empresa" /></SelectTrigger>
                   <SelectContent>
                     {empresas.map((e) => (
-                      <SelectItem key={e.id} value={e.id}>{e.nome} â€” {e.cidade}/{e.estado}</SelectItem>
+                      <SelectItem key={e.id} value={e.id}>{e.nome} — {e.cidade}/{e.estado}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -3768,7 +3807,7 @@ const CentralCadastros = () => {
                     <SelectItem value="DIARISTA">DIARISTA</SelectItem>
                     <SelectItem value="CLT">CLT</SelectItem>
                     <SelectItem value="INTERMITENTE">INTERMITENTE</SelectItem>
-                    <SelectItem value="PRODUÃ‡ÃƒO">PRODUÃ‡ÃƒO</SelectItem>
+                    <SelectItem value="PRODUÇÃO">PRODUÇÃO</SelectItem>
                     <SelectItem value="TERCEIRIZADO">TERCEIRIZADO</SelectItem>
                   </SelectContent>
                 </Select>
@@ -3789,12 +3828,26 @@ const CentralCadastros = () => {
                 <Input id="edit_colab_cargo" value={editingColaborador?.cargo || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, cargo: e.target.value })} />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="edit_colab_matricula">MatrÃ­cula <span className="text-destructive">*</span></Label>
+                <Label htmlFor="edit_colab_matricula">Matrícula <span className="text-destructive">*</span></Label>
                 <Input id="edit_colab_matricula" value={editingColaborador?.matricula || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, matricula: e.target.value })} />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="edit_colab_valor">Valor base (R$) <span className="text-destructive">*</span></Label>
-                <Input id="edit_colab_valor" type="number" value={editingColaborador?.valor_base || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, valor_base: e.target.value })} />
+                <Input
+                  id="edit_colab_valor"
+                  inputMode="numeric"
+                  value={editingColaborador?._valor_base_display ?? formatCurrencyBRL(editingColaborador?.valor_base)}
+                  onChange={(e) => {
+                    handleCurrencyInput(e.target.value, (formatted) => {
+                      setEditingColaborador({
+                        ...editingColaborador,
+                        _valor_base_display: formatted,
+                        valor_base: parseCurrencyBRL(formatted),
+                      });
+                    });
+                  }}
+                  placeholder="0,00"
+                />
               </div>
               <div className="space-y-1.5">
                 <Label>Tipo de contrato <span className="text-destructive">*</span></Label>
@@ -3802,7 +3855,7 @@ const CentralCadastros = () => {
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Hora">Por hora</SelectItem>
-                    <SelectItem value="OperaÃ§Ã£o">Por operaÃ§Ã£o</SelectItem>
+                    <SelectItem value="Operação">Por operação</SelectItem>
                     <SelectItem value="Mensal">Mensal</SelectItem>
                   </SelectContent>
                 </Select>
@@ -3814,17 +3867,17 @@ const CentralCadastros = () => {
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <button type="button" className="text-muted-foreground transition-colors hover:text-foreground" aria-label="InformaÃ§Ãµes sobre faturamento">
+                          <button type="button" className="text-muted-foreground transition-colors hover:text-foreground" aria-label="Informações sobre faturamento">
                             <Info className="h-3.5 w-3.5" />
                           </button>
                         </TooltipTrigger>
                         <TooltipContent className="max-w-xs text-xs">
-                          Quando ativo, o colaborador participa dos cÃ¡lculos financeiros e fechamento operacional.
+                          Quando ativo, o colaborador participa dos cálculos financeiros e fechamento operacional.
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">Colaborador entra no cÃ¡lculo financeiro.</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Colaborador entra no cálculo financeiro.</p>
                 </div>
                 <Switch checked={editingColaborador?.flag_faturamento ?? true} onCheckedChange={(v) => setEditingColaborador({ ...editingColaborador, flag_faturamento: v })} />
               </div>
@@ -3833,17 +3886,17 @@ const CentralCadastros = () => {
                   <div className="flex flex-wrap items-start gap-3">
                     <div className="min-w-[220px] flex-1">
                       <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Colaborador</p>
-                      <p className="mt-0.5 text-base font-bold text-foreground">{editingColaborador?.nome || "Nome nÃ£o informado"}</p>
+                      <p className="mt-0.5 text-base font-bold text-foreground">{editingColaborador?.nome || "Nome não informado"}</p>
                     </div>
                     <div className="min-w-[120px]">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">MatrÃ­cula</p>
-                      <p className="mt-0.5 text-xs text-foreground">{editingColaborador?.matricula || "NÃ£o informada"}</p>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Matrícula</p>
+                      <p className="mt-0.5 text-xs text-foreground">{editingColaborador?.matricula || "Não informada"}</p>
                     </div>
                     <div className="min-w-[180px]">
                       <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Empresa</p>
                       <p className="mt-1 flex items-center gap-2 text-sm text-foreground">
                         <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-                        {empresas.find((empresa) => empresa.id === editingColaborador?.empresa_id)?.nome || "NÃ£o selecionada"}
+                        {empresas.find((empresa) => empresa.id === editingColaborador?.empresa_id)?.nome || "Não selecionada"}
                       </p>
                     </div>
                   </div>
@@ -3853,7 +3906,7 @@ const CentralCadastros = () => {
                   <div>
                     <h3 className="flex items-center gap-2 font-medium text-foreground">
                       <Landmark className="h-4 w-4 text-primary" />
-                      Dados BancÃ¡rios
+                      Dados Bancários
                     </h3>
                     <p className="mt-1 text-xs text-muted-foreground">
                       O titular da conta acompanha automaticamente o nome do colaborador neste cadastro.
@@ -3905,15 +3958,15 @@ const CentralCadastros = () => {
                       <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="corrente">Corrente</SelectItem>
-                        <SelectItem value="poupanca">PoupanÃ§a</SelectItem>
+                        <SelectItem value="poupanca">Poupança</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-0.5">
-                    <Label className="text-xs">AgÃªncia <span className="text-destructive">*</span></Label>
+                    <Label className="text-xs">Agência <span className="text-destructive">*</span></Label>
                     <div className="flex gap-1">
-                      <Input value={editingColaborador?.agencia || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, agencia: onlyDigits(e.target.value) })} className={cn("h-8 flex-1 px-2 text-xs", getBankFieldError(editingColaboradorBankValidation, "agencia") && "border-rose-300 focus:ring-rose-200")} placeholder="AgÃªncia" />
-                      <Input value={editingColaborador?.agencia_digito || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, agencia_digito: normalizeAccountDigit(e.target.value) })} className={cn("h-8 w-12 px-1 text-center text-xs", getBankFieldError(editingColaboradorBankValidation, "agencia_digito") && "border-rose-300 focus:ring-rose-200")} placeholder="DÃ­g." />
+                      <Input value={editingColaborador?.agencia || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, agencia: onlyDigits(e.target.value) })} className={cn("h-8 flex-1 px-2 text-xs", getBankFieldError(editingColaboradorBankValidation, "agencia") && "border-rose-300 focus:ring-rose-200")} placeholder="Agência" />
+                      <Input value={editingColaborador?.agencia_digito || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, agencia_digito: normalizeAccountDigit(e.target.value) })} className={cn("h-8 w-12 px-1 text-center text-xs", getBankFieldError(editingColaboradorBankValidation, "agencia_digito") && "border-rose-300 focus:ring-rose-200")} placeholder="Díg." />
                     </div>
                     {getBankFieldError(editingColaboradorBankValidation, "agencia") || getBankFieldError(editingColaboradorBankValidation, "agencia_digito") ? <p className="text-[10px] text-rose-500">{getBankFieldError(editingColaboradorBankValidation, "agencia") || getBankFieldError(editingColaboradorBankValidation, "agencia_digito")}</p> : null}
                   </div>
@@ -3921,7 +3974,7 @@ const CentralCadastros = () => {
                     <Label className="text-xs">Conta <span className="text-destructive">*</span></Label>
                     <div className="flex gap-1">
                       <Input value={editingColaborador?.conta || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, conta: onlyDigits(e.target.value) })} className={cn("h-8 flex-1 px-2 text-xs", getBankFieldError(editingColaboradorBankValidation, "conta") && "border-rose-300 focus:ring-rose-200")} placeholder="Conta" />
-                      <Input value={editingColaborador?.conta_digito || editingColaborador?.digito_conta || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, conta_digito: normalizeAccountDigit(e.target.value), digito_conta: normalizeAccountDigit(e.target.value) })} className={cn("h-8 w-12 px-1 text-center text-xs", getBankFieldError(editingColaboradorBankValidation, "conta_digito") && "border-rose-300 focus:ring-rose-200")} placeholder="DÃ­g." />
+                      <Input value={editingColaborador?.conta_digito || editingColaborador?.digito_conta || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, conta_digito: normalizeAccountDigit(e.target.value), digito_conta: normalizeAccountDigit(e.target.value) })} className={cn("h-8 w-12 px-1 text-center text-xs", getBankFieldError(editingColaboradorBankValidation, "conta_digito") && "border-rose-300 focus:ring-rose-200")} placeholder="Díg." />
                     </div>
                     {getBankFieldError(editingColaboradorBankValidation, "conta") || getBankFieldError(editingColaboradorBankValidation, "conta_digito") ? <p className="text-[10px] text-rose-500">{getBankFieldError(editingColaboradorBankValidation, "conta") || getBankFieldError(editingColaboradorBankValidation, "conta_digito")}</p> : null}
                   </div>
@@ -3935,11 +3988,11 @@ const CentralCadastros = () => {
                   <>
                     <div className="flex items-start justify-between gap-4">
                       <div>
-                        <h3 className="font-medium text-foreground">Dados BancÃ¡rios</h3>
+                        <h3 className="font-medium text-foreground">Dados Bancários</h3>
                         <p className="mt-1 text-xs text-muted-foreground">
                           {editingColaborador?.tipo_colaborador === "DIARISTA"
-                            ? "Use esta seÃ§Ã£o para manter os dados bancÃ¡rios no mesmo padrÃ£o usado em CNAB e pagamentos."
-                            : "VocÃª pode salvar o cadastro bÃ¡sico agora. O status sÃ³ sai de pendente quando os campos bancÃ¡rios obrigatÃ³rios estiverem completos."}
+                            ? "Use esta seção para manter os dados bancários no mesmo padrão usado em CNAB e pagamentos."
+                            : "Você pode salvar o cadastro básico agora. O status só sai de pendente quando os campos bancários obrigatórios estiverem completos."}
                         </p>
                       </div>
                       <Badge
@@ -3951,8 +4004,8 @@ const CentralCadastros = () => {
                         )}
                       >
                         {editingColaborador?.tipo_colaborador !== "DIARISTA" && editingColaboradorPendenciasBancarias.length > 0
-                          ? "PendÃªncia bancÃ¡ria"
-                          : "Dados bancÃ¡rios"}
+                          ? "Pendência bancária"
+                          : "Dados bancários"}
                       </Badge>
                     </div>
 
@@ -3964,7 +4017,7 @@ const CentralCadastros = () => {
 
                     <div className="mt-4 grid grid-cols-2 gap-4">
                       <div className="col-span-2 space-y-1.5">
-                        <Label htmlFor="edit_colab_nome_bancario">Nome bancÃ¡rio</Label>
+                        <Label htmlFor="edit_colab_nome_bancario">Nome bancário</Label>
                         <Input
                           id="edit_colab_nome_bancario"
                           value={editingColaborador?.nome_completo || ""}
@@ -3973,7 +4026,7 @@ const CentralCadastros = () => {
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <Label htmlFor="edit_colab_banco_codigo">Banco/cÃ³digo</Label>
+                        <Label htmlFor="edit_colab_banco_codigo">Banco/código</Label>
                         <Input
                           id="edit_colab_banco_codigo"
                           value={editingColaborador?.banco_codigo || ""}
@@ -3990,12 +4043,12 @@ const CentralCadastros = () => {
                           <SelectTrigger><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="corrente">Corrente</SelectItem>
-                            <SelectItem value="poupanca">PoupanÃ§a</SelectItem>
+                            <SelectItem value="poupanca">Poupança</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
                       <div className="space-y-1.5">
-                        <Label htmlFor="edit_colab_agencia">AgÃªncia</Label>
+                        <Label htmlFor="edit_colab_agencia">Agência</Label>
                         <Input
                           id="edit_colab_agencia"
                           value={editingColaborador?.agencia || ""}
@@ -4003,7 +4056,7 @@ const CentralCadastros = () => {
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <Label htmlFor="edit_colab_agencia_digito">DÃ­gito agÃªncia</Label>
+                        <Label htmlFor="edit_colab_agencia_digito">Dígito agência</Label>
                         <Input
                           id="edit_colab_agencia_digito"
                           value={editingColaborador?.agencia_digito || ""}
@@ -4020,7 +4073,7 @@ const CentralCadastros = () => {
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <Label htmlFor="edit_colab_conta_digito">DÃ­gito conta</Label>
+                        <Label htmlFor="edit_colab_conta_digito">Dígito conta</Label>
                         <Input
                           id="edit_colab_conta_digito"
                           value={editingColaborador?.conta_digito || editingColaborador?.digito_conta || ""}
@@ -4040,7 +4093,7 @@ const CentralCadastros = () => {
                           id="edit_colab_chave_pix"
                           value={editingColaborador?.chave_pix || ""}
                           onChange={(e) => setEditingColaborador({ ...editingColaborador, chave_pix: e.target.value })}
-                          placeholder="CPF, e-mail, telefone ou chave aleatÃ³ria"
+                          placeholder="CPF, e-mail, telefone ou chave aleatória"
                         />
                       </div>
                       <div className="space-y-1.5">
@@ -4052,7 +4105,7 @@ const CentralCadastros = () => {
                           <SelectTrigger><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="sim">Sim</SelectItem>
-                            <SelectItem value="nao">NÃ£o</SelectItem>
+                            <SelectItem value="nao">Não</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -4065,19 +4118,49 @@ const CentralCadastros = () => {
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingColaborador(null)}>Cancelar</Button>
             <Button onClick={() => {
-              const { empresas, ...colaboradorPayload } = editingColaborador || {};
+              const { empresas, _valor_base_display, ...colaboradorPayload } = editingColaborador || {};
+              const modeloCalculo = String(editingColaborador?.modelo_calculo ?? "");
+              const isMensal = modeloCalculo === "Mensal";
+              const isHorista = modeloCalculo === "Horista";
+              const isDiaria = modeloCalculo === "Diária" || modeloCalculo === "Diaria" || modeloCalculo === "Diária";
+              const valorBaseFallback = Number(editingColaborador?.valor_base ?? 0);
+              const valorBaseMensal = Number(editingColaborador?.salario_base ?? editingColaborador?.valor_base ?? 0);
+              const valorBaseHorista = Number(editingColaborador?.valor_hora ?? editingColaborador?.valor_base ?? 0);
+              const valorBaseDiaria = Number(editingColaborador?.valor_diaria ?? editingColaborador?.valor_base ?? 0);
+              const finalValorBase = isMensal ? valorBaseMensal : isHorista ? valorBaseHorista : isDiaria ? valorBaseDiaria : valorBaseFallback;
+
+              // Compute completeness to auto-set status
+              const bankValid = editingColaboradorBankValidation.isValid;
+              const cpfClean = String(editingColaborador?.cpf ?? "").replace(/\D/g, "");
+              const telClean = String(editingColaborador?.telefone ?? "").replace(/\D/g, "");
+              const completenessChecks = [
+                Boolean(String(editingColaborador?.nome ?? "").trim()),
+                cpfClean.length === 11,
+                telClean.length >= 10,
+                Boolean(editingColaborador?.empresa_id),
+                Boolean(String(editingColaborador?.tipo_colaborador ?? "").trim()),
+                Boolean(String(editingColaborador?.cargo ?? "").trim()),
+                Boolean(String(editingColaborador?.modelo_calculo ?? editingColaborador?.tipo_contrato ?? "").trim()),
+                bankValid,
+              ];
+              const completude = Math.round((completenessChecks.filter(Boolean).length / completenessChecks.length) * 100);
+              const isComplete = completude === 100;
+
+              const finalStatus = isComplete ? "ativo" : (editingColaborador?.status || "pendente");
+              const finalStatusCadastro = isComplete ? null : "pendente_complemento";
+              const finalCadastroProvisorio = isComplete ? false : (editingColaborador?.cadastro_provisorio ?? false);
+
               updateColaboradorMutation.mutate({
                 id: editingColaborador.id,
                 payload: {
                   ...colaboradorPayload,
                   tipo_contrato: getTipoContratoByModelo(editingColaborador.modelo_calculo || inferModeloCalculo(editingColaborador.tipo_colaborador, editingColaborador.tipo_contrato)),
-                  valor_base:
-                    (editingColaborador.modelo_calculo === "Mensal" ? Number(editingColaborador.salario_base || 0) :
-                    editingColaborador.modelo_calculo === "Horista" ? Number(editingColaborador.valor_hora || 0) :
-                    editingColaborador.modelo_calculo === "Diária" ? Number(editingColaborador.valor_diaria || 0) :
-                    Number(editingColaborador.valor_base || 0)),
+                  valor_base: finalValorBase,
                   nome_completo: editingColaborador.nome,
-                  banco_validado: editingColaboradorBankValidation.isValid,
+                  banco_validado: bankValid,
+                  status: finalStatus,
+                  status_cadastro: finalStatusCadastro,
+                  cadastro_provisorio: finalCadastroProvisorio,
                 },
               });
             }} disabled={updateColaboradorMutation.isPending || editingColaboradorIsProcessing}>
@@ -4090,9 +4173,9 @@ const CentralCadastros = () => {
       <Dialog open={!!editingServico} onOpenChange={(open) => !open && setEditingServico(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Editar Tipo de ServiÃ§o</DialogTitle>
+            <DialogTitle>Editar Tipo de Serviço</DialogTitle>
             <DialogDescription>
-              Atualize os dados do tipo de serviÃ§o.
+              Atualize os dados do tipo de serviço.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -4101,7 +4184,7 @@ const CentralCadastros = () => {
               <Input id="edit_serv_nome" value={editingServico?.nome || ""} onChange={(e) => setEditingServico({ ...editingServico, nome: e.target.value })} />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="edit_serv_descricao">DescriÃ§Ã£o</Label>
+              <Label htmlFor="edit_serv_descricao">Descrição</Label>
               <Input id="edit_serv_descricao" value={editingServico?.descricao || ""} onChange={(e) => setEditingServico({ ...editingServico, descricao: e.target.value })} />
             </div>
             <div className="flex items-center gap-2">
@@ -4121,15 +4204,15 @@ const CentralCadastros = () => {
       <Dialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
         <DialogContent className="sm:max-w-[450px]">
           <DialogHeader>
-            <DialogTitle>ExclusÃ£o nÃ£o permitida</DialogTitle>
+            <DialogTitle>Exclusão não permitida</DialogTitle>
           </DialogHeader>
           <div className="py-4">
             <p className="text-sm text-muted-foreground">
-              <strong>{itemToDeleteLabel}</strong> possui vÃ­nculos operacionais e nÃ£o pode ser excluÃ­do(a).
+              <strong>{itemToDeleteLabel}</strong> possui vínculos operacionais e não pode ser excluído(a).
             </p>
             {deleteErrorDetails.length > 0 && (
               <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-md max-h-[200px] overflow-y-auto">
-                <p className="text-xs font-medium text-amber-800 mb-2">VÃ­nculos encontrados:</p>
+                <p className="text-xs font-medium text-amber-800 mb-2">Vínculos encontrados:</p>
                 <div className="space-y-2">
                   {deleteErrorDetails.map((detalhe, i) => (
                     <div key={i} className="text-xs">
@@ -4147,7 +4230,7 @@ const CentralCadastros = () => {
               </div>
             )}
             <p className="text-sm text-muted-foreground mt-3">
-              Deseja desativÃ¡-lo(a)? O registro permanecerÃ¡ no histÃ³rico com status Inativo.
+              Deseja desativá-lo(a)? O registro permanecerá no histórico com status Inativo.
             </p>
           </div>
           <DialogFooter>
@@ -4219,7 +4302,7 @@ const CentralCadastros = () => {
                 id="pc_categoria"
                 value={produtoCargaForm.categoria}
                 onChange={(e) => setProdutoCargaForm(p => ({ ...p, categoria: e.target.value }))}
-                placeholder="Ex: CosmÃ©tico, Alimento, EletrÃ´nico..."
+                placeholder="Ex: Cosmético, Alimento, Eletrônico..."
               />
             </div>
             <div className="space-y-1.5">

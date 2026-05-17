@@ -1,4 +1,4 @@
-﻿CREATE TABLE IF NOT EXISTS public.formas_pagamento (
+CREATE TABLE IF NOT EXISTS public.formas_pagamento (
   id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
   tenant_id UUID REFERENCES public.tenants(id),
   modalidade_financeira TEXT NOT NULL,

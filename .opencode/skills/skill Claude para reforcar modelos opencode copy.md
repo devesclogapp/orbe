@@ -66,7 +66,7 @@ Evitar quebras, regressões e edições desnecessárias em código existente.
 - Nunca assumir — consultar o valor exato aceito antes de usar
 
 ### Ao ler arquivos existentes
-- Se encontrar caractere estranho (ex: `Ã§`, `Ã£`, `Ã©`), PARE
+- Se encontrar caractere estranho (ex: `ç`, `ã`, `é`), PARE
 - Reportar: "Arquivo com problema de encoding detectado em [arquivo]"
 - Não editar o arquivo até o encoding ser corrigido manualmente
 

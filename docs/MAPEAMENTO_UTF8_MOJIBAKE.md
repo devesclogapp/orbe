@@ -1,4 +1,4 @@
-﻿# Mapeamento de Erros de Acentuação UTF-8 (Mojibake)
+# Mapeamento de Erros de Acentuação UTF-8 (Mojibake)
 
 Critério: ocorrências contendo `Ã`, `Â` ou `�` no código-fonte (`src/`).
 
@@ -26,25 +26,25 @@ Critério: ocorrências contendo `Ã`, `Â` ou `�` no código-fonte (`src/`).
 
 ## Exemplos por Arquivo (amostra)
 ### src\pages\Colaboradores.tsx
-- Linha 35: tipo_contrato: "Hora" as "Hora" | "OperaÃ§Ã£o" | "Mensal",
-- Linha 86: if (tipo === "PRODUÃ‡ÃƒO" || tipo === "PRODUCAO") return "Freelancer";
-- Linha 94: if (tipo === "DIARISTA") return "DiÃ¡ria";
-- Linha 96: if (tipo === "PRODUÃ‡ÃƒO" || tipo === "PRODUCAO") return "ProduÃ§Ã£o";
-- Linha 97: if (tipo === "TERCEIRIZADO") return "ProduÃ§Ã£o";
+- Linha 35: tipo_contrato: "Hora" as "Hora" | "Operação" | "Mensal",
+- Linha 86: if (tipo === "PRODU�!ÃO" || tipo === "PRODUCAO") return "Freelancer";
+- Linha 94: if (tipo === "DIARISTA") return "Diária";
+- Linha 96: if (tipo === "PRODU�!ÃO" || tipo === "PRODUCAO") return "Produção";
+- Linha 97: if (tipo === "TERCEIRIZADO") return "Produção";
 
 ### src\pages\CentralFinanceira.tsx
-- Linha 62: // etapa 2 â€” anÃ¡lise financeira
-- Linha 160: toast.success("PerÃ­odo fechado!", {
-- Linha 161: description: "A competÃªncia foi fechada e protegida contra ediÃ§Ãµes.",
-- Linha 166: toast.error("Erro ao fechar perÃ­odo", { description: err.message });
-- Linha 206: // lotes que requerem aÃ§Ã£o do Financeiro
+- Linha 62: // etapa 2 — análise financeira
+- Linha 160: toast.success("Período fechado!", {
+- Linha 161: description: "A competência foi fechada e protegida contra edições.",
+- Linha 166: toast.error("Erro ao fechar período", { description: err.message });
+- Linha 206: // lotes que requerem ação do Financeiro
 
 ### src\components\layout\navigationMeta.ts
-- Linha 19: { pattern: "/operacional/operacoes", label: "OperaÃ§Ãµes Recebidas", section: "Entradas Operacionais" },
-- Linha 21: { pattern: "/producao", label: "LanÃ§amentos Operacionais", section: "Entradas Operacionais" },
-- Linha 22: { pattern: "/producao/diaristas", label: "LanÃ§amento de Diaristas", section: "Ambiente Externo", parentPath: "/producao" },
-- Linha 24: { pattern: "/producao/servicos-extras", label: "ServiÃ§os Extras", section: "Entradas Operacionais", parentPath: "/producao" },
-- Linha 25: { pattern: "/importacoes", label: "ImportaÃ§Ãµes", section: "Entradas Operacionais" },
+- Linha 19: { pattern: "/operacional/operacoes", label: "Operações Recebidas", section: "Entradas Operacionais" },
+- Linha 21: { pattern: "/producao", label: "Lançamentos Operacionais", section: "Entradas Operacionais" },
+- Linha 22: { pattern: "/producao/diaristas", label: "Lançamento de Diaristas", section: "Ambiente Externo", parentPath: "/producao" },
+- Linha 24: { pattern: "/producao/servicos-extras", label: "Serviços Extras", section: "Entradas Operacionais", parentPath: "/producao" },
+- Linha 25: { pattern: "/importacoes", label: "Importações", section: "Entradas Operacionais" },
 
 ### src\components\operacoes\OperacoesTableBlock.tsx
 - Linha 120: { value: "nf_numero", label: "NF (SIM/NÃO ou número)" },
@@ -89,11 +89,11 @@ Critério: ocorrências contendo `Ã`, `Â` ou `�` no código-fonte (`src/`).
 - Linha 1877: {/* ── SEÇÃO: RESPONSÁVEL E OBSERVAÇÃO ── */}
 
 ### src\pages\Fechamento.tsx
-- Linha 124: <p className="text-xs text-muted-foreground">pendentes de liberaÃ§Ã£o</p>
-- Linha 129: <p className="text-xs text-muted-foreground">aguardando aprovaÃ§Ã£o</p>
-- Linha 134: <p className="text-xs text-muted-foreground">aguardando aprovaÃ§Ã£o</p>
-- Linha 137: <p className="text-[11px] uppercase tracking-wide text-muted-foreground">BancÃ¡rio</p>
-- Linha 139: <p className="text-xs text-muted-foreground">preparaÃ§Ã£o remessa</p>
+- Linha 124: <p className="text-xs text-muted-foreground">pendentes de liberação</p>
+- Linha 129: <p className="text-xs text-muted-foreground">aguardando aprovação</p>
+- Linha 134: <p className="text-xs text-muted-foreground">aguardando aprovação</p>
+- Linha 137: <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Bancário</p>
+- Linha 139: <p className="text-xs text-muted-foreground">preparação remessa</p>
 
 ### src\pages\Pontos.tsx
 - Linha 280: const empresaNome = getImportRowValue(row, "EMPRESA", "EMPRESAS", "RAZÃO SOCIAL", "RAZAO SOCIAL", "CLIENTE", "NOME DA EMPRESA", "NOME DA CLIENTE");

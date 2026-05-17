@@ -1,6 +1,6 @@
 -- FASE 10.3 - REVALIDACAO AUTOMATICA E ESCALONAMENTO
 
--- Função para invalidar ciclo operacional
+-- FunÃ§Ã£o para invalidar ciclo operacional
 CREATE OR REPLACE FUNCTION public.invalidate_ciclo_operacional()
 RETURNS TRIGGER AS $BODY$
 DECLARE
@@ -38,7 +38,7 @@ BEGIN
       AND v_data <= data_fim
     LIMIT 1;
 
-    -- Se encontrou o ciclo e o status não é 'aguardando_validacao' ou 'bloqueado_automacao'
+    -- Se encontrou o ciclo e o status nÃ£o Ã© 'aguardando_validacao' ou 'bloqueado_automacao'
     IF v_ciclo_id IS NOT NULL AND v_status_antigo IN ('pronto_para_fechamento') THEN
         UPDATE public.ciclos_operacionais
         SET status_automacao = 'aguardando_validacao'
@@ -51,7 +51,7 @@ BEGIN
             v_empresa_id, 
             'ciclo_invalidado_automaticamente', 
             'warning', 
-            'Ciclo reaberto automaticamente devido a alterações em ' || TG_TABLE_NAME || ' no dia ' || v_data,
+            'Ciclo reaberto automaticamente devido a alteraÃ§Ãµes em ' || TG_TABLE_NAME || ' no dia ' || v_data,
             jsonb_build_object('ciclo_id', v_ciclo_id, 'tabela', TG_TABLE_NAME, 'data', v_data, 'acao', TG_OP)
         );
     END IF;

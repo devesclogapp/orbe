@@ -1,4 +1,4 @@
-﻿-- Etapa incremental: preparar lotes RH aprovados para a fila bancaria/CNAB
+-- Etapa incremental: preparar lotes RH aprovados para a fila bancaria/CNAB
 -- Permite o status AGUARDANDO_PAGAMENTO em rh_financeiro_lotes.
 
 ALTER TABLE public.rh_financeiro_lotes

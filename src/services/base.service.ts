@@ -474,6 +474,11 @@ export const EmpresaService = new EmpresaServiceClass();
 class ColaboradorServiceClass extends BaseService<'colaboradores'> {
   constructor() { super('colaboradores'); }
 
+  private isMissingColaboradorColumnError(error: any, column: string) {
+    const msg = String(error?.message ?? '');
+    return msg.includes(`Could not find the '${column}' column of 'colaboradores'`);
+  }
+
   async getAllForProducao() {
     const { data, error } = await supabase
       .from('colaboradores')
@@ -524,11 +529,25 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
       banco_validado: payload.banco_validado ?? false,
     };
 
-    const { data, error } = await supabase
+    let insertPayload = { ...cleanedPayload };
+    let { data, error } = await supabase
       .from('colaboradores')
-      .insert(cleanedPayload)
+      .insert(insertPayload)
       .select()
       .single();
+
+    if (
+      error &&
+      (this.isMissingColaboradorColumnError(error, 'modelo_calculo') ||
+        this.isMissingColaboradorColumnError(error, 'regime_trabalho'))
+    ) {
+      const { modelo_calculo, regime_trabalho, ...legacyPayload } = insertPayload;
+      ({ data, error } = await supabase
+        .from('colaboradores')
+        .insert(legacyPayload)
+        .select()
+        .single());
+    }
 
     if (error) {
       const details = error.details ? `\nDetalhe: ${error.details}` : '';
@@ -600,6 +619,14 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
       deleted_at: payload.deleted_at ?? null,
     };
 
+    // Forward explicit status_cadastro / cadastro_provisorio from frontend
+    if (payload.status_cadastro !== undefined) {
+      cleanedPayload.status_cadastro = payload.status_cadastro;
+    }
+    if (payload.cadastro_provisorio !== undefined) {
+      cleanedPayload.cadastro_provisorio = payload.cadastro_provisorio;
+    }
+
     if (payload.salario_base != null) {
       cleanedPayload.salario_base = Number(payload.salario_base) || 0;
     }
@@ -623,12 +650,27 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
       cleanedPayload.origem_cadastro = current?.origem_cadastro ?? 'manual';
     }
 
-    const { data, error } = await supabase
+    let updatePayload = { ...cleanedPayload };
+    let { data, error } = await supabase
       .from('colaboradores')
-      .update(cleanedPayload)
+      .update(updatePayload)
       .eq('id', id)
       .select()
       .single();
+
+    if (
+      error &&
+      (this.isMissingColaboradorColumnError(error, 'modelo_calculo') ||
+        this.isMissingColaboradorColumnError(error, 'regime_trabalho'))
+    ) {
+      const { modelo_calculo, regime_trabalho, ...legacyPayload } = updatePayload;
+      ({ data, error } = await supabase
+        .from('colaboradores')
+        .update(legacyPayload)
+        .eq('id', id)
+        .select()
+        .single());
+    }
 
     if (error) {
       const details = error.details ? `\nDetalhe: ${error.details}` : '';
@@ -3514,7 +3556,7 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
 export const LoteFechamentoDiaristaService = new LoteFechamentoDiaristaServiceClass();
 
 // ==================================================
-// TIPOS PARA REGRAS DINÂMICAS
+// TIPOS PARA REGRAS DINMICAS
 // ==================================================
 
 export interface RegraModulo {
@@ -3543,7 +3585,7 @@ export interface RegraDado {
 }
 
 // ==================================================
-// SERVIÇOS PARA REGRAS DINÂMICAS
+// SERVIÇOS PARA REGRAS DINMICAS
 // ==================================================
 
 class RegrasModulosServiceClass {

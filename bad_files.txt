@@ -1,0 +1,14 @@
+y:\2026\ERP ESC LOG\Orbe\src\components\operacoes\OperacoesTableBlock.tsx
+y:\2026\ERP ESC LOG\Orbe\src\pages\CentralCadastros.tsx
+y:\2026\ERP ESC LOG\Orbe\src\pages\Colaboradores.tsx
+y:\2026\ERP ESC LOG\Orbe\src\pages\Fechamento.tsx
+y:\2026\ERP ESC LOG\Orbe\src\pages\Financeiro\CentralBancariaDiaristas.tsx
+y:\2026\ERP ESC LOG\Orbe\src\pages\LancamentoProducao.tsx
+y:\2026\ERP ESC LOG\Orbe\src\pages\Operacoes.tsx
+y:\2026\ERP ESC LOG\Orbe\src\pages\Pontos.tsx
+y:\2026\ERP ESC LOG\Orbe\src\pages\Producao\DiaristasLancamento.tsx
+y:\2026\ERP ESC LOG\Orbe\src\pages\RegrasOperacionais.tsx
+y:\2026\ERP ESC LOG\Orbe\src\pages\Rh\RhDiaristasPainel.tsx
+y:\2026\ERP ESC LOG\Orbe\src\services\base.service.ts
+y:\2026\ERP ESC LOG\Orbe\src\services\cnab\cnab240-posicional.ts
+y:\2026\ERP ESC LOG\Orbe\src\utils\financeiro.ts

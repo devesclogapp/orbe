@@ -36,7 +36,7 @@ export const Topbar = ({ title, subtitle, backPath }: TopbarProps) => {
     : user?.email?.slice(0, 2).toUpperCase() || "??";
 
   return (
-    <header className="bg-card border-b border-border sticky top-0 z-10 min-h-[var(--app-topbar-height)] px-6 py-3">
+    <header className="bg-card border-b border-border sticky top-0 z-40 min-h-[var(--app-topbar-height)] px-6 py-3">
       <div className="flex items-start justify-between gap-6">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 text-[11px] text-muted-foreground mb-1.5 flex-wrap">
@@ -96,7 +96,7 @@ export const Topbar = ({ title, subtitle, backPath }: TopbarProps) => {
           <div className="relative cursor-pointer" onClick={() => setOpen(true)}>
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
             <Input
-              placeholder="Buscar colaborador, operacao... (⌘K)"
+              placeholder="Buscar colaborador, operação... (⌘K)"
               readOnly
               className="h-9 w-72 pl-9 bg-background border-input cursor-pointer focus-visible:ring-0"
             />
