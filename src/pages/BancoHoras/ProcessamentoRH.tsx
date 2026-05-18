@@ -4,13 +4,16 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   AlertTriangle,
+  ArrowRight,
   Building2,
   Calendar,
   CheckCircle,
   Clock,
+  ExternalLink,
   FileCheck,
   Loader2,
   Play,
+  RotateCw,
   Send,
   RefreshCw,
   RotateCcw,
@@ -42,10 +45,12 @@ const ENGINE_EVENT_TYPES = new Set([
   "colaborador_criado_automaticamente",
   "empresa_criada_automaticamente",
   "regra_padrao_aplicada",
+  "bloqueio_cadastral",
 ]);
 
 const inconsistenciaLabelMap: Record<string, string> = {
   atraso_excessivo: "Atraso excessivo",
+  bloqueio_cadastral: "Bloqueio cadastral",
   colaborador_criado_automaticamente: "Colaborador criado automaticamente",
   empresa_criada_automaticamente: "Empresa criada automaticamente",
   entrada_ausente: "Ponto incompleto",
@@ -84,6 +89,7 @@ const ProcessamentoRH = () => {
   const [approvalModalOpen, setApprovalModalOpen] = useState(false);
   const [approvalValidation, setApprovalValidation] = useState<any>(null);
   const [isApprovingCompetencia, setIsApprovingCompetencia] = useState(false);
+  const [financialEligibilityError, setFinancialEligibilityError] = useState<{ message: string, details: Array<{ nome: string; problemas: string[] }> } | null>(null);
 
   const { data: empresas = [], isLoading: isLoadingEmpresas } = useQuery({
     queryKey: ["empresas"],
@@ -350,6 +356,7 @@ const ProcessamentoRH = () => {
 
     setIsApprovingCompetencia(true);
     try {
+      setFinancialEligibilityError(null);
       const validation = await RHFinanceiroService.validateCompetenciaApproval(selectedEmpresa, selectedMonth);
       setApprovalValidation(validation);
       setApprovalModalOpen(true);
@@ -386,6 +393,14 @@ const ProcessamentoRH = () => {
       setApprovalModalOpen(false);
       setApprovalValidation(null);
     } catch (error: any) {
+      try {
+        const parsed = JSON.parse(error.message);
+        if (parsed.code === "FINANCIAL_INELIGIBILITY") {
+          setFinancialEligibilityError(parsed);
+          return;
+        }
+      } catch (e) { }
+
       toast.error(error.message || "Nao foi possivel aprovar a competencia.");
     } finally {
       setIsApprovingCompetencia(false);
@@ -418,7 +433,14 @@ const ProcessamentoRH = () => {
       if (result.totalProcessados === 0) {
         toast.info("Nenhum registro pendente encontrado para processar.");
       } else {
-        toast.success(`Processamento concluído: ${result.totalProcessados} registros processados.`);
+        const parts: string[] = [`${result.totalProcessados} registros processados`];
+        if (result.pendentesCadastrais > 0) {
+          parts.push(`${result.pendentesCadastrais} pendentes cadastrais`);
+        }
+        if (result.totalInconsistencias > 0) {
+          parts.push(`${result.totalInconsistencias} inconsistência(s)`);
+        }
+        toast.success(`Processamento concluído: ${parts.join(" · ")}`);
       }
 
       setProcessModalOpen(false);
@@ -1024,17 +1046,103 @@ const ProcessamentoRH = () => {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={approvalModalOpen} onOpenChange={setApprovalModalOpen}>
-        <DialogContent className="max-w-3xl">
+      <Dialog open={approvalModalOpen} onOpenChange={(open) => {
+        setApprovalModalOpen(open);
+        if (!open) {
+          setFinancialEligibilityError(null);
+        }
+      }}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Aprovar competência do RH</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              {financialEligibilityError ? (
+                <AlertTriangle className="h-5 w-5 text-red-500" />
+              ) : approvalValidation?.impedimentos?.length ? (
+                <AlertTriangle className="h-5 w-5 text-amber-500" />
+              ) : (
+                <CheckCircle className="h-5 w-5 text-success" />
+              )}
+              {financialEligibilityError ? "Bloqueio Financeiro Identificado" : "Aprovar competência do RH"}
+            </DialogTitle>
             <DialogDescription>
-              A aprovação oficializa a entrega do resultado processado ao Financeiro na competência {selectedMonth}.
+              {financialEligibilityError
+                ? "O processamento operacional foi concluído, mas o Motor Financeiro interceptou inconsistências que impedem a geração dos lotes monetários."
+                : `A aprovação oficializa a entrega do resultado processado ao Financeiro na competência ${selectedMonth}.`
+              }
             </DialogDescription>
           </DialogHeader>
 
-          {approvalValidation ? (
-            <div className="space-y-4">
+          {financialEligibilityError ? (
+            <div className="space-y-5">
+              <div className="rounded-xl border border-red-200/60 bg-red-50/50 p-4">
+                <p className="font-semibold text-red-900">Nenhum colaborador apto para geração financeira.</p>
+                <div className="mt-1.5 text-sm text-red-800/80 space-y-3">
+                  <p>
+                    Nenhuma verba variável encontrada nesta competência.
+                  </p>
+                  <div>
+                    <span className="font-medium">Os colaboradores ainda podem gerar lote financeiro através:</span>
+                    <ul className="list-inside mt-1 ml-2 space-y-1">
+                      <li className="flex items-center gap-2"><CheckCircle className="h-3.5 w-3.5 text-green-600" /> salário base</li>
+                      <li className="flex items-center gap-2"><CheckCircle className="h-3.5 w-3.5 text-green-600" /> folha CLT mensal</li>
+                      <li className="flex items-center gap-2"><CheckCircle className="h-3.5 w-3.5 text-green-600" /> remuneração fixa</li>
+                    </ul>
+                  </div>
+                  <p className="font-medium text-xs">Variáveis operacionais são complementares.</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                  Detalhamento de Inelegibilidade
+                </h3>
+                <div className="overflow-hidden rounded-xl border border-muted bg-card">
+                  <div className="max-h-[350px] overflow-y-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead className="sticky top-0 bg-muted/80 backdrop-blur-sm z-10">
+                        <tr>
+                          <th className="px-4 py-3 font-medium text-muted-foreground">Colaborador</th>
+                          <th className="px-4 py-3 font-medium text-muted-foreground">Problemas identificados</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-muted">
+                        {financialEligibilityError.details.map((item, idx) => (
+                          <tr key={idx} className="hover:bg-muted/30 transition-colors">
+                            <td className="px-4 py-3 font-medium text-foreground">{item.nome}</td>
+                            <td className="px-4 py-3">
+                              <div className="flex flex-wrap gap-1.5">
+                                {item.problemas.map((prob, pIdx) => (
+                                  <Badge key={pIdx} variant="secondary" className="bg-red-100 text-red-800 hover:bg-red-100">
+                                    {prob}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-2 border-t">
+                <Button
+                  onClick={() => {
+                    setApprovalModalOpen(false);
+                    setFinancialEligibilityError(null);
+                    navigate("/cadastros");
+                  }}
+                  className="gap-2"
+                >
+                  Ir para Central de Cadastros
+                  <ExternalLink className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          ) : approvalValidation ? (
+            <div className="space-y-5">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="rounded-xl border border-red-300/70 bg-red-50 p-4">
                   <p className="text-xs uppercase tracking-[0.14em] text-red-700/80">Bloqueios críticos</p>
@@ -1051,6 +1159,7 @@ const ProcessamentoRH = () => {
               {approvalValidation.impedimentos.length > 0 ? (
                 <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
                   <p className="font-semibold text-foreground">A competência não pode ser aprovada agora.</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Resolva os bloqueios abaixo e clique em <strong>Revalidar</strong> para verificar novamente.</p>
                   <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
                     {approvalValidation.impedimentos.map((item: string, index: number) => (
                       <li key={`${item}-${index}`}>• {item}</li>
@@ -1058,32 +1167,91 @@ const ProcessamentoRH = () => {
                   </ul>
                 </div>
               ) : (
-                <div className="rounded-xl border border-success/30 bg-success-soft/40 p-4">
-                  <p className="font-semibold text-foreground">Nenhum bloqueio crítico encontrado.</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    A aprovação permanece liberada mesmo com avisos operacionais. Ao confirmar, o RH vai criar o lote financeiro em status <strong>AGUARDANDO_FINANCEIRO</strong>.
-                  </p>
+                <div className="rounded-xl border border-success/30 bg-success-soft/40 p-4 space-y-3">
+                  <div>
+                    <p className="font-semibold text-foreground flex items-center gap-2">
+                      <CheckCircle className="h-5 w-5 text-success" />
+                      Nenhum bloqueio crítico encontrado.
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      A aprovação permanece liberada. Ao confirmar, o RH vai criar o lote financeiro em status <strong>AGUARDANDO_FINANCEIRO</strong>.
+                    </p>
+                  </div>
+
+                  {approvalValidation.resumo?.financeiroPrevisto && (
+                    <div className="mt-3 bg-white/60 rounded-lg p-3 border border-success/20">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Resumo Financeiro Previsto</p>
+                      <ul className="space-y-1.5 text-sm text-slate-700">
+                        <li className="flex items-center gap-2">
+                          <CheckCircle className="h-4 w-4 text-success" />
+                          <strong>{approvalValidation.resumo.financeiroPrevisto.folhaBase}</strong> salários base elegíveis (Folha Base)
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <CheckCircle className="h-4 w-4 text-success" />
+                          <strong>{approvalValidation.resumo.financeiroPrevisto.variaveis}</strong> horas extras/atrasos/faltas (Variáveis)
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <CheckCircle className="h-4 w-4 text-success" />
+                          <strong>{approvalValidation.resumo.financeiroPrevisto.bancoHoras}</strong> ajustes de banco de horas (Banco de Horas)
+                        </li>
+                      </ul>
+                      <div className="mt-3 pt-3 border-t border-success/20">
+                        <p className="text-sm font-medium text-success flex items-center gap-2">
+                          <FileCheck className="h-4 w-4" />
+                          Lote financeiro apto para geração
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
               {approvalValidation.bloqueiosCriticos.length > 0 ? (
-                <section className="space-y-2">
-                  <h3 className="text-sm font-semibold text-foreground">Bloqueios críticos</h3>
-                  <p className="text-xs text-muted-foreground">Impedem a aprovação.</p>
-                  <div className="max-h-52 overflow-y-auto rounded-xl border border-amber-200 bg-amber-50/40">
-                    <table className="w-full text-sm">
-                      <tbody>
-                        {approvalValidation.bloqueiosCriticos.map((item: any) => (
-                          <tr key={item.id} className="border-t border-border first:border-t-0">
-                            <td className="px-4 py-3 font-medium">{item.nome}</td>
-                            <td className="px-4 py-3">
-                              <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">{item.categoria}</Badge>
-                            </td>
-                            <td className="px-4 py-3 text-muted-foreground">{item.motivo}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                <section className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-semibold text-foreground">Bloqueios críticos</h3>
+                      <p className="text-xs text-muted-foreground">Clique em um bloqueio para ir à tela de resolução.</p>
+                    </div>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto rounded-xl border border-red-200/70 bg-gradient-to-b from-red-50/60 to-amber-50/40">
+                    <div className="divide-y divide-red-200/50">
+                      {approvalValidation.bloqueiosCriticos.map((item: any) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className="group flex w-full items-start gap-3 px-4 py-3.5 text-left transition-all hover:bg-red-100/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                          onClick={() => {
+                            const rota = item.rota || "/cadastros";
+                            setApprovalModalOpen(false);
+                            navigate(rota);
+                            toast.info(`Navegando para resolver: ${item.nome}`, {
+                              description: item.acao || "Resolva o bloqueio e volte para revalidar.",
+                            });
+                          }}
+                        >
+                          <div className="mt-0.5 rounded-lg bg-red-100 p-1.5 text-red-600 transition-colors group-hover:bg-red-200">
+                            <AlertTriangle className="h-3.5 w-3.5" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-sm text-foreground">{item.nome}</span>
+                              <Badge className="bg-red-100 text-red-700 hover:bg-red-100 text-[10px] px-1.5 py-0">{item.categoria}</Badge>
+                            </div>
+                            <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">{item.motivo}</p>
+                            {item.acao && (
+                              <p className="mt-1 flex items-center gap-1 text-xs font-medium text-primary">
+                                <ExternalLink className="h-3 w-3" />
+                                {item.acao}
+                              </p>
+                            )}
+                          </div>
+                          <div className="mt-1 text-muted-foreground/40 transition-all group-hover:text-primary group-hover:translate-x-0.5">
+                            <ArrowRight className="h-4 w-4" />
+                          </div>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </section>
               ) : null}
@@ -1092,47 +1260,66 @@ const ProcessamentoRH = () => {
                 <section className="space-y-2">
                   <h3 className="text-sm font-semibold text-foreground">Avisos operacionais</h3>
                   <p className="text-xs text-muted-foreground">Apenas informativos.</p>
-                  <div className="max-h-52 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50/70">
-                    <table className="w-full text-sm">
-                      <tbody>
-                        {approvalValidation.avisosOperacionais.map((item: any) => (
-                          <tr key={item.id} className="border-t border-border first:border-t-0">
-                            <td className="px-4 py-3 font-medium">{item.nome}</td>
-                            <td className="px-4 py-3">
-                              <Badge className="bg-sky-100 text-sky-800 hover:bg-sky-100">{item.categoria}</Badge>
-                            </td>
-                            <td className="px-4 py-3 text-muted-foreground">{item.motivo}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  <div className="max-h-44 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50/70">
+                    <div className="divide-y divide-slate-200/70">
+                      {approvalValidation.avisosOperacionais.map((item: any) => (
+                        <div key={item.id} className="flex items-start gap-3 px-4 py-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-sm">{item.nome}</span>
+                              <Badge className="bg-sky-100 text-sky-800 hover:bg-sky-100 text-[10px] px-1.5 py-0">{item.categoria}</Badge>
+                            </div>
+                            <p className="mt-0.5 text-xs text-muted-foreground">{item.motivo}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </section>
               ) : null}
             </div>
           ) : null}
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setApprovalModalOpen(false)} disabled={isApprovingCompetencia}>
-              Fechar
-            </Button>
-            <Button
-              onClick={aprovarCompetencia}
-              disabled={isApprovingCompetencia || Boolean(approvalValidation?.impedimentos?.length)}
-            >
-              {isApprovingCompetencia ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Aprovando...
-                </>
-              ) : (
-                <>
-                  <Send className="mr-2 h-4 w-4" />
-                  Confirmar aprovação
-                </>
-              )}
-            </Button>
-          </DialogFooter>
+          {!financialEligibilityError && (
+            <DialogFooter className="flex-col gap-2 sm:flex-row">
+              <Button variant="outline" onClick={() => setApprovalModalOpen(false)} disabled={isApprovingCompetencia}>
+                Fechar
+              </Button>
+
+              {approvalValidation?.impedimentos?.length ? (
+                <Button
+                  variant="secondary"
+                  onClick={validarAprovacaoCompetencia}
+                  disabled={isApprovingCompetencia}
+                  className="gap-2"
+                >
+                  {isApprovingCompetencia ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RotateCw className="h-4 w-4" />
+                  )}
+                  Revalidar
+                </Button>
+              ) : null}
+
+              <Button
+                onClick={aprovarCompetencia}
+                disabled={isApprovingCompetencia || Boolean(approvalValidation?.impedimentos?.length)}
+              >
+                {isApprovingCompetencia ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Aprovando...
+                  </>
+                ) : (
+                  <>
+                    <Send className="mr-2 h-4 w-4" />
+                    Confirmar aprovação
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          )}
         </DialogContent>
       </Dialog>
     </AppShell>

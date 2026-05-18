@@ -17,7 +17,7 @@ export interface BBValidationResult {
 
 export const CnabBBValidatorService = {
   async validateLote(
-    faturasIds: string[], 
+    faturas: any[], 
     contaOrigem?: Partial<ContaBancariaEmpresa>
   ): Promise<BBValidationResult> {
     const result: BBValidationResult = {
@@ -37,28 +37,14 @@ export const CnabBBValidatorService = {
       if (!contaOrigem.agencia) result.errors.push("Conta origem: Agência obrigatória.");
       if (!contaOrigem.conta) result.errors.push("Conta origem: Conta corrente obrigatória.");
       if (!contaOrigem.cedente_cnpj) result.errors.push("Conta origem: CNPJ do Cedente obrigatório.");
-      if (!contaOrigem.convenio) result.errors.push("Conta origem: Convênio obrigatório para CNAB Banco do Brasil.");
+      if (!contaOrigem.convenio && contaOrigem.banco_codigo === '001') result.errors.push("Conta origem: Convênio obrigatório para CNAB Banco do Brasil.");
     }
 
-    if (faturasIds.length === 0) {
+    if (!faturas || faturas.length === 0) {
       result.isValid = false;
       result.errors.push("Nenhum título/fatura selecionado para o lote.");
       return result; // Early return se não tem o que validar
     }
-
-    // 2. Buscar dados faturas e colaboradores
-    const { data: faturas, error } = await supabase
-      .from('faturas')
-      .select('*, colaboradores(*)')
-      .in('id', faturasIds);
-
-    if (error) {
-      result.isValid = false;
-      result.errors.push(`Erro ao buscar faturas: ${error.message}`);
-      return result;
-    }
-
-    if (!faturas) return result;
 
     // 3. Validator Favorecidos e Valores
     for (const fatura of faturas) {

@@ -16,6 +16,26 @@ class LoteRemessaServiceClass extends BaseService<'lotes_remessa'> {
     super('lotes_remessa');
   }
 
+  async create(payload: any) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Usuário não autenticado');
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('tenant_id')
+      .eq('user_id', user.id)
+      .single();
+
+    const insertPayload = {
+      ...payload,
+      tenant_id: profile?.tenant_id,
+    };
+
+    const { data, error } = await supabase.from('lotes_remessa').insert(insertPayload).select().single();
+    if (error) throw error;
+    return data;
+  }
+
   async getFullHistory() {
     return CnabRemessaArquivoService.listarHistorico();
   }
@@ -60,14 +80,30 @@ class LoteRetornoServiceClass extends BaseService<'lotes_retorno'> {
 export const LoteRetornoService = new LoteRetornoServiceClass();
 
 export const CNABService = {
-  async validateRemessa(competencia: string, empresaId: string, contaId: string) {
-    const { data: faturas, error } = await supabase
-      .from('faturas')
-      .select('*')
-      .eq('competencia', competencia)
-      .eq('empresa_id', empresaId);
+  async validateRemessa(competencia: string, empresaId: string, contaId: string, rhLoteId?: string) {
+    let faturasMock: any[] = [];
 
-    if (error) throw error;
+    if (rhLoteId) {
+      const { data: itensRh, error } = await supabase
+        .from('rh_financeiro_lote_itens')
+        .select('*, colaboradores(*)')
+        .eq('lote_id', rhLoteId);
+      if (error) throw error;
+      faturasMock = itensRh?.map((item) => ({
+        id: item.id,
+        valor: item.valor_calculado || 0,
+        colaboradores: item.colaboradores,
+        isRhLote: true,
+      })) || [];
+    } else {
+      const { data: faturas, error } = await supabase
+        .from('faturas')
+        .select('*, colaboradores(*)')
+        .eq('competencia', competencia)
+        .eq('empresa_id', empresaId);
+      if (error) throw error;
+      faturasMock = faturas || [];
+    }
 
     let contaBancaria = null;
     if (contaId) {
@@ -75,8 +111,9 @@ export const CNABService = {
       contaBancaria = data;
     }
 
+    // Instead of passing IDs, we now expect validateLote to accept the array directly to avoid double fetching
     const result = await CnabBBValidatorService.validateLote(
-      faturas ? faturas.map((fatura) => fatura.id) : [],
+      faturasMock,
       contaBancaria
     );
 
@@ -87,6 +124,7 @@ export const CNABService = {
           empresa_id: empresaId,
           competencia,
           conta_bancaria_id: contaId,
+          rhLoteId,
           isValid: result.isValid,
           errorsCount: result.errors.length,
           pendenciesCount: result.pendenciesByColaborador.length,
@@ -98,6 +136,7 @@ export const CNABService = {
         p_details: JSON.stringify({
           empresa_id: empresaId,
           competencia,
+          rhLoteId,
           isValid: result.isValid,
           errorsCount: result.errors.length,
           pendenciesCount: result.pendenciesByColaborador.length,
@@ -113,36 +152,53 @@ export const CNABService = {
       warnings: result.warnings,
       pendenciesByColaborador: result.pendenciesByColaborador,
       summary: {
-        totalItems: faturas?.length || 0,
-        totalValue: faturas?.reduce((acc, fatura) => acc + Number(fatura.valor), 0) || 0,
+        totalItems: faturasMock.length || 0,
+        totalValue: faturasMock.reduce((acc, f) => acc + Number(f.valor), 0) || 0,
       },
     };
   },
 
-  async generateRemessa(params: { competencia: string; empresaId: string; contaId: string; modo?: 'homologacao' | 'producao' }) {
-    const { competencia, empresaId, contaId, modo = 'producao' } = params;
+  async generateRemessa(params: { competencia: string; empresaId: string; contaId: string; rhLoteId?: string; modo?: 'homologacao' | 'producao' }) {
+    const { competencia, empresaId, contaId, rhLoteId, modo = 'producao' } = params;
 
-    const { data: faturas, error: fatError } = await supabase
-      .from('faturas')
-      .select('*')
-      .eq('competencia', competencia)
-      .eq('empresa_id', empresaId)
-      .neq('status', 'pago');
+    let faturasMock: any[] = [];
+    if (rhLoteId) {
+      const { data: itensRh, error } = await supabase
+        .from('rh_financeiro_lote_itens')
+        .select('*')
+        .eq('lote_id', rhLoteId);
+      if (error) throw error;
+      faturasMock = itensRh?.map(i => ({ id: i.id, valor: i.valor_liquido || i.valor_final || i.valor_base || i.valor_calculado || 0 })) || [];
+    } else {
+      const { data: faturas, error: fatError } = await supabase
+        .from('faturas')
+        .select('*')
+        .eq('competencia', competencia)
+        .eq('empresa_id', empresaId)
+        .neq('status', 'pago');
+      if (fatError) throw fatError;
+      faturasMock = faturas || [];
+    }
 
-    if (fatError) throw fatError;
-    if (!faturas || faturas.length === 0) {
-      throw new Error('Sem faturas pendentes para gerar remessa nesta competência.');
+    if (!faturasMock || faturasMock.length === 0) {
+      throw new Error('Sem títulos pendentes para gerar remessa nesta competência/lote.');
     }
 
     const lote = await LoteRemessaService.create({
+      empresa_id: empresaId,
       competencia,
       conta_bancaria_id: contaId,
-      quantidade_titulos: faturas.length,
-      valor_total: faturas.reduce((acc, fatura) => acc + Number(fatura.valor), 0),
+      quantidade_titulos: faturasMock.length,
+      valor_total: faturasMock.reduce((acc, f) => acc + Number(f.valor), 0),
       status: 'gerado',
     });
 
-    await Promise.all(faturas.map((fatura) => FaturaService.update(fatura.id, { lote_remessa_id: lote.id })));
+    if (rhLoteId) {
+      // no need to link to faturas table if it is RH Lote, or you could update rh_financeiro_lote_itens 
+      // but let's just let it be generated. We need to pass the RH flag to CNAB240BBWriter
+    } else {
+      await Promise.all(faturasMock.map((fatura) => FaturaService.update(fatura.id, { lote_remessa_id: lote.id })));
+    }
 
     let result;
     try {
@@ -150,6 +206,7 @@ export const CNABService = {
         loteId: lote.id,
         competencia,
         contaBancariaId: contaId,
+        rhLoteId, // Pass this to the writer
         modo,
         salvarConteudo: true,
       });

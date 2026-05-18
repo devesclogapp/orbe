@@ -32,6 +32,7 @@ type EnsurePreCadastrosResult<T> = {
   rowsWithColaboradorId: T[];
   novosDetectados: number;
   preCadastrosCriados: number;
+  empresasCriadas: number;
 };
 
 const LEGACY_ORIGIN = "ponto";
@@ -115,6 +116,8 @@ const createMinimalEmpresa = async (
     status: "ativa",
     origem: "ponto",
     cadastro_provisorio: true,
+    unidade: "Não informado",
+    cidade: "Não informado",
   };
 
   const { data, error } = await (supabase as any)
@@ -238,6 +241,7 @@ const createPreCadastro = async ({
   matricula,
   cargo,
   origemDetalhe,
+  origem = "ponto",
 }: {
   tenantId: string;
   empresaId: string;
@@ -246,7 +250,10 @@ const createPreCadastro = async ({
   matricula?: string | null;
   cargo?: string | null;
   origemDetalhe: string;
+  origem?: "ponto" | "diarista";
 }) => {
+  const isPonto = origem === "ponto";
+
   const payload = {
     tenant_id: tenantId,
     empresa_id: empresaId || null,
@@ -255,14 +262,15 @@ const createPreCadastro = async ({
     matricula: normalizeMatricula(matricula) || null,
     cargo: cargo?.trim() || null,
     telefone: null,
-    valor_base: null,
-    tipo_contrato: null,
-    modelo_calculo: null,
+    valor_base: 1518,
+    tipo_contrato: isPonto ? "mensal" : "diaria",
+    modelo_calculo: isPonto ? "CLT_MENSAL" : "DIARIA",
     regime_trabalho: "CLT",
-    tipo_colaborador: "CLT",
+    tipo_colaborador: isPonto ? "clt" : "diarista",
+    gera_faturamento: true,
     status: "pendente",
     status_cadastro: PRE_CADASTRO_STATUS,
-    origem: LEGACY_ORIGIN,
+    origem: origem,
     origem_cadastro: "ponto_importado",
     origem_detalhe: origemDetalhe,
     cadastro_provisorio: true,
@@ -290,6 +298,7 @@ export async function ensurePreCadastroColaboradorFromPonto(params: {
   matricula?: string | null;
   cargo?: string | null;
   origemDetalhe?: string;
+  origem?: "ponto" | "diarista";
   colaboradoresExistentes?: ColaboradorLookup[];
 }): Promise<ColaboradorLookup | null> {
   const nome = params.nome.trim();
@@ -343,18 +352,21 @@ export async function ensurePreCadastroColaboradorFromPonto(params: {
     matricula,
     cargo: params.cargo,
     origemDetalhe: params.origemDetalhe || "planilha",
+    origem: params.origem || "ponto",
   });
 }
 
 export async function ensurePreCadastrosFromImportedPontos<T extends PontoPreCadastroRow>(
   rows: T[],
   origemDetalhe = "planilha",
+  origem: "ponto" | "diarista" = "ponto",
 ): Promise<EnsurePreCadastrosResult<T>> {
   if (rows.length === 0) {
     return {
       rowsWithColaboradorId: rows,
       novosDetectados: 0,
       preCadastrosCriados: 0,
+      empresasCriadas: 0,
     };
   }
 
@@ -390,6 +402,7 @@ export async function ensurePreCadastrosFromImportedPontos<T extends PontoPreCad
   const rowsWithColaboradorId: T[] = [];
   let novosDetectados = 0;
   let preCadastrosCriados = 0;
+  let empresasCriadas = 0;
 
   for (const row of rows) {
     if (row.colaborador_id) {
@@ -425,6 +438,7 @@ export async function ensurePreCadastrosFromImportedPontos<T extends PontoPreCad
           empresaId = newEmpresa.id;
           empresaLookup.set(empresaNomeKey, newEmpresa);
           empresaCreateCache.set(empresaNomeKey, newEmpresa);
+          empresasCriadas += 1;
         }
       }
 
@@ -466,6 +480,7 @@ export async function ensurePreCadastrosFromImportedPontos<T extends PontoPreCad
           matricula,
           cargo: row.cargo_colaborador,
           origemDetalhe,
+          origem,
         });
         preCadastrosCriados += 1;
         colaboradores.push(resolved);
@@ -502,5 +517,6 @@ export async function ensurePreCadastrosFromImportedPontos<T extends PontoPreCad
     rowsWithColaboradorId,
     novosDetectados,
     preCadastrosCriados,
+    empresasCriadas,
   };
 }

@@ -29,6 +29,15 @@ type Colaborador = {
   valor_base?: number | null;
   tipo_contrato?: string | null;
   tipo_colaborador?: string | null;
+  status_cadastro?: string | null;
+  modelo_calculo?: string | null;
+  gera_faturamento?: boolean | null;
+  banco_codigo?: string | null;
+  agencia?: string | null;
+  agencia_digito?: string | null;
+  conta?: string | null;
+  conta_digito?: string | null;
+  tipo_conta?: string | null;
 };
 
 type Regra = {
@@ -99,6 +108,58 @@ type ProcessResult = {
   colaboradoresAfetados: number;
   inconsistencias: string[];
   durationMs: number;
+  pendentesCadastrais: number;
+};
+
+type CadastralValidation = {
+  apto: boolean;
+  motivos: string[];
+};
+
+const validateColaboradorApto = (colaborador: Colaborador | null): CadastralValidation => {
+  if (!colaborador) {
+    return { apto: false, motivos: ["Colaborador não identificado no cadastro"] };
+  }
+
+  const motivos: string[] = [];
+
+  // 1. Status cadastral
+  if (colaborador.status_cadastro === "pendente_complemento") {
+    motivos.push("Cadastro pendente de complemento");
+  }
+
+  // 2. Cadastro provisório
+  if (colaborador.cadastro_provisorio === true) {
+    motivos.push("Cadastro provisório ainda não completado");
+  }
+
+  // 3. Tipo de contrato ou modelo de cálculo
+  const modelo = String(colaborador.modelo_calculo ?? "").trim();
+  const contrato = String(colaborador.tipo_contrato ?? "").trim();
+  if (!modelo && !contrato) {
+    motivos.push("Tipo de contrato ou modelo de cálculo não definido");
+  }
+
+  // 4. Dados bancários
+  const bancoCodigo = String(colaborador.banco_codigo ?? "").trim();
+  const agencia = String(colaborador.agencia ?? "").trim();
+  const conta = String(colaborador.conta ?? "").trim();
+  const contaDigito = String(colaborador.conta_digito ?? "").trim();
+  const bankComplete = /^\d{3}$/.test(bancoCodigo)
+    && /^\d{3,6}$/.test(agencia)
+    && /^\d{3,20}$/.test(conta)
+    && /^[0-9X]{1,2}$/i.test(contaDigito);
+  if (!bankComplete) {
+    motivos.push("Dados bancários incompletos ou inválidos");
+  }
+
+  // 5. Status bloqueado/inativo
+  const statusLc = String(colaborador.status ?? "").toLowerCase();
+  if (["bloqueado", "inativo"].includes(statusLc)) {
+    motivos.push(`Colaborador com status ${statusLc}`);
+  }
+
+  return { apto: motivos.length === 0, motivos };
 };
 
 const RH_EVENT_ORIGIN = "processamento_rh";
@@ -935,6 +996,7 @@ export const processRhPeriod = async ({
       colaboradoresAfetados: 0,
       inconsistencias: [],
       durationMs: Date.now() - startedAt,
+      pendentesCadastrais: 0,
     };
   }
 
@@ -979,6 +1041,7 @@ export const processRhPeriod = async ({
           ? ["Todos os pontos pendentes encontram-se em ciclos fechados e não foram processados."]
           : [],
       durationMs: Date.now() - startedAt,
+      pendentesCadastrais: 0,
     };
   }
 
@@ -986,8 +1049,7 @@ export const processRhPeriod = async ({
   await (supabase as any)
     .from("banco_horas_eventos")
     .delete()
-    .in("registro_ponto_id", pontoIds)
-    .eq("origem", RH_EVENT_ORIGIN);
+    .in("registro_ponto_id", pontoIds);
   await (supabase as any)
     .from("processamento_rh_inconsistencias")
     .delete()
@@ -1000,6 +1062,7 @@ export const processRhPeriod = async ({
   let totalInconsistencias = 0;
   let totalCreditos = 0;
   let totalDebitos = 0;
+  let pendentesCadastrais = 0;
 
   for (const ponto of validPontos) {
     const alertas: Array<{ tipo: string; descricao: string }> = [];
@@ -1034,6 +1097,27 @@ export const processRhPeriod = async ({
           descricao: "Colaborador criado automaticamente a partir do ponto importado.",
         });
       }
+    }
+
+    // === GATE CADASTRAL — Bloqueia pontos de colaboradores não aptos ===
+    const validacaoCadastral = validateColaboradorApto(colaborador);
+    if (!validacaoCadastral.apto) {
+      pendentesCadastrais += 1;
+
+      // Registrar motivos como inconsistência para rastreabilidade
+      const motivoDescricao = validacaoCadastral.motivos.join("; ");
+      const nomeColab = colaborador?.nome || ponto.nome_colaborador || "Colaborador";
+      inconsistenciasResumo.push(`${nomeColab}: ${motivoDescricao}`);
+
+      await saveAlertas(tenantId, ponto, colaborador?.id ?? null, resolvedEmpresaId, [
+        {
+          tipo: "bloqueio_cadastral",
+          descricao: `Ponto não processado — ${motivoDescricao}`,
+        },
+      ]);
+
+      // NÃO processar: manter status pendente, não gerar saldo/evento
+      continue;
     }
 
     const tipoColab = colaborador?.tipo_colaborador || "CLT";
@@ -1315,6 +1399,7 @@ export const processRhPeriod = async ({
     colaboradoresAfetados: colaboradoresAfetados.size,
     inconsistencias: inconsistenciasResumo.slice(0, 10),
     durationMs,
+    pendentesCadastrais,
   };
 };
 
@@ -1406,8 +1491,7 @@ export const reprocessRhPeriod = async ({
     await (supabase as any)
       .from("banco_horas_eventos")
       .delete()
-      .in("registro_ponto_id", pontoIds)
-      .eq("origem", RH_EVENT_ORIGIN);
+      .in("registro_ponto_id", pontoIds);
 
     if (colaboradorIds.length > 0) {
       await (supabase as any)

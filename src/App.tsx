@@ -54,6 +54,7 @@ import FaturamentoCliente from "./pages/Financeiro/FaturamentoCliente";
 import DetalhamentoCliente from "./pages/Financeiro/DetalhamentoCliente";
 import DetalhamentoColaborador from "./pages/Financeiro/DetalhamentoColaborador";
 import RemessaCNAB from "./pages/Financeiro/RemessaCNAB";
+import ContasBancarias from "./pages/Financeiro/ContasBancarias";
 import HistoricoRemessas from "./pages/Financeiro/HistoricoRemessas";
 import RetornoBancario from "./pages/Financeiro/RetornoBancario";
 import ClientDashboard from "./pages/Cliente/ClientDashboard";
@@ -166,6 +167,7 @@ const App = () => (
                         <Route path="/financeiro/remessa" element={<AuthGuard><RemessaCNAB /></AuthGuard>} />
                         <Route path="/financeiro/remessa/historico" element={<AuthGuard><HistoricoRemessas /></AuthGuard>} />
                         <Route path="/financeiro/retorno" element={<AuthGuard><RetornoBancario /></AuthGuard>} />
+                        <Route path="/financeiro/contas-bancarias" element={<AuthGuard><ContasBancarias /></AuthGuard>} />
 
                         {/* Portal Cliente V3 */}
                         <Route path="/cliente/dashboard" element={<PortalGuard><ClientDashboard /></PortalGuard>} />

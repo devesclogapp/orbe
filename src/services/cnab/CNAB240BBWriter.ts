@@ -22,11 +22,12 @@ export interface CNAB240GenerateOptions {
   loteId: string;
   competencia?: string;
   contaBancariaId?: string;
+  rhLoteId?: string;
   modo?: 'homologacao' | 'producao';
   salvarConteudo?: boolean;
 }
 
-async function fetchLoteData(loteId: string, contaBancariaId?: string) {
+async function fetchLoteData(loteId: string, contaBancariaId?: string, rhLoteId?: string) {
   let conta: Record<string, any> | null = null;
 
   if (contaBancariaId) {
@@ -51,24 +52,51 @@ async function fetchLoteData(loteId: string, contaBancariaId?: string) {
     conta = data;
   }
 
-  const { data: faturas, error } = await supabase
-    .from('faturas')
-    .select(`
-      id, valor, competencia,
-      colaboradores (
-        id, nome, cpf,
-        dados_bancarios (
-          banco, agencia, digito_agencia, conta, digito_conta, tipo_conta,
-          endereco, numero, cidade, cep, estado
+  let faturas = [];
+  
+  if (rhLoteId) {
+    const { data: itensRh, error } = await supabase
+      .from('rh_financeiro_lote_itens')
+      .select(`
+        id, valor_calculado,
+        colaboradores (
+          id, nome, cpf,
+          dados_bancarios (
+            banco, agencia, digito_agencia, conta, digito_conta, tipo_conta,
+            endereco, numero, cidade, cep, estado
+          )
         )
-      )
-    `)
-    .eq('lote_remessa_id', loteId)
-    .neq('status', 'pago');
+      `)
+      .eq('lote_id', rhLoteId);
+      
+    if (error) throw new Error(`Erro ao buscar itens do RH: ${error.message}`);
+    
+    faturas = (itensRh || []).map(item => ({
+      id: item.id,
+      valor: item.valor_calculado || 0,
+      colaboradores: item.colaboradores
+    }));
+  } else {
+    const { data: faturasDb, error } = await supabase
+      .from('faturas')
+      .select(`
+        id, valor, competencia,
+        colaboradores (
+          id, nome, cpf,
+          dados_bancarios (
+            banco, agencia, digito_agencia, conta, digito_conta, tipo_conta,
+            endereco, numero, cidade, cep, estado
+          )
+        )
+      `)
+      .eq('lote_remessa_id', loteId)
+      .neq('status', 'pago');
 
-  if (error) throw new Error(`Erro ao buscar faturas do lote: ${error.message}`);
+    if (error) throw new Error(`Erro ao buscar faturas do lote: ${error.message}`);
+    faturas = faturasDb || [];
+  }
 
-  return { conta, faturas: faturas ?? [] };
+  return { conta, faturas };
 }
 
 export class CNAB240BBWriter {
@@ -87,13 +115,14 @@ export class CNAB240BBWriter {
       loteId,
       competencia,
       contaBancariaId,
+      rhLoteId,
       modo = 'producao',
       salvarConteudo = true,
     } = opts;
 
     const now = new Date();
     const inconsistencias: string[] = [];
-    const { conta, faturas } = await fetchLoteData(loteId, contaBancariaId);
+    const { conta, faturas } = await fetchLoteData(loteId, contaBancariaId, rhLoteId);
 
     if (!faturas.length) {
       throw new Error('Lote vazio - nenhuma fatura encontrada para geração CNAB.');

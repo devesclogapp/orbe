@@ -201,8 +201,16 @@ class BHEventoServiceClass extends BaseService<'banco_horas_eventos'> {
       }
 
       deltaMinutos = minutosInformados;
-      statusNovoEvento = 'ajustado';
-      descricao = `Ajuste manual vinculado ao evento de ${dataOrigem}`;
+      
+      if (minutosOrigem + minutosInformados === 0) {
+        statusNovoEvento = 'compensado';
+        statusEventoOrigem = 'compensado';
+        descricao = `Ajuste estabilizador vinculado ao evento de ${dataOrigem}`;
+      } else {
+        statusNovoEvento = 'ajustado';
+        descricao = `Ajuste manual vinculado ao evento de ${dataOrigem}`;
+      }
+      
       metadata.ajuste_minutos = minutosInformados;
     } else {
       if (minutosOrigem <= 0) {

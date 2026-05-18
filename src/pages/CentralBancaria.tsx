@@ -116,8 +116,8 @@ const CentralBancaria = () => {
   });
 
   const { data: contas = [], isLoading: loadingContas } = useQuery<any[]>({
-    queryKey: ["contas", empresaId],
-    queryFn: () => (empresaId ? ContaBancariaService.getByEmpresa(empresaId) : Promise.resolve([])),
+    queryKey: ["contas-cnab", empresaId],
+    queryFn: () => (empresaId ? ContaBancariaService.getElegiveisParaCnab(empresaId) : Promise.resolve([])),
     enabled: !!empresaId,
   });
 
@@ -253,7 +253,7 @@ const CentralBancaria = () => {
     setIsValidating(true);
     try {
       await new Promise((resolve) => setTimeout(resolve, 600));
-      const result = await CNABService.validateRemessa(competencia, empresaId, contaId);
+      const result = await CNABService.validateRemessa(competencia, empresaId, contaId, loteRhSelecionadoId || undefined);
       setValidation(result);
       if (result.isValid) {
         toast.success("Remessa validada com sucesso");
@@ -284,7 +284,7 @@ const CentralBancaria = () => {
     if (!contaId) return toast.error("Selecione a conta bancária");
     setIsGenerating(true);
     try {
-      const result = await CNABService.generateRemessa({ competencia, empresaId, contaId });
+      const result = await CNABService.generateRemessa({ competencia, empresaId, contaId, rhLoteId: loteRhSelecionadoId || undefined });
       toast.success(`CNAB gerado: ${result.fileName} | Seq: ${result.sequencial ?? "-"}`);
 
       triggerDownload(result.content, result.fileName);
@@ -468,215 +468,235 @@ const CentralBancaria = () => {
                 </Card>
 
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                <Card className="lg:col-span-5 p-8 space-y-6 shadow-sm border-border bg-card/50 backdrop-blur-sm">
-                  <div className="flex items-center gap-3 border-b border-border/50 pb-4">
-                    <div className="p-2 bg-primary/10 rounded-lg text-primary">
-                      <Calendar className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-foreground uppercase tracking-tight">Preparar lote</h3>
-                      <p className="text-xs text-muted-foreground">Defina competência, empresa e conta de origem</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-5">
-                    {loteRhSelecionadoId && (
-                      <div className="rounded-lg border border-success/30 bg-success/5 p-3 text-xs text-success-strong flex items-center justify-between gap-2">
-                        <span>
-                          Lote RH aplicado ao formulário de remessa.
-                        </span>
-                        <Button variant="outline" size="sm" onClick={limparLoteRhSelecionado}>
-                          Limpar seleção
-                        </Button>
+                  <Card className="lg:col-span-5 p-8 space-y-6 shadow-sm border-border bg-card/50 backdrop-blur-sm">
+                    <div className="flex items-center gap-3 border-b border-border/50 pb-4">
+                      <div className="p-2 bg-primary/10 rounded-lg text-primary">
+                        <Calendar className="w-5 h-5" />
                       </div>
-                    )}
-                    <div className="space-y-2">
-                      <label className="text-[11px] font-bold text-muted-foreground uppercase flex items-center gap-2">
-                        <Calendar className="w-3 h-3" /> Competência
-                      </label>
-                      <Select value={competencia} onValueChange={(value) => { setCompetencia(value); setValidation(null); }}>
-                        <SelectTrigger className="h-11 bg-muted/20 border-border/50">
-                          <SelectValue placeholder={loadingCompetencias ? "Carregando..." : "Selecione o mês"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {formattedCompetencias.map((item) => (
-                            <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-[11px] font-bold text-muted-foreground uppercase flex items-center gap-2">
-                        <Building2 className="w-3 h-3" /> Empresa
-                      </label>
-                      <Select value={empresaId} onValueChange={(value) => { setEmpresaId(value); setValidation(null); setContaId(""); }}>
-                        <SelectTrigger className="h-11 bg-muted/20 border-border/50">
-                          <SelectValue placeholder={loadingEmpresas ? "Carregando..." : "Selecione a empresa"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {empresas.map((empresa) => (
-                            <SelectItem key={empresa.id} value={empresa.id}>{empresa.nome}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-[11px] font-bold text-muted-foreground uppercase flex items-center gap-2">
-                        <CreditCard className="w-3 h-3" /> Conta bancária
-                      </label>
-                      <Select value={contaId} onValueChange={setContaId} disabled={!empresaId}>
-                        <SelectTrigger className="h-11 bg-muted/20 border-border/50">
-                          <SelectValue placeholder={loadingContas ? "Carregando..." : "Selecione a conta"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {contas.length === 0 ? (
-                            <div className="p-4 text-center text-xs text-muted-foreground">Nenhuma conta cadastrada</div>
-                          ) : (
-                            contas.map((conta) => (
-                              <SelectItem key={conta.id} value={conta.id}>
-                                {conta.banco_nome || conta.banco_codigo} - Ag: {conta.agencia} Cc: {conta.conta}
-                              </SelectItem>
-                            ))
-                          )}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <Button className="w-full h-11 font-semibold" onClick={handleValidate} disabled={isValidating || !competencia || !empresaId || !contaId}>
-                      {isValidating ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                          Validando...
-                        </>
-                      ) : (
-                        "Validar remessa"
-                      )}
-                    </Button>
-                  </div>
-                </Card>
-
-                <Card
-                  className={cn(
-                    "lg:col-span-7 p-8 shadow-sm transition-all duration-300",
-                    !validation
-                      ? "bg-muted/10 border-dashed border-border"
-                      : validation.isValid
-                        ? "bg-success/5 border-success/20"
-                        : "bg-destructive/5 border-destructive/20"
-                  )}
-                >
-                  <div className="flex items-center gap-2 mb-8 border-b border-border/50 pb-4">
-                    <FileText className="w-5 h-5 text-muted-foreground" />
-                    <h3 className="text-sm font-bold text-foreground uppercase tracking-tight">Resumo da Remessa</h3>
-                  </div>
-
-                  {!validation ? (
-                    <div className="flex flex-col items-center justify-center py-24 text-center">
-                      <div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center mb-4">
-                        <FileText className="w-10 h-10 text-muted-foreground/30" />
+                      <div>
+                        <h3 className="text-sm font-bold text-foreground uppercase tracking-tight">Preparar lote</h3>
+                        <p className="text-xs text-muted-foreground">Defina competência, empresa e conta de origem</p>
                       </div>
-                      <p className="text-sm text-muted-foreground max-w-[280px]">
-                        Valide a remessa para liberar a geração do arquivo CNAB.
-                      </p>
                     </div>
-                  ) : (
-                    <div className="space-y-8">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="bg-card p-5 rounded-xl border border-border shadow-sm">
-                          <span className="text-[10px] font-black text-muted-foreground uppercase tracking-wider block mb-1">
-                            Quantidade de títulos
+
+                    <div className="space-y-5">
+                      {loteRhSelecionadoId && (
+                        <div className="rounded-lg border border-success/30 bg-success/5 p-3 text-xs text-success-strong flex items-center justify-between gap-2">
+                          <span>
+                            Lote RH aplicado ao formulário de remessa.
                           </span>
-                          <span className="text-3xl font-extrabold text-foreground">{validation.summary.totalItems}</span>
-                        </div>
-                        <div className="bg-card p-5 rounded-xl border border-border shadow-sm">
-                          <span className="text-[10px] font-black text-muted-foreground uppercase tracking-wider block mb-1">
-                            Valor total
-                          </span>
-                          <span className="text-3xl font-extrabold text-primary">
-                            {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(validation.summary.totalValue)}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm mt-4">
-                        <div className="bg-card p-4 rounded-xl border border-border">
-                          <span className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Empresa selecionada</span>
-                          <p className="font-medium text-foreground">{empresas.find((e) => e.id === empresaId)?.nome || "-"}</p>
-                        </div>
-                        <div className="bg-card p-4 rounded-xl border border-border">
-                          <span className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Conta Origem (001)</span>
-                          <p className="font-medium text-foreground">
-                            {contas.find((c) => c.id === contaId)?.banco_nome || contas.find((c) => c.id === contaId)?.banco_codigo} - Ag: {contas.find((c) => c.id === contaId)?.agencia} Cc: {contas.find((c) => c.id === contaId)?.conta}
-                          </p>
-                        </div>
-                      </div>
-
-                      {validation.isValid ? (
-                        <div className="flex items-start gap-4 bg-card p-4 rounded-lg border border-success/20">
-                          <div className="p-2 bg-success/10 rounded-full">
-                            <CheckCircle2 className="w-5 h-5 text-success" />
-                          </div>
-                          <div>
-                            <span className="text-sm font-bold text-success">Validação concluída</span>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              Nenhuma inconsistência encontrada. Quantidade de favorecidos válidos processada com sucesso.
-                            </p>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="space-y-4">
-                          <h4 className="text-sm font-bold text-destructive uppercase tracking-tight">Inconsistências Encontradas</h4>
-                          {validation.errors && validation.errors.map((error: string, index: number) => (
-                            <div key={index} className="flex items-start gap-4 bg-card p-4 rounded-lg border border-destructive/20">
-                              <div className="p-2 bg-destructive/10 rounded-full">
-                                <AlertCircle className="w-5 h-5 text-destructive" />
-                              </div>
-                              <div>
-                                <span className="text-sm font-bold text-destructive">Impedimento</span>
-                                <p className="text-xs text-muted-foreground mt-0.5">{error}</p>
-                              </div>
-                            </div>
-                          ))}
-
-                          {validation.pendenciesByColaborador && validation.pendenciesByColaborador.map((pc: any, i: number) => (
-                            <div key={i} className="flex items-start gap-4 bg-card p-4 rounded-lg border border-warning/30 bg-warning/5">
-                              <div className="p-2 bg-warning/20 rounded-full shrink-0">
-                                <AlertCircle className="w-4 h-4 text-warning-strong" />
-                              </div>
-                              <div>
-                                <span className="text-sm font-bold text-warning-strong">Favorecido: {pc.nome}</span>
-                                <ul className="list-disc list-inside mt-1">
-                                  {pc.pendencies.map((pend: string, j: number) => (
-                                    <li key={j} className="text-xs text-muted-foreground">{pend}</li>
-                                  ))}
-                                </ul>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {validation.isValid && (
-                        <div className="pt-6 border-t border-border border-dashed flex flex-col sm:flex-row items-center justify-between gap-4">
-                          <div className="text-xs text-muted-foreground flex items-center gap-2 bg-card px-3 py-1.5 rounded-full border border-border">
-                            <div className="w-2 h-2 bg-success rounded-full animate-pulse" />
-                            Pronto para gerar arquivo CNAB
-                          </div>
-                          <Button className="font-bold h-12 px-8" onClick={handleGenerate} disabled={isGenerating || !contaId}>
-                            {isGenerating ? (
-                              <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                            ) : (
-                              <Download className="w-4 h-4 mr-2" />
-                            )}
-                            Gerar CNAB240
+                          <Button variant="outline" size="sm" onClick={limparLoteRhSelecionado}>
+                            Limpar seleção
                           </Button>
                         </div>
                       )}
+                      <div className="space-y-2">
+                        <label className="text-[11px] font-bold text-muted-foreground uppercase flex items-center gap-2">
+                          <Calendar className="w-3 h-3" /> Competência
+                        </label>
+                        <input
+                          type="month"
+                          value={competencia}
+                          onChange={(e) => { setCompetencia(e.target.value); setValidation(null); }}
+                          className="flex h-11 w-full rounded-md border border-border/50 bg-muted/20 px-3 py-2 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-[11px] font-bold text-muted-foreground uppercase flex items-center gap-2">
+                          <Building2 className="w-3 h-3" /> Empresa
+                        </label>
+                        <Select value={empresaId} onValueChange={(value) => { setEmpresaId(value); setValidation(null); setContaId(""); }}>
+                          <SelectTrigger className="h-11 bg-muted/20 border-border/50">
+                            <SelectValue placeholder={loadingEmpresas ? "Carregando..." : "Selecione a empresa"} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {empresas.map((empresa) => (
+                              <SelectItem key={empresa.id} value={empresa.id}>{empresa.nome}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-[11px] font-bold text-muted-foreground uppercase flex items-center gap-2">
+                          <CreditCard className="w-3 h-3" /> Conta bancária (CNAB)
+                        </label>
+                        <Select value={contaId} onValueChange={setContaId} disabled={!empresaId}>
+                          <SelectTrigger className="h-11 bg-muted/20 border-border/50">
+                            <SelectValue placeholder={loadingContas ? "Carregando..." : "Selecione a conta"} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {contas.length === 0 ? (
+                              <div className="p-4 text-center text-xs text-muted-foreground">Nenhuma conta elegível para CNAB</div>
+                            ) : (
+                              contas.map((conta) => (
+                                <SelectItem key={conta.id} value={conta.id}>
+                                  {conta.banco_nome || conta.banco_codigo} - Ag: {conta.agencia} Cc: {conta.conta}{conta.conta_digito ? `-${conta.conta_digito}` : ""}
+                                </SelectItem>
+                              ))
+                            )}
+                          </SelectContent>
+                        </Select>
+                        {empresaId && !loadingContas && contas.length === 0 && (
+                          <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-xs flex items-center justify-between gap-2">
+                            <span className="text-warning-strong">
+                              Nenhuma conta bancária habilitada para CNAB nesta empresa.
+                            </span>
+                            <Button variant="outline" size="sm" className="shrink-0 text-xs" onClick={() => navigate("/financeiro/contas-bancarias")}>
+                              Cadastrar conta
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+
+                      <Button className="w-full h-11 font-semibold" onClick={handleValidate} disabled={isValidating || !competencia || !empresaId || !contaId}>
+                        {isValidating ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                            Validando...
+                          </>
+                        ) : (
+                          "Validar remessa"
+                        )}
+                      </Button>
                     </div>
-                  )}
-                </Card>
+                  </Card>
+
+                  <Card
+                    className={cn(
+                      "lg:col-span-7 p-8 shadow-sm transition-all duration-300",
+                      !validation
+                        ? "bg-muted/10 border-dashed border-border"
+                        : validation.isValid
+                          ? "bg-success/5 border-success/20"
+                          : "bg-destructive/5 border-destructive/20"
+                    )}
+                  >
+                    <div className="flex items-center gap-2 mb-8 border-b border-border/50 pb-4">
+                      <FileText className="w-5 h-5 text-muted-foreground" />
+                      <h3 className="text-sm font-bold text-foreground uppercase tracking-tight">Resumo da Remessa</h3>
+                    </div>
+
+                    {!validation ? (
+                      <div className="flex flex-col items-center justify-center py-24 text-center">
+                        <div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center mb-4">
+                          <FileText className="w-10 h-10 text-muted-foreground/30" />
+                        </div>
+                        <p className="text-sm text-muted-foreground max-w-[280px]">
+                          Valide a remessa para liberar a geração do arquivo CNAB.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-8">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="bg-card p-5 rounded-xl border border-border shadow-sm">
+                            <span className="text-[10px] font-black text-muted-foreground uppercase tracking-wider block mb-1">
+                              Quantidade de títulos
+                            </span>
+                            <span className="text-3xl font-extrabold text-foreground">{validation.summary.totalItems}</span>
+                          </div>
+                          <div className="bg-card p-5 rounded-xl border border-border shadow-sm">
+                            <span className="text-[10px] font-black text-muted-foreground uppercase tracking-wider block mb-1">
+                              Valor total
+                            </span>
+                            <span className="text-3xl font-extrabold text-primary">
+                              {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(validation.summary.totalValue)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm mt-4">
+                          <div className="bg-card p-4 rounded-xl border border-border">
+                            <span className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Empresa selecionada</span>
+                            <p className="font-medium text-foreground">{empresas.find((e) => e.id === empresaId)?.nome || "-"}</p>
+                          </div>
+                          {(() => {
+                            const contaSelecionada = contas.find((c) => c.id === contaId);
+                            const contaMascarada = contaSelecionada
+                              ? (contaSelecionada.conta?.length > 2
+                                ? '*'.repeat(contaSelecionada.conta.length - 2) + contaSelecionada.conta.slice(-2)
+                                : contaSelecionada.conta)
+                              + (contaSelecionada.conta_digito ? `-${contaSelecionada.conta_digito}` : '')
+                              : '-';
+                            return (
+                              <div className="bg-card p-4 rounded-xl border border-border">
+                                <span className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Conta Origem</span>
+                                <p className="font-medium text-foreground">
+                                  {contaSelecionada?.banco_nome || contaSelecionada?.banco_codigo || '-'}
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-0.5 font-mono">
+                                  Ag: {contaSelecionada?.agencia || '-'}{contaSelecionada?.agencia_digito ? `-${contaSelecionada.agencia_digito}` : ''} · Cc: {contaMascarada}
+                                </p>
+                              </div>
+                            );
+                          })()}
+                        </div>
+
+                        {validation.isValid ? (
+                          <div className="flex items-start gap-4 bg-card p-4 rounded-lg border border-success/20">
+                            <div className="p-2 bg-success/10 rounded-full">
+                              <CheckCircle2 className="w-5 h-5 text-success" />
+                            </div>
+                            <div>
+                              <span className="text-sm font-bold text-success">Validação concluída</span>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                Nenhuma inconsistência encontrada. Quantidade de favorecidos válidos processada com sucesso.
+                              </p>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            <h4 className="text-sm font-bold text-destructive uppercase tracking-tight">Inconsistências Encontradas</h4>
+                            {validation.errors && validation.errors.map((error: string, index: number) => (
+                              <div key={index} className="flex items-start gap-4 bg-card p-4 rounded-lg border border-destructive/20">
+                                <div className="p-2 bg-destructive/10 rounded-full">
+                                  <AlertCircle className="w-5 h-5 text-destructive" />
+                                </div>
+                                <div>
+                                  <span className="text-sm font-bold text-destructive">Impedimento</span>
+                                  <p className="text-xs text-muted-foreground mt-0.5">{error}</p>
+                                </div>
+                              </div>
+                            ))}
+
+                            {validation.pendenciesByColaborador && validation.pendenciesByColaborador.map((pc: any, i: number) => (
+                              <div key={i} className="flex items-start gap-4 bg-card p-4 rounded-lg border border-warning/30 bg-warning/5">
+                                <div className="p-2 bg-warning/20 rounded-full shrink-0">
+                                  <AlertCircle className="w-4 h-4 text-warning-strong" />
+                                </div>
+                                <div>
+                                  <span className="text-sm font-bold text-warning-strong">Favorecido: {pc.nome}</span>
+                                  <ul className="list-disc list-inside mt-1">
+                                    {pc.pendencies.map((pend: string, j: number) => (
+                                      <li key={j} className="text-xs text-muted-foreground">{pend}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {validation.isValid && (
+                          <div className="pt-6 border-t border-border border-dashed flex flex-col sm:flex-row items-center justify-between gap-4">
+                            <div className="text-xs text-muted-foreground flex items-center gap-2 bg-card px-3 py-1.5 rounded-full border border-border">
+                              <div className="w-2 h-2 bg-success rounded-full animate-pulse" />
+                              Pronto para gerar arquivo CNAB
+                            </div>
+                            <Button className="font-bold h-12 px-8" onClick={handleGenerate} disabled={isGenerating || !contaId}>
+                              {isGenerating ? (
+                                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                              ) : (
+                                <Download className="w-4 h-4 mr-2" />
+                              )}
+                              Gerar CNAB240
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </Card>
                 </div>
               </div>
             </TabsContent>

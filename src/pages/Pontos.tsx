@@ -174,6 +174,7 @@ const Pontos = () => {
   const [lastImportSummary, setLastImportSummary] = useState<{
     novosDetectados: number;
     preCadastrosCriados: number;
+    empresasCriadas: number;
   } | null>(null);
 
   const selectedMonth = `${selectedYear}-${selectedMonthNumber}`;
@@ -471,6 +472,7 @@ const Pontos = () => {
     setLastImportSummary({
       novosDetectados: preCadastroResult.novosDetectados,
       preCadastrosCriados: preCadastroResult.preCadastrosCriados,
+      empresasCriadas: preCadastroResult.empresasCriadas,
     });
 
     await Promise.all([
@@ -481,9 +483,13 @@ const Pontos = () => {
       queryClient.invalidateQueries({ queryKey: ["operational-pulse"] }),
     ]);
 
-    toast.success(
-      `${preCadastroResult.novosDetectados} colaboradores novos detectados · ${preCadastroResult.preCadastrosCriados} pre-cadastros criados.`,
-    );
+    const parts: string[] = [];
+    parts.push(`${preCadastroResult.novosDetectados} colaboradores novos detectados`);
+    parts.push(`${preCadastroResult.preCadastrosCriados} pré-cadastros criados`);
+    if (preCadastroResult.empresasCriadas > 0) {
+      parts.push(`${preCadastroResult.empresasCriadas} empresa(s) criada(s) automaticamente`);
+    }
+    toast.success(parts.join(" · "));
   };
 
   const handleClearImportacao = async () => {
@@ -622,8 +628,13 @@ const Pontos = () => {
                   {lastImportSummary.novosDetectados} colaboradores novos detectados
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  {lastImportSummary.preCadastrosCriados} pre-cadastros criados
+                  {lastImportSummary.preCadastrosCriados} pré-cadastros criados
                 </p>
+                {lastImportSummary.empresasCriadas > 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    {lastImportSummary.empresasCriadas} empresa(s) criada(s) automaticamente
+                  </p>
+                )}
               </div>
 
               <Button variant="outline" onClick={() => navigate("/cadastros")}>
@@ -686,7 +697,7 @@ const Pontos = () => {
         description={activeImportConfig.description}
         onDownloadTemplate={
           activeImportConfig.downloadUrl
-            ? () => window.open(activeImportConfig.downloadUrl, "_blank", "noopener,noreferrer")
+            ? () => { window.open(activeImportConfig.downloadUrl, "_blank", "noopener,noreferrer"); }
             : undefined
         }
         expectedColumns={activeImportConfig.expectedColumns}

@@ -6,6 +6,7 @@ import {
   CalendarCheck,
   ChevronDown,
   ClipboardCheck,
+  CreditCard,
   Clock,
   Database,
   ExternalLink,
@@ -122,6 +123,7 @@ const groups: MenuGroup[] = [
       { icon: Wallet, label: "Central", to: "/financeiro", end: true, module: "central_financeira", pulseKey: "central_financeira" },
       { icon: TrendingUp, label: "Faturamento", to: "/financeiro/faturamento", module: "faturamento", pulseKey: "faturamento" },
       { icon: Banknote, label: "Bancário", to: "/bancario", module: "pagamentos_remessas", pulseKey: "pagamentos_remessas" },
+      { icon: CreditCard, label: "Contas Bancárias", to: "/financeiro/contas-bancarias", module: "pagamentos_remessas" },
     ],
   },
   {
@@ -254,11 +256,11 @@ export const Sidebar = () => {
 
   const userInitials = user?.user_metadata?.full_name
     ? user.user_metadata.full_name
-        .split(" ")
-        .map((name: string) => name[0])
-        .join("")
-        .toUpperCase()
-        .slice(0, 2)
+      .split(" ")
+      .map((name: string) => name[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2)
     : user?.email?.slice(0, 2).toUpperCase() || "??";
 
   return (

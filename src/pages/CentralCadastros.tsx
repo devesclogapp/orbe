@@ -1,8 +1,9 @@
-﻿import { type ElementType, type ReactNode, useEffect, useMemo, useState } from "react";
+﻿import { type ElementType, type ReactNode, useEffect, useMemo, useState, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
+  ArrowLeft,
   ArrowRight,
   Boxes,
   Building2,
@@ -489,9 +490,12 @@ const getTipoContratoByModelo = (modelo?: string) => {
 
 const CentralCadastros = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const empresaId = user?.user_metadata?.empresa_id;
+
+  const [returnToContext, setReturnToContext] = useState<"processamento-rh" | null>(null);
 
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -744,6 +748,44 @@ const CentralCadastros = () => {
     queryClient.removeQueries({ queryKey });
     await queryClient.invalidateQueries({ queryKey });
   };
+
+  useEffect(() => {
+    const targetColaboradorId = searchParams.get("colaboradorId");
+    const shouldOpenModal = searchParams.get("openModal") === "true";
+    const fromContext = searchParams.get("from");
+    const targetSection = searchParams.get("section");
+
+    if (targetColaboradorId && shouldOpenModal && colaboradores.length > 0 && !editingColaborador) {
+      const colab = colaboradores.find((c: any) => c.id === targetColaboradorId);
+      if (colab) {
+        setEditingColaborador(colab);
+        if (fromContext === "processamento-rh") {
+          setReturnToContext("processamento-rh");
+          toast.info("Ação necessária", {
+            description: "Resolva este bloqueio nesta tela para liberar o processamento.",
+            duration: 6000,
+          });
+        }
+
+        if (targetSection === "bancario") {
+          setTimeout(() => {
+            document.getElementById("dados-bancarios-section")?.scrollIntoView({ behavior: "smooth" });
+          }, 300);
+        } else if (targetSection === "contrato") {
+          setTimeout(() => {
+            document.getElementById("edit_colab_contrato_section")?.scrollIntoView({ behavior: "smooth" });
+          }, 300);
+        }
+
+        const newParams = new URLSearchParams(searchParams);
+        newParams.delete("colaboradorId");
+        newParams.delete("openModal");
+        newParams.delete("section");
+        newParams.delete("from");
+        setSearchParams(newParams, { replace: true });
+      }
+    }
+  }, [searchParams, setSearchParams, colaboradores, editingColaborador]);
 
   const validateTipoOperacaoForm = (payload: any) => {
     const nome = String(payload?.nome ?? "").trim();
@@ -3766,7 +3808,12 @@ const CentralCadastros = () => {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!editingColaborador} onOpenChange={(open) => !open && setEditingColaborador(null)}>
+      <Dialog open={!!editingColaborador} onOpenChange={(open) => {
+        if (!open) {
+          setEditingColaborador(null);
+          setReturnToContext(null);
+        }
+      }}>
         <DialogContent className="sm:max-w-[520px] max-h-[90vh]">
           <DialogHeader>
             <DialogTitle>Editar Colaborador</DialogTitle>
@@ -3774,6 +3821,25 @@ const CentralCadastros = () => {
               Atualize os dados do colaborador.
             </DialogDescription>
           </DialogHeader>
+
+          {returnToContext === "processamento-rh" && (
+            <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 -mt-2">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                <span className="text-xs font-medium text-amber-800">Complete o cadastro para revalidar</span>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-[10px] gap-1 px-2 border-amber-300 text-amber-700 hover:bg-amber-100"
+                onClick={() => navigate("/banco-horas/processamento")}
+              >
+                <ArrowLeft className="h-3 w-3" />
+                Voltar ao Processamento
+              </Button>
+            </div>
+          )}
+
           <div className="overflow-y-auto max-h-[60vh]">
             <div className="grid grid-cols-2 gap-4 py-2">
               <div className="col-span-2 space-y-1.5">
@@ -3849,7 +3915,7 @@ const CentralCadastros = () => {
                   placeholder="0,00"
                 />
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-1.5" id="edit_colab_contrato_section">
                 <Label>Tipo de contrato <span className="text-destructive">*</span></Label>
                 <Select value={editingColaborador?.tipo_contrato || "Hora"} onValueChange={(v) => setEditingColaborador({ ...editingColaborador, tipo_contrato: v })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
@@ -3902,7 +3968,7 @@ const CentralCadastros = () => {
                   </div>
                 </div>
 
-                <div className="mt-4 flex items-start justify-between gap-4">
+                <div className="mt-4 flex items-start justify-between gap-4" id="dados-bancarios-section">
                   <div>
                     <h3 className="flex items-center gap-2 font-medium text-foreground">
                       <Landmark className="h-4 w-4 text-primary" />

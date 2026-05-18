@@ -1,5 +1,5 @@
-import { useMemo, useState, useRef } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useMemo, useState, useRef, useEffect, useCallback } from "react";
+import { Link, useParams, useSearchParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, endOfMonth, startOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -8,8 +8,11 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import {
   ArrowDownRight,
+  ArrowLeft,
+  ArrowRight,
   ArrowUpRight,
   Banknote,
+  CheckCircle2,
   CalendarClock,
   ChevronRight,
   ChevronLeft,
@@ -22,10 +25,12 @@ import {
   Loader2,
   ShieldCheck,
   X,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/layout/AppShell";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -201,6 +206,19 @@ const actionMetaMap: Record<ActionType, { label: string; title: string; descript
   },
 };
 
+const AJUSTE_QUICK_ACTIONS = [
+  { label: "+ 1 dia (8h)", minutes: 480 },
+  { label: "+ Meio dia (4h)", minutes: 240 },
+  { label: "- Hora de almoço", minutes: -60 },
+];
+
+const AJUSTE_QUICK_MOTIVOS = [
+  "Abono de falta justificada (Atestado verificado)",
+  "Erro no registro do relógio (Batida dupla / Falha app)",
+  "Acordo interno de compensação excepcional aprovado",
+  "Esquecimento da marcação verificado com líder",
+];
+
 const getAvailableActions = (evento: any): Array<{ key: ActionType; label: string }> => {
   const status = getEventStatus(evento);
   const tipo = getEventType(evento);
@@ -228,9 +246,23 @@ const getAvailableActions = (evento: any): Array<{ key: ActionType; label: strin
 const ExtratoColaborador = () => {
   const { id } = useParams();
   const queryClient = useQueryClient();
-  const [dateRange, setDateRange] = useState<DateRange | undefined>({
-    from: startOfMonth(new Date()),
-    to: endOfMonth(new Date()),
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const highlightId = searchParams.get("highlight");
+  const fromContext = searchParams.get("from");
+  const contextDate = searchParams.get("data");
+  const isFromProcessamentoRH = fromContext === "processamento-rh";
+
+  const [highlightDismissed, setHighlightDismissed] = useState(false);
+  const highlightedRowRef = useRef<HTMLTableRowElement | null>(null);
+
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
+    if (contextDate) {
+      const d = new Date(`${contextDate}T00:00:00`);
+      return { from: startOfMonth(d), to: endOfMonth(d) };
+    }
+    return { from: startOfMonth(new Date()), to: endOfMonth(new Date()) };
   });
   const [actionLoading, setActionLoading] = useState<Record<string, ActionType | null>>({});
   const isExecuting = useRef(false);
@@ -417,17 +449,58 @@ const ExtratoColaborador = () => {
 
   const clearFilter = () => setDateRange(undefined);
 
+  const dismissHighlight = useCallback(() => {
+    setHighlightDismissed(true);
+    const newParams = new URLSearchParams(searchParams);
+    newParams.delete("highlight");
+    newParams.delete("data");
+    newParams.delete("from");
+    setSearchParams(newParams, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (highlightId && !highlightDismissed && highlightedRowRef.current) {
+      const timer = setTimeout(() => {
+        highlightedRowRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 400);
+      return () => clearTimeout(timer);
+    }
+  }, [highlightId, highlightDismissed, processedEventos]);
+
   return (
     <AppShell
       title="Extrato do Colaborador"
       subtitle={colaborador ? `${colaborador.nome} - Mat. ${colaborador.matricula || "Sem matricula"}` : "Carregando..."}
     >
       <div className="space-y-6">
+        {isFromProcessamentoRH && (
+          <div className="rounded-xl border border-amber-300/70 bg-amber-50/60 p-4 flex items-start gap-3">
+            <div className="rounded-lg bg-amber-100 p-2">
+              <AlertTriangle className="h-5 w-5 text-amber-600" />
+            </div>
+            <div className="flex-1 space-y-1">
+              <p className="font-semibold text-foreground text-sm">Bloqueio detectado pelo Processamento RH</p>
+              <p className="text-xs text-muted-foreground">
+                Resolva o evento destacado abaixo e volte ao Processamento RH para revalidar a aprovação da competência.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0 gap-1.5"
+              onClick={() => navigate("/banco-horas/processamento")}
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Voltar ao Processamento
+            </Button>
+          </div>
+        )}
+
         <div className="flex items-center justify-between">
           <Button variant="ghost" asChild className="pl-0 hover:bg-transparent">
-            <Link to="/banco-horas" className="flex items-center gap-2">
+            <Link to={isFromProcessamentoRH ? "/banco-horas/processamento" : "/banco-horas"} className="flex items-center gap-2">
               <ChevronLeft className="h-4 w-4" />
-              Voltar para o Painel
+              {isFromProcessamentoRH ? "Voltar ao Processamento RH" : "Voltar para o Painel"}
             </Link>
           </Button>
 
@@ -554,9 +627,21 @@ const ExtratoColaborador = () => {
                   {processedEventos.map((evento) => {
                     const Icon = evento.visual.icon;
                     const loadingAction = actionLoading[evento.id];
+                    const isHighlighted = !highlightDismissed && highlightId && (
+                      evento.id === highlightId ||
+                      evento.referencia_evento_id === highlightId ||
+                      evento.registro_ponto_id === highlightId
+                    );
 
                     return (
-                      <tr key={evento.id} className="border-t border-muted align-top hover:bg-background">
+                      <tr
+                        key={evento.id}
+                        ref={isHighlighted ? highlightedRowRef : undefined}
+                        className={cn(
+                          "border-t border-muted align-top hover:bg-background transition-all",
+                          isHighlighted && "bg-amber-50 ring-2 ring-amber-400/60 ring-inset animate-pulse",
+                        )}
+                      >
                         <td className="px-5 py-4">
                           <div className="font-medium text-foreground">{evento.displayDate}</div>
                           <div className="text-xs text-muted-foreground">
@@ -646,9 +731,9 @@ const ExtratoColaborador = () => {
         </section>
       </div>
 
-        <Dialog open={Boolean(actionDialog)} onOpenChange={(open) => !open && closeActionDialog()}>
-          <DialogContent>
-            <DialogHeader>
+      <Dialog open={Boolean(actionDialog)} onOpenChange={(open) => !open && closeActionDialog()}>
+        <DialogContent className="sm:max-w-lg max-h-[96vh] flex flex-col p-5 gap-4">
+          <DialogHeader className="shrink-0">
             <DialogTitle className="flex items-center gap-2">
               {actionDialog ? (
                 <>
@@ -662,34 +747,112 @@ const ExtratoColaborador = () => {
                 "Acao operacional"
               )}
             </DialogTitle>
-              <DialogDescription>
-                {actionDialog ? actionMetaMap[actionDialog.action].description : ""}
-              </DialogDescription>
-            </DialogHeader>
+            <DialogDescription>
+              {actionDialog ? actionMetaMap[actionDialog.action].description : ""}
+            </DialogDescription>
+          </DialogHeader>
 
           {actionDialog && (
-            <div className="space-y-4">
-              <div className="rounded-lg border border-muted bg-muted/30 p-3 text-sm">
-                <p className="font-medium text-foreground">{actionDialog.evento.displayDate}</p>
-                <p className="text-muted-foreground">
-                  Evento {actionDialog.evento.displayType} · saldo atual {formatBalance(totalMinutos)}
-                </p>
-                <p className="text-muted-foreground">
-                  Referencia selecionada: {actionDialog.evento.displayMinutes}
-                </p>
-              </div>
+            <div className="flex-1 overflow-y-auto pr-1 space-y-3">
+              {actionDialog.action !== "ajuste_manual" && (
+                <div className="rounded-lg border border-muted bg-muted/30 p-2.5 text-sm shrink-0">
+                  <p className="font-medium text-foreground">{actionDialog.evento.displayDate}</p>
+                  <p className="text-muted-foreground">
+                    Evento {actionDialog.evento.displayType} · saldo atual {formatBalance(totalMinutos)}
+                  </p>
+                  <p className="text-muted-foreground">
+                    Referencia selecionada: {actionDialog.evento.displayMinutes}
+                  </p>
+                </div>
+              )}
 
               {actionDialog.action === "ajuste_manual" && (
-                <div className="space-y-2">
-                  <Label htmlFor="bh_action_minutes">Minutos do ajuste</Label>
-                  <Input
-                    id="bh_action_minutes"
-                    type="number"
-                    step="1"
-                    value={actionMinutes}
-                    onChange={(event) => setActionMinutes(event.target.value)}
-                    placeholder="Ex: 30 ou -15"
-                  />
+                <div className="space-y-4">
+                  {(() => {
+                    const evtMins = getEventMinutes(actionDialog.evento);
+                    const needsZero = evtMins < 0 ? Math.abs(evtMins) : -evtMins;
+                    if (needsZero === 0) return null;
+                    return (
+                      <div
+                        className="rounded-lg border border-emerald-200 bg-emerald-50/70 p-3 flex flex-col gap-2 cursor-pointer hover:border-emerald-300 hover:shadow-sm transition-all group"
+                        onClick={() => setActionMinutes(String(needsZero))}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 text-emerald-700">
+                            <CheckCircle2 className="h-4 w-4" />
+                            <span className="text-[10px] font-bold uppercase tracking-wider">Recomendado pelo sistema</span>
+                          </div>
+                          <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 border-none px-2 group-hover:bg-emerald-200 transition-colors">
+                            Zerar pêndencia ({needsZero > 0 ? '+' : ''}{needsZero}m)
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-emerald-800/80 font-medium leading-snug">
+                          Aplica a exata contrapartida na matriz de cálculo. A resolução desta operação estabiliza o evento e o libera automaticamente da fila operacional.
+                        </p>
+                      </div>
+                    );
+                  })()}
+
+                  <div className="space-y-1.5 pt-1">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="bh_action_minutes">Ou informe o tempo personalizado</Label>
+                      {actionMinutes && (
+                        <div className="text-xs font-semibold text-primary/80 bg-primary/10 px-2 py-0.5 rounded">
+                          {formatMinutes(Number(actionMinutes) || 0)}
+                          {Math.abs(Number(actionMinutes) || 0) === 480 ? " (≈ 1 jornada)" : ""}
+                        </div>
+                      )}
+                    </div>
+                    <Input
+                      id="bh_action_minutes"
+                      type="number"
+                      step="1"
+                      value={actionMinutes}
+                      onChange={(event) => setActionMinutes(event.target.value)}
+                      placeholder="Ex: 480 (8h) ou -60 (-1h)"
+                      className="font-mono text-base"
+                    />
+
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {AJUSTE_QUICK_ACTIONS.map(qa => (
+                        <Badge
+                          key={qa.label}
+                          variant="outline"
+                          className="cursor-pointer hover:bg-muted transition-colors"
+                          onClick={() => setActionMinutes(String(qa.minutes))}
+                        >
+                          {qa.label}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-sky-200 bg-sky-50/60 p-3 text-sm">
+                    <h4 className="font-semibold text-sky-900 mb-2.5 text-[10px] uppercase tracking-widest">Impacto Projetado Operacional</h4>
+
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-sky-800 text-xs">
+                        <span>Ponto processado na data:</span>
+                        <div className="flex items-center gap-2 font-mono">
+                          <span className="opacity-60 line-through decoration-rose-400/50">{formatMinutes(getEventMinutes(actionDialog.evento))}</span>
+                          <ArrowRight className="h-3 w-3 opacity-60" />
+                          <span className="font-semibold px-1 rounded bg-sky-100 text-sky-900">
+                            {formatMinutes(getEventMinutes(actionDialog.evento) + (Number(actionMinutes) || 0))}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between text-sky-800 text-[11px] border-t border-sky-100 pt-1.5">
+                        <span>Saldo geral acumulado:</span>
+                        <div className="flex items-center gap-2 font-mono">
+                          <span className="opacity-60">{formatBalance(totalMinutos)}</span>
+                          <ArrowRight className="h-3 w-3 opacity-60" />
+                          <span className="font-bold">
+                            {formatBalance(totalMinutos + (Number(actionMinutes) || 0))}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -706,17 +869,39 @@ const ExtratoColaborador = () => {
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="bh_action_observation">Observacao</Label>
+                <Label htmlFor="bh_action_observation">Observacao para Auditoria</Label>
                 <Textarea
                   id="bh_action_observation"
                   value={actionObservation}
                   onChange={(event) => setActionObservation(event.target.value)}
-                  placeholder="Descreva o motivo da acao para auditoria."
-                  rows={4}
+                  placeholder="Descreva o motivo da acao obrigatoriamente."
+                  rows={actionDialog.action === "ajuste_manual" ? 2 : 4}
+                  className="resize-none"
                 />
+
+                {actionDialog.action === "ajuste_manual" && (
+                  <div className="pt-1 select-none">
+                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-1.5 block">Justificativas Rápidas:</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {AJUSTE_QUICK_MOTIVOS.map(txt => (
+                        <Badge
+                          key={txt}
+                          variant="outline"
+                          className="cursor-pointer text-[10px] py-0.5 hover:bg-primary/5 transition-colors border-dashed"
+                          onClick={() => {
+                            const current = actionObservation.trim();
+                            setActionObservation(current ? `${current} - ${txt}` : txt);
+                          }}
+                        >
+                          + {txt}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {actionMetaMap[actionDialog.action].examples && actionMetaMap[actionDialog.action].examples.length > 0 && (
+              {actionDialog.action !== "ajuste_manual" && actionMetaMap[actionDialog.action].examples && actionMetaMap[actionDialog.action].examples.length > 0 && (
                 <div className="rounded-lg border border-primary/10 bg-primary/5 p-3 text-sm">
                   <p className="mb-2 font-medium text-primary">Exemplos de uso:</p>
                   <ul className="space-y-2">
@@ -735,7 +920,7 @@ const ExtratoColaborador = () => {
             </div>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="shrink-0 pt-2">
             <Button
               variant="outline"
               onClick={closeActionDialog}

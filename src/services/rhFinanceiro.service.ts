@@ -1,12 +1,24 @@
 import { supabase } from "@/lib/supabase";
 
+type BloqueioItem = {
+  id: string;
+  nome: string;
+  motivo: string;
+  categoria: string;
+  rota: string;
+  acao: string;
+  colaborador_id?: string | null;
+  registro_ponto_id?: string | null;
+  data_referencia?: string | null;
+};
+
 type ApprovalBlockers = {
   competencia: string;
   empresaId: string;
   empresaNome: string | null;
   impedimentos: string[];
-  bloqueiosCriticos: Array<{ id: string; nome: string; motivo: string; categoria: string }>;
-  avisosOperacionais: Array<{ id: string; nome: string; motivo: string; categoria: string }>;
+  bloqueiosCriticos: BloqueioItem[];
+  avisosOperacionais: BloqueioItem[];
   pendenciasCadastrais: Array<{ id: string; nome: string; motivo: string }>;
   inconsistenciasAbertas: Array<{ id: string; nome: string; motivo: string }>;
   colaboradoresBloqueados: Array<{ id: string; nome: string; motivo: string }>;
@@ -16,6 +28,11 @@ type ApprovalBlockers = {
     pendenciasCadastrais: number;
     inconsistenciasAbertas: number;
     colaboradoresBloqueados: number;
+    financeiroPrevisto?: {
+      folhaBase: number;
+      variaveis: number;
+      bancoHoras: number;
+    };
   };
 };
 
@@ -152,7 +169,7 @@ const loadCompetenciaContext = async (tenantId: string, empresaId: string, compe
         .lte("data", endDate),
       supabase
         .from("colaboradores")
-        .select("id, nome, status, status_cadastro, cadastro_provisorio, tipo_colaborador, empresa_id, valor_hora, salario_base, valor_base")
+        .select("id, nome, status, status_cadastro, cadastro_provisorio, tipo_colaborador, empresa_id, valor_hora, salario_base, valor_base, valor_diaria, modelo_calculo, tipo_contrato, gera_faturamento")
         .eq("tenant_id", tenantId)
         .eq("empresa_id", empresaId),
       (supabase as any)
@@ -209,6 +226,36 @@ const buildFolhaVariavelItems = (pontos: any[]) => {
         valor_calculado: Number(valorCalculado.toFixed(2)),
         origem_evento: "registros_ponto",
         referencia_evento_id: ponto.id,
+        status: "PENDENTE",
+      });
+    }
+  }
+
+  return items;
+};
+
+const buildFolhaBaseItems = (colaboradores: any[], competencia: string) => {
+  const items: any[] = [];
+  
+  for (const colaborador of colaboradores) {
+    const isMensal = colaborador.modelo_calculo === "CLT_MENSAL" || String(colaborador.tipo_contrato).toLowerCase() === "mensal";
+    
+    if (
+      String(colaborador.status).toLowerCase() === "ativo" &&
+      colaborador.gera_faturamento === true &&
+      isMensal &&
+      safeNumber(colaborador.valor_base) > 0
+    ) {
+      items.push({
+        colaborador_id: colaborador.id,
+        nome_colaborador: colaborador.nome || "Colaborador sem nome",
+        tipo_evento: "SALARIO_BASE",
+        descricao: `Salário base competência ${competencia.split("-")[1]}/${competencia.split("-")[0]}`,
+        minutos: 0,
+        horas: 0,
+        valor_calculado: safeNumber(colaborador.valor_base),
+        origem_evento: "FOLHA_BASE",
+        referencia_evento_id: colaborador.id,
         status: "PENDENTE",
       });
     }
@@ -333,8 +380,8 @@ class RHFinanceiroServiceClass {
     );
 
     const inconsistenciasAbertasMap = new Map<string, { id: string; nome: string; motivo: string }>();
-    const avisosOperacionaisMap = new Map<string, { id: string; nome: string; motivo: string; categoria: string }>();
-    const bloqueiosCriticosMap = new Map<string, { id: string; nome: string; motivo: string; categoria: string }>();
+    const avisosOperacionaisMap = new Map<string, BloqueioItem>();
+    const bloqueiosCriticosMap = new Map<string, BloqueioItem>();
     const registroPontoComBloqueio = new Set<string>();
 
     for (const inconsistencia of inconsistencias || []) {
@@ -350,14 +397,37 @@ class RHFinanceiroServiceClass {
         avisosOperacionaisMap.set(inconsistencia.id, {
           ...itemBase,
           categoria: "Aviso do motor",
+          rota: "/banco-horas/processamento",
+          acao: "Verificar na aba Eventos do Motor",
+          colaborador_id: inconsistencia.colaborador_id ?? null,
+          registro_ponto_id: inconsistencia.registro_ponto_id ?? null,
         });
         continue;
       }
+
+      const colabIdForRoute = inconsistencia.colaborador_id;
+      const pontoData = colabIdForRoute
+        ? pontosDoMes.find((p: any) => p.id === inconsistencia.registro_ponto_id)?.data
+        : null;
+      const extratoQs = [
+        inconsistencia.registro_ponto_id ? `highlight=${inconsistencia.registro_ponto_id}` : null,
+        pontoData ? `data=${pontoData}` : null,
+        `from=processamento-rh`,
+      ].filter(Boolean).join("&");
 
       inconsistenciasAbertasMap.set(inconsistencia.id, itemBase);
       bloqueiosCriticosMap.set(inconsistencia.id, {
         ...itemBase,
         categoria: "Inconsistência crítica",
+        rota: colabIdForRoute
+          ? `/banco-horas/extrato/${colabIdForRoute}?${extratoQs}`
+          : "/inconsistencias",
+        acao: colabIdForRoute
+          ? "Abrir extrato do colaborador e tratar o evento"
+          : "Resolver na tela de Inconsistências",
+        colaborador_id: colabIdForRoute ?? null,
+        registro_ponto_id: inconsistencia.registro_ponto_id ?? null,
+        data_referencia: pontoData ?? null,
       });
 
       if (inconsistencia.registro_ponto_id) {
@@ -367,6 +437,13 @@ class RHFinanceiroServiceClass {
 
     for (const ponto of pontosDoMes.filter((item: any) => item.status_processamento === "inconsistente")) {
       if (registroPontoComBloqueio.has(ponto.id)) continue;
+
+      const pontoColabId = ponto.colaborador_id;
+      const pontoExtratoQs = [
+        `highlight=${ponto.id}`,
+        ponto.data ? `data=${ponto.data}` : null,
+        `from=processamento-rh`,
+      ].filter(Boolean).join("&");
 
       inconsistenciasAbertasMap.set(ponto.id, {
         id: ponto.id,
@@ -378,14 +455,28 @@ class RHFinanceiroServiceClass {
         nome: ponto.nome_colaborador || "Colaborador sem nome",
         motivo: "registro de ponto ainda marcado como inconsistente",
         categoria: "Conflito operacional",
+        rota: pontoColabId
+          ? `/banco-horas/extrato/${pontoColabId}?${pontoExtratoQs}`
+          : "/banco-horas/processamento",
+        acao: pontoColabId
+          ? "Abrir extrato e revisar o registro inconsistente"
+          : "Revisar na aba Inconsistências deste processamento",
+        colaborador_id: pontoColabId ?? null,
+        registro_ponto_id: ponto.id,
+        data_referencia: ponto.data ?? null,
       });
     }
 
     for (const item of pendenciasCadastrais) {
+      const hasBankIssue = !(colaboradoresMap.get(item.id) as any)?.banco_codigo;
+      const section = hasBankIssue ? "bancario" : "contrato";
       bloqueiosCriticosMap.set(`pendencia-${item.id}`, {
         ...item,
         id: `pendencia-${item.id}`,
         categoria: "Pendência cadastral",
+        rota: `/cadastros?colaboradorId=${item.id}&openModal=true&section=${section}&from=processamento-rh`,
+        acao: "Completar cadastro na Central de Cadastros",
+        colaborador_id: item.id,
       });
     }
 
@@ -394,6 +485,9 @@ class RHFinanceiroServiceClass {
         ...item,
         id: `bloqueado-${item.id}`,
         categoria: "Colaborador bloqueado",
+        rota: `/cadastros?colaboradorId=${item.id}&openModal=true&from=processamento-rh`,
+        acao: "Ativar ou desbloquear na Central de Cadastros",
+        colaborador_id: item.id,
       });
     }
 
@@ -403,6 +497,8 @@ class RHFinanceiroServiceClass {
         nome: "Logs do processamento",
         motivo: `${logs.length} execucao(oes) registrada(s) para a competencia, apenas para auditoria operacional.`,
         categoria: "Logs",
+        rota: "/banco-horas/processamento",
+        acao: "Visualizar na aba Logs",
       });
     }
 
@@ -436,6 +532,11 @@ class RHFinanceiroServiceClass {
         pendenciasCadastrais: pendenciasCadastrais.length,
         inconsistenciasAbertas: inconsistenciasAbertasMap.size,
         colaboradoresBloqueados: colaboradoresBloqueados.length,
+        financeiroPrevisto: {
+          folhaBase: buildFolhaBaseItems(colaboradores, competencia).length,
+          variaveis: buildFolhaVariavelItems(pontosDoMes).length,
+          bancoHoras: await buildBancoHorasItems(tenantId, empresaId, competencia, colaboradores).then(items => items.length).catch(() => 0),
+        }
       },
     };
   }
@@ -450,12 +551,47 @@ class RHFinanceiroServiceClass {
     const { pontos, colaboradores } = await loadCompetenciaContext(tenantId, empresaId, competencia);
 
     const tiposParaCriar = [
+      { tipo: "FOLHA_BASE", items: buildFolhaBaseItems(colaboradores, competencia) },
       { tipo: "FOLHA_VARIAVEL", items: buildFolhaVariavelItems(pontos) },
       { tipo: "BANCO_HORAS", items: await buildBancoHorasItems(tenantId, empresaId, competencia, colaboradores) },
     ];
 
     if (tiposParaCriar.every((entry) => entry.items.length === 0)) {
-      throw new Error("Nenhum item financeiro elegivel foi encontrado para entregar ao Financeiro nesta competencia.");
+      const ineligibles: Array<{ nome: string; problemas: string[] }> = [];
+
+      for (const colab of colaboradores) {
+        const motivos: string[] = [];
+        
+        if (!colab.valor_base && !colab.salario_base && !colab.valor_hora && !colab.valor_diaria) {
+          motivos.push("Sem valor base");
+        }
+        if (!colab.modelo_calculo) {
+          motivos.push("Sem modelo cálculo");
+        }
+        if (!colab.tipo_contrato) {
+          motivos.push("Sem tipo de contrato");
+        }
+        if (!colab.gera_faturamento) {
+          motivos.push("Faturamento desabilitado");
+        }
+        if (colab.status && colab.status !== "ativo") {
+          motivos.push(`Colaborador ${colab.status}`);
+        }
+
+        if (motivos.length > 0) {
+          ineligibles.push({ nome: colab.nome || "Desconhecido", problemas: motivos });
+        } else {
+          ineligibles.push({ nome: colab.nome || "Desconhecido", problemas: ["Sem ocorrências operacionais monetizadas e sem base mensal."] });
+        }
+      }
+
+      const payload = {
+        code: "FINANCIAL_INELIGIBILITY",
+        message: "Nenhum colaborador apto para geração financeira. Verifique o valor base salarial, modelo de cálculo, tipo de contrato e regras financeiras.",
+        details: ineligibles,
+      };
+
+      throw new Error(JSON.stringify(payload));
     }
 
     const lotesCriados: any[] = [];
@@ -479,7 +615,51 @@ class RHFinanceiroServiceClass {
 
       if (loteExistenteError) throw loteExistenteError;
       if (loteExistente) {
-        lotesExistentes.push(loteExistente);
+        if (!["AGUARDANDO_FINANCEIRO", "DEVOLVIDO_RH"].includes(loteExistente.status)) {
+          lotesExistentes.push(loteExistente);
+          await appendLoteHistorico({
+            tenantId,
+            loteId: loteExistente.id,
+            userId,
+            userName,
+            acao: "APROVOU_RH",
+            statusAnterior: loteExistente.status || RH_LOTE_STATUS,
+            statusNovo: loteExistente.status || RH_LOTE_STATUS,
+            observacao: "RH aprovou competencia. Lote ja existente mantido pois já avançou na esteira.",
+          });
+          continue;
+        }
+
+        const resumo = summarizeItems(entry.items);
+
+        // Delete old items and update lote totals
+        await (supabase as any).from("rh_financeiro_lote_itens").delete().eq("lote_id", loteExistente.id);
+        await (supabase as any).from("rh_financeiro_lotes").update({
+          total_colaboradores: resumo.totalColaboradores,
+          valor_total: resumo.valorTotal,
+          status: RH_LOTE_STATUS,
+          updated_at: new Date().toISOString()
+        }).eq("id", loteExistente.id);
+
+        const itensPayload = entry.items.map((item) => ({
+          lote_id: loteExistente.id,
+          tenant_id: tenantId,
+          colaborador_id: item.colaborador_id,
+          nome_colaborador: item.nome_colaborador,
+          tipo_evento: item.tipo_evento,
+          minutos: item.minutos,
+          horas: item.horas,
+          valor_calculado: item.valor_calculado,
+          origem_evento: item.origem_evento,
+          referencia_evento_id: item.referencia_evento_id,
+          status: "PENDENTE",
+        }));
+
+        if (itensPayload.length > 0) {
+          const { error: itensError } = await (supabase as any).from("rh_financeiro_lote_itens").insert(itensPayload);
+          if (itensError) throw itensError;
+        }
+
         await appendLoteHistorico({
           tenantId,
           loteId: loteExistente.id,
@@ -487,9 +667,15 @@ class RHFinanceiroServiceClass {
           userName,
           acao: "APROVOU_RH",
           statusAnterior: loteExistente.status || RH_LOTE_STATUS,
-          statusNovo: loteExistente.status || RH_LOTE_STATUS,
-          observacao: "RH aprovou competencia. Lote ja existente mantido para analise financeira.",
+          statusNovo: RH_LOTE_STATUS,
+          observacao: "RH reprovou e/ou atualizou competencia substituindo os itens.",
         });
+
+        lotesExistentes.push({...loteExistente, itens_count: itensPayload.length});
+        totalItens += itensPayload.length;
+        totalColaboradores += resumo.totalColaboradores;
+        valorTotalGeral += resumo.valorTotal;
+
         continue;
       }
 

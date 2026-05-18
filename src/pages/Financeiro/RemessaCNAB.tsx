@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -55,12 +56,14 @@ const RemessaCNAB = () => {
         queryFn: () => EmpresaService.getAll()
     });
 
-    // Fetch Contas da Empresa selecionada
+    // Fetch Contas CNAB-elegíveis da Empresa selecionada
     const { data: contas, isLoading: isLoadingContas } = useQuery({
-        queryKey: ["contas", empresaId],
-        queryFn: () => empresaId ? ContaBancariaService.getByEmpresa(empresaId) : Promise.resolve([]),
+        queryKey: ["contas-cnab", empresaId],
+        queryFn: () => empresaId ? ContaBancariaService.getElegiveisParaCnab(empresaId) : Promise.resolve([]),
         enabled: !!empresaId
     });
+
+    const navigate = useNavigate();
 
     const handleValidate = async () => {
         if (!competencia) return toast.error("Selecione a competência");
@@ -70,7 +73,7 @@ const RemessaCNAB = () => {
         try {
             // Pequeno delay para feedback visual de 'trabalhando'
             await new Promise(resolve => setTimeout(resolve, 800));
-            const res = await CNABService.validateRemessa(competencia, empresaId);
+            const res = await CNABService.validateRemessa(competencia, empresaId, contaId);
             setValidation(res);
             if (res.isValid) {
                 toast.success("Remessa validada com sucesso!");
@@ -186,16 +189,26 @@ const RemessaCNAB = () => {
                                     </SelectTrigger>
                                     <SelectContent>
                                         {contas?.length === 0 ? (
-                                            <div className="p-4 text-center text-xs text-muted-foreground">Nenhuma conta cadastrada</div>
+                                            <div className="p-4 text-center text-xs text-muted-foreground">Nenhuma conta elegível para CNAB</div>
                                         ) : (
                                             contas?.map(cta => (
                                                 <SelectItem key={cta.id} value={cta.id}>
-                                                    {cta.banco} - Ag: {cta.agencia} Cc: {cta.conta}
+                                                    {cta.banco_nome || cta.banco_codigo} - Ag: {cta.agencia} Cc: {cta.conta}{cta.conta_digito ? `-${cta.conta_digito}` : ''}
                                                 </SelectItem>
                                             ))
                                         )}
                                     </SelectContent>
                                 </Select>
+                                {empresaId && !isLoadingContas && (contas?.length ?? 0) === 0 && (
+                                    <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-xs flex items-center justify-between gap-2">
+                                        <span className="text-warning-strong">
+                                            Nenhuma conta habilitada para CNAB.
+                                        </span>
+                                        <Button variant="outline" size="sm" className="shrink-0 text-xs" onClick={() => navigate("/financeiro/contas-bancarias")}>
+                                            Cadastrar conta
+                                        </Button>
+                                    </div>
+                                )}
                             </div>
 
                             <Button
