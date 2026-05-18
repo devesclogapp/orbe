@@ -52,19 +52,17 @@ async function fetchLoteData(loteId: string, contaBancariaId?: string, rhLoteId?
     conta = data;
   }
 
-  let faturas = [];
+  let faturas: any[] = [];
   
   if (rhLoteId) {
+    // Banking data lives directly on colaboradores — no separate dados_bancarios table
     const { data: itensRh, error } = await supabase
       .from('rh_financeiro_lote_itens')
       .select(`
         id, valor_calculado,
         colaboradores (
           id, nome, cpf,
-          dados_bancarios (
-            banco, agencia, digito_agencia, conta, digito_conta, tipo_conta,
-            endereco, numero, cidade, cep, estado
-          )
+          banco_codigo, agencia, agencia_digito, conta, digito_conta, tipo_conta
         )
       `)
       .eq('lote_id', rhLoteId);
@@ -83,10 +81,7 @@ async function fetchLoteData(loteId: string, contaBancariaId?: string, rhLoteId?
         id, valor, competencia,
         colaboradores (
           id, nome, cpf,
-          dados_bancarios (
-            banco, agencia, digito_agencia, conta, digito_conta, tipo_conta,
-            endereco, numero, cidade, cep, estado
-          )
+          banco_codigo, agencia, agencia_digito, conta, digito_conta, tipo_conta
         )
       `)
       .eq('lote_remessa_id', loteId)
@@ -202,15 +197,21 @@ export class CNAB240BBWriter {
     let sequencialLote = 1;
 
     for (const fatura of faturas) {
-      const col = (fatura as Record<string, unknown>).colaboradores as Record<string, unknown> | null;
-      const dados = col?.dados_bancarios as Record<string, string> | null;
+      const col = (fatura as Record<string, unknown>).colaboradores as Record<string, any> | null;
 
       if (!col) {
         inconsistencias.push(`Fatura ${(fatura as Record<string, string>).id?.substring(0, 8)} sem colaborador vinculado.`);
         continue;
       }
 
-      if (!dados?.banco || !dados?.agencia || !dados?.conta) {
+      // Banking data is stored directly on colaboradores (flat columns)
+      const bancoCodigo = String(col.banco_codigo ?? '');
+      const agencia = String(col.agencia ?? '');
+      const agenciaDigito = String(col.agencia_digito ?? '0');
+      const contaNum = String(col.conta ?? '');
+      const digitoConta = String(col.digito_conta ?? '0');
+
+      if (!bancoCodigo || !agencia || !contaNum) {
         inconsistencias.push(`Colaborador ${col.nome} sem dados bancários completos.`);
         continue;
       }
@@ -229,11 +230,11 @@ export class CNAB240BBWriter {
           SegmentoA.generate({
             loteId: 1,
             sequencialRegistro: sequencialLote++,
-            bancoFavorecido: dados.banco,
-            agenciaFavorecido: dados.agencia,
-            digitoAgenciaFavorecido: dados.digito_agencia ?? '0',
-            contaFavorecido: dados.conta,
-            digitoContaFavorecido: dados.digito_conta ?? '0',
+            bancoFavorecido: bancoCodigo,
+            agenciaFavorecido: agencia,
+            digitoAgenciaFavorecido: agenciaDigito,
+            contaFavorecido: contaNum,
+            digitoContaFavorecido: digitoConta,
             nomeFavorecido: String(col.nome ?? 'FAVORECIDO'),
             seuNumero: `PGT${(fatura as Record<string, string>).id?.substring(0, 8).toUpperCase() ?? '00000000'}`,
             dataPagamento: now,
@@ -250,11 +251,11 @@ export class CNAB240BBWriter {
             loteId: 1,
             sequencialRegistro: sequencialLote++,
             cpfCnpjFavorecido: String(col.cpf ?? '').replace(/\D/g, ''),
-            enderecoFavorecido: dados.endereco ?? '',
-            numeroFavorecido: dados.numero ?? '',
-            cidadeFavorecido: dados.cidade ?? '',
-            cepFavorecido: dados.cep ?? '',
-            estadoFavorecido: dados.estado ?? '',
+            enderecoFavorecido: '',
+            numeroFavorecido: '',
+            cidadeFavorecido: '',
+            cepFavorecido: '',
+            estadoFavorecido: '',
           })
         );
       } catch (e: unknown) {
