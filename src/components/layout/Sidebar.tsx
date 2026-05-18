@@ -18,7 +18,6 @@ import {
   Scale,
   Settings,
   Shield,
-  TrendingUp,
   UserCheck,
   Wallet,
   Wrench,
@@ -120,8 +119,7 @@ const groups: MenuGroup[] = [
     label: "Financeiro",
     stageKey: "financeiro",
     items: [
-      { icon: Wallet, label: "Central", to: "/financeiro", end: true, module: "central_financeira", pulseKey: "central_financeira" },
-      { icon: TrendingUp, label: "Faturamento", to: "/financeiro/faturamento", module: "faturamento", pulseKey: "faturamento" },
+      { icon: Wallet, label: "Central Financeira", to: "/financeiro", end: true, module: "central_financeira", pulseKey: "central_financeira" },
       { icon: Banknote, label: "Bancário", to: "/bancario", module: "pagamentos_remessas", pulseKey: "pagamentos_remessas" },
       { icon: CreditCard, label: "Contas Bancárias", to: "/financeiro/contas-bancarias", module: "pagamentos_remessas" },
     ],

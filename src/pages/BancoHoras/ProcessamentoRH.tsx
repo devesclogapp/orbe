@@ -39,6 +39,7 @@ import { ColaboradorService, EmpresaService } from "@/services/base.service";
 import { BHRegraService } from "@/services/v4.service";
 import { RHFinanceiroService } from "@/services/rhFinanceiro.service";
 import { processRhPeriod, reprocessRhPeriod, rhProcessingUtils } from "@/services/rhProcessing.service";
+import { buildFolhaVariavelPipeline, useOperationalPipeline } from "@/contexts/OperationalPipelineContext";
 
 const ENGINE_EVENT_TYPES = new Set([
   "motor_regra_aplicada",
@@ -79,6 +80,7 @@ const ProcessamentoRH = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { tenantId } = useTenant();
+  const { openPipeline } = useOperationalPipeline();
   const [selectedEmpresa, setSelectedEmpresa] = useState("all");
   const [selectedMonth, setSelectedMonth] = useState(format(new Date(), "yyyy-MM"));
   const [searchTerm, setSearchTerm] = useState("");
@@ -392,6 +394,16 @@ const ProcessamentoRH = () => {
 
       setApprovalModalOpen(false);
       setApprovalValidation(null);
+
+      // Trigger Pipeline Modal
+      const empresaNome = (empresas as any[]).find((e) => e.id === selectedEmpresa)?.nome || "Empresa";
+      openPipeline(
+        buildFolhaVariavelPipeline({
+          competencia: selectedMonth,
+          empresa: empresaNome,
+          currentStep: "envio_financeiro",
+        })
+      );
     } catch (error: any) {
       try {
         const parsed = JSON.parse(error.message);
@@ -441,6 +453,20 @@ const ProcessamentoRH = () => {
           parts.push(`${result.totalInconsistencias} inconsistência(s)`);
         }
         toast.success(`Processamento concluído: ${parts.join(" · ")}`);
+
+        // Trigger Pipeline Modal if successful
+        const empresaNome =
+          selectedEmpresa === "all"
+            ? "Todas as Empresas"
+            : (empresas as any[]).find((e) => e.id === selectedEmpresa)?.nome || "Empresa";
+
+        openPipeline(
+          buildFolhaVariavelPipeline({
+            competencia: selectedMonth,
+            empresa: empresaNome,
+            currentStep: "rh_processado",
+          })
+        );
       }
 
       setProcessModalOpen(false);

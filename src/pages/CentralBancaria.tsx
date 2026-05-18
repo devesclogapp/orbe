@@ -45,6 +45,7 @@ import { EmpresaService } from "@/services/base.service";
 import { CNAB240BBWriter } from "@/services/cnab/CNAB240BBWriter";
 import { CNABService, ContaBancariaService, CnabRemessaArquivoService } from "@/services/financial.service";
 import { RHFinanceiroService } from "@/services/rhFinanceiro.service";
+import { buildFolhaVariavelPipeline, useOperationalPipeline } from "@/contexts/OperationalPipelineContext";
 
 const REQUIRE_RH_LOTE_FOR_CNAB = String(import.meta.env.VITE_REQUIRE_RH_LOTE_FOR_CNAB || "false").toLowerCase() === "true";
 
@@ -80,6 +81,7 @@ const statusBadge = (status: string) => {
 
 const CentralBancaria = () => {
   const navigate = useNavigate();
+  const { openPipeline } = useOperationalPipeline();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [competencia, setCompetencia] = useState(searchParams.get("competencia") || "");
@@ -293,6 +295,15 @@ const CentralBancaria = () => {
       }
 
       queryClient.invalidateQueries({ queryKey: ["cnab-remessas-arquivos"] });
+
+      const empresaNome = empresas.find((e) => e.id === empresaId)?.nome || "Empresa";
+      openPipeline(
+        buildFolhaVariavelPipeline({
+          competencia: competencia,
+          empresa: empresaNome,
+          currentStep: "cnab"
+        })
+      );
     } catch (error: any) {
       toast.error(error?.message || "Erro ao gerar arquivo");
     } finally {

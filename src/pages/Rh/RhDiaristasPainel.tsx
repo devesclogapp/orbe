@@ -320,10 +320,6 @@ const RhDiaristasPainel = () => {
                 empresa_id: snapshotDb.empresa_id as string
             };
 
-                valor_calculado: payload.valor_calculado,
-                codigo_marcacao: payload.codigo_marcacao
-            });
-
             // ── PASSO 2: Buscar dados do lote do DB (não do cache) para auditoria ─
             let loteDb: { id: string; periodo_inicio: string; periodo_fim: string } | null = null;
 
@@ -928,50 +924,50 @@ const RhDiaristasPainel = () => {
                             </Button>
                             {/* C5: desabilitado baseado no rawEmAberto (sem filtros) + hint de explicação */}
                             {/* UX: cor amber/warning para diferenciar de ação primária comum */}
-                                                            {/* Bloqueio de fechamento se modo admin */}
-                                                            {!(loteEmCorrecaoAdmin && !isAdmin && !isRh) && !periodoBloqueado && (
-                                                                <div className="relative group">
-                                                                    <Button
-                                                                        size="sm"
-                                                                        className={cn(
-                                                                            "h-8 font-bold transition-colors",
-                                                                            rawEmAberto > 0
-                                                                                ? "bg-amber-600 hover:bg-amber-700 text-white"
-                                                                                : "bg-muted text-muted-foreground cursor-not-allowed"
-                                                                        )}
-                                                                        onClick={() => setOpenFechamento(true)}
-                                                                        disabled={rawEmAberto === 0}
-                                                                    >
-                                                                        <Lock className="h-3.5 w-3.5 mr-1" /> Fechar período
-                                                                        {rawEmAberto > 0 && (
-                                                                            <span className="ml-1.5 bg-white/20 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                                                                                {rawEmAberto}
-                                                                            </span>
-                                                                        )}
-                                                                    </Button>
-                                                                    {rawEmAberto === 0 && (
-                                                                        <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block w-56 bg-popover border border-border rounded-lg shadow-lg p-2.5 text-xs text-muted-foreground z-50">
-                                                                            Nenhum lançamento <strong>em aberto</strong> no período selecionado.
-                                                                            {temFiltroAtivo && " (Você tem filtros ativos — limpe-os para ver todos.)"}
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            )}
+                            {/* Bloqueio de fechamento se modo admin */}
+                            {!(loteEmCorrecaoAdmin && !isAdmin && !isRh) && !periodoBloqueado && (
+                                <div className="relative group">
+                                    <Button
+                                        size="sm"
+                                        className={cn(
+                                            "h-8 font-bold transition-colors",
+                                            rawEmAberto > 0
+                                                ? "bg-amber-600 hover:bg-amber-700 text-white"
+                                                : "bg-muted text-muted-foreground cursor-not-allowed"
+                                        )}
+                                        onClick={() => setOpenFechamento(true)}
+                                        disabled={rawEmAberto === 0}
+                                    >
+                                        <Lock className="h-3.5 w-3.5 mr-1" /> Fechar período
+                                        {rawEmAberto > 0 && (
+                                            <span className="ml-1.5 bg-white/20 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                                                {rawEmAberto}
+                                            </span>
+                                        )}
+                                    </Button>
+                                    {rawEmAberto === 0 && (
+                                        <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block w-56 bg-popover border border-border rounded-lg shadow-lg p-2.5 text-xs text-muted-foreground z-50">
+                                            Nenhum lançamento <strong>em aberto</strong> no período selecionado.
+                                            {temFiltroAtivo && " (Você tem filtros ativos — limpe-os para ver todos.)"}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
 
-                                     {/* Banner: Reabertura Administrativa ativa - Visível apenas para não-admin/rh */}
-                                    {loteEmCorrecaoAdmin && !isAdmin && !isRh && (
-                                        <div className="bg-red-50 border border-red-200 p-3 rounded-md mb-4">
-                                            <p className="text-sm text-red-800 font-semibold flex items-center gap-2">
-                                                <Lock className="h-4 w-4" />
-                                                Período em revisão administrativa
-                                            </p>
-                                            <p className="text-xs text-red-700/80 mt-1">
-                                                Este período está sendo ajustado pelo RH/Admin. O fechamento está bloqueado.
-                                            </p>
-                                        </div>
-                                    )}
+                    {/* Banner: Reabertura Administrativa ativa - Visível apenas para não-admin/rh */}
+                    {loteEmCorrecaoAdmin && !isAdmin && !isRh && (
+                        <div className="bg-red-50 border border-red-200 p-3 rounded-md mb-4">
+                            <p className="text-sm text-red-800 font-semibold flex items-center gap-2">
+                                <Lock className="h-4 w-4" />
+                                Período em revisão administrativa
+                            </p>
+                            <p className="text-xs text-red-700/80 mt-1">
+                                Este período está sendo ajustado pelo RH/Admin. O fechamento está bloqueado.
+                            </p>
+                        </div>
+                    )}
                     {loteEmCorrecaoAdmin && (isAdmin || isRh) && (
                         <div className="flex items-center gap-2 px-3 py-2 bg-orange-500/10 border border-orange-500/30 rounded-md">
                             <Settings className="h-3.5 w-3.5 text-orange-600" />
@@ -1011,7 +1007,7 @@ const RhDiaristasPainel = () => {
                                 </DialogDescription>
                             </DialogHeader>
                             <div className="space-y-4 pt-2">
-                                 {/* Tipo de reabertura */}
+                                {/* Tipo de reabertura */}
                                 <div className="space-y-2 mt-4 p-3 border rounded-md bg-slate-50">
                                     <Label className="text-xs font-bold">Tipo de reabertura</Label>
                                     <div className="flex gap-4">
@@ -1025,68 +1021,68 @@ const RhDiaristasPainel = () => {
                                         </div>
                                     </div>
                                     <p className="text-[11px] text-muted-foreground mt-1">
-                                        {tipoReabertura === 'operacional' 
+                                        {tipoReabertura === 'operacional'
                                             ? "Devolve para o encarregado. Fluxo normal."
                                             : "⚠️ O encarregado não poderá fechar o período novamente. O RH/Admin edita e revalida diretamente."}
                                     </p>
                                 </div>
-                                    {tipoReabertura === 'administrativa' && (
-                                        <div className="p-2.5 rounded-md bg-orange-500/8 border border-orange-500/20 text-[11px] text-orange-800">
-                                            ⚠️ O encarregado não poderá fechar o período novamente. O RH/Admin edita e revalida diretamente.
-                                        </div>
+                                {tipoReabertura === 'administrativa' && (
+                                    <div className="p-2.5 rounded-md bg-orange-500/8 border border-orange-500/20 text-[11px] text-orange-800">
+                                        ⚠️ O encarregado não poderá fechar o período novamente. O RH/Admin edita e revalida diretamente.
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Motivo */}
+                            <div className="space-y-1.5">
+                                <Label className="text-xs font-bold">
+                                    Motivo da reabertura <span className="text-red-500">*</span>
+                                </Label>
+                                <Textarea
+                                    placeholder="Descreva o motivo da reabertura (obrigatório)..."
+                                    value={motivoReabertura}
+                                    onChange={(e) => setMotivoReabertura(e.target.value)}
+                                    className="resize-none"
+                                    rows={3}
+                                />
+                            </div>
+
+                            <DialogFooter className="gap-2">
+                                <Button variant="outline" onClick={() => setOpenReabertura(false)} className="flex-1 h-10">
+                                    Cancelar
+                                </Button>
+                                <Button
+                                    onClick={() => {
+                                        if (!loteParaReabrir) return;
+                                        if (!motivoReabertura.trim()) {
+                                            toast.error("Informe o motivo da reabertura.");
+                                            return;
+                                        }
+                                        reabrirMutation.mutate({
+                                            loteId: loteParaReabrir.id,
+                                            motivo: motivoReabertura,
+                                            tipo: tipoReabertura
+                                        });
+                                    }}
+                                    disabled={reabrirMutation.isPending || !motivoReabertura.trim()}
+                                    className={cn(
+                                        "flex-[2] h-10",
+                                        tipoReabertura === 'administrativa'
+                                            ? "bg-orange-600 hover:bg-orange-700 text-white"
+                                            : "bg-amber-600 hover:bg-amber-700 text-white"
                                     )}
-                                </div>
-
-                                {/* Motivo */}
-                                <div className="space-y-1.5">
-                                    <Label className="text-xs font-bold">
-                                        Motivo da reabertura <span className="text-red-500">*</span>
-                                    </Label>
-                                    <Textarea
-                                        placeholder="Descreva o motivo da reabertura (obrigatório)..."
-                                        value={motivoReabertura}
-                                        onChange={(e) => setMotivoReabertura(e.target.value)}
-                                        className="resize-none"
-                                        rows={3}
-                                    />
-                                </div>
-
-                                <DialogFooter className="gap-2">
-                                    <Button variant="outline" onClick={() => setOpenReabertura(false)} className="flex-1 h-10">
-                                        Cancelar
-                                    </Button>
-                                    <Button
-                                        onClick={() => {
-                                            if (!loteParaReabrir) return;
-                                            if (!motivoReabertura.trim()) {
-                                                toast.error("Informe o motivo da reabertura.");
-                                                return;
-                                            }
-                                             reabrirMutation.mutate({
-                                                loteId: loteParaReabrir.id,
-                                                motivo: motivoReabertura,
-                                                tipo: tipoReabertura
-                                            });
-                                        }}
-                                        disabled={reabrirMutation.isPending || !motivoReabertura.trim()}
-                                        className={cn(
-                                            "flex-[2] h-10",
-                                            tipoReabertura === 'administrativa'
-                                                ? "bg-orange-600 hover:bg-orange-700 text-white"
-                                                : "bg-amber-600 hover:bg-amber-700 text-white"
-                                        )}
-                                    >
-                                        {reabrirMutation.isPending ? (
-                                            <><Loader2 className="h-4 w-4 animate-spin mr-2" />Reabrindo...</>
-                                        ) : tipoReabertura === 'administrativa' ? (
-                                            <>🔒 Confirmar Reabertura Administrativa</>
-                                        ) : (
-                                            <>🔄 Confirmar Reabertura Operacional</>
-                                        )}
-                                    </Button>
-                                 </DialogFooter>
-                            </DialogContent>
-                        </Dialog>
+                                >
+                                    {reabrirMutation.isPending ? (
+                                        <><Loader2 className="h-4 w-4 animate-spin mr-2" />Reabrindo...</>
+                                    ) : tipoReabertura === 'administrativa' ? (
+                                        <>🔒 Confirmar Reabertura Administrativa</>
+                                    ) : (
+                                        <>🔄 Confirmar Reabertura Operacional</>
+                                    )}
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
 
                     {/* Modal Edição Admin */}
                     <Dialog open={openEdicao && !!lancamentoEditando} onOpenChange={(open) => {

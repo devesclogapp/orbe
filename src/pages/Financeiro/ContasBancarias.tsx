@@ -561,53 +561,54 @@ const ContasBancarias = () => {
                                             )}
                                         </td>
                                         <td className="px-5 text-right">
-                                            <div className="flex justify-end gap-1">
+                                            <div className="flex justify-end items-center gap-1">
                                                 <Button
-                                                    variant="ghost" size="icon"
-                                                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                                                    title="Editar"
+                                                    variant="ghost" size="sm"
+                                                    className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground gap-1"
                                                     onClick={() => openEdit(conta)}
                                                 >
-                                                    <Edit className="w-3.5 h-3.5" />
+                                                    <Edit className="w-3 h-3" />
+                                                    Editar
                                                 </Button>
                                                 {conta.ativo && conta.empresa_id && !conta.is_padrao && (
                                                     <Button
-                                                        variant="ghost" size="icon"
-                                                        className="h-8 w-8 text-muted-foreground hover:text-amber-500"
-                                                        title="Definir como padrão"
+                                                        variant="ghost" size="sm"
+                                                        className="h-8 px-2 text-xs text-muted-foreground hover:text-amber-500 gap-1"
                                                         onClick={() => setPadraoMutation.mutate({ id: conta.id, empresaId: conta.empresa_id! })}
                                                     >
-                                                        <Star className="w-3.5 h-3.5" />
+                                                        <Star className="w-3 h-3" />
+                                                        Padrão
                                                     </Button>
                                                 )}
                                                 {conta.is_padrao && (
-                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-amber-500" title="Conta padrão" disabled>
-                                                        <StarOff className="w-3.5 h-3.5" />
-                                                    </Button>
+                                                    <span className="inline-flex items-center gap-1 h-8 px-2 text-xs text-amber-500 font-medium">
+                                                        <Star className="w-3 h-3 fill-amber-400" />
+                                                        Padrão
+                                                    </span>
                                                 )}
                                                 <Button
-                                                    variant="ghost" size="icon"
-                                                    className={cn("h-8 w-8", conta.permite_cnab ? "text-success hover:text-success/80" : "text-muted-foreground hover:text-primary")}
-                                                    title={conta.permite_cnab ? "Desabilitar CNAB" : "Habilitar CNAB"}
+                                                    variant="ghost" size="sm"
+                                                    className={cn("h-8 px-2 text-xs gap-1", conta.permite_cnab ? "text-success hover:text-success/80" : "text-muted-foreground hover:text-primary")}
                                                     onClick={() => toggleCnabMutation.mutate({ id: conta.id, permite_cnab: !conta.permite_cnab })}
                                                 >
-                                                    <ShieldCheck className="w-3.5 h-3.5" />
+                                                    <ShieldCheck className="w-3 h-3" />
+                                                    {conta.permite_cnab ? "CNAB on" : "CNAB off"}
                                                 </Button>
                                                 <Button
-                                                    variant="ghost" size="icon"
-                                                    className={cn("h-8 w-8", conta.ativo ? "text-muted-foreground hover:text-destructive" : "text-muted-foreground hover:text-success")}
-                                                    title={conta.ativo ? "Desativar" : "Ativar"}
+                                                    variant="ghost" size="sm"
+                                                    className={cn("h-8 px-2 text-xs gap-1", conta.ativo ? "text-muted-foreground hover:text-destructive" : "text-muted-foreground hover:text-success")}
                                                     onClick={() => toggleAtivoMutation.mutate({ id: conta.id, ativo: !conta.ativo })}
                                                 >
-                                                    {conta.ativo ? <PowerOff className="w-3.5 h-3.5" /> : <Power className="w-3.5 h-3.5" />}
+                                                    {conta.ativo ? <PowerOff className="w-3 h-3" /> : <Power className="w-3 h-3" />}
+                                                    {conta.ativo ? "Desativar" : "Ativar"}
                                                 </Button>
                                                 <Button
-                                                    variant="ghost" size="icon"
-                                                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                                                    title="Excluir"
+                                                    variant="ghost" size="sm"
+                                                    className="h-8 px-2 text-xs text-muted-foreground hover:text-destructive gap-1"
                                                     onClick={() => setDeleteConfirm(conta.id)}
                                                 >
-                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                    <Trash2 className="w-3 h-3" />
+                                                    Excluir
                                                 </Button>
                                             </div>
                                         </td>

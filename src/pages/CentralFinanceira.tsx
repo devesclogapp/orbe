@@ -18,7 +18,6 @@ import {
   RotateCcw,
   Search,
   UnlockKeyhole,
-  Users,
   Wallet,
   XCircle,
 } from "lucide-react";
@@ -41,9 +40,11 @@ import {
   ResultadosService,
 } from "@/services/base.service";
 import { RHFinanceiroService } from "@/services/rhFinanceiro.service";
+import { buildFolhaVariavelPipeline, useOperationalPipeline } from "@/contexts/OperationalPipelineContext";
 
 const CentralFinanceira = () => {
   const navigate = useNavigate();
+  const { openPipeline } = useOperationalPipeline();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [filterMonth, setFilterMonth] = useState(new Date().toISOString().substring(0, 7));
@@ -59,6 +60,7 @@ const CentralFinanceira = () => {
   const [motivoReabrir, setMotivoReabrir] = useState("");
   const [openConfirmAprovacao, setOpenConfirmAprovacao] = useState(false);
   const [rhLoteSelecionado, setRhLoteSelecionado] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState("visao-geral");
   // etapa 2 - análise financeira
   const [openDevolucao, setOpenDevolucao] = useState(false);
   const [motivoDevolucao, setMotivoDevolucao] = useState("");
@@ -174,6 +176,14 @@ const CentralFinanceira = () => {
       toast.success("Lote aprovado com sucesso", {
         description: "Os faturamentos filtrados foram aprovados.",
       });
+      const empresaNome = empresas.find(e => e.id === selectedEmpresaId)?.nome || "Empresa";
+      openPipeline(
+        buildFolhaVariavelPipeline({
+          competencia: selectedMonth,
+          empresa: empresaNome,
+          currentStep: "aprovacao_financeira"
+        })
+      );
     },
     onError: (err: any) => {
       toast.error("Erro ao aprovar lote", { description: err.message });
@@ -234,6 +244,16 @@ const CentralFinanceira = () => {
     onSuccess: () => {
       toast.success("Lote aprovado!", { description: "Liberado para a próxima etapa bancária." });
       invalidateLotes();
+
+      const empresaNome = empresas.find(e => e.id === selectedEmpresaId)?.nome || "Empresa";
+      openPipeline(
+        buildFolhaVariavelPipeline({
+          competencia: selectedMonth,
+          empresa: empresaNome,
+          currentStep: "aprovacao_financeira"
+        })
+      );
+
       setObservacaoAprovacao("");
       setRhLoteSelecionado(null);
     },
@@ -270,8 +290,8 @@ const CentralFinanceira = () => {
 
   return (
     <AppShell
-      title="Faturamento"
-      subtitle={`Competência, faturamento e fechamento no mesmo fluxo · ${new Date(`${selectedMonth}-01`).toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}`}
+      title="Central Financeira"
+      subtitle={`Aprovação de lotes, faturamento e fechamento de competência · ${new Date(`${selectedMonth}-01`).toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}`}
     >
       <div className="space-y-6">
         <section className="esc-card p-4 md:p-5">
@@ -342,14 +362,14 @@ const CentralFinanceira = () => {
                 size="sm"
                 onClick={() => reprocessMutation.mutate()}
                 disabled={reprocessMutation.isPending || !selectedEmpresaId}
-                title="Recalcula os valores financeiros da competência selecionada"
+                title="Consolida e recalcula os valores financeiros da competência selecionada"
               >
                 {reprocessMutation.isPending ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
                   <RefreshCw className="h-4 w-4 mr-2" />
                 )}
-                Processar Faturamento
+                Consolidar Competência
               </Button>
             </div>
           </div>
@@ -363,23 +383,31 @@ const CentralFinanceira = () => {
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-4">
               <MetricCard
-                label="Total faturável"
-                value={`R$ ${Number(totalFaturavel).toLocaleString("pt-BR")}`}
+                label="Aguardando aprovação"
+                value={`R$ ${Number(lotesRhValorTotal).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
                 icon={Wallet}
                 accent
               />
-              <MetricCard label="Clientes" value={clientes.length.toString()} icon={Building2} />
-              <MetricCard label="Colaboradores" value={colaboradores.length.toString()} icon={Users} />
-              <MetricCard label="Pendentes" value={pendingCount.toString()} icon={FileCheck} />
+              <MetricCard
+                label="Prontos para CNAB"
+                value={`R$ ${Number(lotesRhValorBancario).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+                icon={FileCheck}
+              />
+              <MetricCard
+                label="Lotes aguardando"
+                value={lotesRhPendentes.length.toString()}
+                icon={AlertTriangle}
+              />
               <MetricCard
                 label="Inconsistências"
                 value={competencia?.contagem_inconsistencias?.toString() || "0"}
                 icon={AlertTriangle}
               />
-              <MetricCard label="Lotes do RH" value={lotesRhPendentes.length.toString()} icon={FileCheck} />
+              <MetricCard label="Total consolidado" value={`R$ ${Number(totalFaturavel).toLocaleString("pt-BR")}`} icon={Wallet} />
+              <MetricCard label="Clientes" value={clientes.length.toString()} icon={Building2} />
             </div>
 
-            <Tabs defaultValue="visao-geral" className="space-y-4">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
               <TabsList className="bg-muted/50 p-1 rounded-xl border border-border/50 flex flex-wrap h-auto">
                 <TabsTrigger value="visao-geral">Visão geral</TabsTrigger>
                 <TabsTrigger value="lotes-rh" className="relative">
@@ -390,11 +418,79 @@ const CentralFinanceira = () => {
                     </span>
                   )}
                 </TabsTrigger>
-                <TabsTrigger value="faturamento">Faturamento</TabsTrigger>
+                <TabsTrigger value="faturamento">Aprovações</TabsTrigger>
                 <TabsTrigger value="fechamento">Fechamento</TabsTrigger>
               </TabsList>
 
               <TabsContent value="visao-geral" className="space-y-5">
+                {/* Pipeline financeiro */}
+                <section className="esc-card p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <FileCheck className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-semibold text-foreground">Pipeline da competência</span>
+                    </div>
+                    <span className="text-[11px] text-muted-foreground">
+                      {selectedMonth} · {new Date().toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-stretch gap-0">
+                    {[
+                      {
+                        step: "1",
+                        label: "RH → Financeiro",
+                        detail: lotesRhPendentes.length > 0 ? `${lotesRhPendentes.length} lote(s) aguardando` : "Fila vazia",
+                        tone: lotesRhPendentes.length > 0 ? "warning" : "ok",
+                      },
+                      {
+                        step: "2",
+                        label: "Aprovação Financeira",
+                        detail: lotesRhProntosBancario.length > 0 ? `${lotesRhProntosBancario.length} lote(s) aprovado(s)` : "Aguardando aprovação",
+                        tone: lotesRhProntosBancario.length > 0 ? "ok" : "idle",
+                      },
+                      {
+                        step: "3",
+                        label: "Bancário / CNAB",
+                        detail: lotesRhProntosBancario.length > 0 ? `R$ ${Number(lotesRhValorBancario).toLocaleString("pt-BR", { minimumFractionDigits: 2 })} prontos` : "Aguardando lotes aprovados",
+                        tone: lotesRhProntosBancario.length > 0 ? "info" : "idle",
+                      },
+                      {
+                        step: "4",
+                        label: "Fechamento",
+                        detail: competencia?.status === "fechada" ? "Competência fechada" : "Competência aberta",
+                        tone: competencia?.status === "fechada" ? "ok" : "idle",
+                      },
+                    ].map((s, i, arr) => (
+                      <div key={s.step} className="flex items-stretch">
+                        <div className={cn(
+                          "flex flex-col justify-center px-4 py-2.5 rounded-lg border text-xs min-w-[140px]",
+                          s.tone === "warning" && "bg-warning-soft/50 border-warning/30 text-warning-strong",
+                          s.tone === "ok" && "bg-success-soft/50 border-success/30 text-success-strong",
+                          s.tone === "info" && "bg-info-soft/50 border-info/30 text-info-strong",
+                          s.tone === "idle" && "bg-muted/30 border-border text-muted-foreground",
+                        )}>
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <span className={cn(
+                              "inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold",
+                              s.tone === "warning" && "bg-warning/20 text-warning-strong",
+                              s.tone === "ok" && "bg-success/20 text-success-strong",
+                              s.tone === "info" && "bg-info/20 text-info-strong",
+                              s.tone === "idle" && "bg-muted text-muted-foreground",
+                            )}>{s.step}</span>
+                            <span className="font-semibold text-[11px]">{s.label}</span>
+                          </div>
+                          <span className="text-[11px] opacity-80 pl-5">{s.detail}</span>
+                        </div>
+                        {i < arr.length - 1 && (
+                          <div className="flex items-center px-1">
+                            <ArrowRight className="h-3 w-3 text-muted-foreground/40" />
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <section className="esc-card">
                     <header className="px-5 py-4 border-b border-border flex items-center justify-between">
@@ -453,49 +549,72 @@ const CentralFinanceira = () => {
                   <section className="esc-card">
                     <header className="px-5 py-4 border-b border-border flex items-center justify-between">
                       <div>
-                        <h2 className="font-display font-semibold text-foreground">Top colaboradores</h2>
+                        <h2 className="font-display font-semibold text-foreground">Últimos lotes recebidos</h2>
                         <p className="text-sm text-muted-foreground">
-                          Geração de valor e esforço da competência atual.
+                          Registro dos lotes enviados pelo RH para esta competência.
                         </p>
                       </div>
+                      <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setActiveTab("lotes-rh")}>
+                        Lotes do RH <ArrowRight className="h-3 w-3 ml-1" />
+                      </Button>
                     </header>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead className="esc-table-header">
                           <tr className="text-left text-muted-foreground">
-                            <th className="px-5 h-10 font-medium">Colaborador</th>
+                            <th className="px-5 h-10 font-medium">Tipo / Empresa</th>
                             <th className="px-3 h-10 font-medium text-right">Valor</th>
-                            <th className="px-5 h-10 font-medium text-center">Dias</th>
+                            <th className="px-3 h-10 font-medium text-center">Colaboradores</th>
+                            <th className="px-5 h-10 font-medium text-center">Status</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {[...colaboradores]
-                            .sort((a: any, b: any) => b.valor_total - a.valor_total)
-                            .slice(0, 6)
-                            .map((colaborador: any) => (
-                              <tr key={colaborador.id} className="border-t border-muted hover:bg-background transition-colors">
+                          {lotesRh.slice(0, 6).map((lote: any) => {
+                            const isAguardando = lote.status === "AGUARDANDO_FINANCEIRO";
+                            const isEmAnalise = lote.status === "EM_ANALISE_FINANCEIRA";
+                            const isAprovado = lote.status === "AGUARDANDO_PAGAMENTO";
+                            const isDevolvido = lote.status === "DEVOLVIDO_RH";
+                            return (
+                              <tr key={lote.id} className="border-t border-muted hover:bg-background transition-colors">
                                 <td className="px-5 h-12">
-                                  <div className="font-medium text-foreground">{colaborador.colaboradores?.nome}</div>
-                                  <div className="text-[11px] text-muted-foreground">{colaborador.colaboradores?.cargo}</div>
+                                  <div className="font-medium text-foreground">{lote.tipo === "BANCO_HORAS" ? "Banco de Horas" : "Folha Variável"}</div>
+                                  <div className="text-[11px] text-muted-foreground">{lote.empresa?.nome || "-"}</div>
                                 </td>
                                 <td className="px-3 text-right font-display font-semibold">
-                                  R$ {Number(colaborador.valor_total).toLocaleString("pt-BR")}
+                                  R$ {Number(lote.valor_total || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                                 </td>
-                                <td className="px-5 text-center text-muted-foreground">
-                                  {Array.isArray(colaborador.eventos_financeiros) ? colaborador.eventos_financeiros.length : 0}
+                                <td className="px-3 text-center text-muted-foreground">{lote.total_colaboradores}</td>
+                                <td className="px-5 text-center">
+                                  <span className={cn(
+                                    "esc-chip text-[10px]",
+                                    isAguardando && "bg-warning-soft text-warning-strong",
+                                    isEmAnalise && "bg-info-soft text-info-strong",
+                                    isAprovado && "bg-success-soft text-success-strong",
+                                    isDevolvido && "bg-destructive/10 text-destructive",
+                                    !isAguardando && !isEmAnalise && !isAprovado && !isDevolvido && "bg-muted text-muted-foreground",
+                                  )}>
+                                    {isAguardando ? "Aguardando" : isEmAnalise ? "Em análise" : isAprovado ? "Aprovado" : isDevolvido ? "Devolvido" : lote.status}
+                                  </span>
                                 </td>
                               </tr>
-                            ))}
-                          {colaboradores.length === 0 && (
+                            );
+                          })}
+                          {lotesRh.length === 0 && (
                             <tr>
-                              <td colSpan={3} className="p-8 text-center text-muted-foreground italic">
-                                Nenhum colaborador processado nesta competência.
+                              <td colSpan={4} className="p-8 text-center text-muted-foreground italic">
+                                Nenhum lote recebido do RH nesta competência.
                               </td>
                             </tr>
                           )}
                         </tbody>
                       </table>
                     </div>
+                    {lotesRh.length > 0 && (
+                      <div className="border-t border-border px-5 py-2.5 flex items-center justify-between text-[11px] text-muted-foreground">
+                        <span>Total de lotes: <strong className="text-foreground">{lotesRh.length}</strong></span>
+                        <span>Valor total: <strong className="text-foreground">R$ {lotesRh.reduce((acc: number, l: any) => acc + Number(l.valor_total || 0), 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong></span>
+                      </div>
+                    )}
                   </section>
                 </div>
               </TabsContent>
@@ -574,9 +693,9 @@ const CentralFinanceira = () => {
                                   )}>
                                     {lote.status === "AGUARDANDO_FINANCEIRO" ? "Aguardando Financeiro" :
                                       lote.status === "EM_ANALISE_FINANCEIRA" ? "Em Análise Financeira" :
-                                      lote.status === "AGUARDANDO_PAGAMENTO" ? "Aguardando Pagamento" :
-                                      lote.status === "DEVOLVIDO_RH" ? "Devolvido ao RH" :
-                                      lote.status}
+                                        lote.status === "AGUARDANDO_PAGAMENTO" ? "Aguardando Pagamento" :
+                                          lote.status === "DEVOLVIDO_RH" ? "Devolvido ao RH" :
+                                            lote.status}
                                   </Badge>
                                 </td>
                                 <td className="px-5 text-right">
@@ -854,20 +973,36 @@ const CentralFinanceira = () => {
 
       {/* Dialog Confirmação de Aprovação em Lote */}
       <Dialog open={openConfirmAprovacao} onOpenChange={setOpenConfirmAprovacao}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileCheck className="h-5 w-5 text-primary" />
               Confirmar Aprovação em Lote
             </DialogTitle>
             <DialogDescription>
-              Você está aprovando <strong>{filteredClientes.length} faturamento(s)</strong> filtrados.
-              Esta ação atualiza o status para <strong>aprovado</strong> e não pode ser revertida sem reabertura.
+              Revise o resumo antes de confirmar. Esta ação não pode ser revertida sem reabertura formal do período.
             </DialogDescription>
           </DialogHeader>
+          <div className="space-y-3 py-1">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-lg border border-border bg-muted/30 p-3 text-center">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Faturamentos</div>
+                <div className="mt-1 font-display text-2xl font-bold text-foreground">{filteredClientes.length}</div>
+              </div>
+              <div className="rounded-lg border border-border bg-muted/30 p-3 text-center">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Valor total</div>
+                <div className="mt-1 font-display text-lg font-bold text-primary">
+                  R$ {filteredClientes.reduce((acc: number, c: any) => acc + Number(c.valor_total || 0), 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                </div>
+              </div>
+            </div>
+            <div className="rounded-lg border border-warning/40 bg-warning-soft/30 px-4 py-3 text-sm text-warning-strong">
+              <span className="font-semibold">Atenção:</span> a aprovação libera os faturamentos para a etapa de fechamento e gera registro de auditoria imutável.
+            </div>
+          </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setOpenConfirmAprovacao(false)}>Cancelar</Button>
-            <Button onClick={confirmarAprovacao} disabled={approveMutation.isPending}>
+            <Button onClick={confirmarAprovacao} disabled={approveMutation.isPending} className="bg-success hover:bg-success/90 text-white">
               {approveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileCheck className="h-4 w-4 mr-2" />}
               Aprovar {filteredClientes.length} item(s)
             </Button>
