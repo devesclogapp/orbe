@@ -169,10 +169,8 @@ const DiaristasLancamento = () => {
     const { data: lancamentosExistentes = [] } = useQuery({
         queryKey: ["lancamentos_diaristas_semana", empresaIdSelecionada, inicioISO, fimISO],
         queryFn: async () => {
-            console.log(`[DiaristasLancamento] Fetching lancamentos: ${empresaIdSelecionada}, ${inicioISO} to ${fimISO}`);
             try {
                 const data = await LancamentoDiaristaService.getByPeriodo(empresaIdSelecionada, inicioISO, fimISO);
-                console.log(`[DiaristasLancamento] Lancamentos retornados:`, data);
                 return data;
             } catch (err) {
                 console.error(`[DiaristasLancamento] Erro no fetch:`, err);
@@ -190,14 +188,12 @@ const DiaristasLancamento = () => {
     const { data: lotes = [] } = useQuery({
         queryKey: ["lotes_fechamento_producao", fourteenDaysAgoStr, today, empresaIdSelecionada, user?.id],
         queryFn: async () => {
-            console.log(`[DiaristasLancamento] Buscando lotes para empresa: ${empresaIdSelecionada}`);
             try {
                 const result = await LoteFechamentoDiaristaService.getLotesPorPeriodo(
                     fourteenDaysAgoStr,
                     today,
                     empresaIdSelecionada
                 );
-                console.log('[DEBUG lotes result]', result);
                 return result;
             } catch (err) {
                 console.error('[DEBUG lotes error]', err);
@@ -233,7 +229,6 @@ const DiaristasLancamento = () => {
     const { data: historicoRecente = [], isLoading: isLoadingHistorico } = useQuery({
         queryKey: ["historico_recente_diaristas", empresaIdSelecionada, user?.id],
         queryFn: () => {
-            console.log(`[DiaristasLancamento] Buscando histórico: empresaId=${empresaIdSelecionada}, userId=${user?.id}`);
             return LancamentoDiaristaService.getByPeriodo(empresaIdSelecionada, fourteenDaysAgoStr, today, {
                 encarregado_id: user?.id,
             });
@@ -439,7 +434,6 @@ const DiaristasLancamento = () => {
     );
 
     // ─── Render ──────────────────────────────────────────────────────────────
-    console.log(`[DiaristasLancamento] Renderizando... Empresa: ${empresaIdSelecionada}, Diaristas: ${diaristasArr.length}`);
 
     return (
         <OperationalShell title="Lançamento de Diaristas" showBack={false} onBack={() => navigate("/producao")} hideFab={true}>

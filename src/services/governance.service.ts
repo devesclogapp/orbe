@@ -140,13 +140,11 @@ class GovernanceServiceClass {
 
   // Prepara arquitetura de exportação
   async exportTimelineToXLS(filters: TimelineFilters): Promise<Blob | null> {
-    console.log("Preparando exportação XLS com filtros:", filters);
     // Placeholder para Fase 8: Geração do Blob XLS a partir de endpoint server-side ou lib local
     return null;
   }
 
   async exportTimelineToPDF(filters: TimelineFilters): Promise<Blob | null> {
-    console.log("Preparando exportação PDF com filtros:", filters);
     // Placeholder para Fase 8: Geração do Blob PDF 
     return null;
   }

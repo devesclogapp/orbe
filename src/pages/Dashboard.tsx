@@ -26,6 +26,7 @@ import {
   TrendingUp,
   Users,
   Wallet,
+  X,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -141,16 +142,16 @@ const Dashboard = () => {
     "all",
   );
   const selectedMonth = `${selectedYear}-${selectedMonthNumber}`;
-  
+
   // Estado para filtro ativo nos KPIs
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
-  
+
   // Estado para alertas
   const [alertsExpanded, setAlertsExpanded] = useState(true);
-  
+
   // Estado para controle de visualização da tabela
   const [showDataTable, setShowDataTable] = useState(false);
-  
+
   // Estado para filtros da tabela
   const [tableFilters, setTableFilters] = useState({
     tipo: 'operacoes', // operacoes, custos, diaristas
@@ -317,10 +318,7 @@ const Dashboard = () => {
     };
   }, [custosPeriodo, operacoesPeriodo]);
 
-  const activeKpis = useMemo(() => {
-    if (!activeFilter) return dashboardKpis;
-    return dashboardKpis;
-  }, [activeFilter, dashboardKpis]);
+  // activeFilter is used only for display; KPIs always reflect full period data
 
   const hasRegraOperacional = (op: any) => {
     return op.tipo_calculo_snapshot || op.regra_financeira;
@@ -328,7 +326,7 @@ const Dashboard = () => {
 
   const alerts = useMemo(() => {
     const result = [];
-    
+
     const opSemRegra = operacoesPeriodo.filter(op => !hasRegraOperacional(op)).length;
     if (opSemRegra > 0) {
       result.push({
@@ -339,27 +337,27 @@ const Dashboard = () => {
         onClick: () => navigateToOperacoes({ sem_regra: 'true' }),
       });
     }
-    
+
     if (dashboardKpis.custosPendentes > 0) {
       result.push({
         id: 'custos_pendentes',
         tipo: 'warning',
-        titulo: `${dashboardKpis.custosPendentes} custo(s) pendente(s)`,
+        titulo: `${formatCurrency(dashboardKpis.custosPendentes)} em custos pendentes`,
         descricao: 'Verificar status de pagamento',
         onClick: () => navigateToOperacoes({ categoria_servico: 'CUSTO', status_pgto: 'PENDENTE' }),
       });
     }
-    
+
     if (dashboardKpis.atrasado > 0) {
       result.push({
         id: 'atrasado',
-        tipo: 'error',
+        tipo: 'destructive',
         titulo: `${formatCurrency(dashboardKpis.atrasado)} em atraso`,
         descricao: 'Verificar recebimentos atrasados',
         onClick: () => navigateToOperacoes({ vencimento_atrasado: 'true' }),
       });
     }
-    
+
     if (dashboardKpis.volumeTotal === 0) {
       result.push({
         id: 'sem_volume',
@@ -369,7 +367,7 @@ const Dashboard = () => {
         onClick: () => navigateToOperacoes({ categoria_servico: 'SERVICO_VOLUME' }),
       });
     }
-    
+
     return result;
   }, [operacoesPeriodo, dashboardKpis]);
 
@@ -471,12 +469,12 @@ const Dashboard = () => {
     selectedMonthNumber === "all"
       ? `Todos os meses de ${selectedYear}`
       : new Date(`${selectedMonth}-01T12:00:00`).toLocaleDateString(
-          "pt-BR",
-          {
-            month: "long",
-            year: "numeric",
-          },
-        ).replace(/^\w/, (char) => char.toUpperCase());
+        "pt-BR",
+        {
+          month: "long",
+          year: "numeric",
+        },
+      ).replace(/^\w/, (char) => char.toUpperCase());
 
   const lastSync = new Date().toLocaleTimeString("pt-BR", {
     hour: "2-digit",
@@ -531,16 +529,18 @@ const Dashboard = () => {
               {alerts.length > 0 && (
                 <div className="hidden md:flex gap-2">
                   {alerts.slice(0, 2).map((alert, index) => (
-                    <div 
+                    <div
                       key={alert.id}
                       onClick={alert.onClick}
                       className={cn(
                         "flex items-center gap-2 px-3 py-1.5 rounded-lg border text-[11px] font-medium cursor-pointer transition-colors hover:shadow-sm",
-                        alert.tipo === 'destructive' 
-                          ? "border-destructive/20 bg-destructive/5 text-destructive hover:bg-destructive/10" 
+                        alert.tipo === 'destructive'
+                          ? "border-destructive/20 bg-destructive/5 text-destructive hover:bg-destructive/10"
                           : alert.tipo === 'warning'
-                          ? "border-warning/30 bg-warning/10 text-warning-strong hover:bg-warning/20"
-                          : "border-primary/20 bg-primary/5 text-primary hover:bg-primary/10"
+                            ? "border-warning/30 bg-warning/10 text-warning-strong hover:bg-warning/20"
+                            : alert.tipo === 'info'
+                              ? "border-primary/20 bg-primary/5 text-primary hover:bg-primary/10"
+                              : "border-muted bg-muted/30 text-muted-foreground hover:bg-muted/50"
                       )}
                       title={alert.descricao}
                     >
@@ -712,7 +712,7 @@ const Dashboard = () => {
                   </Select>
                 </div>
               </div>
-              
+
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
@@ -729,7 +729,7 @@ const Dashboard = () => {
                   <TableBody>
                     {(() => {
                       let rows: any[] = [];
-                      
+
                       if (tableFilters.tipo === 'operacoes' || tableFilters.tipo === 'todos') {
                         operacoesPeriodo.slice(0, 20).forEach(op => {
                           const statusPg = op.status_pgto || op.status;
@@ -746,7 +746,7 @@ const Dashboard = () => {
                           });
                         });
                       }
-                      
+
                       if (tableFilters.tipo === 'custos' || tableFilters.tipo === 'todos') {
                         custosPeriodo.slice(0, 20).forEach(c => {
                           const statusPg = c.status;
@@ -763,9 +763,9 @@ const Dashboard = () => {
                           });
                         });
                       }
-                      
+
                       rows = rows.slice(0, 50); // Limit to 50 rows
-                      
+
                       if (rows.length === 0) {
                         return (
                           <TableRow>
@@ -775,7 +775,7 @@ const Dashboard = () => {
                           </TableRow>
                         );
                       }
-                      
+
                       return rows.map((row, idx) => (
                         <TableRow key={idx}>
                           <TableCell className="whitespace-nowrap">{row.data ? format(new Date(row.data), 'dd/MM/yyyy') : '-'}</TableCell>
@@ -786,7 +786,7 @@ const Dashboard = () => {
                           <TableCell>
                             <Badge variant={
                               row.status?.toUpperCase() === 'RECEBIDO' || row.status?.toUpperCase() === 'PAGO' ? 'default' :
-                              row.status?.toUpperCase() === 'ATRASADO' ? 'destructive' : 'secondary'
+                                row.status?.toUpperCase() === 'ATRASADO' ? 'destructive' : 'secondary'
                             }>
                               {row.status || 'Pendente'}
                             </Badge>
@@ -802,7 +802,7 @@ const Dashboard = () => {
                   </TableBody>
                 </Table>
               </div>
-              
+
               <div className="p-3 border-t bg-muted/30 text-center">
                 <Button variant="outline" size="sm" onClick={() => navigateToOperacoes()}>
                   Ver todos os registros
@@ -1163,7 +1163,7 @@ const DashboardReportsSection = ({ navigate, selectedYear, selectedMonthNumber }
     <section className="esc-card p-5">
       <div className="mb-4 flex items-center gap-2">
         <FileText className="h-4 w-4 text-muted-foreground" />
-        <h2 className="font-display font-semibold text-foreground">Relatórios rápido</h2>
+        <h2 className="font-display font-semibold text-foreground">Relatórios rápidos</h2>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <QuickReportCard

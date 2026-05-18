@@ -58,13 +58,21 @@ const CentralGovernanca = () => {
   const modulosUnicos = ["WORKFLOW", "AUTOMACAO", "FINANCEIRO", "RH", "OPERACIONAL", "SISTEMA"];
 
   const handleExportarXLS = async () => {
-    await GovernanceService.exportTimelineToXLS({ modulo: filterModulo, impacto: filterImpacto });
-    alert("Exportação preparada para XLS. Implementação completa na Fase 8.");
+    try {
+      await GovernanceService.exportTimelineToXLS({ modulo: filterModulo, impacto: filterImpacto });
+      toast.success("Exportação preparada para XLS. Implementação completa na Fase 8.");
+    } catch (err: any) {
+      toast.error("Erro na exportação", { description: err.message });
+    }
   };
 
   const handleExportarPDF = async () => {
-    await GovernanceService.exportTimelineToPDF({ modulo: filterModulo, impacto: filterImpacto });
-    alert("Exportação preparada para PDF. Implementação completa na Fase 8.");
+    try {
+      await GovernanceService.exportTimelineToPDF({ modulo: filterModulo, impacto: filterImpacto });
+      toast.success("Exportação preparada para PDF. Implementação completa na Fase 8.");
+    } catch (err: any) {
+      toast.error("Erro na exportação", { description: err.message });
+    }
   };
 
   return (

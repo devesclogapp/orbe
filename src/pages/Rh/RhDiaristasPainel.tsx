@@ -320,8 +320,6 @@ const RhDiaristasPainel = () => {
                 empresa_id: snapshotDb.empresa_id as string
             };
 
-            console.log("[ADMIN EDIT] Snapshot pré-edição:", snapshotAnterior);
-            console.log("[ADMIN EDIT] Payload novo:", {
                 valor_calculado: payload.valor_calculado,
                 codigo_marcacao: payload.codigo_marcacao
             });
@@ -336,7 +334,6 @@ const RhDiaristasPainel = () => {
                     .eq("id", snapshotAnterior.lote_id)
                     .maybeSingle();
                 loteDb = loteRaw ?? null;
-                console.log("[ADMIN EDIT] Lote por lote_id:", loteDb);
             }
 
             // Fallback: tenta encontrar lote pelo empresa_id + data do lançamento
@@ -349,7 +346,6 @@ const RhDiaristasPainel = () => {
                     .gte("periodo_fim", lancamentoEditando.data_lancamento)
                     .maybeSingle();
                 loteDb = loteByEmpresa ?? null;
-                console.log("[ADMIN EDIT] Lote por empresa+data (fallback):", loteDb);
             }
 
             // ── PASSO 3: Executar o update no banco ────────────────────────────────
@@ -366,7 +362,6 @@ const RhDiaristasPainel = () => {
                 motivo_edicao: payload.motivo_edicao,
             });
 
-            console.log("[ADMIN EDIT] updateAdmin concluído:", result);
 
             // ── PASSO 4: Registrar auditoria com valores pré-mutação ───────────────
             // snapshotAnterior foi capturado ANTES do updateAdmin — correto.
@@ -377,7 +372,6 @@ const RhDiaristasPainel = () => {
                 `Marcação: ${snapshotAnterior.marcacao} -> ${payload.codigo_marcacao}. ` +
                 `Motivo: ${payload.motivo_edicao}`;
 
-            console.log("[ADMIN EDIT] Log de auditoria:", msgAuditoria);
 
             const { error: logError } = await supabase.from("diaristas_logs_fechamento").insert({
                 empresa_id: snapshotAnterior.empresa_id,
@@ -406,7 +400,6 @@ const RhDiaristasPainel = () => {
                     "recalcular_valor_lote",
                     { p_lote_id: loteIdParaRecalculo }
                 );
-                console.log("[ADMIN EDIT] RPC recalcular_valor_lote:", rpcResult, rpcError ?? "OK");
 
                 if (rpcError) {
                     // RPC ainda não deployada — usa fallback direto
@@ -424,14 +417,12 @@ const RhDiaristasPainel = () => {
                             const novoTotal = allLancs.reduce(
                                 (acc: number, l: any) => acc + Number(l.valor_calculado || 0), 0
                             );
-                            console.log("[ADMIN EDIT] Fallback novoTotal:", novoTotal, "lançamentos:", allLancs.length);
 
                             const { error: updateErr } = await (supabase as any)
                                 .from("diaristas_lotes_fechamento")
                                 .update({ valor_total: novoTotal, updated_at: new Date().toISOString() })
                                 .eq("id", loteIdParaRecalculo);
 
-                            console.log("[ADMIN EDIT] Fallback update lote:", updateErr ?? "OK");
                         }
                     }
                 }

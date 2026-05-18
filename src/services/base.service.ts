@@ -40,7 +40,6 @@ export function sanitizePayload(data: unknown): unknown {
 
   for (const [key, value] of Object.entries(entry)) {
     if (typeof value === 'string' && value === '') {
-      console.log(`[SANITIZE] ${key}: "" -> null`);
       result[key] = null;
     } else if (typeof value === 'object' && value !== null) {
       result[key] = sanitizePayload(value);
@@ -61,7 +60,6 @@ export function validateUuidFields(data: Record<string, unknown>, ...fields: str
     if (value !== null && value !== undefined && value !== '') {
       const cleaned = cleanUuid(String(value));
       if (!cleaned && String(value).trim() !== '') {
-        console.log(`[UUID INVALID] ${field}: "${value}"`);
       }
     }
   }
@@ -1580,8 +1578,6 @@ class TipoServicoOperacionalServiceClass {
       });
     }
 
-    console.log(`[TipoServicoOperacionalService.deleteWithCheck] ID: ${id}`);
-    console.log(`[TipoServicoOperacionalService.deleteWithCheck] Vínculos encontrados:`, vinculos);
 
     const { error, count } = await operationalClient
       .from('tipos_servico_operacional')
@@ -1708,7 +1704,6 @@ class TransportadoraClienteServiceClass {
   }
 
   async deleteWithCheck(id: string): Promise<{ success: boolean; error?: string; detalhes?: { tabela: string; count: number; ids?: string[] }[] }> {
-    console.log(`[TransportadoraClienteService.deleteWithCheck] Excluindo ID: ${id}`);
 
     // As FKs em operacoes_producao e fornecedor_valores_servico são ON DELETE SET NULL
     // Não há vínculos bloqueantes — pode deletar diretamente.
@@ -1880,7 +1875,6 @@ class FornecedorServiceClass {
   }
 
   async deleteWithCheck(id: string): Promise<{ success: boolean; error?: string; detalhes?: { tabela: string; count: number; ids?: string[] }[] }> {
-    console.log(`[FornecedorService.deleteWithCheck] Excluindo ID: ${id}`);
 
     // As FKs em operacoes_producao são ON DELETE SET NULL
     // As FKs em fornecedor_valores_servico e produtos_carga são ON DELETE CASCADE
@@ -2081,7 +2075,6 @@ class RegraOperacionalServiceClass {
   }
 
   async create(payload: Record<string, any>) {
-    console.log('[REGRAS] Payload original:', JSON.stringify(payload));
     
     const tenantId = await getCurrentTenantId();
     
@@ -2119,7 +2112,6 @@ class RegraOperacionalServiceClass {
     tryAddUuid('tipo_regra_id');
     tryAddUuid('forma_pagamento_id');
 
-    console.log('[REGRAS] Payload sanitizado:', JSON.stringify(payloadCleaned));
 
     const { data, error } = await operationalClient
       .from('fornecedor_valores_servico')
@@ -2143,7 +2135,6 @@ class RegraOperacionalServiceClass {
   async createMany(payloads: Record<string, any>[]) {
     if (payloads.length === 0) return [];
 
-    console.log('[REGRAS] createMany - payloads antes:', JSON.stringify(payloads));
 
     const tenantId = await getCurrentTenantId();
     
@@ -2184,7 +2175,6 @@ class RegraOperacionalServiceClass {
         return cleaned;
       });
 
-    console.log('[REGRAS] createMany - payloads sanitizados:', JSON.stringify(payloadsWithTenant));
 
     const { data, error } = await operationalClient
       .from('fornecedor_valores_servico')
@@ -2203,7 +2193,6 @@ class RegraOperacionalServiceClass {
   }
 
   async update(id: string, payload: Record<string, any>) {
-    console.log('[REGRAS] update - payload antes:', JSON.stringify(payload));
 
     // Helper para adicionar campo UUID apenas se válido
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2240,7 +2229,6 @@ class RegraOperacionalServiceClass {
     if (payload.vigencia_fim !== undefined) payloadCleaned.vigencia_fim = payload.vigencia_fim || null;
     if (payload.ativo !== undefined) payloadCleaned.ativo = payload.ativo;
 
-    console.log('[REGRAS] update - payload sanitizado:', JSON.stringify(payloadCleaned));
 
     const { data, error } = await operationalClient
       .from('fornecedor_valores_servico')
@@ -2983,7 +2971,6 @@ class LancamentoDiaristaServiceClass {
     },
   ) {
     const client = supabase as any;
-    console.log(`[BaseService] Executando Query: lancamentos_diaristas | Empresa: ${empresaId} | Intervalo: ${inicio} a ${fim}`);
 
     let query = client
       .from('lancamentos_diaristas')

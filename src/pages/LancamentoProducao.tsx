@@ -1397,10 +1397,8 @@ const LancamentoProducao = () => {
     };
 
     const handlePresetSelect = (preset: (typeof LANCAMENTO_PRESETS)[0]) => {
-        console.log('[OPERACAO] Preset selecionado:', preset.title);
 
         if (PRESET_ROTAS[preset.id]) {
-            console.log('[OPERACAO] Navegando para rota externa:', PRESET_ROTAS[preset.id]);
             navigate(PRESET_ROTAS[preset.id]);
             return;
         }
@@ -1412,7 +1410,6 @@ const LancamentoProducao = () => {
             modalidade_financeira: preset.modalidade_financeira,
         }));
 
-        console.log('[OPERACAO] Avançando para etapa 2...');
         setEtapaAtual(2);
     };
 
