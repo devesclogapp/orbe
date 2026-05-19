@@ -40,6 +40,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { BHEventoService } from "@/services/v4.service";
+import { buildOperationalStagePipeline } from "@/contexts/OperationalPipelineContext";
+import { buildOperationalPipelineSeenKey, useOperationalPipelineAutoTrigger } from "@/hooks/useOperationalPipelineAutoTrigger";
 
 const formatTotal = (mins: number) => {
   const h = Math.floor(Math.abs(mins) / 60);
@@ -112,6 +114,7 @@ const compactBullet = "mt-1 flex items-center gap-2 text-xs leading-5 text-muted
 const PainelGeral = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const currentCompetencia = new Date().toISOString().slice(0, 7);
   const [filters, setFilters] = useState({
     search: "",
     empresa_id: "all",
@@ -288,6 +291,33 @@ const PainelGeral = () => {
 
     return Array.from(grouped.values()).sort((a, b) => b.valor - a.valor).slice(0, 4);
   }, [filteredSaldos]);
+
+  const bancoHorasEmpresaLabel = filters.empresa_id === "all" ? "Operacao" : filters.empresa_id;
+  const bancoHorasValidado =
+    filteredSaldos.length > 0 &&
+    filteredSaldos.every((saldo: any) => ["ok", "saldo_positivo"].includes(saldo.status));
+
+  const bancoHorasTrigger = useMemo(
+    () =>
+      bancoHorasValidado
+        ? buildOperationalStagePipeline({
+            competencia: currentCompetencia,
+            empresa: bancoHorasEmpresaLabel,
+            completedStage: "banco_horas",
+          })
+        : null,
+    [bancoHorasValidado, currentCompetencia, bancoHorasEmpresaLabel],
+  );
+
+  useOperationalPipelineAutoTrigger({
+    enabled: bancoHorasValidado,
+    storageKey: buildOperationalPipelineSeenKey({
+      etapa: "banco_horas_validado",
+      competencia: currentCompetencia,
+      empresa: filters.empresa_id,
+    }),
+    trigger: bancoHorasTrigger,
+  });
 
   const exportRows = (rows: any[], kind: "fechamento" | "financeiro") => {
     if (rows.length === 0) {

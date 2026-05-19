@@ -84,6 +84,8 @@ import {
   type TransportadoraValidationErrors,
 } from "@/utils/transportadoraValidation";
 import { formatCpfCnpj, formatPhone } from "@/utils/fornecedorValidation";
+import { buildOperationalStagePipeline } from "@/contexts/OperationalPipelineContext";
+import { buildOperationalPipelineSeenKey, useOperationalPipelineAutoTrigger } from "@/hooks/useOperationalPipelineAutoTrigger";
 
 type CadastroTabValue =
   | "colaboradores"
@@ -494,6 +496,7 @@ const CentralCadastros = () => {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const empresaId = user?.user_metadata?.empresa_id;
+  const operationalCompetencia = new Date().toISOString().slice(0, 7);
 
   const [returnToContext, setReturnToContext] = useState<"processamento-rh" | null>(null);
 
@@ -1986,6 +1989,43 @@ const CentralCadastros = () => {
 
     return { aguardandoComplemento, bloqueiamRh, bloqueiamFinanceiro, completudeMedia };
   }, [colaboradoresFiltrados]);
+
+  const cadastrosPipelineEmpresa = useMemo(() => {
+    if (empresaId) {
+      return empresas.find((empresa) => empresa.id === empresaId)?.nome || "Empresa";
+    }
+    if (empresas.length === 1) {
+      return empresas[0].nome;
+    }
+    return "Operacao";
+  }, [empresaId, empresas]);
+
+  const cadastrosProntosParaFluxo =
+    colaboradoresOperacionais.length > 0 &&
+    operacionalResumo.completudeMedia === 100 &&
+    operacionalResumo.aguardandoComplemento === 0 &&
+    operacionalResumo.bloqueiamRh === 0 &&
+    operacionalResumo.bloqueiamFinanceiro === 0;
+
+  const cadastrosPipelineTrigger = useMemo(() => (
+    cadastrosProntosParaFluxo
+      ? buildOperationalStagePipeline({
+        competencia: operationalCompetencia,
+        empresa: cadastrosPipelineEmpresa,
+        completedStage: "cadastros",
+      })
+      : null
+  ), [cadastrosProntosParaFluxo, operationalCompetencia, cadastrosPipelineEmpresa]);
+
+  useOperationalPipelineAutoTrigger({
+    enabled: cadastrosProntosParaFluxo,
+    storageKey: buildOperationalPipelineSeenKey({
+      etapa: "cadastros_concluidos",
+      competencia: operationalCompetencia,
+      empresa: empresaId || "tenant",
+    }),
+    trigger: cadastrosPipelineTrigger,
+  });
 
   return (
     <AppShell

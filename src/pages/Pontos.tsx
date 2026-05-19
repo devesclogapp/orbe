@@ -108,10 +108,20 @@ const parseIsoDateLike = (value: string) => {
   const raw = value.trim();
   if (!raw) return "";
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
-  const slashMatch = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  const slashMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
   if (slashMatch) {
-    const [, day, month, year] = slashMatch;
+    let [, day, month, year] = slashMatch;
+    day = day.padStart(2, "0");
+    month = month.padStart(2, "0");
+    if (year.length === 2) {
+      year = `20${year}`;
+    }
     return `${year}-${month}-${day}`;
+  }
+  if (/^\d{5}$/.test(raw)) {
+    const excelEpoch = new Date(1899, 11, 30);
+    const date = new Date(excelEpoch.getTime() + Number(raw) * 86400000);
+    return date.toISOString().slice(0, 10);
   }
   return "";
 };
@@ -120,8 +130,15 @@ const parseTimeLike = (value: string) => {
   const raw = value.trim();
   if (!raw) return null;
   const normalized = raw.replace(".", ":");
-  if (/^\d{2}:\d{2}$/.test(normalized)) return `${normalized}:00`;
-  if (/^\d{2}:\d{2}:\d{2}$/.test(normalized)) return normalized;
+  if (/^\d{1,2}:\d{2}$/.test(normalized)) return `${normalized.padStart(5, "0")}:00`;
+  if (/^\d{1,2}:\d{2}:\d{2}$/.test(normalized)) return normalized.padStart(8, "0");
+  if (/^0\.\d+$/.test(normalized)) {
+    const totalSeconds = Math.round(Number(normalized) * 86400);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
   return null;
 };
 

@@ -160,7 +160,7 @@ export const OperationalPipelineModal = () => {
 
     if (!payload) return null;
 
-    const { context, steps, nextAction } = payload;
+    const { context, steps, completedStage, nextAction } = payload;
 
     const handleNextAction = () => {
         closePipeline();
@@ -238,6 +238,20 @@ export const OperationalPipelineModal = () => {
                 </div>
 
                 {/* Timeline / Steps */}
+                {completedStage && (
+                    <div className="mx-6 mt-4 rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3">
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-emerald-700/80">
+                            Etapa concluida
+                        </div>
+                        <div className="mt-1 text-sm font-semibold text-foreground">
+                            {completedStage.label}
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            {completedStage.description}
+                        </p>
+                    </div>
+                )}
+
                 <div className="mx-6 mt-4 rounded-xl border border-border bg-background/60 px-4 py-4">
                     <div className="space-y-0">
                         {steps.map((step, index) => (

@@ -6,6 +6,8 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { CicloOperacionalService, CicloOperacional } from "@/services/operationalEngine/CicloOperacionalService";
 import { toast } from "sonner";
+import { buildOperationalStagePipeline } from "@/contexts/OperationalPipelineContext";
+import { buildOperationalPipelineSeenKey, useOperationalPipelineAutoTrigger } from "@/hooks/useOperationalPipelineAutoTrigger";
 
 const StatusBadge = ({ label, status, type }: { label: string, status?: string | null, type: 'operacional' | 'rh' | 'fin' | 'remessa' | 'automacao' }) => {
   const safeStatus = status || 'pendente';
@@ -107,6 +109,28 @@ const Fechamento = () => {
     bancarioPendentes: list.filter((c) => c.status_financeiro === "validado_financeiro" && c.status_remessa !== "pronta" && c.status_remessa !== "remetida").length,
     fechados: list.filter((c) => c.status_financeiro === "validado_financeiro" && (c.status_remessa === "pronta" || c.status_remessa === "remetida")).length,
   };
+
+  const fechamentoConcluidoParaFinanceiro =
+    list.length > 0 &&
+    competenciaSummary.entradasPendentes === 0 &&
+    competenciaSummary.rhPendentes === 0 &&
+    competenciaSummary.financeiroPendentes > 0;
+
+  useOperationalPipelineAutoTrigger({
+    enabled: fechamentoConcluidoParaFinanceiro,
+    storageKey: buildOperationalPipelineSeenKey({
+      etapa: "fechamento_mensal_concluido",
+      competencia: currentMonth,
+      empresa: "tenant",
+    }),
+    trigger: fechamentoConcluidoParaFinanceiro
+      ? buildOperationalStagePipeline({
+          competencia: currentMonth,
+          empresa: "Operacao",
+          completedStage: "fechamento_mensal",
+        })
+      : null,
+  });
 
   return (
     <AppShell title="Fechamento Mensal" subtitle={`Ciclos Operacionais da Competência ${currentMonth}`}>

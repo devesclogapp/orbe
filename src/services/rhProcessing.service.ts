@@ -116,6 +116,12 @@ type CadastralValidation = {
   motivos: string[];
 };
 
+/**
+ * Valida se o colaborador está apto para processamento RH (banco de horas).
+ * NOTA: Dados bancários NÃO são verificados aqui — eles são validados somente
+ * na etapa de aprovação/CNAB (financeiro). Esta função verifica apenas o que
+ * é necessário para processar pontos e calcular banco de horas.
+ */
 const validateColaboradorApto = (colaborador: Colaborador | null): CadastralValidation => {
   if (!colaborador) {
     return { apto: false, motivos: ["Colaborador não identificado no cadastro"] };
@@ -123,41 +129,31 @@ const validateColaboradorApto = (colaborador: Colaborador | null): CadastralVali
 
   const motivos: string[] = [];
 
-  // 1. Status cadastral
+  // 1. Status cadastral — bloqueia apenas se explicitamente pendente de complemento
   if (colaborador.status_cadastro === "pendente_complemento") {
     motivos.push("Cadastro pendente de complemento");
   }
 
-  // 2. Cadastro provisório
+  // 2. Cadastro provisório — bloqueia se ainda não foi validado manualmente
   if (colaborador.cadastro_provisorio === true) {
     motivos.push("Cadastro provisório ainda não completado");
   }
 
-  // 3. Tipo de contrato ou modelo de cálculo
+  // 3. Tipo de contrato ou modelo de cálculo (necessário para calcular jornada)
   const modelo = String(colaborador.modelo_calculo ?? "").trim();
   const contrato = String(colaborador.tipo_contrato ?? "").trim();
   if (!modelo && !contrato) {
     motivos.push("Tipo de contrato ou modelo de cálculo não definido");
   }
 
-  // 4. Dados bancários
-  const bancoCodigo = String(colaborador.banco_codigo ?? "").trim();
-  const agencia = String(colaborador.agencia ?? "").trim();
-  const conta = String(colaborador.conta ?? "").trim();
-  const contaDigito = String(colaborador.conta_digito ?? "").trim();
-  const bankComplete = /^\d{3}$/.test(bancoCodigo)
-    && /^\d{3,6}$/.test(agencia)
-    && /^\d{3,20}$/.test(conta)
-    && /^[0-9X]{1,2}$/i.test(contaDigito);
-  if (!bankComplete) {
-    motivos.push("Dados bancários incompletos ou inválidos");
-  }
-
-  // 5. Status bloqueado/inativo
+  // 4. Status bloqueado/inativo
   const statusLc = String(colaborador.status ?? "").toLowerCase();
   if (["bloqueado", "inativo"].includes(statusLc)) {
     motivos.push(`Colaborador com status ${statusLc}`);
   }
+
+  // NOTA: Dados bancários são validados APENAS na etapa financeira/CNAB,
+  // não durante o processamento RH de banco de horas.
 
   return { apto: motivos.length === 0, motivos };
 };

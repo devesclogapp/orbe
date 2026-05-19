@@ -984,6 +984,16 @@ export const OperacaoService = new OperacaoServiceClass();
 class PontoServiceClass extends BaseService<'registros_ponto'> {
   constructor() { super('registros_ponto'); }
 
+  async create(payload: Record<string, any>) {
+    const tenantId = await getCurrentTenantId();
+    return super.create({ ...payload, tenant_id: tenantId } as any);
+  }
+
+  async update(id: string, payload: Record<string, any>) {
+    const tenantId = await getCurrentTenantId();
+    return super.update(id, { ...payload, tenant_id: tenantId } as any);
+  }
+
   async getByDate(date: string, empresaId?: string) {
     let query = supabase
       .from('registros_ponto')

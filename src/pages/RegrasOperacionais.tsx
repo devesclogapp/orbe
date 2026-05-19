@@ -541,10 +541,21 @@ const parseIsoDateLike = (value: string) => {
     return raw;
   }
 
-  const slashMatch = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  const slashMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
   if (slashMatch) {
-    const [, day, month, year] = slashMatch;
+    let [, day, month, year] = slashMatch;
+    day = day.padStart(2, "0");
+    month = month.padStart(2, "0");
+    if (year.length === 2) {
+      year = `20${year}`;
+    }
     return `${year}-${month}-${day}`;
+  }
+
+  if (/^\d{5}$/.test(raw)) {
+    const excelEpoch = new Date(1899, 11, 30);
+    const date = new Date(excelEpoch.getTime() + Number(raw) * 86400000);
+    return date.toISOString().slice(0, 10);
   }
 
   return "";

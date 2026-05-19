@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -39,7 +39,8 @@ import { ColaboradorService, EmpresaService } from "@/services/base.service";
 import { BHRegraService } from "@/services/v4.service";
 import { RHFinanceiroService } from "@/services/rhFinanceiro.service";
 import { processRhPeriod, reprocessRhPeriod, rhProcessingUtils } from "@/services/rhProcessing.service";
-import { buildFolhaVariavelPipeline, useOperationalPipeline } from "@/contexts/OperationalPipelineContext";
+import { buildFolhaVariavelPipeline, buildOperationalStagePipeline, useOperationalPipeline } from "@/contexts/OperationalPipelineContext";
+import { buildOperationalPipelineSeenKey, useOperationalPipelineAutoTrigger } from "@/hooks/useOperationalPipelineAutoTrigger";
 
 const ENGINE_EVENT_TYPES = new Set([
   "motor_regra_aplicada",
@@ -76,13 +77,15 @@ const minutesToTime = (totalMinutes: number) => {
   return `${sign}${hours}h ${minutes}m`;
 };
 
+const currentMonthDefault = format(new Date(), "yyyy-MM");
+
 const ProcessamentoRH = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { tenantId } = useTenant();
   const { openPipeline } = useOperationalPipeline();
   const [selectedEmpresa, setSelectedEmpresa] = useState("all");
-  const [selectedMonth, setSelectedMonth] = useState(format(new Date(), "yyyy-MM"));
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthDefault);
   const [searchTerm, setSearchTerm] = useState("");
   const [processModalOpen, setProcessModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("pontos");
@@ -120,6 +123,37 @@ const ProcessamentoRH = () => {
     queryKey: ["bh_regras_all"],
     queryFn: () => BHRegraService.getWithEmpresa(),
   });
+
+  // Detect the most recent month with ponto records to auto-select it
+  const { data: mesesComRegistros = [] } = useQuery({
+    queryKey: ["rh_meses_com_registros", tenantId],
+    queryFn: async () => {
+      if (!tenantId) return [];
+      const { data, error } = await supabase
+        .from("registros_ponto")
+        .select("data")
+        .eq("tenant_id", tenantId)
+        .order("data", { ascending: false })
+        .limit(500);
+      if (error) return [];
+      const meses = new Set<string>();
+      for (const row of data ?? []) {
+        if (row.data) meses.add(row.data.slice(0, 7));
+      }
+      return Array.from(meses).sort().reverse();
+    },
+    staleTime: 30_000,
+  });
+
+  // Auto-select the most recent month with records if current month has none
+  useEffect(() => {
+    if (mesesComRegistros.length === 0) return;
+    const mostRecent = mesesComRegistros[0];
+    if (mostRecent && mostRecent !== currentMonthDefault) {
+      // Only auto-switch if we haven't manually changed the month
+      setSelectedMonth((prev) => (prev === currentMonthDefault ? mostRecent : prev));
+    }
+  }, [mesesComRegistros]);
 
   const { data: pontos = [], isLoading: isLoadingPontos, refetch } = useQuery({
     queryKey: ["rh_pontos_periodo", selectedMonth, selectedEmpresa, tenantId],
@@ -338,6 +372,41 @@ const ProcessamentoRH = () => {
     };
   }, [pontos, regras, saldos]);
 
+  const processamentoEmpresaNome = useMemo(
+    () => (empresas as any[]).find((empresa) => empresa.id === selectedEmpresa)?.nome || "Empresa",
+    [empresas, selectedEmpresa],
+  );
+
+  const processamentoRhConcluido =
+    selectedEmpresa !== "all" &&
+    stats.total > 0 &&
+    stats.processados > 0 &&
+    stats.pendentes === 0 &&
+    !hasPendentesComplemento &&
+    inconsistenciasReais.length === 0;
+
+  const processamentoRhTrigger = useMemo(
+    () =>
+      processamentoRhConcluido
+        ? buildOperationalStagePipeline({
+          competencia: selectedMonth,
+          empresa: processamentoEmpresaNome,
+          completedStage: "processamento_rh",
+        })
+        : null,
+    [processamentoRhConcluido, selectedMonth, processamentoEmpresaNome],
+  );
+
+  useOperationalPipelineAutoTrigger({
+    enabled: processamentoRhConcluido,
+    storageKey: buildOperationalPipelineSeenKey({
+      etapa: "processamento_rh_concluido",
+      competencia: selectedMonth,
+      empresa: selectedEmpresa,
+    }),
+    trigger: processamentoRhTrigger,
+  });
+
   const invalidateRhQueries = async () => {
     await Promise.all([
       refetch(),
@@ -544,14 +613,35 @@ const ProcessamentoRH = () => {
                 <SelectValue placeholder="Mês" />
               </SelectTrigger>
               <SelectContent>
-                {Array.from({ length: 12 }, (_, index) => {
-                  const date = new Date(2026, index, 1);
-                  return (
-                    <SelectItem key={index} value={format(date, "yyyy-MM")}>
-                      {format(date, "MMMM/yyyy", { locale: ptBR })}
-                    </SelectItem>
-                  );
-                })}
+                {(() => {
+                  // Build a dynamic month range: past 6 months + next 3 months, always including months with records
+                  const now = new Date();
+                  const monthSet = new Set<string>();
+                  for (let offset = -6; offset <= 3; offset++) {
+                    const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+                    monthSet.add(format(d, "yyyy-MM"));
+                  }
+                  // Always include months that actually have records
+                  for (const m of mesesComRegistros) {
+                    monthSet.add(m);
+                  }
+                  // Always include selected month
+                  monthSet.add(selectedMonth);
+                  return Array.from(monthSet)
+                    .sort()
+                    .reverse()
+                    .map((monthValue) => {
+                      const [y, m] = monthValue.split("-").map(Number);
+                      const date = new Date(y, m - 1, 1);
+                      const hasRecords = mesesComRegistros.includes(monthValue);
+                      return (
+                        <SelectItem key={monthValue} value={monthValue}>
+                          {format(date, "MMMM/yyyy", { locale: ptBR })}
+                          {hasRecords ? " ●" : ""}
+                        </SelectItem>
+                      );
+                    });
+                })()}
               </SelectContent>
             </Select>
 
