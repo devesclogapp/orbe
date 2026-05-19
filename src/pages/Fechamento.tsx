@@ -1,13 +1,37 @@
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
+import { JustificationModal } from "@/components/modals/JustificationModal";
 import { CalendarCheck, Lock, Unlock, Loader2, CheckCircle2, XCircle, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { CicloOperacionalService, CicloOperacional } from "@/services/operationalEngine/CicloOperacionalService";
 import { toast } from "sonner";
-import { buildOperationalStagePipeline, buildOperationalStageReviewPipeline } from "@/contexts/OperationalPipelineContext";
+import { buildOperationalFailurePipeline, buildOperationalStagePipeline, buildOperationalStageReviewPipeline, useOperationalPipeline } from "@/contexts/OperationalPipelineContext";
 import { buildOperationalPipelineSeenKey, useOperationalPipelineAutoTrigger } from "@/hooks/useOperationalPipelineAutoTrigger";
+
+type CustoExtraResumo = {
+  id: string;
+  empresa_id: string | null;
+  data: string | null;
+  status_pagamento: string | null;
+};
+
+type ServicoExtraResumo = {
+  id: string;
+  empresa_id: string | null;
+  data_operacao: string | null;
+  status: string | null;
+  avaliacao_json?: {
+    categoria_servico?: string | null;
+  } | null;
+};
+
+type PendingActionState = {
+  action: string;
+  id: string;
+};
 
 const StatusBadge = ({ label, status, type }: { label: string, status?: string | null, type: 'operacional' | 'rh' | 'fin' | 'remessa' | 'automacao' }) => {
   const safeStatus = status || 'pendente';
@@ -38,6 +62,8 @@ const StatusBadge = ({ label, status, type }: { label: string, status?: string |
 const Fechamento = () => {
   const queryClient = useQueryClient();
   const currentMonth = new Date().toISOString().substring(0, 7);
+  const { openPipeline } = useOperationalPipeline();
+  const [pendingAction, setPendingAction] = useState<PendingActionState | null>(null);
 
   const { data: list = [], isLoading } = useQuery<CicloOperacional[]>({
     queryKey: ["ciclos_operacionais", currentMonth],
@@ -74,24 +100,90 @@ const Fechamento = () => {
       toast.success("Ação concluída com sucesso!");
       queryClient.invalidateQueries({ queryKey: ["ciclos_operacionais"] });
     },
-    onError: (err: any) => {
+    onError: (err: any, variables) => {
+      const stageByAction: Record<string, "fechamento_mensal" | "central_financeira"> = {
+        fechar: "fechamento_mensal",
+        reabrir: "fechamento_mensal",
+        validarRH: "fechamento_mensal",
+        rejeitarRH: "fechamento_mensal",
+        validarFin: "central_financeira",
+        rejeitarFin: "central_financeira",
+      };
+
+      openPipeline(
+        buildOperationalFailurePipeline({
+          competencia: currentMonth,
+          empresa: "Operacao",
+          currentStage: stageByAction[variables.action] ?? "fechamento_mensal",
+          failureStatus: variables.action === "rejeitarRH" || variables.action === "rejeitarFin" ? "devolved" : "blocked",
+          failureTitle: "Falha no fluxo de fechamento",
+          failureDescription: err.message || "A ação não pôde ser concluída nesta etapa.",
+          nextAction: {
+            label: "Revisar fechamento",
+            description: "Analise os bloqueios operacionais e ajuste a competência antes de tentar novamente.",
+            route: "/fechamento",
+          },
+        }),
+      );
       toast.error("Erro na ação", { description: err.message });
     }
   });
 
   const handleAction = (action: string, id: string, requireObs: boolean = false) => {
-    let obs = '';
     if (requireObs) {
-      const promptResult = window.prompt("Insira a justificativa / observação:");
-      if (promptResult === null) return; // Cancelado
-      if (promptResult.trim() === '') {
-        toast.error("A justificativa é obrigatória para esta ação.");
-        return;
-      }
-      obs = promptResult;
+      setPendingAction({ action, id });
+      return;
     }
-    actionMutation.mutate({ action, id, obs });
+
+    actionMutation.mutate({ action, id, obs: "" });
   };
+
+  const closePendingActionModal = () => {
+    if (actionMutation.isPending) return;
+    setPendingAction(null);
+  };
+
+  const confirmPendingAction = (obs: string) => {
+    if (!pendingAction) return;
+    actionMutation.mutate({
+      action: pendingAction.action,
+      id: pendingAction.id,
+      obs,
+    });
+    setPendingAction(null);
+  };
+
+  const { data: custosExtras = [] } = useQuery<CustoExtraResumo[]>({
+    queryKey: ["custos_extras_fechamento", currentMonth],
+    queryFn: async () => {
+      const startDate = `${currentMonth}-01`;
+      const endDate = `${currentMonth}-31`;
+      const { data, error } = await supabase
+        .from("custos_extras_operacionais")
+        .select("id, empresa_id, data, status_pagamento")
+        .gte("data", startDate)
+        .lte("data", endDate);
+      if (error) throw error;
+      return (data || []) as CustoExtraResumo[];
+    },
+  });
+
+  const { data: servicosExtras = [] } = useQuery<ServicoExtraResumo[]>({
+    queryKey: ["servicos_extras_fechamento", currentMonth],
+    queryFn: async () => {
+      const startDate = `${currentMonth}-01`;
+      const endDate = `${currentMonth}-31`;
+      const { data, error } = await supabase
+        .from("operacoes_producao")
+        .select("id, empresa_id, data_operacao, status, avaliacao_json")
+        .gte("data_operacao", startDate)
+        .lte("data_operacao", endDate);
+      if (error) throw error;
+      return ((data || []) as ServicoExtraResumo[]).filter(
+        (item) => item.avaliacao_json?.categoria_servico === "SERVICO_EXTRA",
+      );
+    },
+  });
 
   const getCriticalBlockers = (c: CicloOperacional) => {
     const blockers: string[] = [];
@@ -99,6 +191,40 @@ const Fechamento = () => {
     if (c.status_automacao !== "pronto_para_fechamento") blockers.push("Motor operacional ainda não liberou o fechamento.");
     if (c.status_rh === "rejeitado_rh") blockers.push("RH rejeitou o ciclo. Ajuste obrigatório antes de avançar.");
     if (c.status_financeiro === "rejeitado_financeiro") blockers.push("Financeiro rejeitou o ciclo. Ajuste obrigatório antes de avançar.");
+    return blockers;
+  };
+
+  const getCustosPendentesDoCiclo = (c: CicloOperacional) =>
+    custosExtras.filter((item) =>
+      item.empresa_id === c.empresa_id &&
+      Boolean(item.data) &&
+      item.data! >= c.data_inicio &&
+      item.data! <= c.data_fim &&
+      item.status_pagamento !== "RECEBIDO",
+    );
+
+  const getServicosPendentesDoCiclo = (c: CicloOperacional) =>
+    servicosExtras.filter((item) =>
+      item.empresa_id === c.empresa_id &&
+      Boolean(item.data_operacao) &&
+      item.data_operacao! >= c.data_inicio &&
+      item.data_operacao! <= c.data_fim &&
+      ["pendente", "aguardando_validacao", "com_alerta", "bloqueado"].includes(String(item.status || "").toLowerCase()),
+    );
+
+  const getFinancialFlowBlockers = (c: CicloOperacional) => {
+    const blockers: string[] = [];
+    const custosPendentes = getCustosPendentesDoCiclo(c);
+    const servicosPendentes = getServicosPendentesDoCiclo(c);
+
+    if (custosPendentes.length > 0) {
+      blockers.push(`${custosPendentes.length} custo(s) extra(s) ainda aguardam reflexo financeiro.`);
+    }
+
+    if (servicosPendentes.length > 0) {
+      blockers.push(`${servicosPendentes.length} serviço(s) extra(s) ainda estão pendentes de validação operacional.`);
+    }
+
     return blockers;
   };
 
@@ -110,10 +236,13 @@ const Fechamento = () => {
     fechados: list.filter((c) => c.status_financeiro === "validado_financeiro" && (c.status_remessa === "pronta" || c.status_remessa === "remetida")).length,
   };
 
+  const competenciaTemBloqueiosFinanceiros = list.some((c) => getFinancialFlowBlockers(c).length > 0);
+
   const fechamentoConcluidoParaFinanceiro =
     list.length > 0 &&
     competenciaSummary.entradasPendentes === 0 &&
     competenciaSummary.rhPendentes === 0 &&
+    !competenciaTemBloqueiosFinanceiros &&
     competenciaSummary.financeiroPendentes > 0;
 
   useOperationalPipelineAutoTrigger({
@@ -180,7 +309,11 @@ const Fechamento = () => {
             </div>
           </section>
 
-          {list.map((c) => (
+          {list.map((c) => {
+            const criticalBlockers = getCriticalBlockers(c);
+            const financialFlowBlockers = getFinancialFlowBlockers(c);
+
+            return (
             <article key={c.id} className="esc-card p-6 flex flex-col gap-5">
               <div className="flex items-center justify-between border-b border-border pb-4">
                 <div className="flex items-center gap-3">
@@ -229,12 +362,23 @@ const Fechamento = () => {
                 </div>
               </div>
 
-              {getCriticalBlockers(c).length > 0 && (
+              {criticalBlockers.length > 0 && (
                 <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-destructive">Bloqueios críticos</p>
                   <ul className="mt-2 space-y-1 text-sm text-destructive">
-                    {getCriticalBlockers(c).map((item, idx) => (
+                    {criticalBlockers.map((item, idx) => (
                       <li key={`${c.id}-blocker-${idx}`}>• {item}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {financialFlowBlockers.length > 0 && (
+                <div className="rounded-lg border border-warning/30 bg-warning-soft/40 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-warning-strong">Validações do fluxo financeiro</p>
+                  <ul className="mt-2 space-y-1 text-sm text-warning-strong">
+                    {financialFlowBlockers.map((item, idx) => (
+                      <li key={`${c.id}-finance-blocker-${idx}`}>- {item}</li>
                     ))}
                   </ul>
                 </div>
@@ -256,7 +400,7 @@ const Fechamento = () => {
                   {c.status !== "fechado" && c.status !== "enviado_financeiro" && (
                     <Button
                       size="sm"
-                      disabled={getCriticalBlockers(c).length > 0 || actionMutation.isPending}
+                      disabled={criticalBlockers.length > 0 || actionMutation.isPending}
                       onClick={() => handleAction('fechar', c.id)}
                     >
                       {actionMutation.isPending ? "Processando..." : getCriticalBlockers(c).length > 0 ? "Bloqueado por pendências" : "1. Fechar Operacional"}
@@ -274,7 +418,7 @@ const Fechamento = () => {
                   {c.status_rh === "validado_rh" && c.status_financeiro === "pendente" && (
                     <>
                       <Button size="sm" variant="destructive" onClick={() => handleAction('rejeitarFin', c.id, true)} disabled={actionMutation.isPending}>Rejeitar (Fin)</Button>
-                      <Button size="sm" variant="default" onClick={() => handleAction('validarFin', c.id, false)} disabled={actionMutation.isPending}>3. Aprovar Financeiro</Button>
+                      <Button size="sm" variant="default" onClick={() => handleAction('validarFin', c.id, false)} disabled={actionMutation.isPending || financialFlowBlockers.length > 0}>3. Aprovar Financeiro</Button>
                     </>
                   )}
 
@@ -292,7 +436,8 @@ const Fechamento = () => {
                 </div>
               )}
             </article>
-          ))}
+          );
+          })}
           {list.length === 0 && (
             <div className="p-12 text-center text-muted-foreground italic esc-card">
               Nenhuma semana processada para a competência selecionada.
@@ -300,6 +445,14 @@ const Fechamento = () => {
           )}
         </div>
       )}
+      <JustificationModal
+        isOpen={!!pendingAction}
+        onClose={closePendingActionModal}
+        onConfirm={confirmPendingAction}
+        isLoading={actionMutation.isPending}
+        title="Justificativa obrigatória"
+        description="Esta ação altera um ciclo já fechado ou devolvido. Registre a justificativa completa para manter a rastreabilidade operacional e financeira."
+      />
     </AppShell>
   );
 };

@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useState, ReactNode } from "react";
 
-export type PipelineStepStatus = "done" | "current" | "pending" | "blocked";
+export type PipelineStepStatus = "done" | "current" | "pending" | "blocked" | "devolved" | "canceled";
 
 export type PipelineStep = {
     id: string;
@@ -27,6 +27,8 @@ export type PipelineContext = {
 export type PipelineTrigger = {
     context: PipelineContext;
     steps: PipelineStep[];
+    title?: string;
+    subtitle?: string;
     completedStage?: {
         label: string;
         description: string;
@@ -568,5 +570,109 @@ export const buildBancoHorasRhValidationPipeline = (params: {
             autoNavigate: true,
             delayMs: 1400,
         },
+    };
+};
+
+export const buildOperationalFailurePipeline = (params: {
+    competencia: string;
+    empresa: string;
+    currentStage: "cadastros" | "processamento_rh" | "banco_horas" | "fechamento_mensal" | "central_financeira";
+    failureStatus?: Extract<PipelineStepStatus, "blocked" | "devolved" | "canceled">;
+    failureTitle?: string;
+    failureDescription: string;
+    nextAction?: {
+        label: string;
+        description: string;
+        route: string;
+    };
+}): PipelineTrigger => {
+    const {
+        competencia,
+        empresa,
+        currentStage,
+        failureStatus = "blocked",
+        failureTitle = "Falha operacional identificada",
+        failureDescription,
+        nextAction,
+    } = params;
+
+    const stageOrder = [
+        "cadastros",
+        "processamento_rh",
+        "banco_horas",
+        "fechamento_mensal",
+        "central_financeira",
+    ] as const;
+
+    const stageMap: Record<(typeof stageOrder)[number], Omit<PipelineStep, "status">> = {
+        cadastros: {
+            id: "cadastros",
+            label: "Central de Cadastros",
+            description: "Cadastros operacionais completos e liberados para o fluxo.",
+            route: "/cadastros",
+            responsible: "Administracao",
+        },
+        processamento_rh: {
+            id: "processamento_rh",
+            label: "Processamento RH",
+            description: "Processamento e consolidacao operacional da competencia.",
+            route: "/banco-horas/processamento",
+            responsible: "RH",
+        },
+        banco_horas: {
+            id: "banco_horas",
+            label: "Banco de Horas",
+            description: "Validacao de saldos, vencimentos e risco operacional.",
+            route: "/banco-horas",
+            responsible: "RH",
+        },
+        fechamento_mensal: {
+            id: "fechamento_mensal",
+            label: "Fechamento Mensal",
+            description: "Consolidacao final da competencia operacional.",
+            route: "/fechamento",
+            responsible: "RH / Operacoes",
+        },
+        central_financeira: {
+            id: "central_financeira",
+            label: "Central Financeira",
+            description: "Acompanhamento, aprovacao e continuidade financeira da competencia.",
+            route: "/financeiro",
+            responsible: "Financeiro",
+        },
+    };
+
+    const failureIndex = stageOrder.indexOf(currentStage);
+    const steps = stageOrder.map((stageId, index) => ({
+        ...stageMap[stageId],
+        status:
+            index < failureIndex
+                ? "done"
+                : index === failureIndex
+                    ? failureStatus
+                    : "pending",
+    })) satisfies PipelineStep[];
+
+    const fallbackNextAction = nextAction ?? {
+        label: "Revisar etapa atual",
+        description: "Corrija a pendencia indicada para destravar o fluxo antes de seguir.",
+        route: stageMap[currentStage].route || "/fechamento",
+    };
+
+    return {
+        context: { competencia, empresa, fluxo: "Pipeline Operacional" },
+        title: failureTitle,
+        subtitle: failureDescription,
+        steps,
+        completedStage: {
+            label:
+                failureStatus === "devolved"
+                    ? "Fluxo devolvido"
+                    : failureStatus === "canceled"
+                        ? "Fluxo cancelado"
+                        : "Fluxo bloqueado",
+            description: failureDescription,
+        },
+        nextAction: fallbackNextAction,
     };
 };

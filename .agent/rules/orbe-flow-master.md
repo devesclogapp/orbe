@@ -553,4 +553,288 @@ Onde:
 
 ---
 
+# ORBE_MASTER_FLOW_ARCHITECTURE — ADENDOS OBRIGATÓRIOS
+
+As observações levantadas estão corretas e devem ser incorporadas oficialmente ao documento mestre.
+
+Esses pontos representam:
+- lacunas arquiteturais
+- ambiguidades operacionais
+- ausência de definição de responsabilidade
+- ausência de fluxo de falha
+
+Todos devem ser tratados como:
+# atualização oficial da arquitetura.
+
+---
+
+# 15. BANCO DE HORAS — DIARISTAS
+
+## Definição oficial
+
+Diaristas NÃO participam do mesmo Banco de Horas CLT.
+
+Por padrão:
+- diaristas possuem fechamento simplificado
+- pagamento direto por diária/lote
+- sem acúmulo contínuo mensal
+
+---
+
+## Exceção futura (opcional)
+
+Caso exista diarista recorrente com:
+- créditos
+- compensações
+- jornada contínua
+
+o sistema poderá usar:
+# Banco de Horas Simplificado de Diarista
+
+Mas:
+- separado do CLT
+- separado do fechamento mensal RH
+- separado da folha variável
+
+---
+
+# Atualizar seção 4.2
+
+Adicionar:
+
+```text
+Diaristas não utilizam o mesmo banco de horas operacional CLT.
+```
+
+---
+
+# 16. CUSTOS EXTRAS — RESPONSABILIDADE
+
+## Fluxo oficial atualizado
+
+```text
+Lançamento →
+Validação Operacional →
+Financeiro →
+Centro de custo →
+Dashboard
+```
+
+---
+
+## Responsável oficial
+
+| Etapa | Responsável |
+|---|---|
+| Lançamento | Encarregado |
+| Validação operacional | ADM/Operação |
+| Consolidação financeira | Financeiro |
+
+---
+
+## IMPORTANTE
+
+Custos Extras:
+- NÃO passam pelo RH
+- NÃO geram banco de horas
+- NÃO geram folha
+
+São:
+# despesas operacionais.
+
+---
+
+# 17. SERVIÇOS EXTRAS — APROVAÇÃO
+
+## Fluxo oficial atualizado
+
+```text
+Lançamento →
+Validação Operacional →
+Aprovação →
+Financeiro →
+Faturamento →
+Dashboard
+```
+
+---
+
+## Responsáveis
+
+| Etapa | Responsável |
+|---|---|
+| Lançamento | Encarregado |
+| Validação | Operação |
+| Aprovação | ADM/Gestor |
+| Financeiro | Financeiro |
+
+---
+
+## IMPORTANTE
+
+Serviços Extras:
+- podem gerar faturamento
+- podem gerar pagamento colaborador
+- precisam de aprovação antes do financeiro
+
+---
+
+# 18. BANCO DE HORAS — ESCOPO OFICIAL
+
+## Banco de Horas pertence exclusivamente ao fluxo RH CLT.
+
+Recebe reflexos apenas de:
+- Processamento RH
+- Ajustes RH
+- Compensações RH
+- Fechamento RH
+
+---
+
+## NÃO recebe diretamente:
+
+- Operação por Volume
+- Custos Extras
+- Serviços Extras
+
+Esses módulos:
+- impactam financeiro
+- impactam faturamento
+- impactam dashboard
+
+Mas NÃO o banco RH CLT.
+
+---
+
+# 19. PIPELINE VISUAL — ESTADOS OFICIAIS
+
+Atualizar seção 6.
+
+---
+
+## Estados obrigatórios do pipeline
+
+| Estado | Significado |
+|---|---|
+| pendente | etapa ainda não iniciada |
+| em_andamento | etapa atual ativa |
+| concluido | etapa finalizada |
+| bloqueado | aguardando correção |
+| devolvido | retornou para etapa anterior |
+| cancelado | fluxo interrompido |
+
+---
+
+## Regras visuais
+
+| Estado | Visual |
+|---|---|
+| pendente | cinza |
+| em_andamento | amarelo/azul |
+| concluido | verde |
+| bloqueado | vermelho |
+| devolvido | laranja |
+| cancelado | escuro |
+
+---
+
+# 20. TRATAMENTO OFICIAL DE FALHAS
+
+Criar:
+# Seção 15 — Tratamento de Falhas de Pipeline
+
+---
+
+# Regra geral
+
+Toda falha:
+- deve registrar log
+- deve preservar rastreabilidade
+- deve manter histórico
+- deve indicar responsável
+- deve orientar próxima ação
+
+---
+
+# 20.1 FALHA RH
+
+Exemplos:
+- processamento inválido
+- colaborador sem contrato
+- competência inválida
+
+Comportamento:
+- bloquear etapa
+- destacar inconsistência
+- impedir fechamento
+
+---
+
+# 20.2 FALHA FINANCEIRA
+
+Exemplos:
+- lote divergente
+- valor inconsistente
+- saldo negativo
+
+Comportamento:
+- impedir aprovação
+- devolver ao setor anterior
+- abrir pipeline em estado:
+  `devolvido`
+
+---
+
+# 20.3 FALHA CNAB
+
+Exemplos:
+- divergência total lote
+- favorecido inválido
+- conta bancária inválida
+
+Comportamento:
+- bloquear geração
+- retornar para Central Financeira
+- abrir alerta operacional
+- manter lote rastreável
+
+---
+
+# 20.4 FALHA DE RETORNO BANCÁRIO
+
+Exemplos:
+- rejeição bancária
+- conta inválida
+- TED recusada
+
+Comportamento:
+- marcar favorecido como rejeitado
+- permitir reenvio
+- manter histórico bancário
+
+---
+
+# 21. REGRA MESTRA
+
+Nenhuma implementação futura pode:
+
+- ignorar este documento
+- criar fluxo paralelo
+- criar responsabilidade ambígua
+- criar ação fora do setor correto
+- recalcular regra financeira no front-end
+
+---
+
+# RESULTADO
+
+O ORBE passa a possuir:
+
+- arquitetura operacional formal
+- governança sistêmica
+- pipeline auditável
+- responsabilidades explícitas
+- tratamento de falha
+- consistência entre setores
+
 # FIM DO DOCUMENTO

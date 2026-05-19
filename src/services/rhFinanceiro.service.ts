@@ -22,12 +22,16 @@ type ApprovalBlockers = {
   pendenciasCadastrais: Array<{ id: string; nome: string; motivo: string }>;
   inconsistenciasAbertas: Array<{ id: string; nome: string; motivo: string }>;
   colaboradoresBloqueados: Array<{ id: string; nome: string; motivo: string }>;
+  custosExtrasPendentes: Array<{ id: string; nome: string; motivo: string }>;
+  servicosExtrasPendentes: Array<{ id: string; nome: string; motivo: string }>;
   resumo: {
     bloqueiosCriticos: number;
     avisosOperacionais: number;
     pendenciasCadastrais: number;
     inconsistenciasAbertas: number;
     colaboradoresBloqueados: number;
+    custosExtrasPendentes: number;
+    servicosExtrasPendentes: number;
     financeiroPrevisto?: {
       folhaBase: number;
       variaveis: number;
@@ -43,6 +47,11 @@ type ApprovalLotResult = {
   totalColaboradores: number;
   valorTotal: number;
   approvedAt: string;
+};
+
+type ReprocessPeriodGuard = {
+  permitido: boolean;
+  motivo?: string;
 };
 
 const RH_LOTE_ORIGEM = "RH";
@@ -206,6 +215,59 @@ const loadCompetenciaContext = async (tenantId: string, empresaId: string, compe
   };
 };
 
+const loadFinancialFlowPendencias = async (tenantId: string, empresaId: string, competencia: string) => {
+  const { startDate, endDate } = getPeriodRange(competencia);
+
+  const [
+    { data: custosExtras, error: custosError },
+    { data: servicosExtras, error: servicosError },
+  ] = await Promise.all([
+    supabase
+      .from("custos_extras_operacionais")
+      .select("id, data, status_pagamento")
+      .eq("tenant_id", tenantId)
+      .eq("empresa_id", empresaId)
+      .gte("data", startDate)
+      .lte("data", endDate),
+    supabase
+      .from("operacoes_producao")
+      .select("id, data_operacao, status, avaliacao_json")
+      .eq("tenant_id", tenantId)
+      .eq("empresa_id", empresaId)
+      .gte("data_operacao", startDate)
+      .lte("data_operacao", endDate),
+  ]);
+
+  if (custosError) throw custosError;
+  if (servicosError) throw servicosError;
+
+  const custosExtrasPendentes = (custosExtras || [])
+    .filter((item: any) => String(item.status_pagamento || "").toUpperCase() !== "RECEBIDO")
+    .map((item: any) => ({
+      id: item.id,
+      nome: "Custo extra operacional",
+      motivo: `status ${String(item.status_pagamento || "PENDENTE").toUpperCase().toLowerCase()}`,
+    }));
+
+  const servicosExtrasPendentes = (servicosExtras || [])
+    .filter((item: any) => item.avaliacao_json?.categoria_servico === "SERVICO_EXTRA")
+    .filter((item: any) =>
+      ["pendente", "aguardando_validacao", "com_alerta", "bloqueado"].includes(
+        String(item.status || "").toLowerCase(),
+      ),
+    )
+    .map((item: any) => ({
+      id: item.id,
+      nome: "Serviço extra",
+      motivo: `status ${String(item.status || "pendente").toLowerCase()}`,
+    }));
+
+  return {
+    custosExtrasPendentes,
+    servicosExtrasPendentes,
+  };
+};
+
 const buildFolhaVariavelItems = (pontos: any[]) => {
   const items: any[] = [];
 
@@ -335,6 +397,27 @@ const appendLoteHistorico = async (payload: {
 };
 
 class RHFinanceiroServiceClass {
+  async validateReprocessPeriod(empresaId: string, competencia: string): Promise<ReprocessPeriodGuard> {
+    if (!empresaId || !competencia) {
+      return { permitido: true };
+    }
+
+    const validation = await this.validateCompetenciaApproval(empresaId, competencia);
+    const existeFluxoFinanceiro =
+      (validation.resumo.financeiroPrevisto?.folhaBase || 0) > 0 ||
+      (validation.resumo.financeiroPrevisto?.variaveis || 0) > 0 ||
+      (validation.resumo.financeiroPrevisto?.bancoHoras || 0) > 0;
+
+    if (existeFluxoFinanceiro && validation.impedimentos.length === 0) {
+      return {
+        permitido: false,
+        motivo: "Esta competência já foi consolidada para o fluxo financeiro. Reprocessar exige justificativa administrativa.",
+      };
+    }
+
+    return { permitido: true };
+  }
+
   async validateCompetenciaApproval(empresaId: string, competencia: string): Promise<ApprovalBlockers> {
     if (!empresaId) {
       throw new Error("Selecione uma empresa para aprovar a competencia.");
@@ -345,7 +428,13 @@ class RHFinanceiroServiceClass {
     }
 
     const { tenantId } = await getCurrentSessionContext();
-    const { empresa, pontos, colaboradores, inconsistencias, logs } = await loadCompetenciaContext(tenantId, empresaId, competencia);
+    const [
+      { empresa, pontos, colaboradores, inconsistencias, logs },
+      { custosExtrasPendentes, servicosExtrasPendentes },
+    ] = await Promise.all([
+      loadCompetenciaContext(tenantId, empresaId, competencia),
+      loadFinancialFlowPendencias(tenantId, empresaId, competencia),
+    ]);
 
     if (!empresa) {
       throw new Error("Empresa nao encontrada para esta aprovacao.");
@@ -492,6 +581,26 @@ class RHFinanceiroServiceClass {
       });
     }
 
+    for (const item of custosExtrasPendentes) {
+      bloqueiosCriticosMap.set(`custo-extra-${item.id}`, {
+        ...item,
+        id: `custo-extra-${item.id}`,
+        categoria: "Custo extra pendente",
+        rota: "/fechamento",
+        acao: "Regularizar o reflexo financeiro do custo extra",
+      });
+    }
+
+    for (const item of servicosExtrasPendentes) {
+      bloqueiosCriticosMap.set(`servico-extra-${item.id}`, {
+        ...item,
+        id: `servico-extra-${item.id}`,
+        categoria: "Serviço extra pendente",
+        rota: "/fechamento",
+        acao: "Concluir a validação operacional antes do Financeiro",
+      });
+    }
+
     if ((logs || []).length > 0) {
       avisosOperacionaisMap.set(`logs-${competencia}-${empresaId}`, {
         id: `logs-${competencia}-${empresaId}`,
@@ -516,6 +625,12 @@ class RHFinanceiroServiceClass {
     if (colaboradoresBloqueados.length > 0) {
       impedimentos.push(`${colaboradoresBloqueados.length} colaborador(es) bloqueado(s) ou inativos aparecem na competencia.`);
     }
+    if (custosExtrasPendentes.length > 0) {
+      impedimentos.push(`${custosExtrasPendentes.length} custo(s) extra(s) ainda aguardam reflexo financeiro.`);
+    }
+    if (servicosExtrasPendentes.length > 0) {
+      impedimentos.push(`${servicosExtrasPendentes.length} serviço(s) extra(s) ainda aguardam validação operacional.`);
+    }
 
     return {
       competencia,
@@ -527,12 +642,16 @@ class RHFinanceiroServiceClass {
       pendenciasCadastrais,
       inconsistenciasAbertas: Array.from(inconsistenciasAbertasMap.values()),
       colaboradoresBloqueados,
+      custosExtrasPendentes,
+      servicosExtrasPendentes,
       resumo: {
         bloqueiosCriticos: bloqueiosCriticosMap.size,
         avisosOperacionais: avisosOperacionaisMap.size,
         pendenciasCadastrais: pendenciasCadastrais.length,
         inconsistenciasAbertas: inconsistenciasAbertasMap.size,
         colaboradoresBloqueados: colaboradoresBloqueados.length,
+        custosExtrasPendentes: custosExtrasPendentes.length,
+        servicosExtrasPendentes: servicosExtrasPendentes.length,
         financeiroPrevisto: {
           folhaBase: buildFolhaBaseItems(colaboradores, competencia).length,
           variaveis: buildFolhaVariavelItems(pontosDoMes).length,

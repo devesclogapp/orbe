@@ -131,6 +131,11 @@ const validateColaboradorApto = (colaborador: Colaborador | null): CadastralVali
 
   const motivos: string[] = [];
 
+  // 0. Segregacao Master - Diaristas nao participam do Banco de Horas CLT
+  if (String(colaborador.tipo_colaborador ?? "").trim().toUpperCase() === "DIARISTA") {
+    motivos.push("Diaristas não participam do Banco de Horas CLT");
+ }
+
   // 1. Status cadastral — bloqueia apenas se explicitamente pendente de complemento
   if (colaborador.status_cadastro === "pendente_complemento") {
     motivos.push("Cadastro pendente de complemento");
@@ -165,6 +170,10 @@ const EXTRA_RATE = 1.5;
 const AUTO_IMPORT_ORIGIN = "importacao_ponto";
 const DEFAULT_RULE_NAME = "Regra padrão automática 8h";
 const VENCIMENTO_ALERT_WINDOW_DAYS = 30;
+
+const isDuplicateRhEventError = (error: any) =>
+  error?.code === "23505" &&
+  String(error?.message ?? "").includes("idx_bh_eventos_proc_registro");
 
 const normalizeText = (value?: string | null) =>
   value
@@ -731,6 +740,44 @@ const upsertSaldo = async (saldo: RhSaldo) => {
   if (error) throw error;
 };
 
+const replaceRhEventoByRegistro = async (payload: Record<string, any>) => {
+  const registroPontoId = payload.registro_ponto_id;
+  const tenantId = payload.tenant_id;
+
+  if (!registroPontoId) {
+    const { error } = await (supabase as any)
+      .from("banco_horas_eventos")
+      .insert(payload);
+    if (error) throw error;
+    return;
+  }
+
+  await (supabase as any)
+    .from("banco_horas_eventos")
+    .delete()
+    .eq("tenant_id", tenantId)
+    .eq("registro_ponto_id", registroPontoId)
+    .eq("origem", RH_EVENT_ORIGIN);
+
+  const { error } = await (supabase as any)
+    .from("banco_horas_eventos")
+    .insert(payload);
+
+  if (isDuplicateRhEventError(error)) {
+    const { error: updateError } = await (supabase as any)
+      .from("banco_horas_eventos")
+      .update(payload)
+      .eq("tenant_id", tenantId)
+      .eq("registro_ponto_id", registroPontoId)
+      .eq("origem", RH_EVENT_ORIGIN);
+
+    if (updateError) throw updateError;
+    return;
+  }
+
+  if (error) throw error;
+};
+
 const processarVencimentosPendentes = async ({
   tenantId,
   colaboradorId,
@@ -1053,7 +1100,11 @@ export const processRhPeriod = async ({
     };
   }
 
-  const pontoIds = validPontos.map((ponto) => ponto.id);
+  const validPontosUnicos = Array.from(
+    new Map(validPontos.map((ponto) => [ponto.id, ponto])).values(),
+  );
+
+  const pontoIds = validPontosUnicos.map((ponto) => ponto.id);
   await (supabase as any)
     .from("banco_horas_eventos")
     .delete()
@@ -1072,7 +1123,7 @@ export const processRhPeriod = async ({
   let totalDebitos = 0;
   let pendentesCadastrais = 0;
 
-  for (const ponto of validPontos) {
+  for (const ponto of validPontosUnicos) {
     const alertas: Array<{ tipo: string; descricao: string }> = [];
 
     let empresa = getEmpresaFromPonto(ponto, empresasRuntime);
@@ -1253,10 +1304,7 @@ export const processRhPeriod = async ({
         status: "ativo",
       };
 
-      const { error: eventoError } = await (supabase as any)
-        .from("banco_horas_eventos")
-        .insert(eventoPayload);
-      if (eventoError) throw eventoError;
+      await replaceRhEventoByRegistro(eventoPayload);
 
       const saldoAnteriorRow = saldosMap.get(colaborador.id);
       const novoSaldo: RhSaldo = {
@@ -1389,8 +1437,8 @@ export const processRhPeriod = async ({
     tenantId,
     month,
     empresaId,
-    totalRegistros: validPontos.length + lockedPontosCount.total,
-    totalProcessados: validPontos.length,
+    totalRegistros: validPontosUnicos.length + lockedPontosCount.total,
+    totalProcessados: validPontosUnicos.length,
     totalInconsistencias,
     totalCreditos,
     totalDebitos,
@@ -1399,8 +1447,8 @@ export const processRhPeriod = async ({
   });
 
   return {
-    totalRegistros: validPontos.length + lockedPontosCount.total,
-    totalProcessados: validPontos.length,
+    totalRegistros: validPontosUnicos.length + lockedPontosCount.total,
+    totalProcessados: validPontosUnicos.length,
     totalInconsistencias,
     totalCreditos,
     totalDebitos,

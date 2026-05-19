@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -360,6 +360,7 @@ const ProcessamentoRH = () => {
   const [processModalOpen, setProcessModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("pontos");
   const [isProcessing, setIsProcessing] = useState(false);
+  const processingLockRef = useRef(false);
   const [processingResult, setProcessingResult] = useState<any>(null);
   const [approvalModalOpen, setApprovalModalOpen] = useState(false);
   const [approvalValidation, setApprovalValidation] = useState<any>(null);
@@ -377,6 +378,14 @@ const ProcessamentoRH = () => {
   const [justificationTarget, setJustificationTarget] = useState<any | null>(null);
   const [isSavingJustification, setIsSavingJustification] = useState(false);
   const [isReprocessingIndividual, setIsReprocessingIndividual] = useState(false);
+  
+  // Governança Admin
+  const [adminJustificationModalOpen, setAdminJustificationModalOpen] = useState(false);
+  const [adminJustificationPayload, setAdminJustificationPayload] = useState<{
+    actionType: string;
+    actionLabel: string;
+    callback: (justificativa: string) => Promise<void>;
+  } | null>(null);
 
   const { data: empresas = [], isLoading: isLoadingEmpresas } = useQuery({
     queryKey: ["empresas"],
@@ -863,14 +872,39 @@ const ProcessamentoRH = () => {
     trigger: processamentoRhTrigger,
   });
 
+  const { data: reprocessGuard } = useQuery({
+    queryKey: ["rh_reprocess_guard", selectedEmpresa, activeCompetencia],
+    queryFn: () => RHFinanceiroService.validateReprocessPeriod(selectedEmpresa, activeCompetencia),
+    enabled: selectedEmpresa !== "all",
+    staleTime: 30_000,
+  });
+
+  // O período passa a ser tratado como fechado quando já existe trilha persistida no fluxo financeiro.
+  const isPeriodoFechado = useMemo(() => {
+    if (selectedEmpresa === "all") return false;
+    return reprocessGuard?.permitido === false;
+  }, [reprocessGuard, selectedEmpresa]);
+
+  const requiresAdminJustification = async (actionFn: (justificativa: string) => Promise<void>, actionLabel: string, actionType: string) => {
+    // Se o período está fechado e a ação vai afetar dados financeiros passados
+    // Necessita justificativa obrigatória e registro na tabela de auditoria overrides
+    setAdminJustificationPayload({
+       actionType,
+       actionLabel,
+       callback: actionFn
+    });
+    setAdminJustificationModalOpen(true);
+  };
+
   const invalidateRhQueries = async () => {
-    await Promise.all([
+    await Promise.allSettled([
       refetch(),
       queryClient.invalidateQueries({ queryKey: ["processamento_rh_logs"] }),
       queryClient.invalidateQueries({ queryKey: ["processamento_rh_inconsistencias"] }),
       queryClient.invalidateQueries({ queryKey: ["banco_horas_saldos"] }),
       queryClient.invalidateQueries({ queryKey: ["bh_saldos"] }),
       queryClient.invalidateQueries({ queryKey: ["rh-financeiro-lotes"] }),
+      queryClient.invalidateQueries({ queryKey: ["rh_reprocess_guard"] }),
       queryClient.invalidateQueries({ queryKey: ["operational-pulse"] }),
     ]);
   };
@@ -953,11 +987,14 @@ const ProcessamentoRH = () => {
   };
 
   const processarPontos = async () => {
+    if (processingLockRef.current) return;
+
     if (!tenantId) {
       toast.error("Tenant não identificado");
       return;
     }
 
+    processingLockRef.current = true;
     setIsProcessing(true);
     setProcessingResult(null);
 
@@ -1012,16 +1049,39 @@ const ProcessamentoRH = () => {
       console.error(error);
       toast.error(`Erro ao processar: ${error.message}`);
     } finally {
+      processingLockRef.current = false;
       setIsProcessing(false);
     }
   };
 
-  const reprocessarPontos = async () => {
+  const reprocessarPontos = async (forcedJustificativa?: string) => {
+    if (processingLockRef.current) return;
+
     if (!tenantId) {
       toast.error("Tenant não identificado");
       return;
     }
 
+    if (!forcedJustificativa) {
+      if (selectedEmpresa === "all") {
+        return requiresAdminJustification(
+          async (j) => reprocessarPontos(j),
+          "Reprocessar período (todas as empresas)",
+          "reprocessamento_periodo_global",
+        );
+      }
+
+      const guard = await RHFinanceiroService.validateReprocessPeriod(selectedEmpresa, activeCompetencia);
+      if (!guard.permitido) {
+        return requiresAdminJustification(
+          async (j) => reprocessarPontos(j),
+          "Reprocessar período fechado",
+          "reprocessamento_periodo",
+        );
+      }
+    }
+
+    processingLockRef.current = true;
     setIsProcessing(true);
     setProcessingResult(null);
 
@@ -1031,7 +1091,7 @@ const ProcessamentoRH = () => {
         month: activeCompetencia,
         empresaId: selectedEmpresa === "all" ? null : selectedEmpresa,
         colaboradores: colaboradores as any[],
-        executionType: "manual",
+        executionType: forcedJustificativa ? "override_admin" as any : "manual",
       });
 
       await invalidateRhQueries();
@@ -1040,6 +1100,7 @@ const ProcessamentoRH = () => {
       console.error(error);
       toast.error(`Erro ao reprocessar: ${error.message}`);
     } finally {
+      processingLockRef.current = false;
       setIsProcessing(false);
     }
   };
@@ -1109,19 +1170,36 @@ const ProcessamentoRH = () => {
       ? { action: actionComposer.action as OperationalActionType, evento: actionComposer.evento }
       : null;
 
-  const handleConfirmOperationalAction = async () => {
+  const handleConfirmOperationalAction = async (forcedJustificativa?: string) => {
     if (!actionComposer || !selectedColaborador?.colaborador_id) return;
 
     const { evento, action, mode } = actionComposer;
     const actionKey = evento?.id || `direto:${selectedColaborador.colaborador_id}`;
+    
+    // Se o período está fechado e ainda não temos uma justificativa validada, 
+    // paramos o fluxo aqui e chamamos o modal
+    if (isPeriodoFechado && !forcedJustificativa) {
+        return requiresAdminJustification(
+            async (j) => handleConfirmOperationalAction(j),
+            mode === "evento" 
+                ? operationalActionMetaMap[action as OperationalActionType].title 
+                : directRhActionMetaMap[action].title,
+            action
+        );
+    }
+    
     setActionLoading((current) => ({ ...current, [actionKey]: action }));
 
     try {
+      const finalObservation = forcedJustificativa 
+        ? `${actionObservation} | Motivo Override: ${forcedJustificativa}`
+        : actionObservation;
+        
       if (mode === "evento" && evento) {
         await BHEventoService.registrarAcaoExtrato({
           eventoId: evento.id,
           tipo: action as OperationalActionType,
-          observacao: actionObservation,
+          observacao: finalObservation,
           minutos: action === "ajuste_manual" ? Number(actionMinutes) : undefined,
           dataFolga: action === "folga" ? actionDate : undefined,
         });
@@ -1130,7 +1208,7 @@ const ProcessamentoRH = () => {
           colaboradorId: selectedColaborador.colaborador_id,
           empresaId: selectedColaborador.empresa_id || null,
           tipo: action,
-          observacao: actionObservation,
+          observacao: finalObservation,
           minutos: action === "zerar_saldo" ? undefined : Math.abs(Number(actionMinutes)),
           dataFolga: action === "folga" ? actionDate : undefined,
           dataEvento: new Date().toISOString().slice(0, 10),
@@ -1205,8 +1283,16 @@ const ProcessamentoRH = () => {
     }
   };
 
-  const handleReprocessarColaborador = async () => {
+  const handleReprocessarColaborador = async (forcedJustificativa?: string) => {
     if (!tenantId || !selectedColaborador?.colaborador_id) return;
+
+    if (isPeriodoFechado && !forcedJustificativa) {
+        return requiresAdminJustification(
+            async (j) => handleReprocessarColaborador(j),
+            "Reprocessar Lançamentos (Período Fechado)",
+            "reprocessamento_colaborador"
+        );
+    }
 
     setIsReprocessingIndividual(true);
     try {
@@ -1216,7 +1302,7 @@ const ProcessamentoRH = () => {
         empresaId: selectedEmpresa === "all" ? null : selectedEmpresa,
         colaboradorId: selectedColaborador.colaborador_id,
         colaboradores: colaboradores as any[],
-        executionType: "manual",
+        executionType: forcedJustificativa ? "override_admin" as any : "manual",
       });
 
       await processRhPeriod({
@@ -1227,7 +1313,7 @@ const ProcessamentoRH = () => {
         empresas: empresas as any[],
         colaboradores: colaboradores as any[],
         regras: regras as any[],
-        executionType: "manual",
+        executionType: forcedJustificativa ? "override_admin" as any : "manual",
       });
 
       await invalidateRhQueries();
@@ -2747,6 +2833,22 @@ const ProcessamentoRH = () => {
           )}
         </DialogContent>
       </Dialog>
+      {adminJustificationPayload && (
+        <JustificationModal
+          isOpen={adminJustificationModalOpen}
+          onClose={() => {
+            setAdminJustificationModalOpen(false);
+            setAdminJustificationPayload(null);
+          }}
+          onConfirm={async (justificativa) => {
+            await adminJustificationPayload.callback(justificativa);
+            setAdminJustificationModalOpen(false);
+            setAdminJustificationPayload(null);
+          }}
+          title={adminJustificationPayload.actionLabel}
+          description="ATENÇÃO: A competência selecionada já possui validação e/ou fechamento. Esta alteração será registrada no log de auditoria operacional do Admin."
+        />
+      )}
     </AppShell>
   );
 };

@@ -289,10 +289,17 @@ class DashboardConsolidadoServiceClass {
 
     let qCustos = supabase
       .from('custos_extras_operacionais')
-      .select('total, created_at, updated_at')
+      .select('total, status_pagamento, created_at, updated_at')
       .gte('data', `${canonicalCompetencia}-01`)
       .lt('data', `${canonicalCompetencia}-32`);
     if (empresaId) qCustos = qCustos.eq('empresa_id', empresaId);
+
+    let qServicosExtras = supabase
+      .from('operacoes_producao')
+      .select('status, data_operacao, created_at, updated_at, avaliacao_json')
+      .gte('data_operacao', `${canonicalCompetencia}-01`)
+      .lt('data_operacao', `${canonicalCompetencia}-32`);
+    if (empresaId) qServicosExtras = qServicosExtras.eq('empresa_id', empresaId);
 
     const [
       resReceitas,
@@ -302,6 +309,7 @@ class DashboardConsolidadoServiceClass {
       resCnabArquivos,
       resRetornoItens,
       resCustos,
+      resServicosExtras,
     ] = await Promise.all([
       qReceitas,
       qLotesD,
@@ -310,6 +318,7 @@ class DashboardConsolidadoServiceClass {
       qCnabArquivos,
       qRetornoItens,
       qCustos,
+      qServicosExtras,
     ]);
 
     // safeData: returns [] for missing-table/column errors (migration not applied), throws only for real errors
@@ -320,6 +329,9 @@ class DashboardConsolidadoServiceClass {
     const cnabArquivosData = safeData(resCnabArquivos);
     const retornoItensData = safeData(resRetornoItens as any);
     const custosData = safeData(resCustos);
+    const servicosExtrasData = safeData(resServicosExtras as any).filter(
+      (item: any) => item.avaliacao_json?.categoria_servico === 'SERVICO_EXTRA',
+    );
 
     const diaristaFlow = emptyFluxAccumulator();
     const folhaFlow = emptyFluxAccumulator();
@@ -415,9 +427,27 @@ class DashboardConsolidadoServiceClass {
 
     let custosGerais = 0;
     const custosUpdatedAt: string[] = [];
+    let custosPendentes = 0;
+    let custosAtrasados = 0;
     custosData.forEach((item: any) => {
       custosGerais = addAmount(custosGerais, item.total);
+      const statusPagamento = String(item.status_pagamento || '').toUpperCase();
+      if (statusPagamento === 'PENDENTE') custosPendentes += 1;
+      if (statusPagamento === 'ATRASADO') custosAtrasados += 1;
       custosUpdatedAt.push(
+        String(item.updated_at || item.created_at || consolidadoEm),
+      );
+      flowsPresentes.push('operacional');
+    });
+
+    const servicosExtrasUpdatedAt: string[] = [];
+    let servicosPendentes = 0;
+    let servicosComAlerta = 0;
+    servicosExtrasData.forEach((item: any) => {
+      const status = String(item.status || '').toLowerCase();
+      if (['pendente', 'aguardando_validacao'].includes(status)) servicosPendentes += 1;
+      if (['com_alerta', 'bloqueado'].includes(status)) servicosComAlerta += 1;
+      servicosExtrasUpdatedAt.push(
         String(item.updated_at || item.created_at || consolidadoEm),
       );
       flowsPresentes.push('operacional');
@@ -438,6 +468,13 @@ class DashboardConsolidadoServiceClass {
       pendencias.push('Existem lotes de remessa ainda pendentes de geração ou homologação.');
     }
 
+    if (custosPendentes > 0 || custosAtrasados > 0) {
+      pendencias.push(`Custos extras com reflexo financeiro pendente: ${custosPendentes} pendente(s) e ${custosAtrasados} atrasado(s).`);
+    }
+    if (servicosPendentes > 0 || servicosComAlerta > 0) {
+      pendencias.push(`Serviços extras aguardando validação operacional: ${servicosPendentes} pendente(s) e ${servicosComAlerta} com alerta.`);
+    }
+
     const diferencaRhFinanceiro = moneyDiff(rhValorFechado, finValorRecebidoRH);
     const diferencaFinanceiroCnab = moneyDiff(finValorAprovado, finValorEnviadoBanco);
     const diferencaCnabHistorico = moneyDiff(finValorEnviadoBanco, finValorHistoricoBanco);
@@ -455,6 +492,7 @@ class DashboardConsolidadoServiceClass {
         ...cnabUpdatedAt,
         ...retornoUpdatedAt,
         ...custosUpdatedAt,
+        ...servicosExtrasUpdatedAt,
       ],
       consolidadoEm,
     );

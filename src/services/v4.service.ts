@@ -207,6 +207,20 @@ class BHEventoServiceClass extends BaseService<'banco_horas_eventos'> {
 
     await this.assertPeriodoAberto(contexto.tenantId, dataOrigem, 'ação operacional');
 
+    const { data: colaborador, error: collabError } = await supabase
+      .from('colaboradores')
+      .select('tipo_colaborador')
+      .eq('id', eventoOrigem.colaborador_id)
+      .single();
+
+    if (collabError || !colaborador) {
+      throw new Error('Colaborador não encontrado.');
+    }
+
+    if (String(colaborador.tipo_colaborador).toUpperCase() === 'DIARISTA') {
+      throw new Error('Diaristas não participam do Banco de Horas CLT.');
+    }
+
     let deltaMinutos = 0;
     let dataEvento = new Date().toISOString().slice(0, 10);
     let statusNovoEvento: string = 'ativo';
@@ -375,6 +389,20 @@ class BHEventoServiceClass extends BaseService<'banco_horas_eventos'> {
     const dataFolga = String(input.dataFolga ?? '').trim();
     const saldoAtual = await this.getSaldoAtual(contexto.tenantId, input.colaboradorId);
     const saldoAnterior = Number(saldoAtual?.saldo_atual_minutos ?? 0);
+
+    const { data: colaborador, error: collabError } = await supabase
+      .from('colaboradores')
+      .select('tipo_colaborador')
+      .eq('id', input.colaboradorId)
+      .single();
+
+    if (collabError || !colaborador) {
+      throw new Error('Colaborador não encontrado.');
+    }
+
+    if (String(colaborador.tipo_colaborador).toUpperCase() === 'DIARISTA') {
+      throw new Error('Diaristas não participam do Banco de Horas CLT.');
+    }
 
     let dataEvento = dataEventoBase;
     let deltaMinutos = 0;
@@ -688,11 +716,13 @@ class BHEventoServiceClass extends BaseService<'banco_horas_eventos'> {
     const { data: colaboradoresData, error: colaboradoresError } = includeWithoutMovement
       ? await supabase
           .from('colaboradores')
-          .select('id, nome, matricula, empresa_id, status_cadastro, cadastro_provisorio, valor_hora, salario_base, valor_diaria, valor_base')
+          .select('id, nome, matricula, empresa_id, status_cadastro, cadastro_provisorio, valor_hora, salario_base, valor_diaria, valor_base, tipo_colaborador')
+          .neq('tipo_colaborador', 'DIARISTA')
           .order('nome', { ascending: true })
       : await supabase
           .from('colaboradores')
-          .select('id, nome, matricula, empresa_id, status_cadastro, cadastro_provisorio, valor_hora, salario_base, valor_diaria, valor_base')
+          .select('id, nome, matricula, empresa_id, status_cadastro, cadastro_provisorio, valor_hora, salario_base, valor_diaria, valor_base, tipo_colaborador')
+          .neq('tipo_colaborador', 'DIARISTA')
           .in('id', collaboratorIds)
           .order('nome', { ascending: true });
 

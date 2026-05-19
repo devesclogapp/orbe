@@ -36,6 +36,27 @@ const StepNode = ({ status }: { status: PipelineStepStatus }) => {
             </div>
         );
     }
+    if (status === "blocked") {
+        return (
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-red-500 shadow-sm">
+                <X className="h-3.5 w-3.5 text-white" />
+            </div>
+        );
+    }
+    if (status === "devolved") {
+        return (
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-orange-500 shadow-sm">
+                <Zap className="h-3.5 w-3.5 text-white" />
+            </div>
+        );
+    }
+    if (status === "canceled") {
+        return (
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-800 shadow-sm">
+                <X className="h-3.5 w-3.5 text-white" />
+            </div>
+        );
+    }
     return (
         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 border-border bg-muted/40">
             <Circle className="h-2 w-2 fill-muted-foreground/30 text-muted-foreground/30" />
@@ -56,7 +77,10 @@ const PipelineStepRow = ({
 }) => {
     const isDone = step.status === "done";
     const isCurrent = step.status === "current";
-    const isPending = step.status === "pending" || step.status === "blocked";
+    const isPending = step.status === "pending";
+    const isBlocked = step.status === "blocked";
+    const isDevolved = step.status === "devolved";
+    const isCanceled = step.status === "canceled";
 
     return (
         <div className="flex gap-3">
@@ -84,6 +108,9 @@ const PipelineStepRow = ({
                                 isDone && "text-emerald-700 dark:text-emerald-400",
                                 isCurrent && "text-foreground",
                                 isPending && "text-muted-foreground",
+                                isBlocked && "text-red-600",
+                                isDevolved && "text-orange-600",
+                                isCanceled && "text-gray-500",
                             )}
                         >
                             {step.label}
@@ -102,6 +129,21 @@ const PipelineStepRow = ({
                         {isPending && (
                             <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground border border-border">
                                 Pendente
+                            </span>
+                        )}
+                        {isBlocked && (
+                            <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700 border border-red-200">
+                                Bloqueado
+                            </span>
+                        )}
+                        {isDevolved && (
+                            <span className="inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold text-orange-700 border border-orange-200">
+                                Devolvido
+                            </span>
+                        )}
+                        {isCanceled && (
+                            <span className="inline-flex items-center rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-semibold text-gray-700 border border-gray-300">
+                                Cancelado
                             </span>
                         )}
                     </div>
@@ -162,6 +204,39 @@ export const OperationalPipelineModal = () => {
     const steps = payload?.steps ?? [];
     const completedStage = payload?.completedStage;
     const nextAction = payload?.nextAction;
+    const hasBlocked = steps.some((step) => step.status === "blocked");
+    const hasDevolved = steps.some((step) => step.status === "devolved");
+    const hasCanceled = steps.some((step) => step.status === "canceled");
+
+    const headerTone = hasCanceled
+        ? {
+            ring: "border-gray-300 bg-gray-100",
+            icon: <X className="h-6 w-6 text-gray-700" strokeWidth={1.75} />,
+            title: payload?.title ?? "Fluxo cancelado",
+            subtitle: payload?.subtitle ?? "A execução foi interrompida e precisa ser retomada de forma controlada.",
+        }
+        : hasBlocked
+            ? {
+                ring: "border-red-200 bg-red-50",
+                icon: <X className="h-6 w-6 text-red-600" strokeWidth={1.75} />,
+                title: payload?.title ?? "Fluxo bloqueado",
+                subtitle: payload?.subtitle ?? "Há uma pendência crítica impedindo o avanço da competência.",
+            }
+            : hasDevolved
+                ? {
+                    ring: "border-orange-200 bg-orange-50",
+                    icon: <Zap className="h-6 w-6 text-orange-600" strokeWidth={1.75} />,
+                    title: payload?.title ?? "Fluxo devolvido",
+                    subtitle: payload?.subtitle ?? "A competência retornou para ajuste antes de seguir para a próxima etapa.",
+                }
+                : {
+                    ring: "border-emerald-200 bg-emerald-50",
+                    icon: <CheckCircle2 className="h-6 w-6 text-emerald-600" strokeWidth={1.75} />,
+                    title: payload?.title ?? "Fluxo sendo executado",
+                    subtitle:
+                        payload?.subtitle ??
+                        `Acompanhe o progresso da competência ${context?.competencia} para ${context?.empresa}.`,
+                };
 
     const handleNextAction = useCallback(() => {
         closePipeline();
@@ -194,7 +269,7 @@ export const OperationalPipelineModal = () => {
             )}
             aria-modal="true"
             role="dialog"
-            aria-label="Fluxo sendo executado"
+            aria-label={headerTone.title}
         >
             {/* Modal Card */}
             <div
@@ -216,17 +291,19 @@ export const OperationalPipelineModal = () => {
                 {/* Header */}
                 <div className="px-6 pb-0 pt-6 text-center">
                     {/* Icon */}
-                    <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 border border-emerald-200">
-                        <CheckCircle2 className="h-6 w-6 text-emerald-600" strokeWidth={1.75} />
+                    <div className={cn("mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full border", headerTone.ring)}>
+                        {headerTone.icon}
                     </div>
-                    <h2 className="font-display text-lg font-semibold text-foreground">
-                        Fluxo sendo executado
-                    </h2>
+                    <h2 className="font-display text-lg font-semibold text-foreground">{headerTone.title}</h2>
+                    {payload?.subtitle ? (
+                        <p className="mt-1 text-sm text-muted-foreground">{headerTone.subtitle}</p>
+                    ) : (
                     <p className="mt-1 text-sm text-muted-foreground">
                         Acompanhe o progresso da competência{" "}
                         <strong className="text-foreground">{context.competencia}</strong> para{" "}
                         <strong className="text-foreground">{context.empresa}</strong>.
                     </p>
+                    )}
                 </div>
 
                 {/* Context badges */}
