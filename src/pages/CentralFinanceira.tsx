@@ -42,6 +42,16 @@ import {
 import { RHFinanceiroService } from "@/services/rhFinanceiro.service";
 import { buildFolhaVariavelPipeline, useOperationalPipeline } from "@/contexts/OperationalPipelineContext";
 
+const formatCompetenciaLabel = (competencia: string) => {
+  const [year, month] = competencia.split("-").map(Number);
+  return new Date(year, month - 1, 1).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+};
+
+const formatPipelineTimestamp = (value?: string | null) => {
+  if (!value) return undefined;
+  return new Date(value).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+};
+
 const CentralFinanceira = () => {
   const navigate = useNavigate();
   const { openPipeline } = useOperationalPipeline();
@@ -69,6 +79,7 @@ const CentralFinanceira = () => {
   const deepLinkLoteId = searchParams.get("rhLoteId");
   const deepLinkCompetencia = searchParams.get("competencia");
   const deepLinkEmpresaId = searchParams.get("empresaId");
+  const selectedCompetenciaLabel = useMemo(() => formatCompetenciaLabel(selectedMonth), [selectedMonth]);
 
   const { data: empresas = [], isLoading: loadingEmps } = useQuery<any[]>({
     queryKey: ["empresas"],
@@ -124,6 +135,29 @@ const CentralFinanceira = () => {
     queryFn: () => RHFinanceiroService.listLotesRecebidos(selectedMonth, selectedEmpresaId),
     enabled: !!selectedEmpresaId,
   });
+
+  const latestRhSentAt = useMemo(
+    () => formatPipelineTimestamp(lotesRh.find((lote: any) => lote.status !== "DEVOLVIDO_RH")?.created_at),
+    [lotesRh],
+  );
+  const latestFinanceApprovedAt = useMemo(
+    () => formatPipelineTimestamp(lotesRh.find((lote: any) => lote.aprovado_em)?.aprovado_em),
+    [lotesRh],
+  );
+  const financePipelineReviewTrigger = useMemo(
+    () =>
+      buildFolhaVariavelPipeline({
+        competencia: selectedMonth,
+        empresa: empresas.find((e) => e.id === selectedEmpresaId)?.nome || "Empresa",
+        currentStep: "cnab",
+        completedStage: "aprovacao_financeira",
+        timestamps: {
+          envio_financeiro: latestRhSentAt,
+          aprovacao_financeira: latestFinanceApprovedAt,
+        },
+      }),
+    [empresas, latestFinanceApprovedAt, latestRhSentAt, selectedEmpresaId, selectedMonth],
+  );
 
   const { data: rhLoteDetalhe, isLoading: loadingRhLoteDetalhe } = useQuery({
     queryKey: ["rh-financeiro-lote-detalhe", rhLoteSelecionado?.id],
@@ -181,7 +215,12 @@ const CentralFinanceira = () => {
         buildFolhaVariavelPipeline({
           competencia: selectedMonth,
           empresa: empresaNome,
-          currentStep: "aprovacao_financeira"
+          currentStep: "cnab",
+          completedStage: "aprovacao_financeira",
+          timestamps: {
+            envio_financeiro: latestRhSentAt,
+            aprovacao_financeira: formatPipelineTimestamp(new Date().toISOString()),
+          },
         })
       );
     },
@@ -250,7 +289,12 @@ const CentralFinanceira = () => {
         buildFolhaVariavelPipeline({
           competencia: selectedMonth,
           empresa: empresaNome,
-          currentStep: "aprovacao_financeira"
+          currentStep: "cnab",
+          completedStage: "aprovacao_financeira",
+          timestamps: {
+            envio_financeiro: latestRhSentAt,
+            aprovacao_financeira: formatPipelineTimestamp(new Date().toISOString()),
+          },
         })
       );
 
@@ -291,7 +335,8 @@ const CentralFinanceira = () => {
   return (
     <AppShell
       title="Central Financeira"
-      subtitle={`Aprovação de lotes, faturamento e fechamento de competência · ${new Date(`${selectedMonth}-01`).toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}`}
+      subtitle={`Aprovação de lotes, faturamento e fechamento de competência · ${selectedCompetenciaLabel}`}
+      pipelineTrigger={financePipelineReviewTrigger}
     >
       <div className="space-y-6">
         <section className="esc-card p-4 md:p-5">
@@ -1096,6 +1141,12 @@ const CentralFinanceira = () => {
                   </div>
                 );
               })()}
+
+              {rhLoteDetalhe.tipo === "BANCO_HORAS" && (
+                <div className="rounded-xl border border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+                  Este lote reutiliza os mesmos créditos e débitos já validados no Processamento RH e no Banco de Horas. Os valores abaixo devem espelhar o saldo operacional liberado para reflexo financeiro.
+                </div>
+              )}
 
               {/* Tabela de itens */}
               <div className="rounded-xl border border-border overflow-hidden">

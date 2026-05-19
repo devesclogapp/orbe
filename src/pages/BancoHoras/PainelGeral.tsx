@@ -1,11 +1,9 @@
 import { useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDownRight,
   ArrowUpRight,
-  BadgeCheck,
-  BarChart3,
   Building2,
   CalendarClock,
   CheckSquare,
@@ -40,8 +38,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { BHEventoService } from "@/services/v4.service";
-import { buildOperationalStagePipeline } from "@/contexts/OperationalPipelineContext";
-import { buildOperationalPipelineSeenKey, useOperationalPipelineAutoTrigger } from "@/hooks/useOperationalPipelineAutoTrigger";
+import {
+  buildBancoHorasRhValidationPipeline,
+  useOperationalPipeline,
+} from "@/contexts/OperationalPipelineContext";
 
 const formatTotal = (mins: number) => {
   const h = Math.floor(Math.abs(mins) / 60);
@@ -111,9 +111,12 @@ const getTimelineCardClass = (item: any) => {
 
 const compactBullet = "mt-1 flex items-center gap-2 text-xs leading-5 text-muted-foreground";
 
+const buildProcessamentoRoute = (colaboradorId: string) => `/banco-horas/processamento?colaborador=${colaboradorId}`;
+
 const PainelGeral = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { openPipeline } = useOperationalPipeline();
   const currentCompetencia = new Date().toISOString().slice(0, 7);
   const [filters, setFilters] = useState({
     search: "",
@@ -297,27 +300,91 @@ const PainelGeral = () => {
     filteredSaldos.length > 0 &&
     filteredSaldos.every((saldo: any) => ["ok", "saldo_positivo"].includes(saldo.status));
 
-  const bancoHorasTrigger = useMemo(
-    () =>
-      bancoHorasValidado
-        ? buildOperationalStagePipeline({
-            competencia: currentCompetencia,
-            empresa: bancoHorasEmpresaLabel,
-            completedStage: "banco_horas",
-          })
-        : null,
-    [bancoHorasValidado, currentCompetencia, bancoHorasEmpresaLabel],
-  );
+  const bancoHorasReviewTrigger = useMemo(
+    () => {
+      if (bancoHorasValidado) {
+        return buildBancoHorasRhValidationPipeline({
+          competencia: currentCompetencia,
+          empresa: bancoHorasEmpresaLabel,
+        });
+      }
 
-  useOperationalPipelineAutoTrigger({
-    enabled: bancoHorasValidado,
-    storageKey: buildOperationalPipelineSeenKey({
-      etapa: "banco_horas_validado",
-      competencia: currentCompetencia,
-      empresa: filters.empresa_id,
-    }),
-    trigger: bancoHorasTrigger,
-  });
+      return {
+        context: {
+          competencia: currentCompetencia,
+          empresa: bancoHorasEmpresaLabel,
+          fluxo: "Banco de Horas -> Financeiro",
+        },
+        steps: [
+          {
+            id: "importacao",
+            label: "Importacao",
+            description: "Pontos recebidos e competencia carregada para processamento.",
+            status: "done" as const,
+            route: "/pontos",
+          },
+          {
+            id: "processamento_rh",
+            label: "Processamento RH",
+            description: "Registros processados e saldos consolidados pelo RH.",
+            status: "done" as const,
+            route: "/banco-horas/processamento",
+            responsible: "RH",
+          },
+          {
+            id: "banco_horas",
+            label: "Banco de Horas",
+            description: "Revise os saldos e conclua a validacao do RH para liberar o Financeiro.",
+            status: "current" as const,
+            route: "/banco-horas",
+            responsible: "RH",
+          },
+          {
+            id: "envio_financeiro",
+            label: "Envio Financeiro",
+            description: "A competencia segue para o Financeiro apos a conclusao da validacao RH.",
+            status: "pending" as const,
+            route: "/financeiro",
+            responsible: "RH -> Financeiro",
+          },
+          {
+            id: "aprovacao_financeira",
+            label: "Aprovacao Financeira",
+            description: "Analise financeira pendente.",
+            status: "pending" as const,
+            route: "/financeiro",
+            responsible: "Financeiro",
+          },
+          {
+            id: "cnab",
+            label: "CNAB",
+            description: "Etapa bancaria posterior a aprovacao financeira.",
+            status: "pending" as const,
+            route: "/bancario",
+            responsible: "Financeiro",
+          },
+          {
+            id: "retorno_bancario",
+            label: "Retorno bancario",
+            description: "Conferencia final apos a remessa.",
+            status: "pending" as const,
+            route: "/bancario",
+            responsible: "Financeiro",
+          },
+        ],
+        completedStage: {
+          label: "Visao atual do pipeline",
+          description: "O RH ainda precisa concluir a validacao do Banco de Horas para liberar a competencia.",
+        },
+        nextAction: {
+          label: "Concluir validacao RH",
+          description: "Use a acao principal desta tela para fechar a competencia do RH e abrir a Central Financeira.",
+          route: "/banco-horas",
+        },
+      };
+    },
+    [bancoHorasEmpresaLabel, bancoHorasValidado, currentCompetencia],
+  );
 
   const exportRows = (rows: any[], kind: "fechamento" | "financeiro") => {
     if (rows.length === 0) {
@@ -397,6 +464,26 @@ const PainelGeral = () => {
     });
   };
 
+  const handleConcluirValidacaoRh = () => {
+    if (!bancoHorasValidado) {
+      toast.warning("Ainda existem saldos pendentes para o RH revisar.", {
+        description: "Conclua a analise do Banco de Horas antes de liberar a competencia para o Financeiro.",
+      });
+      return;
+    }
+
+    openPipeline(
+      buildBancoHorasRhValidationPipeline({
+        competencia: currentCompetencia,
+        empresa: bancoHorasEmpresaLabel,
+      }),
+    );
+
+    toast.success("Competencia liberada pelo RH.", {
+      description: "Banco de Horas validado e envio ao Financeiro iniciado.",
+    });
+  };
+
   const setFilterAndScroll = (newStatus: string) => {
     setFilters((current) => ({ ...current, status: newStatus }));
     setTimeout(() => {
@@ -409,7 +496,7 @@ const PainelGeral = () => {
 
   const stats = [
     {
-      label: "Total horas a pagar",
+      label: "Creditos acumulados",
       value: isLoading ? "..." : formatTotal(totalMinutosAcumulados),
       icon: Clock,
       color: "text-primary",
@@ -463,8 +550,60 @@ const PainelGeral = () => {
       : "Nenhum colaborador encontrado com os filtros atuais.";
 
   return (
-    <AppShell title="Banco de Horas" subtitle="Painel geral de saldos, vencimentos e risco operacional">
+    <AppShell
+      title="Banco de Horas"
+      subtitle="Painel geral de saldos, vencimentos e risco operacional"
+      pipelineTrigger={bancoHorasReviewTrigger}
+    >
       <div className="space-y-5">
+        <section className="rounded-2xl border border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+          Os saldos exibidos aqui são a referência operacional do Banco de Horas e alimentam o fechamento mensal e os reflexos financeiros quando houver pagamento ou compensação.
+        </section>
+
+        <section className="esc-card border border-emerald-200 bg-emerald-50/60 p-4">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="space-y-1">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-700/80">
+                Acao principal do RH
+              </p>
+              <h2 className="font-display text-lg font-semibold text-foreground">
+                Fechar competencia RH
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                O RH valida os saldos antes da liberacao financeira da competencia.
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Conclua a validacao do Banco de Horas para liberar a competencia e continuar o pipeline na Central Financeira.
+              </p>
+              {!bancoHorasValidado && (
+                <p className="text-xs text-amber-700">
+                  Existem saldos que ainda exigem revisao antes da liberacao financeira.
+                </p>
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                className="h-10 gap-2 bg-emerald-600 text-white hover:bg-emerald-700"
+                onClick={handleConcluirValidacaoRh}
+                disabled={!bancoHorasValidado}
+              >
+                <CheckSquare className="h-4 w-4" />
+                Fechar competencia RH
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => exportRows(filteredSaldos, "fechamento")} className="h-10">
+                <Download className="mr-2 h-4 w-4" />
+                Exportar fechamento
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => exportRows(filteredSaldos, "financeiro")} className="h-10">
+                <FileSpreadsheet className="mr-2 h-4 w-4" />
+                Gerar relatorio financeiro
+              </Button>
+            </div>
+          </div>
+        </section>
+
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
           {stats.map((stat) => (
             <button
@@ -562,13 +701,15 @@ const PainelGeral = () => {
                 <div
                   key={saldo.id}
                   className={cn(
-                    "flex items-center justify-between rounded-md px-2 py-1.5 border-b border-border/40 last:border-0 hover:bg-muted/50 transition-colors",
+                    "flex cursor-pointer items-center justify-between rounded-md px-2 py-1.5 border-b border-border/40 last:border-0 hover:bg-muted/50 transition-colors",
                     saldo.status === "debito_critico"
                       ? "bg-rose-50/50"
                       : saldo.status === "horas_a_vencer"
                         ? "bg-orange-50/50"
                         : "bg-transparent",
                   )}
+                  onClick={() => navigate(buildProcessamentoRoute(saldo.id))}
+                  title="Abrir detalhes no Processamento RH"
                 >
                   <div>
                     <p className="text-sm font-medium leading-5 text-foreground">{saldo.nome}</p>
@@ -628,7 +769,12 @@ const PainelGeral = () => {
 
             <div className="flex-1 overflow-y-auto pr-1 space-y-1 custom-scrollbar">
               {custoPorColaborador.map((saldo: any) => (
-                <div key={saldo.id} className="flex flex-col justify-center rounded-md px-2 py-1.5 border-b border-border/40 last:border-0 hover:bg-muted/50 transition-colors">
+                <div
+                  key={saldo.id}
+                  className="flex cursor-pointer flex-col justify-center rounded-md px-2 py-1.5 border-b border-border/40 last:border-0 hover:bg-muted/50 transition-colors"
+                  onClick={() => navigate(buildProcessamentoRoute(saldo.id))}
+                  title="Abrir detalhes no Processamento RH"
+                >
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium leading-tight text-foreground">{saldo.nome}</p>
@@ -759,10 +905,6 @@ const PainelGeral = () => {
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={() => exportRows(filteredSaldos, "fechamento")} className="h-9">
-                <Download className="mr-2 h-4 w-4" />
-                Exportar fechamento
-              </Button>
               <Button
                 variant="outline"
                 size="icon"
@@ -789,10 +931,6 @@ const PainelGeral = () => {
             <Button variant="outline" size="sm" className="h-8 gap-2 hover:bg-muted" onClick={() => exportRows(selectedRows, "fechamento")}>
               <Download className="h-3.5 w-3.5 text-muted-foreground" />
               Exportar fechamento
-            </Button>
-            <Button variant="outline" size="sm" className="h-8 gap-2 hover:bg-muted" onClick={() => handleMassPlaceholder("Aprovacao de pagamentos")}>
-              <BadgeCheck className="h-3.5 w-3.5 text-muted-foreground" />
-              Aprovar pagamentos
             </Button>
             <Button variant="outline" size="sm" className="h-8 gap-2 hover:bg-muted" onClick={() => exportRows(selectedRows, "financeiro")}>
               <FileSpreadsheet className="h-3.5 w-3.5 text-muted-foreground" />
@@ -837,9 +975,10 @@ const PainelGeral = () => {
                         "group border-t border-muted hover:bg-muted/40 hover:shadow-[inset_4px_0_0_0_rgba(253,76,0,0.95)] cursor-pointer transition-all duration-150 relative",
                         rowPriorityClass(saldo),
                       )}
+                      title="Abrir detalhes no Processamento RH"
                       onClick={(e) => {
                         if ((e.target as HTMLElement).tagName !== "INPUT") {
-                          navigate(`/banco-horas/extrato/${saldo.id}`);
+                          navigate(buildProcessamentoRoute(saldo.id));
                         }
                       }}
                     >
@@ -864,7 +1003,7 @@ const PainelGeral = () => {
                           <div className="text-xs text-muted-foreground">Mat. {saldo.matricula || "-"}</div>
                           <div className="mt-0.5 flex items-center gap-1 text-[10px] text-primary/0 transition-colors group-hover:text-primary/70 font-medium">
                             <Eye className="h-3 w-3" />
-                            Clique para abrir extrato
+                            Abrir detalhes no Processamento RH
                           </div>
                         </div>
                       </td>
@@ -1112,7 +1251,8 @@ const PainelGeral = () => {
                           ? "border-orange-200 bg-orange-50/70"
                           : "border-violet-200 bg-violet-50/70"
                     )}
-                    onClick={() => navigate(`/banco-horas/extrato/${saldo.id}`)}
+                    onClick={() => navigate(buildProcessamentoRoute(saldo.id))}
+                    title="Abrir detalhes no Processamento RH"
                   >
                     <div>
                       <p className="text-sm font-medium leading-5 text-foreground flex items-center gap-2">

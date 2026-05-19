@@ -1,7 +1,5 @@
 import { createContext, useCallback, useContext, useState, ReactNode } from "react";
 
-// ─── Pipeline Step Types ──────────────────────────────────────────────────────
-
 export type PipelineStepStatus = "done" | "current" | "pending" | "blocked";
 
 export type PipelineStep = {
@@ -9,9 +7,9 @@ export type PipelineStep = {
     label: string;
     description: string;
     status: PipelineStepStatus;
-    timestamp?: string;     // ISO string, shown for done steps
-    responsible?: string;   // "RH" | "Financeiro" | "Admin" etc.
-    route?: string;         // navigation target for this step
+    timestamp?: string;
+    responsible?: string;
+    route?: string;
 };
 
 export type PipelineFlow =
@@ -21,9 +19,9 @@ export type PipelineFlow =
     | "CNAB_REMESSA";
 
 export type PipelineContext = {
-    competencia: string;   // e.g. "maio/2026"
-    empresa: string;       // e.g. "ESC Log"
-    fluxo: string;         // human-readable
+    competencia: string;
+    empresa: string;
+    fluxo: string;
 };
 
 export type PipelineTrigger = {
@@ -34,13 +32,24 @@ export type PipelineTrigger = {
         description: string;
     };
     nextAction?: {
-        label: string;           // button text, e.g. "Ir para Financeiro"
-        description: string;     // what happens next
-        route: string;           // navigation target
+        label: string;
+        description: string;
+        route: string;
+        autoNavigate?: boolean;
+        delayMs?: number;
     };
 };
 
-// ─── Context Interface ────────────────────────────────────────────────────────
+type FolhaVariavelStepId =
+    | "importacao"
+    | "rh_processado"
+    | "fechamento_rh"
+    | "envio_financeiro"
+    | "aprovacao_financeira"
+    | "cnab"
+    | "retorno";
+
+type FolhaVariavelTimestamps = Partial<Record<FolhaVariavelStepId, string>>;
 
 type OperationalPipelineContextValue = {
     isOpen: boolean;
@@ -50,8 +59,6 @@ type OperationalPipelineContextValue = {
 };
 
 const OperationalPipelineContext = createContext<OperationalPipelineContextValue | null>(null);
-
-// ─── Provider ─────────────────────────────────────────────────────────────────
 
 export const OperationalPipelineProvider = ({ children }: { children: ReactNode }) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -64,7 +71,6 @@ export const OperationalPipelineProvider = ({ children }: { children: ReactNode 
 
     const closePipeline = useCallback(() => {
         setIsOpen(false);
-        // Delay clearing payload to allow exit animation
         setTimeout(() => setPayload(null), 300);
     }, []);
 
@@ -75,30 +81,54 @@ export const OperationalPipelineProvider = ({ children }: { children: ReactNode 
     );
 };
 
-// ─── Hook ─────────────────────────────────────────────────────────────────────
-
 export const useOperationalPipeline = (): OperationalPipelineContextValue => {
     const ctx = useContext(OperationalPipelineContext);
     if (!ctx) throw new Error("useOperationalPipeline must be used inside OperationalPipelineProvider");
     return ctx;
 };
 
-// ─── Pipeline Factory Helpers ─────────────────────────────────────────────────
+const folhaVariavelCompletedStageMap: Record<FolhaVariavelStepId, { label: string; description: string }> = {
+    importacao: {
+        label: "Importação concluída",
+        description: "A planilha foi recebida e identificada para seguir no fluxo.",
+    },
+    rh_processado: {
+        label: "Processamento RH concluído",
+        description: "Registros processados com sucesso. Banco de horas atualizado e pronto para validação.",
+    },
+    fechamento_rh: {
+        label: "Validação e fechamento concluídos",
+        description: "A competência foi validada pelo RH e liberada para envio ao Financeiro.",
+    },
+    envio_financeiro: {
+        label: "Envio ao Financeiro concluído",
+        description: "O lote foi entregue ao Financeiro e entrou na fila de análise.",
+    },
+    aprovacao_financeira: {
+        label: "Aprovação Financeira concluída",
+        description: "O lote foi aprovado e está pronto para preparação bancária.",
+    },
+    cnab: {
+        label: "Preparação CNAB concluída",
+        description: "A remessa bancária foi gerada e o fluxo segue para retorno e conciliação.",
+    },
+    retorno: {
+        label: "Retorno e conciliação concluídos",
+        description: "O ciclo bancário foi conciliado com sucesso.",
+    },
+};
 
 export const buildFolhaVariavelPipeline = (params: {
     competencia: string;
     empresa: string;
-    // NOTE: 'importacao' is always shown as 'done' — it precedes all RH steps.
-    // The currentStep determines which step is 'current'; everything before it is 'done'.
-    currentStep: "importacao" | "rh_processado" | "fechamento_rh" | "envio_financeiro" | "aprovacao_financeira" | "cnab" | "retorno";
+    currentStep: FolhaVariavelStepId;
+    completedStage?: FolhaVariavelStepId;
+    timestamps?: FolhaVariavelTimestamps;
 }): PipelineTrigger => {
-    const { competencia, empresa, currentStep } = params;
+    const { competencia, empresa, currentStep, completedStage, timestamps = {} } = params;
 
-    // ⚠️ KEY FIX: stepKeys MUST match the step array indices exactly (1:1 mapping).
-    // Steps array has 7 items — stepKeys must also have 7 entries in the same order.
-    const stepKeys = ["importacao", "rh_processado", "fechamento_rh", "envio_financeiro", "aprovacao_financeira", "cnab", "retorno"];
+    const stepKeys: FolhaVariavelStepId[] = ["importacao", "rh_processado", "fechamento_rh", "envio_financeiro", "aprovacao_financeira", "cnab", "retorno"];
     const currentIndex = stepKeys.indexOf(currentStep);
-    const now = new Date().toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 
     const getStatus = (index: number): PipelineStepStatus => {
         if (index < currentIndex) return "done";
@@ -106,68 +136,77 @@ export const buildFolhaVariavelPipeline = (params: {
         return "pending";
     };
 
+    const getTimestamp = (stepId: FolhaVariavelStepId, index: number) => {
+        const status = getStatus(index);
+        return status === "done" ? timestamps[stepId] : undefined;
+    };
+
     const steps: PipelineStep[] = [
         {
-            id: "importacao",            // index 0
+            id: "importacao",
             label: "Importação de planilha",
             description: "Planilha importada e colaboradores identificados.",
             status: getStatus(0),
-            timestamp: getStatus(0) === "done" ? now : undefined,
+            timestamp: getTimestamp("importacao", 0),
             route: "/pontos",
         },
         {
-            id: "rh_processado",         // index 1
+            id: "rh_processado",
             label: "Processamento no RH",
             description: "Pontos processados, banco de horas e saldos calculados.",
             status: getStatus(1),
-            timestamp: getStatus(1) === "done" ? now : undefined,
+            timestamp: getTimestamp("rh_processado", 1),
             route: "/banco-horas/processamento",
             responsible: "RH",
         },
         {
-            id: "fechamento_rh",         // index 2
+            id: "fechamento_rh",
             label: "Validação e fechamento",
             description: "Banco de horas validado e competência fechada pelo RH.",
             status: getStatus(2),
-            timestamp: getStatus(2) === "done" ? now : undefined,
+            timestamp: getTimestamp("fechamento_rh", 2),
             route: "/banco-horas/processamento",
             responsible: "RH",
         },
         {
-            id: "envio_financeiro",      // index 3
+            id: "envio_financeiro",
             label: "Envio ao Financeiro",
             description: "Lote aprovado e enviado para fila de pagamento.",
             status: getStatus(3),
+            timestamp: getTimestamp("envio_financeiro", 3),
             responsible: "RH",
             route: "/financeiro",
         },
         {
-            id: "aprovacao_financeira",  // index 4
+            id: "aprovacao_financeira",
             label: "Aprovação Financeira",
             description: "Lote revisado e aprovado pelo setor financeiro.",
             status: getStatus(4),
+            timestamp: getTimestamp("aprovacao_financeira", 4),
             responsible: "Financeiro / Admin",
             route: "/financeiro",
         },
         {
-            id: "cnab",                  // index 5
+            id: "cnab",
             label: "Preparação CNAB",
             description: "Remessa bancária gerada e enviada ao banco.",
             status: getStatus(5),
+            timestamp: getTimestamp("cnab", 5),
             responsible: "Financeiro",
             route: "/bancario",
         },
         {
-            id: "retorno",               // index 6
+            id: "retorno",
             label: "Retorno e conciliação",
             description: "Retorno bancário recebido e pagamentos conciliados.",
             status: getStatus(6),
+            timestamp: getTimestamp("retorno", 6),
             responsible: "Financeiro",
             route: "/bancario",
         },
     ];
 
-    const nextActionMap: Record<string, { label: string; description: string; route: string }> = {
+    const nextActionMap: Record<FolhaVariavelStepId, { label: string; description: string; route: string }> = {
         importacao: {
             label: "Ir para Processamento RH",
             description: "Planilha importada. Inicie o processamento RH para calcular banco de horas.",
@@ -208,12 +247,7 @@ export const buildFolhaVariavelPipeline = (params: {
     return {
         context: { competencia, empresa, fluxo: "Folha Variável" },
         steps,
-        completedStage: {
-            label: currentStep === "rh_processado" ? "Processamento RH concluído" : stepKeys[currentIndex] ?? "",
-            description: currentStep === "rh_processado"
-                ? "Registros processados com sucesso. Banco de horas atualizado e pronto para validação."
-                : "Etapa concluída com sucesso.",
-        },
+        completedStage: completedStage ? folhaVariavelCompletedStageMap[completedStage] : undefined,
         nextAction: nextActionMap[currentStep],
     };
 };
@@ -341,5 +375,198 @@ export const buildOperationalStagePipeline = (params: {
         steps,
         completedStage: completedStageMap[completedStage],
         nextAction: nextActionMap[completedStage],
+    };
+};
+
+export const buildOperationalStageReviewPipeline = (params: {
+    competencia: string;
+    empresa: string;
+    currentStage: "cadastros" | "processamento_rh" | "banco_horas" | "fechamento_mensal" | "central_financeira";
+}): PipelineTrigger => {
+    const { competencia, empresa, currentStage } = params;
+
+    const stageOrder = [
+        "cadastros",
+        "processamento_rh",
+        "banco_horas",
+        "fechamento_mensal",
+        "central_financeira",
+    ] as const;
+
+    const currentIndex = stageOrder.indexOf(currentStage);
+
+    const getStatus = (index: number): PipelineStepStatus => {
+        if (index < currentIndex) return "done";
+        if (index === currentIndex) return "current";
+        return "pending";
+    };
+
+    const steps: PipelineStep[] = [
+        {
+            id: "cadastros",
+            label: "Central de Cadastros",
+            description: "Cadastros operacionais completos e liberados para o fluxo.",
+            status: getStatus(0),
+            route: "/cadastros",
+            responsible: "Administracao",
+        },
+        {
+            id: "processamento_rh",
+            label: "Processamento RH",
+            description: "Processamento e consolidacao operacional da competencia.",
+            status: getStatus(1),
+            route: "/banco-horas/processamento",
+            responsible: "RH",
+        },
+        {
+            id: "banco_horas",
+            label: "Banco de Horas",
+            description: "Validacao de saldos, vencimentos e risco operacional.",
+            status: getStatus(2),
+            route: "/banco-horas",
+            responsible: "RH",
+        },
+        {
+            id: "fechamento_mensal",
+            label: "Fechamento Mensal",
+            description: "Consolidacao final da competencia operacional.",
+            status: getStatus(3),
+            route: "/fechamento",
+            responsible: "RH / Operacoes",
+        },
+        {
+            id: "central_financeira",
+            label: "Central Financeira",
+            description: "Acompanhamento, aprovacao e continuidade financeira da competencia.",
+            status: getStatus(4),
+            route: "/financeiro",
+            responsible: "Financeiro",
+        },
+    ];
+
+    const nextActionMap = {
+        cadastros: {
+            label: "Ir para Processamento RH",
+            description: "Cadastros revisados. O proximo passo e iniciar o Processamento RH.",
+            route: "/banco-horas/processamento",
+        },
+        processamento_rh: {
+            label: "Ir para Banco de Horas",
+            description: "Revise os saldos e valide o Banco de Horas para seguir com seguranca.",
+            route: "/banco-horas",
+        },
+        banco_horas: {
+            label: "Ir para Fechamento Mensal",
+            description: "Saldos validados. O proximo passo e fechar a competencia.",
+            route: "/fechamento",
+        },
+        fechamento_mensal: {
+            label: "Ir para Central Financeira",
+            description: "Competencia consolidada. Continue a esteira no Financeiro.",
+            route: "/financeiro",
+        },
+        central_financeira: {
+            label: "Ir para Central Bancaria",
+            description: "Apos aprovacao financeira, siga para CNAB e retorno bancario.",
+            route: "/bancario",
+        },
+    } as const;
+
+    return {
+        context: { competencia, empresa, fluxo: "Pipeline Operacional" },
+        steps,
+        completedStage: {
+            label: "Visao atual do pipeline",
+            description: "Reabra o fluxo a qualquer momento para revisar a etapa atual e a proxima acao recomendada.",
+        },
+        nextAction: nextActionMap[currentStage],
+    };
+};
+
+export const buildBancoHorasRhValidationPipeline = (params: {
+    competencia: string;
+    empresa: string;
+}): PipelineTrigger => {
+    const { competencia, empresa } = params;
+    const doneAt = new Date().toLocaleString("pt-BR", {
+        day: "2-digit",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+    });
+
+    return {
+        context: { competencia, empresa, fluxo: "Banco de Horas -> Financeiro" },
+        steps: [
+            {
+                id: "importacao",
+                label: "Importacao",
+                description: "Pontos recebidos e competencia carregada para processamento.",
+                status: "done",
+                timestamp: doneAt,
+                route: "/pontos",
+            },
+            {
+                id: "processamento_rh",
+                label: "Processamento RH",
+                description: "Registros processados e saldos consolidados pelo RH.",
+                status: "done",
+                timestamp: doneAt,
+                route: "/banco-horas/processamento",
+                responsible: "RH",
+            },
+            {
+                id: "banco_horas_validado",
+                label: "Banco de Horas validado",
+                description: "Saldos revisados e competencia liberada pelo RH.",
+                status: "done",
+                timestamp: doneAt,
+                route: "/banco-horas",
+                responsible: "RH",
+            },
+            {
+                id: "envio_financeiro",
+                label: "Envio Financeiro",
+                description: "Lote liberado pelo RH e em transicao para a Central Financeira.",
+                status: "current",
+                route: "/financeiro",
+                responsible: "RH -> Financeiro",
+            },
+            {
+                id: "aprovacao_financeira",
+                label: "Aprovacao Financeira",
+                description: "Analise financeira pendente apos o recebimento da competencia.",
+                status: "pending",
+                route: "/financeiro",
+                responsible: "Financeiro",
+            },
+            {
+                id: "cnab",
+                label: "CNAB",
+                description: "Etapa bancaria liberada somente apos aprovacao financeira.",
+                status: "pending",
+                route: "/bancario",
+                responsible: "Financeiro",
+            },
+            {
+                id: "retorno_bancario",
+                label: "Retorno bancario",
+                description: "Conciliacao e retorno do banco apos a remessa.",
+                status: "pending",
+                route: "/bancario",
+                responsible: "Financeiro",
+            },
+        ],
+        completedStage: {
+            label: "Validacao RH concluida",
+            description: "O RH concluiu a validacao do Banco de Horas e liberou a competencia para o Financeiro.",
+        },
+        nextAction: {
+            label: "Ir para Central Financeira",
+            description: "Envio Financeiro em andamento. A Central Financeira sera aberta para continuidade do pipeline.",
+            route: "/financeiro",
+            autoNavigate: true,
+            delayMs: 1400,
+        },
     };
 };

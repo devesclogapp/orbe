@@ -93,6 +93,7 @@ type ProcessParams = {
   tenantId: string;
   month: string;
   empresaId?: string | null;
+  colaboradorId?: string | null;
   empresas: Empresa[];
   colaboradores: Colaborador[];
   regras: Regra[];
@@ -109,6 +110,7 @@ type ProcessResult = {
   inconsistencias: string[];
   durationMs: number;
   pendentesCadastrais: number;
+  processedAt?: string;
 };
 
 type CadastralValidation = {
@@ -609,10 +611,12 @@ const loadPontosPendentes = async ({
   tenantId,
   month,
   empresaId,
+  colaboradorId,
 }: {
   tenantId: string;
   month: string;
   empresaId?: string | null;
+  colaboradorId?: string | null;
 }) => {
   const { startDate, endDate } = getPeriodRange(month);
 
@@ -628,6 +632,10 @@ const loadPontosPendentes = async ({
 
   if (empresaId) {
     query = query.eq("empresa_id", empresaId);
+  }
+
+  if (colaboradorId) {
+    query = query.eq("colaborador_id", colaboradorId);
   }
 
   const { data, error } = await query;
@@ -946,6 +954,7 @@ const insertLog = async ({
 }) => {
   const { data: authData } = await supabase.auth.getUser();
   const [year, monthNumber] = month.split("-").map(Number);
+  const executadoEm = new Date().toISOString();
 
   const { error } = await (supabase as any).from("processamento_rh_logs").insert({
     tenant_id: tenantId,
@@ -958,26 +967,28 @@ const insertLog = async ({
     total_inconsistencias: totalInconsistencias,
     total_horas_positivas: totalCreditos,
     total_horas_negativas: totalDebitos,
-    executado_em: new Date().toISOString(),
+    executado_em: executadoEm,
     duracao_ms: durationMs,
     reprocessado: Boolean(reprocessado),
     registros_limpados: registrosLimpados ?? 0,
     tipo_execucao: executionType ?? "manual",
   });
   if (error) throw error;
+  return executadoEm;
 };
 
 export const processRhPeriod = async ({
   tenantId,
   month,
   empresaId,
+  colaboradorId,
   empresas,
   colaboradores,
   regras,
   executionType = "manual",
 }: ProcessParams): Promise<ProcessResult> => {
   const startedAt = Date.now();
-  const pontos = await loadPontosPendentes({ tenantId, month, empresaId });
+  const pontos = await loadPontosPendentes({ tenantId, month, empresaId, colaboradorId });
   const empresasRuntime = [...empresas];
   const colaboradoresRuntime = [...colaboradores];
   const regrasRuntime = [...regras];
@@ -998,6 +1009,7 @@ export const processRhPeriod = async ({
 
   const { year, monthNumber } = getPeriodRange(month);
   const competenciaAtual = `${year}-${String(monthNumber).padStart(2, "0")}`;
+  const processedAt = new Date().toISOString();
   const ciclosOperacionais = await CicloOperacionalService.getCiclosDaCompetencia(
     tenantId,
     competenciaAtual,
@@ -1275,7 +1287,7 @@ export const processRhPeriod = async ({
 
     const updatePayload = {
       status_processamento: inconsistencias.length > 0 ? "inconsistente" : "processado",
-      processado_em: new Date().toISOString(),
+      processado_em: processedAt,
       ciclo_id: ponto.ciclo_id ?? null,
       competencia: ponto.competencia,
       semana_operacional: ponto.semana_operacional,
@@ -1373,7 +1385,7 @@ export const processRhPeriod = async ({
   }
 
   const durationMs = Date.now() - startedAt;
-  await insertLog({
+  const executadoEm = await insertLog({
     tenantId,
     month,
     empresaId,
@@ -1396,6 +1408,7 @@ export const processRhPeriod = async ({
     inconsistencias: inconsistenciasResumo.slice(0, 10),
     durationMs,
     pendentesCadastrais,
+    processedAt: executadoEm ?? processedAt,
   };
 };
 
@@ -1451,12 +1464,14 @@ export const reprocessRhPeriod = async ({
   tenantId,
   month,
   empresaId,
+  colaboradorId,
   colaboradores,
   executionType = "manual",
 }: {
   tenantId: string;
   month: string;
   empresaId?: string | null;
+  colaboradorId?: string | null;
   colaboradores: Colaborador[];
   executionType?: "manual" | "automatica";
 }) => {
@@ -1472,6 +1487,10 @@ export const reprocessRhPeriod = async ({
 
   if (empresaId) {
     pontosQuery = pontosQuery.eq("empresa_id", empresaId);
+  }
+
+  if (colaboradorId) {
+    pontosQuery = pontosQuery.eq("colaborador_id", colaboradorId);
   }
 
   const { data: pontos, error: pontosError } = await pontosQuery;
@@ -1532,6 +1551,10 @@ export const reprocessRhPeriod = async ({
 
     if (empresaId) {
       resetQuery = resetQuery.eq("empresa_id", empresaId);
+    }
+
+    if (colaboradorId) {
+      resetQuery = resetQuery.eq("colaborador_id", colaboradorId);
     }
 
     const { error: resetError } = await resetQuery;

@@ -42,6 +42,7 @@ type ApprovalLotResult = {
   totalItens: number;
   totalColaboradores: number;
   valorTotal: number;
+  approvedAt: string;
 };
 
 const RH_LOTE_ORIGEM = "RH";
@@ -599,6 +600,7 @@ class RHFinanceiroServiceClass {
     let totalItens = 0;
     let totalColaboradores = 0;
     let valorTotalGeral = 0;
+    const approvedAt = new Date().toISOString();
 
     for (const entry of tiposParaCriar) {
       if (!entry.items.length) continue;
@@ -749,6 +751,7 @@ class RHFinanceiroServiceClass {
       totalItens,
       totalColaboradores,
       valorTotal: Number(valorTotalGeral.toFixed(2)),
+      approvedAt,
     };
   }
 

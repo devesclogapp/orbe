@@ -74,6 +74,7 @@ import {
 import { AuditoriaService } from "@/services/v4.service";
 import { ReportService } from "@/services/report.service";
 import { processarOperacao } from "@/utils/financeiro";
+import { DashboardConsolidadoService, OperationalIntegrityKPIs } from "@/services/dashboard.service";
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   style: "currency",
@@ -95,6 +96,64 @@ const formatInteger = (value: number) =>
 
 const formatPercent = (value: number) =>
   `${percentFormatter.format(Number.isFinite(value) ? value : 0)}%`;
+
+const formatDateTime = (value?: string | null) => {
+  if (!value) return "-";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "-";
+  return parsed.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const getAuditoriaBadgeVariant = (
+  status: OperationalIntegrityKPIs["auditoriaCompetencia"]["status"] | undefined,
+) => {
+  switch (status) {
+    case "ok":
+      return "success";
+    case "divergente":
+      return "destructive";
+    case "pendente":
+      return "warning";
+    default:
+      return "secondary";
+  }
+};
+
+const getAuditoriaStatusLabel = (
+  status: OperationalIntegrityKPIs["auditoriaCompetencia"]["status"] | undefined,
+) => {
+  switch (status) {
+    case "ok":
+      return "OK";
+    case "divergente":
+      return "Divergente";
+    case "pendente":
+      return "Pendente";
+    default:
+      return "Sem dados";
+  }
+};
+
+const getTipoFluxoLabel = (value?: OperationalIntegrityKPIs["tipoFluxo"]) => {
+  switch (value) {
+    case "folha_variavel":
+      return "CLT";
+    case "diarista":
+      return "Diarista";
+    case "operacional":
+      return "Operacional";
+    case "misto":
+      return "Misto";
+    default:
+      return "Sem fluxo";
+  }
+};
 
 const COLORS = {
   receita: "hsl(var(--primary))",
@@ -201,23 +260,31 @@ const Dashboard = () => {
     isLoading: isLoadingOperacoes,
     isError: isErrorOperacoes,
   } = useQuery<any[]>({
-    queryKey: ["dashboard-operacoes", tenantId || "all"],
+    queryKey: ["dashboard-operacoes", tenantId || "all", selectedYear, selectedMonthNumber],
     queryFn: () => OperacaoService.getAllPainel(undefined, tenantId),
     retry: 1,
   });
 
   const {
     data: custosExtras = [],
-    isLoading: isLoadingCustos,
-    isError: isErrorCustos,
   } = useQuery<any[]>({
     queryKey: ["dashboard-custos-extras", tenantId || "all"],
     queryFn: () => CustoExtraOperacionalService.getAll(undefined, tenantId),
     retry: 1,
   });
 
-  const isLoading = isLoadingOperacoes || isLoadingCustos;
-  const isError = isErrorOperacoes || isErrorCustos;
+  const {
+    data: kpisConsolidados,
+    isLoading: isLoadingKpis,
+    isError: isErrorKpis,
+  } = useQuery<OperationalIntegrityKPIs>({
+    queryKey: ["dashboard-kpis-consolidados", tenantId, selectedYear, selectedMonthNumber],
+    queryFn: () => DashboardConsolidadoService.getKpisAggregate(selectedYear, selectedMonthNumber, tenantId),
+    retry: 1,
+  });
+
+  const isLoading = isLoadingOperacoes || isLoadingKpis;
+  const isError = isErrorOperacoes || isErrorKpis;
 
   const operacoesPeriodo = useMemo(
     () =>
@@ -241,48 +308,37 @@ const Dashboard = () => {
   );
 
   const dashboardKpis = useMemo(() => {
-    let faturamento = 0;
-    let caixaRecebidoOperacoes = 0;
-    let aReceber = 0;
-    let atrasado = 0;
+    let faturamento = kpisConsolidados?.faturamentoTotal || 0;
+
+    // As per new rules, we only read from the consolidated source
+    const lucroReal = kpisConsolidados?.lucroReal || 0;
+    const caixaRecebido = kpisConsolidados?.caixaRecebido || 0;
+    const aReceber = (kpisConsolidados?.faturamentoTotal || 0) - caixaRecebido;
+
+    // We compute costs and margins
+    const custosTotais = kpisConsolidados?.custosGerais || 0;
+    const margemLucro = faturamento > 0 ? (lucroReal / faturamento) * 100 : 0;
+
     let volumeTotal = 0;
-
     operacoesPeriodo.forEach((item) => {
-      const totalLinha = Number(
-        item.totalFinalCalculado ?? item.valor_total_label ?? item.valor_total ?? 0,
-      );
       const quantidade = Number(item.quantidade ?? item.quantidade_label ?? 0);
-      const statusPagamento = String(
-        item.statusPagamento ?? item.status_pagamento ?? "",
-      ).toUpperCase();
-
-      faturamento += Number.isFinite(totalLinha) ? totalLinha : 0;
       volumeTotal += Number.isFinite(quantidade) ? quantidade : 0;
-
-      if (statusPagamento === "RECEBIDO") caixaRecebidoOperacoes += totalLinha;
-      if (statusPagamento === "PENDENTE") aReceber += totalLinha;
-      if (statusPagamento === "ATRASADO") atrasado += totalLinha;
     });
 
-    let custosTotais = 0;
-    let custosRecebidos = 0;
-    let custosPendentes = 0;
-    let custosAtrasados = 0;
     let merenda = 0;
     let administrativo = 0;
     let operacional = 0;
     let fornecedor = 0;
+    let custosPendentes = 0;
+    let atrasado = 0;
 
     custosPeriodo.forEach((item) => {
       const total = Number(item.total ?? 0);
       const status = String(item.status_pagamento ?? "").toUpperCase();
       const categoria = String(item.categoria_custo ?? "").toUpperCase();
 
-      custosTotais += total;
-
-      if (status === "RECEBIDO") custosRecebidos += total;
       if (status === "PENDENTE") custosPendentes += total;
-      if (status === "ATRASADO") custosAtrasados += total;
+      if (status === "ATRASADO") atrasado += total;
 
       if (categoria === "MERENDA") merenda += total;
       if (categoria === "ADMINISTRATIVO") administrativo += total;
@@ -290,13 +346,9 @@ const Dashboard = () => {
       if (categoria === "FORNECEDOR") fornecedor += total;
     });
 
-    const lucroReal = faturamento - custosTotais;
-    const margemLucro = faturamento > 0 ? (lucroReal / faturamento) * 100 : 0;
-    const caixaRecebido = caixaRecebidoOperacoes - custosRecebidos;
-
     return {
       faturamento,
-      custosTotais,
+      custosTotais: (kpisConsolidados?.finValorAprovado || 0) + custosTotais,
       lucroReal,
       caixaRecebido,
       aReceber,
@@ -305,18 +357,47 @@ const Dashboard = () => {
       volumeTotal,
       totalOperacoes: operacoesPeriodo.length,
       totalLancamentosCustos: custosPeriodo.length,
-      caixaRecebidoOperacoes,
-      custosRecebidos,
       custosPendentes,
-      custosAtrasados,
       categoriasCustos: {
         merenda,
         administrativo,
         operacional,
         fornecedor,
       },
+      ...kpisConsolidados
     };
-  }, [custosPeriodo, operacoesPeriodo]);
+  }, [kpisConsolidados, operacoesPeriodo, custosPeriodo]);
+
+  const kpiOrigins = useMemo(
+    () => [
+      {
+        label: "Faturamento Total",
+        value: formatCurrency(dashboardKpis.faturamento),
+        origin: kpisConsolidados?.origens.faturamentoTotal,
+      },
+      {
+        label: "Caixa Recebido",
+        value: formatCurrency(dashboardKpis.caixaRecebido),
+        origin: kpisConsolidados?.origens.caixaRecebido,
+      },
+      {
+        label: "Custos Totais",
+        value: formatCurrency(dashboardKpis.custosTotais),
+        origin: kpisConsolidados?.origens.custosGerais,
+      },
+      {
+        label: "Lucro Real",
+        value: formatCurrency(dashboardKpis.lucroReal),
+        origin: kpisConsolidados?.origens.lucroReal,
+      },
+      {
+        label: "Financeiro Aprovado",
+        value: formatCurrency(kpisConsolidados?.finValorAprovado || 0),
+        origin: kpisConsolidados?.origens.finValorAprovado,
+      },
+    ],
+    [dashboardKpis, kpisConsolidados],
+  );
 
   // activeFilter is used only for display; KPIs always reflect full period data
 
@@ -666,6 +747,112 @@ const Dashboard = () => {
                   onClick={() => navigateToOperacoes({ categoria_servico: "CUSTO" })}
                 />
               </div>
+
+              <section className="esc-card rounded-2xl border border-border p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Database className="h-4 w-4 text-primary" />
+                      <h3 className="font-semibold text-foreground">
+                        Auditoria da Competência
+                      </h3>
+                    </div>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Prova de consistência entre RH, Financeiro, CNAB e histórico bancário.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={getAuditoriaBadgeVariant(kpisConsolidados?.auditoriaCompetencia.status)}>
+                      {getAuditoriaStatusLabel(kpisConsolidados?.auditoriaCompetencia.status)}
+                    </Badge>
+                    <Badge variant="outline">
+                      Tipo: {getTipoFluxoLabel(kpisConsolidados?.auditoriaCompetencia.tipoFluxo)}
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+                  <div className="rounded-xl border border-border bg-muted/20 p-3">
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground">RH fechado</div>
+                    <div className="mt-1 text-lg font-semibold">{formatCurrency(kpisConsolidados?.auditoriaCompetencia.rhFechado || 0)}</div>
+                  </div>
+                  <div className="rounded-xl border border-border bg-muted/20 p-3">
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Financeiro recebido</div>
+                    <div className="mt-1 text-lg font-semibold">{formatCurrency(kpisConsolidados?.auditoriaCompetencia.financeiroRecebido || 0)}</div>
+                  </div>
+                  <div className="rounded-xl border border-border bg-muted/20 p-3">
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Financeiro aprovado</div>
+                    <div className="mt-1 text-lg font-semibold">{formatCurrency(kpisConsolidados?.auditoriaCompetencia.financeiroAprovado || 0)}</div>
+                  </div>
+                  <div className="rounded-xl border border-border bg-muted/20 p-3">
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground">CNAB gerado</div>
+                    <div className="mt-1 text-lg font-semibold">{formatCurrency(kpisConsolidados?.auditoriaCompetencia.cnabGerado || 0)}</div>
+                  </div>
+                  <div className="rounded-xl border border-border bg-muted/20 p-3">
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Histórico bancário</div>
+                    <div className="mt-1 text-lg font-semibold">{formatCurrency(kpisConsolidados?.auditoriaCompetencia.bancoHistorico || 0)}</div>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-4">
+                  <div className="rounded-xl border border-border p-3">
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Dif. RH x Financeiro</div>
+                    <div className="mt-1 text-base font-semibold">{formatCurrency(kpisConsolidados?.auditoriaCompetencia.diferencaRhFinanceiro || 0)}</div>
+                  </div>
+                  <div className="rounded-xl border border-border p-3">
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Dif. Financeiro x CNAB</div>
+                    <div className="mt-1 text-base font-semibold">{formatCurrency(kpisConsolidados?.auditoriaCompetencia.diferencaFinanceiroCnab || 0)}</div>
+                  </div>
+                  <div className="rounded-xl border border-border p-3">
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Dif. CNAB x Banco</div>
+                    <div className="mt-1 text-base font-semibold">{formatCurrency(kpisConsolidados?.auditoriaCompetencia.diferencaCnabHistorico || 0)}</div>
+                  </div>
+                  <div className="rounded-xl border border-border p-3">
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Diferença geral</div>
+                    <div className="mt-1 text-base font-semibold">{formatCurrency(kpisConsolidados?.auditoriaCompetencia.diferencaTotal || 0)}</div>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                  <span>Competência: {kpisConsolidados?.competencia || "-"}</span>
+                  <span>Atualizado em: {formatDateTime(kpisConsolidados?.auditoriaCompetencia.atualizadoEm)}</span>
+                </div>
+
+                {(kpisConsolidados?.auditoriaCompetencia.pendencias || []).length > 0 && (
+                  <div className="mt-4 rounded-xl border border-warning/30 bg-warning/10 p-3">
+                    <div className="flex items-center gap-2 text-sm font-medium text-warning-strong">
+                      <AlertCircle className="h-4 w-4" />
+                      Pendências de auditoria
+                    </div>
+                    <div className="mt-2 space-y-1 text-sm text-muted-foreground">
+                      {(kpisConsolidados?.auditoriaCompetencia.pendencias || []).map((item) => (
+                        <div key={item}>{item}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </section>
+
+              <section className="esc-card rounded-2xl border border-border p-4">
+                <div className="flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-primary" />
+                  <h3 className="font-semibold text-foreground">Rastreabilidade dos KPIs</h3>
+                </div>
+                <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-5">
+                  {kpiOrigins.map((item) => (
+                    <div key={item.label} className="rounded-xl border border-border bg-muted/20 p-3">
+                      <div className="text-xs uppercase tracking-wide text-muted-foreground">{item.label}</div>
+                      <div className="mt-1 text-base font-semibold">{item.value}</div>
+                      <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                        <div>Fonte: {item.origin?.fonte || "-"}</div>
+                        <div>Competência: {item.origin?.competencia || "-"}</div>
+                        <div>Atualizado em: {formatDateTime(item.origin?.atualizadoEm)}</div>
+                        <div>Tipo: {getTipoFluxoLabel(item.origin?.tipoFluxo)}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
             </div>
 
             {/* Filtro ativo exibido */}

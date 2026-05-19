@@ -1,0 +1,667 @@
+import { supabase } from '@/lib/supabase';
+
+export type AuditoriaCompetenciaStatus = 'ok' | 'divergente' | 'pendente' | 'sem_dados';
+export type TipoFluxo = 'folha_variavel' | 'diarista' | 'operacional';
+export type TipoFluxoResumo = TipoFluxo | 'misto' | 'sem_fluxo';
+
+export interface KPIOrigin {
+  fonte: string;
+  competencia: string;
+  atualizadoEm: string;
+  tipoFluxo: TipoFluxoResumo;
+}
+
+export interface AuditoriaCompetenciaResumo {
+  status: AuditoriaCompetenciaStatus;
+  rhFechado: number;
+  financeiroRecebido: number;
+  financeiroAprovado: number;
+  cnabGerado: number;
+  bancoHistorico: number;
+  diferencaRhFinanceiro: number;
+  diferencaFinanceiroCnab: number;
+  diferencaCnabHistorico: number;
+  diferencaTotal: number;
+  pendencias: string[];
+  atualizadoEm: string;
+  tipoFluxo: TipoFluxoResumo;
+}
+
+export interface OperationalIntegrityKPIs {
+  competencia: string;
+  consolidadoEm: string;
+  tipoFluxo: TipoFluxoResumo;
+  fluxosPresentes: TipoFluxo[];
+  rhValorProcessado: number;
+  rhValorValidado: number;
+  rhValorFechado: number;
+  finValorRecebidoRH: number;
+  finValorAprovado: number;
+  finValorEnviadoBanco: number;
+  finValorHistoricoBanco: number;
+  faturamentoTotal: number;
+  caixaRecebido: number;
+  lucroReal: number;
+  custosGerais: number;
+  auditoriaCompetencia: AuditoriaCompetenciaResumo;
+  origens: {
+    faturamentoTotal: KPIOrigin;
+    caixaRecebido: KPIOrigin;
+    custosGerais: KPIOrigin;
+    lucroReal: KPIOrigin;
+    finValorAprovado: KPIOrigin;
+    auditoriaCompetencia: KPIOrigin;
+  };
+}
+
+interface FluxAccumulator {
+  rhProcessado: number;
+  rhValidado: number;
+  rhFechado: number;
+  finRecebidoRh: number;
+  finAprovado: number;
+}
+
+function emptyFluxAccumulator(): FluxAccumulator {
+  return {
+    rhProcessado: 0,
+    rhValidado: 0,
+    rhFechado: 0,
+    finRecebidoRh: 0,
+    finAprovado: 0,
+  };
+}
+
+function addAmount(target: number, value: unknown): number {
+  return target + (Number(value) || 0);
+}
+
+function moneyDiff(left: number, right: number): number {
+  return Number((left - right).toFixed(2));
+}
+
+function maxIso(values: Array<string | null | undefined>, fallback: string): string {
+  const normalized = values.filter(Boolean) as string[];
+  if (!normalized.length) return fallback;
+  return normalized.reduce((current, next) => (next > current ? next : current));
+}
+
+function dedupeFlowTypes(types: TipoFluxo[]): TipoFluxo[] {
+  return Array.from(new Set(types));
+}
+
+function summarizeFlowType(types: TipoFluxo[]): TipoFluxoResumo {
+  const unique = dedupeFlowTypes(types);
+  if (!unique.length) return 'sem_fluxo';
+  if (unique.length > 1) return 'misto';
+  return unique[0];
+}
+
+function buildOrigin(
+  fonte: string,
+  competencia: string,
+  atualizadoEm: string,
+  tiposFluxo: TipoFluxo[],
+): KPIOrigin {
+  return {
+    fonte,
+    competencia,
+    atualizadoEm,
+    tipoFluxo: summarizeFlowType(tiposFluxo),
+  };
+}
+
+function classifyAuditoriaStatus(params: {
+  rhFechado: number;
+  financeiroRecebido: number;
+  financeiroAprovado: number;
+  cnabGerado: number;
+  bancoHistorico: number;
+  pendencias: string[];
+}): AuditoriaCompetenciaStatus {
+  const {
+    rhFechado,
+    financeiroRecebido,
+    financeiroAprovado,
+    cnabGerado,
+    bancoHistorico,
+    pendencias,
+  } = params;
+
+  const hasCoreData =
+    rhFechado > 0 ||
+    financeiroRecebido > 0 ||
+    financeiroAprovado > 0 ||
+    cnabGerado > 0 ||
+    bancoHistorico > 0;
+
+  if (!hasCoreData) {
+    return 'sem_dados';
+  }
+
+  if (pendencias.length > 0) {
+    return 'pendente';
+  }
+
+  const isRhAligned = Math.abs(rhFechado - financeiroRecebido) < 0.01;
+  const isFinanceiroAligned = Math.abs(financeiroAprovado - cnabGerado) < 0.01;
+  const isBancoAligned =
+    bancoHistorico === 0 || Math.abs(cnabGerado - bancoHistorico) < 0.01;
+
+  if (isRhAligned && isFinanceiroAligned && isBancoAligned) {
+    return 'ok';
+  }
+
+  return 'divergente';
+}
+
+function applyDiaristaStatus(acc: FluxAccumulator, status: string, value: number) {
+  acc.rhProcessado += value;
+
+  if ([
+    'VALIDADO_RH',
+    'FECHADO_FINANCEIRO',
+    'AGUARDANDO_PAGAMENTO',
+    'PAGO',
+    'CNAB_GERADO',
+  ].includes(status)) {
+    acc.rhValidado += value;
+    acc.rhFechado += value;
+    acc.finRecebidoRh += value;
+  }
+
+  if ([
+    'FECHADO_FINANCEIRO',
+    'AGUARDANDO_PAGAMENTO',
+    'PAGO',
+    'CNAB_GERADO',
+  ].includes(status)) {
+    acc.finAprovado += value;
+  }
+}
+
+function applyFolhaStatus(acc: FluxAccumulator, status: string, value: number) {
+  acc.rhProcessado += value;
+
+  if ([
+    'FECHADO_RH',
+    'ENVIADO_FINANCEIRO',
+    'APROVADO_FINANCEIRO',
+    'PAGO',
+    'CNAB_GERADO',
+  ].includes(status)) {
+    acc.rhValidado += value;
+    acc.rhFechado += value;
+    acc.finRecebidoRh += value;
+  }
+
+  if (['APROVADO_FINANCEIRO', 'PAGO', 'CNAB_GERADO'].includes(status)) {
+    acc.finAprovado += value;
+  }
+}
+
+export function normalizeCompetencia(value: string | undefined | null): string | null {
+  if (!value) return null;
+  if (value.includes('T')) return value.substring(0, 7);
+  if (value.match(/^\d{4}-\d{2}$/)) return value;
+  return value.substring(0, 7);
+}
+
+class DashboardConsolidadoServiceClass {
+  async getKpisByCompetencia(
+    competencia: string,
+    empresaId?: string,
+  ): Promise<OperationalIntegrityKPIs> {
+    const canonicalCompetencia = normalizeCompetencia(competencia) || '';
+    const consolidadoEm = new Date().toISOString();
+
+    let qReceitas = supabase
+      .from('financeiro_consolidados_cliente')
+      .select('valor_total, status, created_at, updated_at')
+      .eq('competencia', canonicalCompetencia);
+    if (empresaId) qReceitas = qReceitas.eq('empresa_id', empresaId);
+
+    let qLotesD = supabase
+      .from('lotes_fechamento_diaristas')
+      .select('valor_total, status, periodo_inicio, created_at, updated_at')
+      .like('periodo_inicio', `${canonicalCompetencia}%`);
+    if (empresaId) qLotesD = qLotesD.eq('empresa_id', empresaId);
+
+    let qLotesRh = supabase
+      .from('rh_financeiro_lote')
+      .select('status, created_at, updated_at, lote_itens:rh_financeiro_lote_itens(valor_calculado)')
+      .eq('competencia', canonicalCompetencia);
+    if (empresaId) qLotesRh = qLotesRh.eq('empresa_id', empresaId);
+
+    let qCnabLotes = supabase
+      .from('lotes_remessa')
+      .select('id, valor_total, status, status_conciliacao, created_at, updated_at')
+      .eq('competencia', canonicalCompetencia);
+    if (empresaId) qCnabLotes = qCnabLotes.eq('empresa_id', empresaId);
+
+    let qCnabArquivos = supabase
+      .from('cnab_remessas_arquivos')
+      .select('id, lote_id, total_valor, status, competencia, data_geracao, updated_at')
+      .eq('competencia', canonicalCompetencia);
+
+    let qRetornoItens = supabase
+      .from('cnab_retorno_itens')
+      .select(`
+        valor_retornado,
+        status,
+        created_at,
+        remessa_arquivo:cnab_remessas_arquivos!remessa_arquivo_id(
+          competencia
+        )
+      `);
+
+    let qCustos = supabase
+      .from('custos_extras_operacionais')
+      .select('total, created_at, updated_at')
+      .gte('data', `${canonicalCompetencia}-01`)
+      .lt('data', `${canonicalCompetencia}-32`);
+    if (empresaId) qCustos = qCustos.eq('empresa_id', empresaId);
+
+    const [
+      resReceitas,
+      resLotesD,
+      resLotesRh,
+      resCnabLotes,
+      resCnabArquivos,
+      resRetornoItens,
+      resCustos,
+    ] = await Promise.all([
+      qReceitas,
+      qLotesD,
+      qLotesRh,
+      qCnabLotes,
+      qCnabArquivos,
+      qRetornoItens,
+      qCustos,
+    ]);
+
+    const diaristaFlow = emptyFluxAccumulator();
+    const folhaFlow = emptyFluxAccumulator();
+    const flowsPresentes: TipoFluxo[] = [];
+
+    let faturamentoTotal = 0;
+    let caixaRecebido = 0;
+    const receitasUpdatedAt: string[] = [];
+
+    (resReceitas.data || []).forEach((item) => {
+      faturamentoTotal = addAmount(faturamentoTotal, item.valor_total);
+      if (['RECEBIDO', 'PAGO', 'pago'].includes(String(item.status))) {
+        caixaRecebido = addAmount(caixaRecebido, item.valor_total);
+      }
+      receitasUpdatedAt.push(
+        String(item.updated_at || item.created_at || consolidadoEm),
+      );
+      flowsPresentes.push('operacional');
+    });
+
+    const lotesDUpdatedAt: string[] = [];
+    (resLotesD.data || []).forEach((item) => {
+      const value = Number(item.valor_total) || 0;
+      const status = String(item.status || '').toUpperCase();
+      applyDiaristaStatus(diaristaFlow, status, value);
+      lotesDUpdatedAt.push(
+        String(item.updated_at || item.created_at || consolidadoEm),
+      );
+      if (value > 0) flowsPresentes.push('diarista');
+    });
+
+    const lotesRhUpdatedAt: string[] = [];
+    (resLotesRh.data || []).forEach((item) => {
+      const total = ((item.lote_itens || []) as Array<{ valor_calculado: number | null }>)
+        .reduce((acc, current) => acc + (Number(current.valor_calculado) || 0), 0);
+      const status = String(item.status || '').toUpperCase();
+      applyFolhaStatus(folhaFlow, status, total);
+      lotesRhUpdatedAt.push(
+        String(item.updated_at || item.created_at || consolidadoEm),
+      );
+      if (total > 0) flowsPresentes.push('folha_variavel');
+    });
+
+    const rhValorProcessado = folhaFlow.rhProcessado + diaristaFlow.rhProcessado;
+    const rhValorValidado = folhaFlow.rhValidado + diaristaFlow.rhValidado;
+    const rhValorFechado = folhaFlow.rhFechado + diaristaFlow.rhFechado;
+    const finValorRecebidoRH = folhaFlow.finRecebidoRh + diaristaFlow.finRecebidoRh;
+    const finValorAprovado = folhaFlow.finAprovado + diaristaFlow.finAprovado;
+
+    let finValorEnviadoBanco = 0;
+    const cnabUpdatedAt: string[] = [];
+    const lotesRemessaPendentes = new Set<string>();
+
+    (resCnabLotes.data || []).forEach((item) => {
+      const status = String(item.status || '').toLowerCase();
+      const statusConciliacao = String(item.status_conciliacao || '').toLowerCase();
+      if (status && !['gerado', 'baixado', 'enviado_manual', 'homologado', 'pago'].includes(status)) {
+        lotesRemessaPendentes.add(String(item.id));
+      }
+      if (
+        ['gerado', 'baixado', 'enviado_manual', 'homologado', 'pago'].includes(status) ||
+        ['conciliado'].includes(statusConciliacao)
+      ) {
+        finValorEnviadoBanco = addAmount(finValorEnviadoBanco, item.valor_total);
+      }
+      cnabUpdatedAt.push(String(item.updated_at || item.created_at || consolidadoEm));
+    });
+
+    (resCnabArquivos.data || []).forEach((item) => {
+      if (['gerado', 'baixado', 'enviado_manual', 'homologado'].includes(String(item.status))) {
+        finValorEnviadoBanco = addAmount(finValorEnviadoBanco, item.total_valor);
+      }
+      cnabUpdatedAt.push(
+        String(item.updated_at || item.data_geracao || consolidadoEm),
+      );
+    });
+
+    finValorEnviadoBanco = Number(finValorEnviadoBanco.toFixed(2));
+
+    let finValorHistoricoBanco = 0;
+    const retornoUpdatedAt: string[] = [];
+    (resRetornoItens.data || []).forEach((item) => {
+      const remessaCompetencia = normalizeCompetencia(
+        (item.remessa_arquivo as { competencia?: string | null } | null)?.competencia,
+      );
+      if (remessaCompetencia !== canonicalCompetencia) return;
+      if (String(item.status) === 'pago') {
+        finValorHistoricoBanco = addAmount(finValorHistoricoBanco, item.valor_retornado);
+      }
+      retornoUpdatedAt.push(String(item.created_at || consolidadoEm));
+    });
+    finValorHistoricoBanco = Number(finValorHistoricoBanco.toFixed(2));
+
+    let custosGerais = 0;
+    const custosUpdatedAt: string[] = [];
+    (resCustos.data || []).forEach((item) => {
+      custosGerais = addAmount(custosGerais, item.total);
+      custosUpdatedAt.push(
+        String(item.updated_at || item.created_at || consolidadoEm),
+      );
+      flowsPresentes.push('operacional');
+    });
+
+    const lucroReal = faturamentoTotal - finValorAprovado - custosGerais;
+    const tiposFluxo = dedupeFlowTypes(flowsPresentes);
+    const tipoFluxoResumo = summarizeFlowType(tiposFluxo);
+
+    const pendencias: string[] = [];
+    if (rhValorFechado > 0 && finValorRecebidoRH === 0) {
+      pendencias.push('RH fechado sem recebimento correspondente no financeiro.');
+    }
+    if (finValorAprovado > 0 && finValorEnviadoBanco === 0) {
+      pendencias.push('Financeiro aprovado ainda sem remessa CNAB gerada.');
+    }
+    if (lotesRemessaPendentes.size > 0) {
+      pendencias.push('Existem lotes de remessa ainda pendentes de geração ou homologação.');
+    }
+
+    const diferencaRhFinanceiro = moneyDiff(rhValorFechado, finValorRecebidoRH);
+    const diferencaFinanceiroCnab = moneyDiff(finValorAprovado, finValorEnviadoBanco);
+    const diferencaCnabHistorico = moneyDiff(finValorEnviadoBanco, finValorHistoricoBanco);
+    const diferencaTotal = Math.max(
+      Math.abs(diferencaRhFinanceiro),
+      Math.abs(diferencaFinanceiroCnab),
+      Math.abs(diferencaCnabHistorico),
+    );
+
+    const atualizadoEm = maxIso(
+      [
+        ...receitasUpdatedAt,
+        ...lotesDUpdatedAt,
+        ...lotesRhUpdatedAt,
+        ...cnabUpdatedAt,
+        ...retornoUpdatedAt,
+        ...custosUpdatedAt,
+      ],
+      consolidadoEm,
+    );
+
+    const auditoriaCompetencia: AuditoriaCompetenciaResumo = {
+      status: classifyAuditoriaStatus({
+        rhFechado: rhValorFechado,
+        financeiroRecebido: finValorRecebidoRH,
+        financeiroAprovado: finValorAprovado,
+        cnabGerado: finValorEnviadoBanco,
+        bancoHistorico: finValorHistoricoBanco,
+        pendencias,
+      }),
+      rhFechado,
+      financeiroRecebido: finValorRecebidoRH,
+      financeiroAprovado: finValorAprovado,
+      cnabGerado: finValorEnviadoBanco,
+      bancoHistorico: finValorHistoricoBanco,
+      diferencaRhFinanceiro,
+      diferencaFinanceiroCnab,
+      diferencaCnabHistorico,
+      diferencaTotal: Number(diferencaTotal.toFixed(2)),
+      pendencias,
+      atualizadoEm,
+      tipoFluxo: tipoFluxoResumo,
+    };
+
+    return {
+      competencia: canonicalCompetencia,
+      consolidadoEm,
+      tipoFluxo: tipoFluxoResumo,
+      fluxosPresentes: tiposFluxo,
+      rhValorProcessado: Number(rhValorProcessado.toFixed(2)),
+      rhValorValidado: Number(rhValorValidado.toFixed(2)),
+      rhValorFechado: Number(rhValorFechado.toFixed(2)),
+      finValorRecebidoRH: Number(finValorRecebidoRH.toFixed(2)),
+      finValorAprovado: Number(finValorAprovado.toFixed(2)),
+      finValorEnviadoBanco: Number(finValorEnviadoBanco.toFixed(2)),
+      finValorHistoricoBanco,
+      faturamentoTotal: Number(faturamentoTotal.toFixed(2)),
+      caixaRecebido: Number(caixaRecebido.toFixed(2)),
+      custosGerais: Number(custosGerais.toFixed(2)),
+      lucroReal: Number(lucroReal.toFixed(2)),
+      auditoriaCompetencia,
+      origens: {
+        faturamentoTotal: buildOrigin(
+          'Financeiro consolidado por cliente validado',
+          canonicalCompetencia,
+          maxIso(receitasUpdatedAt, consolidadoEm),
+          ['operacional'],
+        ),
+        caixaRecebido: buildOrigin(
+          'Financeiro consolidado por cliente com status recebido/pago',
+          canonicalCompetencia,
+          maxIso(receitasUpdatedAt, consolidadoEm),
+          ['operacional'],
+        ),
+        custosGerais: buildOrigin(
+          'Custos extras operacionais consolidados',
+          canonicalCompetencia,
+          maxIso(custosUpdatedAt, consolidadoEm),
+          ['operacional'],
+        ),
+        lucroReal: buildOrigin(
+          'Receita consolidada - financeiro aprovado - custos consolidados',
+          canonicalCompetencia,
+          atualizadoEm,
+          tiposFluxo,
+        ),
+        finValorAprovado: buildOrigin(
+          'Lotes RH aprovados + lotes diaristas fechados para pagamento',
+          canonicalCompetencia,
+          maxIso([...lotesDUpdatedAt, ...lotesRhUpdatedAt], consolidadoEm),
+          tiposFluxo.filter((tipo) => tipo !== 'operacional'),
+        ),
+        auditoriaCompetencia: buildOrigin(
+          'RH fechado x financeiro recebido/aprovado x CNAB x histórico bancário',
+          canonicalCompetencia,
+          atualizadoEm,
+          tiposFluxo,
+        ),
+      },
+    };
+  }
+
+  async getKpisAggregate(
+    year: string,
+    month: string | 'all',
+    empresaId?: string,
+  ): Promise<OperationalIntegrityKPIs> {
+    if (month !== 'all') {
+      return this.getKpisByCompetencia(`${year}-${month}`, empresaId);
+    }
+
+    const snapshots = await Promise.all(
+      Array.from({ length: 12 }, (_, index) =>
+        this.getKpisByCompetencia(
+          `${year}-${String(index + 1).padStart(2, '0')}`,
+          empresaId,
+        ),
+      ),
+    );
+
+    const consolidadoEm = maxIso(
+      snapshots.map((item) => item.consolidadoEm),
+      new Date().toISOString(),
+    );
+    const tiposFluxo = dedupeFlowTypes(
+      snapshots.flatMap((item) => item.fluxosPresentes),
+    );
+    const pendencias = Array.from(
+      new Set(
+        snapshots.flatMap((item) => item.auditoriaCompetencia.pendencias),
+      ),
+    );
+
+    const aggregate: OperationalIntegrityKPIs = {
+      competencia: year,
+      consolidadoEm,
+      tipoFluxo: summarizeFlowType(tiposFluxo),
+      fluxosPresentes: tiposFluxo,
+      rhValorProcessado: 0,
+      rhValorValidado: 0,
+      rhValorFechado: 0,
+      finValorRecebidoRH: 0,
+      finValorAprovado: 0,
+      finValorEnviadoBanco: 0,
+      finValorHistoricoBanco: 0,
+      faturamentoTotal: 0,
+      caixaRecebido: 0,
+      lucroReal: 0,
+      custosGerais: 0,
+      auditoriaCompetencia: {
+        status: 'sem_dados',
+        rhFechado: 0,
+        financeiroRecebido: 0,
+        financeiroAprovado: 0,
+        cnabGerado: 0,
+        bancoHistorico: 0,
+        diferencaRhFinanceiro: 0,
+        diferencaFinanceiroCnab: 0,
+        diferencaCnabHistorico: 0,
+        diferencaTotal: 0,
+        pendencias,
+        atualizadoEm: consolidadoEm,
+        tipoFluxo: summarizeFlowType(tiposFluxo),
+      },
+      origens: {
+        faturamentoTotal: buildOrigin(
+          'Financeiro consolidado por cliente validado',
+          year,
+          consolidadoEm,
+          ['operacional'],
+        ),
+        caixaRecebido: buildOrigin(
+          'Financeiro consolidado por cliente com status recebido/pago',
+          year,
+          consolidadoEm,
+          ['operacional'],
+        ),
+        custosGerais: buildOrigin(
+          'Custos extras operacionais consolidados',
+          year,
+          consolidadoEm,
+          ['operacional'],
+        ),
+        lucroReal: buildOrigin(
+          'Receita consolidada - financeiro aprovado - custos consolidados',
+          year,
+          consolidadoEm,
+          tiposFluxo,
+        ),
+        finValorAprovado: buildOrigin(
+          'Lotes RH aprovados + lotes diaristas fechados para pagamento',
+          year,
+          consolidadoEm,
+          tiposFluxo.filter((tipo) => tipo !== 'operacional'),
+        ),
+        auditoriaCompetencia: buildOrigin(
+          'Somatório anual das auditorias mensais por competência',
+          year,
+          consolidadoEm,
+          tiposFluxo,
+        ),
+      },
+    };
+
+    snapshots.forEach((item) => {
+      aggregate.rhValorProcessado += item.rhValorProcessado;
+      aggregate.rhValorValidado += item.rhValorValidado;
+      aggregate.rhValorFechado += item.rhValorFechado;
+      aggregate.finValorRecebidoRH += item.finValorRecebidoRH;
+      aggregate.finValorAprovado += item.finValorAprovado;
+      aggregate.finValorEnviadoBanco += item.finValorEnviadoBanco;
+      aggregate.finValorHistoricoBanco += item.finValorHistoricoBanco;
+      aggregate.faturamentoTotal += item.faturamentoTotal;
+      aggregate.caixaRecebido += item.caixaRecebido;
+      aggregate.lucroReal += item.lucroReal;
+      aggregate.custosGerais += item.custosGerais;
+      aggregate.auditoriaCompetencia.rhFechado += item.auditoriaCompetencia.rhFechado;
+      aggregate.auditoriaCompetencia.financeiroRecebido += item.auditoriaCompetencia.financeiroRecebido;
+      aggregate.auditoriaCompetencia.financeiroAprovado += item.auditoriaCompetencia.financeiroAprovado;
+      aggregate.auditoriaCompetencia.cnabGerado += item.auditoriaCompetencia.cnabGerado;
+      aggregate.auditoriaCompetencia.bancoHistorico += item.auditoriaCompetencia.bancoHistorico;
+    });
+
+    aggregate.rhValorProcessado = Number(aggregate.rhValorProcessado.toFixed(2));
+    aggregate.rhValorValidado = Number(aggregate.rhValorValidado.toFixed(2));
+    aggregate.rhValorFechado = Number(aggregate.rhValorFechado.toFixed(2));
+    aggregate.finValorRecebidoRH = Number(aggregate.finValorRecebidoRH.toFixed(2));
+    aggregate.finValorAprovado = Number(aggregate.finValorAprovado.toFixed(2));
+    aggregate.finValorEnviadoBanco = Number(aggregate.finValorEnviadoBanco.toFixed(2));
+    aggregate.finValorHistoricoBanco = Number(aggregate.finValorHistoricoBanco.toFixed(2));
+    aggregate.faturamentoTotal = Number(aggregate.faturamentoTotal.toFixed(2));
+    aggregate.caixaRecebido = Number(aggregate.caixaRecebido.toFixed(2));
+    aggregate.lucroReal = Number(aggregate.lucroReal.toFixed(2));
+    aggregate.custosGerais = Number(aggregate.custosGerais.toFixed(2));
+
+    aggregate.auditoriaCompetencia.diferencaRhFinanceiro = moneyDiff(
+      aggregate.auditoriaCompetencia.rhFechado,
+      aggregate.auditoriaCompetencia.financeiroRecebido,
+    );
+    aggregate.auditoriaCompetencia.diferencaFinanceiroCnab = moneyDiff(
+      aggregate.auditoriaCompetencia.financeiroAprovado,
+      aggregate.auditoriaCompetencia.cnabGerado,
+    );
+    aggregate.auditoriaCompetencia.diferencaCnabHistorico = moneyDiff(
+      aggregate.auditoriaCompetencia.cnabGerado,
+      aggregate.auditoriaCompetencia.bancoHistorico,
+    );
+    aggregate.auditoriaCompetencia.diferencaTotal = Number(
+      Math.max(
+        Math.abs(aggregate.auditoriaCompetencia.diferencaRhFinanceiro),
+        Math.abs(aggregate.auditoriaCompetencia.diferencaFinanceiroCnab),
+        Math.abs(aggregate.auditoriaCompetencia.diferencaCnabHistorico),
+      ).toFixed(2),
+    );
+    aggregate.auditoriaCompetencia.status = classifyAuditoriaStatus({
+      rhFechado: aggregate.auditoriaCompetencia.rhFechado,
+      financeiroRecebido: aggregate.auditoriaCompetencia.financeiroRecebido,
+      financeiroAprovado: aggregate.auditoriaCompetencia.financeiroAprovado,
+      cnabGerado: aggregate.auditoriaCompetencia.cnabGerado,
+      bancoHistorico: aggregate.auditoriaCompetencia.bancoHistorico,
+      pendencias,
+    });
+
+    return aggregate;
+  }
+}
+
+export const DashboardConsolidadoService = new DashboardConsolidadoServiceClass();

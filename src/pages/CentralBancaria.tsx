@@ -49,6 +49,11 @@ import { buildFolhaVariavelPipeline, useOperationalPipeline } from "@/contexts/O
 
 const REQUIRE_RH_LOTE_FOR_CNAB = String(import.meta.env.VITE_REQUIRE_RH_LOTE_FOR_CNAB || "false").toLowerCase() === "true";
 
+const formatPipelineTimestamp = (value?: string | null) => {
+  if (!value) return undefined;
+  return new Date(value).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+};
+
 const statusBadge = (status: string) => {
   switch (status) {
     case "gerado":
@@ -222,6 +227,20 @@ const CentralBancaria = () => {
     }));
   }, [competencias]);
 
+  const bankPipelineReviewTrigger = useMemo(
+    () =>
+      buildFolhaVariavelPipeline({
+        competencia: competencia || new Date().toISOString().slice(0, 7),
+        empresa: empresas.find((e) => e.id === empresaId)?.nome || "Empresa",
+        currentStep: "retorno",
+        completedStage: "cnab",
+        timestamps: {
+          cnab: formatPipelineTimestamp(remessas[0]?.data_geracao || remessas[0]?.created_at),
+        },
+      }),
+    [competencia, empresaId, empresas, remessas],
+  );
+
   const filteredRemessas = useMemo(
     () =>
       remessas.filter((remessa) => {
@@ -301,7 +320,11 @@ const CentralBancaria = () => {
         buildFolhaVariavelPipeline({
           competencia: competencia,
           empresa: empresaNome,
-          currentStep: "cnab"
+          currentStep: "retorno",
+          completedStage: "cnab",
+          timestamps: {
+            cnab: formatPipelineTimestamp(new Date().toISOString()),
+          },
         })
       );
     } catch (error: any) {
@@ -349,6 +372,7 @@ const CentralBancaria = () => {
       <AppShell
         title="Pagamentos e Remessas"
         subtitle="Remessa, histórico e retorno no mesmo fluxo operacional"
+        pipelineTrigger={bankPipelineReviewTrigger}
       >
         <div className="space-y-6">
           <section className="esc-card p-4 md:p-5">
@@ -941,7 +965,5 @@ const CentralBancaria = () => {
 };
 
 export default CentralBancaria;
-
-
 
 

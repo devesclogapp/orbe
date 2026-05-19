@@ -10,12 +10,29 @@ const OLD_BALANCE_WINDOW_DAYS = 60;
 const EXTRATO_EVENT_ORIGIN = 'extrato_colaborador';
 
 type ExtratoActionType = 'ajuste_manual' | 'compensacao' | 'pagamento' | 'folga';
+type DirectRhActionType =
+  | 'credito_manual'
+  | 'debito_manual'
+  | 'compensacao'
+  | 'pagamento'
+  | 'folga'
+  | 'zerar_saldo';
 
 interface ExtratoActionInput {
   eventoId: string;
   tipo: ExtratoActionType;
   observacao: string;
   minutos?: number;
+  dataFolga?: string | null;
+}
+
+interface DirectRhActionInput {
+  colaboradorId: string;
+  empresaId?: string | null;
+  tipo: DirectRhActionType;
+  observacao: string;
+  minutos?: number;
+  dataEvento?: string | null;
   dataFolga?: string | null;
 }
 
@@ -49,6 +66,14 @@ class BHEventoServiceClass extends BaseService<'banco_horas_eventos'> {
 
   private getLegacyTipoValue(tipo: ExtratoActionType, deltaMinutos: number) {
     if (tipo === 'pagamento' || tipo === 'compensacao' || tipo === 'folga') {
+      return 'atraso';
+    }
+
+    return deltaMinutos >= 0 ? 'hora_extra' : 'atraso';
+  }
+
+  private getLegacyTipoValueFromDirectAction(tipo: DirectRhActionType, deltaMinutos: number) {
+    if (tipo === 'pagamento' || tipo === 'compensacao' || tipo === 'folga' || tipo === 'zerar_saldo') {
       return 'atraso';
     }
 
@@ -334,6 +359,159 @@ class BHEventoServiceClass extends BaseService<'banco_horas_eventos'> {
       });
     } catch (auditError) {
       console.warn('[BHEventoService] Auditoria central nao registrada para acao do extrato:', auditError);
+    }
+
+    return novoEvento;
+  }
+
+  async registrarAcaoRhDireta(input: DirectRhActionInput) {
+    const observacao = String(input.observacao ?? '').trim();
+    if (!observacao) {
+      throw new Error('A justificativa é obrigatória para registrar a ação do RH.');
+    }
+
+    const contexto = await this.getExecutionContext();
+    const dataEventoBase = String(input.dataEvento ?? new Date().toISOString().slice(0, 10)).trim();
+    const dataFolga = String(input.dataFolga ?? '').trim();
+    const saldoAtual = await this.getSaldoAtual(contexto.tenantId, input.colaboradorId);
+    const saldoAnterior = Number(saldoAtual?.saldo_atual_minutos ?? 0);
+
+    let dataEvento = dataEventoBase;
+    let deltaMinutos = 0;
+    let statusNovoEvento = 'ativo';
+    let descricao = '';
+    const metadata: Record<string, unknown> = {
+      origem_operacao: 'processamento_rh_direto',
+      saldo_anterior: saldoAnterior,
+    };
+
+    if (input.tipo === 'credito_manual' || input.tipo === 'debito_manual') {
+      const minutosInformados = Math.abs(Number(input.minutos ?? 0));
+      if (!Number.isInteger(minutosInformados) || minutosInformados === 0) {
+        throw new Error('Informe a quantidade de minutos para o lançamento manual.');
+      }
+
+      deltaMinutos = input.tipo === 'credito_manual' ? minutosInformados : -minutosInformados;
+      descricao = input.tipo === 'credito_manual'
+        ? 'Crédito manual lançado pelo RH'
+        : 'Débito manual lançado pelo RH';
+      statusNovoEvento = 'ajustado';
+      metadata.minutos_informados = minutosInformados;
+    }
+
+    if (input.tipo === 'compensacao' || input.tipo === 'pagamento' || input.tipo === 'folga') {
+      const minutosInformados = Math.abs(Number(input.minutos ?? 0));
+      if (!Number.isInteger(minutosInformados) || minutosInformados === 0) {
+        throw new Error('Informe a quantidade de minutos para concluir esta operação.');
+      }
+      if (saldoAnterior <= 0) {
+        throw new Error('O colaborador não possui saldo positivo disponível para esta ação.');
+      }
+      if (minutosInformados > saldoAnterior) {
+        throw new Error('Os minutos informados excedem o saldo positivo atual do colaborador.');
+      }
+
+      deltaMinutos = -minutosInformados;
+      statusNovoEvento = input.tipo === 'pagamento' ? 'pago' : 'compensado';
+      metadata.minutos_informados = minutosInformados;
+
+      if (input.tipo === 'compensacao') {
+        descricao = 'Compensação manual direta lançada pelo RH';
+      }
+
+      if (input.tipo === 'pagamento') {
+        descricao = 'Saldo convertido em pagamento pelo RH';
+        metadata.financeiro = {
+          status: 'pendente_preparacao',
+          modulo_destino: 'financeiro',
+        };
+      }
+
+      if (input.tipo === 'folga') {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dataFolga)) {
+          throw new Error('Informe uma data válida para lançar a folga.');
+        }
+        dataEvento = dataFolga;
+        descricao = 'Folga lançada pelo RH com abatimento de saldo';
+        metadata.data_folga = dataFolga;
+      }
+    }
+
+    if (input.tipo === 'zerar_saldo') {
+      if (saldoAnterior === 0) {
+        throw new Error('O colaborador já está com saldo zerado.');
+      }
+      deltaMinutos = -saldoAnterior;
+      descricao = 'Zeramento manual de saldo executado pelo RH';
+      statusNovoEvento = 'ajustado';
+      metadata.minutos_informados = Math.abs(saldoAnterior);
+    }
+
+    await this.assertPeriodoAberto(contexto.tenantId, dataEvento, input.tipo.replace('_', ' '));
+
+    const saldoResultante = saldoAnterior + deltaMinutos;
+    const { cicloTrimestral } = this.getCycleKey(dataEvento);
+    const legacyTipo = this.getLegacyTipoValueFromDirectAction(input.tipo, deltaMinutos);
+
+    const { data: novoEvento, error: insertError } = await supabase
+      .from('banco_horas_eventos')
+      .insert({
+        tenant_id: contexto.tenantId,
+        colaborador_id: input.colaboradorId,
+        empresa_id: input.empresaId ?? saldoAtual?.empresa_id ?? null,
+        registro_ponto_id: null,
+        referencia_evento_id: null,
+        data: dataEvento,
+        data_evento: dataEvento,
+        tipo: legacyTipo,
+        tipo_evento: input.tipo === 'credito_manual' || input.tipo === 'debito_manual' ? 'ajuste_manual' : input.tipo,
+        quantidade_minutos: deltaMinutos,
+        minutos: deltaMinutos,
+        saldo_anterior: saldoAnterior,
+        saldo_atual: saldoResultante,
+        saldo_resultante: saldoResultante,
+        origem: 'processamento_rh',
+        descricao,
+        observacao,
+        ciclo_trimestral: cicloTrimestral,
+        status: statusNovoEvento,
+        executado_por: contexto.userId,
+        executado_por_nome: contexto.userName,
+        data_folga: input.tipo === 'folga' ? dataEvento : null,
+        reflexo_financeiro_pendente: input.tipo === 'pagamento',
+        contexto_operacao: metadata,
+      })
+      .select()
+      .single();
+
+    if (insertError) throw insertError;
+
+    await this.aplicarSaldoIncremental({
+      tenantId: contexto.tenantId,
+      colaboradorId: input.colaboradorId,
+      empresaId: input.empresaId ?? saldoAtual?.empresa_id ?? null,
+      deltaMinutos,
+      dataEvento,
+      saldoAtual,
+    });
+
+    try {
+      await AuditoriaService.log('registrar_acao_direta_processamento_rh', 'banco_horas', 'medio', {
+        tipo_acao: input.tipo,
+        colaborador_id: input.colaboradorId,
+        empresa_id: input.empresaId ?? saldoAtual?.empresa_id ?? null,
+        evento_resultante_id: novoEvento.id,
+        tipo_legado: legacyTipo,
+        minutos_aplicados: deltaMinutos,
+        saldo_anterior: saldoAnterior,
+        saldo_resultante: saldoResultante,
+        executado_por: contexto.userId,
+        executado_por_nome: contexto.userName,
+        data_evento: dataEvento,
+        observacao,
+      });
+    } catch (auditError) {
+      console.warn('[BHEventoService] Auditoria central nao registrada para acao direta RH:', auditError);
     }
 
     return novoEvento;

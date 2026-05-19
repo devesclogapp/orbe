@@ -122,7 +122,7 @@ const visualTypeMap = {
     amount: "text-violet-700",
   },
   pagamento: {
-    label: "Pagamento",
+    label: "Financeiro",
     icon: Banknote,
     chip: "bg-amber-50 text-amber-700 border-amber-200",
     amount: "text-amber-700",
@@ -138,7 +138,7 @@ const visualTypeMap = {
 const statusMap: Record<string, string> = {
   ativo: "Ativo",
   compensado: "Compensado",
-  pago: "Pago",
+  pago: "Encaminhado ao financeiro",
   ajustado: "Ajustado",
   vencido: "Vencido",
   cancelado: "Cancelado",
@@ -181,15 +181,15 @@ const actionMetaMap: Record<ActionType, { label: string; title: string; descript
     ],
   },
   pagamento: {
-    label: "Pagar",
-    title: "Pagar horas",
-    description: "O saldo sera abatido, o evento ficara marcado como pago e o reflexo futuro no financeiro sera sinalizado.",
-    confirmLabel: "Confirmar pagamento",
+    label: "Marcar para pagamento",
+    title: "Marcar saldo para pagamento",
+    description: "O saldo sera abatido no banco de horas e sinalizado para continuidade na esteira financeira, sem executar pagamento nesta tela.",
+    confirmLabel: "Marcar para pagamento",
     icon: Banknote,
     examples: [
-      { cause: "empresa decidiu pagar horas extras", effect: "saldo convertido em pagamento" },
-      { cause: "fechamento mensal aprovado", effect: "horas positivas enviadas ao financeiro" },
-      { cause: "colaborador não irá compensar", effect: "saldo encerrado via pagamento" },
+      { cause: "empresa decidiu liquidar o saldo via folha", effect: "horas positivas enviadas ao financeiro" },
+      { cause: "fechamento mensal aprovado", effect: "saldo marcado para reflexo financeiro" },
+      { cause: "colaborador nao ira compensar", effect: "saldo encerrado e liberado para analise financeira" },
     ],
   },
   folga: {
@@ -232,7 +232,7 @@ const getAvailableActions = (evento: any): Array<{ key: ActionType; label: strin
 
   if (minutos > 0 && tipo !== "pagamento") {
     actions.push({ key: "compensacao", label: "Compensar" });
-    actions.push({ key: "pagamento", label: "Pagar" });
+    actions.push({ key: "pagamento", label: "Marcar para pagamento" });
     actions.push({ key: "folga", label: "Folga" });
   }
 
@@ -324,6 +324,23 @@ const ExtratoColaborador = () => {
   const totalDebitosPeriodo = processedEventos
     .filter((evento) => getEventMinutes(evento) < 0)
     .reduce((acc, evento) => acc + Math.abs(getEventMinutes(evento)), 0);
+  const valorHoraEstimado = useMemo(() => {
+    const directValue = Number(colaborador?.valor_hora ?? 0);
+    if (directValue > 0) return directValue;
+
+    const salaryBase = Number(colaborador?.salario_base ?? 0);
+    if (salaryBase > 0) return salaryBase / 220;
+
+    const dailyValue = Number(colaborador?.valor_diaria ?? 0);
+    if (dailyValue > 0) return dailyValue / 8;
+
+    const baseValue = Number(colaborador?.valor_base ?? 0);
+    if (baseValue > 0) return baseValue / 8;
+
+    return 0;
+  }, [colaborador]);
+  const impactoFinanceiroAtual = Math.max(totalMinutos, 0) / 60 * valorHoraEstimado;
+  const competenciaReferencia = processedEventos[0]?.displayDate ? processedEventos[0].displayDate.slice(3, 10) : "-";
 
   const today = useMemo(() => {
     const date = new Date();
@@ -556,7 +573,7 @@ const ExtratoColaborador = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
           <div className="esc-card border-primary/20 bg-primary-soft p-5">
             <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-primary">Saldo Atual</p>
             <h3 className="font-display text-2xl font-bold text-primary">{formatBalance(totalMinutos)}</h3>
@@ -576,6 +593,13 @@ const ExtratoColaborador = () => {
             </h3>
             <p className="mt-1 text-xs text-muted-foreground">A vencer em 30 dias / ja vencido</p>
           </div>
+          <div className="esc-card p-5">
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Impacto Financeiro</p>
+            <h3 className="font-display text-lg font-bold text-foreground">
+              {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(impactoFinanceiroAtual || 0)}
+            </h3>
+            <p className="mt-1 text-xs text-muted-foreground">Competencia de referencia {competenciaReferencia}</p>
+          </div>
         </div>
 
         <section className="esc-card overflow-hidden">
@@ -583,7 +607,7 @@ const ExtratoColaborador = () => {
             <div className="flex items-center gap-2">
               <History className="h-4 w-4 text-muted-foreground" />
               <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Extrato Bancario de Horas
+                Historico do Banco de Horas
               </span>
             </div>
             {dateRange?.from && (

@@ -1,24 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import {
-  CalendarDays,
-  CheckCircle2,
-  Coffee,
-  DollarSign,
-  Loader2,
-  LogIn,
-  LogOut,
-  Timer,
-  User,
-  UtensilsCrossed,
-  Zap,
-  Building2,
-  FileText,
-  AlertCircle,
-} from "lucide-react";
-
 import { useSelection } from "@/contexts/SelectionContext";
 import { cn } from "@/lib/utils";
-import { PontoService } from "@/services/base.service";
 
 import { StatusChip } from "../painel/StatusChip";
 
@@ -55,24 +36,40 @@ type PontoTableBlockProps = {
   month: string;
   monthLabel: string;
   empresaId: string;
+  rows: any[];
 };
 
-export const PontoTableBlock = ({ month, monthLabel, empresaId }: PontoTableBlockProps) => {
-  const { id: selectedId, kind, select } = useSelection();
-
-  const { data: rows = [], isLoading } = useQuery({
-    queryKey: ["ponto", month, empresaId],
-    queryFn: () => PontoService.getByMonth(month, empresaId === "all" ? undefined : empresaId),
-  });
-
-  if (isLoading) {
-    return (
-      <div className="p-12 text-center text-muted-foreground min-h-[300px] flex flex-col items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
-        Carregando registros de ponto...
-      </div>
-    );
+const getProcessingStatusLabel = (value?: string | null) => {
+  switch (String(value || "").toLowerCase()) {
+    case "processado":
+      return "Processado";
+    case "inconsistente":
+      return "Inconsistente";
+    case "sincronizado":
+      return "Sincronizado";
+    case "enviado_rh":
+      return "Enviado ao RH";
+    default:
+      return "Pendente";
   }
+};
+
+const getProcessingStatusChip = (value?: string | null) => {
+  switch (String(value || "").toLowerCase()) {
+    case "processado":
+      return "ok";
+    case "sincronizado":
+    case "enviado_rh":
+      return "ajustado";
+    case "inconsistente":
+      return "inconsistente";
+    default:
+      return "pendente";
+  }
+};
+
+export const PontoTableBlock = ({ monthLabel, rows }: PontoTableBlockProps) => {
+  const { id: selectedId, kind, select } = useSelection();
 
   return (
     <div className="overflow-x-auto">
@@ -92,12 +89,15 @@ export const PontoTableBlock = ({ month, monthLabel, empresaId }: PontoTableBloc
             <th className="px-2 py-2 font-semibold">Horas</th>
             <th className="px-2 py-2 font-semibold">Extras</th>
             <th className="px-2 py-2 font-semibold">Falta</th>
-            <th className="px-2 py-2 font-semibold">Atraso</th>
-            <th className="px-2 py-2 font-semibold">Status</th>
-            <th className="px-2 py-2 font-semibold text-left">Obs</th>
-          </tr>
-        </thead>
-        <tbody>
+             <th className="px-2 py-2 font-semibold">Atraso</th>
+             <th className="px-2 py-2 font-semibold">Status</th>
+             <th className="px-2 py-2 font-semibold">Proc. RH</th>
+             <th className="px-2 py-2 font-semibold">Comp.</th>
+             <th className="px-2 py-2 font-semibold">Origem</th>
+             <th className="px-2 py-2 font-semibold text-left">Obs</th>
+           </tr>
+         </thead>
+         <tbody>
           {rows.map((row: any) => {
             const isSelected = kind === "colaborador" && selectedId === row.colaborador_id;
             return (
@@ -143,22 +143,34 @@ export const PontoTableBlock = ({ month, monthLabel, empresaId }: PontoTableBloc
                   </span>
                 </td>
                 <td className="px-2 py-2 text-center text-muted-foreground">{row.atraso || "-"}</td>
-                <td className="px-2 py-2 text-center">
-                  <StatusChip status={row.status} label={row.status} />
-                </td>
-                <td className="px-2 py-2 text-left text-muted-foreground max-w-[80px] truncate" title={row.observacoes || ""}>
-                  {row.observacoes || "-"}
-                </td>
-              </tr>
-            );
-          })}
-          {rows.length === 0 && (
-            <tr>
-              <td colSpan={16} className="p-12 text-center text-muted-foreground italic">Nenhum registro encontrado para {monthLabel}.</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
+                 <td className="px-2 py-2 text-center">
+                   <StatusChip status={row.status} label={row.status} />
+                 </td>
+                 <td className="px-2 py-2 text-center">
+                   <StatusChip
+                     status={getProcessingStatusChip(row.status_processamento) as any}
+                     label={getProcessingStatusLabel(row.status_processamento)}
+                   />
+                 </td>
+                 <td className="px-2 py-2 text-center font-mono text-[10px] text-muted-foreground">
+                   {row.competencia || String(row.data || "").slice(0, 7) || "-"}
+                 </td>
+                 <td className="px-2 py-2 text-center text-muted-foreground">
+                   {row.origem || "importacao"}
+                 </td>
+                 <td className="px-2 py-2 text-left text-muted-foreground max-w-[80px] truncate" title={row.observacoes || ""}>
+                   {row.observacoes || "-"}
+                 </td>
+               </tr>
+             );
+           })}
+           {rows.length === 0 && (
+             <tr>
+               <td colSpan={19} className="p-12 text-center text-muted-foreground italic">Nenhum registro encontrado para {monthLabel}.</td>
+             </tr>
+           )}
+         </tbody>
+       </table>
+     </div>
   );
 };

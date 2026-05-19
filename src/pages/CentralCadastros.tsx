@@ -84,7 +84,7 @@ import {
   type TransportadoraValidationErrors,
 } from "@/utils/transportadoraValidation";
 import { formatCpfCnpj, formatPhone } from "@/utils/fornecedorValidation";
-import { buildOperationalStagePipeline } from "@/contexts/OperationalPipelineContext";
+import { buildOperationalStagePipeline, buildOperationalStageReviewPipeline } from "@/contexts/OperationalPipelineContext";
 import { buildOperationalPipelineSeenKey, useOperationalPipelineAutoTrigger } from "@/hooks/useOperationalPipelineAutoTrigger";
 
 type CadastroTabValue =
@@ -2017,6 +2017,16 @@ const CentralCadastros = () => {
       : null
   ), [cadastrosProntosParaFluxo, operationalCompetencia, cadastrosPipelineEmpresa]);
 
+  const cadastrosReviewTrigger = useMemo(
+    () =>
+      buildOperationalStageReviewPipeline({
+        competencia: operationalCompetencia,
+        empresa: cadastrosPipelineEmpresa,
+        currentStage: "cadastros",
+      }),
+    [cadastrosPipelineEmpresa, operationalCompetencia],
+  );
+
   useOperationalPipelineAutoTrigger({
     enabled: cadastrosProntosParaFluxo,
     storageKey: buildOperationalPipelineSeenKey({
@@ -2031,6 +2041,7 @@ const CentralCadastros = () => {
     <AppShell
       title="Central de Cadastros"
       subtitle="Entidades operacionais e parâmetros do motor no mesmo contexto"
+      pipelineTrigger={cadastrosReviewTrigger}
     >
       <div className="space-y-6">
         <section className="esc-card p-4 md:p-5">

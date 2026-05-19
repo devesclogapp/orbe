@@ -186,6 +186,7 @@ const Pontos = () => {
     format(new Date(), "MM"),
   );
   const [selectedEmpresaId, setSelectedEmpresaId] = useState<string>("");
+  const [monthManuallyChanged, setMonthManuallyChanged] = useState(false);
   const [clearModalOpen, setClearModalOpen] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [lastImportSummary, setLastImportSummary] = useState<{
@@ -221,6 +222,28 @@ const Pontos = () => {
       setSelectedEmpresaId("all");
     }
   }, [empresas, selectedEmpresaId]);
+
+  const { data: mesesComRegistros = [] } = useQuery<string[]>({
+    queryKey: ["ponto-meses-com-registros", selectedEmpresaId],
+    queryFn: () =>
+      PontoService.getMonthsWithData(
+        selectedEmpresaId && selectedEmpresaId !== "all"
+          ? selectedEmpresaId
+          : undefined,
+      ),
+    enabled: !!selectedEmpresaId,
+    staleTime: 30_000,
+  });
+
+  useEffect(() => {
+    if (monthManuallyChanged) return;
+    const mostRecent = mesesComRegistros[0];
+    if (!mostRecent || !/^\d{4}-\d{2}$/.test(mostRecent)) return;
+    const [year, month] = mostRecent.split("-");
+    if (selectedYear === year && selectedMonthNumber === month) return;
+    setSelectedYear(year);
+    setSelectedMonthNumber(month);
+  }, [mesesComRegistros, monthManuallyChanged, selectedMonthNumber, selectedYear]);
 
   const { data: rows = [], isLoading: isLoadingRows } = useQuery<any[]>({
     queryKey: ["ponto", selectedMonth, selectedEmpresaId],
@@ -386,20 +409,22 @@ const Pontos = () => {
         }
 
         // Dados válidos - aceitar qualquer valor (dados brutos)
-        const payload = {
+          const payload = {
           // Campos relacionais podem ser null se não encontrados
           colaborador_id: colaboradorId,
           empresa_id: empresaId,
           // Dados principais
-          data,
-          entrada,
+            data,
+            competencia: data.slice(0, 7),
+            entrada,
           saida_almoco: saidaAlmoco,
           retorno_almoco: retornoAlmoco,
           saida,
           periodo: periodo || null,
           tipo_dia: tipoDia || null,
-          status: normalizeStatus(status),
-          origem: "importacao",
+            status: normalizeStatus(status),
+            status_processamento: "pendente",
+            origem: "importacao",
           // Dados brutos da planilha (salvos para exibição)
           nome_colaborador: colaboradorNome || null,
           empresa_nome: empresaNome || null,
@@ -494,6 +519,7 @@ const Pontos = () => {
 
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["ponto"] }),
+      queryClient.invalidateQueries({ queryKey: ["ponto-meses-com-registros"] }),
       queryClient.invalidateQueries({ queryKey: ["colaboradores_list"] }),
       queryClient.invalidateQueries({ queryKey: ["colaboradores_all"] }),
       queryClient.invalidateQueries({ queryKey: ["empresas"] }),
@@ -527,6 +553,7 @@ const Pontos = () => {
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["ponto"] }),
+        queryClient.invalidateQueries({ queryKey: ["ponto-meses-com-registros"] }),
         queryClient.invalidateQueries({ queryKey: ["processamento_rh_logs"] }),
         queryClient.invalidateQueries({ queryKey: ["processamento_rh_inconsistencias"] }),
         queryClient.invalidateQueries({ queryKey: ["banco_horas_saldos"] }),
@@ -550,7 +577,13 @@ const Pontos = () => {
         <section className="esc-card p-4 md:p-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap items-center gap-2">
-              <Select value={selectedYear} onValueChange={setSelectedYear}>
+              <Select
+                value={selectedYear}
+                onValueChange={(value) => {
+                  setMonthManuallyChanged(true);
+                  setSelectedYear(value);
+                }}
+              >
                 <SelectTrigger className="w-[120px] h-10 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium">
                   <div className="flex items-center gap-2">
                     <CalendarIcon className="h-4 w-4 text-primary" />
@@ -566,7 +599,13 @@ const Pontos = () => {
                 </SelectContent>
               </Select>
 
-              <Select value={selectedMonthNumber} onValueChange={setSelectedMonthNumber}>
+              <Select
+                value={selectedMonthNumber}
+                onValueChange={(value) => {
+                  setMonthManuallyChanged(true);
+                  setSelectedMonthNumber(value);
+                }}
+              >
                 <SelectTrigger className="w-[180px] h-10 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium">
                   <div className="flex items-center gap-2">
                     <CalendarIcon className="h-4 w-4 text-primary" />
@@ -577,6 +616,7 @@ const Pontos = () => {
                   {MONTH_NAME_OPTIONS.map((month) => (
                     <SelectItem key={month.value} value={month.value}>
                       {month.label}
+                      {mesesComRegistros.includes(`${selectedYear}-${month.value}`) ? " ●" : ""}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -701,6 +741,7 @@ const Pontos = () => {
                 month={selectedMonth}
                 monthLabel={monthLabelCapitalized}
                 empresaId={selectedEmpresaId}
+                rows={rows}
               />
             </section>
           </>

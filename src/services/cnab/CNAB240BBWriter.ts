@@ -91,7 +91,17 @@ async function fetchLoteData(loteId: string, contaBancariaId?: string, rhLoteId?
     faturas = faturasDb || [];
   }
 
-  return { conta, faturas };
+  // Busca do valor total que originou o lote para auditoria rigorosa (Prevenção contra fraude/divergência)
+  let valorEsperadoLote = 0;
+  if (rhLoteId) {
+     const { data: rhLot } = await supabase.from('rh_financeiro_lote').select('valor_total').eq('id', rhLoteId).maybeSingle();
+     if(rhLot) valorEsperadoLote = Number(rhLot.valor_total || 0);
+  } else {
+     const { data: lf } = await supabase.from('lotes_remessa').select('valor_total').eq('id', loteId).maybeSingle();
+     if(lf) valorEsperadoLote = Number(lf.valor_total || 0);
+  }
+
+  return { conta, faturas, valorEsperadoLote: Number(valorEsperadoLote.toFixed(2)) };
 }
 
 export class CNAB240BBWriter {
@@ -117,7 +127,7 @@ export class CNAB240BBWriter {
 
     const now = new Date();
     const inconsistencias: string[] = [];
-    const { conta, faturas } = await fetchLoteData(loteId, contaBancariaId, rhLoteId);
+    const { conta, faturas, valorEsperadoLote } = await fetchLoteData(loteId, contaBancariaId, rhLoteId);
 
     if (!faturas.length) {
       throw new Error('Lote vazio - nenhuma fatura encontrada para geração CNAB.');
@@ -150,6 +160,21 @@ export class CNAB240BBWriter {
     const linhas: string[] = [];
     let totalValorLote = 0;
     let totalTitulosValidos = 0;
+    
+    if (faturas.length === 0) {
+      throw new Error('Nenhum título válido encontrado para gerar a remessa CNAB.');
+    }
+
+    // CHECK RIGOROSO DE DIVERGÊNCIA DE VALORES CNAB vs FINANCEIRO
+    let totalFavorecidosCalculadoManual = 0;
+    for (const fatura of faturas) {
+       totalFavorecidosCalculadoManual += Number((fatura as Record<string, number>).valor ?? 0);
+    }
+    const sumTruncated = Number(totalFavorecidosCalculadoManual.toFixed(2));
+    
+    if (valorEsperadoLote > 0 && Math.abs(sumTruncated - valorEsperadoLote) > 0.05) {
+       throw new Error(`Divergência entre lote financeiro R$ ${valorEsperadoLote.toFixed(2)} e total da remessa CNAB R$ ${sumTruncated.toFixed(2)}. Geração cancelada.`);
+    }
 
     try {
       linhas.push(

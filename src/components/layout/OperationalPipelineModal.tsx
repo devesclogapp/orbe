@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
     ArrowRight,
@@ -158,16 +158,29 @@ export const OperationalPipelineModal = () => {
         if (e.target === overlayRef.current) closePipeline();
     };
 
-    if (!payload) return null;
+    const context = payload?.context;
+    const steps = payload?.steps ?? [];
+    const completedStage = payload?.completedStage;
+    const nextAction = payload?.nextAction;
 
-    const { context, steps, completedStage, nextAction } = payload;
-
-    const handleNextAction = () => {
+    const handleNextAction = useCallback(() => {
         closePipeline();
         if (nextAction?.route) {
             setTimeout(() => navigate(nextAction.route), 150);
         }
-    };
+    }, [closePipeline, navigate, nextAction]);
+
+    useEffect(() => {
+        if (!isOpen || !nextAction?.autoNavigate || !nextAction.route) return;
+
+        const timeout = window.setTimeout(() => {
+            handleNextAction();
+        }, nextAction.delayMs ?? 1200);
+
+        return () => window.clearTimeout(timeout);
+    }, [handleNextAction, isOpen, nextAction]);
+
+    if (!payload || !context) return null;
 
     return (
         <div
@@ -186,7 +199,7 @@ export const OperationalPipelineModal = () => {
             {/* Modal Card */}
             <div
                 className={cn(
-                    "relative w-full max-w-[560px] rounded-2xl border border-border bg-card shadow-2xl",
+                    "relative w-full max-w-[760px] rounded-2xl border border-border bg-card shadow-2xl",
                     "transition-all duration-300",
                     isOpen ? "opacity-100 scale-100 translate-y-0" : "opacity-0 scale-95 translate-y-2",
                 )}

@@ -1017,9 +1017,8 @@ class PontoServiceClass extends BaseService<'registros_ponto'> {
 
     let query = supabase
       .from('registros_ponto')
-      .select('*, colaboradores(nome, cargo, empresas(nome))')
-      .gte('data', `${month}-01`)
-      .lt('data', nextMonthStr)
+      .select('*, colaboradores(nome, cargo, matricula, cpf, empresas(nome))')
+      .or(`and(data.gte.${month}-01,data.lt.${nextMonthStr}),competencia.eq.${month}`)
       .order('data', { ascending: false });
 
     if (empresaId) {
@@ -1029,6 +1028,36 @@ class PontoServiceClass extends BaseService<'registros_ponto'> {
     const { data, error } = await query;
     if (error) throw error;
     return data;
+  }
+
+  async getMonthsWithData(empresaId?: string) {
+    let query = supabase
+      .from('registros_ponto')
+      .select('data, competencia')
+      .order('data', { ascending: false })
+      .limit(1000);
+
+    if (empresaId) {
+      query = query.eq('empresa_id', empresaId);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    const months = new Set<string>();
+    for (const row of data ?? []) {
+      const competencia = String(row.competencia ?? '').slice(0, 7);
+      const dataMes = String(row.data ?? '').slice(0, 7);
+      if (/^\d{4}-\d{2}$/.test(competencia)) {
+        months.add(competencia);
+        continue;
+      }
+      if (/^\d{4}-\d{2}$/.test(dataMes)) {
+        months.add(dataMes);
+      }
+    }
+
+    return Array.from(months).sort().reverse();
   }
 
   async getByCollaborator(collabId: string) {

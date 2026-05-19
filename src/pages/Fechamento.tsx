@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { CicloOperacionalService, CicloOperacional } from "@/services/operationalEngine/CicloOperacionalService";
 import { toast } from "sonner";
-import { buildOperationalStagePipeline } from "@/contexts/OperationalPipelineContext";
+import { buildOperationalStagePipeline, buildOperationalStageReviewPipeline } from "@/contexts/OperationalPipelineContext";
 import { buildOperationalPipelineSeenKey, useOperationalPipelineAutoTrigger } from "@/hooks/useOperationalPipelineAutoTrigger";
 
 const StatusBadge = ({ label, status, type }: { label: string, status?: string | null, type: 'operacional' | 'rh' | 'fin' | 'remessa' | 'automacao' }) => {
@@ -132,8 +132,18 @@ const Fechamento = () => {
       : null,
   });
 
+  const fechamentoReviewTrigger = buildOperationalStageReviewPipeline({
+    competencia: currentMonth,
+    empresa: "Operacao",
+    currentStage: "fechamento_mensal",
+  });
+
   return (
-    <AppShell title="Fechamento Mensal" subtitle={`Ciclos Operacionais da Competência ${currentMonth}`}>
+    <AppShell
+      title="Fechamento Mensal"
+      subtitle={`Ciclos Operacionais da Competência ${currentMonth}`}
+      pipelineTrigger={fechamentoReviewTrigger}
+    >
       {isLoading ? (
         <div className="flex items-center justify-center p-20">
           <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />

@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { ArrowLeft, Bell, ChevronRight, Compass, CornerUpLeft, Moon, Search, Sun } from "lucide-react";
+import { ArrowLeft, Bell, ChevronRight, Compass, CornerUpLeft, GitBranch, Moon, Search, Sun } from "lucide-react";
 
 import { usePreferences } from "@/contexts/PreferencesContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { PipelineTrigger, useOperationalPipeline } from "@/contexts/OperationalPipelineContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -16,11 +17,13 @@ type TopbarProps = {
   title: string;
   subtitle?: string;
   backPath?: string;
+  pipelineTrigger?: PipelineTrigger | null;
 };
 
-export const Topbar = ({ title, subtitle, backPath }: TopbarProps) => {
+export const Topbar = ({ title, subtitle, backPath, pipelineTrigger }: TopbarProps) => {
   const { theme, toggleTheme } = usePreferences();
   const { user } = useAuth();
+  const { openPipeline } = useOperationalPipeline();
   const navigate = useNavigate();
   const location = useLocation();
   const [open, setOpen] = useState(false);
@@ -101,6 +104,19 @@ export const Topbar = ({ title, subtitle, backPath }: TopbarProps) => {
               className="h-9 w-72 pl-9 bg-background border-input cursor-pointer focus-visible:ring-0"
             />
           </div>
+
+          {pipelineTrigger && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => openPipeline(pipelineTrigger)}
+              className="h-9 rounded-full px-3 text-[11px] text-muted-foreground hover:text-foreground"
+              title="Reabrir pipeline desta tela"
+            >
+              <GitBranch className="mr-1.5 h-3.5 w-3.5" />
+              Ver pipeline
+            </Button>
+          )}
 
           <CommandMenu open={open} setOpen={setOpen} />
 
