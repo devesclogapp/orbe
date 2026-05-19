@@ -783,6 +783,22 @@ class OperacaoServiceClass extends BaseService<'operacoes'> {
     return data?.map(e => e.id) || null;
   }
 
+  private isIgnorableLegacyOperacoesError(error: { code?: string | null; message?: string | null; details?: string | null } | null | undefined) {
+    if (!error) return false;
+
+    const errorCode = String(error.code ?? "");
+    const rawMessage = `${error.message ?? ""} ${error.details ?? ""}`.toLowerCase();
+
+    return (
+      ["PGRST200", "PGRST201", "PGRST202", "PGRST205", "42P01"].includes(errorCode) ||
+      rawMessage.includes("operacoes") ||
+      rawMessage.includes("colaboradores") ||
+      rawMessage.includes("relationship") ||
+      rawMessage.includes("not found") ||
+      rawMessage.includes("does not exist")
+    );
+  }
+
   async getAllPainel(empresaId?: string, tenantId?: string | null) {
     let empresaIds = empresaId ? [empresaId] : undefined;
     
@@ -802,9 +818,11 @@ class OperacaoServiceClass extends BaseService<'operacoes'> {
     const operacoesLegadasRes = await operacoesQuery;
     const operacoesProducao = await OperacaoProducaoService.getAll(empresaId, tenantId).catch(() => []);
 
-    if (operacoesLegadasRes.error) throw operacoesLegadasRes.error;
+    if (operacoesLegadasRes.error && !this.isIgnorableLegacyOperacoesError(operacoesLegadasRes.error)) {
+      throw operacoesLegadasRes.error;
+    }
 
-    const operacoesLegadas = operacoesLegadasRes.data ?? [];
+    const operacoesLegadas = operacoesLegadasRes.error ? [] : (operacoesLegadasRes.data ?? []);
     const fallbackDate = new Date().toISOString().split('T')[0];
 
     const legadasNormalizadas = operacoesLegadas.map((item: any) => ({

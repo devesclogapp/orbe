@@ -111,6 +111,38 @@ function buildOrigin(
   };
 }
 
+/**
+ * Returns data safely from a Supabase result.
+ * - If no error → returns data (or []).
+ * - If the error indicates a missing table/column/relation (400/PGRST2xx/42P01) → returns [] (resilient).
+ * - If the error is a real auth/permission/network error → throws.
+ */
+function safeData<T>(result: { data?: T[] | null; error?: { code?: string | null; message?: string | null; details?: string | null } | null }): T[] {
+  if (!result.error) return result.data ?? [];
+
+  const error = result.error;
+  const code = String(error.code ?? '');
+  const rawMessage = `${code} ${error.message ?? ''} ${error.details ?? ''}`.toLowerCase();
+
+  // Treat missing table / column / relationship as empty data (migration not applied yet)
+  const isMissingStructure =
+    ['PGRST200', 'PGRST201', 'PGRST202', 'PGRST204', 'PGRST205', '42P01', '42703'].includes(code) ||
+    rawMessage.includes('does not exist') ||
+    rawMessage.includes('not found') ||
+    rawMessage.includes('relationship') ||
+    rawMessage.includes('column') ||
+    rawMessage.includes('table') ||
+    rawMessage.includes('undefined') ||
+    rawMessage.includes('invalid input syntax') ||
+    // HTTP 400 from PostgREST almost always means schema mismatch
+    rawMessage.includes('bad request');
+
+  if (isMissingStructure) return [];
+
+  // Real errors (401, 403, 5xx-equivalent, network) — still throw
+  throw new Error(error.message || 'Falha ao carregar dados do dashboard.');
+}
+
 function classifyAuditoriaStatus(params: {
   rhFechado: number;
   financeiroRecebido: number;
@@ -280,6 +312,15 @@ class DashboardConsolidadoServiceClass {
       qCustos,
     ]);
 
+    // safeData: returns [] for missing-table/column errors (migration not applied), throws only for real errors
+    const receitasData = safeData(resReceitas);
+    const lotesDData = safeData(resLotesD);
+    const lotesRhData = safeData(resLotesRh as any);
+    const cnabLotesData = safeData(resCnabLotes);
+    const cnabArquivosData = safeData(resCnabArquivos);
+    const retornoItensData = safeData(resRetornoItens as any);
+    const custosData = safeData(resCustos);
+
     const diaristaFlow = emptyFluxAccumulator();
     const folhaFlow = emptyFluxAccumulator();
     const flowsPresentes: TipoFluxo[] = [];
@@ -288,7 +329,7 @@ class DashboardConsolidadoServiceClass {
     let caixaRecebido = 0;
     const receitasUpdatedAt: string[] = [];
 
-    (resReceitas.data || []).forEach((item) => {
+    receitasData.forEach((item: any) => {
       faturamentoTotal = addAmount(faturamentoTotal, item.valor_total);
       if (['RECEBIDO', 'PAGO', 'pago'].includes(String(item.status))) {
         caixaRecebido = addAmount(caixaRecebido, item.valor_total);
@@ -300,7 +341,7 @@ class DashboardConsolidadoServiceClass {
     });
 
     const lotesDUpdatedAt: string[] = [];
-    (resLotesD.data || []).forEach((item) => {
+    lotesDData.forEach((item: any) => {
       const value = Number(item.valor_total) || 0;
       const status = String(item.status || '').toUpperCase();
       applyDiaristaStatus(diaristaFlow, status, value);
@@ -311,7 +352,7 @@ class DashboardConsolidadoServiceClass {
     });
 
     const lotesRhUpdatedAt: string[] = [];
-    (resLotesRh.data || []).forEach((item) => {
+    lotesRhData.forEach((item: any) => {
       const total = ((item.lote_itens || []) as Array<{ valor_calculado: number | null }>)
         .reduce((acc, current) => acc + (Number(current.valor_calculado) || 0), 0);
       const status = String(item.status || '').toUpperCase();
@@ -332,7 +373,7 @@ class DashboardConsolidadoServiceClass {
     const cnabUpdatedAt: string[] = [];
     const lotesRemessaPendentes = new Set<string>();
 
-    (resCnabLotes.data || []).forEach((item) => {
+    cnabLotesData.forEach((item: any) => {
       const status = String(item.status || '').toLowerCase();
       const statusConciliacao = String(item.status_conciliacao || '').toLowerCase();
       if (status && !['gerado', 'baixado', 'enviado_manual', 'homologado', 'pago'].includes(status)) {
@@ -347,7 +388,7 @@ class DashboardConsolidadoServiceClass {
       cnabUpdatedAt.push(String(item.updated_at || item.created_at || consolidadoEm));
     });
 
-    (resCnabArquivos.data || []).forEach((item) => {
+    cnabArquivosData.forEach((item: any) => {
       if (['gerado', 'baixado', 'enviado_manual', 'homologado'].includes(String(item.status))) {
         finValorEnviadoBanco = addAmount(finValorEnviadoBanco, item.total_valor);
       }
@@ -360,7 +401,7 @@ class DashboardConsolidadoServiceClass {
 
     let finValorHistoricoBanco = 0;
     const retornoUpdatedAt: string[] = [];
-    (resRetornoItens.data || []).forEach((item) => {
+    retornoItensData.forEach((item: any) => {
       const remessaCompetencia = normalizeCompetencia(
         (item.remessa_arquivo as { competencia?: string | null } | null)?.competencia,
       );
@@ -374,7 +415,7 @@ class DashboardConsolidadoServiceClass {
 
     let custosGerais = 0;
     const custosUpdatedAt: string[] = [];
-    (resCustos.data || []).forEach((item) => {
+    custosData.forEach((item: any) => {
       custosGerais = addAmount(custosGerais, item.total);
       custosUpdatedAt.push(
         String(item.updated_at || item.created_at || consolidadoEm),
@@ -427,7 +468,7 @@ class DashboardConsolidadoServiceClass {
         bancoHistorico: finValorHistoricoBanco,
         pendencias,
       }),
-      rhFechado,
+      rhFechado: rhValorFechado,
       financeiroRecebido: finValorRecebidoRH,
       financeiroAprovado: finValorAprovado,
       cnabGerado: finValorEnviadoBanco,

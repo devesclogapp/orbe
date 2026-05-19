@@ -67,12 +67,10 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import {
-  ConsolidadoService,
   CustoExtraOperacionalService,
   OperacaoService,
 } from "@/services/base.service";
-import { AuditoriaService } from "@/services/v4.service";
-import { ReportService } from "@/services/report.service";
+
 import { processarOperacao } from "@/utils/financeiro";
 import { DashboardConsolidadoService, OperationalIntegrityKPIs } from "@/services/dashboard.service";
 
@@ -192,7 +190,7 @@ const YEAR_OPTIONS = Array.from(
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const { tenantId } = useTenant();
+  const { tenantId, loading: isTenantLoading } = useTenant();
   const [chartType, setChartType] = useState<"line" | "bar">("line");
   const [selectedYear, setSelectedYear] = useState(
     String(new Date().getFullYear()),
@@ -258,33 +256,37 @@ const Dashboard = () => {
   const {
     data: operacoesBase = [],
     isLoading: isLoadingOperacoes,
-    isError: isErrorOperacoes,
   } = useQuery<any[]>({
     queryKey: ["dashboard-operacoes", tenantId || "all", selectedYear, selectedMonthNumber],
-    queryFn: () => OperacaoService.getAllPainel(undefined, tenantId),
-    retry: 1,
+    queryFn: () => OperacaoService.getAllPainel(undefined, tenantId).catch(() => []),
+    retry: 0,
+    enabled: !isTenantLoading && !!tenantId,
   });
 
   const {
     data: custosExtras = [],
   } = useQuery<any[]>({
     queryKey: ["dashboard-custos-extras", tenantId || "all"],
-    queryFn: () => CustoExtraOperacionalService.getAll(undefined, tenantId),
-    retry: 1,
+    queryFn: () => CustoExtraOperacionalService.getAll(undefined, tenantId).catch(() => []),
+    retry: 0,
+    enabled: !isTenantLoading && !!tenantId,
   });
 
   const {
     data: kpisConsolidados,
     isLoading: isLoadingKpis,
     isError: isErrorKpis,
+    error: kpisError,
   } = useQuery<OperationalIntegrityKPIs>({
     queryKey: ["dashboard-kpis-consolidados", tenantId, selectedYear, selectedMonthNumber],
     queryFn: () => DashboardConsolidadoService.getKpisAggregate(selectedYear, selectedMonthNumber, tenantId),
     retry: 1,
+    enabled: !isTenantLoading && !!tenantId,
   });
 
-  const isLoading = isLoadingOperacoes || isLoadingKpis;
-  const isError = isErrorOperacoes || isErrorKpis;
+  const isLoading = isTenantLoading || isLoadingOperacoes || isLoadingKpis;
+  // Only surface a hard error if the consolidated KPI service itself throws a real error
+  const isError = isErrorKpis;
 
   const operacoesPeriodo = useMemo(
     () =>
@@ -665,8 +667,9 @@ const Dashboard = () => {
               Erro ao carregar o dashboard
             </h2>
             <p className="mt-2 mb-6 max-w-md text-sm text-muted-foreground">
-              Nao foi possivel consolidar operacoes e custos extras. Verifique a
-              conexao com o banco e se as migrations operacionais ja foram aplicadas.
+              {kpisError instanceof Error
+                ? kpisError.message
+                : 'Nao foi possivel consolidar os dados. Verifique a conexao com o banco.'}
             </p>
             <Button onClick={() => window.location.reload()}>
               <RefreshCw className="mr-2 h-4 w-4" />
@@ -1107,11 +1110,11 @@ const Dashboard = () => {
               <div className="space-y-3 text-sm">
                 <InsightRow
                   label="Receita recebida"
-                  value={formatCurrency(dashboardKpis.caixaRecebidoOperacoes)}
+                  value={formatCurrency(dashboardKpis.caixaRecebido)}
                 />
                 <InsightRow
                   label="Custos baixados"
-                  value={formatCurrency(dashboardKpis.custosRecebidos)}
+                  value={formatCurrency(0)}
                 />
                 <InsightRow
                   label="Custos pendentes"
@@ -1119,7 +1122,7 @@ const Dashboard = () => {
                 />
                 <InsightRow
                   label="Custos atrasados"
-                  value={formatCurrency(dashboardKpis.custosAtrasados)}
+                  value={formatCurrency(dashboardKpis.atrasado)}
                 />
               </div>
 

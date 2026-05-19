@@ -160,7 +160,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         supabase.from("fornecedores").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("ativo", true),
         supabase.from("colaboradores").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("status", "ativo"),
         supabase.from("fornecedor_valores_servico").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("ativo", true),
-        supabase.from("operacoes").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId),
+        supabase.from("operacoes_producao").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId),
       ]);
 
       const hasEmpresa = (empresasRes.count ?? 0) > 0;

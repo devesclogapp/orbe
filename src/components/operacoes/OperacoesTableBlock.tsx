@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useMemo } from "react";
+﻿import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDownAZ,
@@ -70,6 +70,85 @@ type OperacoesTableBlockProps = {
   rowsData?: any[];
 };
 
+const isEditableOperation = (item: any) =>
+  item?.origem === "operacoes_producao" && item?.status !== "fechado";
+
+const buildEditableForm = (item: any): EditableOperationForm => {
+  return {
+    quantidade: toInputValue(item.quantidade),
+    valor_unitario: toNumericInputValue(item.valor_unitario ?? item.valor_unitario_label ?? item.valor_unitario_snapshot),
+    quantidade_colaboradores: toInputValue(item.quantidade_colaboradores ?? 1),
+    entrada_ponto: toInputValue(item.entrada_ponto ?? item.horario_inicio_label).slice(0, 5),
+    saida_ponto: toInputValue(item.saida_ponto ?? item.horario_fim_label).slice(0, 5),
+    placa: toInputValue(item.placa),
+    nf_numero: toInputValue(item.nf_numero),
+    ctrc: toInputValue(item.ctrc),
+    valor_descarga: toNumericInputValue(item.valor_descarga),
+    forma_pagamento: getContextoImportacaoValue(item, "forma_pagamento") ?? "",
+    observacao: getContextoImportacaoValue(item, "observacao") ?? "",
+    modalidade_financeira: getContextoImportacaoValue(item, "modalidade_financeira_override") ?? "",
+    data_vencimento: getContextoImportacaoValue(item, "data_vencimento_override") ?? "",
+    status_pagamento: toInputValue(item.status_pagamento ?? item.statusPagamento ?? "PENDENTE"),
+  };
+};
+
+const applyBusinessRulesToForm = (baseForm: EditableOperationForm, editingItem: any) => {
+  const next = { ...baseForm };
+
+  const unitario = next.valor_unitario !== undefined
+    ? parseLocaleNumber(next.valor_unitario)
+    : Number(editingItem?.valor_unitario_snapshot || editingItem?.valor_unitario_label || 0);
+
+  let nfRaw = String(next.nf_numero).toUpperCase().trim();
+  if (nfRaw === "S" || nfRaw === "SIM") nfRaw = "SIM";
+  if (nfRaw === "N" || nfRaw === "NAO") nfRaw = "NÃƒO";
+  next.nf_numero = nfRaw;
+
+  const valoresCalculados = calcularValoresOperacao({
+    quantidade: parseLocaleNumber(next.quantidade),
+    valorUnitario: unitario,
+  });
+
+  next.valor_descarga = valoresCalculados.valorDescargaCalculado ? formatDecimalInput(valoresCalculados.valorDescargaCalculado) : "0,00";
+
+  return next;
+};
+
+const buildOperationUpdatePayload = (editingItem: any, editForm: EditableOperationForm) => {
+  const nextAvaliacao = {
+    ...(editingItem.avaliacao_json ?? {}),
+    contexto_importacao: {
+      ...((editingItem.avaliacao_json?.contexto_importacao as Record<string, unknown> | undefined) ?? {}),
+      forma_pagamento: editForm.forma_pagamento || null,
+      observacao: editForm.observacao || null,
+      modalidade_financeira_override: editForm.modalidade_financeira || null,
+      data_vencimento_override: editForm.data_vencimento || null,
+    },
+  };
+
+  return {
+    ...(editForm.valor_unitario ? { valor_unitario_snapshot: parseLocaleNumber(editForm.valor_unitario) } : {}),
+    quantidade: parseLocaleNumber(editForm.quantidade),
+    quantidade_colaboradores: parseLocaleNumber(editForm.quantidade_colaboradores),
+    entrada_ponto: editForm.entrada_ponto || null,
+    saida_ponto: editForm.saida_ponto || null,
+    placa: editForm.placa || null,
+    nf_numero: editForm.nf_numero || null,
+    ctrc: editForm.ctrc || null,
+    percentual_iss: 0,
+    valor_descarga: parseLocaleNumber(editForm.valor_descarga),
+    custo_com_iss: 0,
+    valor_total_filme: 0,
+    status_pagamento: editForm.status_pagamento || null,
+    data_pagamento: editForm.status_pagamento === "RECEBIDO"
+      ? (editingItem.data_pagamento ?? new Date().toISOString().split("T")[0])
+      : null,
+    avaliacao_json: nextAvaliacao,
+    origem_dado: editingItem.origem_dado === "importacao" ? "ajuste" : editingItem.origem_dado,
+  };
+};
+
+
 type EditableOperationForm = {
   quantidade: string;
   quantidade_colaboradores: string;
@@ -78,13 +157,7 @@ type EditableOperationForm = {
   placa: string;
   nf_numero: string;
   ctrc: string;
-  percentual_iss: string;
   valor_descarga: string;
-  custo_com_iss: string;
-  valor_unitario_filme: string;
-  quantidade_filme: string;
-  valor_total_filme: string;
-  valor_faturamento_nf: string;
   forma_pagamento: string;
   observacao: string;
   modalidade_financeira: string;
@@ -92,6 +165,7 @@ type EditableOperationForm = {
   status_pagamento: string;
   valor_unitario?: string;
 };
+
 
 type BulkEditableField =
   | "forma_pagamento"
@@ -103,30 +177,25 @@ type BulkEditableField =
   | "saida_ponto"
   | "quantidade"
   | "quantidade_colaboradores"
-  | "valor_unitario_filme"
-  | "quantidade_filme"
-  | "valor_faturamento_nf"
   | "modalidade_financeira"
   | "data_vencimento"
   | "status_pagamento";
 
 type InlineEditableField = BulkEditableField;
 
-type RuleApplicableColumn = "percentualIss" | "valUnit" | "qtd" | "qtdCol" | "valorUnitarioFilme" | "quantidadeFilme" | "valorFaturamentoNf" | "valorDescarga" | "custoIss" | "inicio" | "fim" | "nf" | "ctrc" | "placa" | "observacao" | "formaPagamento" | "valorTotalFilme";
+type RuleApplicableColumn = "valUnit" | "qtd" | "qtdCol" | "valorDescarga" | "inicio" | "fim" | "nf" | "ctrc" | "placa" | "observacao" | "formaPagamento";
+
 
 const BULK_EDITABLE_FIELDS: Array<{ value: BulkEditableField; label: string }> = [
   { value: "forma_pagamento", label: "Forma de pagamento" },
-  { value: "observacao", label: "Observação" },
-  { value: "nf_numero", label: "NF (SIM/NÃO ou número)" },
+  { value: "observacao", label: "ObservaÃ§Ã£o" },
+  { value: "nf_numero", label: "NF (SIM/NÃƒO ou nÃºmero)" },
   { value: "ctrc", label: "CTRC" },
   { value: "placa", label: "Placa" },
-  { value: "entrada_ponto", label: "Início" },
+  { value: "entrada_ponto", label: "InÃ­cio" },
   { value: "saida_ponto", label: "Fim" },
   { value: "quantidade", label: "Quantidade" },
   { value: "quantidade_colaboradores", label: "Qtd. colaboradores" },
-  { value: "valor_unitario_filme", label: "Valor unitário filme" },
-  { value: "quantidade_filme", label: "Qtd. filme" },
-  { value: "valor_faturamento_nf", label: "Faturamento NF" },
 ];
 
 const BULK_FIELD_BY_COLUMN: Partial<Record<string, BulkEditableField>> = {
@@ -137,9 +206,6 @@ const BULK_FIELD_BY_COLUMN: Partial<Record<string, BulkEditableField>> = {
   qtd: "quantidade",
   inicio: "entrada_ponto",
   fim: "saida_ponto",
-  valorUnitarioFilme: "valor_unitario_filme",
-  quantidadeFilme: "quantidade_filme",
-  valorFaturamentoNf: "valor_faturamento_nf",
   placa: "placa",
   qtdCol: "quantidade_colaboradores",
 };
@@ -154,10 +220,9 @@ const MASS_EDITABLE_FIELDS: Array<{ value: BulkEditableField; label: string }> =
   { value: "saida_ponto", label: "Fim" },
   { value: "quantidade", label: "Quantidade" },
   { value: "quantidade_colaboradores", label: "Qtd. colaboradores" },
-  { value: "valor_unitario_filme", label: "Valor unitario filme" },
-  { value: "quantidade_filme", label: "Qtd. filme" },
   { value: "modalidade_financeira", label: "Modalidade financeira" },
   { value: "data_vencimento", label: "Data de vencimento" },
+
   { value: "status_pagamento", label: "Status pgto" },
 ];
 
@@ -169,8 +234,6 @@ const MASS_FIELD_BY_COLUMN: Partial<Record<string, BulkEditableField>> = {
   qtd: "quantidade",
   inicio: "entrada_ponto",
   fim: "saida_ponto",
-  valorUnitarioFilme: "valor_unitario_filme",
-  quantidadeFilme: "quantidade_filme",
   placa: "placa",
   qtdCol: "quantidade_colaboradores",
   modalidadeFinanceira: "modalidade_financeira",
@@ -186,15 +249,10 @@ const RULE_COLUMN_CONFIG: Record<
     matches: string[];
   }
 > = {
-  percentualIss: { field: "percentual_iss", label: "% ISS", matches: ["% ISS", "ISS", "LÍQUOTA DE ISS"] },
   valUnit: { field: "valor_unitario" as any, label: "VAL. UNIT.", matches: ["VAL. UNIT.", "UNITARIO", "VALOR UNITARIO", "UNIT.", "VALOR"] },
   qtd: { field: "quantidade", label: "QTD", matches: ["QTD", "QUANTIDADE", "VOLUME"] },
   qtdCol: { field: "quantidade_colaboradores", label: "QTD. COL.", matches: ["QTD COL", "COLABORADORES", "AJUDANTES"] },
-  valorUnitarioFilme: { field: "valor_unitario_filme", label: "UNIT. FILME", matches: ["UNIT. FILME", "VALOR FILME"] },
-  quantidadeFilme: { field: "quantidade_filme", label: "QTD. FILME", matches: ["QTD. FILME", "QTD FILME"] },
-  valorFaturamentoNf: { field: "valor_faturamento_nf", label: "FATURAMENTO NF", matches: ["FATURAMENTO NF", "VALOR NF", "FATURAMENTO"] },
   valorDescarga: { field: "valor_descarga", label: "VALOR DESCARGA", matches: ["VALOR DESCARGA", "DESCARGA"] },
-  custoIss: { field: "custo_com_iss", label: "CUSTO ISS", matches: ["CUSTO ISS", "CUSTO"] },
   inicio: { field: "entrada_ponto", label: "INICIO", matches: ["INICIO", "ENTRADA"] },
   fim: { field: "saida_ponto", label: "FIM", matches: ["FIM", "SAIDA"] },
   nf: { field: "nf_numero", label: "NF", matches: ["NF", "NOTA FISCAL", "NUMERO NF"] },
@@ -202,8 +260,23 @@ const RULE_COLUMN_CONFIG: Record<
   placa: { field: "placa", label: "PLACA", matches: ["PLACA"] },
   observacao: { field: "observacao", label: "OBSERVACAO", matches: ["OBS", "OBSERVACAO"] },
   formaPagamento: { field: "forma_pagamento", label: "FORMA PAGAMENTO", matches: ["FORMA PAGAMENTO", "PAGAMENTO"] },
-  valorTotalFilme: { field: "valor_total_filme", label: "TOTAL FILME", matches: ["TOTAL FILME"] },
 };
+
+const DEFAULT_ACTIVE_RULE_COLS: Record<RuleApplicableColumn, boolean> = {
+  valUnit: true,
+  qtd: false,
+  qtdCol: false,
+  valorDescarga: false,
+  inicio: false,
+  fim: false,
+  nf: false,
+  ctrc: false,
+  placa: false,
+  observacao: false,
+  formaPagamento: false,
+};
+
+
 
 const normalizeRuleText = (value: string) =>
   value
@@ -223,12 +296,8 @@ const formatDiagnosticLabel = (value: unknown) => {
   return text || "vazio";
 };
 
-const isIssOperationalRule = (rule: any) => {
-  const joined = normalizeRuleText(`${rule?.tipos_regra_operacional?.nome ?? ""} ${rule?.tipos_regra_operacional?.coluna_planilha ?? ""}`);
-  return RULE_COLUMN_CONFIG.percentualIss.matches.some((match) => joined.includes(normalizeRuleText(match)));
-};
-
 const getStatusConfig = (status: string) => {
+
   switch (status?.toLowerCase()) {
     case "registered":
     case "registrado":
@@ -307,25 +376,25 @@ const getDisplayFormaPagamento = (item: Record<string, unknown>) => {
     return getModalidadeLabel(modalidade);
   }
 
-  return "—";
+  return "â€”";
 };
 
 const getDisplayObservacao = (item: Record<string, unknown>) =>
   getContextoImportacaoValue(item, "observacao") ??
-  getLinhaOriginalValue(item, "OBSERVACAO", "OBSERVAÇÃO") ??
-  "—";
+  getLinhaOriginalValue(item, "OBSERVACAO", "OBSERVAÃ‡ÃƒO") ??
+  "â€”";
 
 const getDisplayStatusOriginal = (item: Record<string, unknown>) =>
   getContextoImportacaoValue(item, "status_original_planilha") ??
   getLinhaOriginalValue(item, "STATUS") ??
-  "—";
+  "â€”";
 
 const getDisplayEmpresa = (item: Record<string, unknown>, empresas: any[] = []) =>
   (empresas.find((empresaItem: any) => empresaItem.id === (item as { empresa_id?: string | null }).empresa_id)?.nome ?? null) ??
   ((item as { empresas?: { nome?: string | null } }).empresas?.nome ?? null) ??
   getContextoImportacaoValue(item, "empresa") ??
   getLinhaOriginalValue(item, "EMPRESA") ??
-  "—";
+  "â€”";
 
 const toInputValue = (value: unknown) => {
   if (value === null || value === undefined) return "";
@@ -366,103 +435,8 @@ const toIssDatabaseValue = (value: string) => {
   return numericValue > 1 ? numericValue / 100 : numericValue;
 };
 
-const buildEditableForm = (item: any): EditableOperationForm => {
-  const valorUnitarioFilme = Number(item.valor_unitario_filme || 0);
-  const quantidadeFilme = Number(item.quantidade_filme || 0);
 
-  return {
-    quantidade: toInputValue(item.quantidade),
-    valor_unitario: toNumericInputValue(item.valor_unitario ?? item.valor_unitario_label ?? item.valor_unitario_snapshot),
-    quantidade_colaboradores: toInputValue(item.quantidade_colaboradores ?? 1),
-    entrada_ponto: toInputValue(item.entrada_ponto ?? item.horario_inicio_label).slice(0, 5),
-    saida_ponto: toInputValue(item.saida_ponto ?? item.horario_fim_label).slice(0, 5),
-    placa: toInputValue(item.placa),
-    nf_numero: toInputValue(item.nf_numero),
-    ctrc: toInputValue(item.ctrc),
-    percentual_iss: toIssPercentageInput(item.percentual_iss),
-    valor_descarga: toNumericInputValue(item.valor_descarga),
-    custo_com_iss: toNumericInputValue(item.custo_com_iss),
-    valor_unitario_filme: toNumericInputValue(item.valor_unitario_filme),
-    quantidade_filme: toInputValue(item.quantidade_filme),
-    valor_total_filme: formatDecimalInput(valorUnitarioFilme * quantidadeFilme),
-    valor_faturamento_nf: toNumericInputValue(item.valor_faturamento_nf),
-    forma_pagamento: getContextoImportacaoValue(item, "forma_pagamento") ?? "",
-    observacao: getContextoImportacaoValue(item, "observacao") ?? "",
-    modalidade_financeira: getContextoImportacaoValue(item, "modalidade_financeira_override") ?? "",
-    data_vencimento: getContextoImportacaoValue(item, "data_vencimento_override") ?? "",
-    status_pagamento: toInputValue(item.status_pagamento ?? item.statusPagamento ?? "PENDENTE"),
-  };
-};
 
-const applyBusinessRulesToForm = (baseForm: EditableOperationForm, editingItem: any) => {
-  const next = { ...baseForm };
-
-  const unitario = next.valor_unitario !== undefined
-    ? parseLocaleNumber(next.valor_unitario)
-    : Number(editingItem?.valor_unitario_snapshot || editingItem?.valor_unitario_label || 0);
-
-  let nfRaw = String(next.nf_numero).toUpperCase().trim();
-  if (nfRaw === "S" || nfRaw === "SIM") nfRaw = "SIM";
-  if (nfRaw === "N" || nfRaw === "NAO" || nfRaw === "NÃO") nfRaw = "NÃO";
-  next.nf_numero = nfRaw;
-
-  const valoresCalculados = calcularValoresOperacao({
-    quantidade: parseLocaleNumber(next.quantidade),
-    valorUnitario: unitario,
-    percentualIss: parseLocaleNumber(next.percentual_iss),
-    quantidadeFilme: parseLocaleNumber(next.quantidade_filme),
-    valorUnitarioFilme: parseLocaleNumber(next.valor_unitario_filme),
-    nfRaw,
-  });
-
-  next.percentual_iss = valoresCalculados.percentualCalculado.toString();
-  next.valor_total_filme = valoresCalculados.totalFilmeCalculado ? formatDecimalInput(valoresCalculados.totalFilmeCalculado) : "0,00";
-  next.valor_descarga = valoresCalculados.valorDescargaCalculado ? formatDecimalInput(valoresCalculados.valorDescargaCalculado) : "0,00";
-  next.custo_com_iss = valoresCalculados.custoIssCalculado ? formatDecimalInput(valoresCalculados.custoIssCalculado) : "0,00";
-
-  return next;
-};
-
-const buildOperationUpdatePayload = (editingItem: any, editForm: EditableOperationForm) => {
-  const nextAvaliacao = {
-    ...(editingItem.avaliacao_json ?? {}),
-    contexto_importacao: {
-      ...((editingItem.avaliacao_json?.contexto_importacao as Record<string, unknown> | undefined) ?? {}),
-      forma_pagamento: editForm.forma_pagamento || null,
-      observacao: editForm.observacao || null,
-      modalidade_financeira_override: editForm.modalidade_financeira || null,
-      data_vencimento_override: editForm.data_vencimento || null,
-    },
-  };
-
-  const valorUnitarioFilmeCalculado = parseLocaleNumber(editForm.valor_unitario_filme);
-  const quantidadeFilmeCalculada = parseLocaleNumber(editForm.quantidade_filme);
-  const valorTotalFilmeCalculado = valorUnitarioFilmeCalculado * quantidadeFilmeCalculada;
-
-  return {
-    ...(editForm.valor_unitario ? { valor_unitario_snapshot: parseLocaleNumber(editForm.valor_unitario) } : {}),
-    quantidade: parseLocaleNumber(editForm.quantidade),
-    quantidade_colaboradores: parseLocaleNumber(editForm.quantidade_colaboradores),
-    entrada_ponto: editForm.entrada_ponto || null,
-    saida_ponto: editForm.saida_ponto || null,
-    placa: editForm.placa || null,
-    nf_numero: editForm.nf_numero || null,
-    ctrc: editForm.ctrc || null,
-    percentual_iss: toIssDatabaseValue(editForm.percentual_iss),
-    valor_descarga: parseLocaleNumber(editForm.valor_descarga),
-    custo_com_iss: parseLocaleNumber(editForm.custo_com_iss),
-    valor_unitario_filme: valorUnitarioFilmeCalculado,
-    quantidade_filme: quantidadeFilmeCalculada,
-    valor_total_filme: valorTotalFilmeCalculado,
-    valor_faturamento_nf: parseLocaleNumber(editForm.valor_faturamento_nf),
-    status_pagamento: editForm.status_pagamento || null,
-    data_pagamento: editForm.status_pagamento === "RECEBIDO"
-      ? (editingItem.data_pagamento ?? new Date().toISOString().split("T")[0])
-      : null,
-    avaliacao_json: nextAvaliacao,
-    origem_dado: editingItem.origem_dado === "importacao" ? "ajuste" : editingItem.origem_dado,
-  };
-};
 
 export const OperacoesTableBlock = ({
   date,
@@ -478,6 +452,9 @@ export const OperacoesTableBlock = ({
   const [statusFilter, setStatusFilter] = useState("all");
   const [modalidadeFilter, setModalidadeFilter] = useState("all");
   const [formaPagamentoFilter, setFormaPagamentoFilter] = useState("all");
+  const valUnitFormatter = (value: any) =>
+    Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
   const [selectedOpDetails, setSelectedOpDetails] = useState<any>(null);
   const [editingItem, setEditingItem] = useState<any>(null);
   const [editForm, setEditForm] = useState<EditableOperationForm | null>(null);
@@ -486,11 +463,12 @@ export const OperacoesTableBlock = ({
   const [bulkValue, setBulkValue] = useState("");
   const [bulkOnlyEmpty, setBulkOnlyEmpty] = useState(true);
   const [isRuleApplyOpen, setIsRuleApplyOpen] = useState(false);
-  const [selectedRuleColumn, setSelectedRuleColumn] = useState<RuleApplicableColumn>("percentualIss");
   const [selectedOperationalRuleId, setSelectedOperationalRuleId] = useState("");
   const [selectedEditOperationalRuleId, setSelectedEditOperationalRuleId] = useState("");
-  const [selectedEditIssRuleId, setSelectedEditIssRuleId] = useState("");
+  const [selectedRuleColumn, setSelectedRuleColumn] = useState<RuleApplicableColumn>("valUnit");
   const [activeInlineCell, setActiveInlineCell] = useState<{ rowId: string; field: InlineEditableField } | null>(null);
+
+
   const [inlineValue, setInlineValue] = useState("");
   const tableScrollRef = useRef<HTMLDivElement>(null);
 
@@ -517,12 +495,11 @@ export const OperacoesTableBlock = ({
     data: true,
     operacao: true, transportadora: true, servico: true, qtd: true,
     inicio: false, fim: false, valUnit: true, valDia: true, acoes: true,
-    nf: false, ctrc: false, percentualIss: false, valorDescarga: false, custoIss: false,
-    valorUnitarioFilme: false, quantidadeFilme: false, valorTotalFilme: false,
-    valorFaturamentoNf: false, placa: false, fornecedor: false, qtdCol: true,
+    placa: false, fornecedor: false, qtdCol: true,
     idPlanilha: false, empresaPlanilha: false, formaPagamento: false, observacao: false,
     modalidadeFinanceira: true, dataVencimento: true, statusPagamento: true,
   };
+
 
   const [visibleCols, setVisibleCols] = useState(() => {
     try {
@@ -537,9 +514,14 @@ export const OperacoesTableBlock = ({
   const [activeRuleCols, setActiveRuleCols] = useState<Record<RuleApplicableColumn, boolean>>(() => {
     try {
       const saved = localStorage.getItem("orbe_activeRuleCols_operacoes_v1");
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === "object") {
+          return { ...DEFAULT_ACTIVE_RULE_COLS, ...parsed };
+        }
+      }
     } catch { }
-    return { percentualIss: true, valUnit: true } as Record<RuleApplicableColumn, boolean>;
+    return DEFAULT_ACTIVE_RULE_COLS;
   });
 
   const toggleRuleCol = (colKey: RuleApplicableColumn) => {
@@ -682,15 +664,15 @@ export const OperacoesTableBlock = ({
       return OperacaoProducaoService.update(item.id, buildOperationUpdatePayload(item, nextForm));
     },
     onSuccess: () => {
-      toast.success("Célula atualizada.");
+      toast.success("CÃ©lula atualizada.");
       setActiveInlineCell(null);
       setInlineValue("");
       queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
     },
     onError: (error: unknown) => {
-      const message = error instanceof Error ? error.message : "Não foi possível salvar a célula.";
-      toast.error("Falha ao atualizar célula.", { description: message });
+      const message = error instanceof Error ? error.message : "NÃ£o foi possÃ­vel salvar a cÃ©lula.";
+      toast.error("Falha ao atualizar cÃ©lula.", { description: message });
     },
   });
 
@@ -711,7 +693,7 @@ export const OperacoesTableBlock = ({
   const updateStatusPagamentoMutation = useMutation({
     mutationFn: async ({ item, statusPagamento }: { item: any; statusPagamento: StatusPagamento }) => {
       if (!isEditableOperation(item)) {
-        throw new Error("Somente operações editáveis podem ter o status de pagamento alterado.");
+        throw new Error("Somente operaÃ§Ãµes editÃ¡veis podem ter o status de pagamento alterado.");
       }
 
       const today = new Date().toISOString().split("T")[0];
@@ -771,13 +753,13 @@ export const OperacoesTableBlock = ({
       if (!selectedOperationalRuleId) throw new Error("Selecione qual regra cadastrada deve ser aplicada.");
 
       const selectedOperationalRule = (regrasOperacionais as any[]).find((rule) => rule.id === selectedOperationalRuleId);
-      if (!selectedOperationalRule) throw new Error("A regra operacional escolhida não foi encontrada.");
+      if (!selectedOperationalRule) throw new Error("A regra operacional escolhida nÃ£o foi encontrada.");
 
-      if (selectedOperationalRule.ativo !== true) throw new Error("A regra operacional escolhida está inativa.");
+      if (selectedOperationalRule.ativo !== true) throw new Error("A regra operacional escolhida estÃ¡ inativa.");
 
       const editableRows = filteredData.filter(isEditableOperation);
       if (editableRows.length === 0) {
-        throw new Error("Nenhuma linha filtrada disponível para aplicar regra.");
+        throw new Error("Nenhuma linha filtrada disponÃ­vel para aplicar regra.");
       }
 
       let appliedCount = 0;
@@ -802,7 +784,7 @@ export const OperacoesTableBlock = ({
       }
 
       if (appliedCount === 0) {
-        throw new Error("Nenhuma linha filtrada encontrou regra compatível para essa coluna.");
+        throw new Error("Nenhuma linha filtrada encontrou regra compatÃ­vel para essa coluna.");
       }
 
       return { appliedCount, skippedCount };
@@ -811,7 +793,7 @@ export const OperacoesTableBlock = ({
       toast.success("Regra aplicada na coluna.", {
         description:
           result?.skippedCount > 0
-            ? `${result.appliedCount} linha(s) atualizadas e ${result.skippedCount} sem regra compatível foram ignoradas.`
+            ? `${result.appliedCount} linha(s) atualizadas e ${result.skippedCount} sem regra compatÃ­vel foram ignoradas.`
             : `${result?.appliedCount ?? 0} linha(s) atualizadas com a regra selecionada.`,
       });
       setIsRuleApplyOpen(false);
@@ -820,7 +802,7 @@ export const OperacoesTableBlock = ({
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
     },
     onError: (error: unknown) => {
-      const message = error instanceof Error ? error.message : "Não foi possível aplicar a regra na coluna.";
+      const message = error instanceof Error ? error.message : "NÃ£o foi possÃ­vel aplicar a regra na coluna.";
       toast.error("Falha ao aplicar regra.", { description: message });
     },
   });
@@ -868,13 +850,13 @@ export const OperacoesTableBlock = ({
   const deleteMutation = useMutation({
     mutationFn: (id: string) => OperacaoProducaoService.delete(id),
     onSuccess: () => {
-      toast.success("Operação excluída com sucesso.");
+      toast.success("OperaÃ§Ã£o excluÃ­da com sucesso.");
       queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
     },
     onError: (error: unknown) => {
-      const message = error instanceof Error ? error.message : "Erro ao excluir operação.";
-      toast.error("Falha ao excluir operação.", { description: message });
+      const message = error instanceof Error ? error.message : "Erro ao excluir operaÃ§Ã£o.";
+      toast.error("Falha ao excluir operaÃ§Ã£o.", { description: message });
     },
   });
 
@@ -912,7 +894,7 @@ export const OperacoesTableBlock = ({
       return 0;
     }
 
-    // 1. Data de operação (Crescente)
+    // 1. Data de operaÃ§Ã£o (Crescente)
     const dateA = a.data_operacao || "";
     const dateB = b.data_operacao || "";
     if (dateA !== dateB) return dateA.localeCompare(dateB);
@@ -953,8 +935,6 @@ export const OperacoesTableBlock = ({
       data: true,
       operacao: true, transportadora: true, servico: true, qtd: true,
       inicio: false, fim: false, valUnit: false, valDia: true, acoes: true,
-      nf: true, ctrc: false, percentualIss: false, valorDescarga: false, custoIss: false,
-      valorUnitarioFilme: false, quantidadeFilme: false, valorTotalFilme: false,
       valorFaturamentoNf: false, placa: false, fornecedor: false, qtdCol: true,
       idPlanilha: false, empresaPlanilha: false, formaPagamento: true, observacao: false,
     };
@@ -965,18 +945,17 @@ export const OperacoesTableBlock = ({
   const openEditor = (item: any) => {
     setEditingItem(item);
     setEditForm(buildEditableForm(item));
-    setSelectedEditIssRuleId("");
   };
+
 
   const closeEditor = () => {
     if (updateMutation.isPending) return;
     setEditingItem(null);
     setEditForm(null);
-    setSelectedEditIssRuleId("");
   };
 
-  const isEditableOperation = (item: any) =>
-    item?.origem === "operacoes_producao" && item?.status !== "fechado";
+
+
 
   const editableFilteredCount = filteredData.filter((item: any) => isEditableOperation(item)).length;
 
@@ -1026,11 +1005,7 @@ export const OperacoesTableBlock = ({
 
   const matchesOperationalRuleForItem = (item: any, rule: any, column: RuleApplicableColumn) => {
     const itemDate = item?.data_operacao ?? date;
-    const isGlobalIssRule = column === "percentualIss" && isIssOperationalRule(rule);
 
-    if (isGlobalIssRule) {
-      return true;
-    }
 
     return (
       matchesOptionalContext({
@@ -1208,7 +1183,6 @@ export const OperacoesTableBlock = ({
     const joined = `${rule.tipos_regra_operacional?.nome ?? ""} ${rule.tipos_regra_operacional?.coluna_planilha ?? ""}`.toUpperCase();
     return config.matches.some((match) => joined.includes(match.toUpperCase()));
   }).filter((rule: any, index: number, allRules: any[]) => {
-    if (selectedRuleColumn !== "percentualIss") return true;
 
     const key = [
       rule.tipos_regra_operacional?.id ?? rule.tipo_regra_id ?? "",
@@ -1229,7 +1203,6 @@ export const OperacoesTableBlock = ({
 
   const availableEditIssRules = (regrasOperacionais as any[])
     .filter((rule) => rule.ativo === true && isIssOperationalRule(rule))
-    .filter((rule) => !editingItem || matchesOperationalRuleForItem(editingItem, rule, "percentualIss"))
     .filter((rule: any, index: number, allRules: any[]) => {
       const key = [
         rule.tipos_regra_operacional?.id ?? rule.tipo_regra_id ?? "",
@@ -1247,9 +1220,10 @@ export const OperacoesTableBlock = ({
     });
 
   const availableEditOperationalRules = (regrasOperacionais as any[])
-    .filter((rule) => rule.ativo === true && !isIssOperationalRule(rule))
+    .filter((rule) => rule.ativo === true)
     .filter((rule) => !editingItem || matchesOperationalRuleForItem(editingItem, rule, "valUnit"))
     .filter((rule: any, index: number, allRules: any[]) => {
+
       const key = [
         rule.tipos_regra_operacional?.id ?? rule.tipo_regra_id ?? "",
         rule.valor_unitario ?? "",
@@ -1278,25 +1252,22 @@ export const OperacoesTableBlock = ({
   const editOperationalRuleDiagnostics = useMemo(() => {
     if (!editingItem) return null;
 
-    const allRules = regrasOperacionais as any[];
-    const nonIssRules = allRules.filter((rule) => !isIssOperationalRule(rule));
-    const activeNonIssRules = nonIssRules.filter((rule) => rule.ativo === true);
-    const rejected = activeNonIssRules
+    const allRules = (regrasOperacionais as any[]).filter((rule) => rule.ativo === true);
+    const rejected = allRules
       .map((rule) => ({
         id: rule.id,
-        label: `${rule.tipos_regra_operacional?.nome ?? "Regra"} · ${rule.transportadoras_clientes?.nome ?? rule.fornecedores?.nome ?? "Sem contexto"}`,
+        label: `${rule.tipos_regra_operacional?.nome ?? "Regra"} Â· ${rule.transportadoras_clientes?.nome ?? rule.fornecedores?.nome ?? "Sem contexto"}`,
         reasons: explainOperationalRuleMismatch(editingItem, rule),
       }))
       .filter((item) => item.reasons.length > 0);
 
     return {
       total: allRules.length,
-      nonIss: nonIssRules.length,
-      activeNonIss: activeNonIssRules.length,
       matched: availableEditOperationalRules.length,
       rejected: rejected.slice(0, 5),
     };
   }, [availableEditOperationalRules, editingItem, regrasOperacionais]);
+
 
   const renderInlineCell = (
     item: any,
@@ -1325,10 +1296,10 @@ export const OperacoesTableBlock = ({
                 <SelectValue placeholder="Selecione a forma de pagamento" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="DEPÓSITO">Depósito</SelectItem>
-                <SelectItem value="DEPOSITO MENSAL">Depósito Mensal</SelectItem>
+                <SelectItem value="DEPÃ“SITO">DepÃ³sito</SelectItem>
+                <SelectItem value="DEPOSITO MENSAL">DepÃ³sito Mensal</SelectItem>
                 <SelectItem value="PIX">PIX</SelectItem>
-                <SelectItem value="TRANSFERÊNCIA">Transferência</SelectItem>
+                <SelectItem value="TRANSFERÃŠNCIA">TransferÃªncia</SelectItem>
                 <SelectItem value="BOLETO">Boleto</SelectItem>
               </SelectContent>
             </Select>
@@ -1341,9 +1312,9 @@ export const OperacoesTableBlock = ({
                   inlineFinancePreview.modalidade === "DUPLICATA_FORNECEDOR" && "border-orange-200 bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
                   inlineFinancePreview.modalidade === "FECHAMENTO_MENSAL_EMPRESA" && "border-blue-200 bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
                   inlineFinancePreview.modalidade === "TRANSBORDO_30D" && "border-purple-200 bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300",
-                  inlineFinancePreview.modalidade === "CUSTO_DESPESA" && "border-slate-200 bg-slate-100 text-slate-800 dark:bg-slate-900/40 dark:text-slate-300",
                 )}
               >
+
                 <span className="uppercase tracking-wide opacity-70">Modalidade</span>
                 <span className="font-semibold">{getModalidadeLabel(inlineFinancePreview.modalidade)}</span>
               </div>
@@ -1405,83 +1376,28 @@ export const OperacoesTableBlock = ({
 
       const next = { ...prev, [field]: value };
 
-      if (field === "valor_unitario_filme" || field === "quantidade_filme") {
-        const totalFilme = parseLocaleNumber(next.valor_unitario_filme) * parseLocaleNumber(next.quantidade_filme);
-        next.valor_total_filme = totalFilme ? formatDecimalInput(totalFilme) : "0,00";
-      }
-
-      // MOTOR INTELIGENTE - AUTO CÁLCULOS E REGRAS:
       const unitario = next.valor_unitario !== undefined
         ? parseLocaleNumber(next.valor_unitario)
         : Number(editingItem?.valor_unitario_snapshot || editingItem?.valor_unitario_label || 0);
 
-      // Auto-Normalizar NF e Aplicar Regra de ISS (Regra 2)
       let nfRaw = String(next.nf_numero).toUpperCase().trim();
       if (nfRaw === "S" || nfRaw === "SIM") nfRaw = "SIM";
-      if (nfRaw === "N" || nfRaw === "NAO" || nfRaw === "NÃO") nfRaw = "NÃO";
-
-      const percentualCalculado = nfRaw === "SIM" ? 5 : (nfRaw === "NÃO" ? 0 : parseLocaleNumber(next.percentual_iss));
-
+      if (nfRaw === "N" || nfRaw === "NAO" || nfRaw === "NÃƒO") nfRaw = "NÃƒO";
       next.nf_numero = nfRaw;
-      next.percentual_iss = percentualCalculado.toString();
 
-      // Regra Matemáticas (Regra 1)
       const valDescargaCalculado = Math.max(parseLocaleNumber(next.quantidade), 0) * unitario;
-      const custoIssCalculado = valDescargaCalculado * (percentualCalculado / 100);
-
       next.valor_descarga = valDescargaCalculado ? formatDecimalInput(valDescargaCalculado) : "0,00";
-      next.custo_com_iss = custoIssCalculado ? formatDecimalInput(custoIssCalculado) : "0,00";
 
       return next;
     });
   };
 
-  const applyEditIssRule = (ruleId: string) => {
-    setSelectedEditIssRuleId(ruleId);
-
-    if (!ruleId) return;
-
-    const selectedRule = availableEditIssRules.find((rule: any) => rule.id === ruleId);
-    if (!selectedRule) return;
-
-    updateField("percentual_iss", String(selectedRule.valor_unitario ?? ""));
-  };
-
-  const applyEditOperationalRule = (ruleId: string) => {
-    setSelectedEditOperationalRuleId(ruleId);
-
-    if (!ruleId) return;
-
-    const selectedRule = availableEditOperationalRules.find((rule: any) => rule.id === ruleId);
-    if (!selectedRule) return;
-
-    updateField("valor_unitario", toNumericInputValue(selectedRule.valor_unitario));
-  };
-
-  useEffect(() => {
-    if (!editingItem || !editForm) return;
-
-    const currentIss = parseLocaleNumber(editForm.percentual_iss);
-    const matchingRule = availableEditIssRules.find((rule: any) => Number(rule.valor_unitario ?? 0) === currentIss);
-
-    setSelectedEditIssRuleId(matchingRule?.id ?? "");
-  }, [availableEditIssRules, editForm, editingItem]);
-
-  useEffect(() => {
-    if (!editingItem || !editForm) return;
-
-    const currentUnitValue = parseLocaleNumber(editForm.valor_unitario ?? "");
-    const matchingRule = availableEditOperationalRules.find(
-      (rule: any) => Number(rule.valor_unitario ?? 0) === currentUnitValue,
-    );
-
-    setSelectedEditOperationalRuleId(matchingRule?.id ?? "");
-  }, [availableEditOperationalRules, editForm, editingItem]);
 
   useEffect(() => {
     if (!editingItem) return;
     void refetchRegrasOperacionais();
   }, [editingItem, refetchRegrasOperacionais]);
+
 
   const editFinancePreview = useMemo(() => {
     if (!editingItem || !editForm?.forma_pagamento) return null;
@@ -1500,18 +1416,18 @@ export const OperacoesTableBlock = ({
     return (
       <div className="p-12 text-center text-muted-foreground min-h-[300px] flex flex-col items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
-        Carregando operações...
+        Carregando operaÃ§Ãµes...
       </div>
     );
   }
 
   return (
     <div className="space-y-4 p-5 pt-2">
-      {/* ─── FILTROS ───────────────────────────────────────────────────── */}
+      {/* â”€â”€â”€ FILTROS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div className="flex flex-col sm:flex-row gap-3 justify-between">
         <div className="flex flex-wrap gap-2 w-full">
           <Input
-            placeholder="Buscar por fornecedor ou serviço..."
+            placeholder="Buscar por fornecedor ou serviÃ§o..."
             className="w-full sm:w-72 h-9"
             value={filterText}
             onChange={(e) => setFilterText(e.target.value)}
@@ -1724,8 +1640,8 @@ export const OperacoesTableBlock = ({
                     </DropdownMenuItem>
                     {sortConfig?.key === colKey && (
                       <DropdownMenuItem onClick={() => setSortConfig(null)}>
-                        <span className="mr-2 h-4 w-4 flex items-center justify-center font-bold text-muted-foreground">✕</span>
-                        Remover ordenação
+                        <span className="mr-2 h-4 w-4 flex items-center justify-center font-bold text-muted-foreground">âœ•</span>
+                        Remover ordenaÃ§Ã£o
                       </DropdownMenuItem>
                     )}
 
@@ -1752,29 +1668,21 @@ export const OperacoesTableBlock = ({
                   <tr className="text-center font-display text-muted-foreground uppercase text-xs tracking-wide">
                     {visibleCols.data && <th style={getStickyProps("data", true).style} className={getStickyProps("data", true).className}>{renderInteractiveHeader("data", "DATA", CalendarDays)}</th>}
                     {visibleCols.idPlanilha && <th style={getStickyProps("idPlanilha", true).style} className={getStickyProps("idPlanilha", true).className}>{renderInteractiveHeader("idPlanilha", "ID")}</th>}
-                    {visibleCols.operacao && <th style={getStickyProps("operacao", true).style} className={getStickyProps("operacao", true).className}>{renderInteractiveHeader("operacao", "OPERAÇÃO/VOLUME", Package)}</th>}
+                    {visibleCols.operacao && <th style={getStickyProps("operacao", true).style} className={getStickyProps("operacao", true).className}>{renderInteractiveHeader("operacao", "OPERAÃ‡ÃƒO/VOLUME", Package)}</th>}
                     {visibleCols.empresaPlanilha && <th className="px-3 py-2.5 font-semibold text-center">EMPRESA</th>}
                     {visibleCols.fornecedor && <th className="px-3 py-2.5 font-semibold ">{renderInteractiveHeader("fornecedor", "FORNECEDOR")}</th>}
                     {visibleCols.transportadora && <th className="px-3 py-2.5 font-semibold ">{renderInteractiveHeader("transportadora", "TRANSPORTADORA", Truck)}</th>}
                     {visibleCols.placa && renderHeaderCell("placa", "PLACA", "px-3 py-2.5 font-semibold text-center")}
-                    {visibleCols.servico && <th className="px-3 py-2.5 font-semibold ">{renderInteractiveHeader("servico", "SERVIÇO", Settings2)}</th>}
+                    {visibleCols.servico && <th className="px-3 py-2.5 font-semibold ">{renderInteractiveHeader("servico", "SERVIÃ‡O", Settings2)}</th>}
                     {visibleCols.qtdCol && renderHeaderCell("qtdCol", <span className="inline-flex items-center justify-center gap-1.5 w-full"><User className="h-3.5 w-3.5 text-muted-foreground" />QTD. COL.</span>, "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.formaPagamento && renderHeaderCell("formaPagamento", "FORMA PAGAMENTO", "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.nf && renderHeaderCell("nf", "NF", "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.ctrc && renderHeaderCell("ctrc", "CTRC", "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.observacao && renderHeaderCell("observacao", "OBSERVACAO", "px-3 py-2.5 font-semibold text-center")}
-                    {visibleCols.percentualIss && renderHeaderCell("percentualIss", "% ISS", "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.inicio && renderHeaderCell("inicio", <span className="inline-flex items-center justify-center gap-1.5 w-full"><LogIn className="h-3.5 w-3.5 text-muted-foreground" />INICIO</span>, "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.fim && renderHeaderCell("fim", <span className="inline-flex items-center justify-center gap-1.5 w-full"><LogOut className="h-3.5 w-3.5 text-muted-foreground" />FIM</span>, "px-3 py-2.5 font-semibold text-center")}
-                    {visibleCols.valUnit && renderHeaderCell("valUnit", <span className="inline-flex items-center justify-center gap-1.5 w-full"><DollarSign className="h-3.5 w-3.5 text-muted-foreground" />VAL. UNIT.</span>, "px-3 py-2.5 font-semibold text-center")}
-                    {visibleCols.qtd && renderHeaderCell("qtd", <span className="inline-flex items-center justify-center gap-1.5 w-full"><Hash className="h-3.5 w-3.5 text-muted-foreground" />QTD</span>, "px-3 py-2.5 font-semibold text-center")}
-                    {visibleCols.valorDescarga && renderHeaderCell("valorDescarga", "VALOR DESCARGA", "px-3 py-2.5 font-semibold text-center")}
-                    {visibleCols.custoIss && renderHeaderCell("custoIss", "CUSTO ISS", "px-3 py-2.5 font-semibold text-center")}
-                    {visibleCols.valorUnitarioFilme && renderHeaderCell("valorUnitarioFilme", "UNIT. FILME", "px-3 py-2.5 font-semibold text-center")}
-                    {visibleCols.quantidadeFilme && renderHeaderCell("quantidadeFilme", "QTD. FILME", "px-3 py-2.5 font-semibold text-center")}
-                    {visibleCols.valorTotalFilme && renderHeaderCell("valorTotalFilme", "TOTAL FILME", "px-3 py-2.5 font-semibold text-center")}
-                    {visibleCols.valorFaturamentoNf && renderHeaderCell("valorFaturamentoNf", "FATURAMENTO NF", "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.valDia && renderHeaderCell("conferido_final", <span className="inline-flex items-center justify-center gap-1.5 w-full"><BadgeDollarSign className="h-3.5 w-3.5 text-muted-foreground" />TOTAL DIA</span>, "px-3 py-2.5 font-semibold text-center")}
+
                     {visibleCols.modalidadeFinanceira && <th className="px-3 py-2.5 font-semibold text-center">MODALIDADE</th>}
                     {visibleCols.dataVencimento && <th className="px-3 py-2.5 font-semibold text-center">VENCIMENTO</th>}
                     {visibleCols.statusPagamento && <th className="px-3 py-2.5 font-semibold text-center">STATUS PGTO</th>}
@@ -1783,43 +1691,34 @@ export const OperacoesTableBlock = ({
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredData.map((item: any, index: number) => {
+                  {filteredData.map((item: any) => {
                     const isSelected = kind === "operacao" && selectedId === item.id;
-                    const valDescarga = Number(item.valor_descarga ?? (Number(item.quantidade) * Number(item.valor_unitario || 0)));
-                    const custoComIss = Number(item.custo_com_iss || 0);
-                    const totalEFilme = Number(item.valor_total_filme || 0);
-                    const valorTotal = valDescarga + custoComIss + totalEFilme;
-                    const fornecedor = item.fornecedores?.nome || item.produto_label || "Sem fornecedor";
-                    const servico = item.tipos_servico_operacional?.nome || item.tipo_servico_label || "Sem servico";
-                    const operacaoNome = servico;
-                    const transportadora = item.transportadoras_clientes?.nome || item.transportadora_label || "—";
-                    const placa = item.placa || "—";
-                    const nf = item.nf_numero || "—";
-                    const ctrc = item.ctrc || "—";
-                    const iss = item.percentual_iss ? `${(Number(item.percentual_iss) * 100).toFixed(0)}%` : "—";
-                    const idPlanilha = index + 1;
-                    const empresaPlanilha = getDisplayEmpresa(item, empresas as any[]);
-                    const formaPagamento = getDisplayFormaPagamento(item);
-                    const observacao = getDisplayObservacao(item);
-                    const dataOp = item.data_operacao ? new Date(item.data_operacao + "T00:00:00").toLocaleDateString("pt-BR") : "—";
+
+                    const dataOp = item.data_operacao ? new Date(item.data_operacao + "T12:00:00Z").toLocaleDateString("pt-BR") : "â€”";
+                    const idPlanilha = item.created_at || item.id;
+                    const operacaoNome = item.produto_label || item.fornecedores?.nome || "â€”";
+                    const empresaPlanilha = getDisplayEmpresa(item, empresas);
+                    const fornecedor = item.fornecedores?.nome || "â€”";
+                    const transportadora = item.transportadoras_clientes?.nome || "â€”";
+                    const placa = item.placa || "â€”";
+                    const servico = item.tipos_servico_operacional?.nome || "â€”";
                     const qtdColaboradores = item.quantidade_colaboradores ?? 1;
-                    let qtdText = String(item.quantidade_label || item.quantidade || 0);
-                    if (item.tipo_calculo_snapshot === "volume") qtdText += " vol(s)";
-                    else if (item.tipo_calculo_snapshot === "diaria") qtdText += " diaria(s)";
-                    else if (item.tipo_calculo_snapshot === "operacao") qtdText = "1 op";
-                    const inicio = item.entrada_ponto ? String(item.entrada_ponto).substring(0, 5) : item.horario_inicio_label ? String(item.horario_inicio_label).substring(0, 5) : "—";
-                    const fim = item.saida_ponto ? String(item.saida_ponto).substring(0, 5) : item.horario_fim_label ? String(item.horario_fim_label).substring(0, 5) : "—";
-                    const valUnitFormatter = (value: any) => Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+                    const formaPagamento = getDisplayFormaPagamento(item);
+                    const nf = item.nf_numero || "â€”";
+                    const ctrc = item.ctrc || "â€”";
+                    const observacao = getDisplayObservacao(item);
+                    const inicio = (item.entrada_ponto || "â€”").substring(0, 5);
+                    const fim = (item.saida_ponto || "â€”").substring(0, 5);
+                    const qtdText = item.quantidade || "0";
+                    const valorTotal = item.total_final || item.valor_descarga || 0;
+
                     const valUnit = valUnitFormatter(item.valor_unitario_snapshot ?? item.valor_unitario_label ?? item.valor_unitario ?? 0);
+                    const valorDescarga = valUnitFormatter(item.valor_descarga || 0);
                     const valDia = valUnitFormatter(valorTotal);
-                    const valorDescarga = valUnitFormatter(item.valor_descarga);
-                    const custoIss = valUnitFormatter(item.custo_com_iss);
-                    const unitFilme = valUnitFormatter(item.valor_unitario_filme);
-                    const qtdFilme = item.quantidade_filme || "—";
-                    const totFilme = valUnitFormatter(item.valor_total_filme);
-                    const fatNf = valUnitFormatter(item.valor_faturamento_nf);
+
                     const statusOriginal = String(getDisplayStatusOriginal(item));
                     const statusCfg = getStatusConfig(statusOriginal);
+
 
                     return (
                       <tr
@@ -1844,17 +1743,11 @@ export const OperacoesTableBlock = ({
                         {visibleCols.nf && renderInlineCell(item, "nf_numero", nf)}
                         {visibleCols.ctrc && renderInlineCell(item, "ctrc", ctrc)}
                         {visibleCols.observacao && renderInlineCell(item, "observacao", String(observacao))}
-                        {visibleCols.percentualIss && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{iss}</td>}
                         {visibleCols.inicio && renderInlineCell(item, "entrada_ponto", inicio, "time")}
                         {visibleCols.fim && renderInlineCell(item, "saida_ponto", fim, "time")}
                         {visibleCols.valUnit && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{valUnit}</td>}
                         {visibleCols.qtd && renderInlineCell(item, "quantidade", qtdText, "text", "px-3 text-center font-display font-medium whitespace-nowrap")}
                         {visibleCols.valorDescarga && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{valorDescarga}</td>}
-                        {visibleCols.custoIss && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{custoIss}</td>}
-                        {visibleCols.valorUnitarioFilme && renderInlineCell(item, "valor_unitario_filme", unitFilme)}
-                        {visibleCols.quantidadeFilme && renderInlineCell(item, "quantidade_filme", qtdFilme)}
-                        {visibleCols.valorTotalFilme && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{totFilme}</td>}
-                        {visibleCols.valorFaturamentoNf && renderInlineCell(item, "valor_faturamento_nf", fatNf)}
                         {visibleCols.valDia && <td className="px-3 text-center font-display font-semibold text-foreground whitespace-nowrap">{valDia}</td>}
                         {visibleCols.modalidadeFinanceira && (
                           <td className="px-3 text-center whitespace-nowrap">
@@ -1862,21 +1755,19 @@ export const OperacoesTableBlock = ({
                               <Badge variant="outline" className={cn(
                                 "font-medium border-0 text-xs",
                                 item.modalidadeFinanceira === "CAIXA_IMEDIATO" && "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
-                                (item.modalidadeFinanceira === "DUPLICATA_FORNECEDOR" || item.modalidadeFinanceira === "DUPLICATA") && "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
-                                (item.modalidadeFinanceira === "FECHAMENTO_MENSAL_EMPRESA" || item.modalidadeFinanceira === "FATURAMENTO_MENSAL") && "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
                                 item.modalidadeFinanceira === "TRANSBORDO_30D" && "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300",
-                                item.modalidadeFinanceira === "CUSTO_DESPESA" && "bg-slate-100 text-slate-800 dark:bg-slate-900/40 dark:text-slate-300",
                               )}>
+
                                 {getModalidadeLabel(item.modalidadeFinanceira)}
                               </Badge>
-                            ) : <span className="text-muted-foreground">—</span>}
+                            ) : <span className="text-muted-foreground">â€”</span>}
                           </td>
                         )}
                         {visibleCols.dataVencimento && (
                           <td className="px-3 text-center text-muted-foreground whitespace-nowrap font-mono text-xs">
                             {item.dataVencimento
                               ? new Date(item.dataVencimento + "T12:00:00Z").toLocaleDateString("pt-BR")
-                              : "—"}
+                              : "â€”"}
                           </td>
                         )}
                         {visibleCols.statusPagamento && (
@@ -1915,13 +1806,13 @@ export const OperacoesTableBlock = ({
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
-                            ) : <span className="text-muted-foreground">—</span>}
+                            ) : <span className="text-muted-foreground">â€”</span>}
                           </td>
                         )}
                         {false && (
                           <td className="px-3 text-center whitespace-nowrap">
                             <Badge variant="outline" className={cn(statusCfg.className, "hover:bg-transparent font-medium border-0")}>
-                              {statusOriginal === "—" ? "—" : statusCfg.label}
+                              {statusOriginal === "â€”" ? "â€”" : statusCfg.label}
                             </Badge>
                           </td>
                         )}
@@ -1938,7 +1829,7 @@ export const OperacoesTableBlock = ({
                                   }
                                   navigate(`/producao?id=${item.id}`);
                                 }}
-                                title={isEditableOperation(item) ? "Editar nesta tela" : "Abrir lançamento"}
+                                title={isEditableOperation(item) ? "Editar nesta tela" : "Abrir lanÃ§amento"}
                               >
                                 <Pencil className="h-3.5 w-3.5" />
                               </button>
@@ -1984,12 +1875,12 @@ export const OperacoesTableBlock = ({
                                 className="h-7 w-7 rounded-md hover:bg-destructive-soft flex items-center justify-center text-muted-foreground hover:text-destructive disabled:opacity-50"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  if (confirm("Tem certeza que deseja excluir esta operação?")) {
+                                  if (confirm("Tem certeza que deseja excluir esta operaÃ§Ã£o?")) {
                                     deleteMutation.mutate(item.id);
                                   }
                                 }}
                                 disabled={deleteMutation.isPending}
-                                title="Excluir operação"
+                                title="Excluir operaÃ§Ã£o"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>
@@ -2002,7 +1893,7 @@ export const OperacoesTableBlock = ({
                   {filteredData.length === 0 && (
                     <tr>
                       <td colSpan={22} className="p-12 text-center text-muted-foreground italic">
-                        {filterByDate ? "Nenhuma operação atende aos filtros atuais nesta data." : "Nenhuma operação atende aos filtros atuais."}
+                        {filterByDate ? "Nenhuma operaÃ§Ã£o atende aos filtros atuais nesta data." : "Nenhuma operaÃ§Ã£o atende aos filtros atuais."}
                       </td>
                     </tr>
                   )}
@@ -2113,12 +2004,12 @@ export const OperacoesTableBlock = ({
                 )}
                 {bulkField === "modalidade_financeira" && (
                   <p className="text-xs text-muted-foreground">
-                    Use apenas em exceções. Sem override manual, a modalidade continua automática pela origem da operação.
+                    Use apenas em exceÃ§Ãµes. Sem override manual, a modalidade continua automÃ¡tica pela origem da operaÃ§Ã£o.
                   </p>
                 )}
                 {bulkField === "data_vencimento" && (
                   <p className="text-xs text-muted-foreground">
-                    Campo pensado para ajustes pontuais. Quando vazio, o vencimento segue a regra financeira automática.
+                    Campo pensado para ajustes pontuais. Quando vazio, o vencimento segue a regra financeira automÃ¡tica.
                   </p>
                 )}
                 {bulkField === "status_pagamento" && (
@@ -2160,17 +2051,17 @@ export const OperacoesTableBlock = ({
           <SheetHeader>
             <SheetTitle>Aplicar regra salva na coluna</SheetTitle>
             <SheetDescription>
-              Use uma regra já cadastrada para preencher a coluna com o valor correspondente em cada linha compatível.
+              Use uma regra jÃ¡ cadastrada para preencher a coluna com o valor correspondente em cada linha compatÃ­vel.
             </SheetDescription>
           </SheetHeader>
 
           <div className="mt-6 space-y-6">
             <div className="rounded-lg border border-border bg-muted/20 p-4 text-sm text-muted-foreground">
-              Coluna alvo: <span className="font-medium text-foreground">{RULE_COLUMN_CONFIG[selectedRuleColumn].label}</span>
+              Coluna alvo: <span className="font-medium text-foreground">{RULE_COLUMN_CONFIG[selectedRuleColumn]?.label ?? "Coluna"}</span>
             </div>
 
             <div className="space-y-2">
-              <Label>Regra disponível</Label>
+              <Label>Regra disponÃ­vel</Label>
               <Select value={selectedOperationalRuleId} onValueChange={setSelectedOperationalRuleId}>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione a regra cadastrada que deve ser aplicada" />
@@ -2178,15 +2069,13 @@ export const OperacoesTableBlock = ({
                 <SelectContent>
                   {availableOperationalRules.map((rule: any) => (
                     <SelectItem key={rule.id} value={rule.id}>
-                      {`${rule.tipos_regra_operacional?.nome ?? "Regra"} · ${Number(rule.valor_unitario ?? 0).toLocaleString("pt-BR")} · ${rule.fornecedores?.nome ?? "Fornecedor"}`}
+                      {`${rule.tipos_regra_operacional?.nome ?? "Regra"} Â· ${Number(rule.valor_unitario ?? 0).toLocaleString("pt-BR")} Â· ${rule.fornecedores?.nome ?? "Fornecedor"}`}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               <p className="text-sm text-muted-foreground">
-                {selectedRuleColumn === "percentualIss"
-                  ? "Para ISS, a regra selecionada passa a valer para toda a coluna nas linhas filtradas, sem depender de fornecedor, fabricante, TC ou empresa."
-                  : "A lista vem das regras ja cadastradas em Regras Operacionais. Ao aplicar, o sistema usa o mesmo tipo de regra e procura a combinacao compativel por empresa, fornecedor, servico e vigencia em cada linha filtrada."}
+                A lista vem das regras jÃ¡ cadastradas em Regras Operacionais. Ao aplicar, o sistema usa o mesmo tipo de regra e procura a combinaÃ§Ã£o compatÃ­vel por empresa, fornecedor, serviÃ§o e vigÃªncia em cada linha filtrada.
               </p>
             </div>
 
@@ -2205,25 +2094,26 @@ export const OperacoesTableBlock = ({
         </SheetContent>
       </Sheet>
 
+
       <Sheet open={!!selectedOpDetails} onOpenChange={(value) => !value && setSelectedOpDetails(null)}>
         <SheetContent className="sm:max-w-md overflow-y-auto">
           <SheetHeader>
-            <SheetTitle>Detalhes da operação</SheetTitle>
-            <SheetDescription>Informações completas relativas à operação do dia.</SheetDescription>
+            <SheetTitle>Detalhes da operaÃ§Ã£o</SheetTitle>
+            <SheetDescription>InformaÃ§Ãµes completas relativas Ã  operaÃ§Ã£o do dia.</SheetDescription>
           </SheetHeader>
 
           {selectedOpDetails && (
             <div className="mt-6 space-y-6">
               <div className="space-y-1">
-                <p className="text-sm font-medium text-foreground">Fornecedor / Operação</p>
+                <p className="text-sm font-medium text-foreground">Fornecedor / OperaÃ§Ã£o</p>
                 <p className="text-sm text-muted-foreground">{selectedOpDetails.fornecedores?.nome || selectedOpDetails.produto_label || "Sem fornecedor"}</p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <p className="text-sm font-medium text-foreground">Data da operação</p>
+                  <p className="text-sm font-medium text-foreground">Data da operaÃ§Ã£o</p>
                   <p className="text-sm text-muted-foreground font-mono">
-                    {selectedOpDetails.data_operacao ? new Date(selectedOpDetails.data_operacao + "T00:00:00").toLocaleDateString("pt-BR") : "—"}
+                    {selectedOpDetails.data_operacao ? new Date(selectedOpDetails.data_operacao + "T00:00:00").toLocaleDateString("pt-BR") : "â€”"}
                   </p>
                 </div>
                 <div className="space-y-1">
@@ -2231,20 +2121,20 @@ export const OperacoesTableBlock = ({
                   <p className="text-sm text-muted-foreground">{selectedOpDetails.quantidade_colaboradores ?? 1} col.</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-sm font-medium text-foreground">Serviço</p>
+                  <p className="text-sm font-medium text-foreground">ServiÃ§o</p>
                   <p className="text-sm text-muted-foreground">{selectedOpDetails.tipos_servico_operacional?.nome || selectedOpDetails.tipo_servico_label || "Sem servico"}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-foreground">Transportadora</p>
-                  <p className="text-sm text-muted-foreground">{selectedOpDetails.transportadoras_clientes?.nome || selectedOpDetails.transportadora_label || "—"}</p>
+                  <p className="text-sm text-muted-foreground">{selectedOpDetails.transportadoras_clientes?.nome || selectedOpDetails.transportadora_label || "â€”"}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-foreground">NF numero</p>
-                  <p className="text-sm text-muted-foreground">{selectedOpDetails.nf_numero || "—"}</p>
+                  <p className="text-sm text-muted-foreground">{selectedOpDetails.nf_numero || "â€”"}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-foreground">CTRC</p>
-                  <p className="text-sm text-muted-foreground">{selectedOpDetails.ctrc || "—"}</p>
+                  <p className="text-sm text-muted-foreground">{selectedOpDetails.ctrc || "â€”"}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-foreground">Forma de pagamento</p>
@@ -2260,15 +2150,9 @@ export const OperacoesTableBlock = ({
                 <p className="text-sm font-medium text-foreground">Valores principais</p>
                 <div className="grid grid-cols-2 gap-4 border border-border rounded-lg p-3 bg-muted/30">
                   <div>
-                    <p className="text-xs text-muted-foreground">Valor desc. / op</p>
+                    <p className="text-xs text-muted-foreground">Valor descarga</p>
                     <p className="text-sm font-medium text-foreground">
-                      {Number(selectedOpDetails.valor_descarga || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Faturamento liq. NF</p>
-                    <p className="text-sm font-medium text-foreground">
-                      {Number(selectedOpDetails.valor_faturamento_nf || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                      {valUnitFormatter(selectedOpDetails.valor_descarga)}
                     </p>
                   </div>
                 </div>
@@ -2282,12 +2166,13 @@ export const OperacoesTableBlock = ({
         </SheetContent>
       </Sheet>
 
+
       <Sheet open={!!editingItem} onOpenChange={(value) => !value && closeEditor()}>
         <SheetContent className="sm:max-w-2xl overflow-y-auto">
           <SheetHeader>
-            <SheetTitle>Editar operação na tela operacional</SheetTitle>
+            <SheetTitle>Editar operaÃ§Ã£o na tela operacional</SheetTitle>
             <SheetDescription>
-              Ajuste os campos da planilha diretamente aqui. O valor unitário continua vindo das regras operacionais.
+              Ajuste os campos da planilha diretamente aqui. O valor unitÃ¡rio continua vindo das regras operacionais.
             </SheetDescription>
           </SheetHeader>
 
@@ -2296,13 +2181,13 @@ export const OperacoesTableBlock = ({
               <div className="rounded-lg border border-warning/30 bg-warning/10 p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="space-y-1">
-                    <p className="text-sm font-medium text-foreground">Valor unitário bloqueado nesta tela</p>
+                    <p className="text-sm font-medium text-foreground">Valor unitÃ¡rio bloqueado nesta tela</p>
                     <p className="text-sm text-muted-foreground">
                       {Number(editingItem.valor_unitario_snapshot || editingItem.valor_unitario_label || 0).toLocaleString("pt-BR", {
                         style: "currency",
                         currency: "BRL",
                       })}{" "}
-                      · altere em Regras Operacionais quando precisar revisar a regra de origem.
+                      Â· altere em Regras Operacionais quando precisar revisar a regra de origem.
                     </p>
                   </div>
                   <Button variant="outline" size="sm" onClick={() => navigate("/cadastros/regras-operacionais")}>
@@ -2334,111 +2219,25 @@ export const OperacoesTableBlock = ({
                   <Input id="placa" value={editForm.placa} onChange={(e) => updateField("placa", e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <Label>NF (SIM/NÃO)</Label>
+                  <Label>NF (SIM/NÃƒO)</Label>
                   <Select value={editForm.nf_numero || ""} onValueChange={(v) => updateField("nf_numero", v)}>
                     <SelectTrigger id="nf_numero">
                       <SelectValue placeholder="Selecione" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="SIM">SIM</SelectItem>
-                      <SelectItem value="NÃO">NÃO</SelectItem>
+                      <SelectItem value="NÃƒO">NÃƒO</SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="ctrc">CTRC</Label>
-                  <Input id="ctrc" value={editForm.ctrc} onChange={(e) => updateField("ctrc", e.target.value)} />
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label>Regra operacional cadastrada</Label>
-                  <Select value={selectedEditOperationalRuleId} onValueChange={applyEditOperationalRule}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione uma regra registrada para atualizar o valor unitario" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableEditOperationalRules.map((rule: any) => (
-                        <SelectItem key={rule.id} value={rule.id}>
-                          {`${rule.tipos_regra_operacional?.nome ?? "Regra"} · ${Number(rule.valor_unitario ?? 0).toLocaleString("pt-BR")} · ${rule.fornecedores?.nome ?? rule.transportadoras_clientes?.nome ?? "Global"}`}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-sm text-muted-foreground">
-                    Aqui aparecem as demais regras operacionais compatíveis com a linha, como descarga por volume. Ao selecionar uma regra, o valor unitário de origem é atualizado e os cálculos automáticos são refeitos.
-                  </p>
-                  {editOperationalRuleDiagnostics && (
-                    <div className="rounded-md border border-dashed border-border bg-muted/20 p-3 text-xs text-muted-foreground">
-                      <p>
-                        Diagnostico: carregadas {editOperationalRuleDiagnostics.total} regras no total, {editOperationalRuleDiagnostics.nonIss} nao-ISS, {editOperationalRuleDiagnostics.activeNonIss} ativas, {editOperationalRuleDiagnostics.matched} compativeis com esta linha.
-                      </p>
-                      {editOperationalRuleDiagnostics.rejected.length > 0 && (
-                        <div className="mt-2 space-y-1">
-                          {editOperationalRuleDiagnostics.rejected.map((item) => (
-                            <p key={item.id}>
-                              {item.label}: {item.reasons.join(" | ")}
-                            </p>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label>Regra de ISS cadastrada</Label>
-                  <Select value={selectedEditIssRuleId} onValueChange={applyEditIssRule}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione uma regra registrada para preencher o ISS" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableEditIssRules.map((rule: any) => (
-                        <SelectItem key={rule.id} value={rule.id}>
-                          {`${rule.tipos_regra_operacional?.nome ?? "Regra"} · ${Number(rule.valor_unitario ?? 0).toLocaleString("pt-BR")} · ${rule.fornecedores?.nome ?? "Global"}`}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-sm text-muted-foreground">
-                    As regras registradas de ISS aparecem aqui para preencher automaticamente o percentual e recalcular os campos dependentes.
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor="percentual_iss" className="text-primary font-medium">Percentual ISS</Label>
-                    <Badge variant="outline" className="text-[10px] h-4 leading-none bg-primary/10">Automático</Badge>
-                  </div>
-                  <Input id="percentual_iss" value={editForm.percentual_iss} readOnly disabled className="bg-muted/50 cursor-not-allowed" />
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <Label htmlFor="valor_descarga" className="text-primary font-medium">Valor descarga</Label>
-                    <Badge variant="outline" className="text-[10px] h-4 leading-none bg-primary/10">Automático</Badge>
+                    <Badge variant="outline" className="text-[10px] h-4 leading-none bg-primary/10">AutomÃ¡tico</Badge>
                   </div>
                   <Input id="valor_descarga" value={editForm.valor_descarga} readOnly disabled className="bg-muted/50 cursor-not-allowed" />
                 </div>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor="custo_com_iss" className="text-primary font-medium">Custo com ISS</Label>
-                    <Badge variant="outline" className="text-[10px] h-4 leading-none bg-primary/10">Automático</Badge>
-                  </div>
-                  <Input id="custo_com_iss" value={editForm.custo_com_iss} readOnly disabled className="bg-muted/50 cursor-not-allowed" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="valor_unitario_filme">Valor unitario filme</Label>
-                  <Input id="valor_unitario_filme" value={editForm.valor_unitario_filme} onChange={(e) => updateField("valor_unitario_filme", e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="quantidade_filme">Quantidade filme</Label>
-                  <Input id="quantidade_filme" value={editForm.quantidade_filme} onChange={(e) => updateField("quantidade_filme", e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="valor_total_filme">Valor total filme</Label>
-                  <Input id="valor_total_filme" value={editForm.valor_total_filme} readOnly disabled />
-                  <p className="text-xs text-muted-foreground">Calculado automaticamente: unitário do filme x quantidade do filme.</p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="valor_faturamento_nf">Valor faturamento NF</Label>
-                  <Input id="valor_faturamento_nf" value={editForm.valor_faturamento_nf} onChange={(e) => updateField("valor_faturamento_nf", e.target.value)} />
-                </div>
+
                 <div className="space-y-2 md:col-span-2">
                   <Label>Forma de pagamento</Label>
                   <Select value={editForm.forma_pagamento || ""} onValueChange={(v) => updateField("forma_pagamento", v)}>
@@ -2446,10 +2245,10 @@ export const OperacoesTableBlock = ({
                       <SelectValue placeholder="Selecione a forma de pagamento" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="DEPÓSITO">Depósito</SelectItem>
-                      <SelectItem value="DEPOSITO MENSAL">Depósito Mensal</SelectItem>
+                      <SelectItem value="DEPÃ“SITO">DepÃ³sito</SelectItem>
+                      <SelectItem value="DEPOSITO MENSAL">DepÃ³sito Mensal</SelectItem>
                       <SelectItem value="PIX">PIX</SelectItem>
-                      <SelectItem value="TRANSFERÊNCIA">Transferência</SelectItem>
+                      <SelectItem value="TRANSFERÃŠNCIA">TransferÃªncia</SelectItem>
                       <SelectItem value="BOLETO">Boleto</SelectItem>
                     </SelectContent>
                   </Select>
@@ -2461,7 +2260,6 @@ export const OperacoesTableBlock = ({
                         editFinancePreview.modalidade === "DUPLICATA_FORNECEDOR" && "border-orange-200 bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
                         editFinancePreview.modalidade === "FECHAMENTO_MENSAL_EMPRESA" && "border-blue-200 bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
                         editFinancePreview.modalidade === "TRANSBORDO_30D" && "border-purple-200 bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300",
-                        editFinancePreview.modalidade === "CUSTO_DESPESA" && "border-slate-200 bg-slate-100 text-slate-800 dark:bg-slate-900/40 dark:text-slate-300",
                       )}
                     >
                       <span className="text-xs uppercase tracking-wide opacity-70">Modalidade resultante:</span>
@@ -2495,3 +2293,6 @@ export const OperacoesTableBlock = ({
     </div>
   );
 };
+
+
+

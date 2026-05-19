@@ -40,7 +40,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsContent } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import {
@@ -92,7 +93,7 @@ type ProcessDayResponse = {
   }> | null;
 };
 
-type RowValue = string | number | boolean | null | undefined;
+type RowValue = string | number | boolean | null | undefined | Date;
 type SpreadsheetRow = Record<string, RowValue>;
 const SHEET_ORIGIN_FIELD = "origem_aba";
 
@@ -132,6 +133,7 @@ type ImportedOperationPayload = {
   status: "pendente";
   origem_dado: "importacao";
 };
+
 
 const normalizeSpreadsheetRow = (row: SpreadsheetRow) =>
   Object.fromEntries(
@@ -450,7 +452,11 @@ const Operacoes = () => {
   );
   const [sheetYear, setSheetYear] = useState<string>(String(new Date().getFullYear()));
   const [sheetMonthNumber, setSheetMonthNumber] = useState<string>("all");
-  const [selectedEmpresaId, setSelectedEmpresaId] = useState<string>("");
+  const [selectedEmpresaId, setSelectedEmpresaId] = useState<string>("all");
+  const [selectedModalidade, setSelectedModalidade] = useState<string>("all");
+  const [selectedStatus, setSelectedStatus] = useState<string>("all");
+  const [selectedMeioPagamento, setSelectedMeioPagamento] = useState<string>("all");
+  const [searchTerm, setSearchTerm] = useState("");
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
 
@@ -531,98 +537,95 @@ const Operacoes = () => {
     [logsImportacao, matchesSelectedPeriod, selectedEmpresaId]
   );
 
-  const operacoesKpiDataset = useMemo(
-    () =>
-      operacoesBase.filter((item) => {
+  const filteredOperations = useMemo(() => {
+    return operacoesBase
+      .filter((item) => {
         const sameDate = matchesSelectedPeriod(item.data_operacao);
         const sameEmpresa = selectedEmpresaId === "all" || item.empresa_id === selectedEmpresaId;
         return sameDate && sameEmpresa;
-      }),
-    [matchesSelectedPeriod, operacoesBase, selectedEmpresaId]
-  );
+      })
+      .map((item) => processarOperacao(item, empresas))
+      .filter((item) => {
+        const matchesModalidade = selectedModalidade === "all" || item.modalidadeFinanceira === selectedModalidade;
+        const matchesStatus = selectedStatus === "all" || item.statusPagamento === selectedStatus;
 
-  const operacoesSheetDataset = useMemo(
-    () =>
-      operacoesBase.filter((item) => {
-        const sameDate = sheetMonthMatches(item.data_operacao);
-        const sameEmpresa = selectedEmpresaId === "all" || item.empresa_id === selectedEmpresaId;
-        return sameDate && sameEmpresa;
-      }),
-    [operacoesBase, selectedEmpresaId, sheetMonthMatches]
-  );
+        const meioPgtoNormalizado = (item.forma_pagamento ?? "").toUpperCase();
+        const matchesMeio = selectedMeioPagamento === "all" || meioPgtoNormalizado.includes(selectedMeioPagamento.toUpperCase());
 
-  const operacoesTabela = useMemo(
-    () => operacoesSheetDataset.map((item) => processarOperacao(item, empresas)),
-    [operacoesSheetDataset, empresas]
-  );
+        const search = searchTerm.toLowerCase();
+        const matchesSearch = !search ||
+          String(item.transportadora_id ?? "").toLowerCase().includes(search) ||
+          String(item.tipo_servico_id ?? "").toLowerCase().includes(search) ||
+          String(item.placa ?? "").toLowerCase().includes(search) ||
+          String(item.nf_numero ?? "").toLowerCase().includes(search);
 
-  const operacoesTabelaKpis = useMemo(
-    () => operacoesKpiDataset.map((item) => processarOperacao(item, empresas)),
-    [operacoesKpiDataset, empresas]
-  );
+        return matchesModalidade && matchesStatus && matchesMeio && matchesSearch;
+      });
+  }, [operacoesBase, matchesSelectedPeriod, selectedEmpresaId, empresas, selectedModalidade, selectedStatus, selectedMeioPagamento, searchTerm]);
 
   const operacoesKpis = useMemo(() => {
     let faturamento = 0;
     let caixaReal = 0;
-    let exposicao = 0;
-    let faturamentoMensal = 0;
+    let provisionado = 0;
+    let aReceber = 0;
+    let atrasado = 0;
+
     let volumeTotal = 0;
     let colaboradores = 0;
-    let nfComRegistro = 0;
-    let recebidasCount = 0;
 
-    operacoesTabelaKpis.forEach((item) => {
-      const totalLinha = Number(item.totalFinalCalculado ?? item.valor_total_label ?? item.valor_total ?? 0);
-      const quantidade = Number(item.quantidade ?? item.quantidade_label ?? 0);
+    let modalidadeCounts: Record<string, number> = {
+      CAIXA_IMEDIATO: 0,
+      DUPLICATA_FORNECEDOR: 0,
+      FECHAMENTO_MENSAL_EMPRESA: 0,
+      TRANSBORDO_30D: 0
+    };
+
+    filteredOperations.forEach((item) => {
+      const totalLinha = Number(item.totalFinalCalculado ?? 0);
+      const quantidade = Number(item.quantidade ?? 0);
       const quantidadeColaboradores = Number(item.quantidade_colaboradores ?? 1);
-      const statusPagamento = String(item.statusPagamento ?? item.status_pagamento ?? "").toUpperCase();
-      const modalidadeFinanceira = String(
-        item.modalidadeFinanceira ??
-        item.modalidade_financeira ??
-        item.avaliacao_json?.contexto_importacao?.modalidade_financeira_override ??
-        item.regra_financeira?.modalidade_financeira ??
-        ""
-      ).toUpperCase();
-      const nfNumero = String(item.nf_numero ?? "").trim().toUpperCase();
+      const statusPagamento = String(item.statusPagamento ?? "").toUpperCase();
+      const modalidade = String(item.modalidadeFinanceira ?? "").toUpperCase();
 
-      faturamento += Number.isFinite(totalLinha) ? totalLinha : 0;
-      volumeTotal += Number.isFinite(quantidade) ? quantidade : 0;
-      colaboradores += Number.isFinite(quantidadeColaboradores) ? quantidadeColaboradores : 0;
+      faturamento += totalLinha;
+      volumeTotal += quantidade;
+      colaboradores += quantidadeColaboradores;
 
-      if (statusPagamento === "RECEBIDO") {
-        recebidasCount += 1;
+      if (modalidade === "CAIXA_IMEDIATO") {
+        caixaReal += totalLinha;
+      } else {
+        provisionado += totalLinha;
       }
 
-      // Distribuição por MODALIDADE FINANCEIRA escolhida pelo encarregado:
-      // • Recebimento Imediato  → CAIXA_IMEDIATO            → card Caixa Real
-      // • Pagamento a Prazo     → DUPLICATA_FORNECEDOR      → card Boleto a Receber
-      // • Faturamento Mensal    → FECHAMENTO_MENSAL_EMPRESA → card Faturamento Mensal
-      if (modalidadeFinanceira === "CAIXA_IMEDIATO") {
-        caixaReal += Number.isFinite(totalLinha) ? totalLinha : 0;
-      } else if (modalidadeFinanceira === "DUPLICATA" || modalidadeFinanceira === "DUPLICATA_FORNECEDOR") {
-        exposicao += Number.isFinite(totalLinha) ? totalLinha : 0;
-      } else if (modalidadeFinanceira === "FATURAMENTO_MENSAL" || modalidadeFinanceira === "FECHAMENTO_MENSAL_EMPRESA") {
-        faturamentoMensal += Number.isFinite(totalLinha) ? totalLinha : 0;
+      if (statusPagamento === "PENDENTE") {
+        aReceber += totalLinha;
+      } else if (statusPagamento === "ATRASADO") {
+        atrasado += totalLinha;
+        aReceber += totalLinha; // Atrasado também é um valor "a receber" não realizado
       }
-      if (nfNumero && nfNumero !== "NAO" && nfNumero !== "NÃO") nfComRegistro += 1;
+
+      if (modalidadeCounts[modalidade] !== undefined) {
+        modalidadeCounts[modalidade] += totalLinha;
+      }
     });
 
-    const operacoesCount = operacoesTabelaKpis.length;
+    const operacoesCount = filteredOperations.length;
 
     return {
       faturamento,
       caixaReal,
-      exposicao,
-      faturamentoMensal,
+      provisionado,
+      aReceber,
+      atrasado,
       volumeTotal,
       colaboradores,
       operacoesCount,
+      modalidadeCounts,
       ticketMedio: operacoesCount > 0 ? faturamento / operacoesCount : 0,
       produtividade: colaboradores > 0 ? volumeTotal / colaboradores : 0,
-      nfPercentual: operacoesCount > 0 ? (nfComRegistro / operacoesCount) * 100 : 0,
-      caixaMedio: recebidasCount > 0 ? caixaReal / recebidasCount : 0,
+      valorPorVolume: volumeTotal > 0 ? faturamento / volumeTotal : 0,
     };
-  }, [operacoesTabelaKpis]);
+  }, [filteredOperations]);
 
   const isLoading = isLoadingEmpresas || isLoadingOperacoesBase || isLoadingLogs || isLoadingIssues;
 
@@ -800,11 +803,8 @@ const Operacoes = () => {
         const hasInvalidTimeRange = !isTimeRangeValid(inicioOperacao, terminoOperacao);
         const terminoOperacaoFinal = hasInvalidTimeRange ? null : terminoOperacao;
         if (hasInvalidTimeRange) adjustedTimeRows++;
-        const qtdColaboradores = parseNumericCell(getVal(row, "COL", "COLABORADORES", "QTD COL", "NUM COL")) || 1;
-        const valorUnitarioFilme = parseNumericCell(getVal(row, "UNIT. FILME", "UNIT FILME", "VALOR FILME", "VLR FILME"));
-        const quantidadeFilme = parseNumericCell(getVal(row, "QTD. FILME", "QTD FILME", "QUANTIDADE FILME", "QTDE FILME"));
-        const valorTotalFilme = valorUnitarioFilme * quantidadeFilme;
 
+        const qtdColaboradores = parseNumericCell(getVal(row, "COL", "COLABORADORES", "QTD COL", "NUM COL")) || 1;
         const unitarioParsed = parseNumericCell(getVal(row, "VALOR UNITARIO", "VAL UNIT.", "VALOR UNIT.", "UNITARIO"));
         const quantidadeParsed = Math.max(parseNumericCell(getVal(row, "QUANTITATIVO", "QUANTIATIVO", "QUANTI", "QTD", "QUANTIDADE", "VOLUMES")) || 1, 0);
 
@@ -812,12 +812,7 @@ const Operacoes = () => {
         if (nfRaw === "S" || nfRaw === "SIM") nfRaw = "SIM";
         if (nfRaw === "N" || nfRaw === "NAO" || nfRaw === "NÃO") nfRaw = "NÃO";
 
-        const issRawValue = parseNumericCell(getVal(row, "LÍQUOTA DE ISS", "LIQUOTA DE ISS", "% ISS", "ISS"));
-        const pIssFinal = nfRaw === "SIM" ? 5 : (nfRaw === "NÃO" ? 0 : issRawValue);
-
-        const valorDescargaP = quantidadeParsed * unitarioParsed;
-        const custoIssP = valorDescargaP * (pIssFinal / 100);
-        const valorTotalP = valorDescargaP + custoIssP;
+        const valorTotalCalculado = quantidadeParsed * unitarioParsed;
 
         importedOperations.push({
           data_operacao: dataFinal,
@@ -831,17 +826,17 @@ const Operacoes = () => {
           valor_unitario_snapshot: unitarioParsed,
           quantidade: quantidadeParsed,
           quantidade_colaboradores: qtdColaboradores,
-          valor_total: valorTotalP,
+          valor_total: valorTotalCalculado,
           placa: getVal(row, "PLACA"),
           nf_numero: nfRaw || "",
           ctrc: getVal(row, "CTRC"),
-          percentual_iss: pIssFinal,
-          valor_descarga: valorDescargaP,
-          custo_com_iss: custoIssP,
-          valor_unitario_filme: valorUnitarioFilme,
-          quantidade_filme: quantidadeFilme,
-          valor_total_filme: valorTotalFilme,
-          valor_faturamento_nf: parseNumericCell(getVal(row, "FATURAMENTO - NF", "FATURAMENTO", "LIQUIDO", "FATURAMENTO NF")),
+          percentual_iss: 0,
+          valor_descarga: valorTotalCalculado,
+          custo_com_iss: 0,
+          valor_unitario_filme: 0,
+          quantidade_filme: 0,
+          valor_total_filme: 0,
+          valor_faturamento_nf: 0,
           avaliacao_json: {
             origem_importacao: "planilha",
             contexto_importacao: {
@@ -859,6 +854,7 @@ const Operacoes = () => {
           origem_dado: "importacao",
         });
       }
+
 
       const replacedCount = await OperacaoProducaoService.replaceImportedBatch(selectedEmpresaId, importedOperations);
       const datasImportadas = Array.from(new Set(importedOperations.map((item) => item.data_operacao))).sort();
@@ -900,11 +896,8 @@ const Operacoes = () => {
               <div className="w-full overflow-x-auto">
                 <div className="flex min-w-max items-center gap-2">
                   <Select value={selectedYear} onValueChange={setSelectedYear}>
-                    <SelectTrigger className="w-[120px] h-10 shrink-0 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium">
-                      <div className="flex items-center gap-2">
-                        <CalendarIcon className="h-4 w-4 text-primary" />
-                        <SelectValue placeholder="Ano" />
-                      </div>
+                    <SelectTrigger className="w-[100px] h-10 shrink-0 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium">
+                      <SelectValue placeholder="Ano" />
                     </SelectTrigger>
                     <SelectContent>
                       {YEAR_OPTIONS.map((year) => (
@@ -916,11 +909,8 @@ const Operacoes = () => {
                   </Select>
 
                   <Select value={selectedMonthNumber} onValueChange={setSelectedMonthNumber}>
-                    <SelectTrigger className="w-[180px] h-10 shrink-0 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium">
-                      <div className="flex items-center gap-2">
-                        <CalendarIcon className="h-4 w-4 text-primary" />
-                        <SelectValue placeholder="Mes" />
-                      </div>
+                    <SelectTrigger className="w-[140px] h-10 shrink-0 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium">
+                      <SelectValue placeholder="Mês" />
                     </SelectTrigger>
                     <SelectContent>
                       {MONTH_FILTER_OPTIONS.map((month) => (
@@ -932,10 +922,10 @@ const Operacoes = () => {
                   </Select>
 
                   <Select value={selectedEmpresaId} onValueChange={setSelectedEmpresaId}>
-                    <SelectTrigger className="w-[280px] h-10 shrink-0 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium">
+                    <SelectTrigger className="w-[200px] h-10 shrink-0 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium">
                       <div className="flex items-center gap-2">
                         <Building2 className="h-4 w-4 text-primary" />
-                        <SelectValue placeholder="Selecione a empresa" />
+                        <SelectValue placeholder="Empresa" />
                       </div>
                     </SelectTrigger>
                     <SelectContent>
@@ -947,6 +937,28 @@ const Operacoes = () => {
                       ))}
                     </SelectContent>
                   </Select>
+
+                  <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+                    <SelectTrigger className="w-[160px] h-10 shrink-0 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium">
+                      <SelectValue placeholder="Status Pgto" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos Status</SelectItem>
+                      <SelectItem value="PENDENTE">Pendente</SelectItem>
+                      <SelectItem value="RECEBIDO">Recebido</SelectItem>
+                      <SelectItem value="ATRASADO">Atrasado</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  <div className="relative w-[200px]">
+                    <Input
+                      placeholder="Busca rápida..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="h-10 pl-9"
+                    />
+                    <Package2 className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  </div>
                 </div>
               </div>
 
@@ -964,61 +976,61 @@ const Operacoes = () => {
 
             <div className="w-full overflow-x-auto">
               <div className="flex min-w-max items-center justify-end gap-2">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => navigate("/operacional/dashboard")}>
-                        <Upload className="h-4 w-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Ver dashboard</TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => navigate("/cadastros/regras-operacionais")}>
-                        <ExternalLink className="h-4 w-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Regras operacionais</TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-9 w-9 shrink-0 border-destructive/30 text-destructive hover:bg-destructive-soft hover:text-destructive-strong"
-                        onClick={handleClearImports}
-                        disabled={!selectedEmpresaId || clearMutation.isPending}
-                      >
-                        {confirmClear ? <RefreshCw className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>{confirmClear ? "Confirmar limpeza" : "Limpar importacoes"}</TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => setImportModalOpen(true)}>
-                        <FileUp className="h-4 w-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Importar operacoes</TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        size="icon"
-                        className="h-9 w-9 shrink-0 shadow-lg shadow-primary/20"
-                        onClick={handleProcessar}
-                        disabled={processMutation.isPending || isLoading}
-                      >
-                        {processMutation.isPending ? (
-                          <RefreshCw className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <PlayCircle className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>{processMutation.isPending ? "Processando..." : "Processar dia"}</TooltipContent>
-                  </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => navigate("/operacional/dashboard")}>
+                      <Upload className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Ver dashboard</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => navigate("/cadastros/regras-operacionais")}>
+                      <ExternalLink className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Regras operacionais</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-9 w-9 shrink-0 border-destructive/30 text-destructive hover:bg-destructive-soft hover:text-destructive-strong"
+                      onClick={handleClearImports}
+                      disabled={!selectedEmpresaId || clearMutation.isPending}
+                    >
+                      {confirmClear ? <RefreshCw className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{confirmClear ? "Confirmar limpeza" : "Limpar importacoes"}</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => setImportModalOpen(true)}>
+                      <FileUp className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Importar operacoes</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="icon"
+                      className="h-9 w-9 shrink-0 shadow-lg shadow-primary/20"
+                      onClick={handleProcessar}
+                      disabled={processMutation.isPending || isLoading}
+                    >
+                      {processMutation.isPending ? (
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <PlayCircle className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{processMutation.isPending ? "Processando..." : "Processar dia"}</TooltipContent>
+                </Tooltip>
               </div>
             </div>
           </div>
@@ -1034,105 +1046,110 @@ const Operacoes = () => {
         ) : (
           <>
             <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
-                <div className="xl:col-span-1">
-                  <TopKpiCard
-                    label="Faturamento"
-                    value={formatCurrency(operacoesKpis.faturamento)}
-                    helper="Valor bruto consolidado das operacoes"
-                    variant="primary"
-                    icon={Wallet}
-                    iconColor="bg-white/20 text-white"
-                  />
+              <div className="esc-card p-1 w-fit bg-muted/50 rounded-lg">
+                <Tabs value={selectedModalidade} onValueChange={setSelectedModalidade} className="w-fit">
+                  <TabsList className="bg-transparent h-9 p-0 space-x-1">
+                    <TabsTrigger value="all" className="rounded-md px-4 data-[state=active]:bg-card data-[state=active]:shadow-sm">Todos</TabsTrigger>
+                    <TabsTrigger value="CAIXA_IMEDIATO" className="rounded-md px-4 data-[state=active]:bg-card data-[state=active]:shadow-sm">Caixa Real</TabsTrigger>
+                    <TabsTrigger value="DUPLICATA_FORNECEDOR" className="rounded-md px-4 data-[state=active]:bg-card data-[state=active]:shadow-sm">Duplicatas</TabsTrigger>
+                    <TabsTrigger value="FECHAMENTO_MENSAL_EMPRESA" className="rounded-md px-4 data-[state=active]:bg-card data-[state=active]:shadow-sm">Faturamento Mensal</TabsTrigger>
+                    <TabsTrigger value="TRANSBORDO_30D" className="rounded-md px-4 data-[state=active]:bg-card data-[state=active]:shadow-sm">Transbordo</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-4">
+                <TopKpiCard
+                  label="Faturamento Total"
+                  value={formatCurrency(operacoesKpis.faturamento)}
+                  helper="Soma de todos os totais calculados"
+                  variant="primary"
+                  icon={Wallet}
+                  iconColor="bg-white/20 text-white"
+                />
+                <TopKpiCard
+                  label="Caixa Imediato"
+                  value={formatCurrency(operacoesKpis.caixaReal)}
+                  helper="Modalidade CAIXA_IMEDIATO"
+                  size="small"
+                  icon={HandCoins}
+                  iconColor="bg-success-soft text-success-strong"
+                />
+                <TopKpiCard
+                  label="Provisionado"
+                  value={formatCurrency(operacoesKpis.provisionado)}
+                  helper="Restante (a prazo/mensal)"
+                  size="small"
+                  variant="warning"
+                  icon={CalendarDays}
+                  iconColor="bg-warning-soft text-warning-strong"
+                />
+                <TopKpiCard
+                  label="A Receber"
+                  value={formatCurrency(operacoesKpis.aReceber)}
+                  helper={`${formatCurrency(operacoesKpis.atrasado)} em atraso`}
+                  size="small"
+                  icon={Scale}
+                  iconColor="bg-info-soft text-info-strong"
+                />
+              </div>
+
+              <div className="esc-card p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-display font-medium text-sm text-muted-foreground uppercase tracking-wider">Por Modalidade</h3>
+                  <div className="text-xs text-muted-foreground">Distribuição financeira dos itens filtrados</div>
                 </div>
-                <div className="xl:col-span-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <TopKpiCard
-                    label="Caixa Real (Recebido)"
-                    value={formatCurrency(operacoesKpis.caixaReal)}
-                    helper="Ja convertido"
-                    size="small"
-                    variant="success"
-                    icon={HandCoins}
-                    iconColor="bg-success-soft text-success-strong"
-                  />
-                  <TopKpiCard
-                    label="Boleto a Receber"
-                    value={formatCurrency(operacoesKpis.exposicao)}
-                    helper="Faturado com compensacao futura"
-                    size="small"
-                    variant="warning"
-                    icon={Scale}
-                    iconColor="bg-warning-soft text-warning-strong"
-                  />
-                  <TopKpiCard
-                    label="Faturamento Mensal"
-                    value={formatCurrency(operacoesKpis.faturamentoMensal)}
-                    helper="Compensa no fechamento do mes"
-                    size="small"
-                    icon={CalendarDays}
-                    iconColor="bg-info-soft text-info-strong"
-                  />
-                  <TopKpiCard
-                    label="Volume Total"
-                    value={formatInteger(operacoesKpis.volumeTotal)}
-                    helper="Qtd. movimentada"
-                    size="small"
-                    icon={Package2}
-                    iconColor="bg-purple-100 text-purple-700"
-                  />
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="p-3 bg-muted/20 rounded-lg">
+                    <div className="text-[11px] text-muted-foreground uppercase font-semibold">Caixa Imediato</div>
+                    <div className="text-lg font-bold text-foreground">{formatCurrency(operacoesKpis.modalidadeCounts.CAIXA_IMEDIATO)}</div>
+                  </div>
+                  <div className="p-3 bg-muted/20 rounded-lg">
+                    <div className="text-[11px] text-muted-foreground uppercase font-semibold">Duplicatas</div>
+                    <div className="text-lg font-bold text-foreground">{formatCurrency(operacoesKpis.modalidadeCounts.DUPLICATA_FORNECEDOR)}</div>
+                  </div>
+                  <div className="p-3 bg-muted/20 rounded-lg">
+                    <div className="text-[11px] text-muted-foreground uppercase font-semibold">Faturamento Mensal</div>
+                    <div className="text-lg font-bold text-foreground">{formatCurrency(operacoesKpis.modalidadeCounts.FECHAMENTO_MENSAL_EMPRESA)}</div>
+                  </div>
+                  <div className="p-3 bg-muted/20 rounded-lg">
+                    <div className="text-[11px] text-muted-foreground uppercase font-semibold">Transbordo</div>
+                    <div className="text-lg font-bold text-foreground">{formatCurrency(operacoesKpis.modalidadeCounts.TRANSBORDO_30D)}</div>
+                  </div>
                 </div>
               </div>
 
               <div className="esc-card p-4 space-y-3">
-                <h3 className="font-display font-medium text-sm text-muted-foreground">Medias e Desempenho</h3>
-                <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+                <h3 className="font-display font-medium text-sm text-muted-foreground uppercase tracking-wider">Médias e Desempenho</h3>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                   <TopKpiCard
-                    label="Colaboradores"
-                    value={formatInteger(operacoesKpis.colaboradores)}
+                    label="Operações"
+                    value={formatInteger(operacoesKpis.operacoesCount)}
                     size="xs"
                     variant="muted"
-                    icon={Users}
-                    iconColor="bg-muted text-muted-foreground"
+                    icon={Package2}
                   />
                   <TopKpiCard
-                    label="Ticket medio"
+                    label="Ticket Médio"
                     value={formatCurrency(operacoesKpis.ticketMedio)}
                     size="xs"
                     variant="muted"
                     icon={Calculator}
-                    iconColor="bg-blue-100 text-blue-700"
                   />
                   <TopKpiCard
                     label="Produtividade"
                     value={formatDecimal(operacoesKpis.produtividade)}
+                    helper="Volumes/Colab"
                     size="xs"
                     variant="muted"
                     icon={TrendingUp}
-                    iconColor="bg-green-100 text-green-700"
                   />
                   <TopKpiCard
-                    label="NF (%)"
-                    value={formatPercent(operacoesKpis.nfPercentual)}
-                    size="xs"
-                    variant="muted"
-                    icon={FileBadge2}
-                    iconColor="bg-orange-100 text-orange-700"
-                  />
-                  <TopKpiCard
-                    label="Caixa medio"
-                    value={formatCurrency(operacoesKpis.caixaMedio)}
+                    label="Valor por Volume"
+                    value={formatCurrency(operacoesKpis.valorPorVolume)}
                     size="xs"
                     variant="muted"
                     icon={CircleDollarSign}
-                    iconColor="bg-teal-100 text-teal-700"
-                  />
-                  <TopKpiCard
-                  label="Operações"
-                    value={formatInteger(operacoesKpis.operacoesCount)}
-                    size="xs"
-                    variant="muted"
-                    icon={Receipt}
-                    iconColor="bg-blue-100 text-blue-700"
                   />
                 </div>
               </div>
@@ -1140,54 +1157,22 @@ const Operacoes = () => {
 
             <Tabs defaultValue="base" className="space-y-4">
               <TabsContent value="base" className="space-y-5">
-                <section className="esc-card p-5">
-                  <div className="flex items-center justify-between gap-3 mb-4">
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <h2 className="font-display font-semibold text-foreground">Base diaria de operacoes</h2>
-                          <p className="text-sm text-muted-foreground">
-                            Planilha operacional que alimenta os demonstrativos e indicadores do dashboard.
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Select value={sheetYear} onValueChange={setSheetYear}>
-                            <SelectTrigger className="w-[100px] h-8 shrink-0 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium text-xs">
-                              <SelectValue placeholder="Ano" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {YEAR_OPTIONS.map((year) => (
-                                <SelectItem key={year} value={year}>
-                                  {year}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Select value={sheetMonthNumber} onValueChange={setSheetMonthNumber}>
-                            <SelectTrigger className="w-[140px] h-8 shrink-0 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium text-xs">
-                              <SelectValue placeholder="Mes" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {MONTH_FILTER_OPTIONS.map((option) => (
-                                <SelectItem key={option.value} value={option.value}>
-                                  {option.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                    </div>
-                    <Badge className="bg-info-soft text-info-strong">
-                      Fluxo operacional ativo nesta tela
-                    </Badge>
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <div>
+                    <h2 className="font-display font-semibold text-foreground">Base Diária de Operações</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Registros operacionais detalhados conforme filtros aplicados acima.
+                    </p>
                   </div>
-                  <OperacoesTableBlock
-                    date={dateValue}
-                    empresaId={selectedEmpresaId}
-                    rowsData={operacoesSheetDataset}
-                  />
-                </section>
+                  <Badge className="bg-info-soft text-info-strong">
+                    Fluxo operacional ativo nesta tela
+                  </Badge>
+                </div>
+                <OperacoesTableBlock
+                  date={dateValue}
+                  empresaId={selectedEmpresaId}
+                  rowsData={filteredOperations}
+                />
               </TabsContent>
 
               <TabsContent value="importacoes" className="space-y-4">
@@ -1303,3 +1288,4 @@ const Operacoes = () => {
 };
 
 export default Operacoes;
+
