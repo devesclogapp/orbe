@@ -2702,6 +2702,23 @@ class CustoExtraOperacionalServiceClass {
     return data ?? [];
   }
 
+  async getByCompetencia(competencia: string, empresaId?: string) {
+    let query = operationalClient
+      .from('custos_extras_operacionais')
+      .select(`
+        *,
+        empresas:empresa_id(nome)
+      `)
+      .like('data', `${competencia}%`)
+      .order('data', { ascending: false });
+
+    if (empresaId) query = query.eq('empresa_id', empresaId);
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data ?? [];
+  }
+
   async deleteImported(empresaId?: string | null) {
     let query = operationalClient
       .from('custos_extras_operacionais')

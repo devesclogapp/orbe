@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { useOperationalPipeline, buildCustosExtrasPipeline } from "@/contexts/OperationalPipelineContext";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { CustosExtrasTableBlock } from "@/components/operacoes/CustosExtrasTableBlock";
@@ -418,6 +419,8 @@ const TopKpiCard = ({
 const CustosExtrasLancamento = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { openPipeline } = useOperationalPipeline();
+
   const [selectedYear, setSelectedYear] = useState<string>(String(new Date().getFullYear()));
   const [selectedMonthNumber, setSelectedMonthNumber] = useState<string>("all");
   const [custosYear, setCustosYear] = useState<string>(String(new Date().getFullYear()));
@@ -639,6 +642,14 @@ const CustosExtrasLancamento = () => {
       toast.success(`${replacedCount} custo(s) extra(s) importado(s) com sucesso!`, {
         description: "Os blocos da planilha foram convertidos em despesas independentes da base de faturamento.",
       });
+
+      // Aciona o pipeline visual
+      const empresaNome = empresas?.find(e => e.id === selectedEmpresaId)?.nome || "Empresa";
+      openPipeline(buildCustosExtrasPipeline({
+        competencia: monthValue,
+        empresa: empresaNome,
+        currentStep: "lancamento",
+      }));
 
       await queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
       setImportModalOpen(false);

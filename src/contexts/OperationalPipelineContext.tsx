@@ -1011,3 +1011,100 @@ export const buildOperacaoVolumePipeline = (params: {
         }
     };
 };
+
+export type CustoExtraStepId = "lancamento" | "validacao_operacional" | "financeiro" | "centro_custo" | "concluido";
+
+export const buildCustosExtrasPipeline = (params: {
+    competencia: string;
+    empresa: string;
+    currentStep: CustoExtraStepId;
+    devolucaoMotivo?: string;
+}): PipelineTrigger => {
+    const { competencia, empresa, currentStep, devolucaoMotivo } = params;
+
+    const stepOrder: CustoExtraStepId[] = [
+        "lancamento",
+        "validacao_operacional",
+        "financeiro",
+        "centro_custo",
+        "concluido"
+    ];
+
+    const currentIndex = stepOrder.indexOf(currentStep);
+
+    const getStatus = (index: number): PipelineStepStatus => {
+        if (devolucaoMotivo && index === currentIndex) return "devolved";
+        if (index < currentIndex) return "done";
+        if (index === currentIndex) return "current";
+        return "pending";
+    };
+
+    const getRoute = (id: CustoExtraStepId) => {
+        switch (id) {
+            case "lancamento":
+            case "validacao_operacional":
+                return "/producao/custos-extras";
+            case "financeiro":
+            case "centro_custo":
+                return "/financeiro";
+            default:
+                return undefined;
+        }
+    };
+
+    const steps: PipelineStep[] = [
+        {
+            id: "lancamento",
+            label: "Lançamento",
+            description: "Registro da despesa operacional extraordinária.",
+            status: getStatus(0),
+            route: getRoute("lancamento"),
+            responsible: "Encarregado",
+        },
+        {
+            id: "validacao_operacional",
+            label: "Validação Operacional",
+            description: "Aprovação da legitimidade do custo.",
+            status: getStatus(1),
+            route: getRoute("validacao_operacional"),
+            responsible: "Operação / ADM",
+        },
+        {
+            id: "financeiro",
+            label: "Financeiro",
+            description: "Consolidação e liberação de pagamento.",
+            status: getStatus(2),
+            route: getRoute("financeiro"),
+            responsible: "Financeiro",
+        },
+        {
+            id: "centro_custo",
+            label: "Centro de Custo",
+            description: "Classificação e impacto contábil.",
+            status: getStatus(3),
+            route: getRoute("centro_custo"),
+            responsible: "Financeiro",
+        },
+        {
+            id: "concluido",
+            label: "Concluído",
+            description: "Refletido no Dashboard operacional.",
+            status: getStatus(4),
+        },
+    ];
+
+    const isDone = currentStep === "concluido";
+
+    return {
+        context: { competencia, empresa, fluxo: "Custos Extras" },
+        steps,
+        title: "Status do Custo Extra",
+        subtitle: "Acompanhe o fluxo de aprovação e pagamento da despesa.",
+        nextAction: isDone ? undefined : {
+            label: "Ver Fluxo Completo →",
+            description: "Acompanhe a próxima etapa de validação.",
+            route: getRoute(stepOrder[Math.min(currentIndex + 1, stepOrder.length - 1)]) || "/producao/custos-extras",
+        }
+    };
+};
+

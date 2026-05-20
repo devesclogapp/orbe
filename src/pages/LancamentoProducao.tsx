@@ -63,6 +63,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { cn } from "@/lib/utils";
 import {
     ColaboradorService,
+    CustoExtraOperacionalService,
     EmpresaService,
     RegrasFinanceirasService,
     RegrasDadosService,
@@ -127,6 +128,7 @@ type FormState = {
     responsavel_nome: string;
     data_vencimento: string;
     status_financeiro: string;
+    categoria_custo: string;
 };
 
 const REGRAS_LOGISTICA: RegraAvaliacao[] = [
@@ -484,7 +486,6 @@ const PRESETS_PERMITIDOS_POR_PERFIL: Record<string, string[]> = {
 
 const PRESET_ROTAS: Record<string, string> = {
     preset_diaristas: "/producao/diaristas",
-    preset_custos_mensais: "/producao/custos-extras",
     preset_transbordo: "/producao/servicos-extras",
 };
 
@@ -527,6 +528,7 @@ const LancamentoProducao = () => {
         responsavel_nome: "",
         data_vencimento: "",
         status_financeiro: "PENDENTE",
+        categoria_custo: "OPERACIONAL",
     });
     const [etapaAtual, setEtapaAtual] = useState<EtapaFormulario>(1);
     const [condutaColaboradores, setCondutaColaboradores] = useState<Record<string, CondutaColaborador>>({});
@@ -1206,12 +1208,33 @@ const LancamentoProducao = () => {
     const resumo = resumoV2 ?? resumoFallback;
 
     const mutation = useMutation({
-        mutationFn: ({ operacao, colaboradores }: any) => OperacaoProducaoService.createWithColaboradores(operacao, colaboradores),
+        mutationFn: async ({ operacao, colaboradores }: any) => {
+            if (operacao.categoria_servico === 'CUSTO') {
+                const payload = {
+                    data: operacao.data_operacao,
+                    empresa_id: operacao.empresa_id,
+                    categoria_custo: operacao.categoria_custo || 'OPERACIONAL',
+                    descricao: operacao.descricao_servico || "Lançamento manual de custo",
+                    valor_unitario: operacao.valor_unitario_snapshot,
+                    quantidade: operacao.quantidade,
+                    total: operacao.valor_total,
+                    forma_pagamento: operacao.forma_pagamento_id,
+                    status_pagamento: 'PENDENTE',
+                    tipo_lancamento: 'DESPESA',
+                    origem_dado: 'manual',
+                    pipeline_status: 'PENDENTE',
+                    avaliacao_json: operacao.avaliacao_json,
+                };
+                return CustoExtraOperacionalService.createMany([payload]);
+            }
+            return OperacaoProducaoService.createWithColaboradores(operacao, colaboradores);
+        },
         onSuccess: () => {
             toast.success("Produção registrada com sucesso!");
             queryClient.invalidateQueries({ queryKey: ["producao_recente"] });
             queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
             queryClient.invalidateQueries({ queryKey: ["operacoes"] });
+            queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
 
             const lastForm = { ...form };
             setForm((prev) => ({
@@ -1286,7 +1309,7 @@ const LancamentoProducao = () => {
                 toast.error(etapaTresBlockReason);
                 return;
             }
-            if (isFluxoSemEquipe) {
+            if (isFluxoSemEquipe || isCustosMensaisCLT) {
                 handleSave();
             } else {
                 setEtapaAtual(4);
@@ -1380,6 +1403,7 @@ const LancamentoProducao = () => {
             observacao: form.observacao.trim() || null,
             responsavel_id: user?.id,
             descricao_servico: form.descricao_servico.trim() || null,
+            categoria_custo: form.categoria_custo,
             data_vencimento: form.data_vencimento || null,
             tenant_id: tenantId,
         };
@@ -1531,264 +1555,169 @@ const LancamentoProducao = () => {
                                         </div>
                                     )}
 
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <TimePickerField label="Entrada" value={form.horario_inicio} onChange={(v) => setForm(f => ({ ...f, horario_inicio: v }))} />
-                                        <TimePickerField label="Saída" value={form.horario_fim} onChange={(v) => setForm(f => ({ ...f, horario_fim: v }))} />
-                                    </div>
-                                    {horarioInvalido && <p className="text-xs text-destructive">Horário de saída menor que o de entrada.</p>}
+                                    {isCustosMensaisCLT && (
+                                        <div className="space-y-1.5">
+                                            <Label>Categoria de Custo</Label>
+                                            <Select value={form.categoria_custo} onValueChange={(v) => setForm(f => ({ ...f, categoria_custo: v }))}>
+                                                <SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="OPERACIONAL">Operacional</SelectItem>
+                                                    <SelectItem value="MERENDA">Merenda / Alimentação</SelectItem>
+                                                    <SelectItem value="ADMINISTRATIVO">Administrativo</SelectItem>
+                                                    <SelectItem value="FORNECEDOR">Fornecedor</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    )}
+
+                                    {!isCustosMensaisCLT && (
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <TimePickerField label="Entrada" value={form.horario_inicio} onChange={(v) => setForm(f => ({ ...f, horario_inicio: v }))} />
+                                            <TimePickerField label="Saída" value={form.horario_fim} onChange={(v) => setForm(f => ({ ...f, horario_fim: v }))} />
+                                        </div>
+                                    )}
+                                    {horarioInvalido && !isCustosMensaisCLT && <p className="text-xs text-destructive">Horário de saída menor que o de entrada.</p>}
                                 </div>
                             )}
 
                             {etapaAtual === 3 && (
                                 <div className="space-y-5">
                                     {/* ── SEÇÃO: OPERAÇÃO ── */}
-                                    <div>
-                                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-1.5">
-                                            <Truck className="w-3.5 h-3.5" /> Operação
-                                        </p>
-                                        <div className="space-y-3">
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div className="space-y-1.5">
-                                                    <Label>Transportadora</Label>
-                                                    <Select value={form.transportadora} onValueChange={(v) => setForm(f => ({ ...f, transportadora: v }))}>
-                                                        <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Opcional" /></SelectTrigger>
-                                                        <SelectContent>
-                                                            {transportadorasDisponiveis.map((opt) => <SelectItem key={opt.id} value={opt.id}>{opt.nome}</SelectItem>)}
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div>
-                                                <div className="space-y-1.5">
-                                                    <Label>Fornecedor</Label>
-                                                    <Select value={form.fornecedor} onValueChange={(v) => setForm(f => ({ ...f, fornecedor: v }))}>
-                                                        <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Opcional" /></SelectTrigger>
-                                                        <SelectContent>
-                                                            {fornecedoresDisponiveis.map((opt) => <SelectItem key={opt.id} value={opt.id}>{opt.nome}</SelectItem>)}
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div>
-                                            </div>
-                                            <div className="space-y-1.5">
-                                                <div className="flex items-center justify-between">
-                                                    <Label>Produto/Carga</Label>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setProdutoDialogOpen(true)}
-                                                        className="text-xs text-primary font-semibold flex items-center gap-1 hover:underline"
-                                                    >
-                                                        <Plus className="w-3 h-3" /> Novo
-                                                    </button>
-                                                </div>
-                                                <Select value={form.produto} onValueChange={(v) => setForm(f => ({ ...f, produto: v }))}>
-                                                    <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Opcional" /></SelectTrigger>
-                                                    <SelectContent>
-                                                        {produtoOptions.length === 0 ? (
-                                                            <div className="px-3 py-4 text-center text-xs text-muted-foreground">
-                                                                Nenhum produto cadastrado.<br />Clique em <strong>+ Novo</strong> para adicionar.
-                                                            </div>
-                                                        ) : (
-                                                            produtoOptions.map((opt) => <SelectItem key={opt.id} value={opt.id}>{opt.nome}</SelectItem>)
-                                                        )}
-                                                    </SelectContent>
-                                                </Select>
-                                            </div>
+                                    {!isCustosMensaisCLT ? (
+                                        <div>
+                                            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-1.5">
+                                                <Truck className="w-3.5 h-3.5" /> Operação
+                                            </p>
                                             <div className="space-y-3">
-                                                {/* Quantidade de volumes - full width */}
-                                                <div className="space-y-1.5">
-                                                    <Label>{getQuantidadeLabel(tipoCalculoAtual)}</Label>
-                                                    <Input
-                                                        type="number"
-                                                        inputMode="numeric"
-                                                        value={form.quantidade}
-                                                        onChange={e => setForm(f => ({ ...f, quantidade: e.target.value }))}
-                                                        className="h-12 rounded-xl text-lg font-bold"
-                                                        placeholder="0"
-                                                    />
-                                                </div>
-
-                                                {/* Colaboradores - full width com counter grande */}
-                                                {!isFluxoSemEquipe && (
+                                                <div className="grid grid-cols-2 gap-3">
                                                     <div className="space-y-1.5">
-                                                        <Label className="font-semibold">Nº de Colaboradores</Label>
-                                                        <div className="flex items-center gap-3 bg-muted/30 rounded-xl p-2 border">
-                                                            <Button
-                                                                type="button"
-                                                                variant="outline"
-                                                                size="icon"
-                                                                className="h-12 w-12 rounded-xl shrink-0 bg-background"
-                                                                onClick={() => setForm(f => ({ ...f, quantidade_colaboradores: String(Math.max(1, Number(f.quantidade_colaboradores) - 1)) }))}
-                                                            >
-                                                                <Minus className="w-5 h-5" />
-                                                            </Button>
-                                                            <div className="flex-1 text-center">
-                                                                <span className="text-3xl font-black text-foreground leading-none">
-                                                                    {form.quantidade_colaboradores || "0"}
-                                                                </span>
-                                                                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">colaboradores</p>
-                                                            </div>
-                                                            <Button
-                                                                type="button"
-                                                                variant="outline"
-                                                                size="icon"
-                                                                className="h-12 w-12 rounded-xl shrink-0 bg-background"
-                                                                onClick={() => setForm(f => ({ ...f, quantidade_colaboradores: String(Number(f.quantidade_colaboradores) + 1) }))}
-                                                            >
-                                                                <Plus className="w-5 h-5" />
-                                                            </Button>
-                                                        </div>
+                                                        <Label>Transportadora</Label>
+                                                        <Select value={form.transportadora} onValueChange={(v) => setForm(f => ({ ...f, transportadora: v }))}>
+                                                            <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Opcional" /></SelectTrigger>
+                                                            <SelectContent>
+                                                                {transportadorasDisponiveis.map((opt) => <SelectItem key={opt.id} value={opt.id}>{opt.nome}</SelectItem>)}
+                                                            </SelectContent>
+                                                        </Select>
                                                     </div>
-                                                )}
-
-                                                {/* Placa e CTRC */}
+                                                    <div className="space-y-1.5">
+                                                        <Label>Fornecedor</Label>
+                                                        <Select value={form.fornecedor} onValueChange={(v) => setForm(f => ({ ...f, fornecedor: v }))}>
+                                                            <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Opcional" /></SelectTrigger>
+                                                            <SelectContent>
+                                                                {fornecedoresDisponiveis.map((opt) => <SelectItem key={opt.id} value={opt.id}>{opt.nome}</SelectItem>)}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <div className="flex items-center justify-between">
+                                                        <Label>Produto/Carga</Label>
+                                                        <button type="button" onClick={() => setProdutoDialogOpen(true)} className="text-xs text-primary font-semibold flex items-center gap-1 hover:underline">
+                                                            <Plus className="w-3 h-3" /> Novo
+                                                        </button>
+                                                    </div>
+                                                    <Select value={form.produto} onValueChange={(v) => setForm(f => ({ ...f, produto: v }))}>
+                                                        <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Opcional" /></SelectTrigger>
+                                                        <SelectContent>
+                                                            {produtoOptions.length === 0 ? (
+                                                                <div className="px-3 py-4 text-center text-xs text-muted-foreground">Nenhum produto cadastrado.</div>
+                                                            ) : (
+                                                                produtoOptions.map((opt) => <SelectItem key={opt.id} value={opt.id}>{opt.nome}</SelectItem>)
+                                                            )}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
                                                 <div className="grid grid-cols-2 gap-2">
                                                     <div className="space-y-1.5">
                                                         <Label className="flex items-center gap-1"><Car className="w-3 h-3" />Placa</Label>
-                                                        <Input
-                                                            value={form.placa_veiculo}
-                                                            onChange={e => setForm(f => ({ ...f, placa_veiculo: e.target.value.toUpperCase() }))}
-                                                            placeholder="AAA-0000"
-                                                            className="h-10 rounded-xl uppercase"
-                                                            maxLength={8}
-                                                        />
+                                                        <Input value={form.placa_veiculo} onChange={e => setForm(f => ({ ...f, placa_veiculo: e.target.value.toUpperCase() }))} placeholder="AAA-0000" className="h-10 rounded-xl uppercase" maxLength={8} />
                                                     </div>
                                                     <div className="space-y-1.5">
                                                         <Label>CTRC</Label>
-                                                        <Input
-                                                            value={form.ctrc}
-                                                            onChange={e => setForm(f => ({ ...f, ctrc: e.target.value }))}
-                                                            placeholder="Nº"
-                                                            className="h-10 rounded-xl"
-                                                        />
+                                                        <Input value={form.ctrc} onChange={e => setForm(f => ({ ...f, ctrc: e.target.value }))} placeholder="Nº" className="h-10 rounded-xl" />
                                                     </div>
-                                                </div>
-
-                                                {/* NF — toggle + campo de código */}
-                                                <div className="rounded-xl border border-border/60 overflow-hidden">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setForm(f => ({ ...f, nf_emite: !f.nf_emite, nf_numero: f.nf_emite ? "" : f.nf_numero }))}
-                                                        className={cn(
-                                                            "w-full flex items-center justify-between px-4 py-3 text-sm font-semibold transition-colors",
-                                                            form.nf_emite
-                                                                ? "bg-success-soft text-success-strong"
-                                                                : "bg-muted/40 text-muted-foreground hover:bg-muted/70"
-                                                        )}
-                                                    >
-                                                        <span className="flex items-center gap-2">
-                                                            <span className={cn(
-                                                                "w-5 h-5 rounded-full border-2 flex items-center justify-center text-xs font-black transition-all",
-                                                                form.nf_emite ? "border-success-strong bg-success-strong text-white" : "border-border bg-background"
-                                                            )}>
-                                                                {form.nf_emite ? "✓" : ""}
-                                                            </span>
-                                                            Emite Nota Fiscal (NF)?
-                                                        </span>
-                                                        <span className={cn(
-                                                            "text-xs px-2 py-0.5 rounded-full font-bold",
-                                                            form.nf_emite ? "bg-success-strong text-white" : "bg-muted text-muted-foreground"
-                                                        )}>
-                                                            {form.nf_emite ? "SIM" : "NÃO"}
-                                                        </span>
-                                                    </button>
-                                                    {form.nf_emite && (
-                                                        <div className="px-4 py-3 bg-background border-t border-border/40">
-                                                            <Label className="text-xs text-muted-foreground mb-1 block">Número / Código da NF</Label>
-                                                            <Input
-                                                                value={form.nf_numero}
-                                                                onChange={e => setForm(f => ({ ...f, nf_numero: e.target.value }))}
-                                                                placeholder="Digite o número ou código da NF"
-                                                                className="h-10 rounded-xl"
-                                                                autoFocus
-                                                            />
-                                                            {percentualIss > 0 && (
-                                                                <p className="text-[11px] text-success-strong mt-1.5 font-medium">
-                                                                    ℹ️ ISS de {percentualIss.toFixed(1)}% será aplicado ao valor total.
-                                                                </p>
-                                                            )}
-                                                        </div>
-                                                    )}
                                                 </div>
                                             </div>
                                         </div>
+                                    ) : (
+                                        <div>
+                                            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-1.5">
+                                                <Wallet className="w-3.5 h-3.5" /> Valores do Custo
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    <div className="space-y-4">
+                                        <div className="space-y-1.5">
+                                            <Label>{isCustosMensaisCLT ? "Quantidade" : getQuantidadeLabel(tipoCalculoAtual)}</Label>
+                                            <Input type="number" inputMode="numeric" value={form.quantidade} onChange={e => setForm(f => ({ ...f, quantidade: e.target.value }))} className="h-12 rounded-xl text-lg font-bold" placeholder="0" />
+                                        </div>
+
+                                        {!isCustosMensaisCLT && !isFluxoSemEquipe && (
+                                            <div className="space-y-1.5">
+                                                <Label className="font-semibold">Nº de Colaboradores</Label>
+                                                <div className="flex items-center gap-3 bg-muted/30 rounded-xl p-2 border">
+                                                    <Button type="button" variant="outline" size="icon" className="h-12 w-12 rounded-xl shrink-0 bg-background" onClick={() => setForm(f => ({ ...f, quantidade_colaboradores: String(Math.max(1, Number(f.quantidade_colaboradores) - 1)) }))}><Minus className="w-5 h-5" /></Button>
+                                                    <div className="flex-1 text-center">
+                                                        <span className="text-3xl font-black text-foreground leading-none">{form.quantidade_colaboradores || "0"}</span>
+                                                        <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">colaboradores</p>
+                                                    </div>
+                                                    <Button type="button" variant="outline" size="icon" className="h-12 w-12 rounded-xl shrink-0 bg-background" onClick={() => setForm(f => ({ ...f, quantidade_colaboradores: String(Number(f.quantidade_colaboradores) + 1) }))}><Plus className="w-5 h-5" /></Button>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {!isCustosMensaisCLT && (
+                                            <div className="rounded-xl border border-border/60 overflow-hidden">
+                                                <button type="button" onClick={() => setForm(f => ({ ...f, nf_emite: !f.nf_emite, nf_numero: f.nf_emite ? "" : f.nf_numero }))} className={cn("w-full flex items-center justify-between px-4 py-3 text-sm font-semibold transition-colors", form.nf_emite ? "bg-success-soft text-success-strong" : "bg-muted/40 text-muted-foreground hover:bg-muted/70")}>
+                                                    <span className="flex items-center gap-2"><span className={cn("w-5 h-5 rounded-full border-2 flex items-center justify-center text-xs font-black transition-all", form.nf_emite ? "border-success-strong bg-success-strong text-white" : "border-border bg-background")}>{form.nf_emite ? "✓" : ""}</span>Emite Nota Fiscal (NF)?</span>
+                                                    <span className={cn("text-xs px-2 py-0.5 rounded-full font-bold", form.nf_emite ? "bg-success-strong text-white" : "bg-muted text-muted-foreground")}>{form.nf_emite ? "SIM" : "NÃO"}</span>
+                                                </button>
+                                                {form.nf_emite && (
+                                                    <div className="px-4 py-3 bg-background border-t border-border/40">
+                                                        <Label className="text-xs text-muted-foreground mb-1 block">Número / Código da NF</Label>
+                                                        <Input value={form.nf_numero} onChange={e => setForm(f => ({ ...f, nf_numero: e.target.value }))} placeholder="Digite o número ou código da NF" className="h-10 rounded-xl" autoFocus />
+                                                        {percentualIss > 0 && <p className="text-[11px] text-success-strong mt-1.5 font-medium">ℹ️ ISS de {percentualIss.toFixed(1)}% será aplicado ao valor total.</p>}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
 
-                                    {/* ── DIVISOR ── */}
                                     <div className="border-t border-dashed border-border/60" />
 
-                                    {/* ── SEÇÃO: FINANCEIRO ── */}
                                     <div>
-                                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-1.5">
-                                            <Wallet className="w-3.5 h-3.5" /> Financeiro
-                                        </p>
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-1.5"><Wallet className="w-3.5 h-3.5" /> Financeiro</p>
                                         <div className="space-y-3">
-                                            {/* Forma de pagamento */}
                                             <div className="space-y-1.5">
                                                 <Label className="text-sm font-semibold">Forma de Pagamento <span className="text-destructive">*</span></Label>
                                                 <Select value={form.forma_pagamento} onValueChange={(v) => setForm(f => ({ ...f, forma_pagamento: v }))}>
-                                                    <SelectTrigger className={cn("h-11 rounded-xl", !form.forma_pagamento && "border-destructive/50")}>
-                                                        <SelectValue placeholder="Selecione..." />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        {formaPagamentoOptions.map((opt) => <SelectItem key={opt.id} value={opt.id}>{opt.nome}</SelectItem>)}
-                                                    </SelectContent>
+                                                    <SelectTrigger className={cn("h-11 rounded-xl", !form.forma_pagamento && "border-destructive/50")}><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                                                    <SelectContent>{formaPagamentoOptions.map((opt) => <SelectItem key={opt.id} value={opt.id}>{opt.nome}</SelectItem>)}</SelectContent>
                                                 </Select>
                                             </div>
-
-                                            {/* Valor unitário — mostra o da regra + permite override */}
                                             <div className="grid grid-cols-2 gap-3">
                                                 <div className="space-y-1.5">
-                                                    <Label className="text-sm font-semibold">
-                                                        Valor Unit. <span className="text-destructive">*</span>
-                                                        {hasRegraFinanceira && (
-                                                            <span className="ml-1 text-[10px] text-success-strong bg-success-soft px-1.5 py-0.5 rounded-full">
-                                                                Auto
-                                                            </span>
-                                                        )}
-                                                    </Label>
+                                                    <Label className="text-sm font-semibold">Valor Unit. <span className="text-destructive">*</span>{hasRegraFinanceira && !isCustosMensaisCLT && <span className="ml-1 text-[10px] text-success-strong bg-success-soft px-1.5 py-0.5 rounded-full">Auto</span>}</Label>
                                                     <div className="relative">
-                                                        <Input
-                                                            type="text"
-                                                            readOnly
-                                                            value={hasRegraFinanceira ? valorUnitario : ""}
-                                                            placeholder="0,00"
-                                                            className="h-11 rounded-xl pr-14 bg-muted/40 text-muted-foreground cursor-not-allowed border-dashed focus-visible:ring-0"
-                                                        />
-                                                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium">R$</span>
+                                                        <Input type="text" value={isCustosMensaisCLT ? (form.valor_unitario || "") : (hasRegraFinanceira ? valorUnitario : "")} onChange={e => setForm(f => ({ ...f, valor_unitario: e.target.value }))} readOnly={hasRegraFinanceira && !isCustosMensaisCLT} placeholder="0,00" className={cn("h-11 rounded-xl pr-14", (hasRegraFinanceira && !isCustosMensaisCLT) ? "bg-muted/40 text-muted-foreground cursor-not-allowed border-dashed" : "bg-background")} /><span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium">R$</span>
                                                     </div>
                                                 </div>
                                                 <div className="space-y-1.5">
                                                     <Label className="text-sm font-semibold">Valor Total</Label>
-                                                    <div className={cn(
-                                                        "h-11 rounded-xl flex items-center px-3 font-bold text-base border",
-                                                        totalFinal > 0 ? "bg-success-soft border-success-strong/30 text-success-strong" : "bg-muted/50 border-border text-muted-foreground"
-                                                    )}>
-                                                        {formatCurrency(totalFinal)}
-                                                    </div>
+                                                    <div className={cn("h-11 rounded-xl flex items-center px-3 font-bold text-base border", totalFinal > 0 ? "bg-success-soft border-success-strong/30 text-success-strong" : "bg-muted/50 border-border text-muted-foreground")}>{formatCurrency(totalFinal)}</div>
                                                 </div>
                                             </div>
-
-                                            {/* Data de vencimento — só aparece para DUPLICATA e FATURAMENTO_MENSAL */}
                                             {vencimentoObrigatorio && (
                                                 <div className="space-y-1.5">
-                                                    <Label className="text-sm font-semibold">
-                                                        Data de Vencimento <span className="text-destructive">*</span>
-                                                    </Label>
-                                                    <Input
-                                                        type="date"
-                                                        value={form.data_vencimento}
-                                                        onChange={e => setForm(f => ({ ...f, data_vencimento: e.target.value }))}
-                                                        className="h-11 rounded-xl"
-                                                        min={form.data}
-                                                    />
+                                                    <Label className="text-sm font-semibold">Data de Vencimento <span className="text-destructive">*</span></Label>
+                                                    <Input type="date" value={form.data_vencimento} onChange={e => setForm(f => ({ ...f, data_vencimento: e.target.value }))} className="h-11 rounded-xl" min={form.data} />
                                                 </div>
                                             )}
-
-                                            {/* Status financeiro */}
                                             <div className="space-y-1.5">
                                                 <Label className="text-sm font-semibold">Status Financeiro</Label>
                                                 <Select value={form.status_financeiro} onValueChange={(v) => setForm(f => ({ ...f, status_financeiro: v }))}>
-                                                    <SelectTrigger className="h-11 rounded-xl">
-                                                        <SelectValue />
-                                                    </SelectTrigger>
+                                                    <SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger>
                                                     <SelectContent>
                                                         <SelectItem value="PENDENTE">⏳ Pendente</SelectItem>
                                                         <SelectItem value="RECEBIDO">✅ Recebido</SelectItem>
@@ -1796,28 +1725,15 @@ const LancamentoProducao = () => {
                                                     </SelectContent>
                                                 </Select>
                                             </div>
-
-                                            {/* Resumo do cálculo */}
                                             {(valorUnitarioEfetivo > 0 || totalFinal > 0) && (
                                                 <div className="rounded-xl bg-muted/40 border border-border/50 px-4 py-3 text-xs text-muted-foreground space-y-1">
-                                                    <div className="flex justify-between">
-                                                        <span>Base de cálculo</span>
-                                                        <span className="font-mono font-bold text-foreground">{baseCalculoResumo}</span>
-                                                    </div>
-                                                    <div className="flex justify-between">
-                                                        <span>Total previsto</span>
-                                                        <span className="font-mono font-bold text-success-strong">{formatCurrency(totalFinal)}</span>
-                                                    </div>
+                                                    <div className="flex justify-between"><span>Base de cálculo</span><span className="font-mono font-bold text-foreground">{baseCalculoResumo}</span></div>
+                                                    <div className="flex justify-between"><span>Total previsto</span><span className="font-mono font-bold text-success-strong">{formatCurrency(totalFinal)}</span></div>
                                                 </div>
                                             )}
                                         </div>
                                     </div>
-
-                                    {etapaTresBlockReason && (
-                                        <div className="rounded-xl bg-destructive/5 border border-destructive/20 px-4 py-3">
-                                            <p className="text-xs text-destructive font-medium">{etapaTresBlockReason}</p>
-                                        </div>
-                                    )}
+                                    {etapaTresBlockReason && <div className="rounded-xl bg-destructive/5 border border-destructive/20 px-4 py-3"><p className="text-xs text-destructive font-medium">{etapaTresBlockReason}</p></div>}
                                 </div>
                             )}
 
@@ -1848,17 +1764,6 @@ const LancamentoProducao = () => {
                                                                         <input type="checkbox" checked={conduta.hadInfraction} onChange={(e) => setCondutaColaboradores((prev) => ({ ...prev, [colaborador.id]: { ...conduta, hadInfraction: e.target.checked } }))} className="h-4 w-4 rounded accent-destructive" />
                                                                         <span className="text-sm">Teve infração?</span>
                                                                     </div>
-                                                                    {conduta.hadInfraction && (
-                                                                        <div className="grid gap-3">
-                                                                            <Select value={conduta.infractionType} onValueChange={(v) => setCondutaColaboradores((prev) => ({ ...prev, [colaborador.id]: { ...conduta, infractionType: v } }))}>
-                                                                                <SelectTrigger className="h-10 rounded-xl"><SelectValue placeholder="Selecione o tipo" /></SelectTrigger>
-                                                                                <SelectContent>
-                                                                                    {getRegrasPorFuncao(colaborador.cargo ?? "").map(regra => <SelectItem key={regra.id} value={regra.label}>{regra.label}</SelectItem>)}
-                                                                                </SelectContent>
-                                                                            </Select>
-                                                                            <Textarea placeholder="Opcional" value={conduta.notes} onChange={(e) => setCondutaColaboradores((prev) => ({ ...prev, [colaborador.id]: { ...conduta, notes: e.target.value } }))} className="rounded-xl text-sm" />
-                                                                        </div>
-                                                                    )}
                                                                 </div>
                                                             )}
                                                         </div>
@@ -2087,7 +1992,7 @@ const LancamentoProducao = () => {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-        </OperationalShell>
+        </OperationalShell >
     );
 };
 

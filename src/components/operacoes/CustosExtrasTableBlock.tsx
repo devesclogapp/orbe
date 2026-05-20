@@ -1,5 +1,6 @@
 import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { format } from "date-fns";
 import {
   ArrowDownAZ,
   ArrowUpZA,
@@ -12,11 +13,17 @@ import {
   Lock,
   Loader2,
   Pencil,
+  PlayCircle,
+  RotateCcw,
   Tag,
   Trash2,
   Unlock,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useOperationalPipeline, buildCustosExtrasPipeline, type CustoExtraStepId } from "@/contexts/OperationalPipelineContext";
+import { JustificationModal } from "@/components/modals/JustificationModal";
+import { useAccessControl } from "@/contexts/AccessControlContext";
+
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -67,6 +74,9 @@ type CustoExtraItem = {
   operacao_id?: string | null;
   tipo_lancamento?: string | null;
   origem_dado?: string | null;
+  pipeline_status?: "PENDENTE" | "EM_VALIDACAO" | "APROVADO_OPERACAO" | "CONSOLIDADO_FINANCEIRO" | "CONCLUIDO" | null;
+  justificativa_devolucao?: string | null;
+  centro_custo_nome?: string | null;
   avaliacao_json?: Record<string, unknown> | null;
 };
 
@@ -108,6 +118,7 @@ const defaultVisibleCols = {
   formaPagamento: true,
   vencimento: true,
   status: true,
+  pipelineStatus: true,
   operacaoId: false,
   acoes: true,
 };
@@ -206,6 +217,111 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
     }
     return defaultVisibleCols;
   });
+
+  const { role, isAdmin } = useAccessControl();
+  const { openPipeline } = useOperationalPipeline();
+
+  const [justificationModal, setJustificationModal] = useState<{
+    open: boolean;
+    itemId: string | null;
+    targetStatus: CustoExtraItem['pipeline_status'] | null;
+  }>({
+    open: false,
+    itemId: null,
+    targetStatus: null,
+  });
+
+  const updatePipelineMutation = useMutation({
+    mutationFn: async ({ id, status, justification }: { id: string; status: string; justification?: string }) => {
+      return CustoExtraOperacionalService.update(id, {
+        pipeline_status: status as any,
+        ...(justification ? { justificativa_devolucao: justification } : {})
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
+      toast.success("Status do pipeline atualizado");
+    },
+    onError: (error) => {
+      console.error("Erro ao atualizar pipeline:", error);
+      toast.error("Erro ao atualizar status do pipeline");
+    },
+  });
+
+  const handleAdvancePipeline = (item: CustoExtraItem) => {
+    const current = item.pipeline_status || 'PENDENTE';
+    let next: CustoExtraItem['pipeline_status'] = 'PENDENTE';
+    let stepId: CustoExtraStepId = 'lancamento';
+
+    if (current === 'PENDENTE') {
+      next = 'EM_VALIDACAO';
+      stepId = 'validacao_operacional';
+    } else if (current === 'EM_VALIDACAO') {
+      next = 'APROVADO_OPERACAO';
+      stepId = 'financeiro';
+    } else if (current === 'APROVADO_OPERACAO') {
+      next = 'CONSOLIDADO_FINANCEIRO';
+      stepId = 'centro_custo';
+    } else if (current === 'CONSOLIDADO_FINANCEIRO') {
+      next = 'CONCLUIDO';
+      stepId = 'concluido';
+    }
+
+    if (next !== 'PENDENTE') {
+      updatePipelineMutation.mutate({ id: item.id, status: next });
+
+      const competencia = item.data ? format(new Date(item.data), "yyyy-MM") : format(new Date(), "yyyy-MM");
+
+      openPipeline(buildCustosExtrasPipeline({
+        competencia,
+        empresa: item.empresas?.nome || item.empresa_nome || "Empresa",
+        currentStep: stepId,
+      }));
+    }
+  };
+
+  const handleDevolvePipeline = (id: string) => {
+    setJustificationModal({
+      open: true,
+      itemId: id,
+      targetStatus: 'PENDENTE',
+    });
+  };
+
+  const confirmDevolve = (justification: string) => {
+    if (justificationModal.itemId && justificationModal.targetStatus) {
+      updatePipelineMutation.mutate({
+        id: justificationModal.itemId,
+        status: justificationModal.targetStatus,
+        justification
+      });
+      setJustificationModal({ open: false, itemId: null, targetStatus: null });
+    }
+  };
+
+  const canAdvance = (item: CustoExtraItem) => {
+    if (isAdmin) return true;
+    const status = item.pipeline_status || 'PENDENTE';
+
+    if (status === 'PENDENTE' && (role === 'encarregado' || role === 'gestor')) return true;
+    if (status === 'EM_VALIDACAO' && (role === 'gestor')) return true;
+    if ((status === 'APROVADO_OPERACAO' || status === 'CONSOLIDADO_FINANCEIRO') && role === 'financeiro') return true;
+
+    return false;
+  };
+
+  const canDevolve = (item: CustoExtraItem) => {
+    if (isAdmin) return true;
+    const status = item.pipeline_status;
+    if (!status || status === 'PENDENTE') return false;
+
+    if (status === 'EM_VALIDACAO' && (role === 'gestor')) return true;
+    if (status === 'APROVADO_OPERACAO' && (role === 'financeiro' || role === 'gestor')) return true;
+    if (status === 'CONSOLIDADO_FINANCEIRO' && role === 'financeiro') return true;
+
+    return false;
+  };
+
 
   const toggleLock = (colKey: string) => {
     setLockedCols((prev) => {
@@ -571,6 +687,7 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
                 {visibleCols.formaPagamento && <th className="px-3 py-2.5 font-semibold text-center">FORMA PAGAMENTO</th>}
                 {visibleCols.vencimento && <th className="px-3 py-2.5 font-semibold text-center">VENCIMENTO</th>}
                 {visibleCols.status && <th className="px-3 py-2.5 font-semibold text-center">STATUS PGTO</th>}
+                {visibleCols.pipelineStatus && <th className="px-3 py-2.5 font-semibold text-center whitespace-nowrap"><PlayCircle className="h-3.5 w-3.5 inline mr-1" />PIPELINE</th>}
                 {visibleCols.operacaoId && <th className="px-3 py-2.5 font-semibold text-center">OPERACAO ID</th>}
                 {visibleCols.acoes && <th className="px-5 py-2.5 font-semibold text-center">ACOES</th>}
               </tr>
@@ -613,10 +730,44 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
                       </DropdownMenu>
                     </td>
                   )}
+                  {visibleCols.pipelineStatus && (
+                    <td className="px-3 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      <Badge className={cn(
+                        "border-0 font-medium capitalize h-6 px-2 text-[11px]",
+                        item.pipeline_status === 'EM_VALIDACAO' ? "bg-amber-100 text-amber-700 hover:bg-amber-100" :
+                          item.pipeline_status === 'APROVADO_OPERACAO' ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100" :
+                            item.pipeline_status === 'CONSOLIDADO_FINANCEIRO' ? "bg-blue-100 text-blue-700 hover:bg-blue-100" :
+                              item.pipeline_status === 'CONCLUIDO' ? "bg-emerald-500 text-white hover:bg-emerald-600" :
+                                "bg-muted text-muted-foreground hover:bg-muted"
+                      )}>
+                        {item.pipeline_status?.toLowerCase().replace(/_/g, ' ') || 'Pendente'}
+                      </Badge>
+                    </td>
+                  )}
                   {visibleCols.operacaoId && <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{item.operacao_id || "—"}</td>}
                   {visibleCols.acoes && (
                     <td className="px-5 py-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-center gap-1">
+                        {item.pipeline_status !== 'CONCLUIDO' && canAdvance(item) && (
+                          <button
+                            className="h-7 w-7 rounded-md hover:bg-emerald-50 flex items-center justify-center text-emerald-600 hover:text-emerald-700"
+                            onClick={() => handleAdvancePipeline(item)}
+                            title="Avancar Pipeline"
+                            disabled={updatePipelineMutation.isPending}
+                          >
+                            <PlayCircle className="h-4 w-4" />
+                          </button>
+                        )}
+                        {item.pipeline_status && item.pipeline_status !== 'PENDENTE' && canDevolve(item) && (
+                          <button
+                            className="h-7 w-7 rounded-md hover:bg-orange-50 flex items-center justify-center text-orange-600 hover:text-orange-700"
+                            onClick={() => handleDevolvePipeline(item.id)}
+                            title="Devolver etapa"
+                            disabled={updatePipelineMutation.isPending}
+                          >
+                            <RotateCcw className="h-4 w-4" />
+                          </button>
+                        )}
                         <button
                           className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
                           onClick={() => openEditor(item)}
@@ -875,6 +1026,15 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
           </div>
         </SheetContent>
       </Sheet>
+
+      <JustificationModal
+        isOpen={justificationModal.open}
+        title="Justificativa de Devolução"
+        description="Explique o motivo do retorno deste custo extra para a etapa anterior."
+        onConfirm={confirmDevolve}
+        onClose={() => setJustificationModal({ open: false, itemId: null, targetStatus: null })}
+        isLoading={updatePipelineMutation.isPending}
+      />
     </div>
   );
 }

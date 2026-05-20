@@ -24,6 +24,7 @@ import {
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/layout/AppShell";
+import { CustosExtrasTableBlock } from "@/components/operacoes/CustosExtrasTableBlock";
 import { MetricCard } from "@/components/painel/MetricCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,7 @@ import {
   AIService,
   CompetenciaService,
   ConsolidadoService,
+  CustoExtraOperacionalService,
   EmpresaService,
   ResultadosService,
 } from "@/services/base.service";
@@ -169,6 +171,12 @@ const CentralFinanceira = () => {
     queryKey: ["rh-lote-historico", rhLoteSelecionado?.id],
     queryFn: () => RHFinanceiroService.getLogsLote(rhLoteSelecionado!.id),
     enabled: !!rhLoteSelecionado?.id && showLogHistorico,
+  });
+
+  const { data: custosExtras = [], isLoading: loadingCustos } = useQuery<any[]>({
+    queryKey: ["custos-extras", selectedMonth, selectedEmpresaId],
+    queryFn: () => CustoExtraOperacionalService.getByCompetencia(selectedMonth, selectedEmpresaId!),
+    enabled: !!selectedEmpresaId,
   });
 
   const reprocessMutation = useMutation({
@@ -464,6 +472,7 @@ const CentralFinanceira = () => {
                   )}
                 </TabsTrigger>
                 <TabsTrigger value="faturamento">Aprovações</TabsTrigger>
+                <TabsTrigger value="custos-extras">Custos Extras</TabsTrigger>
                 <TabsTrigger value="fechamento">Fechamento</TabsTrigger>
               </TabsList>
 
@@ -863,6 +872,42 @@ const CentralFinanceira = () => {
                       )}
                     </tbody>
                   </table>
+                </section>
+              </TabsContent>
+
+              <TabsContent value="custos-extras" className="space-y-4">
+                <section className="esc-card">
+                  <header className="px-5 py-4 border-b border-border flex items-center justify-between">
+                    <div>
+                      <h2 className="font-display font-semibold text-foreground">Custos Extras da Operação</h2>
+                      <p className="text-sm text-muted-foreground">
+                        Análise de despesas operacionais extraordinárias aguardando aprovação financeira.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20">
+                        {custosExtras.length} registros
+                      </Badge>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8"
+                        onClick={() => queryClient.invalidateQueries({ queryKey: ["custos-extras"] })}
+                      >
+                        <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", loadingCustos && "animate-spin")} />
+                        Atualizar
+                      </Button>
+                    </div>
+                  </header>
+                  <div className="p-1">
+                    {loadingCustos ? (
+                      <div className="flex items-center justify-center p-12">
+                        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : (
+                      <CustosExtrasTableBlock data={custosExtras} />
+                    )}
+                  </div>
                 </section>
               </TabsContent>
 
