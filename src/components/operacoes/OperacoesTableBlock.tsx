@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useRef, useState, useMemo } from "react";
+�import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDownAZ,
@@ -103,7 +103,7 @@ const applyBusinessRulesToForm = (baseForm: EditableOperationForm, editingItem: 
 
   let nfRaw = String(next.nf_numero).toUpperCase().trim();
   if (nfRaw === "S" || nfRaw === "SIM") nfRaw = "SIM";
-  if (nfRaw === "N" || nfRaw === "NAO") nfRaw = "NÃƒO";
+  if (nfRaw === "N" || nfRaw === "NAO") nfRaw = "NÒO";
   next.nf_numero = nfRaw;
 
   const valoresCalculados = calcularValoresOperacao({
@@ -190,11 +190,11 @@ type RuleApplicableColumn = "valUnit" | "qtd" | "qtdCol" | "valorDescarga" | "in
 
 const BULK_EDITABLE_FIELDS: Array<{ value: BulkEditableField; label: string }> = [
   { value: "forma_pagamento", label: "Forma de pagamento" },
-  { value: "observacao", label: "ObservaÃ§Ã£o" },
-  { value: "nf_numero", label: "NF (SIM/NÃƒO ou nÃºmero)" },
+  { value: "observacao", label: "Observação" },
+  { value: "nf_numero", label: "NF (SIM/NÒO ou número)" },
   { value: "ctrc", label: "CTRC" },
   { value: "placa", label: "Placa" },
-  { value: "entrada_ponto", label: "InÃ­cio" },
+  { value: "entrada_ponto", label: "Início" },
   { value: "saida_ponto", label: "Fim" },
   { value: "quantidade", label: "Quantidade" },
   { value: "quantidade_colaboradores", label: "Qtd. colaboradores" },
@@ -378,25 +378,25 @@ const getDisplayFormaPagamento = (item: Record<string, unknown>) => {
     return getModalidadeLabel(modalidade);
   }
 
-  return "â€”";
+  return "�";
 };
 
 const getDisplayObservacao = (item: Record<string, unknown>) =>
   getContextoImportacaoValue(item, "observacao") ??
-  getLinhaOriginalValue(item, "OBSERVACAO", "OBSERVAÃ‡ÃƒO") ??
-  "â€”";
+  getLinhaOriginalValue(item, "OBSERVACAO", "OBSERVA�!ÒO") ??
+  "�";
 
 const getDisplayStatusOriginal = (item: Record<string, unknown>) =>
   getContextoImportacaoValue(item, "status_original_planilha") ??
   getLinhaOriginalValue(item, "STATUS") ??
-  "â€”";
+  "�";
 
 const getDisplayEmpresa = (item: Record<string, unknown>, empresas: any[] = []) =>
   (empresas.find((empresaItem: any) => empresaItem.id === (item as { empresa_id?: string | null }).empresa_id)?.nome ?? null) ??
   ((item as { empresas?: { nome?: string | null } }).empresas?.nome ?? null) ??
   getContextoImportacaoValue(item, "empresa") ??
   getLinhaOriginalValue(item, "EMPRESA") ??
-  "â€”";
+  "�";
 
 const toInputValue = (value: unknown) => {
   if (value === null || value === undefined) return "";
@@ -440,7 +440,7 @@ const toIssDatabaseValue = (value: string) => {
 const isIssOperationalRule = (rule: any) => {
   if (!rule || !rule.tipos_regra_operacional) return false;
   const name = String(rule.tipos_regra_operacional.nome).toLowerCase();
-  return name.includes("iss") || name.trim() === "taxa de emissÃ£o e filme" || name === "taxa iss / filme";
+  return name.includes("iss") || name.trim() === "taxa de emissão e filme" || name === "taxa iss / filme";
 };
 
 export const OperacoesTableBlock = ({
@@ -674,15 +674,15 @@ export const OperacoesTableBlock = ({
       return OperacaoProducaoService.update(item.id, buildOperationUpdatePayload(item, nextForm));
     },
     onSuccess: () => {
-      toast.success("CÃ©lula atualizada.");
+      toast.success("Célula atualizada.");
       setActiveInlineCell(null);
       setInlineValue("");
       queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
     },
     onError: (error: unknown) => {
-      const message = error instanceof Error ? error.message : "NÃ£o foi possÃ­vel salvar a cÃ©lula.";
-      toast.error("Falha ao atualizar cÃ©lula.", { description: message });
+      const message = error instanceof Error ? error.message : "Não foi possível salvar a célula.";
+      toast.error("Falha ao atualizar célula.", { description: message });
     },
   });
 
@@ -703,7 +703,7 @@ export const OperacoesTableBlock = ({
   const updateStatusPagamentoMutation = useMutation({
     mutationFn: async ({ item, statusPagamento }: { item: any; statusPagamento: StatusPagamento }) => {
       if (!isEditableOperation(item)) {
-        throw new Error("Somente operaÃ§Ãµes editÃ¡veis podem ter o status de pagamento alterado.");
+        throw new Error("Somente operações editáveis podem ter o status de pagamento alterado.");
       }
 
       const today = new Date().toISOString().split("T")[0];
@@ -763,13 +763,13 @@ export const OperacoesTableBlock = ({
       if (!selectedOperationalRuleId) throw new Error("Selecione qual regra cadastrada deve ser aplicada.");
 
       const selectedOperationalRule = (regrasOperacionais as any[]).find((rule) => rule.id === selectedOperationalRuleId);
-      if (!selectedOperationalRule) throw new Error("A regra operacional escolhida nÃ£o foi encontrada.");
+      if (!selectedOperationalRule) throw new Error("A regra operacional escolhida não foi encontrada.");
 
-      if (selectedOperationalRule.ativo !== true) throw new Error("A regra operacional escolhida estÃ¡ inativa.");
+      if (selectedOperationalRule.ativo !== true) throw new Error("A regra operacional escolhida está inativa.");
 
       const editableRows = filteredData.filter(isEditableOperation);
       if (editableRows.length === 0) {
-        throw new Error("Nenhuma linha filtrada disponÃ­vel para aplicar regra.");
+        throw new Error("Nenhuma linha filtrada disponível para aplicar regra.");
       }
 
       let appliedCount = 0;
@@ -794,7 +794,7 @@ export const OperacoesTableBlock = ({
       }
 
       if (appliedCount === 0) {
-        throw new Error("Nenhuma linha filtrada encontrou regra compatÃ­vel para essa coluna.");
+        throw new Error("Nenhuma linha filtrada encontrou regra compatível para essa coluna.");
       }
 
       return { appliedCount, skippedCount };
@@ -803,7 +803,7 @@ export const OperacoesTableBlock = ({
       toast.success("Regra aplicada na coluna.", {
         description:
           result?.skippedCount > 0
-            ? `${result.appliedCount} linha(s) atualizadas e ${result.skippedCount} sem regra compatÃ­vel foram ignoradas.`
+            ? `${result.appliedCount} linha(s) atualizadas e ${result.skippedCount} sem regra compatível foram ignoradas.`
             : `${result?.appliedCount ?? 0} linha(s) atualizadas com a regra selecionada.`,
       });
       setIsRuleApplyOpen(false);
@@ -812,7 +812,7 @@ export const OperacoesTableBlock = ({
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
     },
     onError: (error: unknown) => {
-      const message = error instanceof Error ? error.message : "NÃ£o foi possÃ­vel aplicar a regra na coluna.";
+      const message = error instanceof Error ? error.message : "Não foi possível aplicar a regra na coluna.";
       toast.error("Falha ao aplicar regra.", { description: message });
     },
   });
@@ -860,13 +860,13 @@ export const OperacoesTableBlock = ({
   const deleteMutation = useMutation({
     mutationFn: (id: string) => OperacaoProducaoService.delete(id),
     onSuccess: () => {
-      toast.success("OperaÃ§Ã£o excluÃ­da com sucesso.");
+      toast.success("Operação excluída com sucesso.");
       queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
     },
     onError: (error: unknown) => {
-      const message = error instanceof Error ? error.message : "Erro ao excluir operaÃ§Ã£o.";
-      toast.error("Falha ao excluir operaÃ§Ã£o.", { description: message });
+      const message = error instanceof Error ? error.message : "Erro ao excluir operação.";
+      toast.error("Falha ao excluir operação.", { description: message });
     },
   });
 
@@ -904,7 +904,7 @@ export const OperacoesTableBlock = ({
       return 0;
     }
 
-    // 1. Data de operaÃ§Ã£o (Crescente)
+    // 1. Data de operação (Crescente)
     const dateA = a.data_operacao || "";
     const dateB = b.data_operacao || "";
     if (dateA !== dateB) return dateA.localeCompare(dateB);
@@ -1310,7 +1310,7 @@ export const OperacoesTableBlock = ({
     const rejected = allRules
       .map((rule) => ({
         id: rule.id,
-        label: `${rule.tipos_regra_operacional?.nome ?? "Regra"} Â· ${rule.transportadoras_clientes?.nome ?? rule.fornecedores?.nome ?? "Sem contexto"}`,
+        label: `${rule.tipos_regra_operacional?.nome ?? "Regra"} · ${rule.transportadoras_clientes?.nome ?? rule.fornecedores?.nome ?? "Sem contexto"}`,
         reasons: explainOperationalRuleMismatch(editingItem, rule),
       }))
       .filter((item) => item.reasons.length > 0);
@@ -1350,10 +1350,10 @@ export const OperacoesTableBlock = ({
                 <SelectValue placeholder="Selecione a forma de pagamento" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="DEPÃ“SITO">DepÃ³sito</SelectItem>
-                <SelectItem value="DEPOSITO MENSAL">DepÃ³sito Mensal</SelectItem>
+                <SelectItem value="DEP�SITO">Depósito</SelectItem>
+                <SelectItem value="DEPOSITO MENSAL">Depósito Mensal</SelectItem>
                 <SelectItem value="PIX">PIX</SelectItem>
-                <SelectItem value="TRANSFERÃŠNCIA">TransferÃªncia</SelectItem>
+                <SelectItem value="TRANSFER�`NCIA">Transferência</SelectItem>
                 <SelectItem value="BOLETO">Boleto</SelectItem>
               </SelectContent>
             </Select>
@@ -1436,7 +1436,7 @@ export const OperacoesTableBlock = ({
 
       let nfRaw = String(next.nf_numero).toUpperCase().trim();
       if (nfRaw === "S" || nfRaw === "SIM") nfRaw = "SIM";
-      if (nfRaw === "N" || nfRaw === "NAO" || nfRaw === "NÃƒO") nfRaw = "NÃƒO";
+      if (nfRaw === "N" || nfRaw === "NAO" || nfRaw === "NÒO") nfRaw = "NÒO";
       next.nf_numero = nfRaw;
 
       const valDescargaCalculado = Math.max(parseLocaleNumber(next.quantidade), 0) * unitario;
@@ -1470,18 +1470,18 @@ export const OperacoesTableBlock = ({
     return (
       <div className="p-12 text-center text-muted-foreground min-h-[300px] flex flex-col items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
-        Carregando operaÃ§Ãµes...
+        Carregando operações...
       </div>
     );
   }
 
   return (
     <div className="space-y-4 p-5 pt-2">
-      {/* â”€â”€â”€ FILTROS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ������ FILTROS ���������������������������������������������������������������������������������������������������������� */}
       <div className="flex flex-col sm:flex-row gap-3 justify-between">
         <div className="flex flex-wrap gap-2 w-full">
           <Input
-            placeholder="Buscar por fornecedor ou serviÃ§o..."
+            placeholder="Buscar por fornecedor ou serviço..."
             className="w-full sm:w-72 h-9"
             value={filterText}
             onChange={(e) => setFilterText(e.target.value)}
@@ -1694,8 +1694,8 @@ export const OperacoesTableBlock = ({
                     </DropdownMenuItem>
                     {sortConfig?.key === colKey && (
                       <DropdownMenuItem onClick={() => setSortConfig(null)}>
-                        <span className="mr-2 h-4 w-4 flex items-center justify-center font-bold text-muted-foreground">âœ•</span>
-                        Remover ordenaÃ§Ã£o
+                        <span className="mr-2 h-4 w-4 flex items-center justify-center font-bold text-muted-foreground">�S"</span>
+                        Remover ordenação
                       </DropdownMenuItem>
                     )}
 
@@ -1722,12 +1722,12 @@ export const OperacoesTableBlock = ({
                   <tr className="text-center font-display text-muted-foreground uppercase text-xs tracking-wide">
                     {visibleCols.data && <th style={getStickyProps("data", true).style} className={getStickyProps("data", true).className}>{renderInteractiveHeader("data", "DATA", CalendarDays)}</th>}
                     {visibleCols.idPlanilha && <th style={getStickyProps("idPlanilha", true).style} className={getStickyProps("idPlanilha", true).className}>{renderInteractiveHeader("idPlanilha", "ID")}</th>}
-                    {visibleCols.operacao && <th style={getStickyProps("operacao", true).style} className={getStickyProps("operacao", true).className}>{renderInteractiveHeader("operacao", "OPERAÃ‡ÃƒO/VOLUME", Package)}</th>}
+                    {visibleCols.operacao && <th style={getStickyProps("operacao", true).style} className={getStickyProps("operacao", true).className}>{renderInteractiveHeader("operacao", "OPERA�!ÒO/VOLUME", Package)}</th>}
                     {visibleCols.empresaPlanilha && <th className="px-3 py-2.5 font-semibold text-center">EMPRESA</th>}
                     {visibleCols.fornecedor && <th className="px-3 py-2.5 font-semibold ">{renderInteractiveHeader("fornecedor", "FORNECEDOR")}</th>}
                     {visibleCols.transportadora && <th className="px-3 py-2.5 font-semibold ">{renderInteractiveHeader("transportadora", "TRANSPORTADORA", Truck)}</th>}
                     {visibleCols.placa && renderHeaderCell("placa", "PLACA", "px-3 py-2.5 font-semibold text-center")}
-                    {visibleCols.servico && <th className="px-3 py-2.5 font-semibold ">{renderInteractiveHeader("servico", "SERVIÃ‡O", Settings2)}</th>}
+                    {visibleCols.servico && <th className="px-3 py-2.5 font-semibold ">{renderInteractiveHeader("servico", "SERVI�!O", Settings2)}</th>}
                     {visibleCols.qtdCol && renderHeaderCell("qtdCol", <span className="inline-flex items-center justify-center gap-1.5 w-full"><User className="h-3.5 w-3.5 text-muted-foreground" />QTD. COL.</span>, "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.formaPagamento && renderHeaderCell("formaPagamento", "FORMA PAGAMENTO", "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.nf && renderHeaderCell("nf", "NF", "px-3 py-2.5 font-semibold text-center")}
@@ -1748,21 +1748,21 @@ export const OperacoesTableBlock = ({
                   {filteredData.map((item: any) => {
                     const isSelected = kind === "operacao" && selectedId === item.id;
 
-                    const dataOp = item.data_operacao ? new Date(item.data_operacao + "T12:00:00Z").toLocaleDateString("pt-BR") : "â€”";
+                    const dataOp = item.data_operacao ? new Date(item.data_operacao + "T12:00:00Z").toLocaleDateString("pt-BR") : "�";
                     const idPlanilha = item.created_at || item.id;
-                    const operacaoNome = item.produto_label || item.fornecedores?.nome || "â€”";
+                    const operacaoNome = item.produto_label || item.fornecedores?.nome || "�";
                     const empresaPlanilha = getDisplayEmpresa(item, empresas);
-                    const fornecedor = item.fornecedores?.nome || "â€”";
-                    const transportadora = item.transportadoras_clientes?.nome || "â€”";
-                    const placa = item.placa || "â€”";
-                    const servico = item.tipos_servico_operacional?.nome || "â€”";
+                    const fornecedor = item.fornecedores?.nome || "�";
+                    const transportadora = item.transportadoras_clientes?.nome || "�";
+                    const placa = item.placa || "�";
+                    const servico = item.tipos_servico_operacional?.nome || "�";
                     const qtdColaboradores = item.quantidade_colaboradores ?? 1;
                     const formaPagamento = getDisplayFormaPagamento(item);
-                    const nf = item.nf_numero || "â€”";
-                    const ctrc = item.ctrc || "â€”";
+                    const nf = item.nf_numero || "�";
+                    const ctrc = item.ctrc || "�";
                     const observacao = getDisplayObservacao(item);
-                    const inicio = (item.entrada_ponto || "â€”").substring(0, 5);
-                    const fim = (item.saida_ponto || "â€”").substring(0, 5);
+                    const inicio = (item.entrada_ponto || "�").substring(0, 5);
+                    const fim = (item.saida_ponto || "�").substring(0, 5);
                     const qtdText = item.quantidade || "0";
                     const valorTotal = item.total_final || item.valor_descarga || 0;
 
@@ -1814,14 +1814,14 @@ export const OperacoesTableBlock = ({
 
                                 {getModalidadeLabel(item.modalidadeFinanceira)}
                               </Badge>
-                            ) : <span className="text-muted-foreground">â€”</span>}
+                            ) : <span className="text-muted-foreground">�</span>}
                           </td>
                         )}
                         {visibleCols.dataVencimento && (
                           <td className="px-3 text-center text-muted-foreground whitespace-nowrap font-mono text-xs">
                             {item.dataVencimento
                               ? new Date(item.dataVencimento + "T12:00:00Z").toLocaleDateString("pt-BR")
-                              : "â€”"}
+                              : "�"}
                           </td>
                         )}
                         {visibleCols.statusPagamento && (
@@ -1860,7 +1860,7 @@ export const OperacoesTableBlock = ({
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
-                            ) : <span className="text-muted-foreground">â€”</span>}
+                            ) : <span className="text-muted-foreground">�</span>}
                           </td>
                         )}
                         <td className="px-3 text-center whitespace-nowrap">
@@ -1873,7 +1873,7 @@ export const OperacoesTableBlock = ({
                             item.status === 'fechado' && 'bg-success-soft saturate-50 text-success-strong opacity-80',
                             !['aprovado', 'em_validacao', 'recusado', 'pendente', 'fechado'].includes(item.status) && 'bg-muted text-muted-foreground'
                           )}>
-                            {item.status || "—"}
+                            {item.status || ""}
                           </Badge>
                         </td>
                         {visibleCols.acoes && (
@@ -1889,7 +1889,7 @@ export const OperacoesTableBlock = ({
                                   }
                                   navigate(`/producao?id=${item.id}`);
                                 }}
-                                title={isEditableOperation(item) ? "Editar nesta tela" : "Abrir lanÃ§amento"}
+                                title={isEditableOperation(item) ? "Editar nesta tela" : "Abrir lançamento"}
                               >
                                 <Pencil className="h-3.5 w-3.5" />
                               </button>
@@ -1935,12 +1935,12 @@ export const OperacoesTableBlock = ({
                                 className="h-7 w-7 rounded-md hover:bg-destructive-soft flex items-center justify-center text-muted-foreground hover:text-destructive disabled:opacity-50"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  if (confirm("Tem certeza que deseja excluir esta operaÃ§Ã£o?")) {
+                                  if (confirm("Tem certeza que deseja excluir esta operação?")) {
                                     deleteMutation.mutate(item.id);
                                   }
                                 }}
                                 disabled={deleteMutation.isPending}
-                                title="Excluir operaÃ§Ã£o"
+                                title="Excluir operação"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>
@@ -1953,7 +1953,7 @@ export const OperacoesTableBlock = ({
                   {filteredData.length === 0 && (
                     <tr>
                       <td colSpan={22} className="p-12 text-center text-muted-foreground italic">
-                        {filterByDate ? "Nenhuma operaÃ§Ã£o atende aos filtros atuais nesta data." : "Nenhuma operaÃ§Ã£o atende aos filtros atuais."}
+                        {filterByDate ? "Nenhuma operação atende aos filtros atuais nesta data." : "Nenhuma operação atende aos filtros atuais."}
                       </td>
                     </tr>
                   )}
@@ -2064,12 +2064,12 @@ export const OperacoesTableBlock = ({
                 )}
                 {bulkField === "modalidade_financeira" && (
                   <p className="text-xs text-muted-foreground">
-                    Use apenas em exceÃ§Ãµes. Sem override manual, a modalidade continua automÃ¡tica pela origem da operaÃ§Ã£o.
+                    Use apenas em exceções. Sem override manual, a modalidade continua automática pela origem da operação.
                   </p>
                 )}
                 {bulkField === "data_vencimento" && (
                   <p className="text-xs text-muted-foreground">
-                    Campo pensado para ajustes pontuais. Quando vazio, o vencimento segue a regra financeira automÃ¡tica.
+                    Campo pensado para ajustes pontuais. Quando vazio, o vencimento segue a regra financeira automática.
                   </p>
                 )}
                 {bulkField === "status_pagamento" && (
@@ -2111,7 +2111,7 @@ export const OperacoesTableBlock = ({
           <SheetHeader>
             <SheetTitle>Aplicar regra salva na coluna</SheetTitle>
             <SheetDescription>
-              Use uma regra jÃ¡ cadastrada para preencher a coluna com o valor correspondente em cada linha compatÃ­vel.
+              Use uma regra já cadastrada para preencher a coluna com o valor correspondente em cada linha compatível.
             </SheetDescription>
           </SheetHeader>
 
@@ -2121,7 +2121,7 @@ export const OperacoesTableBlock = ({
             </div>
 
             <div className="space-y-2">
-              <Label>Regra disponÃ­vel</Label>
+              <Label>Regra disponível</Label>
               <Select value={selectedOperationalRuleId} onValueChange={setSelectedOperationalRuleId}>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione a regra cadastrada que deve ser aplicada" />
@@ -2129,13 +2129,13 @@ export const OperacoesTableBlock = ({
                 <SelectContent>
                   {availableOperationalRules.map((rule: any) => (
                     <SelectItem key={rule.id} value={rule.id}>
-                      {`${rule.tipos_regra_operacional?.nome ?? "Regra"} Â· ${Number(rule.valor_unitario ?? 0).toLocaleString("pt-BR")} Â· ${rule.fornecedores?.nome ?? "Fornecedor"}`}
+                      {`${rule.tipos_regra_operacional?.nome ?? "Regra"} · ${Number(rule.valor_unitario ?? 0).toLocaleString("pt-BR")} · ${rule.fornecedores?.nome ?? "Fornecedor"}`}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               <p className="text-sm text-muted-foreground">
-                A lista vem das regras jÃ¡ cadastradas em Regras Operacionais. Ao aplicar, o sistema usa o mesmo tipo de regra e procura a combinaÃ§Ã£o compatÃ­vel por empresa, fornecedor, serviÃ§o e vigÃªncia em cada linha filtrada.
+                A lista vem das regras já cadastradas em Regras Operacionais. Ao aplicar, o sistema usa o mesmo tipo de regra e procura a combinação compatível por empresa, fornecedor, serviço e vigência em cada linha filtrada.
               </p>
             </div>
 
@@ -2158,22 +2158,22 @@ export const OperacoesTableBlock = ({
       <Sheet open={!!selectedOpDetails} onOpenChange={(value) => !value && setSelectedOpDetails(null)}>
         <SheetContent className="sm:max-w-md overflow-y-auto">
           <SheetHeader>
-            <SheetTitle>Detalhes da operaÃ§Ã£o</SheetTitle>
-            <SheetDescription>InformaÃ§Ãµes completas relativas Ã  operaÃ§Ã£o do dia.</SheetDescription>
+            <SheetTitle>Detalhes da operação</SheetTitle>
+            <SheetDescription>Informações completas relativas à operação do dia.</SheetDescription>
           </SheetHeader>
 
           {selectedOpDetails && (
             <div className="mt-6 space-y-6">
               <div className="space-y-1">
-                <p className="text-sm font-medium text-foreground">Fornecedor / OperaÃ§Ã£o</p>
+                <p className="text-sm font-medium text-foreground">Fornecedor / Operação</p>
                 <p className="text-sm text-muted-foreground">{selectedOpDetails.fornecedores?.nome || selectedOpDetails.produto_label || "Sem fornecedor"}</p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <p className="text-sm font-medium text-foreground">Data da operaÃ§Ã£o</p>
+                  <p className="text-sm font-medium text-foreground">Data da operação</p>
                   <p className="text-sm text-muted-foreground font-mono">
-                    {selectedOpDetails.data_operacao ? new Date(selectedOpDetails.data_operacao + "T00:00:00").toLocaleDateString("pt-BR") : "â€”"}
+                    {selectedOpDetails.data_operacao ? new Date(selectedOpDetails.data_operacao + "T00:00:00").toLocaleDateString("pt-BR") : "�"}
                   </p>
                 </div>
                 <div className="space-y-1">
@@ -2181,20 +2181,20 @@ export const OperacoesTableBlock = ({
                   <p className="text-sm text-muted-foreground">{selectedOpDetails.quantidade_colaboradores ?? 1} col.</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-sm font-medium text-foreground">ServiÃ§o</p>
+                  <p className="text-sm font-medium text-foreground">Serviço</p>
                   <p className="text-sm text-muted-foreground">{selectedOpDetails.tipos_servico_operacional?.nome || selectedOpDetails.tipo_servico_label || "Sem servico"}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-foreground">Transportadora</p>
-                  <p className="text-sm text-muted-foreground">{selectedOpDetails.transportadoras_clientes?.nome || selectedOpDetails.transportadora_label || "â€”"}</p>
+                  <p className="text-sm text-muted-foreground">{selectedOpDetails.transportadoras_clientes?.nome || selectedOpDetails.transportadora_label || "�"}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-foreground">NF numero</p>
-                  <p className="text-sm text-muted-foreground">{selectedOpDetails.nf_numero || "â€”"}</p>
+                  <p className="text-sm text-muted-foreground">{selectedOpDetails.nf_numero || "�"}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-foreground">CTRC</p>
-                  <p className="text-sm text-muted-foreground">{selectedOpDetails.ctrc || "â€”"}</p>
+                  <p className="text-sm text-muted-foreground">{selectedOpDetails.ctrc || "�"}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-foreground">Forma de pagamento</p>
@@ -2222,7 +2222,7 @@ export const OperacoesTableBlock = ({
                 <Button variant="outline" onClick={() => setSelectedOpDetails(null)}>Fechar</Button>
                 {selectedOpDetails.status !== "aprovado" && selectedOpDetails.status !== "fechado" && (
                   <Button variant="outline" className="border-warning text-warning hover:bg-warning-soft hover:text-warning-strong" onClick={() => handleDevolver(selectedOpDetails)}>
-                    Devolver com Restrição
+                    Devolver com Restri��o
                   </Button>
                 )}
                 {selectedOpDetails.status !== "aprovado" && selectedOpDetails.status !== "fechado" && (
@@ -2240,9 +2240,9 @@ export const OperacoesTableBlock = ({
       <Sheet open={!!editingItem} onOpenChange={(value) => !value && closeEditor()}>
         <SheetContent className="sm:max-w-2xl overflow-y-auto">
           <SheetHeader>
-            <SheetTitle>Editar operaÃ§Ã£o na tela operacional</SheetTitle>
+            <SheetTitle>Editar operação na tela operacional</SheetTitle>
             <SheetDescription>
-              Ajuste os campos da planilha diretamente aqui. O valor unitÃ¡rio continua vindo das regras operacionais.
+              Ajuste os campos da planilha diretamente aqui. O valor unitário continua vindo das regras operacionais.
             </SheetDescription>
           </SheetHeader>
 
@@ -2251,13 +2251,13 @@ export const OperacoesTableBlock = ({
               <div className="rounded-lg border border-warning/30 bg-warning/10 p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="space-y-1">
-                    <p className="text-sm font-medium text-foreground">Valor unitÃ¡rio bloqueado nesta tela</p>
+                    <p className="text-sm font-medium text-foreground">Valor unitário bloqueado nesta tela</p>
                     <p className="text-sm text-muted-foreground">
                       {Number(editingItem.valor_unitario_snapshot || editingItem.valor_unitario_label || 0).toLocaleString("pt-BR", {
                         style: "currency",
                         currency: "BRL",
                       })}{" "}
-                      Â· altere em Regras Operacionais quando precisar revisar a regra de origem.
+                      · altere em Regras Operacionais quando precisar revisar a regra de origem.
                     </p>
                   </div>
                   <Button variant="outline" size="sm" onClick={() => navigate("/cadastros/regras-operacionais")}>
@@ -2289,21 +2289,21 @@ export const OperacoesTableBlock = ({
                   <Input id="placa" value={editForm.placa} onChange={(e) => updateField("placa", e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <Label>NF (SIM/NÃƒO)</Label>
+                  <Label>NF (SIM/NÒO)</Label>
                   <Select value={editForm.nf_numero || ""} onValueChange={(v) => updateField("nf_numero", v)}>
                     <SelectTrigger id="nf_numero">
                       <SelectValue placeholder="Selecione" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="SIM">SIM</SelectItem>
-                      <SelectItem value="NÃƒO">NÃƒO</SelectItem>
+                      <SelectItem value="NÒO">NÒO</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <Label htmlFor="valor_descarga" className="text-primary font-medium">Valor descarga</Label>
-                    <Badge variant="outline" className="text-[10px] h-4 leading-none bg-primary/10">AutomÃ¡tico</Badge>
+                    <Badge variant="outline" className="text-[10px] h-4 leading-none bg-primary/10">Automático</Badge>
                   </div>
                   <Input id="valor_descarga" value={editForm.valor_descarga} readOnly disabled className="bg-muted/50 cursor-not-allowed" />
                 </div>
@@ -2315,10 +2315,10 @@ export const OperacoesTableBlock = ({
                       <SelectValue placeholder="Selecione a forma de pagamento" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="DEPÃ“SITO">DepÃ³sito</SelectItem>
-                      <SelectItem value="DEPOSITO MENSAL">DepÃ³sito Mensal</SelectItem>
+                      <SelectItem value="DEP�SITO">Depósito</SelectItem>
+                      <SelectItem value="DEPOSITO MENSAL">Depósito Mensal</SelectItem>
                       <SelectItem value="PIX">PIX</SelectItem>
-                      <SelectItem value="TRANSFERÃŠNCIA">TransferÃªncia</SelectItem>
+                      <SelectItem value="TRANSFER�`NCIA">Transferência</SelectItem>
                       <SelectItem value="BOLETO">Boleto</SelectItem>
                     </SelectContent>
                   </Select>
@@ -2368,8 +2368,8 @@ export const OperacoesTableBlock = ({
           pendingAction?.(justification);
           setJustificationModalOpen(false);
         }}
-        title={justificationType === "devolucao" ? "Motivo da Devolução" : "Justificativa de Alteração (Override)"}
-        description={justificationType === "devolucao" ? "Forneça o motivo pelo qual esta operação está sendo devolvida." : undefined}
+        title={justificationType === "devolucao" ? "Motivo da Devolu��o" : "Justificativa de Altera��o (Override)"}
+        description={justificationType === "devolucao" ? "Forne�a o motivo pelo qual esta opera��o est� sendo devolvida." : undefined}
       />
     </div>
   );

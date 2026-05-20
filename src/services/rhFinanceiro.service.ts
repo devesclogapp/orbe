@@ -229,17 +229,19 @@ const loadFinancialFlowPendencias = async (tenantId: string, empresaId: string, 
       .eq("empresa_id", empresaId)
       .gte("data", startDate)
       .lte("data", endDate),
-    supabase
-      .from("operacoes_producao")
-      .select("id, data_operacao, status, avaliacao_json")
-      .eq("tenant_id", tenantId)
+    (supabase as any)
+      .from("servicos_extras_operacionais")
+      .select("id, data, pipeline_status")
       .eq("empresa_id", empresaId)
-      .gte("data_operacao", startDate)
-      .lte("data_operacao", endDate),
+      .gte("data", startDate)
+      .lte("data", endDate),
   ]);
 
   if (custosError) throw custosError;
-  if (servicosError) throw servicosError;
+  // servicosError: toleramos tabela ausente (migration pendente) — retorna [] nesse caso
+  if (servicosError && !String(servicosError.code ?? "").startsWith("PGRST") && servicosError.code !== "42P01") {
+    throw servicosError;
+  }
 
   const custosExtrasPendentes = (custosExtras || [])
     .filter((item: any) => String(item.status_pagamento || "").toUpperCase() !== "RECEBIDO")
@@ -250,16 +252,15 @@ const loadFinancialFlowPendencias = async (tenantId: string, empresaId: string, 
     }));
 
   const servicosExtrasPendentes = (servicosExtras || [])
-    .filter((item: any) => item.avaliacao_json?.categoria_servico === "SERVICO_EXTRA")
     .filter((item: any) =>
-      ["pendente", "aguardando_validacao", "com_alerta", "bloqueado"].includes(
-        String(item.status || "").toLowerCase(),
+      ["PENDENTE", "EM_VALIDACAO", "DEVOLVIDO"].includes(
+        String(item.pipeline_status || "PENDENTE").toUpperCase(),
       ),
     )
     .map((item: any) => ({
       id: item.id,
       nome: "Serviço extra",
-      motivo: `status ${String(item.status || "pendente").toLowerCase()}`,
+      motivo: `pipeline ${String(item.pipeline_status || "PENDENTE").toLowerCase()}`,
     }));
 
   return {

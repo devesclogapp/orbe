@@ -1108,3 +1108,125 @@ export const buildCustosExtrasPipeline = (params: {
     };
 };
 
+export type ServicoExtraStepId = "lancamento" | "validacao_operacional" | "aprovacao" | "financeiro" | "faturamento" | "concluido";
+
+export const buildServicosExtrasPipeline = (params: {
+    competencia: string;
+    empresa: string;
+    currentStep: ServicoExtraStepId;
+    devolucaoMotivo?: string;
+}): PipelineTrigger => {
+    const { competencia, empresa, currentStep, devolucaoMotivo } = params;
+
+    const stepOrder: ServicoExtraStepId[] = [
+        "lancamento",
+        "validacao_operacional",
+        "aprovacao",
+        "financeiro",
+        "faturamento",
+        "concluido"
+    ];
+
+    const currentIndex = stepOrder.indexOf(currentStep);
+
+    const getStatus = (index: number): PipelineStepStatus => {
+        if (devolucaoMotivo && index === currentIndex) return "devolved";
+        if (index < currentIndex) return "done";
+        if (index === currentIndex) return "current";
+        return "pending";
+    };
+
+    const getRoute = (id: ServicoExtraStepId) => {
+        switch (id) {
+            case "lancamento":
+            case "validacao_operacional":
+            case "aprovacao":
+                return "/producao/servicos-extras";
+            case "financeiro":
+            case "faturamento":
+                return "/financeiro";
+            default:
+                return undefined;
+        }
+    };
+
+    const steps: PipelineStep[] = [
+        {
+            id: "lancamento",
+            label: "Lançamento Operacional",
+            description: "Entrada do serviço extra executado.",
+            status: getStatus(0),
+            route: getRoute("lancamento"),
+            responsible: "Encarregado",
+        },
+        {
+            id: "validacao_operacional",
+            label: "Validação Operacional",
+            description: "Aprovação operacional do serviço.",
+            status: getStatus(1),
+            route: getRoute("validacao_operacional"),
+            responsible: "Operação",
+        },
+        {
+            id: "aprovacao",
+            label: "Aprovação",
+            description: "Aprovação financeira/gestão.",
+            status: getStatus(2),
+            route: getRoute("aprovacao"),
+            responsible: "ADM/Gestor",
+        },
+        {
+            id: "financeiro",
+            label: "Central Financeira",
+            description: "Consolidação dos valores na central.",
+            status: getStatus(3),
+            route: getRoute("financeiro"),
+            responsible: "Financeiro",
+        },
+        {
+            id: "faturamento",
+            label: "Faturamento",
+            description: "Geração de títulos / Faturamento.",
+            status: getStatus(4),
+            route: getRoute("faturamento"),
+            responsible: "Financeiro",
+        },
+        {
+            id: "concluido",
+            label: "Concluído",
+            description: "Refletido no Dashboard.",
+            status: getStatus(5),
+            route: undefined,
+        },
+    ];
+
+    const isDone = currentStep === "concluido";
+
+    return {
+        context: { competencia, empresa, fluxo: "Serviços Extras" },
+        steps,
+        title: "Status do Serviço Extra",
+        subtitle: "Acompanhe o andamento da aprovação do serviço extra.",
+        nextAction: isDone ? undefined : {
+            label: "Próxima Etapa →",
+            description: "Siga para a próxima etapa do fluxo.",
+            route: getRoute(stepOrder[Math.min(currentIndex + 1, stepOrder.length - 1)]) || "/producao/servicos-extras",
+        }
+    };
+};
+
+export const buildServicosExtrasDevolvidoPipeline = (params: {
+    competencia: string;
+    empresa: string;
+    motivo: string;
+    stage: ServicoExtraStepId;
+}): PipelineTrigger => {
+    const { competencia, empresa, motivo, stage } = params;
+    return buildServicosExtrasPipeline({
+        competencia,
+        empresa,
+        currentStep: stage,
+        devolucaoMotivo: motivo
+    });
+};
+

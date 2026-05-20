@@ -294,11 +294,11 @@ class DashboardConsolidadoServiceClass {
       .lt('data', `${canonicalCompetencia}-32`);
     if (empresaId) qCustos = qCustos.eq('empresa_id', empresaId);
 
-    let qServicosExtras = supabase
-      .from('operacoes_producao')
-      .select('status, data_operacao, created_at, updated_at, avaliacao_json')
-      .gte('data_operacao', `${canonicalCompetencia}-01`)
-      .lt('data_operacao', `${canonicalCompetencia}-32`);
+    let qServicosExtras = (supabase as any)
+      .from('servicos_extras_operacionais')
+      .select('total, pipeline_status, status_pagamento, created_at, updated_at')
+      .gte('data', `${canonicalCompetencia}-01`)
+      .lt('data', `${canonicalCompetencia}-32`);
     if (empresaId) qServicosExtras = qServicosExtras.eq('empresa_id', empresaId);
 
     const [
@@ -329,9 +329,8 @@ class DashboardConsolidadoServiceClass {
     const cnabArquivosData = safeData(resCnabArquivos);
     const retornoItensData = safeData(resRetornoItens as any);
     const custosData = safeData(resCustos);
-    const servicosExtrasData = safeData(resServicosExtras as any).filter(
-      (item: any) => item.avaliacao_json?.categoria_servico === 'SERVICO_EXTRA',
-    );
+    // servicosExtrasData now comes from the dedicated table — no avaliacao_json filter needed
+    const servicosExtrasData = safeData(resServicosExtras as any);
 
     const diaristaFlow = emptyFluxAccumulator();
     const folhaFlow = emptyFluxAccumulator();
@@ -444,13 +443,14 @@ class DashboardConsolidadoServiceClass {
     let servicosPendentes = 0;
     let servicosComAlerta = 0;
     servicosExtrasData.forEach((item: any) => {
-      const status = String(item.status || '').toLowerCase();
-      if (['pendente', 'aguardando_validacao'].includes(status)) servicosPendentes += 1;
-      if (['com_alerta', 'bloqueado'].includes(status)) servicosComAlerta += 1;
+      // Use pipeline_status from the dedicated servicos_extras_operacionais table
+      const pipelineStatus = String(item.pipeline_status || 'PENDENTE').toUpperCase();
+      if (['PENDENTE', 'EM_VALIDACAO'].includes(pipelineStatus)) servicosPendentes += 1;
+      if (['DEVOLVIDO'].includes(pipelineStatus)) servicosComAlerta += 1;
       servicosExtrasUpdatedAt.push(
         String(item.updated_at || item.created_at || consolidadoEm),
       );
-      flowsPresentes.push('operacional');
+      if ((Number(item.total) || 0) > 0) flowsPresentes.push('operacional');
     });
 
     const lucroReal = faturamentoTotal - finValorAprovado - custosGerais;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+�import { useEffect, useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -64,6 +64,7 @@ import { cn } from "@/lib/utils";
 import {
     ColaboradorService,
     CustoExtraOperacionalService,
+    ServicosExtrasOperacionaisService,
     EmpresaService,
     RegrasFinanceirasService,
     RegrasDadosService,
@@ -486,7 +487,6 @@ const PRESETS_PERMITIDOS_POR_PERFIL: Record<string, string[]> = {
 
 const PRESET_ROTAS: Record<string, string> = {
     preset_diaristas: "/producao/diaristas",
-    preset_transbordo: "/producao/servicos-extras",
 };
 
 const LancamentoProducao = () => {
@@ -1214,7 +1214,7 @@ const LancamentoProducao = () => {
                     data: operacao.data_operacao,
                     empresa_id: operacao.empresa_id,
                     categoria_custo: operacao.categoria_custo || 'OPERACIONAL',
-                    descricao: operacao.descricao_servico || "Lançamento manual de custo",
+                    descricao_servico: operacao.descricao_servico || "Lançamento manual de custo",
                     valor_unitario: operacao.valor_unitario_snapshot,
                     quantidade: operacao.quantidade,
                     total: operacao.valor_total,
@@ -1226,6 +1226,26 @@ const LancamentoProducao = () => {
                     avaliacao_json: operacao.avaliacao_json,
                 };
                 return CustoExtraOperacionalService.createMany([payload]);
+            }
+            if (operacao.categoria_servico === 'SERVICO_EXTRA') {
+                const payload = {
+                    data: operacao.data_operacao,
+                    empresa_id: operacao.empresa_id,
+                    tipo_servico_id: operacao.tipo_servico_id,
+                    descricao_servico: operacao.descricao_servico || "Serviço Adicional",
+                    quantidade: operacao.quantidade,
+                    valor_unitario: operacao.valor_unitario_snapshot,
+                    total: operacao.valor_total,
+                    forma_pagamento: operacao.forma_pagamento_id,
+                    modalidade_financeira: operacao.modalidade_financeira,
+                    status_pagamento: 'PENDENTE',
+                    pipeline_status: 'PENDENTE',
+                    observacao: operacao.observacao,
+                    origem_dado: 'manual',
+                    responsavel_nome: operacao.responsavel_nome,
+                    avaliacao_json: operacao.avaliacao_json,
+                };
+                return ServicosExtrasOperacionaisService.create(payload);
             }
             return OperacaoProducaoService.createWithColaboradores(operacao, colaboradores);
         },
@@ -1582,7 +1602,7 @@ const LancamentoProducao = () => {
 
                             {etapaAtual === 3 && (
                                 <div className="space-y-5">
-                                    {/* ── SEÇÃO: OPERAÇÃO ── */}
+                                    {/* ���� SE�!ÒO: OPERA�!ÒO ���� */}
                                     {!isCustosMensaisCLT ? (
                                         <div>
                                             <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-1.5">
@@ -1670,14 +1690,14 @@ const LancamentoProducao = () => {
                                         {!isCustosMensaisCLT && (
                                             <div className="rounded-xl border border-border/60 overflow-hidden">
                                                 <button type="button" onClick={() => setForm(f => ({ ...f, nf_emite: !f.nf_emite, nf_numero: f.nf_emite ? "" : f.nf_numero }))} className={cn("w-full flex items-center justify-between px-4 py-3 text-sm font-semibold transition-colors", form.nf_emite ? "bg-success-soft text-success-strong" : "bg-muted/40 text-muted-foreground hover:bg-muted/70")}>
-                                                    <span className="flex items-center gap-2"><span className={cn("w-5 h-5 rounded-full border-2 flex items-center justify-center text-xs font-black transition-all", form.nf_emite ? "border-success-strong bg-success-strong text-white" : "border-border bg-background")}>{form.nf_emite ? "✓" : ""}</span>Emite Nota Fiscal (NF)?</span>
-                                                    <span className={cn("text-xs px-2 py-0.5 rounded-full font-bold", form.nf_emite ? "bg-success-strong text-white" : "bg-muted text-muted-foreground")}>{form.nf_emite ? "SIM" : "NÃO"}</span>
+                                                    <span className="flex items-center gap-2"><span className={cn("w-5 h-5 rounded-full border-2 flex items-center justify-center text-xs font-black transition-all", form.nf_emite ? "border-success-strong bg-success-strong text-white" : "border-border bg-background")}>{form.nf_emite ? "�S" : ""}</span>Emite Nota Fiscal (NF)?</span>
+                                                    <span className={cn("text-xs px-2 py-0.5 rounded-full font-bold", form.nf_emite ? "bg-success-strong text-white" : "bg-muted text-muted-foreground")}>{form.nf_emite ? "SIM" : "NÒO"}</span>
                                                 </button>
                                                 {form.nf_emite && (
                                                     <div className="px-4 py-3 bg-background border-t border-border/40">
                                                         <Label className="text-xs text-muted-foreground mb-1 block">Número / Código da NF</Label>
                                                         <Input value={form.nf_numero} onChange={e => setForm(f => ({ ...f, nf_numero: e.target.value }))} placeholder="Digite o número ou código da NF" className="h-10 rounded-xl" autoFocus />
-                                                        {percentualIss > 0 && <p className="text-[11px] text-success-strong mt-1.5 font-medium">ℹ️ ISS de {percentualIss.toFixed(1)}% será aplicado ao valor total.</p>}
+                                                        {percentualIss > 0 && <p className="text-[11px] text-success-strong mt-1.5 font-medium">��️ ISS de {percentualIss.toFixed(1)}% será aplicado ao valor total.</p>}
                                                     </div>
                                                 )}
                                             </div>
@@ -1720,8 +1740,8 @@ const LancamentoProducao = () => {
                                                     <SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger>
                                                     <SelectContent>
                                                         <SelectItem value="PENDENTE">⏳ Pendente</SelectItem>
-                                                        <SelectItem value="RECEBIDO">✅ Recebido</SelectItem>
-                                                        <SelectItem value="ATRASADO">🚨 Atrasado</SelectItem>
+                                                        <SelectItem value="RECEBIDO">�S& Recebido</SelectItem>
+                                                        <SelectItem value="ATRASADO">�xa� Atrasado</SelectItem>
                                                     </SelectContent>
                                                 </Select>
                                             </div>
@@ -1739,7 +1759,7 @@ const LancamentoProducao = () => {
 
                             {etapaAtual === 4 && (
                                 <div className="space-y-5">
-                                    {/* ── SEÇÃO: EQUIPE ── */}
+                                    {/* ���� SE�!ÒO: EQUIPE ���� */}
                                     {!isFluxoSemEquipe && (
                                         <div>
                                             <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-1.5">
@@ -1773,10 +1793,10 @@ const LancamentoProducao = () => {
                                         </div>
                                     )}
 
-                                    {/* ── DIVISOR ── */}
+                                    {/* ���� DIVISOR ���� */}
                                     {!isFluxoSemEquipe && <div className="border-t border-dashed border-border/60" />}
 
-                                    {/* ── SEÇÃO: RESPONSÁVEL E OBSERVAÇÃO ── */}
+                                    {/* ���� SE�!ÒO: RESPONSÁVEL E OBSERVA�!ÒO ���� */}
                                     <div>
                                         <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-1.5">
                                             <ShieldAlert className="w-3.5 h-3.5" /> Responsável e Observações
@@ -1997,3 +2017,5 @@ const LancamentoProducao = () => {
 };
 
 export default LancamentoProducao;
+
+

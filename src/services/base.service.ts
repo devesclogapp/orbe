@@ -220,6 +220,7 @@ export const getTenantQueryFilter = async (table: string) => {
 
     const TABLES_WITH_EMPRESA_ID = [
       'operacoes', 'operacoes_producao', 'custos_extras_operacionais',
+      'servicos_extras_operacionais',
       'colaboradores', 'diaristas', 'registros_ponto', 'unidades',
       'transportadoras_clientes', 'fornecedores', 'produtos_carga'
     ];
@@ -4159,3 +4160,19 @@ class TaxasImpostosServiceClass extends BaseService<any> {
   constructor() { super('taxas_impostos'); }
 }
 export const TaxasImpostosService = new TaxasImpostosServiceClass();
+
+class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extras_operacionais'> {
+  constructor() { super('servicos_extras_operacionais' as any); }
+
+  async getWithEmpresas(empresaId?: string) {
+    let query = supabase
+      .from('servicos_extras_operacionais' as any)
+      .select('*, empresas(nome)')
+      .order('data', { ascending: false });
+    if (empresaId) query = query.eq('empresa_id', empresaId);
+    const { data, error } = await query;
+    if (error) throw error;
+    return data ?? [];
+  }
+}
+export const ServicosExtrasOperacionaisService = new ServicosExtrasOperacionaisServiceClass();

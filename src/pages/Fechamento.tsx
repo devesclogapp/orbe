@@ -21,11 +21,8 @@ type CustoExtraResumo = {
 type ServicoExtraResumo = {
   id: string;
   empresa_id: string | null;
-  data_operacao: string | null;
-  status: string | null;
-  avaliacao_json?: {
-    categoria_servico?: string | null;
-  } | null;
+  data: string | null;
+  pipeline_status: string | null;
 };
 
 type PendingActionState = {
@@ -173,15 +170,17 @@ const Fechamento = () => {
     queryFn: async () => {
       const startDate = `${currentMonth}-01`;
       const endDate = `${currentMonth}-31`;
-      const { data, error } = await supabase
-        .from("operacoes_producao")
-        .select("id, empresa_id, data_operacao, status, avaliacao_json")
-        .gte("data_operacao", startDate)
-        .lte("data_operacao", endDate);
-      if (error) throw error;
-      return ((data || []) as ServicoExtraResumo[]).filter(
-        (item) => item.avaliacao_json?.categoria_servico === "SERVICO_EXTRA",
-      );
+      const { data, error } = await (supabase as any)
+        .from("servicos_extras_operacionais")
+        .select("id, empresa_id, data, pipeline_status")
+        .gte("data", startDate)
+        .lte("data", endDate);
+      if (error) {
+        // Tabela pode não existir ainda (migration não aplicada) → retorna vazio
+        console.warn("servicos_extras_operacionais não disponível:", error.message);
+        return [];
+      }
+      return (data || []) as ServicoExtraResumo[];
     },
   });
 
@@ -206,10 +205,10 @@ const Fechamento = () => {
   const getServicosPendentesDoCiclo = (c: CicloOperacional) =>
     servicosExtras.filter((item) =>
       item.empresa_id === c.empresa_id &&
-      Boolean(item.data_operacao) &&
-      item.data_operacao! >= c.data_inicio &&
-      item.data_operacao! <= c.data_fim &&
-      ["pendente", "aguardando_validacao", "com_alerta", "bloqueado"].includes(String(item.status || "").toLowerCase()),
+      Boolean(item.data) &&
+      item.data! >= c.data_inicio &&
+      item.data! <= c.data_fim &&
+      ["PENDENTE", "EM_VALIDACAO", "DEVOLVIDO"].includes(String(item.pipeline_status || "").toUpperCase()),
     );
 
   const getFinancialFlowBlockers = (c: CicloOperacional) => {
@@ -254,10 +253,10 @@ const Fechamento = () => {
     }),
     trigger: fechamentoConcluidoParaFinanceiro
       ? buildOperationalStagePipeline({
-          competencia: currentMonth,
-          empresa: "Operacao",
-          completedStage: "fechamento_mensal",
-        })
+        competencia: currentMonth,
+        empresa: "Operacao",
+        completedStage: "fechamento_mensal",
+      })
       : null,
   });
 
@@ -314,129 +313,129 @@ const Fechamento = () => {
             const financialFlowBlockers = getFinancialFlowBlockers(c);
 
             return (
-            <article key={c.id} className="esc-card p-6 flex flex-col gap-5">
-              <div className="flex items-center justify-between border-b border-border pb-4">
-                <div className="flex items-center gap-3">
-                  <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-                    <CalendarCheck className="h-6 w-6" />
+              <article key={c.id} className="esc-card p-6 flex flex-col gap-5">
+                <div className="flex items-center justify-between border-b border-border pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                      <CalendarCheck className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <h3 className="font-display font-semibold text-lg text-foreground">
+                        Semana {c.semana_operacional}
+                      </h3>
+                      <p className="text-sm text-muted-foreground">
+                        {new Date(`${c.data_inicio}T12:00:00Z`).toLocaleDateString('pt-BR')} até {new Date(`${c.data_fim}T12:00:00Z`).toLocaleDateString('pt-BR')}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    <StatusBadge label="Automação" status={c.status_automacao || 'aguardando_validacao'} type="automacao" />
+                    <StatusBadge label="Operacional" status={c.status} type="operacional" />
+                    <StatusBadge label="RH" status={c.status_rh} type="rh" />
+                    <StatusBadge label="Financeiro" status={c.status_financeiro} type="fin" />
+                    <StatusBadge label="Remessa" status={c.status_remessa} type="remessa" />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-4 gap-6 py-2">
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Registros</div>
+                    <div className="font-display font-semibold text-2xl">{c.total_registros || 0}</div>
                   </div>
                   <div>
-                    <h3 className="font-display font-semibold text-lg text-foreground">
-                      Semana {c.semana_operacional}
-                    </h3>
-                    <p className="text-sm text-muted-foreground">
-                      {new Date(`${c.data_inicio}T12:00:00Z`).toLocaleDateString('pt-BR')} até {new Date(`${c.data_fim}T12:00:00Z`).toLocaleDateString('pt-BR')}
-                    </p>
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Processados</div>
+                    <div className="font-display font-semibold text-2xl">{c.total_processados || 0}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Inconsistências</div>
+                    <div className={cn("font-display font-semibold text-2xl", (c.total_inconsistencias || 0) > 0 ? "text-destructive" : "text-muted-foreground")}>
+                      {c.total_inconsistencias || 0}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Valor Operacional</div>
+                    <div className="font-display font-semibold text-2xl text-success">
+                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(c.valor_operacional || 0)}
+                    </div>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-4">
-                  <StatusBadge label="Automação" status={c.status_automacao || 'aguardando_validacao'} type="automacao" />
-                  <StatusBadge label="Operacional" status={c.status} type="operacional" />
-                  <StatusBadge label="RH" status={c.status_rh} type="rh" />
-                  <StatusBadge label="Financeiro" status={c.status_financeiro} type="fin" />
-                  <StatusBadge label="Remessa" status={c.status_remessa} type="remessa" />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-4 gap-6 py-2">
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Registros</div>
-                  <div className="font-display font-semibold text-2xl">{c.total_registros || 0}</div>
-                </div>
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Processados</div>
-                  <div className="font-display font-semibold text-2xl">{c.total_processados || 0}</div>
-                </div>
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Inconsistências</div>
-                  <div className={cn("font-display font-semibold text-2xl", (c.total_inconsistencias || 0) > 0 ? "text-destructive" : "text-muted-foreground")}>
-                    {c.total_inconsistencias || 0}
+                {criticalBlockers.length > 0 && (
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-destructive">Bloqueios críticos</p>
+                    <ul className="mt-2 space-y-1 text-sm text-destructive">
+                      {criticalBlockers.map((item, idx) => (
+                        <li key={`${c.id}-blocker-${idx}`}>• {item}</li>
+                      ))}
+                    </ul>
                   </div>
-                </div>
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Valor Operacional</div>
-                  <div className="font-display font-semibold text-2xl text-success">
-                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(c.valor_operacional || 0)}
+                )}
+
+                {financialFlowBlockers.length > 0 && (
+                  <div className="rounded-lg border border-warning/30 bg-warning-soft/40 px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-warning-strong">Validações do fluxo financeiro</p>
+                    <ul className="mt-2 space-y-1 text-sm text-warning-strong">
+                      {financialFlowBlockers.map((item, idx) => (
+                        <li key={`${c.id}-finance-blocker-${idx}`}>- {item}</li>
+                      ))}
+                    </ul>
                   </div>
-                </div>
-              </div>
+                )}
 
-              {criticalBlockers.length > 0 && (
-                <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-destructive">Bloqueios críticos</p>
-                  <ul className="mt-2 space-y-1 text-sm text-destructive">
-                    {criticalBlockers.map((item, idx) => (
-                      <li key={`${c.id}-blocker-${idx}`}>• {item}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+                <div className="flex items-center justify-between pt-4 border-t border-border bg-muted/30 -mx-6 px-6 pb-2 -mb-2 rounded-b-xl">
+                  <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+                    {(c.status === "fechado" || c.status === "enviado_financeiro") ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
+                    {c.status === "fechado" && c.fechado_em ? `Fechado oper. em ${new Date(c.fechado_em).toLocaleDateString('pt-BR')}` : "Aguardando fluxos processuais"}
+                  </span>
 
-              {financialFlowBlockers.length > 0 && (
-                <div className="rounded-lg border border-warning/30 bg-warning-soft/40 px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-warning-strong">Validações do fluxo financeiro</p>
-                  <ul className="mt-2 space-y-1 text-sm text-warning-strong">
-                    {financialFlowBlockers.map((item, idx) => (
-                      <li key={`${c.id}-finance-blocker-${idx}`}>- {item}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              <div className="flex items-center justify-between pt-4 border-t border-border bg-muted/30 -mx-6 px-6 pb-2 -mb-2 rounded-b-xl">
-                <span className="text-xs text-muted-foreground flex items-center gap-1.5">
-                  {(c.status === "fechado" || c.status === "enviado_financeiro") ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
-                  {c.status === "fechado" && c.fechado_em ? `Fechado oper. em ${new Date(c.fechado_em).toLocaleDateString('pt-BR')}` : "Aguardando fluxos processuais"}
-                </span>
-
-                <div className="flex items-center gap-2">
-                  {/* Fluxo Botões:
+                  <div className="flex items-center gap-2">
+                    {/* Fluxo Botões:
                       Se aberto -> Fechar Período
                       Se fechado -> RH aprovar/rejeitar e Reabrir
                       Se RH Validado -> Fin aprovar/rejeitar
                   */}
 
-                  {c.status !== "fechado" && c.status !== "enviado_financeiro" && (
-                    <Button
-                      size="sm"
-                      disabled={criticalBlockers.length > 0 || actionMutation.isPending}
-                      onClick={() => handleAction('fechar', c.id)}
-                    >
-                      {actionMutation.isPending ? "Processando..." : getCriticalBlockers(c).length > 0 ? "Bloqueado por pendências" : "1. Fechar Operacional"}
-                    </Button>
-                  )}
+                    {c.status !== "fechado" && c.status !== "enviado_financeiro" && (
+                      <Button
+                        size="sm"
+                        disabled={criticalBlockers.length > 0 || actionMutation.isPending}
+                        onClick={() => handleAction('fechar', c.id)}
+                      >
+                        {actionMutation.isPending ? "Processando..." : getCriticalBlockers(c).length > 0 ? "Bloqueado por pendências" : "1. Fechar Operacional"}
+                      </Button>
+                    )}
 
-                  {c.status === "fechado" && c.status_rh === "pendente" && (
-                    <>
-                      <Button size="sm" variant="outline" onClick={() => handleAction('reabrir', c.id, true)} disabled={actionMutation.isPending}>Reabrir Operacional</Button>
-                      <Button size="sm" variant="destructive" onClick={() => handleAction('rejeitarRH', c.id, true)} disabled={actionMutation.isPending}>Rejeitar (RH)</Button>
-                      <Button size="sm" variant="default" onClick={() => handleAction('validarRH', c.id, false)} disabled={actionMutation.isPending}>2. Aprovar RH</Button>
-                    </>
-                  )}
+                    {c.status === "fechado" && c.status_rh === "pendente" && (
+                      <>
+                        <Button size="sm" variant="outline" onClick={() => handleAction('reabrir', c.id, true)} disabled={actionMutation.isPending}>Reabrir Operacional</Button>
+                        <Button size="sm" variant="destructive" onClick={() => handleAction('rejeitarRH', c.id, true)} disabled={actionMutation.isPending}>Rejeitar (RH)</Button>
+                        <Button size="sm" variant="default" onClick={() => handleAction('validarRH', c.id, false)} disabled={actionMutation.isPending}>2. Aprovar RH</Button>
+                      </>
+                    )}
 
-                  {c.status_rh === "validado_rh" && c.status_financeiro === "pendente" && (
-                    <>
-                      <Button size="sm" variant="destructive" onClick={() => handleAction('rejeitarFin', c.id, true)} disabled={actionMutation.isPending}>Rejeitar (Fin)</Button>
-                      <Button size="sm" variant="default" onClick={() => handleAction('validarFin', c.id, false)} disabled={actionMutation.isPending || financialFlowBlockers.length > 0}>3. Aprovar Financeiro</Button>
-                    </>
-                  )}
+                    {c.status_rh === "validado_rh" && c.status_financeiro === "pendente" && (
+                      <>
+                        <Button size="sm" variant="destructive" onClick={() => handleAction('rejeitarFin', c.id, true)} disabled={actionMutation.isPending}>Rejeitar (Fin)</Button>
+                        <Button size="sm" variant="default" onClick={() => handleAction('validarFin', c.id, false)} disabled={actionMutation.isPending || financialFlowBlockers.length > 0}>3. Aprovar Financeiro</Button>
+                      </>
+                    )}
 
-                  {c.status_financeiro === "validado_financeiro" && (
-                    <Button size="sm" variant="outline" onClick={() => handleAction('reabrir', c.id, true)} disabled={actionMutation.isPending}>
-                      Forçar Reabertura
-                    </Button>
-                  )}
+                    {c.status_financeiro === "validado_financeiro" && (
+                      <Button size="sm" variant="outline" onClick={() => handleAction('reabrir', c.id, true)} disabled={actionMutation.isPending}>
+                        Forçar Reabertura
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              </div>
 
-              {c.status_financeiro !== "validado_financeiro" && (
-                <div className="text-xs text-muted-foreground">
-                  Fechamento final da competência permanece bloqueado até <strong>aprovação financeira</strong>.
-                </div>
-              )}
-            </article>
-          );
+                {c.status_financeiro !== "validado_financeiro" && (
+                  <div className="text-xs text-muted-foreground">
+                    Fechamento final da competência permanece bloqueado até <strong>aprovação financeira</strong>.
+                  </div>
+                )}
+              </article>
+            );
           })}
           {list.length === 0 && (
             <div className="p-12 text-center text-muted-foreground italic esc-card">
