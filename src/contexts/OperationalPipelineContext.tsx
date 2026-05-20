@@ -573,6 +573,234 @@ export const buildBancoHorasRhValidationPipeline = (params: {
     };
 };
 
+export type DiaristaStepId =
+    | "lancamento"
+    | "lote_fechado"
+    | "validacao_rh"
+    | "central_financeira"
+    | "cnab_pagamento"
+    | "concluido";
+
+type DiaristaTimestamps = Partial<Record<DiaristaStepId, string>>;
+
+const diaristaCompletedStageMap: Record<DiaristaStepId, { label: string; description: string }> = {
+    lancamento: {
+        label: "Lançamento registrado",
+        description: "As marcações da semana foram salvas e estão prontas para fechamento.",
+    },
+    lote_fechado: {
+        label: "Lote fechado pelo encarregado",
+        description: "O período foi encerrado e enviado para validação do RH.",
+    },
+    validacao_rh: {
+        label: "Validação RH concluída",
+        description: "O RH validou o lote de diaristas e liberou para aprovação financeira.",
+    },
+    central_financeira: {
+        label: "Aprovação financeira concluída",
+        description: "O financeiro aprovou o lote e está pronto para geração de CNAB.",
+    },
+    cnab_pagamento: {
+        label: "CNAB gerado e enviado",
+        description: "A remessa bancária foi gerada e os pagamentos estão em processamento.",
+    },
+    concluido: {
+        label: "Fluxo concluído",
+        description: "O ciclo completo de diaristas foi encerrado com sucesso.",
+    },
+};
+
+export const buildDiaristasPipeline = (params: {
+    competencia: string;
+    empresa: string;
+    currentStep: DiaristaStepId;
+    timestamps?: DiaristaTimestamps;
+}): PipelineTrigger => {
+    const { competencia, empresa, currentStep, timestamps = {} } = params;
+
+    const stepKeys: DiaristaStepId[] = ["lancamento", "lote_fechado", "validacao_rh", "central_financeira", "cnab_pagamento", "concluido"];
+    const currentIndex = stepKeys.indexOf(currentStep);
+
+    const getStatus = (index: number): PipelineStepStatus => {
+        if (index < currentIndex) return "done";
+        if (index === currentIndex) return "current";
+        return "pending";
+    };
+
+    const getTimestamp = (stepId: DiaristaStepId, index: number) => {
+        const status = getStatus(index);
+        return status === "done" ? timestamps[stepId] : undefined;
+    };
+
+    const steps: PipelineStep[] = [
+        {
+            id: "lancamento",
+            label: "Lançamento Operacional",
+            description: "Encarregado registra as marcações semanais dos diaristas.",
+            status: getStatus(0),
+            timestamp: getTimestamp("lancamento", 0),
+            route: "/producao/diaristas",
+            responsible: "Encarregado",
+        },
+        {
+            id: "lote_fechado",
+            label: "Fechamento de Lote",
+            description: "Período encerrado e enviado para validação.",
+            status: getStatus(1),
+            timestamp: getTimestamp("lote_fechado", 1),
+            route: "/producao/diaristas",
+            responsible: "Encarregado",
+        },
+        {
+            id: "validacao_rh",
+            label: "Validação RH",
+            description: "RH valida os lançamentos e aprova o lote.",
+            status: getStatus(2),
+            timestamp: getTimestamp("validacao_rh", 2),
+            route: "/rh/diaristas",
+            responsible: "RH",
+        },
+        {
+            id: "central_financeira",
+            label: "Aprovação Financeira",
+            description: "Financeiro aprova o lote para geração de remessa.",
+            status: getStatus(3),
+            timestamp: getTimestamp("central_financeira", 3),
+            route: "/financeiro",
+            responsible: "Financeiro",
+        },
+        {
+            id: "cnab_pagamento",
+            label: "CNAB / Pagamento",
+            description: "Remessa bancária gerada e pagamentos processados.",
+            status: getStatus(4),
+            timestamp: getTimestamp("cnab_pagamento", 4),
+            route: "/bancario",
+            responsible: "Financeiro",
+        },
+        {
+            id: "concluido",
+            label: "Concluído",
+            description: "Ciclo de diaristas encerrado com sucesso.",
+            status: getStatus(5),
+            timestamp: getTimestamp("concluido", 5),
+            route: "/operacional/dashboard",
+        },
+    ];
+
+    const nextActionMap: Record<DiaristaStepId, { label: string; description: string; route: string }> = {
+        lancamento: {
+            label: "Fechar Lote",
+            description: "Salve os lançamentos e feche o período para seguir no fluxo.",
+            route: "/producao/diaristas",
+        },
+        lote_fechado: {
+            label: "Ir para Validação RH →",
+            description: "Lote fechado. O RH pode agora validar os registros.",
+            route: "/rh/diaristas",
+        },
+        validacao_rh: {
+            label: "Ir para Central Financeira →",
+            description: "Lote validado pelo RH. O Financeiro pode aprovar agora.",
+            route: "/financeiro",
+        },
+        central_financeira: {
+            label: "Gerar CNAB / Central Bancária →",
+            description: "Aprovação concluída. Gere a remessa bancária para pagamento.",
+            route: "/bancario",
+        },
+        cnab_pagamento: {
+            label: "Ver Dashboard →",
+            description: "Remessa enviada. Acompanhe o resultado no Dashboard.",
+            route: "/operacional/dashboard",
+        },
+        concluido: {
+            label: "Ver histórico →",
+            description: "Fluxo concluído. Consulte o histórico de remessas.",
+            route: "/financeiro/remessa/historico",
+        },
+    };
+
+    return {
+        context: { competencia, empresa, fluxo: "Diaristas" },
+        steps,
+        completedStage: diaristaCompletedStageMap[currentStep],
+        nextAction: nextActionMap[currentStep],
+    };
+};
+
+export const buildDiaristasDevolvidoPipeline = (params: {
+    competencia: string;
+    empresa: string;
+    motivo?: string;
+}): PipelineTrigger => {
+    const { competencia, empresa, motivo } = params;
+
+    return {
+        context: { competencia, empresa, fluxo: "Diaristas" },
+        steps: [
+            {
+                id: "lancamento",
+                label: "Lançamento Operacional",
+                description: "Marcações semanais registradas pelo encarregado.",
+                status: "done",
+                route: "/producao/diaristas",
+                responsible: "Encarregado",
+            },
+            {
+                id: "lote_fechado",
+                label: "Fechamento de Lote",
+                description: "Período encerrado e enviado ao RH.",
+                status: "done",
+                route: "/producao/diaristas",
+                responsible: "Encarregado",
+            },
+            {
+                id: "validacao_rh",
+                label: "Validação RH",
+                description: motivo ? `Devolvido: ${motivo}` : "Lote devolvido pelo RH para correção.",
+                status: "devolved",
+                route: "/rh/diaristas",
+                responsible: "RH",
+            },
+            {
+                id: "central_financeira",
+                label: "Aprovação Financeira",
+                description: "Aguardando reenvio após correção.",
+                status: "pending",
+                route: "/financeiro",
+                responsible: "Financeiro",
+            },
+            {
+                id: "cnab_pagamento",
+                label: "CNAB / Pagamento",
+                description: "Liberado após aprovação financeira.",
+                status: "pending",
+                route: "/bancario",
+                responsible: "Financeiro",
+            },
+            {
+                id: "concluido",
+                label: "Concluído",
+                description: "Aguardando resolução da devolução.",
+                status: "pending",
+                route: "/operacional/dashboard",
+            },
+        ],
+        completedStage: {
+            label: "Lote devolvido pelo RH",
+            description: motivo
+                ? `Motivo: ${motivo}. Corrija e reenvie o lote.`
+                : "O RH devolveu o lote. Corrija as inconsistências e reenvie.",
+        },
+        nextAction: {
+            label: "Corrigir e Relançar →",
+            description: "Acesse o lançamento de diaristas para corrigir e reenviar o lote.",
+            route: "/producao/diaristas",
+        },
+    };
+};
+
 export const buildOperationalFailurePipeline = (params: {
     competencia: string;
     empresa: string;

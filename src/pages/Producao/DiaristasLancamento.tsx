@@ -41,9 +41,11 @@ import {
     LancamentoDiaristaService,
     LoteFechamentoDiaristaService,
     RegraMarcacaoDiaristaService,
+    DiaristaCicloService
 } from "@/services/base.service";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useOperationalPipeline, buildDiaristasPipeline } from "@/contexts/OperationalPipelineContext";
 
 // ─── Mapa de status: cobre todos os valores conhecidos ───
 const STATUS_DIARISTA_MAP: Record<string, { label: string; cls: string }> = {
@@ -110,6 +112,7 @@ const DiaristasLancamento = () => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
     const navigate = useNavigate();
+    const { openPipeline } = useOperationalPipeline();
 
     /* Semana selecionada — começa no domingo da semana atual mas exibe de seg–dom */
     const [semanaInicio, setSemanaInicio] = useState<Date>(() =>
@@ -424,6 +427,15 @@ const DiaristasLancamento = () => {
             queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_semana", empresaIdSelecionada] });
             queryClient.invalidateQueries({ queryKey: ["historico_recente_diaristas", empresaIdSelecionada] });
             setFechandoPeriodo(false);
+
+            // Pipeline: conduzir usuário ao próximo setor (RH)
+            const empresaNome = (empresas as any[]).find((e: any) => e.id === empresaIdSelecionada)?.nome || "Empresa";
+            const competencia = format(semanaInicio, "yyyy-MM");
+            openPipeline(buildDiaristasPipeline({
+                competencia,
+                empresa: empresaNome,
+                currentStep: "lote_fechado",
+            }));
         },
         onError: (err: any) => toast.error("Erro ao fechar período.", { description: err.message }),
     });
@@ -433,12 +445,21 @@ const DiaristasLancamento = () => {
         Object.values(dias).some((c) => !!c)
     );
 
+    // Contexto passivo para a topbar
+    const diaristasReviewTrigger = useMemo(() => {
+        const empresaNome = (empresas as any[]).find((e: any) => e.id === empresaIdSelecionada)?.nome || "Empresa";
+        return buildDiaristasPipeline({
+            competencia: format(semanaInicio, "yyyy-MM"),
+            empresa: empresaNome,
+            currentStep: "lancamento"
+        });
+    }, [empresas, empresaIdSelecionada, semanaInicio]);
+
     // ─── Render ──────────────────────────────────────────────────────────────
 
     return (
-        <OperationalShell title="Lançamento de Diaristas" showBack={false} onBack={() => navigate("/producao")} hideFab={true}>
+        <OperationalShell title="Lançamento de Diaristas" showBack={false} onBack={() => navigate("/producao")} hideFab={true} pipelineTrigger={diaristasReviewTrigger}>
             <div className="max-w-5xl mx-auto space-y-5 pb-28">
-                <div className="bg-blue-500 text-white p-4">DEBUG: Renderizando grade...</div>
 
                 {/* Header: seletor de empresa + semana */}
                 <section className="esc-card p-5 space-y-4">

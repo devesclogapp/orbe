@@ -26,6 +26,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { buildDiaristasPipeline, useOperationalPipeline } from "@/contexts/OperationalPipelineContext";
 import {
     Loader2,
     Eye,
@@ -93,6 +94,7 @@ type Lancamento = {
 export const CentralBancariaDiaristas = ({ onMetricsUpdate }: { onMetricsUpdate?: (metrics: any) => void }) => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
+    const { openPipeline } = useOperationalPipeline();
 
     const [selectedLote, setSelectedLote] = useState<Lote | null>(null);
     const [openDetalhe, setOpenDetalhe] = useState(false);
@@ -267,6 +269,17 @@ export const CentralBancariaDiaristas = ({ onMetricsUpdate }: { onMetricsUpdate?
             queryClient.invalidateQueries({ queryKey: ["lancamentos_lote"] });
             setOpenConfirmPago(false);
             setOpenDetalhe(false);
+
+            // Pipeline: ciclo completo concluído
+            const empresa = (empresas as any[])[0];
+            const empresaNome = empresa?.nome || "Empresa";
+            const competencia = format(new Date(), "yyyy-MM");
+            openPipeline(buildDiaristasPipeline({
+                competencia,
+                empresa: empresaNome,
+                currentStep: "concluido",
+            }));
+
             setSelectedLote(null);
             setLoteParaPagar(null);
         },
@@ -376,6 +389,16 @@ export const CentralBancariaDiaristas = ({ onMetricsUpdate }: { onMetricsUpdate?
             });
             queryClient.invalidateQueries({ queryKey: ["lotes_fechamento"] });
             setOpenCnab(false);
+
+            // Pipeline: conduzir ao próximo passo (marcar como pago / Dashboard)
+            const empresa = (empresas as any[])[0];
+            const empresaNome = empresa?.nome || "Empresa";
+            const competencia = format(new Date(), "yyyy-MM");
+            openPipeline(buildDiaristasPipeline({
+                competencia,
+                empresa: empresaNome,
+                currentStep: "cnab_pagamento",
+            }));
         },
 
         onError: (err: any) => {

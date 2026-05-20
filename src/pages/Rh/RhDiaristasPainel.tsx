@@ -23,6 +23,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { buildDiaristasPipeline, buildDiaristasDevolvidoPipeline, useOperationalPipeline } from "@/contexts/OperationalPipelineContext";
 import { CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Download, Loader2, Lock, RefreshCw, Users, Calendar, Table as TableIcon, Settings, Send, FileCheck, History, CalendarClock, Banknote, FileCode2, Laptop } from "lucide-react";
 
 const formatCurrency = (v: number) =>
@@ -70,6 +71,7 @@ type PeriodoRapido = "semana_atual" | "semana_anterior" | "personalizado";
 const RhDiaristasPainel = () => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
+    const { openPipeline } = useOperationalPipeline();
 
 
     const [periodoRapido, setPeriodoRapido] = useState<PeriodoRapido>("semana_atual");
@@ -697,12 +699,25 @@ const RhDiaristasPainel = () => {
             }
         },
         onSuccess: () => {
-            toast.success("Lote validado pelo RH" + ((regraFechamento as any)?.enviar_financeiro === false ? " e finalizado." : "."));
+            const isAutoFinalizado = (regraFechamento as any)?.enviar_financeiro === false;
+            toast.success("Lote validado pelo RH" + (isAutoFinalizado ? " e finalizado." : "."));
             queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel"] });
             queryClient.invalidateQueries({ queryKey: ["lotes_fechamento_painel"] });
             queryClient.invalidateQueries({ queryKey: ["lotes_fechamento"] });
             queryClient.invalidateQueries({ queryKey: ["diaristas_logs_fechamento"] });
             refetchHistorico();
+
+            // Pipeline: conduzir ao Financeiro (ou Dashboard se auto-finalizado)
+            const empresa = (empresas as any[])[0];
+            const empresaNome = empresa?.nome || "Empresa";
+            const competencia = format(new Date(inicio + "T12:00:00"), "yyyy-MM");
+            if (!isAutoFinalizado) {
+                openPipeline(buildDiaristasPipeline({
+                    competencia,
+                    empresa: empresaNome,
+                    currentStep: "validacao_rh",
+                }));
+            }
         },
         onError: (err: any) => toast.error("Erro ao validar lote.", { description: err.message }),
     });
@@ -737,6 +752,19 @@ const RhDiaristasPainel = () => {
             setOpenReabertura(false);
             setMotivoReabertura("");
             setTipoReabertura('operacional');
+
+            // Pipeline: se foi devolução operacional, mostrar estado devolvido
+            if (variables.tipo === 'operacional') {
+                const empresa = (empresas as any[])[0];
+                const empresaNome = empresa?.nome || "Empresa";
+                const competencia = format(new Date(inicio + "T12:00:00"), "yyyy-MM");
+                openPipeline(buildDiaristasDevolvidoPipeline({
+                    competencia,
+                    empresa: empresaNome,
+                    motivo: variables.motivo,
+                }));
+            }
+
             setLoteParaReabrir(null);
         },
         onError: (err: any) => toast.error("Erro ao reabrir lote.", { description: err.message }),
@@ -776,12 +804,23 @@ const RhDiaristasPainel = () => {
             }
         },
         onSuccess: () => {
-            toast.success("Lote aprovado" + ((regraFechamento as any)?.auto_fechar ? " e encerrado automaticamente." : "."));
+            const autoFechou = (regraFechamento as any)?.auto_fechar;
+            toast.success("Lote aprovado" + (autoFechou ? " e encerrado automaticamente." : "."));
             queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel"] });
             queryClient.invalidateQueries({ queryKey: ["lotes_fechamento_painel"] });
             queryClient.invalidateQueries({ queryKey: ["lotes_fechamento"] });
             queryClient.invalidateQueries({ queryKey: ["diaristas_logs_fechamento"] });
             refetchHistorico();
+
+            // Pipeline: avançar estado
+            const empresa = (empresas as any[]).find(e => e.id === empresaFiltroId) || (empresas as any[])[0];
+            const empresaNome = empresa?.nome || "Empresa";
+            const reqCompetencia = format(new Date(inicio + "T12:00:00"), "yyyy-MM");
+            openPipeline(buildDiaristasPipeline({
+                competencia: reqCompetencia,
+                empresa: empresaNome,
+                currentStep: autoFechou ? "concluido" : "aprovacao_financeira"
+            }));
         },
         onError: (err: any) => toast.error("Erro ao aprovar lote.", { description: err.message }),
     });

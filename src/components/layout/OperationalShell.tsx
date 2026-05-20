@@ -1,7 +1,8 @@
 import { ReactNode } from "react";
-import { LogOut, Zap, ArrowLeft, Plus } from "lucide-react";
+import { LogOut, Zap, ArrowLeft, Plus, GitBranch } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { PipelineTrigger, useOperationalPipeline } from "@/contexts/OperationalPipelineContext";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
@@ -12,11 +13,13 @@ interface OperationalShellProps {
     showBack?: boolean;
     onBack?: () => void;
     hideFab?: boolean;
+    pipelineTrigger?: PipelineTrigger | null;
 }
 
-export const OperationalShell = ({ children, title = "Coletor Orbe", unitName, showBack: propShowBack, onBack, hideFab }: OperationalShellProps) => {
+export const OperationalShell = ({ children, title = "Coletor Orbe", unitName, showBack: propShowBack, onBack, hideFab, pipelineTrigger }: OperationalShellProps) => {
     const { signOut, user } = useAuth();
     const navigate = useNavigate();
+    const { openPipeline } = useOperationalPipeline();
 
     const handleSignOut = async () => {
         await signOut();
@@ -66,6 +69,20 @@ export const OperationalShell = ({ children, title = "Coletor Orbe", unitName, s
                         <span className="text-[10px] font-bold text-foreground leading-none hidden sm:block">{user?.email?.split('@')[0]}</span>
                         <span className="text-[9px] text-muted-foreground font-medium uppercase tracking-tighter">Encarregado</span>
                     </div>
+
+                    {pipelineTrigger && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openPipeline(pipelineTrigger)}
+                            className="h-9 rounded-full px-3 text-[11px] text-muted-foreground hover:text-foreground hidden sm:flex"
+                            title="Reabrir pipeline desta tela"
+                        >
+                            <GitBranch className="mr-1.5 h-3.5 w-3.5" />
+                            Ver pipeline
+                        </Button>
+                    )}
+
                     <Button
                         variant="ghost"
                         size="icon"
