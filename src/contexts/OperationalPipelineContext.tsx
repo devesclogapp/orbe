@@ -904,3 +904,110 @@ export const buildOperationalFailurePipeline = (params: {
         nextAction: fallbackNextAction,
     };
 };
+
+export type OperacaoVolumeStepId = "lancamento" | "validacao" | "financeiro" | "faturamento" | "recebimento" | "concluido";
+
+export const buildOperacaoVolumePipeline = (params: {
+    competencia: string;
+    empresa: string;
+    currentStep: OperacaoVolumeStepId;
+    devolucaoMotivo?: string;
+}): PipelineTrigger => {
+    const { competencia, empresa, currentStep, devolucaoMotivo } = params;
+
+    const stepOrder: OperacaoVolumeStepId[] = [
+        "lancamento",
+        "validacao",
+        "financeiro",
+        "faturamento",
+        "recebimento",
+        "concluido"
+    ];
+
+    const currentIndex = stepOrder.indexOf(currentStep);
+
+    const getStatus = (index: number): import("./OperationalPipelineContext").PipelineStepStatus => {
+        if (devolucaoMotivo && index === currentIndex) return "devolved";
+        if (index < currentIndex) return "done";
+        if (index === currentIndex) return "current";
+        return "pending";
+    };
+
+    const getRoute = (id: OperacaoVolumeStepId) => {
+        switch (id) {
+            case "lancamento":
+            case "validacao":
+                return "/operacional/dashboard";
+            case "financeiro":
+            case "faturamento":
+            case "recebimento":
+                return "/financeiro";
+            default:
+                return undefined;
+        }
+    };
+
+    const steps: PipelineStep[] = [
+        {
+            id: "lancamento",
+            label: "Lançamento Operacional",
+            description: "Entrada operacional da operação logística.",
+            status: getStatus(0),
+            route: getRoute("lancamento"),
+            responsible: "Encarregado",
+        },
+        {
+            id: "validacao",
+            label: "Validação Operacional",
+            description: "Aprovação de volume e operação.",
+            status: getStatus(1),
+            route: getRoute("validacao"),
+            responsible: "Operação",
+        },
+        {
+            id: "financeiro",
+            label: "Consolidação Financeira",
+            description: "Consolidação dos valores na central.",
+            status: getStatus(2),
+            route: getRoute("financeiro"),
+            responsible: "Financeiro",
+        },
+        {
+            id: "faturamento",
+            label: "Faturamento",
+            description: "Geração de títulos ou cobrança direta.",
+            status: getStatus(3),
+            route: getRoute("faturamento"),
+            responsible: "Financeiro",
+        },
+        {
+            id: "recebimento",
+            label: "Recebimento",
+            description: "Conciliação de recebimento ou liquidação.",
+            status: getStatus(4),
+            route: getRoute("recebimento"),
+            responsible: "Financeiro",
+        },
+        {
+            id: "concluido",
+            label: "Concluído",
+            description: "Refletido no Dashboard.",
+            status: getStatus(5),
+            route: undefined,
+        },
+    ];
+
+    const isDone = currentStep === "concluido";
+
+    return {
+        context: { competencia, empresa, fluxo: "Operação por Volume" },
+        steps,
+        title: "Status da Operação",
+        subtitle: "Acompanhe o andamento geral da operação.",
+        nextAction: isDone ? undefined : {
+            label: "Próxima Etapa →",
+            description: "Siga para a próxima etapa.",
+            route: getRoute(stepOrder[Math.min(currentIndex + 1, stepOrder.length - 1)]) || "/operacional/dashboard",
+        }
+    };
+};

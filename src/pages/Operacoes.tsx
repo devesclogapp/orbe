@@ -55,6 +55,9 @@ import {
   TransportadoraClienteService,
 } from "@/services/base.service";
 import { processarOperacao } from "@/utils/financeiro";
+import { useOperationalPipeline } from "@/contexts/OperationalPipelineContext";
+import { buildOperacaoVolumePipeline } from "@/contexts/OperationalPipelineContext";
+import { NovaOperacaoDialog } from "@/components/operacoes/NovaOperacaoDialog";
 
 type EmpresaOption = {
   id: string;
@@ -444,12 +447,14 @@ const TopKpiCard = ({
 const Operacoes = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { openPipeline } = useOperationalPipeline();
   const [selectedYear, setSelectedYear] = useState<string>(
     String(new Date().getFullYear()),
   );
   const [selectedMonthNumber, setSelectedMonthNumber] = useState<string>(
     "all",
   );
+  const [novaOpOpen, setNovaOpOpen] = useState(false);
   const [sheetYear, setSheetYear] = useState<string>(String(new Date().getFullYear()));
   const [sheetMonthNumber, setSheetMonthNumber] = useState<string>("all");
   const [selectedEmpresaId, setSelectedEmpresaId] = useState<string>("all");
@@ -875,6 +880,18 @@ const Operacoes = () => {
       await queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
       await queryClient.invalidateQueries({ queryKey: ["importacoes"] });
       setImportModalOpen(false);
+
+      if (datasImportadas.length > 0) {
+        const compMatch = datasImportadas[0].match(/^(\d{4})-(\d{2})/);
+        if (compMatch) {
+          const comp = `${compMatch[1]}-${compMatch[2]}`;
+          openPipeline(buildOperacaoVolumePipeline({
+            competencia: comp,
+            empresa: selectedEmpresaId,
+            currentStep: "validacao"
+          }));
+        }
+      }
     } catch (error) {
       console.error("Erro ao processar importacao de planilha:", error);
       const message = getImportErrorMessage(error);
@@ -1014,6 +1031,16 @@ const Operacoes = () => {
                   </TooltipTrigger>
                   <TooltipContent>Importar operacoes</TooltipContent>
                 </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="outline" className="h-9 px-3 shrink-0 bg-brand text-white border-0 hover:bg-brand/90 hover:text-white" onClick={() => setNovaOpOpen(true)}>
+                      + Lancamento Operacional
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Adicionar operacao manualmente</TooltipContent>
+                </Tooltip>
+
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
@@ -1283,9 +1310,9 @@ const Operacoes = () => {
         description="O sistema lera a coluna DATA de cada linha automaticamente. Cada linha sera importada na sua propria data. Linhas sem DATA valida serao ignoradas. A coluna COL sera gravada como quantidade de colaboradores."
         onUpload={handleImportOperacoes}
       />
+      <NovaOperacaoDialog open={novaOpOpen} onOpenChange={setNovaOpOpen} />
     </AppShell>
   );
 };
 
 export default Operacoes;
-

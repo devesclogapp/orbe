@@ -61,6 +61,8 @@ import { useSelection } from "@/contexts/SelectionContext";
 import { cn } from "@/lib/utils";
 import { OperacaoProducaoService, OperacaoService, RegraOperacionalService, EmpresaService, RegrasFinanceirasService } from "@/services/base.service";
 import { classificarFinanceiroSync, processarOperacao, calcularValoresOperacao, getModalidadeLabel, ModalidadeFinanceira, StatusPagamento } from "@/utils/financeiro";
+import { JustificationModal } from "@/components/modals/JustificationModal";
+import { useOperationalPipeline, buildOperacaoVolumePipeline } from "@/contexts/OperationalPipelineContext";
 
 type OperacoesTableBlockProps = {
   date: string;
@@ -435,8 +437,11 @@ const toIssDatabaseValue = (value: string) => {
   return numericValue > 1 ? numericValue / 100 : numericValue;
 };
 
-
-
+const isIssOperationalRule = (rule: any) => {
+  if (!rule || !rule.tipos_regra_operacional) return false;
+  const name = String(rule.tipos_regra_operacional.nome).toLowerCase();
+  return name.includes("iss") || name.trim() === "taxa de emissÃ£o e filme" || name === "taxa iss / filme";
+};
 
 export const OperacoesTableBlock = ({
   date,
@@ -471,6 +476,11 @@ export const OperacoesTableBlock = ({
 
   const [inlineValue, setInlineValue] = useState("");
   const tableScrollRef = useRef<HTMLDivElement>(null);
+
+  const { openPipeline } = useOperationalPipeline();
+  const [justificationModalOpen, setJustificationModalOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<((justification: string) => void) | null>(null);
+  const [justificationType, setJustificationType] = useState<"override" | "devolucao">("override");
 
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
   const [lockedCols, setLockedCols] = useState<Record<string, boolean>>(() => {
@@ -952,6 +962,50 @@ export const OperacoesTableBlock = ({
     if (updateMutation.isPending) return;
     setEditingItem(null);
     setEditForm(null);
+  };
+
+  const openJustification = (type: "override" | "devolucao", action: (justification: string) => void) => {
+    setJustificationType(type);
+    setPendingAction(() => action);
+    setJustificationModalOpen(true);
+  };
+
+  const handleAprovar = (item: any) => {
+    if (updateMutation.isPending) return;
+    updateMutation.mutate(
+      {
+        id: item.id,
+        payload: { status: "aprovado" }
+      } as any,
+      {
+        onSuccess: () => {
+          setSelectedOpDetails(null);
+          const compMatch = item.data_operacao ? item.data_operacao.match(/^(\d{4})-(\d{2})/) : null;
+          const comp = compMatch ? `${compMatch[1]}-${compMatch[2]}` : date.substring(0, 7);
+          openPipeline(buildOperacaoVolumePipeline({
+            competencia: comp,
+            empresa: item.empresa_id || empresaId,
+            currentStep: "financeiro"
+          }));
+        }
+      }
+    );
+  };
+
+  const handleDevolver = (item: any) => {
+    openJustification("devolucao", (justification: string) => {
+      updateMutation.mutate(
+        {
+          id: item.id,
+          payload: { status: "recusado", justificativa: justification }
+        } as any,
+        {
+          onSuccess: () => {
+            setSelectedOpDetails(null);
+          }
+        }
+      );
+    });
   };
 
 
@@ -1686,7 +1740,7 @@ export const OperacoesTableBlock = ({
                     {visibleCols.modalidadeFinanceira && <th className="px-3 py-2.5 font-semibold text-center">MODALIDADE</th>}
                     {visibleCols.dataVencimento && <th className="px-3 py-2.5 font-semibold text-center">VENCIMENTO</th>}
                     {visibleCols.statusPagamento && <th className="px-3 py-2.5 font-semibold text-center">STATUS PGTO</th>}
-                    {false && <th className="px-3 py-2.5 font-semibold text-center"><span className="inline-flex items-center justify-center gap-1.5 w-full"><CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" />STATUS</span></th>}
+                    <th className="px-3 py-2.5 font-semibold text-center"><span className="inline-flex items-center justify-center gap-1.5 w-full"><CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" />STATUS OP</span></th>
                     {visibleCols.acoes && <th className="px-5 py-2.5 font-semibold text-center"><span className="inline-flex items-center justify-center gap-1.5 w-full"><Hourglass className="h-3.5 w-3.5 text-muted-foreground" />ACOES</span></th>}
                   </tr>
                 </thead>
@@ -1809,13 +1863,19 @@ export const OperacoesTableBlock = ({
                             ) : <span className="text-muted-foreground">â€”</span>}
                           </td>
                         )}
-                        {false && (
-                          <td className="px-3 text-center whitespace-nowrap">
-                            <Badge variant="outline" className={cn(statusCfg.className, "hover:bg-transparent font-medium border-0")}>
-                              {statusOriginal === "â€”" ? "â€”" : statusCfg.label}
-                            </Badge>
-                          </td>
-                        )}
+                        <td className="px-3 text-center whitespace-nowrap">
+                          <Badge variant="outline" className={cn(
+                            "font-bold uppercase border-0 text-xs",
+                            item.status === 'aprovado' && 'bg-success-soft text-success-strong',
+                            item.status === 'em_validacao' && 'bg-info-soft text-info-strong',
+                            item.status === 'recusado' && 'bg-error-soft text-error-strong',
+                            item.status === 'pendente' && 'bg-warning-soft text-warning-strong',
+                            item.status === 'fechado' && 'bg-success-soft saturate-50 text-success-strong opacity-80',
+                            !['aprovado', 'em_validacao', 'recusado', 'pendente', 'fechado'].includes(item.status) && 'bg-muted text-muted-foreground'
+                          )}>
+                            {item.status || "—"}
+                          </Badge>
+                        </td>
                         {visibleCols.acoes && (
                           <td className="px-5" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-center gap-1">
@@ -2158,8 +2218,18 @@ export const OperacoesTableBlock = ({
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-border flex justify-end">
+              <div className="pt-4 border-t border-border flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setSelectedOpDetails(null)}>Fechar</Button>
+                {selectedOpDetails.status !== "aprovado" && selectedOpDetails.status !== "fechado" && (
+                  <Button variant="outline" className="border-warning text-warning hover:bg-warning-soft hover:text-warning-strong" onClick={() => handleDevolver(selectedOpDetails)}>
+                    Devolver com Restrição
+                  </Button>
+                )}
+                {selectedOpDetails.status !== "aprovado" && selectedOpDetails.status !== "fechado" && (
+                  <Button onClick={() => handleAprovar(selectedOpDetails)} className="bg-brand text-white border-0 hover:bg-brand/90 focus:ring-brand">
+                    Aprovar para Faturamento
+                  </Button>
+                )}
               </div>
             </div>
           )}
@@ -2290,6 +2360,17 @@ export const OperacoesTableBlock = ({
           )}
         </SheetContent>
       </Sheet>
+
+      <JustificationModal
+        isOpen={justificationModalOpen}
+        onClose={() => setJustificationModalOpen(false)}
+        onConfirm={(justification) => {
+          pendingAction?.(justification);
+          setJustificationModalOpen(false);
+        }}
+        title={justificationType === "devolucao" ? "Motivo da Devolução" : "Justificativa de Alteração (Override)"}
+        description={justificationType === "devolucao" ? "Forneça o motivo pelo qual esta operação está sendo devolvida." : undefined}
+      />
     </div>
   );
 };
