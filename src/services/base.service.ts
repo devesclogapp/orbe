@@ -724,12 +724,135 @@ export const PerfilUsuarioService = new PerfilUsuarioServiceClass();
 
 class ColetorServiceClass extends BaseService<'coletores'> {
   constructor() { super('coletores'); }
+
+  extractFolderIdFromUrl(url: string | null) {
+    if (!url) return null;
+    try {
+      const parts = url.match(/[-\w]{25,}/);
+      return parts ? parts[0] : null;
+    } catch {
+      return null;
+    }
+  }
+
   async getWithEmpresa() {
-    const { data: coletores, error } = await supabase.from('coletores').select('*').order('created_at', { ascending: false });
+    const { data: coletores, error } = await supabase
+      .from('coletores')
+      .select('*')
+      .order('created_at', { ascending: false });
     if (error) throw error;
+    
     const { data: empresas } = await supabase.from('empresas').select('id, nome');
+    const { data: unidades } = await supabase.from('unidades_operacionais').select('id, nome');
+    
     const empresaMap = new Map((empresas || []).map(e => [e.id, e]));
-    return (coletores || []).map(c => ({ ...c, empresas: empresaMap.get(c.empresa_id) || null }));
+    const unidadeMap = new Map((unidades || []).map(u => [u.id, u]));
+    
+    return (coletores || []).map((c: any) => ({ 
+      ...c, 
+      empresas: empresaMap.get(c.empresa_id) || null,
+      unidade: unidadeMap.get(c.unidade_id) || null
+    }));
+  }
+
+  async create(payload: Record<string, any>) {
+    const tenantId = await getCurrentTenantId();
+    const empresaIdClean = cleanUuid(payload.empresa_id);
+    if (!empresaIdClean) throw new Error('Selecione uma empresa válida.');
+
+    const cleanedPayload = {
+      modelo:                payload.modelo?.trim() || null,
+      serie:                 payload.serie?.trim() || null,
+      empresa_id:            empresaIdClean,
+      tenant_id:             tenantId,
+      status:                payload.status ?? 'offline',
+      unidade_id:            cleanUuid(payload.unidade_id),
+      unidade_local:         payload.unidade_local?.trim() || null,
+      fabricante:            payload.fabricante?.trim() || null,
+      tipo_integracao:       payload.tipo_integracao || null,
+      formato_arquivo:       payload.formato_arquivo || null,
+      
+      folder_entrada_url:     payload.folder_entrada_url?.trim() || null,
+      folder_entrada_id:      this.extractFolderIdFromUrl(payload.folder_entrada_url),
+      folder_processados_url: payload.folder_processados_url?.trim() || null,
+      folder_processados_id:  this.extractFolderIdFromUrl(payload.folder_processados_url),
+      folder_erros_url:       payload.folder_erros_url?.trim() || null,
+      folder_erros_id:        this.extractFolderIdFromUrl(payload.folder_erros_url),
+      
+      integracao_ativa:      payload.integracao_ativa ?? true,
+      intervalo_sincronizacao_minutos: payload.intervalo_sincronizacao_minutos ?? 5,
+    };
+
+    const { data, error } = await supabase
+      .from('coletores')
+      .insert(cleanedPayload)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  }
+
+  async update(id: string, payload: Record<string, any>) {
+    const cleanedPayload: Record<string, any> = {
+      modelo:                payload.modelo?.trim() || null,
+      serie:                 payload.serie?.trim() || null,
+      empresa_id:            cleanUuid(payload.empresa_id),
+      unidade_id:            cleanUuid(payload.unidade_id),
+      unidade_local:         payload.unidade_local?.trim() || null,
+      fabricante:            payload.fabricante?.trim() || null,
+      tipo_integracao:       payload.tipo_integracao || null,
+      formato_arquivo:       payload.formato_arquivo || null,
+      
+      folder_entrada_url:     payload.folder_entrada_url?.trim() || null,
+      folder_entrada_id:      this.extractFolderIdFromUrl(payload.folder_entrada_url),
+      folder_processados_url: payload.folder_processados_url?.trim() || null,
+      folder_processados_id:  this.extractFolderIdFromUrl(payload.folder_processados_url),
+      folder_erros_url:       payload.folder_erros_url?.trim() || null,
+      folder_erros_id:        this.extractFolderIdFromUrl(payload.folder_erros_url),
+      
+      integracao_ativa:      payload.integracao_ativa ?? true,
+      intervalo_sincronizacao_minutos: payload.intervalo_sincronizacao_minutos ?? 5,
+    };
+
+    if (!cleanedPayload.empresa_id) throw new Error('Selecione uma empresa válida.');
+
+    const { data, error } = await supabase
+      .from('coletores')
+      .update(cleanedPayload)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  }
+
+  async resolveByDriveFolder(folderId: string) {
+    const { data, error } = await supabase
+      .from('coletores')
+      .select('*, empresa:empresas(*), unidade:unidades_operacionais(*)')
+      .eq('folder_entrada_id', folderId)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data) return null;
+
+    return {
+      success: true,
+      empresa_id: data.empresa_id,
+      cliente_id: data.empresa?.cliente_id || null,
+      unidade_id: data.unidade_id,
+      coletor_id: data.id,
+      modelo: data.modelo,
+      numero_serie: data.serie,
+      fabricante: data.fabricante,
+      tipo_integracao: data.tipo_integracao,
+      formato_arquivo: data.formato_arquivo,
+      folder_entrada_id: data.folder_entrada_id,
+      folder_processados_id: data.folder_processados_id,
+      folder_erros_id: data.folder_erros_id,
+      integracao_ativa: data.integracao_ativa,
+      intervalo_sincronizacao_minutos: data.intervalo_sincronizacao_minutos
+    };
   }
 }
 export const ColetorService = new ColetorServiceClass();
@@ -1236,6 +1359,14 @@ class PontoServiceClass extends BaseService<'registros_ponto'> {
 
     return deletedPontos?.length ?? pontoIds.length;
   }
+
+  async importarPontos(payload: FormData) {
+    const { data, error } = await (supabase as any).functions.invoke('importar-pontos-google-drive', {
+      body: payload,
+    });
+    if (error) throw error;
+    return data;
+  }
 }
 export const PontoService = new PontoServiceClass();
 
@@ -1277,6 +1408,65 @@ class RegraCalculoServiceClass extends BaseService<'financeiro_regras'> {
   }
 }
 export const RegraCalculoService = new RegraCalculoServiceClass();
+
+class HistoricoImportacaoServiceClass extends BaseService<'historico_importacoes'> {
+  constructor() { super('historico_importacoes'); }
+
+  async getRecent(options: { 
+    empresaId?: string, 
+    status?: string, 
+    origem?: string, 
+    coletorId?: string,
+    startDate?: string,
+    endDate?: string,
+    limit?: number 
+  } = {}) {
+    let query = supabase
+      .from('historico_importacoes')
+      .select('*, empresas(nome), unidades_operacionais(nome), coletores(nome), profiles:created_by(full_name)')
+      .order('created_at', { ascending: false });
+
+    if (options.empresaId && options.empresaId !== 'all') {
+      query = query.eq('empresa_id', options.empresaId);
+    }
+    if (options.status && options.status !== 'all') {
+      query = query.eq('status', options.status);
+    }
+    if (options.origem && options.origem !== 'all') {
+      query = query.eq('origem', options.origem);
+    }
+    if (options.coletorId && options.coletorId !== 'all') {
+      query = query.eq('coletor_id', options.coletorId);
+    }
+    if (options.startDate) {
+      query = query.gte('created_at', `${options.startDate}T00:00:00`);
+    }
+    if (options.endDate) {
+      query = query.lte('created_at', `${options.endDate}T23:59:59`);
+    }
+    if (options.limit) {
+      query = query.limit(options.limit);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data;
+  }
+
+  async reprocess(importacaoId: string, motivo: string) {
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data, error } = await (supabase as any).functions.invoke('importar-pontos-google-drive', {
+      body: { 
+        parent_importacao_id: importacaoId, 
+        reprocessado_motivo: motivo,
+        reprocessado_por: user?.id
+      },
+    });
+    if (error) throw error;
+    return data;
+  }
+}
+export const HistoricoImportacaoService = new HistoricoImportacaoServiceClass();
 
 class RegrasFinanceirasServiceClass extends BaseService<'regras_financeiras'> {
   constructor() { super('regras_financeiras'); }

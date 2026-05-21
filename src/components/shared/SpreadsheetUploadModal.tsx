@@ -44,7 +44,7 @@ interface SpreadsheetUploadModalProps {
   unsupportedMessage?: string;
   onDownloadTemplate?: () => void | Promise<void>;
   validateData?: (data: any[]) => SpreadsheetValidationResult | Promise<SpreadsheetValidationResult>;
-  onUpload: (data: any[], optionValue?: string) => Promise<void>;
+  onUpload: (data: any[], optionValue?: string, file?: File) => Promise<void>;
 }
 
 const normalizeColumnName = (value: string) =>
@@ -249,7 +249,7 @@ export function SpreadsheetUploadModal({
 
     setIsUploading(true);
     try {
-      await onUpload(rowsToUpload, selectedOption);
+      await onUpload(rowsToUpload, selectedOption, file || undefined);
       onOpenChange(false);
       handleReset();
     } catch (err: any) {

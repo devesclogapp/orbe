@@ -222,8 +222,8 @@ export const useOperationalPulse = () => {
       ] = await Promise.all([
         safeCount("operacoes", (q) => q.eq("status", "pendente"), { tenantId }),
         safeCount("operacoes", (q) => q.in("status", ["bloqueado", "com_alerta", "inconsistente"]), { tenantId }),
-        safeCount("registros_ponto", (q) => q.eq("status_processamento", "pendente"), { tenantId }),
-        safeCount("registros_ponto", (q) => q.eq("status_processamento", "inconsistente"), { tenantId }),
+        safeCount("registros_ponto", (q) => q.eq("status_processamento", "PENDENTE_PROCESSAMENTO"), { tenantId }),
+        safeCount("registros_ponto", (q) => q.eq("status_processamento", "INCONSISTENTE"), { tenantId }),
         safeCount("diaristas_lotes_fechamento", (q) => q.eq("status", "AGUARDANDO_VALIDACAO_RH"), { tenantId }),
         safeCount("diaristas_lotes_fechamento", (q) => q.eq("status", "AGUARDANDO_FINANCEIRO"), { tenantId }),
         safeCount("custos_extras_operacionais", (q) => q.eq("status_pagamento", "PENDENTE"), { tenantId }),
@@ -231,7 +231,7 @@ export const useOperationalPulse = () => {
         safeCount("operacoes_producao", (q) => q.in("status", ["pendente", "aguardando_validacao"]), { tenantId }),
         safeCount("operacoes_producao", (q) => q.in("status", ["com_alerta", "bloqueado"]), { tenantId }),
         safeCount("colaboradores", (q) => q.or("status_cadastro.eq.pendente_complemento,cadastro_provisorio.eq.true"), { tenantId }),
-        safeCount("registros_ponto", (q) => q.eq("status_processamento", "pendente"), { tenantId }),
+        safeCount("registros_ponto", (q) => q.eq("status_processamento", "PENDENTE_PROCESSAMENTO"), { tenantId }),
         safeCount("processamento_rh_inconsistencias", (q) => q.eq("resolvida", false), { tenantId }),
         safeCount("ciclos_operacionais", (q) => q.eq("status", "fechado").eq("status_rh", "pendente"), { tenantId }),
         safeCount("financeiro_consolidados_cliente", (q) => q.neq("status", "aprovado"), { tenantId, skipTenant: true }),
@@ -242,7 +242,7 @@ export const useOperationalPulse = () => {
         safeSelect(
           "registros_ponto",
           "id,nome_colaborador,matricula_colaborador,status_processamento,minutos_atraso,minutos_extra",
-          (q) => q.in("status_processamento", ["pendente", "inconsistente"]).order("created_at", { ascending: false }).limit(6),
+          (q) => q.in("status_processamento", ["PENDENTE_PROCESSAMENTO", "INCONSISTENTE"]).order("created_at", { ascending: false }).limit(6),
           { tenantId },
         ),
         safeSelect(
@@ -303,7 +303,7 @@ export const useOperationalPulse = () => {
         .map((item: any) => {
           const atraso = Math.abs(Number(item.minutos_atraso || 0));
           const extra = Number(item.minutos_extra || 0);
-          const inconsistente = item.status_processamento === "inconsistente";
+          const inconsistente = item.status_processamento === "INCONSISTENTE";
           const detail = inconsistente
             ? atraso > 0
               ? `Atraso ${compactMinutes(-atraso)}`

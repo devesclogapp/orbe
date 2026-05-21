@@ -633,7 +633,7 @@ const loadPontosPendentes = async ({
     .from("registros_ponto")
     .select("*")
     .eq("tenant_id", tenantId)
-    .eq("status_processamento", "pendente")
+    .eq("status_processamento", "PENDENTE_PROCESSAMENTO")
     .gte("data", startDate)
     .lte("data", endDate)
     .order("data", { ascending: true })
@@ -1575,7 +1575,7 @@ export const reprocessRhPeriod = async ({
     let resetQuery = supabase
       .from("registros_ponto")
       .update({
-        status_processamento: "pendente",
+        status_processamento: "PENDENTE_PROCESSAMENTO",
         processado_em: null,
         horas_calculadas: null,
         saldo_dia: null,

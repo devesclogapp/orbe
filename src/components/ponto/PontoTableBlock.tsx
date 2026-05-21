@@ -2,17 +2,19 @@ import { useSelection } from "@/contexts/SelectionContext";
 import { cn } from "@/lib/utils";
 
 import { StatusChip } from "../painel/StatusChip";
+import { getOperationalStatus } from "@/constants/operationalStatus";
+import { Badge } from "../ui/badge";
 
 const calculateWorkedHours = (row: any): string => {
   if (!row.entrada || !row.saida) return "-";
   try {
-    const entrada = row.entrada.includes(":") ? row.entrada.slice(0,5).split(":") : ["0","0"];
-    const saida = row.saida.includes(":") ? row.saida.slice(0,5).split(":") : ["0","0"];
+    const entrada = row.entrada.includes(":") ? row.entrada.slice(0, 5).split(":") : ["0", "0"];
+    const saida = row.saida.includes(":") ? row.saida.slice(0, 5).split(":") : ["0", "0"];
     const entradaMin = parseInt(entrada[0]) * 60 + parseInt(entrada[1]);
     const saidaMin = parseInt(saida[0]) * 60 + parseInt(saida[1]);
-    const almoco = (row.saida_almoco && row.retorno_almoco) ? 
-      (parseInt(row.retorno_almoco.slice(0,5).split(":")[0]) * 60 + parseInt(row.retorno_almoco.slice(0,5).split(":")[1])) -
-      (parseInt(row.saida_almoco.slice(0,5).split(":")[0]) * 60 + parseInt(row.saida_almoco.slice(0,5).split(":")[1])) : 0;
+    const almoco = (row.saida_almoco && row.retorno_almoco) ?
+      (parseInt(row.retorno_almoco.slice(0, 5).split(":")[0]) * 60 + parseInt(row.retorno_almoco.slice(0, 5).split(":")[1])) -
+      (parseInt(row.saida_almoco.slice(0, 5).split(":")[0]) * 60 + parseInt(row.saida_almoco.slice(0, 5).split(":")[1])) : 0;
     const diff = saidaMin - entradaMin - almoco;
     if (diff <= 0) return "0h00";
     const h = Math.floor(diff / 60);
@@ -39,34 +41,7 @@ type PontoTableBlockProps = {
   rows: any[];
 };
 
-const getProcessingStatusLabel = (value?: string | null) => {
-  switch (String(value || "").toLowerCase()) {
-    case "processado":
-      return "Processado";
-    case "inconsistente":
-      return "Inconsistente";
-    case "sincronizado":
-      return "Sincronizado";
-    case "enviado_rh":
-      return "Enviado ao RH";
-    default:
-      return "Pendente";
-  }
-};
-
-const getProcessingStatusChip = (value?: string | null) => {
-  switch (String(value || "").toLowerCase()) {
-    case "processado":
-      return "ok";
-    case "sincronizado":
-    case "enviado_rh":
-      return "ajustado";
-    case "inconsistente":
-      return "inconsistente";
-    default:
-      return "pendente";
-  }
-};
+// Legacy functions removed in favor of centralized operationalStatus.ts config
 
 export const PontoTableBlock = ({ monthLabel, rows }: PontoTableBlockProps) => {
   const { id: selectedId, kind, select } = useSelection();
@@ -89,15 +64,15 @@ export const PontoTableBlock = ({ monthLabel, rows }: PontoTableBlockProps) => {
             <th className="px-2 py-2 font-semibold">Horas</th>
             <th className="px-2 py-2 font-semibold">Extras</th>
             <th className="px-2 py-2 font-semibold">Falta</th>
-             <th className="px-2 py-2 font-semibold">Atraso</th>
-             <th className="px-2 py-2 font-semibold">Status</th>
-             <th className="px-2 py-2 font-semibold">Proc. RH</th>
-             <th className="px-2 py-2 font-semibold">Comp.</th>
-             <th className="px-2 py-2 font-semibold">Origem</th>
-             <th className="px-2 py-2 font-semibold text-left">Obs</th>
-           </tr>
-         </thead>
-         <tbody>
+            <th className="px-2 py-2 font-semibold">Atraso</th>
+            <th className="px-2 py-2 font-semibold">Status</th>
+            <th className="px-2 py-2 font-semibold">Proc. RH</th>
+            <th className="px-2 py-2 font-semibold">Comp.</th>
+            <th className="px-2 py-2 font-semibold">Origem</th>
+            <th className="px-2 py-2 font-semibold text-left">Obs</th>
+          </tr>
+        </thead>
+        <tbody>
           {rows.map((row: any) => {
             const isSelected = kind === "colaborador" && selectedId === row.colaborador_id;
             return (
@@ -124,10 +99,10 @@ export const PontoTableBlock = ({ monthLabel, rows }: PontoTableBlockProps) => {
                 <td className="px-2 py-2 text-left text-muted-foreground max-w-[100px] truncate">
                   {row.colaboradores?.cargo || row.cargo_colaborador || "-"}
                 </td>
-                <td className="px-2 py-2 text-center text-foreground font-mono">{row.entrada ? row.entrada.slice(0,5) : "-"}</td>
-                <td className="px-2 py-2 text-center text-muted-foreground font-mono">{row.saida_almoco ? row.saida_almoco.slice(0,5) : "-"}</td>
-                <td className="px-2 py-2 text-center text-muted-foreground font-mono">{row.retorno_almoco ? row.retorno_almoco.slice(0,5) : "-"}</td>
-                <td className="px-2 py-2 text-center text-foreground font-mono">{row.saida ? row.saida.slice(0,5) : "-"}</td>
+                <td className="px-2 py-2 text-center text-foreground font-mono">{row.entrada ? row.entrada.slice(0, 5) : "-"}</td>
+                <td className="px-2 py-2 text-center text-muted-foreground font-mono">{row.saida_almoco ? row.saida_almoco.slice(0, 5) : "-"}</td>
+                <td className="px-2 py-2 text-center text-muted-foreground font-mono">{row.retorno_almoco ? row.retorno_almoco.slice(0, 5) : "-"}</td>
+                <td className="px-2 py-2 text-center text-foreground font-mono">{row.saida ? row.saida.slice(0, 5) : "-"}</td>
                 <td className="px-2 py-2 text-center font-display font-medium">
                   {row.horas_trabalhadas || (row.entrada && row.saida ? calculateWorkedHours(row) : "-")}
                 </td>
@@ -135,42 +110,49 @@ export const PontoTableBlock = ({ monthLabel, rows }: PontoTableBlockProps) => {
                 <td className="px-2 py-2 text-center">
                   <span className={cn(
                     "text-[10px] px-1.5 py-0.5 rounded",
-                    row.falta?.toLowerCase().includes("sim") || row.falta?.toLowerCase().includes("true") 
-                      ? "bg-destructive-soft text-destructive" 
+                    row.falta?.toLowerCase().includes("sim") || row.falta?.toLowerCase().includes("true")
+                      ? "bg-destructive-soft text-destructive"
                       : "text-muted-foreground"
                   )}>
                     {row.falta || "-"}
                   </span>
                 </td>
                 <td className="px-2 py-2 text-center text-muted-foreground">{row.atraso || "-"}</td>
-                 <td className="px-2 py-2 text-center">
-                   <StatusChip status={row.status} label={row.status} />
-                 </td>
-                 <td className="px-2 py-2 text-center">
-                   <StatusChip
-                     status={getProcessingStatusChip(row.status_processamento) as any}
-                     label={getProcessingStatusLabel(row.status_processamento)}
-                   />
-                 </td>
-                 <td className="px-2 py-2 text-center font-mono text-[10px] text-muted-foreground">
-                   {row.competencia || String(row.data || "").slice(0, 7) || "-"}
-                 </td>
-                 <td className="px-2 py-2 text-center text-muted-foreground">
-                   {row.origem || "importacao"}
-                 </td>
-                 <td className="px-2 py-2 text-left text-muted-foreground max-w-[80px] truncate" title={row.observacoes || ""}>
-                   {row.observacoes || "-"}
-                 </td>
-               </tr>
-             );
-           })}
-           {rows.length === 0 && (
-             <tr>
-               <td colSpan={19} className="p-12 text-center text-muted-foreground italic">Nenhum registro encontrado para {monthLabel}.</td>
-             </tr>
-           )}
-         </tbody>
-       </table>
-     </div>
+                <td className="px-2 py-2 text-center">
+                  <Badge
+                    variant={getOperationalStatus(row.status).variant as any}
+                    className={cn("text-[10px]", getOperationalStatus(row.status).bg, getOperationalStatus(row.status).color)}
+                  >
+                    {getOperationalStatus(row.status).label}
+                  </Badge>
+                </td>
+                <td className="px-2 py-2 text-center">
+                  <Badge
+                    variant={getOperationalStatus(row.status_processamento).variant as any}
+                    className={cn("text-[10px]", getOperationalStatus(row.status_processamento).bg, getOperationalStatus(row.status_processamento).color)}
+                  >
+                    {getOperationalStatus(row.status_processamento).label}
+                  </Badge>
+                </td>
+                <td className="px-2 py-2 text-center font-mono text-[10px] text-muted-foreground">
+                  {row.competencia || String(row.data || "").slice(0, 7) || "-"}
+                </td>
+                <td className="px-2 py-2 text-center text-muted-foreground">
+                  {row.origem || "importacao"}
+                </td>
+                <td className="px-2 py-2 text-left text-muted-foreground max-w-[80px] truncate" title={row.observacoes || ""}>
+                  {row.observacoes || "-"}
+                </td>
+              </tr>
+            );
+          })}
+          {rows.length === 0 && (
+            <tr>
+              <td colSpan={19} className="p-12 text-center text-muted-foreground italic">Nenhum registro encontrado para {monthLabel}.</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
   );
 };

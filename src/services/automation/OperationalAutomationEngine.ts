@@ -100,7 +100,7 @@ const SEVERIDADE_REVERSA: Record<AlertaSeveridade, AlertaSeveridade> = {
 const STATUS_PONTO_OK = new Set([
   'ok',
   'ajustado',
-  'Processado',
+  'PROCESSADO',
   'Presente',
   'Atestado',
   'Folga',
@@ -111,10 +111,8 @@ const STATUS_PONTO_OK = new Set([
 ]);
 
 const STATUS_PROBLEMA_PONTO = new Set([
-  'incompleto',
-  'Incompleto',
-  'inconsistente',
-  'Inconsistente',
+  'INCOMPLETO',
+  'INCONSISTENTE',
   'Falta',
   'Ausente',
   'falta_injustificada',
@@ -751,7 +749,7 @@ export const OperationalAutomationEngine = {
 
     const operacao = data?.[0] as any;
     if (!operacao) return { estado: 'resolvido', mensagem: 'Producao removida; alerta encerrado.' };
-    if (!['inconsistente', 'Inconsistente', 'erro'].includes(operacao.status) && operacao.status_processamento !== 'inconsistente') {
+    if (!['INCONSISTENTE', 'erro'].includes(operacao.status) && operacao.status_processamento !== 'INCONSISTENTE') {
       return { estado: 'resolvido', mensagem: 'Producao corrigida ou ciclo reprocessado.' };
     }
     return { estado: 'ativo' };

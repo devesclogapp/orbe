@@ -273,7 +273,7 @@ const buildFolhaVariavelItems = (pontos: any[]) => {
   const items: any[] = [];
 
   for (const ponto of pontos) {
-    if (ponto.status_processamento !== "processado") continue;
+    if (ponto.status_processamento !== "PROCESSADO") continue;
 
     const eventos = ["hora_extra", "atraso", "falta"] as const;
     for (const tipoEvento of eventos) {
@@ -526,7 +526,7 @@ class RHFinanceiroServiceClass {
       }
     }
 
-    for (const ponto of pontosDoMes.filter((item: any) => item.status_processamento === "inconsistente")) {
+    for (const ponto of pontosDoMes.filter((item: any) => item.status_processamento === "INCONSISTENTE")) {
       if (registroPontoComBloqueio.has(ponto.id)) continue;
 
       const pontoColabId = ponto.colaborador_id;

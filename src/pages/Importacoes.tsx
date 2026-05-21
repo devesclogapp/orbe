@@ -2,14 +2,9 @@ import { useQuery } from "@tanstack/react-query";
 import { LogSincronizacaoService } from "@/services/base.service";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Upload, CheckCircle2, XCircle, AlertCircle, Loader2 } from "lucide-react";
+import { RefreshCw, Upload, CheckCircle2, XCircle, AlertCircle, Loader2, Info } from "lucide-react";
+import { getOperationalStatus } from "@/constants/operationalStatus";
 import { cn } from "@/lib/utils";
-
-const statusMap = {
-  sucesso: { label: "Sucesso", icon: CheckCircle2, cls: "bg-success-soft text-success-strong" },
-  erro: { label: "Erro", icon: XCircle, cls: "bg-destructive-soft text-destructive-strong" },
-  parcial: { label: "Parcial", icon: AlertCircle, cls: "bg-warning-soft text-warning-strong" },
-};
 
 const Importacoes = () => {
   const { data: list = [], isLoading } = useQuery({
@@ -45,8 +40,11 @@ const Importacoes = () => {
               </thead>
               <tbody>
                 {list.map((i: any) => {
-                  const s = statusMap[i.status as keyof typeof statusMap] || statusMap.parcial;
-                  const Icon = s.icon;
+                  const statusConfig = getOperationalStatus(i.status);
+                  const Icon = statusConfig.variant === 'success' ? CheckCircle2 :
+                    statusConfig.variant === 'destructive' ? XCircle :
+                      statusConfig.variant === 'warning' ? AlertCircle : Info;
+
                   return (
                     <tr key={i.id} className="border-t border-muted hover:bg-background">
                       <td className="px-5 h-[52px] font-medium text-foreground">{i.id.substring(0, 8)}</td>
@@ -56,8 +54,8 @@ const Importacoes = () => {
                       <td className="px-3 text-center font-display font-medium">{i.contagem_registros}</td>
                       <td className="px-3 text-center text-muted-foreground">{i.duracao}</td>
                       <td className="px-5 text-center">
-                        <span className={cn("esc-chip inline-flex items-center gap-1", s.cls)}>
-                          <Icon className="h-3 w-3" /> {s.label}
+                        <span className={cn("esc-chip inline-flex items-center gap-1", statusConfig.bg, statusConfig.color)}>
+                          <Icon className="h-3 w-3" /> {statusConfig.label}
                         </span>
                       </td>
                     </tr>

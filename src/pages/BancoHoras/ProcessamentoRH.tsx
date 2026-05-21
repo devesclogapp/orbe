@@ -55,6 +55,7 @@ import { RHFinanceiroService } from "@/services/rhFinanceiro.service";
 import { processRhPeriod, reprocessRhPeriod, rhProcessingUtils } from "@/services/rhProcessing.service";
 import { buildFolhaVariavelPipeline, buildOperationalStagePipeline, useOperationalPipeline } from "@/contexts/OperationalPipelineContext";
 import { buildOperationalPipelineSeenKey, useOperationalPipelineAutoTrigger } from "@/hooks/useOperationalPipelineAutoTrigger";
+import { getOperationalStatus } from "@/constants/operationalStatus";
 
 const ENGINE_EVENT_TYPES = new Set([
   "motor_regra_aplicada",
@@ -274,13 +275,13 @@ const directRhActionOptions: Array<{
   needsMinutes?: boolean;
   usesFolgaDate?: boolean;
 }> = [
-  { key: "compensacao", label: "Compensar saldo", description: "Abate saldo positivo diretamente do banco.", needsMinutes: true },
-  { key: "credito_manual", label: "Adicionar crédito manual", description: "Lança crédito manual com justificativa obrigatória.", needsMinutes: true },
-  { key: "debito_manual", label: "Lançar débito", description: "Registra débito manual direto no saldo do colaborador.", needsMinutes: true },
-  { key: "pagamento", label: "Converter em pagamento", description: "Envia saldo para reflexo financeiro futuro.", needsMinutes: true },
-  { key: "folga", label: "Lançar folga", description: "Converte saldo em descanso com data definida.", needsMinutes: true, usesFolgaDate: true },
-  { key: "zerar_saldo", label: "Zerar saldo", description: "Cria contrapartida total para estabilizar o saldo atual." },
-];
+    { key: "compensacao", label: "Compensar saldo", description: "Abate saldo positivo diretamente do banco.", needsMinutes: true },
+    { key: "credito_manual", label: "Adicionar crédito manual", description: "Lança crédito manual com justificativa obrigatória.", needsMinutes: true },
+    { key: "debito_manual", label: "Lançar débito", description: "Registra débito manual direto no saldo do colaborador.", needsMinutes: true },
+    { key: "pagamento", label: "Converter em pagamento", description: "Envia saldo para reflexo financeiro futuro.", needsMinutes: true },
+    { key: "folga", label: "Lançar folga", description: "Converte saldo em descanso com data definida.", needsMinutes: true, usesFolgaDate: true },
+    { key: "zerar_saldo", label: "Zerar saldo", description: "Cria contrapartida total para estabilizar o saldo atual." },
+  ];
 
 const directRhActionMetaMap: Record<
   RhDirectActionType,
@@ -378,7 +379,7 @@ const ProcessamentoRH = () => {
   const [justificationTarget, setJustificationTarget] = useState<any | null>(null);
   const [isSavingJustification, setIsSavingJustification] = useState(false);
   const [isReprocessingIndividual, setIsReprocessingIndividual] = useState(false);
-  
+
   // Governança Admin
   const [adminJustificationModalOpen, setAdminJustificationModalOpen] = useState(false);
   const [adminJustificationPayload, setAdminJustificationPayload] = useState<{
@@ -704,7 +705,7 @@ const ProcessamentoRH = () => {
   }, [selectedColaboradorEventos]);
 
   const pendingCount = useMemo(
-    () => filteredPontos.filter((ponto: any) => ponto.status_processamento === "pendente").length,
+    () => filteredPontos.filter((ponto: any) => ponto.status_processamento === "PENDENTE_PROCESSAMENTO").length,
     [filteredPontos],
   );
 
@@ -778,9 +779,9 @@ const ProcessamentoRH = () => {
   }, [profileNameMap, selectedColaboradorEventosHistorico, selectedColaboradorInconsistencias]);
 
   const stats = useMemo(() => {
-    const processados = (pontos as any[]).filter((ponto) => ponto.status_processamento === "processado").length;
-    const inconsistentes = (pontos as any[]).filter((ponto) => ponto.status_processamento === "inconsistente").length;
-    const pendentes = (pontos as any[]).filter((ponto) => ponto.status_processamento === "pendente").length;
+    const processados = (pontos as any[]).filter((ponto) => ponto.status_processamento === "PROCESSADO").length;
+    const inconsistentes = (pontos as any[]).filter((ponto) => ponto.status_processamento === "INCONSISTENTE").length;
+    const pendentes = (pontos as any[]).filter((ponto) => ponto.status_processamento === "PENDENTE_PROCESSAMENTO").length;
     const horasPositivas = (pontos as any[]).reduce((acc, ponto) => acc + Math.max(Number(ponto.saldo_dia || 0), 0), 0);
     const horasNegativas = (pontos as any[]).reduce((acc, ponto) => acc + Math.max(-Number(ponto.saldo_dia || 0), 0), 0);
     const faltas = (pontos as any[]).filter((ponto) => ponto.status === "Ausente" || ponto.status === "Falta").length;
@@ -889,9 +890,9 @@ const ProcessamentoRH = () => {
     // Se o período está fechado e a ação vai afetar dados financeiros passados
     // Necessita justificativa obrigatória e registro na tabela de auditoria overrides
     setAdminJustificationPayload({
-       actionType,
-       actionLabel,
-       callback: actionFn
+      actionType,
+      actionLabel,
+      callback: actionFn
     });
     setAdminJustificationModalOpen(true);
   };
@@ -956,19 +957,19 @@ const ProcessamentoRH = () => {
 
       // Trigger Pipeline Modal
       const empresaNome = (empresas as any[]).find((e) => e.id === selectedEmpresa)?.nome || "Empresa";
-        openPipeline(
-          buildFolhaVariavelPipeline({
-            competencia: activeCompetencia,
-            empresa: empresaNome,
-            currentStep: "aprovacao_financeira",
-            completedStage: "envio_financeiro",
-            timestamps: {
-              importacao: importacaoTimestamp,
-              rh_processado: processamentoRhTimestamp,
-              envio_financeiro: formatPipelineTimestamp(result.approvedAt),
-            },
-          })
-        );
+      openPipeline(
+        buildFolhaVariavelPipeline({
+          competencia: activeCompetencia,
+          empresa: empresaNome,
+          currentStep: "aprovacao_financeira",
+          completedStage: "envio_financeiro",
+          timestamps: {
+            importacao: importacaoTimestamp,
+            rh_processado: processamentoRhTimestamp,
+            envio_financeiro: formatPipelineTimestamp(result.approvedAt),
+          },
+        })
+      );
     } catch (error: any) {
       try {
         const parsed = JSON.parse(error.message);
@@ -1175,26 +1176,26 @@ const ProcessamentoRH = () => {
 
     const { evento, action, mode } = actionComposer;
     const actionKey = evento?.id || `direto:${selectedColaborador.colaborador_id}`;
-    
+
     // Se o período está fechado e ainda não temos uma justificativa validada, 
     // paramos o fluxo aqui e chamamos o modal
     if (isPeriodoFechado && !forcedJustificativa) {
-        return requiresAdminJustification(
-            async (j) => handleConfirmOperationalAction(j),
-            mode === "evento" 
-                ? operationalActionMetaMap[action as OperationalActionType].title 
-                : directRhActionMetaMap[action].title,
-            action
-        );
+      return requiresAdminJustification(
+        async (j) => handleConfirmOperationalAction(j),
+        mode === "evento"
+          ? operationalActionMetaMap[action as OperationalActionType].title
+          : directRhActionMetaMap[action].title,
+        action
+      );
     }
-    
+
     setActionLoading((current) => ({ ...current, [actionKey]: action }));
 
     try {
-      const finalObservation = forcedJustificativa 
+      const finalObservation = forcedJustificativa
         ? `${actionObservation} | Motivo Override: ${forcedJustificativa}`
         : actionObservation;
-        
+
       if (mode === "evento" && evento) {
         await BHEventoService.registrarAcaoExtrato({
           eventoId: evento.id,
@@ -1287,11 +1288,11 @@ const ProcessamentoRH = () => {
     if (!tenantId || !selectedColaborador?.colaborador_id) return;
 
     if (isPeriodoFechado && !forcedJustificativa) {
-        return requiresAdminJustification(
-            async (j) => handleReprocessarColaborador(j),
-            "Reprocessar Lançamentos (Período Fechado)",
-            "reprocessamento_colaborador"
-        );
+      return requiresAdminJustification(
+        async (j) => handleReprocessarColaborador(j),
+        "Reprocessar Lançamentos (Período Fechado)",
+        "reprocessamento_colaborador"
+      );
     }
 
     setIsReprocessingIndividual(true);
@@ -1679,12 +1680,11 @@ const ProcessamentoRH = () => {
                               </span>
                             </td>
                             <td className="px-4 py-3 text-center">
-                              <Badge className={cn(
-                                ponto.status_processamento === "processado" && "bg-success-soft text-success",
-                                ponto.status_processamento === "inconsistente" && "bg-warning-soft text-warning",
-                                ponto.status_processamento === "pendente" && "bg-muted text-muted-foreground",
-                              )}>
-                                {ponto.status_processamento || "pendente"}
+                              <Badge
+                                variant={getOperationalStatus(ponto.status_processamento).variant as any}
+                                className={cn(getOperationalStatus(ponto.status_processamento).bg, getOperationalStatus(ponto.status_processamento).color)}
+                              >
+                                {getOperationalStatus(ponto.status_processamento).label}
                               </Badge>
                             </td>
                           </tr>
@@ -1996,146 +1996,146 @@ const ProcessamentoRH = () => {
                 </section>
 
                 {drawerTab === "visao_geral" ? (
-                <section className="grid gap-6 xl:grid-cols-[260px_minmax(0,1fr)]">
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-semibold text-foreground">Dias processados</h3>
-                      <Badge className="bg-muted text-foreground">{selectedColaboradorPontos.length}</Badge>
-                    </div>
-                    <div className="space-y-2">
-                      {selectedColaboradorPontos.map((ponto: any) => {
-                        const isActive = selectedPonto?.id === ponto.id;
-                        const saldoDia = Number(ponto.saldo_dia || 0);
-                        return (
-                          <button
-                            key={ponto.id}
-                            type="button"
-                            onClick={() => setSelectedPontoId(ponto.id)}
-                            className={cn(
-                              "w-full rounded-2xl border px-3 py-3 text-left transition-all",
-                              isActive ? "border-primary bg-primary-soft/40 shadow-sm" : "border-muted hover:border-primary/30 hover:bg-muted/35",
-                            )}
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <p className="font-medium text-foreground">{format(new Date(ponto.data), "dd/MM/yyyy")}</p>
-                                <p className="text-xs text-muted-foreground">{ponto.entrada?.slice(0, 5) || "--:--"} → {ponto.saida?.slice(0, 5) || "--:--"}</p>
+                  <section className="grid gap-6 xl:grid-cols-[260px_minmax(0,1fr)]">
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="font-semibold text-foreground">Dias processados</h3>
+                        <Badge className="bg-muted text-foreground">{selectedColaboradorPontos.length}</Badge>
+                      </div>
+                      <div className="space-y-2">
+                        {selectedColaboradorPontos.map((ponto: any) => {
+                          const isActive = selectedPonto?.id === ponto.id;
+                          const saldoDia = Number(ponto.saldo_dia || 0);
+                          return (
+                            <button
+                              key={ponto.id}
+                              type="button"
+                              onClick={() => setSelectedPontoId(ponto.id)}
+                              className={cn(
+                                "w-full rounded-2xl border px-3 py-3 text-left transition-all",
+                                isActive ? "border-primary bg-primary-soft/40 shadow-sm" : "border-muted hover:border-primary/30 hover:bg-muted/35",
+                              )}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="font-medium text-foreground">{format(new Date(ponto.data), "dd/MM/yyyy")}</p>
+                                  <p className="text-xs text-muted-foreground">{ponto.entrada?.slice(0, 5) || "--:--"} → {ponto.saida?.slice(0, 5) || "--:--"}</p>
+                                </div>
+                                <Badge className={cn(saldoDia > 0 ? "bg-success-soft text-success" : saldoDia < 0 ? "bg-warning-soft text-warning" : "bg-muted text-muted-foreground")}>
+                                  {minutesToTime(saldoDia)}
+                                </Badge>
                               </div>
-                              <Badge className={cn(saldoDia > 0 ? "bg-success-soft text-success" : saldoDia < 0 ? "bg-warning-soft text-warning" : "bg-muted text-muted-foreground")}>
-                                {minutesToTime(saldoDia)}
-                              </Badge>
-                            </div>
-                          </button>
-                        );
-                      })}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="space-y-6">
-                    <section className="rounded-2xl border border-muted bg-background">
-                      <div className="border-b border-muted px-4 py-3">
-                        <h3 className="font-semibold text-foreground">Dados do dia e processamento</h3>
-                      </div>
-                      {selectedPonto ? (
-                        <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
-                          <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Entrada</p><p className="mt-1 font-medium">{selectedPonto.entrada?.slice(0, 5) || "—"}</p></div>
-                          <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Saída</p><p className="mt-1 font-medium">{selectedPonto.saida?.slice(0, 5) || "—"}</p></div>
-                          <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Jornada</p><p className="mt-1 font-medium">{selectedColaboradorRuleBreakdown ? minutesToTime(selectedColaboradorRuleBreakdown.jornadaMinutes) : "—"}</p></div>
-                          <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Horas extras</p><p className="mt-1 font-medium text-success">{minutesToTime(Number(selectedPonto.minutos_extra || 0))}</p></div>
-                          <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Saldo do dia</p><p className={cn("mt-1 font-medium", Number(selectedPonto.saldo_dia || 0) > 0 ? "text-success" : Number(selectedPonto.saldo_dia || 0) < 0 ? "text-error" : "text-muted-foreground")}>{minutesToTime(Number(selectedPonto.saldo_dia || 0))}</p></div>
-                          <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Saldo acumulado</p><p className="mt-1 font-medium">{minutesToTime(Number(selectedPonto.saldo_acumulado_minutos || 0))}</p></div>
-                          <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Competência</p><p className="mt-1 font-medium">{formatCompetenciaLabel(selectedColaboradorCompetencia)}</p></div>
-                          <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Regra aplicada</p><p className="mt-1 font-medium">{selectedPonto.regra_aplicada || "—"}</p></div>
+                    <div className="space-y-6">
+                      <section className="rounded-2xl border border-muted bg-background">
+                        <div className="border-b border-muted px-4 py-3">
+                          <h3 className="font-semibold text-foreground">Dados do dia e processamento</h3>
                         </div>
-                      ) : (
-                        <div className="p-6 text-sm text-muted-foreground">Selecione um dia para ver o detalhe operacional.</div>
-                      )}
-                    </section>
-
-                    <section className="rounded-2xl border border-muted bg-background">
-                      <div className="border-b border-muted px-4 py-3">
-                        <h3 className="font-semibold text-foreground">Transparência do cálculo</h3>
-                      </div>
-                      {selectedColaboradorRuleBreakdown ? (
-                        <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
-                          <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Tolerância</p><p className="mt-1 font-medium">{formatRuleMinutes(Number(selectedColaboradorRuleBreakdown.toleranciaExtra || 0))} extra / {formatRuleMinutes(Number(selectedColaboradorRuleBreakdown.toleranciaAtraso || 0))} atraso</p></div>
-                          <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Excedente</p><p className="mt-1 font-medium">{formatCompactMinutes(Number(selectedColaboradorRuleBreakdown.excedente || 0))}</p></div>
-                          <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Desconto</p><p className="mt-1 font-medium">{formatCompactMinutes(Number(selectedColaboradorRuleBreakdown.minutosAtraso || 0))}</p></div>
-                          <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Banco gerado</p><p className={cn("mt-1 font-medium", Number(selectedColaboradorRuleBreakdown.saldoFinal || 0) > 0 ? "text-success" : Number(selectedColaboradorRuleBreakdown.saldoFinal || 0) < 0 ? "text-error" : "text-muted-foreground")}>{minutesToTime(Number(selectedColaboradorRuleBreakdown.saldoFinal || 0))}</p></div>
-                          <div className="rounded-xl border border-muted bg-muted/20 p-3 md:col-span-2 xl:col-span-4">
-                            <p className="text-xs text-muted-foreground">Regra explicável</p>
-                            <p className="mt-1 text-sm leading-6 text-foreground">{selectedColaboradorRuleBreakdown.resumo}</p>
+                        {selectedPonto ? (
+                          <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
+                            <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Entrada</p><p className="mt-1 font-medium">{selectedPonto.entrada?.slice(0, 5) || "—"}</p></div>
+                            <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Saída</p><p className="mt-1 font-medium">{selectedPonto.saida?.slice(0, 5) || "—"}</p></div>
+                            <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Jornada</p><p className="mt-1 font-medium">{selectedColaboradorRuleBreakdown ? minutesToTime(selectedColaboradorRuleBreakdown.jornadaMinutes) : "—"}</p></div>
+                            <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Horas extras</p><p className="mt-1 font-medium text-success">{minutesToTime(Number(selectedPonto.minutos_extra || 0))}</p></div>
+                            <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Saldo do dia</p><p className={cn("mt-1 font-medium", Number(selectedPonto.saldo_dia || 0) > 0 ? "text-success" : Number(selectedPonto.saldo_dia || 0) < 0 ? "text-error" : "text-muted-foreground")}>{minutesToTime(Number(selectedPonto.saldo_dia || 0))}</p></div>
+                            <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Saldo acumulado</p><p className="mt-1 font-medium">{minutesToTime(Number(selectedPonto.saldo_acumulado_minutos || 0))}</p></div>
+                            <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Competência</p><p className="mt-1 font-medium">{formatCompetenciaLabel(selectedColaboradorCompetencia)}</p></div>
+                            <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Regra aplicada</p><p className="mt-1 font-medium">{selectedPonto.regra_aplicada || "—"}</p></div>
                           </div>
-                        </div>
-                      ) : (
-                        <div className="p-6 text-sm text-muted-foreground">O detalhamento da regra aparecerá aqui quando houver um dia selecionado.</div>
-                      )}
-                    </section>
+                        ) : (
+                          <div className="p-6 text-sm text-muted-foreground">Selecione um dia para ver o detalhe operacional.</div>
+                        )}
+                      </section>
 
-                    <section className="rounded-2xl border border-muted bg-background">
-                      <div className="flex items-center justify-between border-b border-muted px-4 py-3">
-                        <div>
-                          <h3 className="font-semibold text-foreground">Movimentações operacionais do banco</h3>
-                          <p className="text-xs text-muted-foreground">Saldo operacional do colaborador dentro da competência filtrada.</p>
+                      <section className="rounded-2xl border border-muted bg-background">
+                        <div className="border-b border-muted px-4 py-3">
+                          <h3 className="font-semibold text-foreground">Transparência do cálculo</h3>
                         </div>
-                        {isLoadingSelectedEventos ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
-                      </div>
-                      <div className="space-y-3 p-4">
-                        {processedSelectedEventos.length > 0 ? processedSelectedEventos.map((evento: any) => (
-                          <div key={evento.id} className="rounded-2xl border border-muted p-4">
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                              <div>
-                                <p className="font-medium text-foreground">{evento.displayDate}</p>
-                                <p className="text-sm text-muted-foreground">{evento.description || "Movimentação operacional registrada."}</p>
+                        {selectedColaboradorRuleBreakdown ? (
+                          <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
+                            <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Tolerância</p><p className="mt-1 font-medium">{formatRuleMinutes(Number(selectedColaboradorRuleBreakdown.toleranciaExtra || 0))} extra / {formatRuleMinutes(Number(selectedColaboradorRuleBreakdown.toleranciaAtraso || 0))} atraso</p></div>
+                            <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Excedente</p><p className="mt-1 font-medium">{formatCompactMinutes(Number(selectedColaboradorRuleBreakdown.excedente || 0))}</p></div>
+                            <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Desconto</p><p className="mt-1 font-medium">{formatCompactMinutes(Number(selectedColaboradorRuleBreakdown.minutosAtraso || 0))}</p></div>
+                            <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Banco gerado</p><p className={cn("mt-1 font-medium", Number(selectedColaboradorRuleBreakdown.saldoFinal || 0) > 0 ? "text-success" : Number(selectedColaboradorRuleBreakdown.saldoFinal || 0) < 0 ? "text-error" : "text-muted-foreground")}>{minutesToTime(Number(selectedColaboradorRuleBreakdown.saldoFinal || 0))}</p></div>
+                            <div className="rounded-xl border border-muted bg-muted/20 p-3 md:col-span-2 xl:col-span-4">
+                              <p className="text-xs text-muted-foreground">Regra explicável</p>
+                              <p className="mt-1 text-sm leading-6 text-foreground">{selectedColaboradorRuleBreakdown.resumo}</p>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="p-6 text-sm text-muted-foreground">O detalhamento da regra aparecerá aqui quando houver um dia selecionado.</div>
+                        )}
+                      </section>
+
+                      <section className="rounded-2xl border border-muted bg-background">
+                        <div className="flex items-center justify-between border-b border-muted px-4 py-3">
+                          <div>
+                            <h3 className="font-semibold text-foreground">Movimentações operacionais do banco</h3>
+                            <p className="text-xs text-muted-foreground">Saldo operacional do colaborador dentro da competência filtrada.</p>
+                          </div>
+                          {isLoadingSelectedEventos ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
+                        </div>
+                        <div className="space-y-3 p-4">
+                          {processedSelectedEventos.length > 0 ? processedSelectedEventos.map((evento: any) => (
+                            <div key={evento.id} className="rounded-2xl border border-muted p-4">
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                  <p className="font-medium text-foreground">{evento.displayDate}</p>
+                                  <p className="text-sm text-muted-foreground">{evento.description || "Movimentação operacional registrada."}</p>
+                                </div>
+                                <div className="text-right">
+                                  <p className={cn("font-display text-lg font-semibold", getBhEventMinutes(evento) >= 0 ? "text-success" : "text-error")}>{evento.displayMinutes}</p>
+                                  <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">{getBhEventType(evento) || "evento"}</p>
+                                </div>
                               </div>
-                              <div className="text-right">
-                                <p className={cn("font-display text-lg font-semibold", getBhEventMinutes(evento) >= 0 ? "text-success" : "text-error")}>{evento.displayMinutes}</p>
-                                <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">{getBhEventType(evento) || "evento"}</p>
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {evento.actions.map((action: any) => (
+                                  <Button key={action.key} variant="outline" size="sm" onClick={() => openOperationalActionDialog(evento, action.key)}>
+                                    {action.label}
+                                  </Button>
+                                ))}
                               </div>
                             </div>
-                            <div className="mt-3 flex flex-wrap gap-2">
-                              {evento.actions.map((action: any) => (
-                                <Button key={action.key} variant="outline" size="sm" onClick={() => openOperationalActionDialog(evento, action.key)}>
-                                  {action.label}
+                          )) : (
+                            <div className="rounded-2xl border border-dashed border-muted p-6 text-sm text-muted-foreground">
+                              Nenhuma movimentação individual encontrada para este colaborador na competência selecionada.
+                            </div>
+                          )}
+                        </div>
+                      </section>
+
+                      <section className="rounded-2xl border border-muted bg-background">
+                        <div className="border-b border-muted px-4 py-3">
+                          <h3 className="font-semibold text-foreground">Inconsistências do dia</h3>
+                        </div>
+                        <div className="space-y-3 p-4">
+                          {selectedColaboradorInconsistencias.length > 0 ? selectedColaboradorInconsistencias.map((item: any) => (
+                            <div key={item.id} className="rounded-2xl border border-warning/20 bg-warning-soft/20 p-4">
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                  <p className="font-medium text-foreground">{getInconsistenciaLabel(item.tipo)}</p>
+                                  <p className="text-sm text-muted-foreground">{item.descricao}</p>
+                                  {item.observacao ? <p className="mt-2 text-xs text-foreground">Justificativa: {item.observacao}</p> : null}
+                                </div>
+                                <Button variant="outline" size="sm" onClick={() => setJustificationTarget(item)}>
+                                  Justificar
                                 </Button>
-                              ))}
-                            </div>
-                          </div>
-                        )) : (
-                          <div className="rounded-2xl border border-dashed border-muted p-6 text-sm text-muted-foreground">
-                            Nenhuma movimentação individual encontrada para este colaborador na competência selecionada.
-                          </div>
-                        )}
-                      </div>
-                    </section>
-
-                    <section className="rounded-2xl border border-muted bg-background">
-                      <div className="border-b border-muted px-4 py-3">
-                        <h3 className="font-semibold text-foreground">Inconsistências do dia</h3>
-                      </div>
-                      <div className="space-y-3 p-4">
-                        {selectedColaboradorInconsistencias.length > 0 ? selectedColaboradorInconsistencias.map((item: any) => (
-                          <div key={item.id} className="rounded-2xl border border-warning/20 bg-warning-soft/20 p-4">
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                              <div>
-                                <p className="font-medium text-foreground">{getInconsistenciaLabel(item.tipo)}</p>
-                                <p className="text-sm text-muted-foreground">{item.descricao}</p>
-                                {item.observacao ? <p className="mt-2 text-xs text-foreground">Justificativa: {item.observacao}</p> : null}
                               </div>
-                              <Button variant="outline" size="sm" onClick={() => setJustificationTarget(item)}>
-                                Justificar
-                              </Button>
                             </div>
-                          </div>
-                        )) : (
-                          <div className="rounded-2xl border border-dashed border-muted p-6 text-sm text-muted-foreground">
-                            Nenhuma inconsistência aberta para o dia selecionado.
-                          </div>
-                        )}
-                      </div>
-                    </section>
-                  </div>
-                </section>
+                          )) : (
+                            <div className="rounded-2xl border border-dashed border-muted p-6 text-sm text-muted-foreground">
+                              Nenhuma inconsistência aberta para o dia selecionado.
+                            </div>
+                          )}
+                        </div>
+                      </section>
+                    </div>
+                  </section>
                 ) : null}
 
                 {drawerTab === "ajustes_rh" ? (
@@ -2304,7 +2304,11 @@ const ProcessamentoRH = () => {
                             <p className="font-medium text-foreground">{item.titulo}</p>
                             <p className="text-sm text-muted-foreground">{item.detalhe}</p>
                           </div>
-                          <Badge className={cn(item.status === "pago" ? "bg-success-soft text-success" : item.status === "compensado" || item.status === "justificada" ? "bg-primary-soft text-primary" : "bg-muted text-foreground")}>
+                          <Badge className={cn(
+                            item.status === "pago" ? "bg-success-soft text-success" :
+                              ["compensado", "justificada", "PROCESSADO"].includes(item.status) ? "bg-primary-soft text-primary" :
+                                "bg-muted text-foreground"
+                          )}>
                             {item.status}
                           </Badge>
                         </div>

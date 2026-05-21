@@ -25,6 +25,10 @@ import {
 import { MetricCard } from "@/components/painel/MetricCard";
 import { PontoTableBlock } from "@/components/ponto/PontoTableBlock";
 import { Badge } from "@/components/ui/badge";
+import { useTenant } from "@/contexts/TenantContext";
+import { ImportacoesTimeline } from "@/components/ponto/ImportacoesTimeline";
+import { useOperationalPulse } from "@/hooks/useOperationalPulse";
+import { getOperationalStatus } from "@/constants/operationalStatus";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -67,35 +71,17 @@ const normalizeCompanyText = (value: string) => {
 
 const normalizeStatus = (status?: string | null): string => {
   const value = status?.toString().trim();
-  if (!value) return "Pendente";
-
+  if (!value) return "RECEBIDO";
   const map: Record<string, string> = {
-    presente: "Presente",
-    ausente: "Ausente",
-    falta: "Falta",
-    atestado: "Atestado",
-    folga: "Folga",
-    ferias: "Férias",
-    férias: "Férias",
-    homeoffice: "Home Office",
-    "home office": "Home Office",
-    bancohoras: "Banco de Horas",
-    "banco de horas": "Banco de Horas",
-    pendente: "Pendente",
-    processado: "Processado",
-    inconsistente: "Inconsistente",
-    ok: "ok",
-    ajustado: "ajustado",
-    incompleto: "incompleto",
+    sucesso: "PROCESSADO",
+    processado: "PROCESSADO",
+    pendente: "PENDENTE_PROCESSAMENTO",
+    erro: "ERRO",
+    inconsistente: "INCONSISTENTE",
+    validando: "VALIDANDO",
+    recebido: "RECEBIDO",
   };
-
-  const normalized = value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, "")
-    .toLowerCase();
-
-  return map[normalized] || "Pendente";
+  return map[value.toLowerCase()] || "RECEBIDO";
 };
 
 const getImportRowValue = (row: Record<string, unknown>, ...columns: string[]) => {
@@ -409,22 +395,22 @@ const Pontos = () => {
         }
 
         // Dados válidos - aceitar qualquer valor (dados brutos)
-          const payload = {
+        const payload = {
           // Campos relacionais podem ser null se não encontrados
           colaborador_id: colaboradorId,
           empresa_id: empresaId,
           // Dados principais
-            data,
-            competencia: data.slice(0, 7),
-            entrada,
+          data,
+          competencia: data.slice(0, 7),
+          entrada,
           saida_almoco: saidaAlmoco,
           retorno_almoco: retornoAlmoco,
           saida,
           periodo: periodo || null,
           tipo_dia: tipoDia || null,
-            status: normalizeStatus(status),
-            status_processamento: "pendente",
-            origem: "importacao",
+          status: normalizeStatus(status),
+          status_processamento: "pendente",
+          origem: "importacao",
           // Dados brutos da planilha (salvos para exibição)
           nome_colaborador: colaboradorNome || null,
           empresa_nome: empresaNome || null,
@@ -504,35 +490,53 @@ const Pontos = () => {
   const ultimaSincronizacao = rows[0]?.updated_at || rows[0]?.created_at || null;
   const isLoading = isLoadingEmpresas || isLoadingRows;
 
-  const handleImportPontos = async (importRows: Record<string, any>[]) => {
-    const preCadastroResult = await ensurePreCadastrosFromImportedPontos(importRows, "planilha");
-
-    for (const row of preCadastroResult.rowsWithColaboradorId) {
-      await PontoService.create(row);
+  const handleImportPontos = async (_importRows: Record<string, any>[], _optionId?: string, file?: File) => {
+    if (!file) {
+      toast.error("Erro: arquivo não encontrado para upload.");
+      return;
     }
 
-    setLastImportSummary({
-      novosDetectados: preCadastroResult.novosDetectados,
-      preCadastrosCriados: preCadastroResult.preCadastrosCriados,
-      empresasCriadas: preCadastroResult.empresasCriadas,
-    });
+    try {
+      const formData = new FormData();
+      formData.append("arquivo", file);
+      formData.append("empresa_id", selectedEmpresaId === "all" ? "" : selectedEmpresaId);
+      formData.append("origem", "manual");
+      formData.append("nome_arquivo", file.name);
 
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["ponto"] }),
-      queryClient.invalidateQueries({ queryKey: ["ponto-meses-com-registros"] }),
-      queryClient.invalidateQueries({ queryKey: ["colaboradores_list"] }),
-      queryClient.invalidateQueries({ queryKey: ["colaboradores_all"] }),
-      queryClient.invalidateQueries({ queryKey: ["empresas"] }),
-      queryClient.invalidateQueries({ queryKey: ["operational-pulse"] }),
-    ]);
+      const result = await PontoService.importarPontos(formData);
 
-    const parts: string[] = [];
-    parts.push(`${preCadastroResult.novosDetectados} colaboradores novos detectados`);
-    parts.push(`${preCadastroResult.preCadastrosCriados} pré-cadastros criados`);
-    if (preCadastroResult.empresasCriadas > 0) {
-      parts.push(`${preCadastroResult.empresasCriadas} empresa(s) criada(s) automaticamente`);
+      if (result.success) {
+        setLastImportSummary({
+          novosDetectados: result.novos_colaboradores || 0,
+          preCadastrosCriados: result.novos_colaboradores || 0,
+          empresasCriadas: result.novas_empresas || 0,
+        });
+
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["ponto"] }),
+          queryClient.invalidateQueries({ queryKey: ["ponto-meses-com-registros"] }),
+          queryClient.invalidateQueries({ queryKey: ["colaboradores_list"] }),
+          queryClient.invalidateQueries({ queryKey: ["colaboradores_all"] }),
+          queryClient.invalidateQueries({ queryKey: ["empresas"] }),
+          queryClient.invalidateQueries({ queryKey: ["operational-pulse"] }),
+        ]);
+
+        const parts: string[] = [];
+        parts.push(`${result.quantidade_registros} registros processados`);
+        if (result.novos_colaboradores > 0) {
+          parts.push(`${result.novos_colaboradores} colaboradores novos`);
+        }
+        if (result.novas_empresas > 0) {
+          parts.push(`${result.novas_empresas} empresa(s) criada(s)`);
+        }
+        toast.success(parts.join(" · "));
+      } else {
+        toast.error("Erro na importação: " + (result.message || "Ocorreu um erro desconhecido"));
+      }
+    } catch (err: any) {
+      console.error("ERRO NA IMPORTAÇÃO:", err);
+      toast.error("Falha ao importar pontos via servidor: " + err.message);
     }
-    toast.success(parts.join(" · "));
   };
 
   const handleClearImportacao = async () => {
@@ -743,6 +747,10 @@ const Pontos = () => {
                 empresaId={selectedEmpresaId}
                 rows={rows}
               />
+            </section>
+
+            <section className="esc-card p-5">
+              <ImportacoesTimeline empresaId={selectedEmpresaId} />
             </section>
           </>
         )}

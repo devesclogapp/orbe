@@ -56,6 +56,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DialogDescription } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
@@ -674,8 +675,21 @@ const CentralCadastros = () => {
   });
 
   const [coletorModalOpen, setColetorModalOpen] = useState(false);
-  const [coletorForm, setColetorForm] = useState({
+  const emptyColetorForm = () => ({
     modelo: "", serie: "", empresa_id: empresaId || "",
+    unidade_id: "", unidade_local: "", fabricante: "",
+    tipo_integracao: "upload_manual" as string, formato_arquivo: "AFD" as string,
+    integracao_ativa: true, intervalo_sincronizacao_minutos: 5,
+    folder_entrada_url: "", folder_entrada_id: "",
+    folder_processados_url: "", folder_processados_id: "",
+    folder_erros_url: "", folder_erros_id: "",
+  });
+  const [coletorForm, setColetorForm] = useState(emptyColetorForm());
+
+  const { data: unidadesOptions = [] } = useQuery({
+    queryKey: ["unidades", coletorForm.empresa_id],
+    queryFn: () => UnidadeOperacionalService.getByEmpresa(coletorForm.empresa_id),
+    enabled: !!coletorForm.empresa_id,
   });
 
   const { data: empresas = [], isLoading: loadingEmpresas } = useQuery<any[]>({
@@ -1126,7 +1140,7 @@ const CentralCadastros = () => {
     onSuccess: async () => {
       toast.success("Coletor cadastrado com sucesso");
       setColetorModalOpen(false);
-      setColetorForm({ modelo: "", serie: "", empresa_id: empresaId || "" });
+      setColetorForm(emptyColetorForm());
       await queryClient.invalidateQueries({ queryKey: ["coletores"] });
       const data = await queryClient.fetchQuery({ queryKey: ["coletores"], queryFn: () => ColetorService.getWithEmpresa() });
       queryClient.setQueryData(["coletores"], data);
@@ -3576,43 +3590,196 @@ const CentralCadastros = () => {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={coletorModalOpen} onOpenChange={setColetorModalOpen}>
-        <DialogContent>
+      <Dialog open={coletorModalOpen} onOpenChange={(v) => { if (!v) { setColetorForm(emptyColetorForm()); } setColetorModalOpen(v); }}>
+        <DialogContent className="max-w-xl max-h-[95vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Novo Coletor</DialogTitle>
+            <DialogTitle>Novo Coletor REP</DialogTitle>
             <DialogDescription>
-              Cadastre um novo dispositivo de ponto eletrônico REP.
+              Transformar o cadastro em uma central de integração operacional completa.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="col_modelo">Modelo</Label>
-              <Input id="col_modelo" value={coletorForm.modelo} onChange={(e) => setColetorForm({ ...coletorForm, modelo: e.target.value })} placeholder="Ex: Rep-1000" />
+
+          <div className="space-y-6 py-2">
+            {/* ── SEÇÃO 1: DADOS DO COLETOR ── */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 border-b pb-1">
+                <div className="h-5 w-1 bg-primary rounded-full" />
+                <p className="text-xs font-bold text-foreground uppercase tracking-widest">
+                  1. Dados do Coletor
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="cc_col_modelo">Modelo <span className="text-destructive">*</span></Label>
+                  <Input id="cc_col_modelo" value={coletorForm.modelo} onChange={(e) => setColetorForm({ ...coletorForm, modelo: e.target.value })} placeholder="Ex: Henry Prisma" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="cc_col_serie">Número de Série <span className="text-destructive">*</span></Label>
+                  <Input id="cc_col_serie" value={coletorForm.serie} onChange={(e) => setColetorForm({ ...coletorForm, serie: e.target.value })} placeholder="REP-000-000" className="font-mono uppercase" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label>Empresa <span className="text-destructive">*</span></Label>
+                  <Select value={coletorForm.empresa_id} onValueChange={(v) => setColetorForm({ ...coletorForm, empresa_id: v, unidade_id: "" })}>
+                    <SelectTrigger><SelectValue placeholder="Selecione uma empresa" /></SelectTrigger>
+                    <SelectContent>
+                      {empresas.map((e) => (
+                        <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Unidade / Local <span className="text-destructive">*</span></Label>
+                  <Select value={coletorForm.unidade_id} onValueChange={(v) => setColetorForm({ ...coletorForm, unidade_id: v })}>
+                    <SelectTrigger disabled={!coletorForm.empresa_id}>
+                      <SelectValue placeholder={!coletorForm.empresa_id ? "Selecione a empresa primeiro" : "Selecione a unidade"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {unidadesOptions.map((u: any) => (
+                        <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="cc_col_fabricante">Fabricante</Label>
+                <Input id="cc_col_fabricante" value={coletorForm.fabricante} onChange={(e) => setColetorForm({ ...coletorForm, fabricante: e.target.value })} placeholder="Henry, Dimep, Control, ZKTeco..." />
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="col_serie">Número de Série</Label>
-              <Input id="col_serie" value={coletorForm.serie} onChange={(e) => setColetorForm({ ...coletorForm, serie: e.target.value })} placeholder="Ex: REP001234" />
+
+            {/* ── SEÇÃO 2: INTEGRAÇÃO DE PONTO ── */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 border-b pb-1">
+                <div className="h-5 w-1 bg-primary rounded-full" />
+                <p className="text-xs font-bold text-foreground uppercase tracking-widest">
+                  2. Integração de Ponto
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label>Tipo de Integração</Label>
+                  <Select value={coletorForm.tipo_integracao} onValueChange={(v) => setColetorForm({ ...coletorForm, tipo_integracao: v })}>
+                    <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="google_drive">☁️ Google Drive</SelectItem>
+                      <SelectItem value="api_direta">⚡ API Direta</SelectItem>
+                      <SelectItem value="upload_manual">📁 Upload Manual</SelectItem>
+                      <SelectItem value="rede_local">🌐 Rede Local</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Formato do Arquivo</Label>
+                  <Select value={coletorForm.formato_arquivo} onValueChange={(v) => setColetorForm({ ...coletorForm, formato_arquivo: v })}>
+                    <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="AFD">AFD</SelectItem>
+                      <SelectItem value="CSV">CSV</SelectItem>
+                      <SelectItem value="TXT">TXT</SelectItem>
+                      <SelectItem value="XLSX">XLSX</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5 flex flex-col gap-2">
+                  <Label>Integração Ativa</Label>
+                  <div className="flex items-center gap-2 h-10 border rounded-md px-3 bg-muted/20">
+                    <Switch checked={coletorForm.integracao_ativa} onCheckedChange={(v) => setColetorForm({ ...coletorForm, integracao_ativa: v })} />
+                    <span className="text-xs text-muted-foreground">{coletorForm.integracao_ativa ? "Habilitado" : "Desabilitado"}</span>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Sincronização (min)</Label>
+                  <Input type="number" value={coletorForm.intervalo_sincronizacao_minutos} onChange={(e) => setColetorForm({ ...coletorForm, intervalo_sincronizacao_minutos: parseInt(e.target.value) || 5 })} min={1} />
+                </div>
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label>Empresa</Label>
-              <Select value={coletorForm.empresa_id} onValueChange={(v) => setColetorForm({ ...coletorForm, empresa_id: v })}>
-                <SelectTrigger><SelectValue placeholder="Selecione uma empresa" /></SelectTrigger>
-                <SelectContent>
-                  {empresas.map((e) => (
-                    <SelectItem key={e.id} value={e.id}>{e.nome} — {e.cidade}/{e.estado}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+
+            {/* ── SEÇÃO 3: GOOGLE DRIVE ── */}
+            {coletorForm.tipo_integracao === "google_drive" && (
+              <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                <div className="flex items-center gap-2 border-b pb-1">
+                  <div className="h-5 w-1 bg-blue-500 rounded-full" />
+                  <p className="text-xs font-bold text-blue-600 uppercase tracking-widest">
+                    3. Configuração Google Drive
+                  </p>
+                </div>
+
+                <div className="grid gap-4 bg-blue-500/5 p-4 rounded-xl border border-blue-500/10">
+                  <div className="space-y-1.5">
+                    <Label className="text-[11px] font-semibold text-blue-700">Pasta Entrada (URL ou ID)</Label>
+                    <div className="flex flex-col gap-1">
+                      <Input
+                        value={coletorForm.folder_entrada_url}
+                        onChange={(e) => {
+                          const url = e.target.value;
+                          const id = ColetorService.extractFolderIdFromUrl(url);
+                          setColetorForm({ ...coletorForm, folder_entrada_url: url, folder_entrada_id: id || "" });
+                        }}
+                        placeholder="https://drive.google.com/drive/folders/..."
+                        className="font-mono text-xs border-blue-500/20"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-[11px] font-semibold text-blue-700">Pasta Processados (URL ou ID)</Label>
+                    <div className="flex flex-col gap-1">
+                      <Input
+                        value={coletorForm.folder_processados_url}
+                        onChange={(e) => {
+                          const url = e.target.value;
+                          const id = ColetorService.extractFolderIdFromUrl(url);
+                          setColetorForm({ ...coletorForm, folder_processados_url: url, folder_processados_id: id || "" });
+                        }}
+                        placeholder="URL pasta processados"
+                        className="font-mono text-xs border-blue-500/20"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-[11px] font-semibold text-blue-700">Pasta Erros (URL ou ID)</Label>
+                    <div className="flex flex-col gap-1">
+                      <Input
+                        value={coletorForm.folder_erros_url}
+                        onChange={(e) => {
+                          const url = e.target.value;
+                          const id = ColetorService.extractFolderIdFromUrl(url);
+                          setColetorForm({ ...coletorForm, folder_erros_url: url, folder_erros_id: id || "" });
+                        }}
+                        placeholder="URL pasta erros"
+                        className="font-mono text-xs border-blue-500/20"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setColetorModalOpen(false)}>Cancelar</Button>
-            <Button onClick={() => createColetorMutation.mutate(coletorForm)} disabled={createColetorMutation.isPending}>
-              {createColetorMutation.isPending ? "Salvando..." : "Salvar"}
+
+          <DialogFooter className="bg-muted/30 -mx-6 -mb-6 p-6 mt-6">
+            <Button variant="outline" onClick={() => { setColetorForm(emptyColetorForm()); setColetorModalOpen(false); }}>Cancelar</Button>
+            <Button onClick={() => {
+              if (!coletorForm.modelo.trim() || !coletorForm.serie.trim() || !coletorForm.empresa_id) {
+                toast.error("Preencha Modelo, Série e Empresa.");
+                return;
+              }
+              createColetorMutation.mutate(coletorForm);
+            }} disabled={createColetorMutation.isPending} className="font-bold">
+              {createColetorMutation.isPending ? "Salvando..." : "Cadastrar"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
 
       <Dialog open={transportadoraModalOpen} onOpenChange={(open) => {
         setTransportadoraModalOpen(open);
