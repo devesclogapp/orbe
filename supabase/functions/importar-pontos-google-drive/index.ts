@@ -358,7 +358,7 @@ serve(async (req) => {
 
     // 7. Update History
     await supabase.from('historico_importacoes').update({
-      status: 'sucesso',
+      status: 'PROCESSADO',
       quantidade_registros: pointRecords.length,
       processado_em: new Date().toISOString()
     }).eq('id', historico.id)
@@ -374,7 +374,7 @@ serve(async (req) => {
         quantidade_registros: pointRecords.length,
         novos_colaboradores: novosColabs,
         novas_empresas: novasEmpresas,
-        status: 'sucesso'
+        status: 'PROCESSADO'
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
     )

@@ -415,3 +415,11 @@ entrypoint = "./functions/process-day/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/process-day/*.html" ]
+
+[functions.resolve-drive-folder]
+enabled = true
+verify_jwt = false
+
+[functions.importar-pontos-google-drive]
+enabled = true
+verify_jwt = false

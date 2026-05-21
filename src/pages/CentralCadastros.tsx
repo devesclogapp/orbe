@@ -3611,11 +3611,11 @@ const CentralCadastros = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <Label htmlFor="cc_col_modelo">Modelo <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="cc_col_modelo">Modelo</Label>
                   <Input id="cc_col_modelo" value={coletorForm.modelo} onChange={(e) => setColetorForm({ ...coletorForm, modelo: e.target.value })} placeholder="Ex: Henry Prisma" />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="cc_col_serie">Número de Série <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="cc_col_serie">Número de Série</Label>
                   <Input id="cc_col_serie" value={coletorForm.serie} onChange={(e) => setColetorForm({ ...coletorForm, serie: e.target.value })} placeholder="REP-000-000" className="font-mono uppercase" />
                 </div>
               </div>
@@ -3633,12 +3633,15 @@ const CentralCadastros = () => {
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Unidade / Local <span className="text-destructive">*</span></Label>
-                  <Select value={coletorForm.unidade_id} onValueChange={(v) => setColetorForm({ ...coletorForm, unidade_id: v })}>
+                  <Label>Unidade / Local</Label>
+                  <Select value={coletorForm.unidade_id || "__none__"} onValueChange={(v) => setColetorForm({ ...coletorForm, unidade_id: v === "__none__" ? "" : v })}>
                     <SelectTrigger disabled={!coletorForm.empresa_id}>
-                      <SelectValue placeholder={!coletorForm.empresa_id ? "Selecione a empresa primeiro" : "Selecione a unidade"} />
+                      <SelectValue placeholder={!coletorForm.empresa_id ? "Selecione a empresa primeiro" : "Opcional — selecione unidade"} />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="__none__">
+                        <span className="text-muted-foreground italic">Sem unidade definida</span>
+                      </SelectItem>
                       {unidadesOptions.map((u: any) => (
                         <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>
                       ))}
@@ -3768,8 +3771,8 @@ const CentralCadastros = () => {
           <DialogFooter className="bg-muted/30 -mx-6 -mb-6 p-6 mt-6">
             <Button variant="outline" onClick={() => { setColetorForm(emptyColetorForm()); setColetorModalOpen(false); }}>Cancelar</Button>
             <Button onClick={() => {
-              if (!coletorForm.modelo.trim() || !coletorForm.serie.trim() || !coletorForm.empresa_id) {
-                toast.error("Preencha Modelo, Série e Empresa.");
+              if (!coletorForm.empresa_id) {
+                toast.error("Por favor, selecione a Empresa.");
                 return;
               }
               createColetorMutation.mutate(coletorForm);

@@ -760,9 +760,18 @@ class ColetorServiceClass extends BaseService<'coletores'> {
     const empresaIdClean = cleanUuid(payload.empresa_id);
     if (!empresaIdClean) throw new Error('Selecione uma empresa válida.');
 
-    const cleanedPayload = {
-      modelo:                payload.modelo?.trim() || null,
-      serie:                 payload.serie?.trim() || null,
+    const nomeColetor = payload.nome_coletor?.trim() || 'Coletor sem nome';
+
+    // Fallback temporário para campos NOT NULL legados (modelo, serie).
+    // Esses valores serão nullable após a migration 20260548 ser aplicada.
+    // Por ora, garantimos que o insert não falhe por constraint.
+    const modeloValue = payload.modelo?.trim() || null;
+    const serieValue = payload.serie?.trim() || null;
+
+    const cleanedPayload: Record<string, any> = {
+      nome_coletor:          nomeColetor,
+      modelo:                modeloValue,
+      serie:                 serieValue,
       empresa_id:            empresaIdClean,
       tenant_id:             tenantId,
       status:                payload.status ?? 'offline',
@@ -783,17 +792,36 @@ class ColetorServiceClass extends BaseService<'coletores'> {
       intervalo_sincronizacao_minutos: payload.intervalo_sincronizacao_minutos ?? 5,
     };
 
+    // Se modelo/serie ainda estão NULL, fornece valores temporários para
+    // contornar a constraint NOT NULL até a migration ser aplicada.
+    if (!cleanedPayload.modelo) cleanedPayload.modelo = 'N/D';
+    if (!cleanedPayload.serie) cleanedPayload.serie = `tmp-${Date.now()}`;
+
     const { data, error } = await supabase
       .from('coletores')
       .insert(cleanedPayload)
       .select()
       .single();
+
+    // Se erro de UNIQUE em serie, gera outro valor e tenta de novo
+    if (error && (error.code === '23505' || error.message?.includes('unique'))) {
+      cleanedPayload.serie = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const { data: data2, error: error2 } = await supabase
+        .from('coletores')
+        .insert(cleanedPayload)
+        .select()
+        .single();
+      if (error2) throw error2;
+      return data2;
+    }
+
     if (error) throw error;
     return data;
   }
 
   async update(id: string, payload: Record<string, any>) {
     const cleanedPayload: Record<string, any> = {
+      nome_coletor:          payload.nome_coletor?.trim() || null,
       modelo:                payload.modelo?.trim() || null,
       serie:                 payload.serie?.trim() || null,
       empresa_id:            cleanUuid(payload.empresa_id),
@@ -1581,9 +1609,14 @@ export const ConsolidadoService = new ConsolidadoServiceClass();
 class UnidadeServiceClass extends BaseService<'unidades'> {
   constructor() { super('unidades'); }
   async getByEmpresa(empresaId: string) {
-    const { data, error } = await supabase.from('unidades').select('*');
+    if (!empresaId) return [];
+    const { data, error } = await supabase
+      .from('unidades')
+      .select('*')
+      .eq('empresa_id', empresaId)
+      .order('nome', { ascending: true });
     if (error) throw error;
-    return data;
+    return data ?? [];
   }
 }
 export const UnidadeService = new UnidadeServiceClass();
@@ -1712,13 +1745,36 @@ const operationalClient: any = supabase;
 
 class UnidadeOperacionalServiceClass {
   async getByEmpresa(empresaId: string) {
-    const { data, error } = await operationalClient
-      .from('unidades')
-      .select('*')
-      .order('nome', { ascending: true });
+    if (!empresaId) return [];
 
-    if (error) throw error;
-    return data ?? [];
+    // Consulta ambas as tabelas para cobrir unidades criadas por qualquer fluxo.
+    // 'unidades_operacionais' é a FK oficial dos coletores.
+    // 'unidades' é a tabela legada usada em outros módulos.
+    const [resNova, resLegada] = await Promise.allSettled([
+      operationalClient
+        .from('unidades_operacionais')
+        .select('id, nome, codigo, status')
+        .eq('empresa_id', empresaId)
+        .order('nome', { ascending: true }),
+      operationalClient
+        .from('unidades')
+        .select('id, nome, status')
+        .eq('empresa_id', empresaId)
+        .order('nome', { ascending: true }),
+    ]);
+
+    const nova: any[] = resNova.status === 'fulfilled' && !resNova.value.error
+      ? (resNova.value.data ?? [])
+      : [];
+
+    const legada: any[] = resLegada.status === 'fulfilled' && !resLegada.value.error
+      ? (resLegada.value.data ?? [])
+      : [];
+
+    // Deduplicar por id
+    const seen = new Set(nova.map((u: any) => u.id));
+    const merged = [...nova, ...legada.filter((u: any) => !seen.has(u.id))];
+    return merged;
   }
 }
 export const UnidadeOperacionalService = new UnidadeOperacionalServiceClass();

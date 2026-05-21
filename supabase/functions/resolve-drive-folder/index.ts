@@ -19,6 +19,7 @@ serve(async (req) => {
     const { folder_id } = await req.json()
 
     if (!folder_id) {
+      console.error("[resolve-drive-folder] folder_id ausente no payload");
       return new Response(
         JSON.stringify({ 
           success: false, 
@@ -34,20 +35,23 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // 1. Localizar coletor pelo folder_entrada_id
-    const { data: coletor, error } = await supabase
+    // 1. Localizar coletor pelo folder_entrada_id (Query Manual para evitar erro de schema cache)
+    console.log(`[resolve-drive-folder] Buscando coletor para folder_id: ${folder_id}`);
+    const { data: coletor, error: coletorError } = await supabase
       .from('coletores')
-      .select('*, empresa:empresas(*), unidade:unidades_operacionais(*)')
+      .select('*')
       .eq('folder_entrada_id', folder_id)
+      .eq('tipo_integracao', 'google_drive')
       .maybeSingle()
 
-    if (error) {
-      console.error("Erro ao buscar coletor:", error)
-      throw error
+    if (coletorError) {
+      console.error("[resolve-drive-folder] Erro ao buscar coletor:", coletorError)
+      throw coletorError
     }
 
     // 2. Validar existência
     if (!coletor) {
+      console.warn(`[resolve-drive-folder] Coletor não encontrado para folder_id: ${folder_id}`);
       return new Response(
         JSON.stringify({ 
           success: false, 
@@ -58,8 +62,9 @@ serve(async (req) => {
       )
     }
 
-    // 3. Validar integração ativa e tipo
+    // 3. Validar integração ativa
     if (!coletor.integracao_ativa) {
+      console.warn(`[resolve-drive-folder] Integração desativada para o coletor: ${coletor.id}`);
       return new Response(
         JSON.stringify({ 
           success: false, 
@@ -70,24 +75,38 @@ serve(async (req) => {
       )
     }
 
-    if (coletor.tipo_integracao !== 'google_drive') {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: "INVALID_INTEGRATION_TYPE", 
-          message: "Este coletor não está configurado para integração via Google Drive." 
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
-      )
+    // 4. Buscar empresa separadamente
+    let empresa_nome = null;
+    if (coletor.empresa_id) {
+      const { data: empresa } = await supabase
+        .from('empresas')
+        .select('nome')
+        .eq('id', coletor.empresa_id)
+        .maybeSingle();
+      empresa_nome = empresa?.nome || null;
     }
 
-    // 4. Retornar payload operacional padronizado
+    // 5. Buscar unidade separadamente
+    let unidade_nome = null;
+    if (coletor.unidade_id) {
+      const { data: unidade } = await supabase
+        .from('unidades_operacionais')
+        .select('nome')
+        .eq('id', coletor.unidade_id)
+        .maybeSingle();
+      unidade_nome = unidade?.nome || null;
+    }
+
+    console.log(`[resolve-drive-folder] Contexto resolvido com sucesso: Coletor ${coletor.id}`);
+
+    // 6. Retornar payload operacional padronizado montado manualmente
     return new Response(
       JSON.stringify({
         success: true,
         empresa_id: coletor.empresa_id,
-        cliente_id: coletor.empresa?.cliente_id || null,
+        empresa_nome: empresa_nome,
         unidade_id: coletor.unidade_id,
+        unidade_nome: unidade_nome,
         coletor_id: coletor.id,
         modelo: coletor.modelo,
         numero_serie: coletor.serie,
@@ -97,14 +116,13 @@ serve(async (req) => {
         folder_entrada_id: coletor.folder_entrada_id,
         folder_processados_id: coletor.folder_processados_id,
         folder_erros_id: coletor.folder_erros_id,
-        integracao_ativa: coletor.integracao_ativa,
-        intervalo_sincronizacao_minutos: coletor.intervalo_sincronizacao_minutos
+        integracao_ativa: coletor.integracao_ativa
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
     )
 
   } catch (error: any) {
-    console.error("Internal Server Error:", error)
+    console.error("[resolve-drive-folder] Internal Server Error:", error)
     return new Response(
       JSON.stringify({ 
         success: false, 

@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
-import { EmpresaService, ColetorService, UnidadeOperacionalService } from "@/services/base.service";
+import { EmpresaService, ColetorService } from "@/services/base.service";
+import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import {
   Plus, Cpu, Wifi, WifiOff, AlertTriangle, Loader2,
@@ -47,7 +48,7 @@ const integracaoMap: Record<string, { label: string; icon: React.ElementType; cl
 // ─── Formulário padrão ────────────────────────────────────────────────────────
 
 const emptyForm = () => ({
-  // Dados do coletor
+  nome_coletor: "",
   modelo: "",
   serie: "",
   empresa_id: "",
@@ -94,11 +95,31 @@ const Coletores = () => {
     queryFn: () => EmpresaService.getAll(),
   });
 
-  const { data: unidadeOptions = [] } = useQuery({
-    queryKey: ["unidades", form.empresa_id],
-    queryFn: () => UnidadeOperacionalService.getByEmpresa(form.empresa_id),
-    enabled: !!form.empresa_id,
-  });
+  // Estado local para unidades — carregadas diretamente ao selecionar empresa
+  const [unidadeOptions, setUnidadeOptions] = useState<any[]>([]);
+  const [loadingUnidades, setLoadingUnidades] = useState(false);
+
+  // Carregar unidades quando empresa mudar
+  useEffect(() => {
+    if (!form.empresa_id) {
+      setUnidadeOptions([]);
+      return;
+    }
+    setLoadingUnidades(true);
+    // Consulta ambas as tabelas e combina
+    Promise.allSettled([
+      supabase.from('unidades').select('id, nome').eq('empresa_id', form.empresa_id),
+      supabase.from('unidades_operacionais').select('id, nome').eq('empresa_id', form.empresa_id),
+    ]).then(([resA, resB]) => {
+      const a = resA.status === 'fulfilled' && !resA.value.error ? (resA.value.data ?? []) : [];
+      const b = resB.status === 'fulfilled' && !resB.value.error ? (resB.value.data ?? []) : [];
+      const seen = new Set(a.map((u: any) => u.id));
+      const merged = [...a, ...b.filter((u: any) => !seen.has(u.id))];
+      console.log('[Coletores] Unidades carregadas:', merged, '| empresa_id:', form.empresa_id);
+      setUnidadeOptions(merged);
+    }).finally(() => setLoadingUnidades(false));
+  }, [form.empresa_id]);
+
 
   // ─── Mutations ───────────────────────────────────────────────────────────
 
@@ -133,6 +154,7 @@ const Coletores = () => {
 
   const openEdit = (c: any) => {
     setForm({
+      nome_coletor: c.nome_coletor ?? "",
       modelo: c.modelo ?? "",
       serie: c.serie ?? "",
       empresa_id: c.empresa_id ?? "",
@@ -155,10 +177,18 @@ const Coletores = () => {
   };
 
   const submit = () => {
-    if (!form.modelo.trim() || !form.serie.trim() || !form.empresa_id) {
-      toast.error("Preencha os campos obrigatórios: Modelo, Série e Empresa");
+    if (!form.nome_coletor.trim() || !form.empresa_id || !form.tipo_integracao) {
+      toast.error("Preencha os campos obrigatórios: Nome do Coletor, Empresa e Tipo de Integração");
       return;
     }
+
+    if (form.tipo_integracao === 'google_drive') {
+      if (!form.folder_entrada_url.trim() || !form.folder_processados_url.trim() || !form.folder_erros_url.trim()) {
+        toast.error("Para integração Google Drive, as URLs das pastas (Entrada, Sucesso e Erro) são obrigatórias.");
+        return;
+      }
+    }
+
     if (editingId) {
       updateMutation.mutate({ id: editingId, payload: form });
     } else {
@@ -229,11 +259,9 @@ const Coletores = () => {
             <table className="w-full text-sm">
               <thead className="esc-table-header">
                 <tr className="text-left">
-                  <th className="px-5 h-11 font-medium">Modelo / Série</th>
+                  <th className="px-5 h-11 font-medium">Nome do Coletor</th>
                   <th className="px-3 h-11 font-medium">Empresa / Unidade</th>
-                  <th className="px-3 h-11 font-medium">Integração</th>
-                  <th className="px-3 h-11 font-medium">Formato</th>
-                  <th className="px-3 h-11 font-medium text-center">Última Sync</th>
+                  <th className="px-3 h-11 font-medium text-center">Integração</th>
                   <th className="px-3 h-11 font-medium text-center">Status</th>
                   <th className="px-5 h-11 font-medium text-center">Ações</th>
                 </tr>
@@ -257,37 +285,30 @@ const Coletores = () => {
                             <Cpu className="h-4 w-4 text-muted-foreground" />
                           </div>
                           <div>
-                            <div className="font-medium text-foreground">{c.modelo}</div>
-                            <div className="text-xs text-muted-foreground font-mono">{c.serie}</div>
+                            <div className="font-medium text-foreground">{c.nome_coletor || c.modelo || "Coletor Sem Nome"}</div>
+                            <div className="text-[10px] text-muted-foreground font-mono">
+                              {c.modelo && c.serie ? `${c.modelo} · ${c.serie}` : c.serie || c.modelo || "—"}
+                            </div>
                           </div>
                         </div>
                       </td>
                       <td className="px-3">
-                        <div className="text-foreground">{(c.empresas as any)?.nome ?? "—"}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {c.unidade?.nome || c.unidade_local || "—"}
+                        <div className="text-foreground text-xs font-semibold">{(c.empresas as any)?.nome ?? "—"}</div>
+                        <div className={cn("text-[10px] uppercase tracking-wider font-bold", c.unidade?.nome ? "text-primary" : "text-muted-foreground")}>
+                          {c.unidade?.nome || "Unidade não definida"}
                         </div>
                       </td>
-                      <td className="px-3">
+                      <td className="px-3 text-center">
                         {intg && IIcon ? (
-                          <span className={cn("esc-chip inline-flex items-center gap-1.5", intg.cls)}>
-                            <IIcon className="h-3 w-3" /> {intg.label}
-                          </span>
+                          <div className="flex flex-col items-center gap-1">
+                            <span className={cn("esc-chip inline-flex items-center gap-1.5 py-0.5", intg.cls)}>
+                              <IIcon className="h-3 w-3" /> {intg.label}
+                            </span>
+                            {c.formato_arquivo && <span className="text-[9px] font-mono opacity-60 uppercase">{c.formato_arquivo}</span>}
+                          </div>
                         ) : (
                           <span className="text-muted-foreground text-xs">—</span>
                         )}
-                      </td>
-                      <td className="px-3">
-                        {c.formato_arquivo ? (
-                          <span className="font-mono text-xs bg-muted px-2 py-0.5 rounded">
-                            {c.formato_arquivo}
-                          </span>
-                        ) : <span className="text-muted-foreground text-xs">—</span>}
-                      </td>
-                      <td className="px-3 text-center text-muted-foreground text-xs">
-                        {c.ultima_importacao_at
-                          ? new Date(c.ultima_importacao_at).toLocaleString("pt-BR")
-                          : "Nunca"}
                       </td>
                       <td className="px-3 text-center">
                         <span className={cn("esc-chip inline-flex items-center gap-1",
@@ -330,14 +351,33 @@ const Coletores = () => {
                           <SIcon className="h-3 w-3" /> {s.label}
                         </span>
                       </div>
-                      <h3 className="font-display font-bold text-foreground mb-1">{c.modelo}</h3>
-                      <p className="text-[10px] font-mono text-muted-foreground uppercase">{c.serie}</p>
-                      <p className="text-xs text-muted-foreground mt-1">{(c.empresas as any)?.nome ?? "Sem empresa"}</p>
+                      <h3 className="font-display font-bold text-foreground mb-0.5">{c.nome_coletor || c.modelo || "Coletor Sem Nome"}</h3>
+                      <p className="text-[10px] font-mono text-muted-foreground uppercase mb-2">
+                        {c.modelo && c.serie ? `${c.modelo} · ${c.serie}` : c.serie || c.modelo || "ID OPERACIONAL ÚNICO"}
+                      </p>
+
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1.5">
+                          <CheckCircle2 className="h-3 w-3 text-primary/40" />
+                          <p className="text-[11px] font-semibold text-foreground uppercase tracking-tight">{(c.empresas as any)?.nome ?? "Empresa não definida"}</p>
+                        </div>
+                        <div className="flex items-center gap-1.5 ml-4">
+                          <div className="w-1.5 h-1.5 rounded-full bg-primary/30" />
+                          <p className="text-[10px] text-muted-foreground font-medium uppercase">{c.unidade?.nome || "Unidade não definida"}</p>
+                        </div>
+                      </div>
+
                       {intg && IIcon && (
-                        <span className={cn("mt-3 esc-chip inline-flex items-center gap-1.5 text-[10px]", intg.cls)}>
-                          <IIcon className="h-3 w-3" /> {intg.label}
-                          {c.formato_arquivo && ` · ${c.formato_arquivo}`}
-                        </span>
+                        <div className="flex items-center gap-2 mt-4">
+                          <span className={cn("esc-chip inline-flex items-center gap-1.5 text-[10px] px-2", intg.cls)}>
+                            <IIcon className="h-3 w-3" /> {intg.label}
+                          </span>
+                          {c.formato_arquivo && (
+                            <span className="text-[9px] font-mono px-1.5 py-0.5 bg-muted rounded border border-border/50 uppercase tracking-widest font-bold">
+                              {c.formato_arquivo}
+                            </span>
+                          )}
+                        </div>
                       )}
                       <div className="flex items-center gap-1 mt-2">
                         {c.integracao_ativa
@@ -388,9 +428,20 @@ const Coletores = () => {
                 </p>
               </div>
 
+              <div className="space-y-1.5">
+                <Label htmlFor="nome_coletor">Nome do Coletor <span className="text-destructive">*</span></Label>
+                <Input
+                  id="nome_coletor"
+                  value={form.nome_coletor}
+                  onChange={e => f("nome_coletor", e.target.value)}
+                  placeholder="Ex: Coletor Dismelo - Entrada Principal"
+                  className="font-semibold"
+                />
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <Label htmlFor="modelo">Modelo <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="modelo">Modelo</Label>
                   <Input
                     id="modelo"
                     value={form.modelo}
@@ -399,7 +450,7 @@ const Coletores = () => {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="serie">Número de Série <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="serie">Número de Série</Label>
                   <Input
                     id="serie"
                     value={form.serie}
@@ -426,13 +477,33 @@ const Coletores = () => {
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Unidade / Local <span className="text-destructive">*</span></Label>
-                  <Select value={form.unidade_id} onValueChange={v => f("unidade_id", v)}>
-                    <SelectTrigger disabled={!form.empresa_id}>
-                      <SelectValue placeholder={!form.empresa_id ? "Selecione a empresa primeiro" : "Selecione a unidade"} />
+                  <Label>Unidade / Local</Label>
+                  <Select
+                    value={form.unidade_id || "__none__"}
+                    onValueChange={v => f("unidade_id", v === "__none__" ? "" : v)}
+                    disabled={!form.empresa_id || loadingUnidades}
+                  >
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={
+                          !form.empresa_id
+                            ? "Selecione a empresa primeiro"
+                            : loadingUnidades
+                              ? "Carregando..."
+                              : "Opcional — selecione uma unidade/local"
+                        }
+                      />
                     </SelectTrigger>
                     <SelectContent>
-                      {(unidadeOptions as any[]).map(u => (
+                      <SelectItem value="__none__">
+                        <span className="text-muted-foreground italic">Sem unidade definida</span>
+                      </SelectItem>
+                      {unidadeOptions.length === 0 && form.empresa_id && !loadingUnidades && (
+                        <div className="px-2 py-2 text-xs text-muted-foreground italic">
+                          Nenhuma unidade cadastrada para esta empresa
+                        </div>
+                      )}
+                      {unidadeOptions.map((u: any) => (
                         <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>
                       ))}
                     </SelectContent>
@@ -462,7 +533,7 @@ const Coletores = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <Label>Tipo de Integração</Label>
+                  <Label>Tipo de Integração <span className="text-destructive">*</span></Label>
                   <Select value={form.tipo_integracao} onValueChange={v => f("tipo_integracao", v)}>
                     <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                     <SelectContent>
@@ -524,7 +595,7 @@ const Coletores = () => {
 
                 <div className="grid gap-4 bg-blue-500/5 p-4 rounded-xl border border-blue-500/10">
                   <div className="space-y-1.5">
-                    <Label className="text-[11px] font-semibold text-blue-700">Pasta Entrada (URL ou ID)</Label>
+                    <Label className="text-[11px] font-semibold text-blue-700">Pasta Entrada (URL ou ID) <span className="text-destructive">*</span></Label>
                     <div className="flex flex-col gap-1">
                       <Input
                         value={form.folder_entrada_url}
@@ -541,7 +612,7 @@ const Coletores = () => {
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className="text-[11px] font-semibold text-blue-700">Pasta Processados (URL ou ID)</Label>
+                    <Label className="text-[11px] font-semibold text-blue-700">Pasta Processados (URL ou ID) <span className="text-destructive">*</span></Label>
                     <div className="flex flex-col gap-1">
                       <Input
                         value={form.folder_processados_url}
@@ -558,7 +629,7 @@ const Coletores = () => {
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className="text-[11px] font-semibold text-blue-700">Pasta Erros (URL ou ID)</Label>
+                    <Label className="text-[11px] font-semibold text-blue-700">Pasta Erros (URL ou ID) <span className="text-destructive">*</span></Label>
                     <div className="flex flex-col gap-1">
                       <Input
                         value={form.folder_erros_url}
