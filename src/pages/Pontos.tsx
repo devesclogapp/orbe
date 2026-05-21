@@ -171,7 +171,7 @@ const Pontos = () => {
   const [selectedMonthNumber, setSelectedMonthNumber] = useState<string>(
     format(new Date(), "MM"),
   );
-  const [selectedEmpresaId, setSelectedEmpresaId] = useState<string>("");
+  const [selectedEmpresaId, setSelectedEmpresaId] = useState<string>("all");
   const [monthManuallyChanged, setMonthManuallyChanged] = useState(false);
   const [clearModalOpen, setClearModalOpen] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
@@ -204,6 +204,7 @@ const Pontos = () => {
   });
 
   useEffect(() => {
+    // A inicialização já é 'all', não precisa forçar de '' para 'all'
     if (empresas.length > 0 && !selectedEmpresaId) {
       setSelectedEmpresaId("all");
     }

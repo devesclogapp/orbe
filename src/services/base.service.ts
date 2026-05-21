@@ -1449,9 +1449,13 @@ class HistoricoImportacaoServiceClass extends BaseService<'historico_importacoes
     endDate?: string,
     limit?: number 
   } = {}) {
+    // IMPORTANTE: Não usar joins relacionais automáticos (PostgREST) aqui.
+    // - 'coletores(nome)' falha com 400: a coluna se chama 'nome_coletor', não 'nome'.
+    // - 'unidades_operacionais(nome)' pode falhar se o PostgREST não reconhecer a FK.
+    // Solução: select simples + lookup paralelo de empresas/coletores.
     let query = supabase
       .from('historico_importacoes')
-      .select('*, empresas(nome), unidades_operacionais(nome), coletores(nome), profiles:created_by(full_name)')
+      .select('*')
       .order('created_at', { ascending: false });
 
     if (options.empresaId && options.empresaId !== 'all') {
@@ -1477,8 +1481,58 @@ class HistoricoImportacaoServiceClass extends BaseService<'historico_importacoes
     }
 
     const { data, error } = await query;
-    if (error) throw error;
-    return data;
+    if (error) {
+      console.error('[HistoricoImportacaoService.getRecent] Falha na query principal', {
+        options,
+        error,
+      });
+      throw error;
+    }
+
+    if (!data || data.length === 0) return [];
+
+    // Lookup paralelo: empresas e coletores (separado para evitar join problemático)
+    const empresaIds = [...new Set(data.map((r: any) => r.empresa_id).filter(Boolean))];
+    const coletorIds = [...new Set(data.map((r: any) => r.coletor_id).filter(Boolean))];
+    const unidadeIds = [...new Set(data.map((r: any) => r.unidade_id).filter(Boolean))];
+
+    const [empresasRes, coletoresRes, unidadesRes] = await Promise.allSettled([
+      empresaIds.length > 0
+        ? supabase.from('empresas').select('id, nome').in('id', empresaIds)
+        : Promise.resolve({ data: [] }),
+      coletorIds.length > 0
+        ? supabase.from('coletores').select('id, nome_coletor').in('id', coletorIds)
+        : Promise.resolve({ data: [] }),
+      unidadeIds.length > 0
+        ? supabase.from('unidades_operacionais').select('id, nome').in('id', unidadeIds)
+        : Promise.resolve({ data: [] }),
+    ]);
+
+    const empresaMap = new Map(
+      (empresasRes.status === 'fulfilled' ? (empresasRes.value as any).data ?? [] : [])
+        .map((e: any) => [e.id, e])
+    );
+    const coletorMap = new Map(
+      (coletoresRes.status === 'fulfilled' ? (coletoresRes.value as any).data ?? [] : [])
+        .map((c: any) => [c.id, c])
+    );
+    const unidadeMap = new Map(
+      (unidadesRes.status === 'fulfilled' ? (unidadesRes.value as any).data ?? [] : [])
+        .map((u: any) => [u.id, u])
+    );
+
+    // Enriquecer registros com dados relacionais
+    return data.map((row: any) => ({
+      ...row,
+      empresas: row.empresa_id ? (empresaMap.get(row.empresa_id) ?? null) : null,
+      unidades_operacionais: row.unidade_id ? (unidadeMap.get(row.unidade_id) ?? null) : null,
+      coletores: row.coletor_id
+        ? (() => {
+            const c = coletorMap.get(row.coletor_id);
+            return c ? { ...c, nome: c.nome_coletor } : null;
+          })()
+        : null,
+    }));
   }
 
   async reprocess(importacaoId: string, motivo: string) {

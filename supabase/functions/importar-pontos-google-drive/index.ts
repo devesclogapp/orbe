@@ -187,7 +187,7 @@ serve(async (req) => {
         coletor_id: coletor_id || null,
         origem,
         nome_arquivo: nome_arquivo || file.name,
-        tipo_arquivo: tipo_arquivo || file.type,
+        tipo_arquivo: tipo_arquivo || file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         drive_file_id,
         drive_folder_id,
         status: parent_importacao_id ? 'REPROCESSANDO' : 'VALIDANDO',
@@ -211,10 +211,22 @@ serve(async (req) => {
 
     // 3. Parse File
     const arrayBuffer = await file.arrayBuffer()
-    const workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array' })
+    let workbook;
+    try {
+      workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array' })
+    } catch (err) {
+      const text = new TextDecoder().decode(arrayBuffer).trim();
+      const base64Regex = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+      if (base64Regex.test(text)) {
+         workbook = XLSX.read(text, { type: 'base64' })
+      } else {
+         workbook = XLSX.read(text, { type: 'string' })
+      }
+    }
     const sheetName = workbook.SheetNames[0]
     const worksheet = workbook.Sheets[sheetName]
-    const jsonRows = XLSX.utils.sheet_to_json(worksheet) as Record<string, any>[]
+    const jsonRows = (XLSX.utils.sheet_to_json(worksheet, { defval: "", raw: false }) as Record<string, any>[])
+      .filter(row => Object.values(row).some(v => String(v ?? "").trim() !== ""));
 
     // 4. Load common data for resolution
     const [
