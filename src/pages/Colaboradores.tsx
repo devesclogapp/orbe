@@ -51,6 +51,7 @@ const getInitialColaboradorFormData = (defaultEmpresaId = "") => ({
   conta: "",
   conta_digito: "",
   tipo_conta: "corrente",
+  pis: "",
 });
 
 const getColaboradorStatusMeta = (colaborador: any) => {
@@ -236,6 +237,7 @@ const Colaboradores = () => {
       conta: c.conta || "",
       conta_digito: c.conta_digito || "",
       tipo_conta: c.tipo_conta || "corrente",
+      pis: c.pis || "",
     });
     setOpen(true);
   };
@@ -370,6 +372,7 @@ const Colaboradores = () => {
     }
 
     const cpfNormalized = form.cpf.replace(/\D/g, "");
+    const pisNormalized = form.pis ? form.pis.replace(/\D/g, "") : null;
     const telefoneNormalized = normalizePhone(form.telefone);
     const valorBaseNumerico = Number(form.valor_base) || 0;
     const salarioBaseNumerico = Number(form.salario_base) || 0;
@@ -378,15 +381,15 @@ const Colaboradores = () => {
 
     const tipoColaborador =
       form.regime_trabalho === "CLT" ? "CLT" :
-      form.regime_trabalho === "Diarista" ? "DIARISTA" :
-      form.regime_trabalho === "Intermitente" ? "INTERMITENTE" :
-      form.regime_trabalho === "Terceirizado" ? "TERCEIRIZADO" : "PRODUÇÃO";
+        form.regime_trabalho === "Diarista" ? "DIARISTA" :
+          form.regime_trabalho === "Intermitente" ? "INTERMITENTE" :
+            form.regime_trabalho === "Terceirizado" ? "TERCEIRIZADO" : "PRODUÇÃO";
 
     const valorBaseFinal =
       form.modelo_calculo === "Mensal" ? salarioBaseNumerico :
-      form.modelo_calculo === "Diária" ? valorDiariaNumerico :
-      form.modelo_calculo === "Horista" ? valorHoraNumerico :
-      valorBaseNumerico;
+        form.modelo_calculo === "Diária" ? valorDiariaNumerico :
+          form.modelo_calculo === "Horista" ? valorHoraNumerico :
+            valorBaseNumerico;
 
     setIsProcessing(true);
     createMutation.mutate({
@@ -416,6 +419,7 @@ const Colaboradores = () => {
       conta: form.conta?.trim() || null,
       conta_digito: form.conta_digito?.trim() || null,
       tipo_conta: form.tipo_conta,
+      pis: pisNormalized || null,
     });
   };
 
@@ -693,6 +697,10 @@ const Colaboradores = () => {
                       <Input id="cpf" value={form.cpf} onChange={(e) => setForm({ ...form, cpf: e.target.value })} />
                     </div>
                     <div className="space-y-1.5">
+                      <Label htmlFor="pis">PIS</Label>
+                      <Input id="pis" placeholder="000.00000.00-0" value={form.pis} onChange={(e) => setForm({ ...form, pis: e.target.value })} />
+                    </div>
+                    <div className="col-span-2 space-y-1.5">
                       <Label htmlFor="telefone">Telefone <span className="text-destructive">*</span></Label>
                       <Input id="telefone" value={form.telefone} onChange={(e) => handlePhoneChange(e.target.value)} />
                     </div>
@@ -914,6 +922,10 @@ const Colaboradores = () => {
                   <Input id="cpf" value={form.cpf} onChange={(e) => setForm({ ...form, cpf: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
+                  <Label htmlFor="pis">PIS</Label>
+                  <Input id="pis" placeholder="000.00000.00-0" value={form.pis} onChange={(e) => setForm({ ...form, pis: e.target.value })} />
+                </div>
+                <div className="col-span-2 space-y-1.5">
                   <Label htmlFor="telefone">Telefone <span className="text-destructive">*</span></Label>
                   <Input id="telefone" value={form.telefone} onChange={(e) => handlePhoneChange(e.target.value)} />
                 </div>
@@ -929,30 +941,30 @@ const Colaboradores = () => {
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                      <Label>Regime de trabalho <span className="text-destructive">*</span></Label>
-                      <Select value={form.regime_trabalho} onValueChange={(v) => setForm({ ...form, regime_trabalho: v })}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="CLT">CLT</SelectItem>
-                          <SelectItem value="Intermitente">Intermitente</SelectItem>
-                          <SelectItem value="Diarista">Diarista</SelectItem>
-                          <SelectItem value="Terceirizado">Terceirizado</SelectItem>
-                          <SelectItem value="Freelancer">Freelancer</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Modelo de cálculo <span className="text-destructive">*</span></Label>
-                      <Select value={form.modelo_calculo} onValueChange={(v) => setForm({ ...form, modelo_calculo: v, permitir_lancamento_operacional: ["Diária", "Produção", "Horista"].includes(v) ? true : form.permitir_lancamento_operacional })}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Mensal">Mensal</SelectItem>
-                          <SelectItem value="Horista">Horista</SelectItem>
-                          <SelectItem value="Diária">Diária</SelectItem>
-                          <SelectItem value="Produção">Produção</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  <Label>Regime de trabalho <span className="text-destructive">*</span></Label>
+                  <Select value={form.regime_trabalho} onValueChange={(v) => setForm({ ...form, regime_trabalho: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="CLT">CLT</SelectItem>
+                      <SelectItem value="Intermitente">Intermitente</SelectItem>
+                      <SelectItem value="Diarista">Diarista</SelectItem>
+                      <SelectItem value="Terceirizado">Terceirizado</SelectItem>
+                      <SelectItem value="Freelancer">Freelancer</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Modelo de cálculo <span className="text-destructive">*</span></Label>
+                  <Select value={form.modelo_calculo} onValueChange={(v) => setForm({ ...form, modelo_calculo: v, permitir_lancamento_operacional: ["Diária", "Produção", "Horista"].includes(v) ? true : form.permitir_lancamento_operacional })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Mensal">Mensal</SelectItem>
+                      <SelectItem value="Horista">Horista</SelectItem>
+                      <SelectItem value="Diária">Diária</SelectItem>
+                      <SelectItem value="Produção">Produção</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="space-y-1.5">
                   <Label>Status <span className="text-destructive">*</span></Label>
                   <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>

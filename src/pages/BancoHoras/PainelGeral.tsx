@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -38,6 +38,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { BHEventoService } from "@/services/v4.service";
+import { EmpresaService } from "@/services/base.service";
+import { RHFinanceiroService } from "@/services/rhFinanceiro.service";
 import {
   buildBancoHorasRhValidationPipeline,
   useOperationalPipeline,
@@ -118,6 +120,19 @@ const PainelGeral = () => {
   const navigate = useNavigate();
   const { openPipeline } = useOperationalPipeline();
   const currentCompetencia = new Date().toISOString().slice(0, 7);
+
+  // ── Fechamento CLT ──────────────────────────────────────────────────────────
+  const [fechamentoEmpresaId, setFechamentoEmpresaId] = useState<string>("");
+  const [fechamentoCompetencia, setFechamentoCompetencia] = useState<string>(currentCompetencia);
+  const [fechamentoValidacao, setFechamentoValidacao] = useState<any>(null);
+  const [fechamentoError, setFechamentoError] = useState<string | null>(null);
+
+  const { data: empresasCadastradas = [] } = useQuery<any[]>({
+    queryKey: ["empresas_bh_painel"],
+    queryFn: () => EmpresaService.getAll(),
+  });
+  // ────────────────────────────────────────────────────────────────────────────
+
   const [filters, setFilters] = useState({
     search: "",
     empresa_id: "all",
@@ -464,24 +479,57 @@ const PainelGeral = () => {
     });
   };
 
-  const handleConcluirValidacaoRh = () => {
-    if (!bancoHorasValidado) {
-      toast.warning("Ainda existem saldos pendentes para o RH revisar.", {
-        description: "Conclua a analise do Banco de Horas antes de liberar a competencia para o Financeiro.",
+  const fecharCompetenciaMutation = useMutation({
+    mutationFn: async () => {
+      if (!fechamentoEmpresaId) throw new Error("Selecione uma empresa antes de fechar a competência.");
+      if (!/^\d{4}-\d{2}$/.test(fechamentoCompetencia)) throw new Error("Competência inválida. Use o formato YYYY-MM.");
+      return RHFinanceiroService.approveCompetencia(fechamentoEmpresaId, fechamentoCompetencia);
+    },
+    onSuccess: (result) => {
+      setFechamentoError(null);
+      setFechamentoValidacao(result);
+
+      const empresaNome = empresasCadastradas.find((e: any) => e.id === fechamentoEmpresaId)?.nome || "Empresa";
+
+      openPipeline(
+        buildBancoHorasRhValidationPipeline({
+          competencia: fechamentoCompetencia,
+          empresa: empresaNome,
+        }),
+      );
+
+      toast.success("Competência fechada e enviada ao Financeiro!", {
+        description: `${result.lotesCriados.length + result.lotesExistentes.length} lote(s) criado(s) — ${result.totalColaboradores} colaborador(es).`,
+        action: {
+          label: "Ver na Central Financeira",
+          onClick: () =>
+            navigate(
+              `/financeiro?competencia=${fechamentoCompetencia}&empresaId=${fechamentoEmpresaId}`,
+            ),
+        },
       });
-      return;
-    }
 
-    openPipeline(
-      buildBancoHorasRhValidationPipeline({
-        competencia: currentCompetencia,
-        empresa: bancoHorasEmpresaLabel,
-      }),
-    );
+      queryClient.invalidateQueries({ queryKey: ["rh-financeiro-lotes"] });
+    },
+    onError: (err: any) => {
+      let msg = err.message || "Erro ao fechar competência.";
 
-    toast.success("Competencia liberada pelo RH.", {
-      description: "Banco de Horas validado e envio ao Financeiro iniciado.",
-    });
+      // Tratar erro estruturado FINANCIAL_INELIGIBILITY
+      try {
+        const parsed = JSON.parse(msg);
+        if (parsed.code === "FINANCIAL_INELIGIBILITY") {
+          msg = parsed.message;
+        }
+      } catch {/* not JSON */ }
+
+      setFechamentoError(msg);
+      toast.error("Não foi possível fechar a competência", { description: msg });
+    },
+  });
+
+  const handleConcluirValidacaoRh = () => {
+    setFechamentoError(null);
+    fecharCompetenciaMutation.mutate();
   };
 
   const setFilterAndScroll = (newStatus: string) => {
@@ -561,36 +609,83 @@ const PainelGeral = () => {
         </section>
 
         <section className="esc-card border border-emerald-200 bg-emerald-50/60 p-4">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <div className="space-y-1">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <div className="space-y-1 flex-1">
               <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-700/80">
-                Acao principal do RH
+                Ação principal do RH
               </p>
               <h2 className="font-display text-lg font-semibold text-foreground">
-                Fechar competencia RH
+                Fechar Competência RH
               </h2>
               <p className="text-sm text-muted-foreground">
-                O RH valida os saldos antes da liberacao financeira da competencia.
+                Selecione a empresa e a competência. O sistema valida o Banco de Horas e cria o lote na Central Financeira automaticamente.
               </p>
-              <p className="text-sm text-muted-foreground">
-                Conclua a validacao do Banco de Horas para liberar a competencia e continuar o pipeline na Central Financeira.
-              </p>
-              {!bancoHorasValidado && (
-                <p className="text-xs text-amber-700">
-                  Existem saldos que ainda exigem revisao antes da liberacao financeira.
-                </p>
+
+              {/* Seletores de empresa e competência */}
+              <div className="flex flex-wrap gap-3 pt-2">
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] uppercase font-semibold text-muted-foreground">Empresa</span>
+                  <select
+                    value={fechamentoEmpresaId}
+                    onChange={(e) => setFechamentoEmpresaId(e.target.value)}
+                    className="h-9 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-primary min-w-[200px]"
+                    disabled={fecharCompetenciaMutation.isPending}
+                  >
+                    <option value="">Selecione a empresa...</option>
+                    {empresasCadastradas.map((emp: any) => (
+                      <option key={emp.id} value={emp.id}>{emp.nome}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] uppercase font-semibold text-muted-foreground">Competência</span>
+                  <input
+                    type="month"
+                    value={fechamentoCompetencia}
+                    onChange={(e) => setFechamentoCompetencia(e.target.value)}
+                    className="h-9 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                    disabled={fecharCompetenciaMutation.isPending}
+                  />
+                </div>
+              </div>
+
+              {/* Feedback de erro */}
+              {fechamentoError && (
+                <div className="mt-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2">
+                  <p className="text-xs text-destructive font-medium">{fechamentoError}</p>
+                </div>
+              )}
+
+              {/* Sucesso — lote gerado */}
+              {fechamentoValidacao && !fecharCompetenciaMutation.isPending && (
+                <div className="mt-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2">
+                  <p className="text-xs text-emerald-700 font-medium">
+                    ✓ Lote gerado — {fechamentoValidacao.totalColaboradores} colaborador(es) · R$ {Number(fechamentoValidacao.valorTotal || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                  </p>
+                  <button
+                    type="button"
+                    className="mt-1 text-xs text-emerald-700 underline"
+                    onClick={() => navigate(`/financeiro?competencia=${fechamentoCompetencia}&empresaId=${fechamentoEmpresaId}`)}
+                  >
+                    Ver na Central Financeira →
+                  </button>
+                </div>
               )}
             </div>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 xl:mt-6">
               <Button
                 size="sm"
                 className="h-10 gap-2 bg-emerald-600 text-white hover:bg-emerald-700"
                 onClick={handleConcluirValidacaoRh}
-                disabled={!bancoHorasValidado}
+                disabled={!fechamentoEmpresaId || fecharCompetenciaMutation.isPending}
               >
-                <CheckSquare className="h-4 w-4" />
-                Fechar competencia RH
+                {fecharCompetenciaMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <CheckSquare className="h-4 w-4" />
+                )}
+                {fecharCompetenciaMutation.isPending ? "Fechando..." : "Fechar Competência RH"}
               </Button>
               <Button variant="outline" size="sm" onClick={() => exportRows(filteredSaldos, "fechamento")} className="h-10">
                 <Download className="mr-2 h-4 w-4" />
@@ -598,7 +693,7 @@ const PainelGeral = () => {
               </Button>
               <Button variant="outline" size="sm" onClick={() => exportRows(filteredSaldos, "financeiro")} className="h-10">
                 <FileSpreadsheet className="mr-2 h-4 w-4" />
-                Gerar relatorio financeiro
+                Gerar relatório financeiro
               </Button>
             </div>
           </div>

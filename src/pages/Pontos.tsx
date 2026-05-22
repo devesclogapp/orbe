@@ -742,16 +742,20 @@ const Pontos = () => {
                 </Badge>
               </div>
 
-              <PontoTableBlock
-                month={selectedMonth}
-                monthLabel={monthLabelCapitalized}
-                empresaId={selectedEmpresaId}
-                rows={rows}
-              />
+              <div className="max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                <PontoTableBlock
+                  month={selectedMonth}
+                  monthLabel={monthLabelCapitalized}
+                  empresaId={selectedEmpresaId}
+                  rows={rows}
+                />
+              </div>
             </section>
 
             <section className="esc-card p-5">
-              <ImportacoesTimeline empresaId={selectedEmpresaId} />
+              <div className="max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                <ImportacoesTimeline empresaId={selectedEmpresaId} />
+              </div>
             </section>
           </>
         )}

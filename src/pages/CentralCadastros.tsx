@@ -283,6 +283,7 @@ function hasPixPendente(colaborador: any) {
 function getColaboradorCompletude(colaborador: any) {
   const cpfClean = String(colaborador?.cpf ?? "").replace(/\D/g, "");
   const telClean = String(colaborador?.telefone ?? "").replace(/\D/g, "");
+  const pisClean = String(colaborador?.pis ?? "").replace(/\D/g, "");
 
   const checks = [
     Boolean(String(colaborador?.nome ?? "").trim()),
@@ -294,6 +295,10 @@ function getColaboradorCompletude(colaborador: any) {
     Boolean(String(colaborador?.modelo_calculo ?? colaborador?.tipo_contrato ?? "").trim()),
     getColaboradorBankValidation(colaborador).isValid,
   ];
+
+  if (colaborador?.regime_trabalho === "CLT" || colaborador?.tipo_colaborador === "CLT") {
+    checks.push(pisClean.length === 11);
+  }
 
   const total = checks.length;
   const done = checks.filter(Boolean).length;
@@ -540,6 +545,7 @@ const CentralCadastros = () => {
     conta: "",
     conta_digito: "",
     tipo_conta: "corrente",
+    pis: "",
   });
   const [colaboradorIsProcessing, setColaboradorIsProcessing] = useState(false);
   const colaboradorBankValidation = useMemo(
@@ -624,6 +630,7 @@ const CentralCadastros = () => {
       return ColaboradorService.update(id, {
         ...payload,
         cpf: payload.cpf ? String(payload.cpf).replace(/\D/g, '') : null,
+        pis: payload.pis ? String(payload.pis).replace(/\D/g, '') : null,
         telefone: payload.telefone ? String(payload.telefone).replace(/\D/g, '') : null,
       });
     },
@@ -922,6 +929,7 @@ const CentralCadastros = () => {
       return ColaboradorService.create({
         ...payload,
         cpf: payload.cpf ? String(payload.cpf).replace(/\D/g, '') : null,
+        pis: payload.pis ? String(payload.pis).replace(/\D/g, '') : null,
         telefone: payload.telefone ? String(payload.telefone).replace(/\D/g, '') : null,
         valor_base: Number(payload.valor_base) || 0,
         salario_base: payload.salario_base ? Number(payload.salario_base) : null,
@@ -956,6 +964,7 @@ const CentralCadastros = () => {
         conta: "",
         conta_digito: "",
         tipo_conta: "corrente",
+        pis: "",
       });
       await queryClient.invalidateQueries({ queryKey: ["colaboradores_list"] });
       const data = await queryClient.fetchQuery({ queryKey: ["colaboradores_list"], queryFn: () => ColaboradorService.getWithEmpresa() });
@@ -3080,6 +3089,10 @@ const CentralCadastros = () => {
                   <Input id="colab_cpf" value={colaboradorForm.cpf} onChange={(e) => setColaboradorForm({ ...colaboradorForm, cpf: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
+                  <Label htmlFor="colab_pis">PIS</Label>
+                  <Input id="colab_pis" placeholder="000.00000.00-0" value={colaboradorForm.pis} onChange={(e) => setColaboradorForm({ ...colaboradorForm, pis: e.target.value })} />
+                </div>
+                <div className="col-span-2 space-y-1.5">
                   <Label htmlFor="colab_telefone">Telefone <span className="text-destructive">*</span></Label>
                   <Input id="colab_telefone" value={colaboradorForm.telefone} onChange={(e) => handlePhoneChangeCC(e.target.value)} />
                 </div>
@@ -4072,6 +4085,10 @@ const CentralCadastros = () => {
                 <Input id="edit_colab_cpf" value={editingColaborador?.cpf || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, cpf: e.target.value })} />
               </div>
               <div className="space-y-1.5">
+                <Label htmlFor="edit_colab_pis">PIS</Label>
+                <Input id="edit_colab_pis" placeholder="000.00000.00-0" value={editingColaborador?.pis || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, pis: e.target.value })} />
+              </div>
+              <div className="col-span-2 space-y-1.5">
                 <Label htmlFor="edit_colab_telefone">Telefone <span className="text-destructive">*</span></Label>
                 <Input id="edit_colab_telefone" value={editingColaborador?.telefone || ""} onChange={(e) => handleEditPhoneChangeCC(e.target.value)} />
               </div>
