@@ -16,31 +16,12 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      react: path.resolve(__dirname, "./node_modules/react"),
+      "react-dom": path.resolve(__dirname, "./node_modules/react-dom"),
+      "react/jsx-runtime": path.resolve(__dirname, "./node_modules/react/jsx-runtime.js"),
+      "react/jsx-dev-runtime": path.resolve(__dirname, "./node_modules/react/jsx-dev-runtime.js"),
+      "react-dom/client": path.resolve(__dirname, "./node_modules/react-dom/client.js"),
     },
     dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime", "@tanstack/react-query", "@tanstack/query-core"],
-  },
-  build: {
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          if (!id.includes("node_modules")) return undefined;
-
-          if (id.includes("node_modules/xlsx")) return "vendor-xlsx";
-          if (id.includes("node_modules/jspdf") || id.includes("node_modules/jspdf-autotable")) return "vendor-pdf";
-          if (id.includes("node_modules/@supabase/supabase-js")) return "vendor-supabase";
-          if (
-            id.includes("node_modules/react") ||
-            id.includes("node_modules/react-dom") ||
-            id.includes("node_modules/react-router-dom")
-          ) {
-            return "vendor-react";
-          }
-          if (id.includes("node_modules/@tanstack")) return "vendor-query";
-          if (id.includes("node_modules/lucide-react")) return "vendor-icons";
-
-          return "vendor-misc";
-        },
-      },
-    },
   },
 }));

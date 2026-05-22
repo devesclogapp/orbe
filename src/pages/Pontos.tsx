@@ -13,6 +13,7 @@ import {
   Upload,
   Users,
   Wallet,
+  Timer,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -488,6 +489,50 @@ const Pontos = () => {
     [rows],
   );
 
+  const totalHorasProcessadas = useMemo(() => {
+    let totalMinutes = 0;
+
+    for (const row of rows) {
+      if (row.horas_trabalhadas) {
+        const val = String(row.horas_trabalhadas);
+        if (val.includes(':')) {
+          const [h, m] = val.split(':');
+          totalMinutes += parseInt(h || '0') * 60 + parseInt(m || '0');
+        } else if (val.includes('h') || val.includes('H')) {
+          const [h, m] = val.toLowerCase().split('h');
+          totalMinutes += parseInt(h || '0') * 60 + parseInt(m || '0');
+        } else if (!isNaN(Number(val))) {
+          totalMinutes += Number(val) * 60;
+        }
+      } else if (row.entrada && row.saida) {
+        try {
+          const entrada = row.entrada.includes(":") ? row.entrada.slice(0, 5).split(":") : ["0", "0"];
+          const saida = row.saida.includes(":") ? row.saida.slice(0, 5).split(":") : ["0", "0"];
+          const entradaMin = parseInt(entrada[0]) * 60 + parseInt(entrada[1]);
+          const saidaMin = parseInt(saida[0]) * 60 + parseInt(saida[1]);
+
+          let almocoMin = 0;
+          if (row.saida_almoco && row.retorno_almoco) {
+            const sA = row.saida_almoco.includes(":") ? row.saida_almoco.slice(0, 5).split(":") : ["0", "0"];
+            const rA = row.retorno_almoco.includes(":") ? row.retorno_almoco.slice(0, 5).split(":") : ["0", "0"];
+            almocoMin = (parseInt(rA[0]) * 60 + parseInt(rA[1])) - (parseInt(sA[0]) * 60 + parseInt(sA[1]));
+          }
+
+          const diff = saidaMin - entradaMin - almocoMin;
+          if (diff > 0) {
+            totalMinutes += diff;
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+    }
+
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    return `${h}h${m.toString().padStart(2, '0')}`;
+  }, [rows]);
+
   const ultimaSincronizacao = rows[0]?.updated_at || rows[0]?.created_at || null;
   const isLoading = isLoadingEmpresas || isLoadingRows;
 
@@ -715,9 +760,10 @@ const Pontos = () => {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
               <MetricCard label="Colaboradores" value={colaboradoresUnicos.toString()} icon={Users} />
               <MetricCard label="Registros" value={rows.length.toString()} icon={Clock} />
+              <MetricCard label="Horas Processadas" value={totalHorasProcessadas} icon={Timer} />
               <MetricCard
                 label="Valor do mes"
                 value={`R$ ${valorTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
