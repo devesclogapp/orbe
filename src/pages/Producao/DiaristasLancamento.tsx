@@ -142,7 +142,7 @@ const DiaristasLancamento = () => {
         queryKey: ["profile_usuario", user?.id],
         queryFn: async () => {
             if (!user?.id) return null;
-            const { data } = await supabase.from("profiles").select("role, full_name").eq("user_id", user.id).maybeSingle();
+            const { data } = await supabase.from("profiles").select("role, full_name, empresa_id").eq("user_id", user.id).maybeSingle();
             return data;
         },
         enabled: !!user?.id,
@@ -211,6 +211,40 @@ const DiaristasLancamento = () => {
         queryFn: () => DiaristaCicloService.getRegraFechamento(),
         enabled: !!user?.id,
     });
+
+    useEffect(() => {
+        if (empresaIdSelecionada) return;
+
+        const empresasArr = empresas as any[];
+        if (!empresasArr.length) return;
+
+        const empresaIdPreferencial =
+            (perfil as any)?.empresa_id ||
+            user?.user_metadata?.empresa_id ||
+            empresasArr[0]?.id ||
+            "";
+
+        if (!empresaIdPreferencial) return;
+
+        const empresaSelecionada = empresasArr.find((empresa: any) => empresa.id === empresaIdPreferencial) ?? empresasArr[0];
+        if (!empresaSelecionada) return;
+
+        setEmpresaIdSelecionada(empresaSelecionada.id);
+        setClienteUnidade(empresaSelecionada.nome ?? "");
+    }, [perfil, empresas, empresaIdSelecionada, user?.user_metadata?.empresa_id]);
+
+    useEffect(() => {
+        if (!empresaIdSelecionada) {
+            if (clienteUnidade) setClienteUnidade("");
+            return;
+        }
+
+        const empresaSelecionada = (empresas as any[]).find((empresa: any) => empresa.id === empresaIdSelecionada);
+        const nomeEmpresa = empresaSelecionada?.nome ?? "";
+        if (nomeEmpresa !== clienteUnidade) {
+            setClienteUnidade(nomeEmpresa);
+        }
+    }, [empresaIdSelecionada, empresas, clienteUnidade]);
 
     const periodoBloqueado = useMemo(() => {
         // Filtra os lotes para encontrar um que pertença EXATAMENTE ao período da semana selecionada
@@ -480,15 +514,16 @@ const DiaristasLancamento = () => {
                                 Cliente / Empresa
                             </label>
                             <Select
-                                value={clienteUnidade}
-                                onValueChange={(nome) => {
+                                value={empresaIdSelecionada}
+                                onValueChange={(empresaId) => {
                                     const temMarcacoes = Object.values(grade).some((d) =>
                                         Object.values(d).some((c) => !!c)
                                     );
                                     if (temMarcacoes && !window.confirm("Você tem marcações preenchidas. Trocar a empresa irá resetar. Continuar?")) return;
-                                    const empresa = (empresas as any[]).find((e: any) => e.nome === nome);
-                                    setClienteUnidade(nome);
+                                    const empresa = (empresas as any[]).find((e: any) => e.id === empresaId);
+                                    setClienteUnidade(empresa?.nome ?? "");
                                     setEmpresaIdSelecionada(empresa?.id ?? "");
+                                    setGrade({});
                                 }}
                             >
                                 <SelectTrigger>
@@ -496,7 +531,7 @@ const DiaristasLancamento = () => {
                                 </SelectTrigger>
                                 <SelectContent>
                                     {(empresas as any[]).map((e: any) => (
-                                        <SelectItem key={e.id} value={e.nome}>{e.nome}</SelectItem>
+                                        <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
