@@ -150,6 +150,7 @@ export const ImportacoesTimeline: React.FC<ImportacoesTimelineProps> = ({ empres
                                 <SelectItem value="all">Todas Origens</SelectItem>
                                 <SelectItem value="manual">Manual</SelectItem>
                                 <SelectItem value="google_drive">Google Drive</SelectItem>
+                                <SelectItem value="rhid_api">RHiD API</SelectItem>
                                 <SelectItem value="api">API</SelectItem>
                             </SelectContent>
                         </Select>
@@ -230,7 +231,9 @@ export const ImportacoesTimeline: React.FC<ImportacoesTimelineProps> = ({ empres
                                                     )}
                                                 </td>
                                                 <td className="px-3 py-4 capitalize text-muted-foreground">
-                                                    {item.origem.replace("_", " ")}
+                                                    {item.origem === 'rhid_api'
+                                                        ? 'RHiD API'
+                                                        : item.origem.replace(/_/g, " ")}
                                                 </td>
                                                 <td className="px-3 py-4 text-center text-muted-foreground">
                                                     <div className="flex items-center justify-center gap-1.5">

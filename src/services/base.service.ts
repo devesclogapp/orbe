@@ -1389,7 +1389,7 @@ class PontoServiceClass extends BaseService<'registros_ponto'> {
   }
 
   async importarPontos(payload: FormData) {
-    const { data, error } = await (supabase as any).functions.invoke('importar-pontos-google-drive', {
+    const { data, error } = await (supabase as any).functions.invoke('importar-pontos-manual', {
       body: payload,
     });
     if (error) throw error;
