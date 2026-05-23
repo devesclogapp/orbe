@@ -93,6 +93,8 @@ const groups: MenuGroup[] = [
       { icon: ClipboardCheck, label: "Operações Recebidas", to: "/operacional/operacoes", module: "operacoes_recebidas", pulseKey: "operacoes_recebidas" },
       { icon: Clock, label: "Pontos Recebidos", to: "/operacional/pontos", module: "pontos_recebidos", pulseKey: "pontos_recebidos" },
       { icon: UserCheck, label: "Diaristas Recebidos", to: "/operacional/diaristas", module: "diaristas_recebidos", pulseKey: "diaristas_recebidos" },
+      { icon: Wallet, label: "Custos Extras", to: "/producao/custos-extras", module: "central_operacional", pulseKey: "custos_extras" },
+      { icon: Wrench, label: "Serviços Extras", to: "/producao/servicos-extras", module: "central_operacional", pulseKey: "servicos_extras" },
     ],
   },
   {
@@ -104,14 +106,6 @@ const groups: MenuGroup[] = [
       { icon: Activity, label: "Processamento", to: "/banco-horas/processamento", module: "processamento_rh", pulseKey: "processamento_rh" },
       { icon: Scale, label: "Banco de Horas", to: "/banco-horas", end: true, module: "banco_de_horas", pulseKey: "banco_de_horas" },
       { icon: CalendarCheck, label: "Fechamento Mensal", to: "/fechamento", module: "fechamento_mensal", pulseKey: "fechamento_mensal" },
-    ],
-  },
-  {
-    id: "operacao",
-    label: "Operação",
-    items: [
-      { icon: Wallet, label: "Custos Extras", to: "/producao/custos-extras", module: "central_operacional", pulseKey: "custos_extras" },
-      { icon: Wrench, label: "Serviços Extras", to: "/producao/servicos-extras", module: "central_operacional", pulseKey: "servicos_extras" },
     ],
   },
   {

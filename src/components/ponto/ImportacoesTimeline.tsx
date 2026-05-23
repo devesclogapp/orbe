@@ -17,7 +17,8 @@ import {
     ChevronDown,
     Building2,
     Database,
-    History
+    History,
+    Trash2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,6 +41,7 @@ import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import { ImportacaoDetailsDrawer } from "./ImportacaoDetailsDrawer";
 import { ReprocessModal } from "./ReprocessModal";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface ImportacoesTimelineProps {
     empresaId?: string;
@@ -57,6 +59,7 @@ export const ImportacoesTimeline: React.FC<ImportacoesTimelineProps> = ({ empres
     const [reprocessModalOpen, setReprocessModalOpen] = useState(false);
     const [importToReprocess, setImportToReprocess] = useState<any>(null);
     const [isExpanded, setIsExpanded] = useState(false);
+    const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
     const { data: importacoes = [], isLoading } = useQuery({
         queryKey: ["historico_importacoes", empresaId, statusFilter, origemFilter, startDate, endDate],
@@ -80,10 +83,65 @@ export const ImportacoesTimeline: React.FC<ImportacoesTimelineProps> = ({ empres
         }
     });
 
+    const deleteMutation = useMutation({
+        mutationFn: async (id: string) => {
+            // Unlink points from this history before deleting to bypass foreign key constraint
+            await HistoricoImportacaoService.supabase
+                .from('registros_ponto')
+                .update({ importacao_id: null })
+                .eq('importacao_id', id);
+
+            await HistoricoImportacaoService.delete(id);
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["historico_importacoes"] });
+            toast.success("Histórico excluído com sucesso.");
+        },
+        onError: (err: any) => {
+            toast.error("Erro ao excluir histórico: " + (err.message || 'Sem permissão'));
+        }
+    });
+
+    const bulkDeleteMutation = useMutation({
+        mutationFn: async (ids: string[]) => {
+            // Unlink points before deleting
+            await HistoricoImportacaoService.supabase
+                .from('registros_ponto')
+                .update({ importacao_id: null })
+                .in('importacao_id', ids);
+
+            await Promise.all(ids.map(id => HistoricoImportacaoService.delete(id)));
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["historico_importacoes"] });
+            setSelectedIds([]);
+            toast.success(`${selectedIds.length > 1 ? `${selectedIds.length} históricos excluídos` : '1 histórico excluído'} com sucesso.`);
+        },
+        onError: (err: any) => {
+            toast.error("Erro ao excluir alguns itens: " + (err.message || 'Sem permissão'));
+        }
+    });
+
     const filtered = importacoes.filter((i: any) =>
         i.nome_arquivo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         i.empresas?.nome?.toLowerCase().includes(searchTerm.toLowerCase())
     );
+
+    const toggleSelectAll = () => {
+        if (selectedIds.length === filtered.length && filtered.length > 0) {
+            setSelectedIds([]);
+        } else {
+            setSelectedIds(filtered.map((i: any) => i.id));
+        }
+    };
+
+    const toggleSelect = (id: string) => {
+        if (selectedIds.includes(id)) {
+            setSelectedIds(selectedIds.filter(prev => prev !== id));
+        } else {
+            setSelectedIds([...selectedIds, id]);
+        }
+    };
 
     return (
         <div className="space-y-4">
@@ -101,6 +159,22 @@ export const ImportacoesTimeline: React.FC<ImportacoesTimelineProps> = ({ empres
 
                 {isExpanded && (
                     <div className="flex flex-wrap items-center gap-2">
+                        {selectedIds.length > 0 && (
+                            <Button
+                                variant="destructive"
+                                size="sm"
+                                className="h-9 font-display font-medium"
+                                onClick={() => {
+                                    if (confirm(`Tem certeza que deseja excluir ${selectedIds.length} históricos selecionados?`)) {
+                                        bulkDeleteMutation.mutate(selectedIds);
+                                    }
+                                }}
+                                disabled={bulkDeleteMutation.isPending}
+                            >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Excluir Selecionados ({selectedIds.length})
+                            </Button>
+                        )}
                         <div className="relative w-64">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                             <Input
@@ -164,7 +238,14 @@ export const ImportacoesTimeline: React.FC<ImportacoesTimelineProps> = ({ empres
                         <table className="w-full text-sm">
                             <thead className="esc-table-header">
                                 <tr className="text-left">
-                                    <th className="px-5 h-11 font-medium">Data/Hora</th>
+                                    <th className="px-5 h-11 font-medium w-12 text-center">
+                                        <Checkbox
+                                            checked={selectedIds.length === filtered.length && filtered.length > 0}
+                                            onCheckedChange={toggleSelectAll}
+                                            aria-label="Selecionar todos"
+                                        />
+                                    </th>
+                                    <th className="px-2 h-11 font-medium">Data/Hora</th>
                                     <th className="px-3 h-11 font-medium">Empresa/Unidade</th>
                                     <th className="px-3 h-11 font-medium">Arquivo</th>
                                     <th className="px-3 h-11 font-medium text-center">Registros</th>
@@ -179,12 +260,12 @@ export const ImportacoesTimeline: React.FC<ImportacoesTimelineProps> = ({ empres
                                 {isLoading ? (
                                     Array.from({ length: 5 }).map((_, idx) => (
                                         <tr key={idx} className="animate-pulse">
-                                            <td colSpan={9} className="h-12 px-5 bg-muted/20" />
+                                            <td colSpan={10} className="h-12 px-5 bg-muted/20" />
                                         </tr>
                                     ))
                                 ) : filtered.length === 0 ? (
                                     <tr>
-                                        <td colSpan={9} className="p-12 text-center text-muted-foreground italic">
+                                        <td colSpan={10} className="p-12 text-center text-muted-foreground italic">
                                             Nenhuma importação encontrada.
                                         </td>
                                     </tr>
@@ -196,8 +277,15 @@ export const ImportacoesTimeline: React.FC<ImportacoesTimelineProps> = ({ empres
                                             : "—";
 
                                         return (
-                                            <tr key={item.id} className="group hover:bg-muted/30 transition-colors">
-                                                <td className="px-5 py-4 whitespace-nowrap">
+                                            <tr key={item.id} className={cn("group transition-colors", selectedIds.includes(item.id) ? "bg-muted/50" : "hover:bg-muted/30")}>
+                                                <td className="px-5 py-4 text-center">
+                                                    <Checkbox
+                                                        checked={selectedIds.includes(item.id)}
+                                                        onCheckedChange={() => toggleSelect(item.id)}
+                                                        aria-label="Selecionar linha"
+                                                    />
+                                                </td>
+                                                <td className="px-2 py-4 whitespace-nowrap">
                                                     <div className="flex flex-col">
                                                         <span className="font-medium">{format(new Date(item.created_at), "dd/MM/yyyy")}</span>
                                                         <span className="text-xs text-muted-foreground">{format(new Date(item.created_at), "HH:mm")}</span>
@@ -273,6 +361,16 @@ export const ImportacoesTimeline: React.FC<ImportacoesTimelineProps> = ({ empres
                                                                     <Download className="mr-2 h-4 w-4" /> Baixar original
                                                                 </DropdownMenuItem>
                                                             )}
+                                                            <DropdownMenuItem
+                                                                className="text-destructive font-medium focus:bg-destructive/10 cursor-pointer"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    if (confirm("Tem certeza que deseja excluir esse log do histórico? Os pontos vinculados não serão apagados. Apenas a linha do histórico irá sumir.")) {
+                                                                        deleteMutation.mutate(item.id);
+                                                                    }
+                                                                }}>
+                                                                <Trash2 className="mr-2 h-4 w-4" /> Excluir histórico
+                                                            </DropdownMenuItem>
                                                         </DropdownMenuContent>
                                                     </DropdownMenu>
                                                 </td>
