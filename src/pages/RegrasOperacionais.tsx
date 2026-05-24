@@ -307,32 +307,16 @@ const getInitialBindingMode = (item?: {
 
 const getRuleContextProfile = ({
   applyGlobally,
-  issRuleSelected,
   tipoServicoNome,
   tipoCalculo,
   bindingMode,
 }: {
   applyGlobally: boolean;
-  issRuleSelected: boolean;
   tipoServicoNome?: string | null;
   tipoCalculo?: string | null;
   bindingMode: RuleBindingMode;
 }): RuleContextProfile => {
   const requirements = getBindingRequirements(bindingMode);
-
-  if (issRuleSelected) {
-    return {
-      mode: "iss_global",
-      title: "Regra global de ISS",
-      description:
-        "Essa regra sempre vale de forma global. Empresa, fornecedor, transportadora e produto nao sao exigidos.",
-      requireEmpresa: false,
-      requireTipoServico: false,
-      requireTipoCalculo: true,
-      requireTransportadora: false,
-      requireFornecedor: false,
-    };
-  }
 
   if (applyGlobally) {
     return {
@@ -482,6 +466,23 @@ const isIssRuleDefinition = (rule?: { nome?: string | null; coluna_planilha?: st
     .toUpperCase();
 
   return joined.includes("ISS");
+};
+
+const getRuleDataValue = (dados: Record<string, unknown> | null | undefined, ...possibleKeys: string[]) => {
+  if (!dados) return null;
+
+  for (const key of possibleKeys) {
+    if (key in dados) return dados[key];
+  }
+
+  const entries = Object.entries(dados);
+  for (const key of possibleKeys) {
+    const normalizedKey = normalizeText(key);
+    const match = entries.find(([entryKey]) => normalizeText(entryKey) === normalizedKey);
+    if (match) return match[1];
+  }
+
+  return null;
 };
 
 const buildRuleDedupKey = (item: any) =>
@@ -853,6 +854,18 @@ const RegrasOperacionais = () => {
     queryFn: () => RegrasModulosService.listar(),
     enabled: canAccess,
   });
+  const taxModule = useMemo(
+    () =>
+      (dynamicModules as RegraModulo[]).find(
+        (module) => module.module_type === "tax" || module.slug === "taxas_impostos" || module.slug === "taxas-impostos",
+      ) ?? null,
+    [dynamicModules],
+  );
+  const { data: taxRulesData = [] } = useQuery({
+    queryKey: ["regras_dados", taxModule?.id],
+    queryFn: () => RegrasDadosService.listarPorModulo(taxModule!.id),
+    enabled: canAccess && !!taxModule?.id,
+  });
   const { data: importacaoModelos = [] } = useQuery({
     queryKey: ["importacao_modelos"],
     queryFn: () => ImportacaoModelosService.listAll(),
@@ -861,12 +874,7 @@ const RegrasOperacionais = () => {
 
   const filteredRules = useMemo(() => {
     const term = search.trim().toLowerCase();
-    const validRegras = (regras as any[]).filter(r => {
-      const isTax = isIssRuleDefinition((tiposRegra as any[]).find(t => t.id === r.tipo_regra_id));
-      return !isTax;
-    });
-
-    const filtered = !term ? validRegras : validRegras.filter((item) =>
+    const filtered = !term ? (regras as any[]) : (regras as any[]).filter((item) =>
       [
         item.empresas?.nome,
         item.tipos_servico_operacional?.nome,
@@ -888,13 +896,25 @@ const RegrasOperacionais = () => {
       if (b.id === recentDuplicatedRuleId) return 1;
       return 0;
     });
-  }, [recentDuplicatedRuleId, regras, search, tiposRegra]);
+  }, [recentDuplicatedRuleId, regras, search]);
 
   const tipoServicoItems = (tiposServico as any[]).map((item) => ({ ...item, nome: item.nome })) as LookupItem[];
   const transportadoraItems = (transportadoras as any[]).map((item) => ({ ...item, nome: item.nome })) as LookupItem[];
   const fornecedorItems = (fornecedores as any[]).map((item) => ({ ...item, nome: item.nome })) as LookupItem[];
   const produtoItems = (produtos as any[]).map((item) => ({ ...item, nome: item.nome })) as LookupItem[];
   const formaPagamentoItems = (formasPagamento as any[]).map((item) => ({ ...item, nome: item.nome })) as LookupItem[];
+  const tiposRegraFiltered = useMemo(() => {
+    const tiposDisponiveis = tiposRegra as any[];
+
+    if (!form.tipo_regra_id) return tiposDisponiveis;
+
+    const tipoSelecionado = tiposDisponiveis.find((item) => item.id === form.tipo_regra_id);
+    if (!tipoSelecionado || tiposDisponiveis.some((item) => item.id === tipoSelecionado.id)) {
+      return tiposDisponiveis;
+    }
+
+    return [tipoSelecionado, ...tiposDisponiveis];
+  }, [form.tipo_regra_id, tiposRegra]);
   const tipoRegraSelecionado = useMemo(
     () => (tiposRegra as any[]).find((item) => item.id === form.tipo_regra_id) ?? null,
     [form.tipo_regra_id, tiposRegra],
@@ -1003,10 +1023,8 @@ const RegrasOperacionais = () => {
                       ? "fornecedor"
                       : "empresa_fornecedor";
 
-        const issRuleSelected = isIssRuleDefinition(tipoRegra ?? null);
         const context = getRuleContextProfile({
           applyGlobally: false,
-          issRuleSelected,
           tipoServicoNome,
           tipoCalculo,
           bindingMode: bindingModeFromRow,
@@ -1051,7 +1069,7 @@ const RegrasOperacionais = () => {
           continue;
         }
 
-        if (!issRuleSelected) {
+        if (context) {
           if (context.requireEmpresa && !empresa) {
             errors.push(
               `Linha ${lineNumber}: empresa "${empresaNome}" não encontrada. Disponíveis: ${formatAvailableValues(empresasList)}`,
@@ -1081,28 +1099,28 @@ const RegrasOperacionais = () => {
           }
         }
 
-        if (empresaNome && !empresa && !issRuleSelected) {
+        if (empresaNome && !empresa) {
           errors.push(
             `Linha ${lineNumber}: empresa "${empresaNome}" não encontrada. Disponíveis: ${formatAvailableValues(empresasList)}`,
           );
           continue;
         }
 
-        if (tipoServicoNome && !tipoServico && !issRuleSelected) {
+        if (tipoServicoNome && !tipoServico) {
           errors.push(
             `Linha ${lineNumber}: tipo de serviço "${tipoServicoNome}" não encontrado. Disponíveis: ${formatAvailableValues(tiposServicoList)}`,
           );
           continue;
         }
 
-        if (transportadoraNome && !transportadora && !issRuleSelected) {
+        if (transportadoraNome && !transportadora) {
           errors.push(
             `Linha ${lineNumber}: transportadora "${transportadoraNome}" não encontrada. Disponíveis: ${formatAvailableValues(transportadorasList)}`,
           );
           continue;
         }
 
-        if (fornecedorNome && !fornecedor && !issRuleSelected) {
+        if (fornecedorNome && !fornecedor) {
           errors.push(
             `Linha ${lineNumber}: fornecedor "${fornecedorNome}" não encontrado. Disponíveis: ${formatAvailableValues(fornecedoresList)}`,
           );
@@ -1231,25 +1249,74 @@ const RegrasOperacionais = () => {
     () => (tiposServico as any[]).find((item) => item.id === form.tipo_servico_id) ?? null,
     [form.tipo_servico_id, tiposServico],
   );
-  const issRuleSelected = useMemo(
-    () => isIssRuleDefinition(tipoRegraSelecionado),
-    [tipoRegraSelecionado],
-  );
+  const issRuleSelected = false;
   const ruleContext = useMemo(
     () =>
       getRuleContextProfile({
         applyGlobally,
-        issRuleSelected,
         tipoServicoNome: tipoServicoSelecionado?.nome,
         tipoCalculo: form.tipo_calculo,
         bindingMode,
       }),
-    [applyGlobally, bindingMode, form.tipo_calculo, issRuleSelected, tipoServicoSelecionado],
+    [applyGlobally, bindingMode, form.tipo_calculo, tipoServicoSelecionado],
   );
   const ruleContextDescription =
     ruleContext.mode === "default"
       ? "Neste tipo de cadastro, a regra fica vinculada em conjunto a empresa, ao tipo de servico e ao fornecedor."
       : ruleContext.description;
+  const taxRulesReference = useMemo(() => {
+    return (taxRulesData as any[])
+      .map((item) => {
+        const dados = item.dados as Record<string, unknown> | undefined;
+        const nomeTaxa = String(getRuleDataValue(dados, "Nome da Taxa", "nome_taxa") ?? "").trim();
+        const percentual = Number(getRuleDataValue(dados, "Percentual", "percentual"));
+        const status = String(getRuleDataValue(dados, "Status", "status") ?? "");
+        const vigenciaInicial = parseIsoDateLike(String(getRuleDataValue(dados, "Vigência Inicial", "vigencia_inicial") ?? ""));
+        const vigenciaFinal = parseIsoDateLike(String(getRuleDataValue(dados, "Vigência Final", "vigencia_final") ?? ""));
+
+        return {
+          nomeTaxa,
+          percentual,
+          status,
+          vigenciaInicial,
+          vigenciaFinal,
+        };
+      })
+      .filter((item) => item.nomeTaxa && Number.isFinite(item.percentual));
+  }, [taxRulesData]);
+
+  const getTaxReferenceForRule = (tipoRegraId: string, vigenciaInicio?: string) => {
+    const tipoRegra = (tiposRegra as any[]).find((item) => item.id === tipoRegraId);
+    if (!tipoRegra?.nome) return null;
+
+    const targetName = normalizeText(tipoRegra.nome);
+    const targetDate = vigenciaInicio || form.vigencia_inicio || new Date().toISOString().slice(0, 10);
+
+    const matchingByDate = taxRulesReference.find((item) => {
+      if (normalizeText(item.nomeTaxa) !== targetName) return false;
+      if (normalizeText(item.status || "Ativo") !== "ativo") return false;
+      if (!item.vigenciaInicial) return true;
+      if (item.vigenciaInicial > targetDate) return false;
+      if (item.vigenciaFinal && item.vigenciaFinal < targetDate) return false;
+      return true;
+    });
+
+    if (matchingByDate) return matchingByDate;
+
+    return taxRulesReference.find(
+      (item) => normalizeText(item.nomeTaxa) === targetName && normalizeText(item.status || "Ativo") === "ativo",
+    ) ?? null;
+  };
+
+  const handleTipoRegraChange = (value: string) => {
+    const taxReference = getTaxReferenceForRule(value);
+
+    setForm((prev) => ({
+      ...prev,
+      tipo_regra_id: value,
+      valor_unitario: taxReference ? String(taxReference.percentual) : "",
+    }));
+  };
 
   const similarTiposServico = useMemo(
     () => getSimilarItems(tipoServicoItems, tipoServicoDraft.nome),
@@ -1285,21 +1352,7 @@ const RegrasOperacionais = () => {
   };
 
   useEffect(() => {
-    if (!issRuleSelected || !!editingId) return;
-
-    setApplyGlobally(true);
-    setForm((prev) => ({
-      ...prev,
-      empresa_id: "",
-      tipo_servico_id: "",
-      transportadora_id: "",
-      fornecedor_id: "",
-      produto_carga_id: "",
-    }));
-  }, [editingId, issRuleSelected]);
-
-  useEffect(() => {
-    if (applyGlobally || issRuleSelected) return;
+    if (applyGlobally) return;
 
     const requirements = getBindingRequirements(bindingMode);
     setForm((prev) => ({
@@ -1309,7 +1362,7 @@ const RegrasOperacionais = () => {
       transportadora_id: requirements.requireTransportadora ? prev.transportadora_id : "",
       produto_carga_id: requirements.requireFornecedor ? prev.produto_carga_id : "",
     }));
-  }, [applyGlobally, bindingMode, issRuleSelected]);
+  }, [applyGlobally, bindingMode]);
 
   const validateStep = (step: number) => {
     if (step === 1) {
@@ -1390,7 +1443,7 @@ const RegrasOperacionais = () => {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const shouldApplyGlobally = applyGlobally || issRuleSelected;
+      const shouldApplyGlobally = applyGlobally;
       const missing: string[] = [];
 
       if (!shouldApplyGlobally) {
@@ -1409,43 +1462,6 @@ const RegrasOperacionais = () => {
 
       if (form.vigencia_fim && form.vigencia_fim < form.vigencia_inicio) {
         throw new Error("A vigência final não pode ser menor que a vigência inicial.");
-      }
-
-      if (issRuleSelected && !editingId) {
-        const hasConflict =
-          form.status === "ativo"
-            ? await RegraOperacionalService.hasActiveConflict({
-              empresaId: null,
-              tipoServicoId: null,
-              fornecedorId: null,
-              transportadoraId: null,
-              produtoCargaId: null,
-              tipoRegraId: form.tipo_regra_id,
-              tipoCalculo: form.tipo_calculo,
-              vigenciaInicio: form.vigencia_inicio,
-              vigenciaFim: normalizeOptionalId(form.vigencia_fim),
-            })
-            : false;
-
-        if (hasConflict) {
-          throw new Error("Ja existe uma regra global de ISS ativa dentro da vigencia informada.");
-        }
-
-        return RegraOperacionalService.create({
-          empresa_id: null,
-          unidade_id: null,
-          tipo_servico_id: null,
-          fornecedor_id: null,
-          transportadora_id: null,
-          produto_carga_id: null,
-          tipo_regra_id: form.tipo_regra_id,
-          tipo_calculo: form.tipo_calculo,
-          valor_unitario: Number(form.valor_unitario.replace(",", ".")),
-          forma_pagamento_id: normalizeOptionalId(form.forma_pagamento_id),
-          vigencia_inicio: form.vigencia_inicio,
-          vigencia_fim: normalizeOptionalId(form.vigencia_fim),
-          ativo: form.status === "ativo",
-        });
       }
 
       if (applyGlobally && !editingId) {
@@ -1524,20 +1540,20 @@ const RegrasOperacionais = () => {
 
       const bindingRequirements = getBindingRequirements(bindingMode);
       const empresaId =
-        issRuleSelected || !bindingRequirements.requireEmpresa
+        !bindingRequirements.requireEmpresa
           ? null
           : normalizeOptionalId(form.empresa_id);
-      const tipoServicoId = issRuleSelected ? null : normalizeOptionalId(form.tipo_servico_id);
+      const tipoServicoId = normalizeOptionalId(form.tipo_servico_id);
       const fornecedorId =
-        issRuleSelected || !bindingRequirements.requireFornecedor
+        !bindingRequirements.requireFornecedor
           ? null
           : normalizeOptionalId(form.fornecedor_id);
       const transportadoraId =
-        issRuleSelected || !bindingRequirements.requireTransportadora
+        !bindingRequirements.requireTransportadora
           ? null
           : normalizeOptionalId(form.transportadora_id);
       const produtoCargaId =
-        issRuleSelected || !bindingRequirements.requireFornecedor
+        !bindingRequirements.requireFornecedor
           ? null
           : normalizeOptionalId(form.produto_carga_id);
 
@@ -1581,11 +1597,30 @@ const RegrasOperacionais = () => {
         ? RegraOperacionalService.update(editingId, payload)
         : RegraOperacionalService.create(payload);
     },
-    onSuccess: (result: any) => {
-      queryClient.invalidateQueries({ queryKey: ["regras_operacionais"] });
-      queryClient.invalidateQueries({ queryKey: ["regras_operacionais_grid"] });
-      queryClient.invalidateQueries({ queryKey: ["resolver_valor_operacao"] });
-      queryClient.invalidateQueries({ queryKey: ["regras_operacionais_diagnostico_encarregado"] });
+    onSuccess: async (result: any) => {
+      const empresaKeys = Array.from(
+        new Set([
+          form.empresa_id || "all",
+          perfil?.empresa_id || "all",
+        ]),
+      );
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["regras_operacionais"] }),
+        queryClient.invalidateQueries({ queryKey: ["regras_operacionais_grid"] }),
+        queryClient.invalidateQueries({ queryKey: ["resolver_valor_operacao"] }),
+        queryClient.invalidateQueries({ queryKey: ["regras_operacionais_diagnostico_encarregado"] }),
+      ]);
+
+      await Promise.all(
+        empresaKeys.map((empresaKey) =>
+          queryClient.refetchQueries({
+            queryKey: ["regras_operacionais", empresaKey],
+            exact: true,
+          }),
+        ),
+      );
+
       if (editingId) {
         toast.success("Regra operacional atualizada.");
       } else if (applyGlobally) {
@@ -1597,8 +1632,6 @@ const RegrasOperacionais = () => {
               ? `${createdCount} regra(s) criadas e ${skippedConflicts} combinação(ões) já existentes foram ignoradas.`
               : `${createdCount} regra(s) criadas com aplicação global.`,
         });
-      } else if (issRuleSelected) {
-        toast.success("Regra global de ISS cadastrada.");
       } else {
         toast.success("Regra operacional cadastrada.");
       }
@@ -2256,7 +2289,12 @@ const RegrasOperacionais = () => {
                     {filteredRules.map((item: any) => {
                       const tr = (tiposRegra as any[]).find((t) => t.id === item.tipo_regra_id);
                       const isPct = tr?.unidade_medida === "percentual";
-                      const isGlobalIssRule = isIssRuleDefinition(tr);
+                      const isGlobalIssRule =
+                        !item.empresa_id &&
+                        !item.tipo_servico_id &&
+                        !item.transportadora_id &&
+                        !item.fornecedor_id &&
+                        !item.produto_carga_id;
                       return (
                         <TableRow key={item.id}>
                           <TableCell className="text-center">{isGlobalIssRule ? "Global" : item.empresas?.nome ?? "-"}</TableCell>
@@ -2636,10 +2674,9 @@ const RegrasOperacionais = () => {
                     <div className="flex items-start gap-3">
                       <Checkbox
                         id="apply-global"
-                        checked={applyGlobally || issRuleSelected}
-                        disabled={!!editingId || issRuleSelected}
+                        checked={applyGlobally}
+                        disabled={!!editingId}
                         onCheckedChange={(checked) => {
-                          if (issRuleSelected) return;
                           const enabled = checked === true;
                           setApplyGlobally(enabled);
 
@@ -2670,7 +2707,7 @@ const RegrasOperacionais = () => {
                             ? "Regras da coluna ISS são sempre globais."
                             : "Gera automaticamente a regra para todas as empresas, todos os fornecedores e todos os tipos de serviço."}
                         </p>
-                        {!!editingId && !issRuleSelected && (
+                        {!!editingId && (
                           <p className="text-xs text-muted-foreground">
                             A aplicação global fica disponível apenas para novas regras.
                           </p>
@@ -2679,7 +2716,7 @@ const RegrasOperacionais = () => {
                     </div>
                   </div>
 
-                  {!issRuleSelected && (
+                  {bindingMode !== undefined && (
                     <div className="space-y-2">
                       <Label>Vincular regra por</Label>
                       <Select
@@ -2849,7 +2886,7 @@ const RegrasOperacionais = () => {
                       ...t,
                     }))}
                     createLabel="Nova variável"
-                    onChange={(value) => setForm((prev) => ({ ...prev, tipo_regra_id: value }))}
+                    onChange={handleTipoRegraChange}
                     onCreate={(searchTerm) => openQuickCreate("tipo_regra", searchTerm)}
                   />
 

@@ -2684,7 +2684,14 @@ export const RegraOperacionalService = new RegraOperacionalServiceClass();
 
 class OperacaoProducaoServiceClass {
   private sanitizeOperacaoPayload(payload: Record<string, any>) {
-    const { categoria_servico, ...rest } = payload;
+    const { categoria_servico, categoria_custo, ...rest } = payload;
+
+    if (rest.tipo_calculo_snapshot === 'operation') {
+      rest.tipo_calculo_snapshot = 'fixo';
+    } else if (rest.tipo_calculo_snapshot === 'daily') {
+      rest.tipo_calculo_snapshot = 'fixo';
+    }
+
     return rest;
   }
 

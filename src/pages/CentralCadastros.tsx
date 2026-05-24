@@ -19,6 +19,7 @@ import {
   Info,
   Landmark,
   Loader2,
+  Copy,
   Pencil,
   PencilLine,
   Plus,
@@ -44,6 +45,7 @@ import { MetricCard } from "@/components/painel/MetricCard";
 import { StatusChip } from "@/components/painel/StatusChip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ConfigTable } from "@/components/ui/ConfigTable";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -73,6 +75,7 @@ import {
   FornecedorService,
   ProdutoCargaService,
   ImportacaoModelosService,
+  RegraOperacionalService,
   TipoServicoOperacionalService,
   TransportadoraClienteService,
 } from "@/services/base.service";
@@ -96,6 +99,8 @@ type CadastroTabValue =
   | "fornecedores"
   | "servicos"
   | "parametros";
+
+type ProdutoCargaTargetType = "fornecedor" | "transportadora" | "empresa";
 
 const TECHNICAL_COLUMNS = [
   "ID",
@@ -1312,11 +1317,63 @@ const CentralCadastros = () => {
   // ---- Produtos/Carga CRUD ----
   const [produtoCargaModalOpen, setProdutoCargaModalOpen] = useState(false);
   const [editingProdutoCarga, setEditingProdutoCarga] = useState<any>(null);
-  const [produtoCargaForm, setProdutoCargaForm] = useState({ nome: "", categoria: "", fornecedor_id: "" });
+  const [produtoCargaForm, setProdutoCargaForm] = useState({
+    nome: "",
+    categoria: "",
+    fornecedor_id: "",
+    vinculo_tipo: "fornecedor" as ProdutoCargaTargetType,
+    vinculo_id: "",
+    tipo_servico_id: "",
+    valor_unitario: "",
+  });
   const [produtoCargaFormErrors, setProdutoCargaFormErrors] = useState<any>({});
+  const { data: produtoCargaServiceRules = [] } = useQuery<any[]>({
+    queryKey: ["produtos_carga_service_rules"],
+    queryFn: () => RegraOperacionalService.getAll(),
+  });
+  const produtoCargaTargetOptions = useMemo(() => {
+    if (produtoCargaForm.vinculo_tipo === "transportadora") {
+      return transportadoras.map((item: any) => ({ id: item.id, nome: item.nome }));
+    }
+    if (produtoCargaForm.vinculo_tipo === "empresa") {
+      return empresas.map((item: any) => ({ id: item.id, nome: item.nome }));
+    }
+    return fornecedores.map((item: any) => ({ id: item.id, nome: item.nome }));
+  }, [empresas, fornecedores, produtoCargaForm.vinculo_tipo, transportadoras]);
+  const produtoCargaRulesMap = useMemo(() => {
+    const map = new Map<string, any[]>();
+
+    (produtoCargaServiceRules as any[]).forEach((rule) => {
+      if (!rule.produto_carga_id) return;
+      const current = map.get(rule.produto_carga_id) ?? [];
+      current.push(rule);
+      map.set(rule.produto_carga_id, current);
+    });
+
+    return map;
+  }, [produtoCargaServiceRules]);
+  const produtoCargaRows = useMemo(() => {
+    return (produtosOptions as any[]).flatMap((prod) => {
+      const linkedRules = produtoCargaRulesMap.get(prod.id) ?? [];
+
+      if (linkedRules.length === 0) {
+        return [{ prod, rule: null }];
+      }
+
+      return linkedRules.map((rule) => ({ prod, rule }));
+    });
+  }, [produtoCargaRulesMap, produtosOptions]);
 
   const resetProdutoCargaForm = () => {
-    setProdutoCargaForm({ nome: "", categoria: "", fornecedor_id: "" });
+    setProdutoCargaForm({
+      nome: "",
+      categoria: "",
+      fornecedor_id: "",
+      vinculo_tipo: "fornecedor",
+      vinculo_id: "",
+      tipo_servico_id: "",
+      valor_unitario: "",
+    });
     setProdutoCargaFormErrors({});
     setEditingProdutoCarga(null);
   };
@@ -1325,8 +1382,6 @@ const CentralCadastros = () => {
     mutationFn: (payload: any) => ProdutoCargaService.create(payload),
     onSuccess: async () => {
       toast.success("Produto cadastrado com sucesso");
-      setProdutoCargaModalOpen(false);
-      resetProdutoCargaForm();
       await queryClient.invalidateQueries({ queryKey: ["produtos_carga_all"] });
     },
     onError: (err: any) => toast.error("Erro ao cadastrar produto", { description: err.message }),
@@ -1336,8 +1391,6 @@ const CentralCadastros = () => {
     mutationFn: ({ id, payload }: { id: string; payload: any }) => ProdutoCargaService.update(id, payload),
     onSuccess: async () => {
       toast.success("Produto atualizado com sucesso");
-      setProdutoCargaModalOpen(false);
-      resetProdutoCargaForm();
       await queryClient.invalidateQueries({ queryKey: ["produtos_carga_all"] });
     },
     onError: (err: any) => toast.error("Erro ao atualizar produto", { description: err.message }),
@@ -1352,22 +1405,117 @@ const CentralCadastros = () => {
     onError: (err: any) => toast.error("Erro ao excluir produto", { description: err.message }),
   });
 
-  const submitProdutoCargaForm = () => {
+  const submitProdutoCargaForm = async () => {
     if (!produtoCargaForm.nome.trim()) {
       setProdutoCargaFormErrors({ nome: "Informe o nome do produto." });
       toast.error("Informe o nome do produto.");
       return;
     }
+    if (!produtoCargaForm.fornecedor_id) {
+      setProdutoCargaFormErrors({ fornecedor_id: "Selecione o fornecedor do produto." });
+      toast.error("Selecione o fornecedor do produto.");
+      return;
+    }
+    const hasServiceLink = !!produtoCargaForm.tipo_servico_id || !!produtoCargaForm.valor_unitario.trim();
+    const nextErrors: Record<string, string | undefined> = {};
+
+    if (hasServiceLink && !produtoCargaForm.vinculo_id) {
+      nextErrors.vinculo_id = "Selecione o vínculo para o preço por serviço.";
+    }
+    if (hasServiceLink && !produtoCargaForm.tipo_servico_id) {
+      nextErrors.tipo_servico_id = "Selecione o serviço.";
+    }
+    if (hasServiceLink && !produtoCargaForm.valor_unitario.trim()) {
+      nextErrors.valor_unitario = "Informe o preço unitário.";
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
+      setProdutoCargaFormErrors(nextErrors);
+      toast.error("Preencha os campos do vínculo com serviço.");
+      return;
+    }
+
     setProdutoCargaFormErrors({});
     const payload = {
       nome: produtoCargaForm.nome.trim(),
       categoria: produtoCargaForm.categoria.trim() || null,
-      fornecedor_id: produtoCargaForm.fornecedor_id || null,
+      fornecedor_id: produtoCargaForm.fornecedor_id || editingProdutoCarga?.fornecedor_id || null,
     };
-    if (editingProdutoCarga) {
-      updateProdutoCargaMutation.mutate({ id: editingProdutoCarga.id, payload });
-    } else {
-      createProdutoCargaMutation.mutate(payload);
+    const existingProduto = !editingProdutoCarga
+      ? (produtosOptions as any[]).find((item) =>
+          normalizeText(String(item.nome ?? "")) === normalizeText(payload.nome) &&
+          String(item.fornecedor_id ?? "") === String(payload.fornecedor_id ?? ""),
+        )
+      : null;
+
+    const upsertProductServicePrice = async (produtoId: string) => {
+      if (!hasServiceLink) return;
+
+      const valorUnitario = Number(produtoCargaForm.valor_unitario.replace(",", "."));
+      const existingRule = (produtoCargaServiceRules as any[]).find((rule) =>
+        rule.produto_carga_id === produtoId &&
+        (produtoCargaForm.vinculo_tipo === "fornecedor" ? rule.fornecedor_id === produtoCargaForm.vinculo_id : !rule.fornecedor_id) &&
+        (produtoCargaForm.vinculo_tipo === "transportadora" ? rule.transportadora_id === produtoCargaForm.vinculo_id : !rule.transportadora_id) &&
+        (produtoCargaForm.vinculo_tipo === "empresa" ? rule.empresa_id === produtoCargaForm.vinculo_id : !rule.empresa_id) &&
+        rule.tipo_servico_id === produtoCargaForm.tipo_servico_id
+      );
+
+      const rulePayload = {
+        empresa_id:
+          produtoCargaForm.vinculo_tipo === "empresa"
+            ? produtoCargaForm.vinculo_id
+            : existingRule?.empresa_id ?? null,
+        unidade_id: existingRule?.unidade_id ?? null,
+        tipo_servico_id: produtoCargaForm.tipo_servico_id,
+        fornecedor_id:
+          produtoCargaForm.vinculo_tipo === "fornecedor"
+            ? produtoCargaForm.vinculo_id
+            : null,
+        transportadora_id:
+          produtoCargaForm.vinculo_tipo === "transportadora"
+            ? produtoCargaForm.vinculo_id
+            : null,
+        produto_carga_id: produtoId,
+        tipo_regra_id: existingRule?.tipo_regra_id ?? null,
+        tipo_calculo: existingRule?.tipo_calculo ?? "operation",
+        valor_unitario: valorUnitario,
+        forma_pagamento_id: existingRule?.forma_pagamento_id ?? null,
+        vigencia_inicio: existingRule?.vigencia_inicio ?? new Date().toISOString().slice(0, 10),
+        vigencia_fim: existingRule?.vigencia_fim ?? null,
+        ativo: true,
+      };
+
+      if (existingRule?.id) {
+        await RegraOperacionalService.update(existingRule.id, rulePayload);
+        return;
+      }
+
+      await RegraOperacionalService.create(rulePayload);
+    };
+
+    try {
+      if (editingProdutoCarga) {
+        await updateProdutoCargaMutation.mutateAsync({ id: editingProdutoCarga.id, payload });
+        await upsertProductServicePrice(editingProdutoCarga.id);
+        await queryClient.invalidateQueries({ queryKey: ["produtos_carga_service_rules"] });
+      } else if (existingProduto) {
+        await upsertProductServicePrice(existingProduto.id);
+        await queryClient.invalidateQueries({ queryKey: ["produtos_carga_service_rules"] });
+        toast.success(
+          hasServiceLink
+            ? "Serviço/preço adicionados ao produto já existente."
+            : "Este produto já existe para o fornecedor selecionado.",
+        );
+      } else {
+        const createdProduct = await createProdutoCargaMutation.mutateAsync(payload);
+        await upsertProductServicePrice(createdProduct.id);
+        await queryClient.invalidateQueries({ queryKey: ["produtos_carga_service_rules"] });
+      }
+
+      setProdutoCargaModalOpen(false);
+      resetProdutoCargaForm();
+    } catch {
+      // feedback já tratado nas mutations
     }
   };
 
@@ -2297,22 +2445,22 @@ const CentralCadastros = () => {
                           </SheetHeader>
                         </div>
 
-                        <div className="flex-1 p-6 space-y-8">
+                        <div className="flex-1 p-5 space-y-6">
                           {/* Completude & Bloqueios */}
-                          <div className="space-y-4">
-                            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Saúde do Cadastro</h3>
-                            <div className="grid grid-cols-2 gap-4">
-                              <div className="p-4 rounded-xl border border-border/50 bg-muted/10 hover:bg-muted/30 transition-colors">
-                                <div className="text-xs text-muted-foreground mb-1">Completude</div>
-                                <div className="text-2xl font-display font-semibold">
+                          <div className="space-y-3">
+                            <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Saúde do Cadastro</h3>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="p-3 rounded-lg border border-border/50 bg-muted/10 hover:bg-muted/30 transition-colors">
+                                <div className="text-[11px] text-muted-foreground mb-1">Completude</div>
+                                <div className="text-xl font-display font-semibold leading-none">
                                   {selectedColaboradorDrawer.completude}%
                                 </div>
                                 <div className="mt-2 h-1.5 w-full bg-muted rounded-full overflow-hidden">
                                   <div className="h-full bg-primary" style={{ width: `${selectedColaboradorDrawer.completude}%` }} />
                                 </div>
                               </div>
-                              <div className="p-4 rounded-xl border border-border/50 bg-muted/10 hover:bg-muted/30 transition-colors">
-                                <div className="text-xs text-muted-foreground mb-2">Status Operacional</div>
+                              <div className="p-3 rounded-lg border border-border/50 bg-muted/10 hover:bg-muted/30 transition-colors">
+                                <div className="text-[11px] text-muted-foreground mb-2">Status Operacional</div>
                                 <div>
                                   {(() => {
                                     const statusMeta = getColaboradorStatusMeta(selectedColaboradorDrawer);
@@ -2337,13 +2485,13 @@ const CentralCadastros = () => {
 
                           {/* Impacto RH/Financeiro */}
                           {selectedColaboradorDrawer.bloqueios.length > 0 && (
-                            <div className="space-y-3">
-                              <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Impacto Operacional</h3>
-                              <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4 flex gap-3 items-start">
-                                <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+                            <div className="space-y-2.5">
+                              <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Impacto Operacional</h3>
+                              <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 flex gap-2.5 items-start">
+                                <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
                                 <div>
-                                  <div className="font-medium text-destructive">Bloqueios ativos</div>
-                                  <div className="text-sm text-destructive/80 mt-1">
+                                  <div className="text-sm font-medium text-destructive">Bloqueios ativos</div>
+                                  <div className="text-xs text-destructive/80 mt-1">
                                     Este cadastro impede aprovações e ações fechadas no {selectedColaboradorDrawer.bloqueios.join(" e ")}.
                                   </div>
                                 </div>
@@ -2352,22 +2500,22 @@ const CentralCadastros = () => {
                           )}
 
                           {/* Detalhes Operacionais */}
-                          <div className="space-y-3">
-                            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Dados Relevantes</h3>
-                            <div className="rounded-xl border border-border/50 divide-y divide-border/50 bg-muted/5">
-                              <div className="flex justify-between p-3 text-sm">
+                          <div className="space-y-2.5">
+                            <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Dados Relevantes</h3>
+                            <div className="rounded-lg border border-border/50 divide-y divide-border/50 bg-muted/5">
+                              <div className="flex justify-between p-2.5 text-xs">
                                 <span className="text-muted-foreground">Empresa</span>
                                 <span className="font-medium">{selectedColaboradorDrawer.empresas?.nome || "Não vinculada"}</span>
                               </div>
-                              <div className="flex justify-between p-3 text-sm">
+                              <div className="flex justify-between p-2.5 text-xs">
                                 <span className="text-muted-foreground">Telefone</span>
                                 <span className="font-medium">{selectedColaboradorDrawer.telefone || "Não informado"}</span>
                               </div>
-                              <div className="flex justify-between p-3 text-sm">
+                              <div className="flex justify-between p-2.5 text-xs">
                                 <span className="text-muted-foreground">Tipo e Contrato</span>
                                 <span className="font-medium">{selectedColaboradorDrawer.regime_trabalho || selectedColaboradorDrawer.tipo_colaborador} / {selectedColaboradorDrawer.modelo_calculo || selectedColaboradorDrawer.tipo_contrato || "N/D"}</span>
                               </div>
-                              <div className="flex justify-between p-3 text-sm">
+                              <div className="flex justify-between p-2.5 text-xs">
                                 <span className="text-muted-foreground">Função/Cargo</span>
                                 <span className="font-medium">{selectedColaboradorDrawer.cargo || "Não definido"}</span>
                               </div>
@@ -2859,35 +3007,94 @@ const CentralCadastros = () => {
                         <table className="w-full text-sm">
                           <thead className="esc-table-header">
                             <tr className="text-left">
-                              <th className="px-5 h-11 font-medium">Nome</th>
-                              <th className="px-3 h-11 font-medium">Categoria</th>
-                              <th className="px-3 h-11 font-medium">Fornecedor</th>
+                              <th className="px-5 h-11 font-medium text-center">Nome</th>
+                              <th className="px-3 h-11 font-medium text-center">Categoria</th>
+                              <th className="px-3 h-11 font-medium text-center">Fornecedor</th>
+                              <th className="px-3 h-11 font-medium text-center">Tipo vínculo</th>
+                              <th className="px-3 h-11 font-medium text-center">Vínculo preço</th>
+                              <th className="px-3 h-11 font-medium text-center">Serviço</th>
+                              <th className="px-3 h-11 font-medium text-center">Preço unit.</th>
                               <th className="px-3 h-11 font-medium text-center">Ações</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {produtosOptions.length === 0 ? (
+                            {produtoCargaRows.length === 0 ? (
                               <tr>
-                                <td colSpan={4} className="px-5 py-8 text-center text-muted-foreground">
+                                <td colSpan={8} className="px-5 py-8 text-center text-muted-foreground">
                                   Nenhum produto cadastrado. Clique em "Novo produto" para começar.
                                 </td>
                               </tr>
                             ) : (
-                              produtosOptions.map((prod: any) => {
+                              produtoCargaRows.map(({ prod, rule }: any) => {
                                 const fornecedorNome = fornecedores.find((f: any) => f.id === prod.fornecedor_id)?.nome;
+                                const transportadoraNome = transportadoras.find((item: any) => item.id === rule?.transportadora_id)?.nome;
+                                const empresaNome = empresas.find((item: any) => item.id === rule?.empresa_id)?.nome;
+                                const vinculoTipo = rule?.transportadora_id ? "Transportadora" : rule?.empresa_id ? "Empresa" : rule?.fornecedor_id ? "Fornecedor" : "—";
+                                const vinculoNome = transportadoraNome || empresaNome || (rule?.fornecedor_id ? fornecedores.find((f: any) => f.id === rule?.fornecedor_id)?.nome : null);
+                                const servicoNome = tiposServico.find((item: any) => item.id === rule?.tipo_servico_id)?.nome;
                                 return (
-                                  <tr key={prod.id} className="border-t border-muted hover:bg-background">
-                                    <td className="px-5 h-12 font-medium text-foreground">{prod.nome}</td>
-                                    <td className="px-3 text-muted-foreground">{prod.categoria || "—"}</td>
-                                    <td className="px-3 text-muted-foreground">{fornecedorNome || "—"}</td>
+                                  <tr key={`${prod.id}-${rule?.id ?? "base"}`} className="border-t border-muted hover:bg-background">
+                                    <td className="px-5 h-12 font-medium text-foreground text-center">{prod.nome}</td>
+                                    <td className="px-3 text-muted-foreground text-center">{prod.categoria || "—"}</td>
+                                    <td className="px-3 text-muted-foreground text-center">{fornecedorNome || "—"}</td>
+                                    <td className="px-3 text-muted-foreground text-center">{vinculoTipo}</td>
+                                    <td className="px-3 text-muted-foreground text-center">{vinculoNome || "—"}</td>
+                                    <td className="px-3 text-muted-foreground text-center">{servicoNome || "—"}</td>
+                                    <td className="px-3 text-center text-foreground">{rule?.valor_unitario != null ? Number(rule.valor_unitario).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 4 }) : "—"}</td>
                                     <td className="px-3 text-center">
                                       <div className="flex items-center justify-center gap-1">
                                         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
+                                          const vinculoTipo: ProdutoCargaTargetType =
+                                            rule?.transportadora_id
+                                              ? "transportadora"
+                                              : rule?.empresa_id
+                                                ? "empresa"
+                                                : "fornecedor";
+                                          const vinculoId =
+                                            rule?.transportadora_id ||
+                                            rule?.empresa_id ||
+                                            rule?.fornecedor_id ||
+                                            "";
                                           setEditingProdutoCarga(prod);
-                                          setProdutoCargaForm({ nome: prod.nome, categoria: prod.categoria || "", fornecedor_id: prod.fornecedor_id || "" });
+                                          setProdutoCargaForm({
+                                            nome: prod.nome,
+                                            categoria: prod.categoria || "",
+                                            fornecedor_id: prod.fornecedor_id || "",
+                                            vinculo_tipo: vinculoTipo,
+                                            vinculo_id: vinculoId,
+                                            tipo_servico_id: rule?.tipo_servico_id || "",
+                                            valor_unitario: rule?.valor_unitario != null ? String(rule.valor_unitario) : "",
+                                          });
                                           setProdutoCargaModalOpen(true);
                                         }}>
                                           <PencilLine className="h-4 w-4" />
+                                        </Button>
+                                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
+                                          const vinculoTipo: ProdutoCargaTargetType =
+                                            rule?.transportadora_id
+                                              ? "transportadora"
+                                              : rule?.empresa_id
+                                                ? "empresa"
+                                                : "fornecedor";
+                                          const vinculoId =
+                                            rule?.transportadora_id ||
+                                            rule?.empresa_id ||
+                                            rule?.fornecedor_id ||
+                                            "";
+                                          setEditingProdutoCarga(null);
+                                          setProdutoCargaForm({
+                                            nome: `${prod.nome} - Cópia`,
+                                            categoria: prod.categoria || "",
+                                            fornecedor_id: prod.fornecedor_id || "",
+                                            vinculo_tipo: vinculoTipo,
+                                            vinculo_id: vinculoId,
+                                            tipo_servico_id: rule?.tipo_servico_id || "",
+                                            valor_unitario: rule?.valor_unitario != null ? String(rule.valor_unitario) : "",
+                                          });
+                                          setProdutoCargaFormErrors({});
+                                          setProdutoCargaModalOpen(true);
+                                        }}>
+                                          <Copy className="h-4 w-4" />
                                         </Button>
                                         <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => {
                                           if (confirm("Deseja excluir este produto?")) deleteProdutoCargaMutation.mutate(prod.id);
@@ -4580,11 +4787,11 @@ const CentralCadastros = () => {
 
       {/* ---- Modal Produto/Carga ---- */}
       <Dialog open={produtoCargaModalOpen} onOpenChange={(open) => { if (!open) resetProdutoCargaForm(); setProdutoCargaModalOpen(open); }}>
-        <DialogContent className="sm:max-w-[420px]">
+        <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
             <DialogTitle>{editingProdutoCarga ? "Editar Produto" : "Novo Produto / Carga"}</DialogTitle>
             <DialogDescription>
-              Cadastre um produto ou tipo de carga para vincular a um fornecedor.
+              Cadastre um produto ou tipo de carga e, se quiser, já vincule o preço unitário a um serviço.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -4610,21 +4817,119 @@ const CentralCadastros = () => {
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Fornecedor <span className="text-xs text-muted-foreground">(opcional)</span></Label>
+              <Label>Fornecedor do produto <span className="text-destructive">*</span></Label>
               <Select
                 value={produtoCargaForm.fornecedor_id || "__none__"}
-                onValueChange={(v) => setProdutoCargaForm(p => ({ ...p, fornecedor_id: v === "__none__" ? "" : v }))}
+                onValueChange={(v) => {
+                  setProdutoCargaForm((p) => ({ ...p, fornecedor_id: v === "__none__" ? "" : v }));
+                  setProdutoCargaFormErrors((p: any) => ({ ...p, fornecedor_id: undefined }));
+                }}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecionar fornecedor..." />
+                  <SelectValue placeholder="Selecionar fornecedor do produto..." />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">Nenhum</SelectItem>
-                  {fornecedores.map((f: any) => (
-                    <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>
+                  {fornecedores.map((item: any) => (
+                    <SelectItem key={item.id} value={item.id}>{item.nome}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {produtoCargaFormErrors.fornecedor_id ? <p className="text-sm text-destructive" role="alert">{produtoCargaFormErrors.fornecedor_id}</p> : null}
+            </div>
+            <div className="space-y-1.5">
+              <Label>Aplicar preço para <span className="text-xs text-muted-foreground">(opcional)</span></Label>
+              <div className="flex flex-wrap gap-3 rounded-md border border-border/60 bg-muted/20 px-3 py-2">
+                {([
+                  { value: "fornecedor", label: "Forn" },
+                  { value: "transportadora", label: "Transp" },
+                  { value: "empresa", label: "Empresa" },
+                ] as const).map((option) => (
+                  <label key={option.value} className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
+                    <Checkbox
+                      checked={produtoCargaForm.vinculo_tipo === option.value}
+                      onCheckedChange={(checked) => {
+                        if (checked !== true) return;
+                        setProdutoCargaForm((p) => ({
+                          ...p,
+                          vinculo_tipo: option.value,
+                          vinculo_id: "",
+                        }));
+                        setProdutoCargaFormErrors((p: any) => ({ ...p, vinculo_id: undefined }));
+                      }}
+                    />
+                    <span>{option.label}</span>
+                  </label>
+                ))}
+              </div>
+              <Select
+                value={produtoCargaForm.vinculo_id || "__none__"}
+                onValueChange={(v) => {
+                  setProdutoCargaForm((p) => ({
+                    ...p,
+                    vinculo_id: v === "__none__" ? "" : v,
+                  }));
+                  setProdutoCargaFormErrors((p: any) => ({ ...p, vinculo_id: undefined }));
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={
+                      produtoCargaForm.vinculo_tipo === "transportadora"
+                        ? "Selecionar transportadora..."
+                        : produtoCargaForm.vinculo_tipo === "empresa"
+                          ? "Selecionar empresa..."
+                          : "Selecionar fornecedor para o preço..."
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Nenhum</SelectItem>
+                  {produtoCargaTargetOptions.map((item: any) => (
+                    <SelectItem key={item.id} value={item.id}>{item.nome}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {produtoCargaFormErrors.vinculo_id ? <p className="text-sm text-destructive" role="alert">{produtoCargaFormErrors.vinculo_id}</p> : null}
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>Serviço <span className="text-xs text-muted-foreground">(opcional)</span></Label>
+                <Select
+                  value={produtoCargaForm.tipo_servico_id || "__none__"}
+                  onValueChange={(v) => {
+                    setProdutoCargaForm((p) => ({ ...p, tipo_servico_id: v === "__none__" ? "" : v }));
+                    setProdutoCargaFormErrors((p: any) => ({ ...p, tipo_servico_id: undefined }));
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecionar serviço..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Nenhum</SelectItem>
+                    {tiposServico.map((servico: any) => (
+                      <SelectItem key={servico.id} value={servico.id}>{servico.nome}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {produtoCargaFormErrors.tipo_servico_id ? <p className="text-sm text-destructive" role="alert">{produtoCargaFormErrors.tipo_servico_id}</p> : null}
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="pc_valor_unitario">Preço unitário <span className="text-xs text-muted-foreground">(opcional)</span></Label>
+                <Input
+                  id="pc_valor_unitario"
+                  type="number"
+                  min="0"
+                  step="0.0001"
+                  value={produtoCargaForm.valor_unitario}
+                  onChange={(e) => {
+                    setProdutoCargaForm((p) => ({ ...p, valor_unitario: e.target.value }));
+                    setProdutoCargaFormErrors((p: any) => ({ ...p, valor_unitario: undefined }));
+                  }}
+                  placeholder="Ex: 12.50"
+                />
+                {produtoCargaFormErrors.valor_unitario ? <p className="text-sm text-destructive" role="alert">{produtoCargaFormErrors.valor_unitario}</p> : null}
+              </div>
             </div>
           </div>
           <DialogFooter>

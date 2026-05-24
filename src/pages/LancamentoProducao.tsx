@@ -481,6 +481,36 @@ const normalizeText = (value: string) =>
         .trim()
         .replace(/\s+/g, " ");
 
+const parseIsoDateLike = (value: string) => {
+    const normalized = value.trim();
+    if (!normalized) return "";
+    return normalized.slice(0, 10);
+};
+
+const getRuleDataValue = (dados: Record<string, unknown> | undefined, ...keys: string[]) => {
+    if (!dados) return undefined;
+
+    for (const key of keys) {
+        const directValue = dados[key];
+        if (directValue !== undefined) return directValue;
+    }
+
+    const normalizedEntries = Object.entries(dados).map(([key, value]) => [normalizeText(key), value] as const);
+    for (const key of keys) {
+        const normalizedKey = normalizeText(key);
+        const found = normalizedEntries.find(([entryKey]) => entryKey === normalizedKey);
+        if (found) return found[1];
+    }
+
+    return undefined;
+};
+
+const normalizePercentualDecimal = (value: unknown) => {
+    const numericValue = Number(value ?? 0);
+    if (!Number.isFinite(numericValue) || numericValue <= 0) return 0;
+    return numericValue > 1 ? numericValue / 100 : numericValue;
+};
+
 const PRESETS_PERMITIDOS_POR_PERFIL: Record<string, string[]> = {
     encarregado_diaristas: ["preset_diaristas"],
 };
@@ -644,6 +674,20 @@ const LancamentoProducao = () => {
         enabled: schemaDisponivel,
     });
 
+    const taxModule = useMemo(
+        () =>
+            (regrasModulos as any[]).find(
+                (module: any) => module.module_type === "tax" || module.slug === "taxas_impostos" || module.slug === "taxas-impostos",
+            ) ?? null,
+        [regrasModulos],
+    );
+
+    const { data: taxRulesData = [] } = useQuery({
+        queryKey: ["regras_dados", taxModule?.id],
+        queryFn: () => RegrasDadosService.listarPorModulo(taxModule!.id),
+        enabled: schemaDisponivel && !!taxModule?.id,
+    });
+
     const moduloFinanceiroId = useMemo(() => {
         return regrasModulos.find((m: any) => m.module_type === 'financial')?.id;
     }, [regrasModulos]);
@@ -710,6 +754,16 @@ const LancamentoProducao = () => {
         () => produtoOptions.find((item) => item.id === form.produto) ?? null,
         [produtoOptions, form.produto],
     );
+
+    useEffect(() => {
+        const produtoOriginal = (produtosDb as any[]).find((item: any) => item.id === form.produto);
+        const fornecedorProduto = produtoOriginal?.fornecedor_id ? String(produtoOriginal.fornecedor_id) : "";
+
+        if (!fornecedorProduto) return;
+        if (form.fornecedor === fornecedorProduto) return;
+
+        setForm((prev) => ({ ...prev, fornecedor: fornecedorProduto }));
+    }, [form.produto, form.fornecedor, produtosDb]);
 
     const produtoSimilarOptions = useMemo(() => {
         const normalizedDraft = normalizeText(produtoDraft.nome);
@@ -894,15 +948,111 @@ const LancamentoProducao = () => {
         retry: false,
     });
 
-    const percentualIss = regraIssRpc?.regra_encontrada ? Number(regraIssRpc.percentual_iss || 0) * 100 : 0;
-
     const regraValor = useMemo(() => {
         if (!regraValorRpc || !regraValorRpc.regra_encontrada) return null;
         return {
             tipoCalculo: regraValorRpc.tipo_calculo as TipoCalculo,
             valorUnitario: Number(regraValorRpc.valor_unitario || 0),
+            formaPagamentoId: regraValorRpc.forma_pagamento_id ?? null,
         };
     }, [regraValorRpc]);
+
+    const regraProdutoServicoFallback = useMemo(() => {
+        if (!form.empresa_id || !form.tipo_servico || !form.produto) return null;
+
+        const operationDate = form.data ? new Date(`${form.data}T12:00:00`) : null;
+        if (!operationDate) return null;
+
+        const candidates = (regrasOperacionaisDiagnostico as any[])
+            .filter((rule: any) => {
+                if (!rule?.ativo) return false;
+                if (!rule?.produto_carga_id || String(rule.produto_carga_id) !== String(form.produto)) return false;
+                if (!matchesOptionalContext(rule?.empresa_id, form.empresa_id)) return false;
+                if (!matchesOptionalContext(rule?.unidade_id, form.unidade_id || null)) return false;
+                if (!matchesOptionalContext(rule?.tipo_servico_id, form.tipo_servico)) return false;
+                if (!matchesOptionalContext(rule?.fornecedor_id, form.fornecedor || null)) return false;
+                if (!matchesOptionalContext(rule?.transportadora_id, form.transportadora || null)) return false;
+
+                const startsAt = rule?.vigencia_inicio ? new Date(`${rule.vigencia_inicio}T00:00:00`) : null;
+                const endsAt = rule?.vigencia_fim ? new Date(`${rule.vigencia_fim}T23:59:59`) : null;
+
+                return (!startsAt || startsAt <= operationDate) && (!endsAt || endsAt >= operationDate);
+            })
+            .map((rule: any) => ({
+                ...rule,
+                prioridade:
+                    (rule.empresa_id ? 32 : 0) +
+                    (rule.tipo_servico_id ? 16 : 0) +
+                    (rule.fornecedor_id ? 8 : 0) +
+                    (rule.unidade_id ? 4 : 0) +
+                    (rule.transportadora_id ? 2 : 0) +
+                    (rule.produto_carga_id ? 1 : 0),
+            }))
+            .sort((a: any, b: any) => {
+                if (b.prioridade !== a.prioridade) return b.prioridade - a.prioridade;
+                return String(b.vigencia_inicio || "").localeCompare(String(a.vigencia_inicio || ""));
+            });
+
+        const selected = candidates[0];
+        if (!selected) return null;
+
+        return {
+            tipoCalculo: (selected.tipo_calculo || "volume") as TipoCalculo,
+            valorUnitario: Number(selected.valor_unitario || 0),
+            formaPagamentoId: selected.forma_pagamento_id ?? null,
+        };
+    }, [
+        form.data,
+        form.empresa_id,
+        form.fornecedor,
+        form.produto,
+        form.tipo_servico,
+        form.transportadora,
+        form.unidade_id,
+        regrasOperacionaisDiagnostico,
+    ]);
+
+    const regraFinanceiraAtiva = regraProdutoServicoFallback ?? regraValor;
+
+    const taxRulesReference = useMemo(() => {
+        return (taxRulesData as any[])
+            .map((item) => {
+                const dados = item.dados as Record<string, unknown> | undefined;
+                const nomeTaxa = String(getRuleDataValue(dados, "Nome da Taxa", "nome_taxa") ?? "").trim();
+                const percentual = Number(getRuleDataValue(dados, "Percentual", "percentual"));
+                const status = String(getRuleDataValue(dados, "Status", "status") ?? "");
+                const vigenciaInicial = parseIsoDateLike(String(getRuleDataValue(dados, "Vigência Inicial", "vigencia_inicial") ?? ""));
+                const vigenciaFinal = parseIsoDateLike(String(getRuleDataValue(dados, "Vigência Final", "vigencia_final") ?? ""));
+
+                return {
+                    nomeTaxa,
+                    percentual,
+                    status,
+                    vigenciaInicial,
+                    vigenciaFinal,
+                };
+            })
+            .filter((item) => item.nomeTaxa && Number.isFinite(item.percentual));
+    }, [taxRulesData]);
+
+    const issReference = useMemo(() => {
+        const targetDate = form.data || today;
+
+        return taxRulesReference.find((item) => {
+            if (!normalizeText(item.nomeTaxa).includes("iss")) return false;
+            if (normalizeText(item.status || "Ativo") !== "ativo") return false;
+            if (item.vigenciaInicial && item.vigenciaInicial > targetDate) return false;
+            if (item.vigenciaFinal && item.vigenciaFinal < targetDate) return false;
+            return true;
+        }) ?? null;
+    }, [form.data, taxRulesReference, today]);
+
+    const percentualIssDecimal = issReference
+        ? normalizePercentualDecimal(issReference.percentual)
+        : regraIssRpc?.regra_encontrada
+            ? normalizePercentualDecimal(regraIssRpc.percentual_iss)
+            : 0;
+    const percentualIss = percentualIssDecimal * 100;
 
     const ruleLookupState = useMemo<RuleLookupState>(() => {
         if (!regraLookupHabilitada) return "idle";
@@ -955,26 +1105,26 @@ const LancamentoProducao = () => {
     useEffect(() => {
         setForm((prev) => ({
             ...prev,
-            valor_unitario: regraValor ? String(regraValor.valorUnitario) : "",
-            forma_pagamento: regraValorRpc?.forma_pagamento_id ?? prev.forma_pagamento,
+            valor_unitario: regraFinanceiraAtiva ? String(regraFinanceiraAtiva.valorUnitario) : prev.valor_unitario,
+            forma_pagamento: regraFinanceiraAtiva?.formaPagamentoId ?? prev.forma_pagamento,
         }));
-    }, [regraValor, regraValorRpc?.forma_pagamento_id]);
+    }, [regraFinanceiraAtiva]);
 
     useEffect(() => {
-        if (!regraValor) return;
+        if (!regraFinanceiraAtiva) return;
 
         setForm((prev) => {
-            if (regraValor.tipoCalculo === "operation" && prev.quantidade !== "1") {
+            if (regraFinanceiraAtiva.tipoCalculo === "operation" && prev.quantidade !== "1") {
                 return { ...prev, quantidade: "1" };
             }
 
-            if (regraValor.tipoCalculo === "colaborador" && prev.quantidade !== "1") {
+            if (regraFinanceiraAtiva.tipoCalculo === "colaborador" && prev.quantidade !== "1") {
                 return { ...prev, quantidade: "1" };
             }
 
             return prev;
         });
-    }, [regraValor]);
+    }, [regraFinanceiraAtiva]);
 
     const colaboradoresSelecionados = useMemo(
         () =>
@@ -990,8 +1140,8 @@ const LancamentoProducao = () => {
     const valorUnitario = Number(form.valor_unitario || 0);
     const valorUnitarioFilme = Number(form.valor_unitario_filme || 0);
     const quantidadeFilme = Number(form.quantidade_filme || 0);
-    const hasRegraFinanceira = !!regraValor;
-    const tipoCalculoAtual = regraValor?.tipoCalculo ?? null;
+    const hasRegraFinanceira = !!regraFinanceiraAtiva;
+    const tipoCalculoAtual = regraFinanceiraAtiva?.tipoCalculo ?? null;
     const quantidadeConsiderada = tipoCalculoAtual === "operation" ? (quantidade || 1) : quantidade;
 
     // Valor efetivo: regra automática tem prioridade, mas usuário pode sobrescrever manualmente
@@ -1003,7 +1153,7 @@ const LancamentoProducao = () => {
     const valoresCalculados = calcularValoresOperacao({
         quantidade: quantidadeConsiderada,
         valorUnitario: valorUnitarioEfetivo,
-        percentualIss: percentualIss,
+        percentualIss: percentualIssDecimal,
         quantidadeFilme: quantidadeFilme,
         valorUnitarioFilme: valorUnitarioFilme,
         nfRaw: form.nf_emite ? (form.nf_numero.trim() || "SIM") : "NAO",
@@ -1349,8 +1499,7 @@ const LancamentoProducao = () => {
     const handleSave = () => {
         const status = infracoesCount > 0 ? "Com alerta" : (isDataRetroativa ? "Aguardando validação" : "Pendente");
         const regraFinanceira = form.regra_financeira as any;
-        // Usa sempre o valor calculado automaticamente pela regra do banco
-        const valorUnitarioFinal = valorUnitario;
+        const valorUnitarioFinal = valorUnitarioEfetivo;
 
         let finalModalidade = form.modalidade_financeira || regraFinanceira?.modalidade_financeira;
 
@@ -1404,11 +1553,11 @@ const LancamentoProducao = () => {
                     ? quantidadeColaboradores
                     : quantidade,
             valor_unitario_snapshot: valorUnitarioFinal,
-            tipo_calculo_snapshot: regraValor?.tipoCalculo ?? "volume",
+            tipo_calculo_snapshot: regraFinanceiraAtiva?.tipoCalculo ?? "volume",
             forma_pagamento_id: form.forma_pagamento && form.forma_pagamento.includes('-') ? form.forma_pagamento : null,
             placa: form.placa_veiculo || null,
             status: status === "Com alerta" ? "com_alerta" : status === "Aguardando validação" ? "aguardando_validacao" : "pendente",
-            percentual_iss: Number(percentualIss) / 100,
+            percentual_iss: percentualIssDecimal,
             valor_descarga: valorDescarga,
             custo_com_iss: custoIss,
             valor_unitario_filme: valorUnitarioFilme,
@@ -1636,7 +1785,14 @@ const LancamentoProducao = () => {
                                                             <Plus className="w-3 h-3" /> Novo
                                                         </button>
                                                     </div>
-                                                    <Select value={form.produto} onValueChange={(v) => setForm(f => ({ ...f, produto: v }))}>
+                                                    <Select value={form.produto} onValueChange={(v) => {
+                                                        const produto = (produtosDb as any[]).find((item: any) => item.id === v);
+                                                        setForm(f => ({
+                                                            ...f,
+                                                            produto: v,
+                                                            fornecedor: produto?.fornecedor_id ? String(produto.fornecedor_id) : f.fornecedor,
+                                                        }));
+                                                    }}>
                                                         <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Opcional" /></SelectTrigger>
                                                         <SelectContent>
                                                             {produtoOptions.length === 0 ? (
@@ -1720,7 +1876,7 @@ const LancamentoProducao = () => {
                                                 <div className="space-y-1.5">
                                                     <Label className="text-sm font-semibold">Valor Unit. <span className="text-destructive">*</span>{hasRegraFinanceira && !isCustosMensaisCLT && <span className="ml-1 text-[10px] text-success-strong bg-success-soft px-1.5 py-0.5 rounded-full">Auto</span>}</Label>
                                                     <div className="relative">
-                                                        <Input type="text" value={isCustosMensaisCLT ? (form.valor_unitario || "") : (hasRegraFinanceira ? valorUnitario : "")} onChange={e => setForm(f => ({ ...f, valor_unitario: e.target.value }))} readOnly={hasRegraFinanceira && !isCustosMensaisCLT} placeholder="0,00" className={cn("h-11 rounded-xl pr-14", (hasRegraFinanceira && !isCustosMensaisCLT) ? "bg-muted/40 text-muted-foreground cursor-not-allowed border-dashed" : "bg-background")} /><span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium">R$</span>
+                                                        <Input type="text" value={isCustosMensaisCLT ? (form.valor_unitario || "") : (form.valor_unitario || "")} onChange={e => setForm(f => ({ ...f, valor_unitario: e.target.value }))} readOnly={hasRegraFinanceira && !isCustosMensaisCLT} placeholder="0,00" className={cn("h-11 rounded-xl pr-14", (hasRegraFinanceira && !isCustosMensaisCLT) ? "bg-muted/40 text-muted-foreground cursor-not-allowed border-dashed" : "bg-background")} /><span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium">R$</span>
                                                     </div>
                                                 </div>
                                                 <div className="space-y-1.5">
@@ -1728,6 +1884,22 @@ const LancamentoProducao = () => {
                                                     <div className={cn("h-11 rounded-xl flex items-center px-3 font-bold text-base border", totalFinal > 0 ? "bg-success-soft border-success-strong/30 text-success-strong" : "bg-muted/50 border-border text-muted-foreground")}>{formatCurrency(totalFinal)}</div>
                                                 </div>
                                             </div>
+                                            {!isCustosMensaisCLT && (hasRegraFinanceira || percentualIss > 0) && (
+                                                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                                    <div className="rounded-xl border border-border/60 bg-muted/30 px-3 py-2 text-xs">
+                                                        <div className="text-muted-foreground uppercase tracking-wide font-semibold">Preço encontrado</div>
+                                                        <div className="mt-1 font-bold text-foreground">
+                                                            {hasRegraFinanceira ? formatCurrency(valorUnitarioEfetivo) : "Nenhuma regra encontrada"}
+                                                        </div>
+                                                    </div>
+                                                    <div className="rounded-xl border border-border/60 bg-muted/30 px-3 py-2 text-xs">
+                                                        <div className="text-muted-foreground uppercase tracking-wide font-semibold">ISS vigente</div>
+                                                        <div className="mt-1 font-bold text-foreground">
+                                                            {percentualIss > 0 ? `${percentualIss.toFixed(1)}%` : "Sem ISS aplicável"}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
                                             {vencimentoObrigatorio && (
                                                 <div className="space-y-1.5">
                                                     <Label className="text-sm font-semibold">Data de Vencimento <span className="text-destructive">*</span></Label>

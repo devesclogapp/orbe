@@ -115,24 +115,34 @@ const getLinhaOriginalValue = (item: Record<string, unknown>, key: string) => {
 export function calcularValoresOperacao({
   quantidade,
   valorUnitario,
+  percentualIss = 0,
+  quantidadeFilme = 0,
+  valorUnitarioFilme = 0,
+  nfRaw,
 }: {
   quantidade: number;
   valorUnitario: number;
+  percentualIss?: number;
+  quantidadeFilme?: number;
+  valorUnitarioFilme?: number;
+  nfRaw?: string | null;
 }) {
-  // Regra Simplificada conforme prompt:
-  // valor_descarga = quantidade_volume * valor_unitario
-  // custo_com_iss = 0
-  // total_e_filme = 0
-  // total_final = valor_descarga
+  const valorDescargaCalculado = Math.max(quantidade, 0) * Math.max(valorUnitario, 0);
+  const nfInformada = String(nfRaw ?? "")
+    .trim()
+    .toUpperCase();
+  const aplicaIss = nfInformada !== "" && nfInformada !== "NAO" && nfInformada !== "NÃO";
+  const percentualCalculado = aplicaIss ? Math.max(percentualIss, 0) : 0;
+  const custoIssCalculado = valorDescargaCalculado * percentualCalculado;
+  const totalFilmeCalculado = Math.max(quantidadeFilme, 0) * Math.max(valorUnitarioFilme, 0);
+  const totalFinalCalculado = valorDescargaCalculado + custoIssCalculado + totalFilmeCalculado;
 
-  const valorDescargaCalculado = Math.max(quantidade, 0) * valorUnitario;
-  
   return {
-    percentualCalculado: 0,
+    percentualCalculado,
     valorDescargaCalculado: valorDescargaCalculado,
-    custoIssCalculado: 0,
-    totalFilmeCalculado: 0,
-    totalFinalCalculado: valorDescargaCalculado,
+    custoIssCalculado,
+    totalFilmeCalculado,
+    totalFinalCalculado,
   };
 }
 
@@ -178,4 +188,3 @@ export function processarOperacao(operacao: any, empresas: any[] = []) {
     formaPagamento: formaPagamentoValue,
   };
 }
-
