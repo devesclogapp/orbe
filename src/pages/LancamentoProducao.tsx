@@ -63,7 +63,9 @@ import { useTenant } from "@/contexts/TenantContext";
 import { cn } from "@/lib/utils";
 import {
     ColaboradorService,
+    ConfiguracaoOperacionalService,
     CustoExtraOperacionalService,
+    type EncarregadoColaboradorFiltroConfig,
     ServicosExtrasOperacionaisService,
     EmpresaService,
     RegrasFinanceirasService,
@@ -521,7 +523,94 @@ const PRESET_ROTAS: Record<string, string> = {
     preset_diaristas: "/producao/diaristas",
 };
 
-const PRESETS_OPERACAO_VOLUME = ["preset_caixa", "preset_boleto", "preset_dismelo"] as const;
+const resolveFilterConfigKey = (presetId: string) =>
+    ["preset_caixa", "preset_boleto", "preset_dismelo"].includes(presetId)
+        ? "grupo_volume"
+        : presetId;
+
+const DEFAULT_FILTROS_COLABORADORES_ENCARREGADO: Record<string, EncarregadoColaboradorFiltroConfig> = {
+    grupo_volume: {
+        ativo: true,
+        sem_equipe: false,
+        campo_filtro: "tipo_contrato",
+        valores_filtro: ["Operação"],
+        filtrar_por_empresa: true,
+        somente_ativos: true,
+        somente_cadastro_completo: true,
+        excluir_cadastro_provisorio: true,
+    },
+    preset_diaristas: {
+        ativo: true,
+        sem_equipe: false,
+        campo_filtro: "tipo_colaborador",
+        valores_filtro: ["DIARISTA"],
+        filtrar_por_empresa: true,
+        somente_ativos: true,
+        exigir_permitir_lancamento_operacional: true,
+    },
+    preset_custos_mensais: {
+        ativo: true,
+        sem_equipe: false,
+        filtrar_por_empresa: true,
+        somente_ativos: true,
+    },
+    preset_transbordo: {
+        ativo: true,
+        sem_equipe: true,
+        filtrar_por_empresa: true,
+        somente_ativos: true,
+    },
+};
+
+const resolveFiltroColaboradoresPreset = (
+    presetId: string,
+    configurado?: EncarregadoColaboradorFiltroConfig | null,
+): EncarregadoColaboradorFiltroConfig => {
+    const fallback = DEFAULT_FILTROS_COLABORADORES_ENCARREGADO[presetId] ?? {
+        ativo: true,
+        sem_equipe: false,
+        filtrar_por_empresa: true,
+        somente_ativos: true,
+    };
+
+    const merged = {
+        ...fallback,
+        ...(configurado ?? {}),
+        valores_filtro: configurado?.valores_filtro ?? fallback.valores_filtro ?? [],
+        tipos_colaborador_permitidos: configurado?.tipos_colaborador_permitidos ?? fallback.tipos_colaborador_permitidos ?? [],
+        regimes_trabalho_permitidos: configurado?.regimes_trabalho_permitidos ?? fallback.regimes_trabalho_permitidos ?? [],
+        modelos_calculo_permitidos: configurado?.modelos_calculo_permitidos ?? fallback.modelos_calculo_permitidos ?? [],
+        tipos_contrato_permitidos: configurado?.tipos_contrato_permitidos ?? fallback.tipos_contrato_permitidos ?? [],
+    };
+
+    if (merged.campo_filtro === "tipo_colaborador") {
+        merged.tipos_colaborador_permitidos = merged.valores_filtro ?? [];
+        merged.tipos_contrato_permitidos = [];
+    }
+
+    if (merged.campo_filtro === "tipo_contrato") {
+        merged.tipos_contrato_permitidos = merged.valores_filtro ?? [];
+        merged.tipos_colaborador_permitidos = [];
+    }
+
+    if (merged.ativo === false) {
+        return {
+            ativo: false,
+            sem_equipe: false,
+            filtrar_por_empresa: true,
+            somente_ativos: true,
+            somente_cadastro_completo: false,
+            excluir_cadastro_provisorio: false,
+            tipos_colaborador_permitidos: [],
+            regimes_trabalho_permitidos: [],
+            modelos_calculo_permitidos: [],
+            tipos_contrato_permitidos: [],
+            exigir_permitir_lancamento_operacional: false,
+        };
+    }
+
+    return merged;
+};
 
 const LancamentoProducao = () => {
     const { user } = useAuth();
@@ -637,18 +726,28 @@ const LancamentoProducao = () => {
         }
     }, [unidadesDb, form.unidade_id]);
 
-    const isOperacaoVolumePreset = PRESETS_OPERACAO_VOLUME.includes(form.preset_id as (typeof PRESETS_OPERACAO_VOLUME)[number]);
+    const { data: configuracaoOperacional = null } = useQuery({
+        queryKey: ["config_operacional", form.empresa_id],
+        queryFn: () => ConfiguracaoOperacionalService.getByEmpresa(form.empresa_id),
+        enabled: !!form.empresa_id,
+    });
+
+    const filtroColaboradoresPreset = useMemo(() => {
+        const configKey = resolveFilterConfigKey(form.preset_id);
+        const mapa = configuracaoOperacional?.filtros_colaboradores_encarregado as Record<string, EncarregadoColaboradorFiltroConfig> | undefined;
+        return resolveFiltroColaboradoresPreset(configKey, mapa?.[configKey]);
+    }, [configuracaoOperacional, form.preset_id]);
 
     const { data: colaboradoresRaw = [] } = useQuery({
-        queryKey: ["colaboradores_producao", form.empresa_id, form.preset_id],
+        queryKey: ["colaboradores_producao", form.empresa_id, form.preset_id, JSON.stringify(filtroColaboradoresPreset)],
         queryFn: () => {
             if (!form.empresa_id) return Promise.resolve([]);
-            if (isOperacaoVolumePreset) {
-                return ColaboradorService.getEligibleForOperacaoVolume(form.empresa_id);
+            if (filtroColaboradoresPreset.sem_equipe) {
+                return Promise.resolve([]);
             }
-            return ColaboradorService.getWithEmpresa(form.empresa_id);
+            return ColaboradorService.getByEmpresaWithOperationalFilters(form.empresa_id, filtroColaboradoresPreset);
         },
-        enabled: !!form.empresa_id,
+        enabled: !!form.empresa_id && Boolean(form.preset_id),
     });
 
     const { data: tiposServicoDb = [], isLoading: isLoadingTipos } = useQuery({
@@ -721,26 +820,9 @@ const LancamentoProducao = () => {
         () =>
             (colaboradoresRaw as any[]).filter((colaborador: any) => {
                 if (colaborador.status === "inativo" || colaborador.deleted_at) return false;
-
-                if (!isOperacaoVolumePreset) return true;
-
-                const tipoContrato = normalizeTipoContrato(colaborador.tipo_contrato);
-                const modeloCalculo = normalizeTipoContrato(colaborador.modelo_calculo);
-                const statusCadastro = String(colaborador.status_cadastro ?? "").toLowerCase();
-
-                const elegivelPorContrato =
-                    tipoContrato === "operacao" ||
-                    tipoContrato === "por operacao" ||
-                    modeloCalculo === "producao" ||
-                    modeloCalculo === "por producao";
-
-                if (!elegivelPorContrato) return false;
-                if (colaborador.cadastro_provisorio) return false;
-                if (statusCadastro && statusCadastro !== "completo") return false;
-
                 return true;
             }),
-        [colaboradoresRaw, isOperacaoVolumePreset],
+        [colaboradoresRaw],
     );
 
     const tipoServicoOptions = useMemo(

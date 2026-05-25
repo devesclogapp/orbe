@@ -1,4 +1,4 @@
-import { AppShell } from "@/components/layout/AppShell";
+﻿import { AppShell } from "@/components/layout/AppShell";
 import { usePreferences } from "@/contexts/PreferencesContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
@@ -39,14 +39,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ConfigTipoOperacaoService,
+  ColaboradorService,
   ConfigProdutoService,
   ConfigTipoDiaService,
   ConfiguracaoOperacionalService,
+  EmpresaService,
+  type EncarregadoColaboradorFiltroConfig,
   getConfigTipoOperacaoErrorMessage,
   ImportacaoModelosService,
   StorageService
@@ -64,6 +67,152 @@ const IMPORTACAO_MODULOS = [
   { value: "regras_operacionais", label: "Regras Operacionais" },
   { value: "pontos_recebidos", label: "Pontos Recebidos" },
 ];
+
+const COLABORADOR_FILTER_CATALOG = {
+  tipo_contrato: ["Hora", "Operação", "Mensal"],
+  tipo_colaborador: ["CLT", "DIARISTA", "INTERMITENTE", "PRODUÇÃO", "TERCEIRIZADO"],
+} as const;
+
+const ENCARREGADO_FILTER_TARGETS = [
+  {
+    id: "grupo_volume",
+    title: "Operações por volume",
+    description: "Aplica às 3 primeiras telas: Recebimento Imediato, Pagamento a Prazo e Faturamento Mensal.",
+    presets: ["preset_caixa", "preset_boleto", "preset_dismelo"],
+  },
+  {
+    id: "preset_custos_mensais",
+    title: "Custos/Despesas",
+    description: "Define o filtro de colaboradores deste fluxo.",
+    presets: ["preset_custos_mensais"],
+  },
+  {
+    id: "preset_transbordo",
+    title: "Serviços Extras",
+    description: "Define o filtro de colaboradores deste fluxo quando houver equipe.",
+    presets: ["preset_transbordo"],
+  },
+  {
+    id: "preset_diaristas",
+    title: "Diaristas",
+    description: "Fluxo fixo de diaristas.",
+    presets: ["preset_diaristas"],
+    fixed: true,
+  },
+] as const;
+
+const DEFAULT_ENCARREGADO_PRESET_FILTERS: Record<string, EncarregadoColaboradorFiltroConfig> = {
+  grupo_volume: {
+    ativo: true,
+    sem_equipe: false,
+    campo_filtro: "tipo_contrato",
+    valores_filtro: ["Operação"],
+    filtrar_por_empresa: true,
+    somente_ativos: true,
+    somente_cadastro_completo: true,
+    excluir_cadastro_provisorio: true,
+  },
+  preset_diaristas: {
+    ativo: true,
+    sem_equipe: false,
+    campo_filtro: "tipo_colaborador",
+    valores_filtro: ["DIARISTA"],
+    filtrar_por_empresa: true,
+    somente_ativos: true,
+    exigir_permitir_lancamento_operacional: true,
+  },
+  preset_custos_mensais: {
+    ativo: true,
+    sem_equipe: false,
+    filtrar_por_empresa: true,
+    somente_ativos: true,
+  },
+  preset_transbordo: {
+    ativo: true,
+    sem_equipe: true,
+    filtrar_por_empresa: true,
+    somente_ativos: true,
+  },
+};
+
+const MOJIBAKE_REPLACEMENTS: Array<[string, string]> = [
+  ["Ã§", "ç"],
+  ["Ã£", "ã"],
+  ["Ãµ", "õ"],
+  ["Ã¡", "á"],
+  ["Ãà", "à"],
+  ["Ã¢", "â"],
+  ["Ãª", "ê"],
+  ["Ã©", "é"],
+  ["Ã­", "í"],
+  ["Ã³", "ó"],
+  ["Ã´", "ô"],
+  ["Ãº", "ú"],
+  ["Ã¼", "ü"],
+  ["Ã‡", "Ç"],
+  ["Ã", "à"],
+  ["Â", ""],
+  ["â‚¬", "€"],
+];
+
+const fixMojibakeText = (value: unknown) => {
+  let text = String(value ?? "").trim();
+  for (const [bad, good] of MOJIBAKE_REPLACEMENTS) {
+    text = text.split(bad).join(good);
+  }
+  return text;
+};
+
+const normalizeFilterList = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return Array.from(new Set(value.map((item) => fixMojibakeText(item)).filter(Boolean)));
+  }
+
+  if (typeof value === "string") {
+    return Array.from(new Set(value.split(",").map((item) => fixMojibakeText(item)).filter(Boolean)));
+  }
+
+  return [];
+};
+
+const normalizePresetFilterConfig = (
+  raw?: EncarregadoColaboradorFiltroConfig | null,
+  presetId?: string,
+): EncarregadoColaboradorFiltroConfig => {
+  const fallback = presetId ? DEFAULT_ENCARREGADO_PRESET_FILTERS[presetId] : undefined;
+
+  return {
+    ativo: raw?.ativo ?? fallback?.ativo ?? true,
+    sem_equipe: raw?.sem_equipe ?? fallback?.sem_equipe ?? false,
+    campo_filtro: raw?.campo_filtro ?? fallback?.campo_filtro ?? "tipo_contrato",
+    valores_filtro: normalizeFilterList(raw?.valores_filtro ?? fallback?.valores_filtro),
+    filtrar_por_empresa: raw?.filtrar_por_empresa ?? fallback?.filtrar_por_empresa ?? true,
+    somente_ativos: raw?.somente_ativos ?? fallback?.somente_ativos ?? true,
+    somente_cadastro_completo: raw?.somente_cadastro_completo ?? fallback?.somente_cadastro_completo ?? false,
+    excluir_cadastro_provisorio: raw?.excluir_cadastro_provisorio ?? fallback?.excluir_cadastro_provisorio ?? false,
+    tipos_colaborador_permitidos: normalizeFilterList(raw?.tipos_colaborador_permitidos ?? fallback?.tipos_colaborador_permitidos),
+    regimes_trabalho_permitidos: normalizeFilterList(raw?.regimes_trabalho_permitidos ?? fallback?.regimes_trabalho_permitidos),
+    modelos_calculo_permitidos: normalizeFilterList(raw?.modelos_calculo_permitidos ?? fallback?.modelos_calculo_permitidos),
+    tipos_contrato_permitidos: normalizeFilterList(raw?.tipos_contrato_permitidos ?? fallback?.tipos_contrato_permitidos),
+    exigir_permitir_lancamento_operacional: raw?.exigir_permitir_lancamento_operacional ?? fallback?.exigir_permitir_lancamento_operacional ?? false,
+  };
+};
+
+const buildPresetFilterMap = (raw: unknown): Record<string, EncarregadoColaboradorFiltroConfig> => {
+  const source = raw && typeof raw === "object" ? raw as Record<string, EncarregadoColaboradorFiltroConfig> : {};
+
+  return ENCARREGADO_FILTER_TARGETS.reduce((acc, preset) => {
+    acc[preset.id] = normalizePresetFilterConfig(source[preset.id], preset.id);
+    return acc;
+  }, {} as Record<string, EncarregadoColaboradorFiltroConfig>);
+};
+
+const formatFilterList = (value?: string[]) => (
+  value && value.length > 0 ? value.map((item) => fixMojibakeText(item)).join(", ") : "Livre"
+);
+
+const resolveFilterConfigKey = (presetId: string) =>
+  ENCARREGADO_FILTER_TARGETS.find((target) => target.presets.includes(presetId as never))?.id ?? presetId;
 
 function normalizeOperationTypeValue(value: unknown) {
   return String(value ?? "")
@@ -108,8 +257,32 @@ const Configuracoes = () => {
 
   const [isEditingParams, setIsEditingParams] = useState(false);
   const [paramsForm, setParamsForm] = useState<any>({});
+  const [selectedFilterOptionByKey, setSelectedFilterOptionByKey] = useState<Record<string, string>>({});
 
-  const empresaId = user?.user_metadata?.empresa_id;
+  const { data: perfil } = useQuery({
+    queryKey: ["profile_configuracoes", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      const { data } = await supabase
+        .from("profiles")
+        .select("empresa_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!user?.id,
+  });
+
+  const { data: empresas = [] } = useQuery({
+    queryKey: ["empresas_configuracoes"],
+    queryFn: () => EmpresaService.getAll(),
+    enabled: !!user?.id,
+  });
+
+  const empresaId = useMemo(() => {
+    const empresasArr = empresas as any[];
+    return perfil?.empresa_id || user?.user_metadata?.empresa_id || empresasArr[0]?.id || "";
+  }, [empresas, perfil?.empresa_id, user?.user_metadata?.empresa_id]);
 
   const { data: opSettings, isLoading: loadingSettings } = useQuery({
     queryKey: ['config_operacional', empresaId],
@@ -118,13 +291,18 @@ const Configuracoes = () => {
   });
 
   useEffect(() => {
-    if (opSettings) {
-      setParamsForm(opSettings);
-    }
+    setParamsForm({
+      ...(opSettings ?? {}),
+      filtros_colaboradores_encarregado: buildPresetFilterMap(opSettings?.filtros_colaboradores_encarregado),
+    });
   }, [opSettings]);
 
   const saveParamsMutation = useMutation({
-    mutationFn: (payload: any) => ConfiguracaoOperacionalService.upsert({ ...payload, empresa_id: empresaId }),
+    mutationFn: (payload: any) => ConfiguracaoOperacionalService.upsert({
+      ...payload,
+      empresa_id: empresaId,
+      filtros_colaboradores_encarregado: buildPresetFilterMap(payload?.filtros_colaboradores_encarregado),
+    }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['config_operacional'] });
       setIsEditingParams(false);
@@ -132,6 +310,46 @@ const Configuracoes = () => {
     },
     onError: (err: any) => toast.error("Erro ao salvar parâmetros", { description: err.message })
   });
+
+  const presetFilters = buildPresetFilterMap(paramsForm?.filtros_colaboradores_encarregado);
+
+  const getAvailableOptionsForField = (field?: "tipo_colaborador" | "tipo_contrato") => {
+    if (field === "tipo_colaborador") return [...COLABORADOR_FILTER_CATALOG.tipo_colaborador].map(fixMojibakeText);
+    return [...COLABORADOR_FILTER_CATALOG.tipo_contrato].map(fixMojibakeText);
+  };
+
+  const updatePresetFilter = (presetId: string, patch: Partial<EncarregadoColaboradorFiltroConfig>) => {
+    setParamsForm((prev: any) => ({
+      ...prev,
+      filtros_colaboradores_encarregado: {
+        ...buildPresetFilterMap(prev?.filtros_colaboradores_encarregado),
+        [presetId]: {
+          ...normalizePresetFilterConfig(buildPresetFilterMap(prev?.filtros_colaboradores_encarregado)[presetId], presetId),
+          ...patch,
+        },
+      },
+    }));
+
+    if (patch.campo_filtro) {
+      setSelectedFilterOptionByKey((prev) => ({ ...prev, [presetId]: "" }));
+    }
+  };
+
+  const addFilterValueToPreset = (presetId: string) => {
+    const selectedValue = selectedFilterOptionByKey[presetId];
+    if (!selectedValue) return;
+
+    const currentValues = presetFilters[presetId]?.valores_filtro ?? [];
+    if (currentValues.includes(selectedValue)) return;
+
+    updatePresetFilter(presetId, { valores_filtro: [...currentValues, selectedValue] });
+    setSelectedFilterOptionByKey((prev) => ({ ...prev, [presetId]: "" }));
+  };
+
+  const removeFilterValueFromPreset = (presetId: string, value: string) => {
+    const currentValues = presetFilters[presetId]?.valores_filtro ?? [];
+    updatePresetFilter(presetId, { valores_filtro: currentValues.filter((item) => item !== value) });
+  };
 
   const handleUpdateName = async () => {
     if (!newName.trim()) return;
@@ -353,14 +571,14 @@ const Configuracoes = () => {
                     value={paramsForm.moeda_padrao || 'BRL (R$)'}
                     editing={isEditingParams}
                     onChange={v => setParamsForm({ ...paramsForm, moeda_padrao: v })}
-                    options={['BRL (R$)', 'USD ($)', 'EUR (€)']}
+                    options={["BRL (R$)", "USD ($)", "EUR (€)"]}
                   />
                   <EditableParam
                     label="Fuso Horário"
-                    value={paramsForm.fuso_horario || 'GMT-3 (Brasília)'}
+                    value={fixMojibakeText(paramsForm.fuso_horario || "GMT-3 (Brasília)")}
                     editing={isEditingParams}
                     onChange={v => setParamsForm({ ...paramsForm, fuso_horario: v })}
-                    options={['GMT-3 (Brasília)', 'GMT-4 (Manaus)', 'GMT-0 (Londres)']}
+                    options={["GMT-3 (Brasília)", "GMT-4 (Manaus)", "GMT-0 (Londres)"]}
                   />
                   <EditableParam
                     label="Limite de Escopo (Dias)"
@@ -388,7 +606,7 @@ const Configuracoes = () => {
                     value={paramsForm.arredondamento_financeiro || 'Duas casas'}
                     editing={isEditingParams}
                     onChange={v => setParamsForm({ ...paramsForm, arredondamento_financeiro: v })}
-                    options={['Duas casas', 'Inteiro (Cêntimos)', 'Teto']}
+                    options={["Duas casas", "Inteiro (Cêntimos)", "Teto"]}
                   />
                   <div className="flex items-center justify-between py-2">
                     <span className="text-xs text-muted-foreground">Notificação de Inconsistência</span>
@@ -404,6 +622,119 @@ const Configuracoes = () => {
                 </div>
               </section>
             </div>
+
+            <section className="esc-card p-6 mt-5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-1">
+                  <h3 className="font-display font-semibold text-foreground">Filtros de colaboradores por tela do encarregado</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Cada fluxo decide de forma independente quais colaboradores podem ser carregados. Campos vazios significam sem restrição para aquele critério.
+                  </p>
+                  {!empresaId && (
+                    <p className="text-sm text-amber-600">
+                      Nenhuma empresa válida foi encontrada para salvar esta configuração.
+                    </p>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => saveParamsMutation.mutate(paramsForm)}
+                  disabled={saveParamsMutation.isPending || !empresaId}
+                >
+                  {saveParamsMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Check className="h-4 w-4 mr-2" />}
+                  Salvar filtros
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-5">
+                {ENCARREGADO_FILTER_TARGETS.map((preset) => {
+                  const filter = presetFilters[preset.id];
+                  const availableOptions = getAvailableOptionsForField(filter.campo_filtro);
+
+                  return (
+                    <section key={preset.id} className="rounded-2xl border border-border/60 bg-background p-5 space-y-4">
+                      <div>
+                        <h4 className="font-semibold text-foreground">{fixMojibakeText(preset.title)}</h4>
+                        <p className="text-xs text-muted-foreground mt-1">{fixMojibakeText(preset.description)}</p>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-3">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs text-muted-foreground">Filtrar colaboradores por</Label>
+                          {preset.fixed ? (
+                            <div className="min-h-10 rounded-xl border border-border/50 px-3 py-2 text-sm text-foreground">
+                              Tipo
+                            </div>
+                          ) : (
+                            <Select
+                              value={filter.campo_filtro || "tipo_contrato"}
+                              onValueChange={(value) => updatePresetFilter(preset.id, { campo_filtro: value as "tipo_colaborador" | "tipo_contrato" })}
+                            >
+                              <SelectTrigger className="h-10">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="tipo_contrato">Contrato</SelectItem>
+                                <SelectItem value="tipo_colaborador">Tipo</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          )}
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label className="text-xs text-muted-foreground">Valores permitidos</Label>
+                          {!preset.fixed ? (
+                            <div className="space-y-2">
+                              <div className="flex gap-2">
+                                <Select
+                                  value={selectedFilterOptionByKey[preset.id] || ""}
+                                  onValueChange={(value) => setSelectedFilterOptionByKey((prev) => ({ ...prev, [preset.id]: value }))}
+                                >
+                                  <SelectTrigger className="h-10">
+                                    <SelectValue placeholder="Selecione uma opção disponível" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {availableOptions.map((option) => (
+                                      <SelectItem key={option} value={option}>
+                                        {option}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <Button type="button" variant="outline" onClick={() => addFilterValueToPreset(preset.id)}>
+                                  Adicionar
+                                </Button>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {(filter.valores_filtro ?? []).length === 0 ? (
+                                  <span className="text-xs text-muted-foreground">Nenhum valor selecionado.</span>
+                                ) : (
+                                  (filter.valores_filtro ?? []).map((value) => (
+                                    <button
+                                      key={value}
+                                      type="button"
+                                      className="inline-flex items-center gap-1 rounded-full border border-border/60 px-3 py-1 text-sm"
+                                      onClick={() => removeFilterValueFromPreset(preset.id, value)}
+                                    >
+                                      {fixMojibakeText(value)}
+                                      <X className="h-3.5 w-3.5" />
+                                    </button>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="min-h-10 rounded-xl border border-border/50 px-3 py-2 text-sm text-foreground">
+                              {preset.fixed ? "DIARISTA" : formatFilterList(filter.valores_filtro)}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </section>
+                  );
+                })}
+              </div>
+            </section>
           </section>
 
 

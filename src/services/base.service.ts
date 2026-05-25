@@ -640,6 +640,54 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
     }));
   }
 
+  async getByEmpresaWithOperationalFilters(
+    empresaId: string,
+    filterConfig?: EncarregadoColaboradorFiltroConfig | null
+  ) {
+    const shouldFilterByEmpresa = filterConfig?.filtrar_por_empresa !== false;
+    const shouldRequireAtivos = filterConfig?.somente_ativos !== false;
+
+    let query = supabase
+      .from('colaboradores')
+      .select('*')
+      .order('nome', { ascending: true });
+
+    if (shouldFilterByEmpresa) {
+      query = query.eq('empresa_id', empresaId);
+    }
+
+    if (shouldRequireAtivos) {
+      query = query.eq('status', 'ativo');
+    }
+
+    const { data: colaboradores, error } = await query;
+    if (error) throw error;
+
+    const { data: empresas } = await supabase.from('empresas').select('id, nome, cidade, estado');
+    const empresaMap = new Map((empresas || []).map((empresa) => [empresa.id, empresa]));
+    const tiposColaboradorPermitidos = new Set((filterConfig?.tipos_colaborador_permitidos ?? []).map(normalizeContratoToken));
+    const regimesPermitidos = new Set((filterConfig?.regimes_trabalho_permitidos ?? []).map(normalizeContratoToken));
+    const modelosPermitidos = new Set((filterConfig?.modelos_calculo_permitidos ?? []).map(normalizeContratoToken));
+    const contratosPermitidos = new Set((filterConfig?.tipos_contrato_permitidos ?? []).map(normalizeContratoToken));
+
+    return (colaboradores || [])
+      .filter((colaborador: any) => {
+        if (colaborador.deleted_at) return false;
+        if (filterConfig?.somente_cadastro_completo && String(colaborador.status_cadastro ?? '').toLowerCase() !== 'completo') return false;
+        if (filterConfig?.excluir_cadastro_provisorio && Boolean(colaborador.cadastro_provisorio)) return false;
+        if (filterConfig?.exigir_permitir_lancamento_operacional && !colaborador.permitir_lancamento_operacional) return false;
+        if (tiposColaboradorPermitidos.size > 0 && !tiposColaboradorPermitidos.has(normalizeContratoToken(colaborador?.tipo_colaborador))) return false;
+        if (regimesPermitidos.size > 0 && !regimesPermitidos.has(normalizeContratoToken(colaborador?.regime_trabalho))) return false;
+        if (modelosPermitidos.size > 0 && !modelosPermitidos.has(normalizeContratoToken(colaborador?.modelo_calculo))) return false;
+        if (contratosPermitidos.size > 0 && !contratosPermitidos.has(normalizeContratoToken(colaborador?.tipo_contrato))) return false;
+        return true;
+      })
+      .map((colaborador: any) => ({
+        ...colaborador,
+        empresas: empresaMap.get(colaborador.empresa_id) || null
+      }));
+  }
+
   async getEligibleForOperacaoVolume(empresaId: string) {
     const { data: colaboradores, error } = await supabase
       .from('colaboradores')
@@ -1859,6 +1907,22 @@ class ConfigTipoDiaServiceClass extends BaseService<'config_tipos_dia'> {
 }
 export const ConfigTipoDiaService = new ConfigTipoDiaServiceClass();
 
+export interface EncarregadoColaboradorFiltroConfig {
+  ativo?: boolean;
+  sem_equipe?: boolean;
+  campo_filtro?: 'tipo_colaborador' | 'tipo_contrato';
+  valores_filtro?: string[];
+  filtrar_por_empresa?: boolean;
+  somente_ativos?: boolean;
+  somente_cadastro_completo?: boolean;
+  excluir_cadastro_provisorio?: boolean;
+  tipos_colaborador_permitidos?: string[];
+  regimes_trabalho_permitidos?: string[];
+  modelos_calculo_permitidos?: string[];
+  tipos_contrato_permitidos?: string[];
+  exigir_permitir_lancamento_operacional?: boolean;
+}
+
 class ConfiguracaoOperacionalServiceClass extends BaseService<'configuracoes_operacionais'> {
   constructor() { super('configuracoes_operacionais'); }
 
@@ -1873,9 +1937,39 @@ class ConfiguracaoOperacionalServiceClass extends BaseService<'configuracoes_ope
   }
 
   async upsert(payload: any) {
+    await requireAuthenticatedUserId();
+    const empresaId = cleanUuid(payload?.empresa_id);
+    if (!empresaId) {
+      throw new Error('Empresa inválida para salvar configuração operacional.');
+    }
+
+    const payloadClean = sanitizePayload({
+      ...payload,
+      empresa_id: empresaId,
+    }) as Record<string, any>;
+
+    const { data: existente, error: lookupError } = await supabase
+      .from('configuracoes_operacionais')
+      .select('id')
+      .eq('empresa_id', empresaId)
+      .maybeSingle();
+
+    if (lookupError) throw lookupError;
+
+    if (existente?.id) {
+      const { data, error } = await supabase
+        .from('configuracoes_operacionais')
+        .update(payloadClean)
+        .eq('id', existente.id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    }
+
     const { data, error } = await supabase
       .from('configuracoes_operacionais')
-      .upsert(payload)
+      .insert(payloadClean)
       .select()
       .single();
     if (error) throw error;
