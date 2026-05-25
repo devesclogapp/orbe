@@ -504,7 +504,7 @@ export const OperacoesTableBlock = ({
   const defaultCols = {
     data: true,
     operacao: true, transportadora: true, servico: true, qtd: true,
-    inicio: false, fim: false, valUnit: true, valDia: true, acoes: true,
+    inicio: false, fim: false, valUnit: true, valorDescarga: false, valorIss: true, valDia: true, acoes: true,
     placa: false, fornecedor: false, qtdCol: true,
     idPlanilha: false, empresaPlanilha: false, formaPagamento: false, observacao: false,
     modalidadeFinanceira: true, dataVencimento: true, statusPagamento: true,
@@ -1728,13 +1728,16 @@ export const OperacoesTableBlock = ({
                     {visibleCols.observacao && renderHeaderCell("observacao", "OBSERVAÇÃO", "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.inicio && renderHeaderCell("inicio", <span className="inline-flex items-center justify-center gap-1.5 w-full"><LogIn className="h-3.5 w-3.5 text-muted-foreground" />INÍCIO</span>, "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.fim && renderHeaderCell("fim", <span className="inline-flex items-center justify-center gap-1.5 w-full"><LogOut className="h-3.5 w-3.5 text-muted-foreground" />FIM</span>, "px-3 py-2.5 font-semibold text-center")}
+                    {visibleCols.valUnit && renderHeaderCell("valUnit", "VAL. UNIT.", "px-3 py-2.5 font-semibold text-center")}
+                    {visibleCols.qtd && renderHeaderCell("qtd", "VOLUME", "px-3 py-2.5 font-semibold text-center")}
+                    {visibleCols.valorDescarga && renderHeaderCell("valorDescarga", "VALOR DESCARGA", "px-3 py-2.5 font-semibold text-center")}
+                    {visibleCols.valorIss && renderHeaderCell("valorIss", "VALOR ISS", "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.valDia && renderHeaderCell("conferido_final", <span className="inline-flex items-center justify-center gap-1.5 w-full"><BadgeDollarSign className="h-3.5 w-3.5 text-muted-foreground" />TOTAL DIA</span>, "px-3 py-2.5 font-semibold text-center")}
 
                     {visibleCols.modalidadeFinanceira && <th className="px-3 py-2.5 font-semibold text-center">MODALIDADE</th>}
                     {visibleCols.dataVencimento && <th className="px-3 py-2.5 font-semibold text-center">VENCIMENTO</th>}
                     {visibleCols.statusPagamento && <th className="px-3 py-2.5 font-semibold text-center">STATUS PGTO</th>}
-                    <th className="px-3 py-2.5 font-semibold text-center"><span className="inline-flex items-center justify-center gap-1.5 w-full"><CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" />STATUS OP</span></th>
-                    {visibleCols.acciones && <th className="px-5 py-2.5 font-semibold text-center"><span className="inline-flex items-center justify-center gap-1.5 w-full"><Hourglass className="h-3.5 w-3.5 text-muted-foreground" />AÇÕES</span></th>}
+                    {visibleCols.acoes && <th className="px-5 py-2.5 font-semibold text-center"><span className="inline-flex items-center justify-center gap-1.5 w-full"><Hourglass className="h-3.5 w-3.5 text-muted-foreground" />AÇÕES</span></th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -1761,6 +1764,7 @@ export const OperacoesTableBlock = ({
 
                     const valUnit = valUnitFormatter(item.valor_unitario_snapshot ?? item.valor_unitario_label ?? item.valor_unitario ?? 0);
                     const valorDescarga = valUnitFormatter(item.valor_descarga || 0);
+                    const valorIss = valUnitFormatter(item.custo_com_iss || 0);
                     const valDia = valUnitFormatter(valorTotal);
 
                     const statusOriginal = String(getDisplayStatusOriginal(item));
@@ -1795,6 +1799,7 @@ export const OperacoesTableBlock = ({
                         {visibleCols.valUnit && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{valUnit}</td>}
                         {visibleCols.qtd && renderInlineCell(item, "quantidade", qtdText, "text", "px-3 text-center font-display font-medium whitespace-nowrap")}
                         {visibleCols.valorDescarga && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{valorDescarga}</td>}
+                        {visibleCols.valorIss && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{valorIss}</td>}
                         {visibleCols.valDia && <td className="px-3 text-center font-display font-semibold text-foreground whitespace-nowrap">{valDia}</td>}
                         {visibleCols.modalidadeFinanceira && (
                           <td className="px-3 text-center whitespace-nowrap">
@@ -1856,19 +1861,6 @@ export const OperacoesTableBlock = ({
                             ) : <span className="text-muted-foreground">-</span>}
                           </td>
                         )}
-                        <td className="px-3 text-center whitespace-nowrap">
-                          <Badge variant="outline" className={cn(
-                            "font-bold uppercase border-0 text-xs",
-                            item.status === 'aprovado' && 'bg-success-soft text-success-strong',
-                            item.status === 'em_validacao' && 'bg-info-soft text-info-strong',
-                            item.status === 'recusado' && 'bg-error-soft text-error-strong',
-                            item.status === 'pendente' && 'bg-warning-soft text-warning-strong',
-                            item.status === 'fechado' && 'bg-success-soft saturate-50 text-success-strong opacity-80',
-                            !['aprovado', 'em_validacao', 'recusado', 'pendente', 'fechado'].includes(item.status) && 'bg-muted text-muted-foreground'
-                          )}>
-                            {item.status || " "}
-                          </Badge>
-                        </td>
                         {visibleCols.acoes && (
                           <td className="px-5" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-center gap-1">
