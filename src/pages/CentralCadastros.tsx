@@ -686,7 +686,6 @@ const CentralCadastros = () => {
       return ColaboradorService.update(id, {
         ...payload,
         cpf: payload.cpf ? String(payload.cpf).replace(/\D/g, '') : null,
-        pis: payload.pis ? String(payload.pis).replace(/\D/g, '') : null,
         telefone: payload.telefone ? String(payload.telefone).replace(/\D/g, '') : null,
       });
     },
@@ -983,16 +982,32 @@ const CentralCadastros = () => {
     mutationFn: (payload: any) => {
       setColaboradorIsProcessing(true);
       return ColaboradorService.create({
-        ...payload,
+        nome: payload.nome,
         cpf: payload.cpf ? String(payload.cpf).replace(/\D/g, '') : null,
-        pis: payload.pis ? String(payload.pis).replace(/\D/g, '') : null,
         telefone: payload.telefone ? String(payload.telefone).replace(/\D/g, '') : null,
+        cargo: payload.cargo,
+        matricula: payload.matricula,
+        empresa_id: payload.empresa_id,
+        tipo_colaborador: payload.tipo_colaborador,
+        regime_trabalho: payload.regime_trabalho,
+        modelo_calculo: payload.modelo_calculo,
+        tipo_contrato: payload.tipo_contrato,
         valor_base: Number(payload.valor_base) || 0,
+        flag_faturamento: payload.flag_faturamento ?? false,
+        permitir_lancamento_operacional: payload.permitir_lancamento_operacional ?? false,
+        status: payload.status ?? "ativo",
+        nome_completo: payload.nome_completo ?? payload.nome,
+        banco_codigo: payload.banco_codigo ?? null,
+        agencia: payload.agencia ?? null,
+        agencia_digito: payload.agencia_digito ?? null,
+        conta: payload.conta ?? null,
+        conta_digito: payload.conta_digito ?? null,
+        tipo_conta: payload.tipo_conta ?? null,
+        chave_pix: payload.chave_pix ?? null,
+        banco_validado: payload.banco_validado ?? false,
         salario_base: payload.salario_base ? Number(payload.salario_base) : null,
         valor_hora: payload.valor_hora ? Number(payload.valor_hora) : null,
         valor_diaria: payload.valor_diaria ? Number(payload.valor_diaria) : null,
-        carga_referencia: payload.carga_referencia ? Number(payload.carga_referencia) : null,
-        estimativa_mensal: payload.estimativa_mensal ? Number(payload.estimativa_mensal) : null,
       });
     },
     onSuccess: async () => {
@@ -2375,36 +2390,33 @@ const CentralCadastros = () => {
                         </div>
                       </div>
                     </div>
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                      <div className="flex flex-wrap gap-2">
-                        {[
-                          { key: "apenas_pendentes" as const, label: "Apenas pendentes" },
-                          { key: "bloqueiam_aprovacao" as const, label: "Bloqueiam aprovação" },
-                          { key: "sem_banco" as const, label: "Sem banco" },
-                          { key: "sem_contrato" as const, label: "Sem contrato" },
-                          { key: "sem_pix" as const, label: "Sem PIX" },
-                          { key: "criticos" as const, label: "Críticos" },
-                        ].map((filter) => (
-                          <Button
-                            key={filter.key}
-                            size="sm"
-                            variant="outline"
-                            className={cn(
-                              "rounded-full transition-colors border",
-                              operacionalFilters.includes(filter.key)
-                                ? "bg-muted/50 text-foreground border-border"
-                                : "bg-transparent text-muted-foreground border-dashed border-border/60 hover:bg-muted/30"
-                            )}
-                            onClick={() => toggleOperacionalFilter(filter.key)}
-                          >
-                            {filter.label}
-                          </Button>
-                        ))}
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                      <div className="space-y-1.5 lg:min-w-[260px]">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          Filtro operacional
+                        </p>
+                        <Select
+                          value={operacionalFilters[0] ?? "todos"}
+                          onValueChange={(value) => setOperacionalFilters(value === "todos" ? [] : [value as OperacionalQuickFilter])}
+                        >
+                          <SelectTrigger className="w-full bg-background lg:w-[260px]">
+                            <SelectValue placeholder="Todos os filtros" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="todos">Todos os filtros</SelectItem>
+                            <SelectItem value="apenas_pendentes">Apenas pendentes</SelectItem>
+                            <SelectItem value="bloqueiam_aprovacao">Bloqueiam aprovação</SelectItem>
+                            <SelectItem value="sem_banco">Sem banco</SelectItem>
+                            <SelectItem value="sem_contrato">Sem contrato</SelectItem>
+                            <SelectItem value="sem_pix">Sem PIX</SelectItem>
+                            <SelectItem value="criticos">Críticos</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
-                      <div className="flex items-center gap-2 lg:min-w-[220px] lg:justify-end">
-                        <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      <div className="space-y-1.5 lg:min-w-[220px] lg:ml-auto">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground text-left lg:text-right">
                           Tipo de contrato
-                        </Label>
+                        </p>
                         <Select value={contractFilter} onValueChange={setContractFilter}>
                           <SelectTrigger className="w-full bg-background lg:w-[220px]">
                             <SelectValue placeholder="Todos" />

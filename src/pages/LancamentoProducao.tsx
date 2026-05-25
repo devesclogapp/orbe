@@ -521,6 +521,8 @@ const PRESET_ROTAS: Record<string, string> = {
     preset_diaristas: "/producao/diaristas",
 };
 
+const PRESETS_OPERACAO_VOLUME = ["preset_caixa", "preset_boleto", "preset_dismelo"] as const;
+
 const LancamentoProducao = () => {
     const { user } = useAuth();
     const { tenantId } = useTenant();
@@ -635,9 +637,17 @@ const LancamentoProducao = () => {
         }
     }, [unidadesDb, form.unidade_id]);
 
+    const isOperacaoVolumePreset = PRESETS_OPERACAO_VOLUME.includes(form.preset_id as (typeof PRESETS_OPERACAO_VOLUME)[number]);
+
     const { data: colaboradoresRaw = [] } = useQuery({
-        queryKey: ["colaboradores_producao", form.empresa_id],
-        queryFn: () => ColaboradorService.getWithEmpresa(form.empresa_id || undefined),
+        queryKey: ["colaboradores_producao", form.empresa_id, form.preset_id],
+        queryFn: () => {
+            if (!form.empresa_id) return Promise.resolve([]);
+            if (isOperacaoVolumePreset) {
+                return ColaboradorService.getEligibleForOperacaoVolume(form.empresa_id);
+            }
+            return ColaboradorService.getWithEmpresa(form.empresa_id);
+        },
         enabled: !!form.empresa_id,
     });
 
@@ -710,9 +720,27 @@ const LancamentoProducao = () => {
     const colaboradoresFiltrados = useMemo(
         () =>
             (colaboradoresRaw as any[]).filter((colaborador: any) => {
-                return colaborador.status !== "inativo" && !colaborador.deleted_at;
+                if (colaborador.status === "inativo" || colaborador.deleted_at) return false;
+
+                if (!isOperacaoVolumePreset) return true;
+
+                const tipoContrato = normalizeTipoContrato(colaborador.tipo_contrato);
+                const modeloCalculo = normalizeTipoContrato(colaborador.modelo_calculo);
+                const statusCadastro = String(colaborador.status_cadastro ?? "").toLowerCase();
+
+                const elegivelPorContrato =
+                    tipoContrato === "operacao" ||
+                    tipoContrato === "por operacao" ||
+                    modeloCalculo === "producao" ||
+                    modeloCalculo === "por producao";
+
+                if (!elegivelPorContrato) return false;
+                if (colaborador.cadastro_provisorio) return false;
+                if (statusCadastro && statusCadastro !== "completo") return false;
+
+                return true;
             }),
-        [colaboradoresRaw],
+        [colaboradoresRaw, isOperacaoVolumePreset],
     );
 
     const tipoServicoOptions = useMemo(
@@ -2191,5 +2219,3 @@ const LancamentoProducao = () => {
 };
 
 export default LancamentoProducao;
-
-

@@ -125,6 +125,15 @@ function inferModeloCalculo(tipoColaborador?: string | null): string {
 }
 
 // Função helper para obter tenant_id de forma segura
+function normalizeContratoToken(value?: string | null): string {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toLowerCase();
+}
+
 async function getCurrentTenantId(): Promise<string> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Usuário não autenticado');
@@ -478,6 +487,57 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
     return msg.includes(`Could not find the '${column}' column of 'colaboradores'`);
   }
 
+  private getMissingColaboradorColumn(error: any) {
+    const msg = String(error?.message ?? '');
+    const match = msg.match(/Could not find the '([^']+)' column of 'colaboradores'/);
+    return match?.[1] ?? null;
+  }
+
+  private async insertColaboradorWithFallback(payload: Record<string, any>) {
+    let insertPayload = { ...payload };
+
+    while (true) {
+      const { data, error } = await supabase
+        .from('colaboradores')
+        .insert(insertPayload)
+        .select()
+        .single();
+
+      if (!error) return data;
+
+      const missingColumn = this.getMissingColaboradorColumn(error);
+      if (missingColumn && missingColumn in insertPayload) {
+        delete insertPayload[missingColumn];
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  private async updateColaboradorWithFallback(id: string, payload: Record<string, any>) {
+    let updatePayload = { ...payload };
+
+    while (true) {
+      const { data, error } = await supabase
+        .from('colaboradores')
+        .update(updatePayload)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (!error) return data;
+
+      const missingColumn = this.getMissingColaboradorColumn(error);
+      if (missingColumn && missingColumn in updatePayload) {
+        delete updatePayload[missingColumn];
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
   async getAllForProducao() {
     const { data, error } = await supabase
       .from('colaboradores')
@@ -578,6 +638,38 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
       ...c,
       empresas: empresaMap.get(c.empresa_id) || null
     }));
+  }
+
+  async getEligibleForOperacaoVolume(empresaId: string) {
+    const { data: colaboradores, error } = await supabase
+      .from('colaboradores')
+      .select('*')
+      .eq('empresa_id', empresaId)
+      .eq('status', 'ativo')
+      .is('deleted_at', null)
+      .order('nome', { ascending: true });
+
+    if (error) throw error;
+
+    const { data: empresas } = await supabase.from('empresas').select('id, nome, cidade, estado');
+    const empresaMap = new Map((empresas || []).map((empresa) => [empresa.id, empresa]));
+
+    return (colaboradores || [])
+      .filter((colaborador: any) => {
+        const tipoContrato = normalizeContratoToken(colaborador?.tipo_contrato);
+        const modeloCalculo = normalizeContratoToken(colaborador?.modelo_calculo);
+
+        return (
+          tipoContrato === 'operacao' ||
+          tipoContrato === 'por_operacao' ||
+          modeloCalculo === 'producao' ||
+          modeloCalculo === 'por_producao'
+        );
+      })
+      .map((colaborador: any) => ({
+        ...colaborador,
+        empresas: empresaMap.get(colaborador.empresa_id) || null
+      }));
   }
 
   async update(id: string, payload: Record<string, any>) {
