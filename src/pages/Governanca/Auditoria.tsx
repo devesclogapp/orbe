@@ -47,7 +47,7 @@ const AuditoriaLogs = () => {
             return;
         }
 
-        const headers = ["ID", "Data", "Hora", "Usuario", "Ação", "Modulo", "Impacto"];
+        const headers = ["ID", "Data", "Hora", "Usuário", "Ação", "Módulo", "Impacto"];
         const rows = filteredLogs.map(l => [
             l.id,
             format(new Date(l.created_at), "dd/MM/yyyy"),

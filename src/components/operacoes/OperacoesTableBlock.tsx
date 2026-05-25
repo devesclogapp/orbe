@@ -7,6 +7,7 @@ import {
   Lock,
   Unlock,
   BadgeDollarSign,
+  Building2,
   CalendarDays,
   CheckCircle2,
   ChevronLeft,
@@ -103,7 +104,7 @@ const applyBusinessRulesToForm = (baseForm: EditableOperationForm, editingItem: 
 
   let nfRaw = String(next.nf_numero).toUpperCase().trim();
   if (nfRaw === "S" || nfRaw === "SIM") nfRaw = "SIM";
-  if (nfRaw === "N" || nfRaw === "NAO") nfRaw = "NÒO";
+  if (nfRaw === "N" || nfRaw === "NAO" || nfRaw === "NÃO") nfRaw = "NÃO";
   next.nf_numero = nfRaw;
 
   const valoresCalculados = calcularValoresOperacao({
@@ -191,7 +192,7 @@ type RuleApplicableColumn = "valUnit" | "qtd" | "qtdCol" | "valorDescarga" | "in
 const BULK_EDITABLE_FIELDS: Array<{ value: BulkEditableField; label: string }> = [
   { value: "forma_pagamento", label: "Forma de pagamento" },
   { value: "observacao", label: "Observação" },
-  { value: "nf_numero", label: "NF (SIM/NÒO ou número)" },
+  { value: "nf_numero", label: "NF (SIM/NÃO ou número)" },
   { value: "ctrc", label: "CTRC" },
   { value: "placa", label: "Placa" },
   { value: "entrada_ponto", label: "Início" },
@@ -214,17 +215,16 @@ const BULK_FIELD_BY_COLUMN: Partial<Record<string, BulkEditableField>> = {
 
 const MASS_EDITABLE_FIELDS: Array<{ value: BulkEditableField; label: string }> = [
   { value: "forma_pagamento", label: "Forma de pagamento" },
-  { value: "observacao", label: "Observacao" },
-  { value: "nf_numero", label: "NF (SIM/NAO ou numero)" },
+  { value: "observacao", label: "Observação" },
+  { value: "nf_numero", label: "NF (SIM/NÃO ou número)" },
   { value: "ctrc", label: "CTRC" },
   { value: "placa", label: "Placa" },
-  { value: "entrada_ponto", label: "Inicio" },
+  { value: "entrada_ponto", label: "Início" },
   { value: "saida_ponto", label: "Fim" },
   { value: "quantidade", label: "Quantidade" },
   { value: "quantidade_colaboradores", label: "Qtd. colaboradores" },
   { value: "modalidade_financeira", label: "Modalidade financeira" },
   { value: "data_vencimento", label: "Data de vencimento" },
-
   { value: "status_pagamento", label: "Status pgto" },
 ];
 
@@ -255,12 +255,12 @@ const RULE_COLUMN_CONFIG: Record<
   qtd: { field: "quantidade", label: "QTD", matches: ["QTD", "QUANTIDADE", "VOLUME"] },
   qtdCol: { field: "quantidade_colaboradores", label: "QTD. COL.", matches: ["QTD COL", "COLABORADORES", "AJUDANTES"] },
   valorDescarga: { field: "valor_descarga", label: "VALOR DESCARGA", matches: ["VALOR DESCARGA", "DESCARGA"] },
-  inicio: { field: "entrada_ponto", label: "INICIO", matches: ["INICIO", "ENTRADA"] },
-  fim: { field: "saida_ponto", label: "FIM", matches: ["FIM", "SAIDA"] },
+  inicio: { field: "entrada_ponto", label: "INÍCIO", matches: ["INICIO", "ENTRADA", "INÍCIO"] },
+  fim: { field: "saida_ponto", label: "FIM", matches: ["FIM", "SAIDA", "SAÍDA"] },
   nf: { field: "nf_numero", label: "NF", matches: ["NF", "NOTA FISCAL", "NUMERO NF"] },
   ctrc: { field: "ctrc", label: "CTRC", matches: ["CTRC"] },
   placa: { field: "placa", label: "PLACA", matches: ["PLACA"] },
-  observacao: { field: "observacao", label: "OBSERVACAO", matches: ["OBS", "OBSERVACAO"] },
+  observacao: { field: "observacao", label: "OBSERVAÇÃO", matches: ["OBS", "OBSERVACAO", "OBSERVAÇÃO"] },
   formaPagamento: { field: "forma_pagamento", label: "FORMA PAGAMENTO", matches: ["FORMA PAGAMENTO", "PAGAMENTO"] },
 };
 
@@ -378,25 +378,25 @@ const getDisplayFormaPagamento = (item: Record<string, unknown>) => {
     return getModalidadeLabel(modalidade);
   }
 
-  return "�";
+  return "";
 };
 
 const getDisplayObservacao = (item: Record<string, unknown>) =>
   getContextoImportacaoValue(item, "observacao") ??
-  getLinhaOriginalValue(item, "OBSERVACAO", "OBSERVA�!ÒO") ??
-  "�";
+  getLinhaOriginalValue(item, "OBSERVACAO", "OBSERVAÇÃO") ??
+  "";
 
 const getDisplayStatusOriginal = (item: Record<string, unknown>) =>
   getContextoImportacaoValue(item, "status_original_planilha") ??
   getLinhaOriginalValue(item, "STATUS") ??
-  "�";
+  "";
 
 const getDisplayEmpresa = (item: Record<string, unknown>, empresas: any[] = []) =>
   (empresas.find((empresaItem: any) => empresaItem.id === (item as { empresa_id?: string | null }).empresa_id)?.nome ?? null) ??
   ((item as { empresas?: { nome?: string | null } }).empresas?.nome ?? null) ??
   getContextoImportacaoValue(item, "empresa") ??
   getLinhaOriginalValue(item, "EMPRESA") ??
-  "�";
+  "";
 
 const toInputValue = (value: unknown) => {
   if (value === null || value === undefined) return "";
@@ -592,11 +592,11 @@ export const OperacoesTableBlock = ({
 
   const updateMutation = useMutation({
     mutationFn: async () => {
-      if (!editingItem || !editForm) throw new Error("Nenhuma opera??o selecionada para edi??o.");
+      if (!editingItem || !editForm) throw new Error("Nenhuma operação selecionada para edição.");
       return OperacaoProducaoService.update(editingItem.id, buildOperationUpdatePayload(editingItem, editForm));
     },
     onSuccess: (updated) => {
-      toast.success("Opera??o atualizada na tela operacional.");
+      toast.success("Operação atualizada na tela operacional.");
       setEditingItem(null);
       setEditForm(null);
       setSelectedOpDetails(null);
@@ -604,8 +604,8 @@ export const OperacoesTableBlock = ({
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
     },
     onError: (error: unknown) => {
-      const message = error instanceof Error ? error.message : "N?o foi poss?vel salvar a edi??o.";
-      toast.error("Falha ao atualizar opera??o.", { description: message });
+      const message = error instanceof Error ? error.message : "Não foi possível salvar a edição.";
+      toast.error("Falha ao atualizar operação.", { description: message });
     },
   });
 
@@ -626,7 +626,7 @@ export const OperacoesTableBlock = ({
         throw new Error(
           bulkOnlyEmpty
             ? "Nenhuma linha filtrada possui esse campo vazio para preencher."
-            : "Nenhuma linha filtrada dispon?vel para atualiza??o em massa.",
+            : "Nenhuma linha filtrada disponível para atualização em massa.",
         );
       }
 
@@ -656,7 +656,7 @@ export const OperacoesTableBlock = ({
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
     },
     onError: (error: unknown) => {
-      const message = error instanceof Error ? error.message : "N?o foi poss?vel concluir a edi??o em massa.";
+      const message = error instanceof Error ? error.message : "Não foi possível concluir a edição em massa.";
       toast.error("Falha ao editar coluna.", { description: message });
     },
   });
@@ -752,7 +752,7 @@ export const OperacoesTableBlock = ({
         queryClient.setQueryData(queryKey, snapshot);
       });
 
-      const message = error instanceof Error ? error.message : "Nao foi possivel atualizar o status de pagamento.";
+      const message = error instanceof Error ? error.message : "Não foi possível atualizar o status de pagamento.";
       toast.error("Falha ao atualizar status de pagamento.", { description: message });
     },
   });
@@ -823,7 +823,7 @@ export const OperacoesTableBlock = ({
       const editableRows = filteredData.filter(isEditableOperation);
 
       if (editableRows.length === 0) {
-        throw new Error("Nenhuma linha filtrada disponivel para limpar a coluna.");
+        throw new Error("Nenhuma linha filtrada disponível para limpar a coluna.");
       }
 
       await Promise.all(
@@ -852,7 +852,7 @@ export const OperacoesTableBlock = ({
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
     },
     onError: (error: unknown) => {
-      const message = error instanceof Error ? error.message : "Nao foi possivel limpar a coluna.";
+      const message = error instanceof Error ? error.message : "Não foi possível limpar a coluna.";
       toast.error("Falha ao limpar coluna.", { description: message });
     },
   });
@@ -1350,10 +1350,10 @@ export const OperacoesTableBlock = ({
                 <SelectValue placeholder="Selecione a forma de pagamento" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="DEP�SITO">Depósito</SelectItem>
+                <SelectItem value="DEPÓSITO">Depósito</SelectItem>
                 <SelectItem value="DEPOSITO MENSAL">Depósito Mensal</SelectItem>
                 <SelectItem value="PIX">PIX</SelectItem>
-                <SelectItem value="TRANSFER�`NCIA">Transferência</SelectItem>
+                <SelectItem value="TRANSFERÊNCIA">Transferência</SelectItem>
                 <SelectItem value="BOLETO">Boleto</SelectItem>
               </SelectContent>
             </Select>
@@ -1436,7 +1436,7 @@ export const OperacoesTableBlock = ({
 
       let nfRaw = String(next.nf_numero).toUpperCase().trim();
       if (nfRaw === "S" || nfRaw === "SIM") nfRaw = "SIM";
-      if (nfRaw === "N" || nfRaw === "NAO" || nfRaw === "NÒO") nfRaw = "NÒO";
+      if (nfRaw === "N" || nfRaw === "NAO" || nfRaw === "NÃO") nfRaw = "NÃO";
       next.nf_numero = nfRaw;
 
       const valDescargaCalculado = Math.max(parseLocaleNumber(next.quantidade), 0) * unitario;
@@ -1477,7 +1477,6 @@ export const OperacoesTableBlock = ({
 
   return (
     <div className="space-y-4 p-5 pt-2">
-      {/* ������ FILTROS ���������������������������������������������������������������������������������������������������������� */}
       <div className="flex flex-col sm:flex-row gap-3 justify-between">
         <div className="flex flex-wrap gap-2 w-full">
           <Input
@@ -1487,7 +1486,6 @@ export const OperacoesTableBlock = ({
             onChange={(e) => setFilterText(e.target.value)}
           />
 
-          {/* Filtro Modalidade Financeira */}
           <Select value={modalidadeFilter} onValueChange={setModalidadeFilter}>
             <SelectTrigger className="w-full sm:w-52 h-9">
               <SelectValue placeholder="Modalidade" />
@@ -1502,7 +1500,6 @@ export const OperacoesTableBlock = ({
             </SelectContent>
           </Select>
 
-          {/* Filtro Forma de Pagamento */}
           <Select value={formaPagamentoFilter} onValueChange={setFormaPagamentoFilter}>
             <SelectTrigger className="w-full sm:w-52 h-9">
               <SelectValue placeholder="Forma Pgto" />
@@ -1528,7 +1525,6 @@ export const OperacoesTableBlock = ({
             </SelectContent>
           </Select>
 
-          {/* Filtro Status Pagamento */}
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-full sm:w-40 h-9">
               <SelectValue placeholder="Status pgto" />
@@ -1693,10 +1689,7 @@ export const OperacoesTableBlock = ({
                       Classificar decrescente
                     </DropdownMenuItem>
                     {sortConfig?.key === colKey && (
-                      <DropdownMenuItem onClick={() => setSortConfig(null)}>
-                        <span className="mr-2 h-4 w-4 flex items-center justify-center font-bold text-muted-foreground">�S"</span>
-                        Remover ordenação
-                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
                     )}
 
                     {isLockable && (
@@ -1722,18 +1715,18 @@ export const OperacoesTableBlock = ({
                   <tr className="text-center font-display text-muted-foreground uppercase text-xs tracking-wide">
                     {visibleCols.data && <th style={getStickyProps("data", true).style} className={getStickyProps("data", true).className}>{renderInteractiveHeader("data", "DATA", CalendarDays)}</th>}
                     {visibleCols.idPlanilha && <th style={getStickyProps("idPlanilha", true).style} className={getStickyProps("idPlanilha", true).className}>{renderInteractiveHeader("idPlanilha", "ID")}</th>}
-                    {visibleCols.operacao && <th style={getStickyProps("operacao", true).style} className={getStickyProps("operacao", true).className}>{renderInteractiveHeader("operacao", "OPERA�!ÒO/VOLUME", Package)}</th>}
+                    {visibleCols.operacao && <th style={getStickyProps("operacao", true).style} className={getStickyProps("operacao", true).className}>{renderInteractiveHeader("operacao", "OPERAÇÃO/VOLUME", Package)}</th>}
                     {visibleCols.empresaPlanilha && <th className="px-3 py-2.5 font-semibold text-center">EMPRESA</th>}
-                    {visibleCols.fornecedor && <th className="px-3 py-2.5 font-semibold ">{renderInteractiveHeader("fornecedor", "FORNECEDOR")}</th>}
-                    {visibleCols.transportadora && <th className="px-3 py-2.5 font-semibold ">{renderInteractiveHeader("transportadora", "TRANSPORTADORA", Truck)}</th>}
+                    {visibleCols.transportadora && <th className="px-3 py-2.5 font-semibold text-left">{renderInteractiveHeader("transportadora", "TRANSPORTADORA", Truck)}</th>}
+                    {visibleCols.fornecedor && <th className="px-3 py-2.5 font-semibold text-left">{renderInteractiveHeader("fornecedor", "FORNECEDOR", Building2)}</th>}
                     {visibleCols.placa && renderHeaderCell("placa", "PLACA", "px-3 py-2.5 font-semibold text-center")}
-                    {visibleCols.servico && <th className="px-3 py-2.5 font-semibold ">{renderInteractiveHeader("servico", "SERVI�!O", Settings2)}</th>}
+                    {visibleCols.servico && <th className="px-3 py-2.5 font-semibold ">{renderInteractiveHeader("servico", "SERVIÇO", Settings2)}</th>}
                     {visibleCols.qtdCol && renderHeaderCell("qtdCol", <span className="inline-flex items-center justify-center gap-1.5 w-full"><User className="h-3.5 w-3.5 text-muted-foreground" />QTD. COL.</span>, "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.formaPagamento && renderHeaderCell("formaPagamento", "FORMA PAGAMENTO", "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.nf && renderHeaderCell("nf", "NF", "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.ctrc && renderHeaderCell("ctrc", "CTRC", "px-3 py-2.5 font-semibold text-center")}
-                    {visibleCols.observacao && renderHeaderCell("observacao", "OBSERVACAO", "px-3 py-2.5 font-semibold text-center")}
-                    {visibleCols.inicio && renderHeaderCell("inicio", <span className="inline-flex items-center justify-center gap-1.5 w-full"><LogIn className="h-3.5 w-3.5 text-muted-foreground" />INICIO</span>, "px-3 py-2.5 font-semibold text-center")}
+                    {visibleCols.observacao && renderHeaderCell("observacao", "OBSERVAÇÃO", "px-3 py-2.5 font-semibold text-center")}
+                    {visibleCols.inicio && renderHeaderCell("inicio", <span className="inline-flex items-center justify-center gap-1.5 w-full"><LogIn className="h-3.5 w-3.5 text-muted-foreground" />INÍCIO</span>, "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.fim && renderHeaderCell("fim", <span className="inline-flex items-center justify-center gap-1.5 w-full"><LogOut className="h-3.5 w-3.5 text-muted-foreground" />FIM</span>, "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.valDia && renderHeaderCell("conferido_final", <span className="inline-flex items-center justify-center gap-1.5 w-full"><BadgeDollarSign className="h-3.5 w-3.5 text-muted-foreground" />TOTAL DIA</span>, "px-3 py-2.5 font-semibold text-center")}
 
@@ -1741,28 +1734,28 @@ export const OperacoesTableBlock = ({
                     {visibleCols.dataVencimento && <th className="px-3 py-2.5 font-semibold text-center">VENCIMENTO</th>}
                     {visibleCols.statusPagamento && <th className="px-3 py-2.5 font-semibold text-center">STATUS PGTO</th>}
                     <th className="px-3 py-2.5 font-semibold text-center"><span className="inline-flex items-center justify-center gap-1.5 w-full"><CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" />STATUS OP</span></th>
-                    {visibleCols.acoes && <th className="px-5 py-2.5 font-semibold text-center"><span className="inline-flex items-center justify-center gap-1.5 w-full"><Hourglass className="h-3.5 w-3.5 text-muted-foreground" />ACOES</span></th>}
+                    {visibleCols.acciones && <th className="px-5 py-2.5 font-semibold text-center"><span className="inline-flex items-center justify-center gap-1.5 w-full"><Hourglass className="h-3.5 w-3.5 text-muted-foreground" />AÇÕES</span></th>}
                   </tr>
                 </thead>
                 <tbody>
                   {filteredData.map((item: any) => {
                     const isSelected = kind === "operacao" && selectedId === item.id;
 
-                    const dataOp = item.data_operacao ? new Date(item.data_operacao + "T12:00:00Z").toLocaleDateString("pt-BR") : "�";
+                    const dataOp = item.data_operacao ? new Date(item.data_operacao + "T12:00:00Z").toLocaleDateString("pt-BR") : "";
                     const idPlanilha = item.created_at || item.id;
-                    const operacaoNome = item.produto_label || item.fornecedores?.nome || "�";
+                    const operacaoNome = item.produto_label || item.fornecedores?.nome || "";
                     const empresaPlanilha = getDisplayEmpresa(item, empresas);
-                    const fornecedor = item.fornecedores?.nome || "�";
-                    const transportadora = item.transportadoras_clientes?.nome || "�";
-                    const placa = item.placa || "�";
-                    const servico = item.tipos_servico_operacional?.nome || "�";
+                    const fornecedor = item.fornecedores?.nome || "";
+                    const transportadora = item.transportadoras_clientes?.nome || "";
+                    const placa = item.placa || "";
+                    const servico = item.tipos_servico_operacional?.nome || "";
                     const qtdColaboradores = item.quantidade_colaboradores ?? 1;
                     const formaPagamento = getDisplayFormaPagamento(item);
-                    const nf = item.nf_numero || "�";
-                    const ctrc = item.ctrc || "�";
+                    const nf = item.nf_numero || "";
+                    const ctrc = item.ctrc || "";
                     const observacao = getDisplayObservacao(item);
-                    const inicio = (item.entrada_ponto || "�").substring(0, 5);
-                    const fim = (item.saida_ponto || "�").substring(0, 5);
+                    const inicio = (item.entrada_ponto || "").substring(0, 5);
+                    const fim = (item.saida_ponto || "").substring(0, 5);
                     const qtdText = item.quantidade || "0";
                     const valorTotal = item.total_final || item.valor_descarga || 0;
 
@@ -1814,14 +1807,14 @@ export const OperacoesTableBlock = ({
 
                                 {getModalidadeLabel(item.modalidadeFinanceira)}
                               </Badge>
-                            ) : <span className="text-muted-foreground">�</span>}
+                            ) : <span className="text-muted-foreground">-</span>}
                           </td>
                         )}
                         {visibleCols.dataVencimento && (
                           <td className="px-3 text-center text-muted-foreground whitespace-nowrap font-mono text-xs">
                             {item.dataVencimento
                               ? new Date(item.dataVencimento + "T12:00:00Z").toLocaleDateString("pt-BR")
-                              : "�"}
+                              : "-"}
                           </td>
                         )}
                         {visibleCols.statusPagamento && (
@@ -1860,7 +1853,7 @@ export const OperacoesTableBlock = ({
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
-                            ) : <span className="text-muted-foreground">�</span>}
+                            ) : <span className="text-muted-foreground">-</span>}
                           </td>
                         )}
                         <td className="px-3 text-center whitespace-nowrap">
@@ -1873,7 +1866,7 @@ export const OperacoesTableBlock = ({
                             item.status === 'fechado' && 'bg-success-soft saturate-50 text-success-strong opacity-80',
                             !['aprovado', 'em_validacao', 'recusado', 'pendente', 'fechado'].includes(item.status) && 'bg-muted text-muted-foreground'
                           )}>
-                            {item.status || ""}
+                            {item.status || " "}
                           </Badge>
                         </td>
                         {visibleCols.acoes && (
@@ -1975,7 +1968,7 @@ export const OperacoesTableBlock = ({
 
           <div className="mt-6 space-y-6">
             <div className="rounded-lg border border-border bg-muted/20 p-4 text-sm text-muted-foreground">
-              {editableFilteredCount} linha(s) filtrada(s) podem receber edi??o em massa neste momento.
+              {editableFilteredCount} linha(s) filtrada(s) podem receber edição em massa neste momento.
             </div>
 
             <div className="grid gap-4">
@@ -2018,10 +2011,10 @@ export const OperacoesTableBlock = ({
                       <SelectValue placeholder="Selecione a forma de pagamento" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="DEPOSITO">Deposito</SelectItem>
-                      <SelectItem value="DEPOSITO MENSAL">Deposito Mensal</SelectItem>
+                      <SelectItem value="DEPÓSITO">Depósito</SelectItem>
+                      <SelectItem value="DEPOSITO MENSAL">Depósito Mensal</SelectItem>
                       <SelectItem value="PIX">PIX</SelectItem>
-                      <SelectItem value="TRANSFERENCIA">Transferencia</SelectItem>
+                      <SelectItem value="TRANSFERÊNCIA">Transferência</SelectItem>
                       <SelectItem value="BOLETO">Boleto</SelectItem>
                     </SelectContent>
                   </Select>
@@ -2074,7 +2067,7 @@ export const OperacoesTableBlock = ({
                 )}
                 {bulkField === "status_pagamento" && (
                   <p className="text-xs text-muted-foreground">
-                    Alteracao em massa permitida para marcar varios registros como recebidos, atrasados ou pendentes.
+                    Alteração em massa permitida para marcar vários registros como recebidos, atrasados ou pendentes.
                   </p>
                 )}
               </div>
@@ -2086,9 +2079,9 @@ export const OperacoesTableBlock = ({
                   onCheckedChange={(checked) => setBulkOnlyEmpty(checked === true)}
                 />
                 <div className="space-y-1">
-                  <Label htmlFor="bulk-only-empty" className="cursor-pointer">Preencher s? linhas vazias</Label>
+                  <Label htmlFor="bulk-only-empty" className="cursor-pointer">Preencher só linhas vazias</Label>
                   <p className="text-sm text-muted-foreground">
-                    Mant?m os valores j? existentes e s? completa onde a coluna veio sem dado.
+                    Mantém os valores já existentes e só completa onde a coluna veio sem dado.
                   </p>
                 </div>
               </div>
@@ -2173,7 +2166,7 @@ export const OperacoesTableBlock = ({
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-foreground">Data da operação</p>
                   <p className="text-sm text-muted-foreground font-mono">
-                    {selectedOpDetails.data_operacao ? new Date(selectedOpDetails.data_operacao + "T00:00:00").toLocaleDateString("pt-BR") : "�"}
+                    {selectedOpDetails.data_operacao ? new Date(selectedOpDetails.data_operacao + "T00:00:00").toLocaleDateString("pt-BR") : "-"}
                   </p>
                 </div>
                 <div className="space-y-1">
@@ -2186,22 +2179,22 @@ export const OperacoesTableBlock = ({
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-foreground">Transportadora</p>
-                  <p className="text-sm text-muted-foreground">{selectedOpDetails.transportadoras_clientes?.nome || selectedOpDetails.transportadora_label || "�"}</p>
+                  <p className="text-sm text-muted-foreground">{selectedOpDetails.transportadoras_clientes?.nome || selectedOpDetails.transportadora_label || "-"}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-foreground">NF numero</p>
-                  <p className="text-sm text-muted-foreground">{selectedOpDetails.nf_numero || "�"}</p>
+                  <p className="text-sm text-muted-foreground">{selectedOpDetails.nf_numero || "-"}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-foreground">CTRC</p>
-                  <p className="text-sm text-muted-foreground">{selectedOpDetails.ctrc || "�"}</p>
+                  <p className="text-sm text-muted-foreground">{selectedOpDetails.ctrc || "-"}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-foreground">Forma de pagamento</p>
                   <p className="text-sm text-muted-foreground">{String(getDisplayFormaPagamento(selectedOpDetails))}</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-sm font-medium text-foreground">Observacao</p>
+                  <p className="text-sm font-medium text-foreground">Observação</p>
                   <p className="text-sm text-muted-foreground">{String(getDisplayObservacao(selectedOpDetails))}</p>
                 </div>
               </div>
@@ -2222,7 +2215,7 @@ export const OperacoesTableBlock = ({
                 <Button variant="outline" onClick={() => setSelectedOpDetails(null)}>Fechar</Button>
                 {selectedOpDetails.status !== "aprovado" && selectedOpDetails.status !== "fechado" && (
                   <Button variant="outline" className="border-warning text-warning hover:bg-warning-soft hover:text-warning-strong" onClick={() => handleDevolver(selectedOpDetails)}>
-                    Devolver com Restri��o
+                    Devolver com Restrição
                   </Button>
                 )}
                 {selectedOpDetails.status !== "aprovado" && selectedOpDetails.status !== "fechado" && (
@@ -2289,14 +2282,14 @@ export const OperacoesTableBlock = ({
                   <Input id="placa" value={editForm.placa} onChange={(e) => updateField("placa", e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <Label>NF (SIM/NÒO)</Label>
+                  <Label>NF (SIM/NÃO)</Label>
                   <Select value={editForm.nf_numero || ""} onValueChange={(v) => updateField("nf_numero", v)}>
                     <SelectTrigger id="nf_numero">
                       <SelectValue placeholder="Selecione" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="SIM">SIM</SelectItem>
-                      <SelectItem value="NÒO">NÒO</SelectItem>
+                      <SelectItem value="NÃO">NÃO</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -2315,10 +2308,10 @@ export const OperacoesTableBlock = ({
                       <SelectValue placeholder="Selecione a forma de pagamento" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="DEP�SITO">Depósito</SelectItem>
+                      <SelectItem value="DEPÓSITO">Depósito</SelectItem>
                       <SelectItem value="DEPOSITO MENSAL">Depósito Mensal</SelectItem>
                       <SelectItem value="PIX">PIX</SelectItem>
-                      <SelectItem value="TRANSFER�`NCIA">Transferência</SelectItem>
+                      <SelectItem value="TRANSFERÊNCIA">Transferência</SelectItem>
                       <SelectItem value="BOLETO">Boleto</SelectItem>
                     </SelectContent>
                   </Select>
@@ -2342,7 +2335,7 @@ export const OperacoesTableBlock = ({
                 </div>
 
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="observacao">Observacao</Label>
+                  <Label htmlFor="observacao">Observação</Label>
                   <Textarea id="observacao" className="min-h-[96px]" value={editForm.observacao} onChange={(e) => updateField("observacao", e.target.value)} />
                 </div>
               </div>
@@ -2353,7 +2346,7 @@ export const OperacoesTableBlock = ({
                 </Button>
                 <Button onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending}>
                   {updateMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Salvar alteracoes
+                  Salvar alterações
                 </Button>
               </div>
             </div>
@@ -2368,12 +2361,9 @@ export const OperacoesTableBlock = ({
           pendingAction?.(justification);
           setJustificationModalOpen(false);
         }}
-        title={justificationType === "devolucao" ? "Motivo da Devolu��o" : "Justificativa de Altera��o (Override)"}
-        description={justificationType === "devolucao" ? "Forne�a o motivo pelo qual esta opera��o est� sendo devolvida." : undefined}
+        title={justificationType === "devolucao" ? "Motivo da Devolução" : "Justificativa de Alteração (Override)"}
+        description={justificationType === "devolucao" ? "Forneça o motivo pelo qual esta operação está sendo devolvida." : undefined}
       />
     </div>
   );
 };
-
-
-

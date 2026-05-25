@@ -159,7 +159,7 @@ function parseTime(value: string): string | undefined {
 }
 
 function buildFriendlyError(errors: string[]): Error {
-  return new Error(`Arquivo de retorno invalido:\n- ${errors.join('\n- ')}`);
+  return new Error(`Arquivo de retorno inválido:\n- ${errors.join('\n- ')}`);
 }
 
 export class CNAB240BBReader implements CnabRetornoReader {
@@ -344,7 +344,7 @@ export class CNAB240BBReader implements CnabRetornoReader {
         return;
       }
 
-      errors.push(`Linha ${lineNo} possui tipo de registro ${tipoRegistro || 'vazio'} invalido.`);
+      errors.push(`Linha ${lineNo} possui tipo de registro ${tipoRegistro || 'vazio'} inválido.`);
     });
 
     flushDetalhe();

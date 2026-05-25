@@ -130,6 +130,8 @@ type FormState = {
     data_vencimento: string;
     status_financeiro: string;
     categoria_custo: string;
+    categoria_servico: string;
+    regra_financeira: any;
 };
 
 const REGRAS_LOGISTICA: RegraAvaliacao[] = [
@@ -1186,8 +1188,8 @@ const LancamentoProducao = () => {
     }, [hasInactiveCompatibleRule, regraValorRpc, ruleLookupState]);
 
     const etapaUmBlockReasonResolvido = useMemo(() => {
-        if (!form.tipo_lancamento) return "Selecione o tipo de lancamento.";
-        if (deveExigirModalidadeManual && !form.modalidade_financeira) return "Selecione como essa operacao sera liquidada no ERP.";
+        if (!form.tipo_lancamento) return "Selecione o tipo de lançamento.";
+        if (deveExigirModalidadeManual && !form.modalidade_financeira) return "Selecione como essa operação será liquidada no ERP.";
         return "";
     }, [deveExigirModalidadeManual, form.modalidade_financeira, form.tipo_lancamento]);
 
@@ -1751,7 +1753,7 @@ const LancamentoProducao = () => {
 
                             {etapaAtual === 3 && (
                                 <div className="space-y-5">
-                                    {/* ���� SE�!ÒO: OPERA�!ÒO ���� */}
+                                    {/* 📦 SEÇÃO: OPERAÇÃO 📦 */}
                                     {!isCustosMensaisCLT ? (
                                         <div>
                                             <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-1.5">
@@ -1846,14 +1848,14 @@ const LancamentoProducao = () => {
                                         {!isCustosMensaisCLT && (
                                             <div className="rounded-xl border border-border/60 overflow-hidden">
                                                 <button type="button" onClick={() => setForm(f => ({ ...f, nf_emite: !f.nf_emite, nf_numero: f.nf_emite ? "" : f.nf_numero }))} className={cn("w-full flex items-center justify-between px-4 py-3 text-sm font-semibold transition-colors", form.nf_emite ? "bg-success-soft text-success-strong" : "bg-muted/40 text-muted-foreground hover:bg-muted/70")}>
-                                                    <span className="flex items-center gap-2"><span className={cn("w-5 h-5 rounded-full border-2 flex items-center justify-center text-xs font-black transition-all", form.nf_emite ? "border-success-strong bg-success-strong text-white" : "border-border bg-background")}>{form.nf_emite ? "�S" : ""}</span>Emite Nota Fiscal (NF)?</span>
-                                                    <span className={cn("text-xs px-2 py-0.5 rounded-full font-bold", form.nf_emite ? "bg-success-strong text-white" : "bg-muted text-muted-foreground")}>{form.nf_emite ? "SIM" : "NÒO"}</span>
+                                                    <span className="flex items-center gap-2"><span className={cn("w-5 h-5 rounded-full border-2 flex items-center justify-center text-xs font-black transition-all", form.nf_emite ? "border-success-strong bg-success-strong text-white" : "border-border bg-background")}>{form.nf_emite ? "✅ " : ""}</span>Emite Nota Fiscal (NF)?</span>
+                                                    <span className={cn("text-xs px-2 py-0.5 rounded-full font-bold", form.nf_emite ? "bg-success-strong text-white" : "bg-muted text-muted-foreground")}>{form.nf_emite ? "SIM" : "NÃO"}</span>
                                                 </button>
                                                 {form.nf_emite && (
                                                     <div className="px-4 py-3 bg-background border-t border-border/40">
                                                         <Label className="text-xs text-muted-foreground mb-1 block">Número / Código da NF</Label>
                                                         <Input value={form.nf_numero} onChange={e => setForm(f => ({ ...f, nf_numero: e.target.value }))} placeholder="Digite o número ou código da NF" className="h-10 rounded-xl" autoFocus />
-                                                        {percentualIss > 0 && <p className="text-[11px] text-success-strong mt-1.5 font-medium">��️ ISS de {percentualIss.toFixed(1)}% será aplicado ao valor total.</p>}
+                                                        {percentualIss > 0 && <p className="text-[11px] text-success-strong mt-1.5 font-medium">⚠️ ISS de {percentualIss.toFixed(1)}% será aplicado ao valor total.</p>}
                                                     </div>
                                                 )}
                                             </div>
@@ -1912,8 +1914,8 @@ const LancamentoProducao = () => {
                                                     <SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger>
                                                     <SelectContent>
                                                         <SelectItem value="PENDENTE">⏳ Pendente</SelectItem>
-                                                        <SelectItem value="RECEBIDO">�S& Recebido</SelectItem>
-                                                        <SelectItem value="ATRASADO">�xa� Atrasado</SelectItem>
+                                                        <SelectItem value="RECEBIDO">✅ Recebido</SelectItem>
+                                                        <SelectItem value="ATRASADO">🚨 Atrasado</SelectItem>
                                                     </SelectContent>
                                                 </Select>
                                             </div>
@@ -1931,7 +1933,7 @@ const LancamentoProducao = () => {
 
                             {etapaAtual === 4 && (
                                 <div className="space-y-5">
-                                    {/* ���� SE�!ÒO: EQUIPE ���� */}
+                                    {/* 👥 SEÇÃO: EQUIPE 👥 */}
                                     {!isFluxoSemEquipe && (
                                         <div>
                                             <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-1.5">
@@ -1965,10 +1967,10 @@ const LancamentoProducao = () => {
                                         </div>
                                     )}
 
-                                    {/* ���� DIVISOR ���� */}
+                                    {/* 📋 DIVISOR 📋 */}
                                     {!isFluxoSemEquipe && <div className="border-t border-dashed border-border/60" />}
 
-                                    {/* ���� SE�!ÒO: RESPONSÁVEL E OBSERVA�!ÒO ���� */}
+                                    {/* 📋 SEÇÃO: RESPONSÁVEL E OBSERVAÇÃO 📋 */}
                                     <div>
                                         <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-1.5">
                                             <ShieldAlert className="w-3.5 h-3.5" /> Responsável e Observações

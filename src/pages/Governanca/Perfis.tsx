@@ -183,7 +183,7 @@ const PerfisPermissoes = () => {
                                     <div className="min-w-0">
                                         <h3 className="font-black text-lg tracking-tight truncate">{selectedPerfil.nome}</h3>
                                         <div className="flex items-center gap-2">
-                                            <span className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground">{isAdmin ? "Root Access" : "Granular access"}</span>
+                                            <span className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground">{isAdmin ? "Acesso Root" : "Acesso granular"}</span>
                                         </div>
                                     </div>
                                 </div>

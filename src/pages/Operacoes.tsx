@@ -904,7 +904,7 @@ const Operacoes = () => {
   return (
     <AppShell
       title="Operações"
-      subtitle={`Analise mensal de operacoes · ${monthLabelCapitalized}`}
+      subtitle={`Análise mensal de operações · ${monthLabelCapitalized}`}
     >
       <div className="space-y-6">
         <section className="esc-card p-4 md:p-5">
@@ -987,7 +987,7 @@ const Operacoes = () => {
                     : "bg-success-soft text-success-strong",
                 )}
               >
-                {filteredIssues.length > 0 ? `${filteredIssues.length} inconsistencia(s) em aberto` : "Base operacional consistente"}
+                {filteredIssues.length > 0 ? `${filteredIssues.length} inconsistência(s) em aberto` : "Base operacional consistente"}
               </Badge>
             </div>
 
@@ -1021,7 +1021,7 @@ const Operacoes = () => {
                       {confirmClear ? <RefreshCw className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>{confirmClear ? "Confirmar limpeza" : "Limpar importacoes"}</TooltipContent>
+                  <TooltipContent>{confirmClear ? "Confirmar limpeza" : "Limpar importações"}</TooltipContent>
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -1035,10 +1035,10 @@ const Operacoes = () => {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button variant="outline" className="h-9 px-3 shrink-0 bg-brand text-white border-0 hover:bg-brand/90 hover:text-white" onClick={() => setNovaOpOpen(true)}>
-                      + Lancamento Operacional
+                      + Lançamento Operacional
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Adicionar operacao manualmente</TooltipContent>
+                  <TooltipContent>Adicionar operação manualmente</TooltipContent>
                 </Tooltip>
 
                 <Tooltip>
@@ -1206,9 +1206,9 @@ const Operacoes = () => {
                 <section className="esc-card overflow-hidden">
                   <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-3">
                     <div>
-                      <h2 className="font-display font-semibold text-foreground">Importacoes e sincronizacoes</h2>
+                      <h2 className="font-display font-semibold text-foreground">Importações e sincronizações</h2>
                       <p className="text-sm text-muted-foreground">
-                        Visao de acompanhamento do que entrou na base operacional.
+                        Visão de acompanhamento do que entrou na base operacional.
                       </p>
                     </div>
                     <Button variant="outline" size="sm" onClick={() => setImportModalOpen(true)}>
@@ -1242,7 +1242,7 @@ const Operacoes = () => {
                       {filteredLogs.length === 0 && (
                         <tr>
                           <td colSpan={5} className="p-12 text-center text-muted-foreground italic">
-                            Nenhuma importacao registrada para os filtros atuais.
+                            Nenhuma importação registrada para os filtros atuais.
                           </td>
                         </tr>
                       )}
@@ -1255,9 +1255,9 @@ const Operacoes = () => {
                 <section className="esc-card overflow-hidden">
                   <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-3">
                     <div>
-                      <h2 className="font-display font-semibold text-foreground">Inconsistencias operacionais</h2>
+                      <h2 className="font-display font-semibold text-foreground">Inconsistências operacionais</h2>
                       <p className="text-sm text-muted-foreground">
-                        Pendencias da base de operacoes que exigem validacao ou correcao.
+                        Pendências da base de operações que exigem validação ou correção.
                       </p>
                     </div>
                     <Button variant="outline" size="sm" onClick={() => navigate("/inconsistencias")}>
@@ -1278,10 +1278,10 @@ const Operacoes = () => {
                       {filteredIssues.map((issue, index) => (
                         <tr key={issue.id || index} className="border-t border-muted hover:bg-background">
                           <td className="px-5 h-[60px]">
-                            <div className="font-medium text-foreground">{issue.tipo_servico || "Inconsistencia"}</div>
+                            <div className="font-medium text-foreground">{issue.tipo_servico || "Inconsistência"}</div>
                           </td>
                           <td className="px-3 text-foreground">{issue.colaboradores?.nome || "—"}</td>
-                          <td className="px-3 text-muted-foreground">{issue.quantidade || "—"} item(ns) em analise</td>
+                          <td className="px-3 text-muted-foreground">{issue.quantidade || "—"} item(ns) em análise</td>
                           <td className="px-5 text-center">
                             <Badge variant="outline">{issue.status || "—"}</Badge>
                           </td>
@@ -1307,7 +1307,7 @@ const Operacoes = () => {
         open={importModalOpen}
         onOpenChange={setImportModalOpen}
         title="Importar Operações via Planilha"
-        description="O sistema lera a coluna DATA de cada linha automaticamente. Cada linha sera importada na sua propria data. Linhas sem DATA valida serao ignoradas. A coluna COL sera gravada como quantidade de colaboradores."
+        description="O sistema lerá a coluna DATA de cada linha automaticamente. Cada linha será importada na sua própria data. Linhas sem DATA válida serão ignoradas. A coluna COL será gravada como quantidade de colaboradores."
         onUpload={handleImportOperacoes}
       />
       <NovaOperacaoDialog open={novaOpOpen} onOpenChange={setNovaOpOpen} />

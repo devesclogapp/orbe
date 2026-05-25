@@ -659,7 +659,7 @@ const Pontos = () => {
                 <SelectTrigger className="w-[180px] h-10 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium">
                   <div className="flex items-center gap-2">
                     <CalendarIcon className="h-4 w-4 text-primary" />
-                    <SelectValue placeholder="Mes" />
+                    <SelectValue placeholder="Mês" />
                   </div>
                 </SelectTrigger>
                 <SelectContent>
@@ -698,7 +698,7 @@ const Pontos = () => {
                 )}
               >
                 {inconsistencias > 0
-                  ? `${inconsistencias} inconsistencia(s) em aberto`
+                  ? `${inconsistencias} inconsistência(s) em aberto`
                   : "Base de ponto consistente"}
               </Badge>
             </div>
@@ -718,7 +718,7 @@ const Pontos = () => {
               </Button>
               <Button variant="outline" size="sm" onClick={() => navigate("/operacional/operacoes")}>
                 <FileUp className="mr-2 h-4 w-4" />
-                Ir para operacoes
+                Ir para operações
               </Button>
             </div>
           </div>
@@ -729,7 +729,7 @@ const Pontos = () => {
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div className="space-y-1">
                 <h2 className="font-display font-semibold text-foreground">
-                  Resumo da ultima importacao
+                  Resumo da última importação
                 </h2>
                 <p className="text-sm text-muted-foreground">
                   {lastImportSummary.novosDetectados} colaboradores novos detectados
@@ -765,12 +765,12 @@ const Pontos = () => {
               <MetricCard label="Registros" value={rows.length.toString()} icon={Clock} />
               <MetricCard label="Horas Processadas" value={totalHorasProcessadas} icon={Timer} />
               <MetricCard
-                label="Valor do mes"
+                label="Valor do mês"
                 value={`R$ ${valorTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
                 icon={Wallet}
                 accent
               />
-              <MetricCard label="Inconsistencias" value={inconsistencias.toString()} icon={AlertTriangle} />
+              <MetricCard label="Inconsistências" value={inconsistencias.toString()} icon={AlertTriangle} />
             </div>
 
             <section className="esc-card p-5 space-y-4">
@@ -783,8 +783,8 @@ const Pontos = () => {
                 </div>
                 <Badge className="bg-muted text-muted-foreground">
                   {ultimaSincronizacao
-                    ? `Ultima sincronizacao ${new Date(ultimaSincronizacao).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
-                    : "Sem sincronizacao"}
+                    ? `Última sincronização ${new Date(ultimaSincronizacao).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+                    : "Sem sincronização"}
                 </Badge>
               </div>
 
@@ -830,8 +830,8 @@ const Pontos = () => {
           <DialogHeader>
             <DialogTitle>Limpar Importação</DialogTitle>
             <DialogDescription>
-              Deseja remover os registros importados via planilha do periodo selecionado?
-              Essa acao tambem limpara inconsistencias, eventos e saldos gerados pelo processamento RH desses pontos.
+              Deseja remover os registros importados via planilha do período selecionado?
+              Essa ação também limpará inconsistências, eventos e saldos gerados pelo processamento RH desses pontos.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

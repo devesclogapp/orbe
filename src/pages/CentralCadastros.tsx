@@ -285,6 +285,56 @@ function hasPixPendente(colaborador: any) {
   return !String(colaborador?.chave_pix ?? "").trim();
 }
 
+function getColaboradorTypeLabel(colaborador: any) {
+  const tipo = String(colaborador?.tipo_colaborador ?? colaborador?.regime_trabalho ?? "").trim();
+  const regime = String(colaborador?.regime_trabalho ?? "").trim();
+  const normalizedTipo = normalizeText(tipo);
+  const normalizedRegime = normalizeText(regime);
+
+  if (normalizedTipo === "CLT" || normalizedRegime === "CLT") return "CLT";
+  if (normalizedTipo === "INTERMITENTE" || normalizedRegime === "INTERMITENTE") return "Intermitente";
+  if (normalizedTipo === "DIARISTA" || normalizedRegime === "DIARISTA") return "Diarista";
+  if (normalizedTipo === "TERCEIRIZADO" || normalizedRegime === "TERCEIRIZADO") return "Terceirizado";
+  if (normalizedTipo === "PRODUCAO" || normalizedRegime === "FREELANCER") return "Produção";
+
+  return tipo || regime || "N/D";
+}
+
+function getColaboradorContractLabel(colaborador: any) {
+  const modelo = String(colaborador?.modelo_calculo ?? "").trim();
+  const contrato = String(colaborador?.tipo_contrato ?? "").trim();
+  const normalizedModelo = normalizeText(modelo);
+  const normalizedContrato = normalizeText(contrato);
+  
+  if (normalizedContrato === "MENSAL") {
+    return "Mensal";
+  }
+  if (normalizedContrato === "HORA") {
+    return "Por hora";
+  }
+  if (normalizedContrato === "OPERACAO") {
+    return "Por operação";
+  }
+  if (normalizedModelo.includes("CLTMENSAL") || normalizedModelo === "MENSAL") {
+    return "Mensal";
+  }
+  if (normalizedModelo === "HORISTA") {
+    return "Por hora";
+  }
+  if (
+    normalizedModelo === "PRODUCAO" ||
+    normalizedModelo.includes("OPERACAO") ||
+    normalizedModelo.includes("PRODUCAO")
+  ) {
+    return "Por operação";
+  }
+  if (normalizedModelo === "DIARIA") {
+    return "Diária";
+  }
+
+  return modelo || contrato || "N/D";
+}
+
 function getColaboradorCompletude(colaborador: any) {
   const cpfClean = String(colaborador?.cpf ?? "").replace(/\D/g, "");
   const telClean = String(colaborador?.telefone ?? "").replace(/\D/g, "");
@@ -515,6 +565,7 @@ const CentralCadastros = () => {
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<CadastroTabValue>("colaboradores");
   const [operacionalFilters, setOperacionalFilters] = useState<OperacionalQuickFilter[]>([]);
+  const [contractFilter, setContractFilter] = useState("todos");
   const [configType, setConfigType] = useState<"operacao" | "produto" | "dia">("operacao");
   const [editingConfig, setEditingConfig] = useState<any>(null);
   const [configForm, setConfigForm] = useState<any>({});
@@ -2135,19 +2186,34 @@ const CentralCadastros = () => {
     })
   ), [colaboradores]);
 
-  const colaboradoresFiltrados = useMemo(() => {
-    if (operacionalFilters.length === 0) return colaboradoresOperacionais;
+  const contractFilterOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        colaboradoresOperacionais
+          .map((colaborador) => getColaboradorContractLabel(colaborador))
+          .filter((value) => value !== "N/D")
+      )
+    ).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [colaboradoresOperacionais]);
 
-    return colaboradoresOperacionais.filter((colaborador) => operacionalFilters.every((filter) => {
-      if (filter === "apenas_pendentes") return colaborador.status_cadastro === "pendente_complemento" || Boolean(colaborador.cadastro_provisorio);
-      if (filter === "bloqueiam_aprovacao") return colaborador.bloqueiaRh;
-      if (filter === "sem_banco") return !getColaboradorBankValidation(colaborador).isValid;
-      if (filter === "sem_contrato") return hasContratoPendente(colaborador);
-      if (filter === "sem_pix") return hasPixPendente(colaborador);
-      if (filter === "criticos") return colaborador.priority === "critico";
-      return true;
-    }));
-  }, [colaboradoresOperacionais, operacionalFilters]);
+  const colaboradoresFiltrados = useMemo(() => {
+    return colaboradoresOperacionais.filter((colaborador) => {
+      const matchesQuickFilters = operacionalFilters.every((filter) => {
+        if (filter === "apenas_pendentes") return colaborador.status_cadastro === "pendente_complemento" || Boolean(colaborador.cadastro_provisorio);
+        if (filter === "bloqueiam_aprovacao") return colaborador.bloqueiaRh;
+        if (filter === "sem_banco") return !getColaboradorBankValidation(colaborador).isValid;
+        if (filter === "sem_contrato") return hasContratoPendente(colaborador);
+        if (filter === "sem_pix") return hasPixPendente(colaborador);
+        if (filter === "criticos") return colaborador.priority === "critico";
+        return true;
+      });
+
+      if (!matchesQuickFilters) return false;
+      if (contractFilter === "todos") return true;
+
+      return getColaboradorContractLabel(colaborador) === contractFilter;
+    });
+  }, [colaboradoresOperacionais, operacionalFilters, contractFilter]);
 
   const operacionalResumo = useMemo(() => {
     const total = colaboradoresFiltrados.length;
@@ -2309,30 +2375,48 @@ const CentralCadastros = () => {
                         </div>
                       </div>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      {[
-                        { key: "apenas_pendentes" as const, label: "Apenas pendentes" },
-                        { key: "bloqueiam_aprovacao" as const, label: "Bloqueiam aprovação" },
-                        { key: "sem_banco" as const, label: "Sem banco" },
-                        { key: "sem_contrato" as const, label: "Sem contrato" },
-                        { key: "sem_pix" as const, label: "Sem PIX" },
-                        { key: "criticos" as const, label: "Críticos" },
-                      ].map((filter) => (
-                        <Button
-                          key={filter.key}
-                          size="sm"
-                          variant="outline"
-                          className={cn(
-                            "rounded-full transition-colors border",
-                            operacionalFilters.includes(filter.key)
-                              ? "bg-muted/50 text-foreground border-border"
-                              : "bg-transparent text-muted-foreground border-dashed border-border/60 hover:bg-muted/30"
-                          )}
-                          onClick={() => toggleOperacionalFilter(filter.key)}
-                        >
-                          {filter.label}
-                        </Button>
-                      ))}
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { key: "apenas_pendentes" as const, label: "Apenas pendentes" },
+                          { key: "bloqueiam_aprovacao" as const, label: "Bloqueiam aprovação" },
+                          { key: "sem_banco" as const, label: "Sem banco" },
+                          { key: "sem_contrato" as const, label: "Sem contrato" },
+                          { key: "sem_pix" as const, label: "Sem PIX" },
+                          { key: "criticos" as const, label: "Críticos" },
+                        ].map((filter) => (
+                          <Button
+                            key={filter.key}
+                            size="sm"
+                            variant="outline"
+                            className={cn(
+                              "rounded-full transition-colors border",
+                              operacionalFilters.includes(filter.key)
+                                ? "bg-muted/50 text-foreground border-border"
+                                : "bg-transparent text-muted-foreground border-dashed border-border/60 hover:bg-muted/30"
+                            )}
+                            onClick={() => toggleOperacionalFilter(filter.key)}
+                          >
+                            {filter.label}
+                          </Button>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-2 lg:min-w-[220px] lg:justify-end">
+                        <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Tipo de contrato
+                        </Label>
+                        <Select value={contractFilter} onValueChange={setContractFilter}>
+                          <SelectTrigger className="w-full bg-background lg:w-[220px]">
+                            <SelectValue placeholder="Todos" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="todos">Todos</SelectItem>
+                            {contractFilterOptions.map((option) => (
+                              <SelectItem key={option} value={option}>{option}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
                   </div>
                   <div className="max-h-[60vh] overflow-y-scroll pr-1">
@@ -2342,6 +2426,7 @@ const CentralCadastros = () => {
                           <th className="px-3 h-11 font-medium text-center">Prioridade</th>
                           <th className="px-5 h-11 font-medium text-left">Colaborador</th>
                           <th className="px-3 h-11 font-medium text-center">Empresa</th>
+                          <th className="px-3 h-11 font-medium text-center">Tipo</th>
                           <th className="px-3 h-11 font-medium text-center">Contrato</th>
                           <th className="px-3 h-11 font-medium text-center">Completude</th>
                           <th className="px-3 h-11 font-medium text-center">Bloqueios</th>
@@ -2351,7 +2436,7 @@ const CentralCadastros = () => {
                       <tbody>
                         {colaboradoresFiltrados.length === 0 ? (
                           <tr>
-                            <td colSpan={7} className="px-5 py-8 text-center text-muted-foreground">
+                            <td colSpan={8} className="px-5 py-8 text-center text-muted-foreground">
                               Nenhum colaborador encontrado com os filtros operacionais atuais.
                             </td>
                           </tr>
@@ -2381,7 +2466,8 @@ const CentralCadastros = () => {
                               </div>
                             </td>
                             <td className="px-3 text-muted-foreground text-center">{colaborador.empresas?.nome || "—"}</td>
-                            <td className="px-3 text-center font-medium">{colaborador.modelo_calculo || colaborador.tipo_contrato || "N/D"}</td>
+                            <td className="px-3 text-center font-medium">{getColaboradorTypeLabel(colaborador)}</td>
+                            <td className="px-3 text-center font-medium">{getColaboradorContractLabel(colaborador)}</td>
                             <td className="px-3 text-center font-display font-medium">{colaborador.completude}%</td>
                             <td className="px-3 text-center">
                               <div className="flex flex-wrap items-center justify-center gap-1">
@@ -2513,7 +2599,7 @@ const CentralCadastros = () => {
                               </div>
                               <div className="flex justify-between p-2.5 text-xs">
                                 <span className="text-muted-foreground">Tipo e Contrato</span>
-                                <span className="font-medium">{selectedColaboradorDrawer.regime_trabalho || selectedColaboradorDrawer.tipo_colaborador} / {selectedColaboradorDrawer.modelo_calculo || selectedColaboradorDrawer.tipo_contrato || "N/D"}</span>
+                                <span className="font-medium">{getColaboradorTypeLabel(selectedColaboradorDrawer)} / {getColaboradorContractLabel(selectedColaboradorDrawer)}</span>
                               </div>
                               <div className="flex justify-between p-2.5 text-xs">
                                 <span className="text-muted-foreground">Função/Cargo</span>

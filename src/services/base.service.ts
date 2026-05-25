@@ -1239,7 +1239,7 @@ class PontoServiceClass extends BaseService<'registros_ponto'> {
   async deleteImported(month: string, empresaId?: string | null) {
     const [year, monthNumber] = month.split('-').map(Number);
     if (!year || !monthNumber) {
-      throw new Error('Periodo invalido para limpar importacao.');
+      throw new Error('Período inválido para limpar importação.');
     }
 
     const nextMonth = monthNumber === 12 ? 1 : monthNumber + 1;
@@ -2847,6 +2847,14 @@ class OperacaoProducaoServiceClass {
 
     if (error) throw error;
     return true;
+  }
+
+  async getProfile(userId: string) {
+    return supabase
+      .from('profiles')
+      .select('*, perfis:perfis_usuarios(*)')
+      .eq('user_id', userId)
+      .maybeSingle();
   }
 
   async cancel(id: string, userId: string, reason: string) {

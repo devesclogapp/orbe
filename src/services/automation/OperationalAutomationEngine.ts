@@ -310,7 +310,7 @@ export const OperationalAutomationEngine = {
             tenant_id: colab.tenant_id || escopo.tenantId,
             tipo: 'cpf_invalido',
             severidade: 'high',
-            mensagem: `CPF invalido detectado para ${colab.nome}.`,
+            mensagem: `CPF inválido detectado para ${colab.nome}.`,
             contexto_json: { colaborador_id: colab.id },
           });
         }
@@ -357,7 +357,7 @@ export const OperationalAutomationEngine = {
           tenant_id: ponto.tenant_id || escopo.tenantId,
           tipo: 'cpf_invalido',
           severidade: 'high',
-          mensagem: 'CPF invalido detectado no ponto importado.',
+          mensagem: 'CPF inválido detectado no ponto importado.',
           contexto_json: { ponto_id: ponto.id, colaborador_id: ponto.colaborador_id },
         });
       }

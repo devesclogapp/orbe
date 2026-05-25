@@ -157,7 +157,7 @@ export default function AutomacaoOperacional() {
     };
 
     return (
-        <AppShell title="Automacao Operacional" subtitle="Motor de auto-cura supervisionada, validacao e reducao de ruido">
+        <AppShell title="Automação Operacional" subtitle="Motor de auto-cura supervisionada, validação e redução de ruído">
             <div className="space-y-6">
                 <section className="esc-card p-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                     <div>
@@ -166,7 +166,7 @@ export default function AutomacaoOperacional() {
                             Status do Motor: {countPendentes > 0 ? "Processando fila" : "Ocioso"}
                         </h2>
                         <p className="text-sm text-muted-foreground mt-1">
-                            O Orbe detecta inconsistencias, percebe correcoes, limpa alertas e libera ciclos sem executar acoes financeiras criticas.
+                            O Orbe detecta inconsistências, percebe correções, limpa alertas e libera ciclos sem executar ações financeiras críticas.
                         </p>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
@@ -184,7 +184,7 @@ export default function AutomacaoOperacional() {
                 <section>
                     <div className="flex items-center gap-2 mb-3">
                         <HeartPulse className="h-5 w-5 text-success" />
-                        <h3 className="text-lg font-semibold">Saude Operacional</h3>
+                        <h3 className="text-lg font-semibold">Saúde Operacional</h3>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
                         <div className="esc-card p-4">
@@ -200,11 +200,11 @@ export default function AutomacaoOperacional() {
                             <strong className="text-2xl">{saude?.bloqueiosRemovidos ?? 0}</strong>
                         </div>
                         <div className="esc-card p-4">
-                            <p className="text-xs text-muted-foreground">Severidade media</p>
+                            <p className="text-xs text-muted-foreground">Severidade média</p>
                             <strong className="text-2xl">{saude?.severidadeMedia ?? 0}</strong>
                         </div>
                         <div className="esc-card p-4">
-                            <p className="text-xs text-muted-foreground">Tempo medio resolucao</p>
+                            <p className="text-xs text-muted-foreground">Tempo médio resolução</p>
                             <strong className="text-2xl">{formatMinutes(saude?.tempoMedioResolucaoMinutos)}</strong>
                         </div>
                     </div>
@@ -245,7 +245,7 @@ export default function AutomacaoOperacional() {
                                             )}
 
                                             <Button variant="outline" size="sm" className="w-full mt-2" onClick={() => handleAcaoGuiada(alerta)}>
-                                                Resolver Pendencia <ArrowRight className="h-4 w-4 ml-2" />
+                                                Resolver Pendência <ArrowRight className="h-4 w-4 ml-2" />
                                             </Button>
                                         </li>
                                     ))}
@@ -253,7 +253,7 @@ export default function AutomacaoOperacional() {
                             ) : (
                                 <div className="h-full min-h-[260px] flex flex-col items-center justify-center text-muted-foreground">
                                     <CheckCircle className="h-10 w-10 mb-2 opacity-50" />
-                                    <p>Nenhuma inconsistencia ativa detectada.</p>
+                                    <p>Nenhuma inconsistência ativa detectada.</p>
                                 </div>
                             )}
                         </div>
@@ -314,7 +314,7 @@ export default function AutomacaoOperacional() {
 
                 <section className="esc-card flex flex-col h-full">
                     <div className="p-4 border-b border-border font-semibold flex items-center justify-between">
-                        <span>Fila de background e historico</span>
+                        <span>Fila de background e histórico</span>
                         <Clock className="h-4 w-4 text-muted-foreground" />
                     </div>
                     <div className="p-4 overflow-y-auto max-h-[360px]">
@@ -329,10 +329,10 @@ export default function AutomacaoOperacional() {
                                                     execucao.status === "concluido"
                                                         ? "success"
                                                         : execucao.status === "falhou"
-                                                          ? "destructive"
-                                                          : execucao.status === "executando"
-                                                            ? "warning"
-                                                            : "default"
+                                                            ? "destructive"
+                                                            : execucao.status === "executando"
+                                                                ? "warning"
+                                                                : "default"
                                                 }
                                             >
                                                 {execucao.status}
@@ -350,7 +350,7 @@ export default function AutomacaoOperacional() {
                             </ul>
                         ) : (
                             <div className="min-h-[160px] flex flex-col items-center justify-center text-muted-foreground">
-                                Nenhuma execucao registrada
+                                Nenhuma execução registrada
                             </div>
                         )}
                     </div>

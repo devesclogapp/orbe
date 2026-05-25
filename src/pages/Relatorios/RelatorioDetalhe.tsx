@@ -134,7 +134,7 @@ const RelatorioDetalhe = () => {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        toast.success(`Relatório exportado em ${formatType} para competencia ${competencia}`);
+        toast.success(`Relatório exportado em ${formatType} para competência ${competencia}`);
     };
 
     if (catalogError || (!loadingCatalog && !report)) return (

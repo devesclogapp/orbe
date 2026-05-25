@@ -69,7 +69,10 @@ import { cn } from "@/lib/utils";
 import {
   CustoExtraOperacionalService,
   OperacaoService,
+  ConsolidadoService,
 } from "@/services/base.service";
+import { AuditoriaService } from "@/services/v4.service";
+import { ReportService } from "@/services/report.service";
 
 import { processarOperacao } from "@/utils/financeiro";
 import { DashboardConsolidadoService, OperationalIntegrityKPIs } from "@/services/dashboard.service";
@@ -567,14 +570,14 @@ const Dashboard = () => {
   return (
     <AppShell
       title="Dashboard"
-      subtitle={`Visao geral consolidada de operacoes + custos extras · ${monthLabelCapitalized}`}
+      subtitle={`Visão geral consolidada de operações + custos extras · ${monthLabelCapitalized}`}
     >
       <div className="space-y-5">
         <section className="esc-card rounded-2xl border border-border p-4">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex flex-wrap items-center gap-3">
               <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Periodo de analise
+                Período de análise
               </div>
               <Select value={selectedYear} onValueChange={setSelectedYear}>
                 <SelectTrigger className="w-[120px] h-10 shrink-0 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium">
@@ -595,7 +598,7 @@ const Dashboard = () => {
                 <SelectTrigger className="w-[180px] h-10 shrink-0 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium">
                   <div className="flex items-center gap-2">
                     <CalendarIcon className="h-4 w-4 text-primary" />
-                    <SelectValue placeholder="Mes" />
+                    <SelectValue placeholder="Mês" />
                   </div>
                 </SelectTrigger>
                 <SelectContent>
@@ -645,7 +648,7 @@ const Dashboard = () => {
 
               <div className="flex items-center gap-2 text-xs text-muted-foreground whitespace-nowrap pl-4 border-l">
                 <div className="h-2 w-2 rounded-full bg-success animate-pulse" />
-                Consolidacao atualizada em {lastSync}
+                Consolidação atualizada em {lastSync}
               </div>
             </div>
           </div>
@@ -655,7 +658,7 @@ const Dashboard = () => {
           <div className="esc-card flex flex-col items-center justify-center p-20 text-center">
             <Loader2 className="mb-3 h-10 w-10 animate-spin text-primary" />
             <p className="text-sm text-muted-foreground">
-              Consolidando receita, custos e lucro do periodo...
+              Consolidando receita, custos e lucro do período...
             </p>
           </div>
         ) : isError ? (
@@ -669,7 +672,7 @@ const Dashboard = () => {
             <p className="mt-2 mb-6 max-w-md text-sm text-muted-foreground">
               {kpisError instanceof Error
                 ? kpisError.message
-                : 'Nao foi possivel consolidar os dados. Verifique a conexao com o banco.'}
+                : 'Não foi possível consolidar os dados. Verifique a conexão com o banco.'}
             </p>
             <Button onClick={() => window.location.reload()}>
               <RefreshCw className="mr-2 h-4 w-4" />

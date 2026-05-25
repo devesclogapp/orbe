@@ -14,9 +14,10 @@ interface OperationalShellProps {
     onBack?: () => void;
     hideFab?: boolean;
     pipelineTrigger?: PipelineTrigger | null;
+    breadcrumbs?: Array<{ label: string; action?: () => void }>;
 }
 
-export const OperationalShell = ({ children, title = "Coletor Orbe", unitName, showBack: propShowBack, onBack, hideFab, pipelineTrigger }: OperationalShellProps) => {
+export const OperationalShell = ({ children, title = "Coletor Orbe", unitName, showBack: propShowBack, onBack, hideFab, pipelineTrigger, breadcrumbs }: OperationalShellProps) => {
     const { signOut, user } = useAuth();
     const navigate = useNavigate();
     const { openPipeline } = useOperationalPipeline();
