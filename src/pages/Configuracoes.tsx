@@ -257,7 +257,6 @@ const Configuracoes = () => {
 
   const [isEditingParams, setIsEditingParams] = useState(false);
   const [paramsForm, setParamsForm] = useState<any>({});
-  const [selectedFilterOptionByKey, setSelectedFilterOptionByKey] = useState<Record<string, string>>({});
 
   const { data: perfil } = useQuery({
     queryKey: ["profile_configuracoes", user?.id],
@@ -329,26 +328,6 @@ const Configuracoes = () => {
         },
       },
     }));
-
-    if (patch.campo_filtro) {
-      setSelectedFilterOptionByKey((prev) => ({ ...prev, [presetId]: "" }));
-    }
-  };
-
-  const addFilterValueToPreset = (presetId: string) => {
-    const selectedValue = selectedFilterOptionByKey[presetId];
-    if (!selectedValue) return;
-
-    const currentValues = presetFilters[presetId]?.valores_filtro ?? [];
-    if (currentValues.includes(selectedValue)) return;
-
-    updatePresetFilter(presetId, { valores_filtro: [...currentValues, selectedValue] });
-    setSelectedFilterOptionByKey((prev) => ({ ...prev, [presetId]: "" }));
-  };
-
-  const removeFilterValueFromPreset = (presetId: string, value: string) => {
-    const currentValues = presetFilters[presetId]?.valores_filtro ?? [];
-    updatePresetFilter(presetId, { valores_filtro: currentValues.filter((item) => item !== value) });
   };
 
   const handleUpdateName = async () => {
@@ -684,45 +663,21 @@ const Configuracoes = () => {
                         <div className="space-y-1.5">
                           <Label className="text-xs text-muted-foreground">Valores permitidos</Label>
                           {!preset.fixed ? (
-                            <div className="space-y-2">
-                              <div className="flex gap-2">
-                                <Select
-                                  value={selectedFilterOptionByKey[preset.id] || ""}
-                                  onValueChange={(value) => setSelectedFilterOptionByKey((prev) => ({ ...prev, [preset.id]: value }))}
-                                >
-                                  <SelectTrigger className="h-10">
-                                    <SelectValue placeholder="Selecione uma opção disponível" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {availableOptions.map((option) => (
-                                      <SelectItem key={option} value={option}>
-                                        {option}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                                <Button type="button" variant="outline" onClick={() => addFilterValueToPreset(preset.id)}>
-                                  Adicionar
-                                </Button>
-                              </div>
-                              <div className="flex flex-wrap gap-2">
-                                {(filter.valores_filtro ?? []).length === 0 ? (
-                                  <span className="text-xs text-muted-foreground">Nenhum valor selecionado.</span>
-                                ) : (
-                                  (filter.valores_filtro ?? []).map((value) => (
-                                    <button
-                                      key={value}
-                                      type="button"
-                                      className="inline-flex items-center gap-1 rounded-full border border-border/60 px-3 py-1 text-sm"
-                                      onClick={() => removeFilterValueFromPreset(preset.id, value)}
-                                    >
-                                      {fixMojibakeText(value)}
-                                      <X className="h-3.5 w-3.5" />
-                                    </button>
-                                  ))
-                                )}
-                              </div>
-                            </div>
+                            <Select
+                              value={filter.valores_filtro?.[0] || ""}
+                              onValueChange={(value) => updatePresetFilter(preset.id, { valores_filtro: value ? [value] : [] })}
+                            >
+                              <SelectTrigger className="h-10">
+                                <SelectValue placeholder="Selecione uma opção disponível" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {availableOptions.map((option) => (
+                                  <SelectItem key={option} value={option}>
+                                    {option}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           ) : (
                             <div className="min-h-10 rounded-xl border border-border/50 px-3 py-2 text-sm text-foreground">
                               {preset.fixed ? "DIARISTA" : formatFilterList(filter.valores_filtro)}
