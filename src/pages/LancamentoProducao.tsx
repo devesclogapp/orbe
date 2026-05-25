@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -1450,12 +1450,13 @@ const LancamentoProducao = () => {
             total_colaboradores: new Set(registros.map((item) => item.responsavel_id).filter(Boolean)).size,
             total_quantidade: registros.reduce((acc, item) => acc + Number(item.quantidade || 0), 0),
             valor_total_produzido: registros.reduce(
-                (acc, item) =>
-                    acc +
-                    Number(
-                        item.avaliacao_json?.contexto_operacional?.total_previsto ??
-                        Number(item.quantidade || 0) * Number(item.valor_unitario || 0),
-                    ),
+                (acc, item) => {
+                    // Prioridade: valor_total do banco (gravado corretamente),
+                    // fallback para total_previsto no avaliacao_json.
+                    const vt = Number(item.valor_total || 0);
+                    const vp = Number(item.avaliacao_json?.contexto_operacional?.total_previsto || 0);
+                    return acc + (vt > 0 ? vt : vp);
+                },
                 0,
             ),
             pendencias: registros.filter(
@@ -1470,7 +1471,21 @@ const LancamentoProducao = () => {
         };
     }, [historico]);
 
-    const resumo = resumoV2 ?? resumoFallback;
+    const resumo = useMemo(() => {
+        // O resumoFallback calcula a soma de valor_total direto dos registros (correto),
+        // enquanto resumoV2 (view do BD) pode ter divergência pelo trigger de cálculo.
+        // Sempre usar resumoFallback quando os registros locais já estão carregados.
+        const totalLocal = Number(resumoFallback.valor_total_produzido || 0);
+        const baseResumo = resumoV2 ?? resumoFallback;
+        return {
+            ...baseResumo,
+            total_lancamentos: resumoFallback.total_lancamentos,
+            total_colaboradores: resumoFallback.total_colaboradores,
+            pendencias: resumoFallback.pendencias,
+            // Prioriza soma local (mais precisa); usa da view somente se não há registros locais
+            valor_total_produzido: totalLocal > 0 ? totalLocal : Number((baseResumo as any).valor_total_produzido || 0),
+        };
+    }, [resumoFallback, resumoV2]);
 
     const mutation = useMutation({
         mutationFn: async ({ operacao, colaboradores }: any) => {
@@ -1654,8 +1669,14 @@ const LancamentoProducao = () => {
             }
         };
 
+        // Desestruturar regraFinanceira excluindo tipo_calculo para evitar violar o CHECK constraint.
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { tipoCalculo: _tc, tipo_calculo: _tcl, ...regraFinanceiraSpread } = (regraFinanceira ?? {}) as any;
+        const tipoCalculoSnapshotFinal: 'volume' | 'colaborador' =
+            (regraFinanceiraAtiva?.tipoCalculo === 'colaborador') ? 'colaborador' : 'volume';
+
         const operacao = {
-            ...regraFinanceira,
+            ...regraFinanceiraSpread,
             modalidade_financeira: finalModalidade,
             categoria_servico: categoriaServico,
             empresa_id: form.empresa_id,
@@ -1674,7 +1695,7 @@ const LancamentoProducao = () => {
                     ? quantidadeColaboradores
                     : quantidade,
             valor_unitario_snapshot: valorUnitarioFinal,
-            tipo_calculo_snapshot: regraFinanceiraAtiva?.tipoCalculo ?? "volume",
+            tipo_calculo_snapshot: tipoCalculoSnapshotFinal,
             forma_pagamento_id: form.forma_pagamento && form.forma_pagamento.includes('-') ? form.forma_pagamento : null,
             placa: form.placa_veiculo || null,
             status: status === "Com alerta" ? "com_alerta" : status === "Aguardando validação" ? "aguardando_validacao" : "pendente",
@@ -2312,16 +2333,25 @@ const LancamentoProducao = () => {
                             ) : (
                                 <ScrollArea className="h-full">
                                     <div className="p-4 space-y-4">
-                                        {(historico as any[]).map((item: any) => (
+                                        {(historico as any[]).map((item: any) => {
+                                            const valorItem = Number(item.valor_total || 0);
+                                            const produto = item.produtos_carga?.nome ?? null;
+                                            const fornecedor = item.fornecedores?.nome ?? null;
+                                            const transportadora = item.transportadoras_clientes?.nome ?? null;
+                                            const qtd = Number(item.quantidade || 0);
+                                            const valUnit = Number(item.valor_unitario_snapshot || 0);
+                                            return (
                                             <div key={item.id} className="rounded-2xl border border-border bg-background p-4 space-y-3">
+                                                {/* Header: tipo de servico + hora + status + deletar */}
                                                 <div className="flex items-start justify-between gap-3">
                                                     <div className="min-w-0">
-                                                        <p className="font-bold text-sm text-foreground">{item.tipos_servico_operacional?.nome}</p>
+                                                        <p className="font-bold text-sm text-foreground">{item.tipos_servico_operacional?.nome ?? "Operacao"}</p>
                                                         <p className="text-xs text-muted-foreground">
                                                             {item.criado_em ? format(new Date(item.criado_em), "HH:mm") : ""}
+                                                            {transportadora ? ` · ${transportadora}` : ""}
                                                         </p>
                                                     </div>
-                                                    <div className="flex items-center gap-2">
+                                                    <div className="flex items-center gap-2 shrink-0">
                                                         <Badge variant={getStatusVariant(
                                                             item.status_pagamento === "RECEBIDO" || item.status_pagamento === "Recebido" ? "Recebido" : item.status
                                                         )}>
@@ -2332,7 +2362,7 @@ const LancamentoProducao = () => {
                                                                 <Button
                                                                     variant="ghost"
                                                                     size="icon"
-                                                                    title="Cancelar Operação"
+                                                                    title="Cancelar Operacao"
                                                                     onClick={() => setCancelItemId(item.id)}
                                                                     className="h-8 w-8 text-destructive hover:bg-destructive/10"
                                                                 >
@@ -2341,8 +2371,31 @@ const LancamentoProducao = () => {
                                                             )}
                                                     </div>
                                                 </div>
+                                                {/* Detalhes: produto/fornecedor + valores */}
+                                                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-border/40">
+                                                    <div className="space-y-0.5 min-w-0">
+                                                        {(produto || fornecedor) && (
+                                                            <p className="text-xs font-semibold text-foreground truncate">
+                                                                {produto ?? fornecedor}
+                                                            </p>
+                                                        )}
+                                                        <p className="text-[10px] text-muted-foreground">
+                                                            {qtd > 0 ? `${qtd} un` : ""}
+                                                            {valUnit > 0 ? ` x ${valUnit.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}` : ""}
+                                                        </p>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className={`text-sm font-black leading-none ${valorItem > 0 ? "text-green-600" : "text-muted-foreground"}`}>
+                                                            {valorItem > 0
+                                                                ? valorItem.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+                                                                : "—"}
+                                                        </p>
+                                                        <p className="text-[10px] text-muted-foreground mt-0.5">total</p>
+                                                    </div>
+                                                </div>
                                             </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 </ScrollArea>
                             )}

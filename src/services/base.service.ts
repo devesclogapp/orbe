@@ -2870,15 +2870,37 @@ export const RegraOperacionalService = new RegraOperacionalServiceClass();
 
 class OperacaoProducaoServiceClass {
   private sanitizeOperacaoPayload(payload: Record<string, any>) {
-    const { categoria_servico, categoria_custo, ...rest } = payload;
+    const { categoria_servico, categoria_custo, tipo_calculo, ...rest } = payload;
+    // tipo_calculo é removido do payload pois operacoes_producao não possui essa coluna.
+    // O campo correto é tipo_calculo_snapshot. O spread de regraFinanceira pode injetar
+    // tipo_calculo inadvertidamente, causando erro no banco.
+    void categoria_servico;
+    void categoria_custo;
+    void tipo_calculo;
 
-    if (rest.tipo_calculo_snapshot === 'operation') {
-      rest.tipo_calculo_snapshot = 'fixo';
-    } else if (rest.tipo_calculo_snapshot === 'daily') {
-      rest.tipo_calculo_snapshot = 'fixo';
+    // Normaliza tipo_calculo_snapshot para os únicos valores aceitos pelo banco.
+    // Valores legados ('fixo', 'operation', 'daily') são mapeados para 'volume'.
+    // O único valor alternativo válido é 'colaborador'.
+    const normalizeTipoCalculoSnapshot = (value: unknown): 'volume' | 'colaborador' => {
+      if (value === 'colaborador') return 'colaborador';
+      // Todos os outros ('fixo', 'operation', 'daily', 'volume', undefined, null)
+      // são normalizados para 'volume'.
+      return 'volume';
+    };
+
+    if (rest.tipo_calculo_snapshot !== undefined) {
+      rest.tipo_calculo_snapshot = normalizeTipoCalculoSnapshot(rest.tipo_calculo_snapshot);
+    } else {
+      // Garantir que o campo sempre está presente com valor válido no INSERT
+      rest.tipo_calculo_snapshot = 'volume';
     }
 
     return rest;
+  }
+
+  private buildLegacyTipoCalculoPayload(payload: Record<string, any>) {
+    // Mantido por compatibilidade, mas o sanitize agora evita chegar aqui.
+    return { ...payload };
   }
 
   private async getEmpresaIdsFromTenant(tenantId: string | null): Promise<string[] | null> {
@@ -2912,7 +2934,16 @@ class OperacaoProducaoServiceClass {
       `)
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('[OPERACOES_PRODUCAO] Erro ao inserir:', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        payload: safePayload,
+      });
+      throw error;
+    }
     return data;
   }
 
