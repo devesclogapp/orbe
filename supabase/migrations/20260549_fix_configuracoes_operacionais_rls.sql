@@ -17,7 +17,7 @@ USING (
   AND empresa_id IN (
     SELECT e.id
     FROM public.empresas e
-    WHERE e.tenant_id = public.current_tenant_id()
+    WHERE e.tenant_id = auth.current_tenant_id()
   )
 );
 
@@ -29,7 +29,7 @@ WITH CHECK (
   AND empresa_id IN (
     SELECT e.id
     FROM public.empresas e
-    WHERE e.tenant_id = public.current_tenant_id()
+    WHERE e.tenant_id = auth.current_tenant_id()
   )
 );
 
@@ -41,7 +41,7 @@ USING (
   AND empresa_id IN (
     SELECT e.id
     FROM public.empresas e
-    WHERE e.tenant_id = public.current_tenant_id()
+    WHERE e.tenant_id = auth.current_tenant_id()
   )
 )
 WITH CHECK (
@@ -49,7 +49,7 @@ WITH CHECK (
   AND empresa_id IN (
     SELECT e.id
     FROM public.empresas e
-    WHERE e.tenant_id = public.current_tenant_id()
+    WHERE e.tenant_id = auth.current_tenant_id()
   )
 );
 
@@ -61,7 +61,7 @@ USING (
   AND empresa_id IN (
     SELECT e.id
     FROM public.empresas e
-    WHERE e.tenant_id = public.current_tenant_id()
+    WHERE e.tenant_id = auth.current_tenant_id()
   )
 );
 

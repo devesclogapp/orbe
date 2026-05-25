@@ -98,7 +98,7 @@ type ModalidadeFinanceiraForm = "CAIXA_IMEDIATO" | "DUPLICATA" | "FATURAMENTO_ME
 type CondutaColaborador = {
     selected: boolean;
     hadInfraction: boolean;
-    infractionType: string;
+    infractionTypes: string[];
     notes: string;
 };
 
@@ -1245,7 +1245,10 @@ const LancamentoProducao = () => {
     );
 
     const quantidadeSelecionada = colaboradoresSelecionados.length;
-    const infracoesCount = Object.values(condutaColaboradores).filter((item) => item.selected && item.hadInfraction).length;
+    const infracoesCount = Object.values(condutaColaboradores).reduce((total, item) => {
+        if (!item.selected || !item.hadInfraction) return total;
+        return total + item.infractionTypes.length;
+    }, 0);
     const exibirPlaca = true;
     const quantidade = Number(form.quantidade || 0);
     const quantidadeColaboradores = Number(form.quantidade_colaboradores || 0);
@@ -1386,7 +1389,7 @@ const LancamentoProducao = () => {
 
         const colaboradorComInfracaoSemTipo = colaboradoresSelecionados.find((colaborador: any) => {
             const conduta = condutaColaboradores[colaborador.id];
-            return conduta?.selected && conduta.hadInfraction && !conduta.infractionType;
+            return conduta?.selected && conduta.hadInfraction && conduta.infractionTypes.length === 0;
         });
 
         if (colaboradorComInfracaoSemTipo) {
@@ -1628,9 +1631,15 @@ const LancamentoProducao = () => {
         if (finalModalidade === "DUPLICATA") finalModalidade = "DUPLICATA_FORNECEDOR";
 
         const avaliacaoJson = {
-            infracoes: Object.values(condutaColaboradores)
-                .filter((c) => c.selected && c.hadInfraction)
-                .map((c) => ({ type: c.infractionType, notes: c.notes })),
+            infracoes: Object.entries(condutaColaboradores)
+                .filter(([, c]) => c.selected && c.hadInfraction)
+                .flatMap(([colaboradorId, c]) =>
+                    c.infractionTypes.map((type) => ({
+                        collaborator_id: colaboradorId,
+                        type,
+                        notes: c.notes,
+                    })),
+                ),
             total_infracoes: infracoesCount,
             contexto_operacional: {
                 total_previsto: totalFinal,
@@ -1691,12 +1700,21 @@ const LancamentoProducao = () => {
 
         const colaboradores = Object.entries(condutaColaboradores)
             .filter(([, conduta]) => conduta.selected)
-            .map(([colaborador_id, conduta]) => ({
-                collaborator_id: colaborador_id,
-                had_infraction: conduta.hadInfraction,
-                infraction_type_id: conduta.infractionType || null,
-                infraction_notes: conduta.notes || null,
-            }));
+            .map(([colaborador_id, conduta]) => {
+                const infractionNotes = conduta.hadInfraction
+                    ? [
+                        conduta.notes.trim() || null,
+                        conduta.infractionTypes.length > 1 ? `Infrações: ${conduta.infractionTypes.join(", ")}` : null,
+                    ].filter(Boolean).join(" | ") || null
+                    : null;
+
+                return {
+                    collaborator_id: colaborador_id,
+                    had_infraction: conduta.hadInfraction,
+                    infraction_type_id: conduta.infractionTypes[0] || null,
+                    infraction_notes: infractionNotes,
+                };
+            });
 
         mutation.mutate({ operacao, colaboradores });
     };
@@ -1958,14 +1976,14 @@ const LancamentoProducao = () => {
                                         {!isCustosMensaisCLT && (
                                             <div className="rounded-xl border border-border/60 overflow-hidden">
                                                 <button type="button" onClick={() => setForm(f => ({ ...f, nf_emite: !f.nf_emite, nf_numero: f.nf_emite ? "" : f.nf_numero }))} className={cn("w-full flex items-center justify-between px-4 py-3 text-sm font-semibold transition-colors", form.nf_emite ? "bg-success-soft text-success-strong" : "bg-muted/40 text-muted-foreground hover:bg-muted/70")}>
-                                                    <span className="flex items-center gap-2"><span className={cn("w-5 h-5 rounded-full border-2 flex items-center justify-center text-xs font-black transition-all", form.nf_emite ? "border-success-strong bg-success-strong text-white" : "border-border bg-background")}>{form.nf_emite ? "✅ " : ""}</span>Emite Nota Fiscal (NF)?</span>
-                                                    <span className={cn("text-xs px-2 py-0.5 rounded-full font-bold", form.nf_emite ? "bg-success-strong text-white" : "bg-muted text-muted-foreground")}>{form.nf_emite ? "SIM" : "NÃO"}</span>
+                                                    <span>Emite Nota Fiscal (NF)?</span>
+                                                    <span className={cn("text-xs px-2 py-0.5 rounded-full font-bold", form.nf_emite ? "bg-success-strong text-white" : "bg-muted text-muted-foreground")}>{form.nf_emite ? "SIM" : "NAO"}</span>
                                                 </button>
                                                 {form.nf_emite && (
                                                     <div className="px-4 py-3 bg-background border-t border-border/40">
                                                         <Label className="text-xs text-muted-foreground mb-1 block">Número / Código da NF</Label>
                                                         <Input value={form.nf_numero} onChange={e => setForm(f => ({ ...f, nf_numero: e.target.value }))} placeholder="Digite o número ou código da NF" className="h-10 rounded-xl" autoFocus />
-                                                        {percentualIss > 0 && <p className="text-[11px] text-success-strong mt-1.5 font-medium">⚠️ ISS de {percentualIss.toFixed(1)}% será aplicado ao valor total.</p>}
+                                                        {percentualIss > 0 && <p className="text-[11px] text-success-strong mt-1.5 font-medium">ISS de {percentualIss.toFixed(1)}% sera aplicado ao valor total.</p>}
                                                     </div>
                                                 )}
                                             </div>
@@ -1992,49 +2010,42 @@ const LancamentoProducao = () => {
                                                     </div>
                                                 </div>
                                                 <div className="space-y-1.5">
-                                                    <Label className="text-sm font-semibold">Valor Total</Label>
-                                                    <div className={cn("h-11 rounded-xl flex items-center px-3 font-bold text-base border", totalFinal > 0 ? "bg-success-soft border-success-strong/30 text-success-strong" : "bg-muted/50 border-border text-muted-foreground")}>{formatCurrency(totalFinal)}</div>
+                                                    <Label className="text-sm font-semibold">Custo com ISS</Label>
+                                                    <div className={cn("h-11 rounded-xl flex items-center px-3 font-bold text-base border", custoIss > 0 ? "bg-success-soft border-success-strong/30 text-success-strong" : "bg-muted/50 border-border text-muted-foreground")}>{formatCurrency(custoIss)}</div>
                                                 </div>
                                             </div>
-                                            {!isCustosMensaisCLT && (hasRegraFinanceira || percentualIss > 0) && (
-                                                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                                    <div className="rounded-xl border border-border/60 bg-muted/30 px-3 py-2 text-xs">
-                                                        <div className="text-muted-foreground uppercase tracking-wide font-semibold">Preço encontrado</div>
-                                                        <div className="mt-1 font-bold text-foreground">
-                                                            {hasRegraFinanceira ? formatCurrency(valorUnitarioEfetivo) : "Nenhuma regra encontrada"}
-                                                        </div>
-                                                    </div>
-                                                    <div className="rounded-xl border border-border/60 bg-muted/30 px-3 py-2 text-xs">
-                                                        <div className="text-muted-foreground uppercase tracking-wide font-semibold">ISS vigente</div>
-                                                        <div className="mt-1 font-bold text-foreground">
-                                                            {percentualIss > 0 ? `${percentualIss.toFixed(1)}%` : "Sem ISS aplicável"}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )}
                                             {vencimentoObrigatorio && (
                                                 <div className="space-y-1.5">
                                                     <Label className="text-sm font-semibold">Data de Vencimento <span className="text-destructive">*</span></Label>
                                                     <Input type="date" value={form.data_vencimento} onChange={e => setForm(f => ({ ...f, data_vencimento: e.target.value }))} className="h-11 rounded-xl" min={form.data} />
                                                 </div>
                                             )}
+                                            {(valorUnitarioEfetivo > 0 || totalFinal > 0) && (
+                                                <div className="rounded-xl bg-muted/40 border border-border/50 px-4 py-3 text-xs text-muted-foreground space-y-2">
+                                                    <div className="flex justify-between gap-3"><span>Formula</span><span className="font-mono font-bold text-foreground text-right">{baseCalculoResumo}</span></div>
+                                                    <div className="flex justify-between gap-3"><span>ISS aplicado</span><span className="font-mono font-bold text-foreground">{percentualIss > 0 ? `${percentualIss.toFixed(1)}% = ${formatCurrency(custoIss)}` : "Nao aplicavel"}</span></div>
+                                                    {totalFilme > 0 && (
+                                                        <div className="flex justify-between gap-3"><span>Filme / adicional</span><span className="font-mono font-bold text-foreground">{formatCurrency(totalFilme)}</span></div>
+                                                    )}
+                                                    <div className="flex justify-between gap-3"><span>Base monetaria</span><span className="font-mono font-bold text-foreground">{formatCurrency(valorDescarga)}</span></div>
+                                                    <div className="flex justify-between"><span>Base de calculo</span><span className="font-mono font-bold text-foreground">{baseCalculoResumo}</span></div>
+                                                </div>
+                                            )}
+                                            <div className="space-y-1.5">
+                                                <Label className="text-sm font-semibold">Valor Total</Label>
+                                                <div className={cn("h-11 rounded-xl flex items-center px-3 font-bold text-base border", totalFinal > 0 ? "bg-success-soft border-success-strong/30 text-success-strong" : "bg-muted/50 border-border text-muted-foreground")}>{formatCurrency(totalFinal)}</div>
+                                            </div>
                                             <div className="space-y-1.5">
                                                 <Label className="text-sm font-semibold">Status Financeiro</Label>
                                                 <Select value={form.status_financeiro} onValueChange={(v) => setForm(f => ({ ...f, status_financeiro: v }))}>
                                                     <SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger>
                                                     <SelectContent>
-                                                        <SelectItem value="PENDENTE">⏳ Pendente</SelectItem>
-                                                        <SelectItem value="RECEBIDO">✅ Recebido</SelectItem>
-                                                        <SelectItem value="ATRASADO">🚨 Atrasado</SelectItem>
+                                                        <SelectItem value="PENDENTE">Pendente</SelectItem>
+                                                        <SelectItem value="RECEBIDO">Recebido</SelectItem>
+                                                        <SelectItem value="ATRASADO">Atrasado</SelectItem>
                                                     </SelectContent>
                                                 </Select>
                                             </div>
-                                            {(valorUnitarioEfetivo > 0 || totalFinal > 0) && (
-                                                <div className="rounded-xl bg-muted/40 border border-border/50 px-4 py-3 text-xs text-muted-foreground space-y-1">
-                                                    <div className="flex justify-between"><span>Base de cálculo</span><span className="font-mono font-bold text-foreground">{baseCalculoResumo}</span></div>
-                                                    <div className="flex justify-between"><span>Total previsto</span><span className="font-mono font-bold text-success-strong">{formatCurrency(totalFinal)}</span></div>
-                                                </div>
-                                            )}
                                         </div>
                                     </div>
                                     {etapaTresBlockReason && <div className="rounded-xl bg-destructive/5 border border-destructive/20 px-4 py-3"><p className="text-xs text-destructive font-medium">{etapaTresBlockReason}</p></div>}
@@ -2052,11 +2063,31 @@ const LancamentoProducao = () => {
                                             </p>
                                             <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
                                                 {colaboradoresFiltrados.map((colaborador: any) => {
-                                                    const conduta = condutaColaboradores[colaborador.id] ?? { selected: false, hadInfraction: false, infractionType: "", notes: "" };
+                                                    const conduta = condutaColaboradores[colaborador.id] ?? { selected: false, hadInfraction: false, infractionTypes: [], notes: "" };
+                                                    const regrasColaborador = [
+                                                        ...getRegrasPorFuncao(colaborador.cargo || ""),
+                                                        { id: "outros", label: "Outros", funcoes: ["*"] },
+                                                    ];
                                                     return (
                                                         <div key={colaborador.id} className="rounded-xl border p-3 space-y-3">
                                                             <label className="flex items-start gap-3 cursor-pointer">
-                                                                <input type="checkbox" checked={conduta.selected} onChange={(e) => setCondutaColaboradores((prev) => ({ ...prev, [colaborador.id]: { ...conduta, selected: e.target.checked } }))} className="mt-1 h-4 w-4 rounded accent-brand" />
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={conduta.selected}
+                                                                    onChange={(e) =>
+                                                                        setCondutaColaboradores((prev) => ({
+                                                                            ...prev,
+                                                                            [colaborador.id]: {
+                                                                                ...conduta,
+                                                                                selected: e.target.checked,
+                                                                                hadInfraction: e.target.checked ? conduta.hadInfraction : false,
+                                                                                infractionTypes: e.target.checked ? conduta.infractionTypes : [],
+                                                                                notes: e.target.checked ? conduta.notes : "",
+                                                                            },
+                                                                        }))
+                                                                    }
+                                                                    className="mt-1 h-4 w-4 rounded accent-brand"
+                                                                />
                                                                 <div>
                                                                     <div className="text-sm font-semibold">{colaborador.nome}</div>
                                                                     <div className="text-xs text-muted-foreground">{colaborador.cargo || "Não informado"}</div>
@@ -2065,9 +2096,84 @@ const LancamentoProducao = () => {
                                                             {conduta.selected && (
                                                                 <div className="ml-7 space-y-3">
                                                                     <div className="flex items-center gap-2">
-                                                                        <input type="checkbox" checked={conduta.hadInfraction} onChange={(e) => setCondutaColaboradores((prev) => ({ ...prev, [colaborador.id]: { ...conduta, hadInfraction: e.target.checked } }))} className="h-4 w-4 rounded accent-destructive" />
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={conduta.hadInfraction}
+                                                                            onChange={(e) =>
+                                                                                setCondutaColaboradores((prev) => ({
+                                                                                    ...prev,
+                                                                                    [colaborador.id]: {
+                                                                                        ...conduta,
+                                                                                        hadInfraction: e.target.checked,
+                                                                                        infractionTypes: e.target.checked ? conduta.infractionTypes : [],
+                                                                                        notes: e.target.checked ? conduta.notes : "",
+                                                                                    },
+                                                                                }))
+                                                                            }
+                                                                            className="h-4 w-4 rounded accent-destructive"
+                                                                        />
                                                                         <span className="text-sm">Teve infração?</span>
                                                                     </div>
+                                                                    {conduta.hadInfraction && (
+                                                                        <div className="space-y-3 rounded-xl border border-destructive/15 bg-destructive/5 p-3">
+                                                                            <div className="space-y-1.5">
+                                                                                <Label className="text-xs font-semibold">
+                                                                                    Infracoes identificadas <span className="text-destructive">*</span>
+                                                                                </Label>
+                                                                                <div className="grid gap-2 sm:grid-cols-2">
+                                                                                    {regrasColaborador.map((regra) => {
+                                                                                        const checked = conduta.infractionTypes.includes(regra.id);
+                                                                                        return (
+                                                                                            <label
+                                                                                                key={regra.id}
+                                                                                                className={cn(
+                                                                                                    "flex items-start gap-2 rounded-xl border bg-background px-3 py-2 text-xs transition-colors cursor-pointer",
+                                                                                                    checked ? "border-destructive/40 bg-destructive/5" : "border-border/60",
+                                                                                                )}
+                                                                                            >
+                                                                                                <input
+                                                                                                    type="checkbox"
+                                                                                                    checked={checked}
+                                                                                                    onChange={(e) =>
+                                                                                                        setCondutaColaboradores((prev) => ({
+                                                                                                            ...prev,
+                                                                                                            [colaborador.id]: {
+                                                                                                                ...conduta,
+                                                                                                                infractionTypes: e.target.checked
+                                                                                                                    ? [...conduta.infractionTypes, regra.id]
+                                                                                                                    : conduta.infractionTypes.filter((item) => item !== regra.id),
+                                                                                                            },
+                                                                                                        }))
+                                                                                                    }
+                                                                                                    className="mt-0.5 h-4 w-4 rounded accent-destructive"
+                                                                                                />
+                                                                                                <span>{regra.label}</span>
+                                                                                            </label>
+                                                                                        );
+                                                                                    })}
+                                                                                </div>
+                                                                            </div>
+                                                                            {conduta.infractionTypes.includes("outros") && (
+                                                                                <div className="space-y-1.5">
+                                                                                    <Label className="text-xs font-semibold">Descreva a infração</Label>
+                                                                                    <Textarea
+                                                                                        value={conduta.notes}
+                                                                                        onChange={(e) =>
+                                                                                            setCondutaColaboradores((prev) => ({
+                                                                                                ...prev,
+                                                                                                [colaborador.id]: {
+                                                                                                    ...conduta,
+                                                                                                    notes: e.target.value,
+                                                                                                },
+                                                                                            }))
+                                                                                        }
+                                                                                        placeholder="Descreva a infração."
+                                                                                        className="min-h-[72px] rounded-xl bg-background text-sm"
+                                                                                    />
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                             )}
                                                         </div>
