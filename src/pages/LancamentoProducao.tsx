@@ -1264,7 +1264,7 @@ const LancamentoProducao = () => {
     const quantidadeConsiderada = tipoCalculoAtual === "operation" ? (quantidade || 1) : quantidade;
 
     // Valor efetivo: regra automática tem prioridade, mas usuário pode sobrescrever manualmente
-    const valorUnitarioEfetivo = form.valor_unitario_manual && Number(form.valor_unitario_manual) > 0
+    const valorUnitarioEfetivo = (form.valor_unitario_manual !== undefined && form.valor_unitario_manual !== null && form.valor_unitario_manual !== "")
         ? Number(form.valor_unitario_manual)
         : Number(form.valor_unitario || 0);
 
@@ -1343,7 +1343,7 @@ const LancamentoProducao = () => {
 
         if (ruleLookupState === "loading") return "Buscando valor...";
 
-        const valorEfetivo = form.valor_unitario_manual && Number(form.valor_unitario_manual) > 0
+        const valorEfetivo = (form.valor_unitario_manual !== undefined && form.valor_unitario_manual !== null && form.valor_unitario_manual !== "")
             ? Number(form.valor_unitario_manual)
             : Number(form.valor_unitario || 0);
 
@@ -1498,7 +1498,7 @@ const LancamentoProducao = () => {
                     data: operacao.data_operacao,
                     empresa_id: operacao.empresa_id,
                     categoria_custo: operacao.categoria_custo || 'OPERACIONAL',
-                    descricao_servico: operacao.descricao_servico || "Lançamento manual de custo",
+                    descricao: operacao.descricao_servico || "Lançamento manual de custo",
                     valor_unitario: operacao.valor_unitario_snapshot,
                     quantidade: operacao.quantidade,
                     total: operacao.valor_total,
@@ -1516,7 +1516,7 @@ const LancamentoProducao = () => {
                     data: operacao.data_operacao,
                     empresa_id: operacao.empresa_id,
                     tipo_servico_id: operacao.tipo_servico_id,
-                    descricao_servico: operacao.descricao_servico || "Serviço Adicional",
+                    descricao: operacao.descricao_servico || "Serviço Adicional",
                     quantidade: operacao.quantidade,
                     valor_unitario: operacao.valor_unitario_snapshot,
                     total: operacao.valor_total,
@@ -1535,10 +1535,14 @@ const LancamentoProducao = () => {
         },
         onSuccess: () => {
             toast.success("Produção registrada com sucesso!");
-            queryClient.invalidateQueries({ queryKey: ["producao_recente"] });
-            queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
             queryClient.invalidateQueries({ queryKey: ["operacoes"] });
+            queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
+            queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+            queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
             queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
+            queryClient.invalidateQueries({ queryKey: ["servicos-extras"] });
+            queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
+            queryClient.invalidateQueries({ queryKey: ["importacoes"] });
 
             const lastForm = { ...form };
             setForm((prev) => ({
@@ -1578,9 +1582,14 @@ const LancamentoProducao = () => {
             OperacaoProducaoService.cancel(id, user?.id || "", reason),
         onSuccess: () => {
             toast.success("Operação cancelada com sucesso!");
-            queryClient.invalidateQueries({ queryKey: ["producao_recente"] });
-            queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
             queryClient.invalidateQueries({ queryKey: ["operacoes"] });
+            queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
+            queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+            queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
+            queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
+            queryClient.invalidateQueries({ queryKey: ["servicos-extras"] });
+            queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
+            queryClient.invalidateQueries({ queryKey: ["importacoes"] });
             setCancelItemId(null);
             setCancelReason("");
         },

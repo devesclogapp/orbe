@@ -107,12 +107,20 @@ const applyBusinessRulesToForm = (baseForm: EditableOperationForm, editingItem: 
   if (nfRaw === "N" || nfRaw === "NAO" || nfRaw === "NÃO") nfRaw = "NÃO";
   next.nf_numero = nfRaw;
 
-  const valoresCalculados = calcularValoresOperacao({
+  // Recalcular TUDO usando a utilidade centralizada
+  const valores = calcularValoresOperacao({
     quantidade: parseLocaleNumber(next.quantidade),
     valorUnitario: unitario,
+    percentualIss: editingItem?.percentual_iss || 0,
+    quantidadeFilme: editingItem?.quantidade_filme || 0,
+    valorUnitarioFilme: editingItem?.valor_unitario_filme || 0,
+    nfRaw: nfRaw,
   });
 
-  next.valor_descarga = valoresCalculados.valorDescargaCalculado ? formatDecimalInput(valoresCalculados.valorDescargaCalculado) : "0,00";
+  next.valor_descarga = formatDecimalInput(valores.valorDescargaCalculado);
+
+  // Guardar valores recalculados para o payload
+  (next as any)._recalculated = valores;
 
   return next;
 };
@@ -129,6 +137,20 @@ const buildOperationUpdatePayload = (editingItem: any, editForm: EditableOperati
     },
   };
 
+  // Pegar valores recalculados ou calcular na hora se não existir
+  const unitario = editForm.valor_unitario !== undefined
+    ? parseLocaleNumber(editForm.valor_unitario)
+    : Number(editingItem?.valor_unitario_snapshot || editingItem?.valor_unitario_label || 0);
+
+  const valores = (editForm as any)._recalculated || calcularValoresOperacao({
+    quantidade: parseLocaleNumber(editForm.quantidade),
+    valorUnitario: unitario,
+    percentualIss: editingItem?.percentual_iss || 0,
+    quantidadeFilme: editingItem.quantidade_filme || 0,
+    valorUnitarioFilme: editingItem.valor_unitario_filme || 0,
+    nfRaw: editForm.nf_numero,
+  });
+
   return {
     ...(editForm.valor_unitario ? { valor_unitario_snapshot: parseLocaleNumber(editForm.valor_unitario) } : {}),
     quantidade: parseLocaleNumber(editForm.quantidade),
@@ -138,10 +160,10 @@ const buildOperationUpdatePayload = (editingItem: any, editForm: EditableOperati
     placa: editForm.placa || null,
     nf_numero: editForm.nf_numero || null,
     ctrc: editForm.ctrc || null,
-    percentual_iss: editingItem.percentual_iss ?? 0,
-    valor_descarga: parseLocaleNumber(editForm.valor_descarga),
-    custo_com_iss: editingItem.custo_com_iss ?? 0,
-    valor_total_filme: editingItem.valor_total_filme ?? 0,
+    percentual_iss: valores.percentualCalculado,
+    valor_descarga: valores.valorDescargaCalculado,
+    custo_com_iss: valores.custoIssCalculado,
+    valor_total_filme: valores.totalFilmeCalculado, // Valor correto calculado para filme
     status_pagamento: editForm.status_pagamento || null,
     data_pagamento: editForm.status_pagamento === "RECEBIDO"
       ? (editingItem.data_pagamento ?? new Date().toISOString().split("T")[0])
@@ -457,8 +479,10 @@ export const OperacoesTableBlock = ({
   const [statusFilter, setStatusFilter] = useState("all");
   const [modalidadeFilter, setModalidadeFilter] = useState("all");
   const [formaPagamentoFilter, setFormaPagamentoFilter] = useState("all");
-  const valUnitFormatter = (value: any) =>
-    Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const valUnitFormatter = (value: any) => {
+    if (value === null || value === undefined || value === "") return "-";
+    return Number(value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  };
 
   const [selectedOpDetails, setSelectedOpDetails] = useState<any>(null);
   const [editingItem, setEditingItem] = useState<any>(null);
@@ -600,6 +624,8 @@ export const OperacoesTableBlock = ({
       queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+      queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
+      queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
     },
     onError: (error: unknown) => {
       const message = error instanceof Error ? error.message : "Não foi possível salvar a edição.";
@@ -653,6 +679,8 @@ export const OperacoesTableBlock = ({
       queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+      queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
+      queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
     },
     onError: (error: unknown) => {
       const message = error instanceof Error ? error.message : "Não foi possível concluir a edição em massa.";
@@ -679,6 +707,8 @@ export const OperacoesTableBlock = ({
       queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+      queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
+      queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
     },
     onError: (error: unknown) => {
       const message = error instanceof Error ? error.message : "Não foi possível salvar a célula.";
@@ -743,6 +773,8 @@ export const OperacoesTableBlock = ({
       queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+      queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
+      queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
     },
     onError: (error: unknown, _variables, context) => {
       context?.operacoesSnapshots?.forEach(([queryKey, snapshot]: [readonly unknown[], unknown]) => {
@@ -851,6 +883,9 @@ export const OperacoesTableBlock = ({
       setSelectedOperationalRuleId("");
       queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
+      queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+      queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
+      queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
     },
     onError: (error: unknown) => {
       const message = error instanceof Error ? error.message : "Não foi possível limpar a coluna.";
@@ -864,6 +899,9 @@ export const OperacoesTableBlock = ({
       toast.success("Operação excluída com sucesso.");
       queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
+      queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+      queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
+      queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
     },
     onError: (error: unknown) => {
       const message = error instanceof Error ? error.message : "Erro ao excluir operação.";
@@ -1428,22 +1466,8 @@ export const OperacoesTableBlock = ({
   const updateField = (field: keyof EditableOperationForm, value: string) => {
     setEditForm((prev) => {
       if (!prev) return prev;
-
-      const next = { ...prev, [field]: value };
-
-      const unitario = next.valor_unitario !== undefined
-        ? parseLocaleNumber(next.valor_unitario)
-        : Number(editingItem?.valor_unitario_snapshot || editingItem?.valor_unitario_label || 0);
-
-      let nfRaw = String(next.nf_numero).toUpperCase().trim();
-      if (nfRaw === "S" || nfRaw === "SIM") nfRaw = "SIM";
-      if (nfRaw === "N" || nfRaw === "NAO" || nfRaw === "NÃO") nfRaw = "NÃO";
-      next.nf_numero = nfRaw;
-
-      const valDescargaCalculado = Math.max(parseLocaleNumber(next.quantidade), 0) * unitario;
-      next.valor_descarga = valDescargaCalculado ? formatDecimalInput(valDescargaCalculado) : "0,00";
-
-      return next;
+      const nextRaw = { ...prev, [field]: value };
+      return applyBusinessRulesToForm(nextRaw, editingItem);
     });
   };
 
@@ -1753,19 +1777,19 @@ export const OperacoesTableBlock = ({
                     const transportadora = item.transportadoras_clientes?.nome || "";
                     const placa = item.placa || "";
                     const servico = item.tipos_servico_operacional?.nome || "";
-                    const qtdColaboradores = item.quantidade_colaboradores ?? 1;
+                    const qtdColaboradores = item.quantidade_colaboradores ?? "-";
                     const formaPagamento = getDisplayFormaPagamento(item);
                     const nf = item.nf_numero || "";
                     const ctrc = item.ctrc || "";
                     const observacao = getDisplayObservacao(item);
                     const inicio = (item.entrada_ponto || "").substring(0, 5);
                     const fim = (item.saida_ponto || "").substring(0, 5);
-                    const qtdText = item.quantidade || "0";
-                    const valorTotal = item.total_final || item.valor_descarga || 0;
+                    const qtdText = item.quantidade !== undefined && item.quantidade !== null ? item.quantidade : "0";
+                    const valorTotal = item.total_final ?? item.valor_descarga ?? 0;
 
                     const valUnit = valUnitFormatter(item.valor_unitario_snapshot ?? item.valor_unitario_label ?? item.valor_unitario ?? 0);
-                    const valorDescarga = valUnitFormatter(item.valor_descarga || 0);
-                    const valorIss = valUnitFormatter(item.custo_com_iss || 0);
+                    const valorDescarga = valUnitFormatter(item.valor_descarga);
+                    const valorIss = valUnitFormatter(item.custo_com_iss);
                     const valDia = valUnitFormatter(valorTotal);
 
                     const statusOriginal = String(getDisplayStatusOriginal(item));

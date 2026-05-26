@@ -259,6 +259,8 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
             }),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["servicos-extras"] });
+            queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+            queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
             toast.success("Pipeline atualizado com sucesso.");
         },
         onError: () => toast.error("Erro ao atualizar pipeline."),
@@ -269,6 +271,8 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
             ServicosExtrasOperacionaisService.update(id, { status_pagamento: status as any }),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["servicos-extras"] });
+            queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+            queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
             toast.success("Status de pagamento atualizado.");
         },
         onError: () => toast.error("Erro ao atualizar status."),
@@ -279,6 +283,8 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
             ServicosExtrasOperacionaisService.update(id, { descricao, observacao } as any),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["servicos-extras"] });
+            queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+            queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
             setEditingItem(null);
             toast.success("Serviço extra atualizado.");
         },
@@ -289,6 +295,8 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
         mutationFn: (id: string) => ServicosExtrasOperacionaisService.delete(id),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["servicos-extras"] });
+            queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+            queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
             toast.success("Serviço extra removido.");
         },
         onError: () => toast.error("Erro ao remover serviço extra."),
@@ -489,9 +497,9 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                                         <Badge variant="outline">{item.tipo_servico}</Badge>
                                     </td>
                                     <td className="px-3 py-3 text-center text-foreground max-w-[260px] truncate">{item.descricao}</td>
-                                    <td className="px-3 py-3 text-center text-muted-foreground">{Number(item.quantidade ?? 1).toLocaleString("pt-BR")}</td>
-                                    <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{currencyFormatter.format(Number(item.valor_unitario ?? 0))}</td>
-                                    <td className="px-3 py-3 text-center font-display font-semibold whitespace-nowrap">{currencyFormatter.format(Number(item.total ?? 0))}</td>
+                                    <td className="px-3 py-3 text-center text-muted-foreground">{item.quantidade !== null && item.quantidade !== undefined ? Number(item.quantidade).toLocaleString("pt-BR") : "—"}</td>
+                                    <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{item.valor_unitario !== null && item.valor_unitario !== undefined ? currencyFormatter.format(Number(item.valor_unitario)) : "—"}</td>
+                                    <td className="px-3 py-3 text-center font-display font-semibold whitespace-nowrap">{item.total !== null && item.total !== undefined ? currencyFormatter.format(Number(item.total)) : "—"}</td>
                                     <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap text-xs">
                                         {item.modalidade_financeira?.replace(/_/g, " ") ?? "—"}
                                     </td>
@@ -625,7 +633,7 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
 
             {/* Justification Modal */}
             <JustificationModal
-                open={justificationModal.open}
+                isOpen={justificationModal.open}
                 onClose={() => setJustificationModal({ open: false, itemId: null })}
                 onConfirm={confirmDevolve}
                 title="Justificar Devolução"

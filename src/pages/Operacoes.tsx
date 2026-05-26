@@ -880,6 +880,9 @@ const Operacoes = () => {
       });
       await queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       await queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
+      await queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+      await queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
+      await queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
       await queryClient.invalidateQueries({ queryKey: ["importacoes"] });
       setImportModalOpen(false);
 
@@ -900,6 +903,9 @@ const Operacoes = () => {
       toast.error("Erro na importacao de planilha.", { description: message });
       queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
+      queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+      queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
+      queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
     }
   };
 

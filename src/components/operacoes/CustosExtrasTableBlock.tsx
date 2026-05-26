@@ -240,6 +240,9 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
+      queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+      queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
+      queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
       toast.success("Status do pipeline atualizado");
     },
     onError: (error) => {
@@ -397,6 +400,9 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
     onSuccess: () => {
       toast.success("Custo extra atualizado.");
       queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
+      queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+      queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
+      queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
       setEditingItem(null);
       setEditForm(null);
     },
@@ -410,6 +416,9 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
     onSuccess: () => {
       toast.success("Custo extra removido.");
       queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
+      queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+      queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
+      queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
       setSelectedItem(null);
     },
     onError: (error: Error) => {
@@ -445,6 +454,9 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
         description: `${count} linha(s) atualizada(s).`,
       });
       queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
+      queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+      queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
+      queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
       setIsBulkEditOpen(false);
       setBulkValue("");
     },
@@ -703,9 +715,9 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
                   {visibleCols.empresa && <td style={getStickyProps("empresa", false).style} className={cn(getStickyProps("empresa", false).className, "text-center text-muted-foreground whitespace-nowrap")}>{item.empresas?.nome || item.empresa_nome || "—"}</td>}
                   {visibleCols.categoria && <td className="px-3 py-3 text-center"><Badge variant="outline">{item.categoria_custo}</Badge></td>}
                   {visibleCols.descricao && <td style={getStickyProps("descricao", false).style} className={cn(getStickyProps("descricao", false).className, "text-center text-foreground whitespace-nowrap")}>{item.descricao}</td>}
-                  {visibleCols.valorUnitario && <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{currencyFormatter.format(Number(item.valor_unitario ?? 0))}</td>}
-                  {visibleCols.quantidade && <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap font-display font-medium">{Number(item.quantidade ?? 0).toLocaleString("pt-BR")}</td>}
-                  {visibleCols.total && <td className="px-3 py-3 text-center text-foreground whitespace-nowrap font-display font-semibold">{currencyFormatter.format(Number(item.total ?? 0))}</td>}
+                  {visibleCols.valorUnitario && <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{item.valor_unitario !== null && item.valor_unitario !== undefined ? currencyFormatter.format(Number(item.valor_unitario)) : "—"}</td>}
+                  {visibleCols.quantidade && <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap font-display font-medium">{item.quantidade !== null && item.quantidade !== undefined ? Number(item.quantidade).toLocaleString("pt-BR") : "—"}</td>}
+                  {visibleCols.total && <td className="px-3 py-3 text-center text-foreground whitespace-nowrap font-display font-semibold">{item.total !== null && item.total !== undefined ? currencyFormatter.format(Number(item.total)) : "—"}</td>}
                   {visibleCols.formaPagamento && <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{item.forma_pagamento || "—"}</td>}
                   {visibleCols.vencimento && <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{formatDate(item.data_vencimento)}</td>}
                   {visibleCols.status && (

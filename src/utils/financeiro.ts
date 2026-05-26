@@ -132,14 +132,20 @@ export function calcularValoresOperacao({
     .trim()
     .toUpperCase();
   const aplicaIss = nfInformada !== "" && nfInformada !== "NAO" && nfInformada !== "NÃO";
-  const percentualCalculado = aplicaIss ? Math.max(percentualIss, 0) : 0;
+  
+  // Regra crítica: se aplica ISS, o percentual mínimo é 5% (0.05)
+  let percentualCalculado = 0;
+  if (aplicaIss) {
+    percentualCalculado = percentualIss > 0 ? percentualIss : 0.05;
+  }
+
   const custoIssCalculado = valorDescargaCalculado * percentualCalculado;
   const totalFilmeCalculado = Math.max(quantidadeFilme, 0) * Math.max(valorUnitarioFilme, 0);
   const totalFinalCalculado = valorDescargaCalculado + custoIssCalculado + totalFilmeCalculado;
 
   return {
     percentualCalculado,
-    valorDescargaCalculado: valorDescargaCalculado,
+    valorDescargaCalculado,
     custoIssCalculado,
     totalFilmeCalculado,
     totalFinalCalculado,
@@ -162,9 +168,13 @@ export function processarOperacao(operacao: any, empresas: any[] = []) {
     nfRaw: operacao.nf_numero,
   });
 
-  const valor_descarga = valoresCalculados.valorDescargaCalculado;
-  const custo_com_iss = valoresCalculados.custoIssCalculado;
-  const total_final = valoresCalculados.totalFinalCalculado;
+  const valorDescargaProp = operacao.valor_descarga !== null && operacao.valor_descarga !== undefined && operacao.valor_descarga !== '' ? Number(operacao.valor_descarga) : null;
+  const custoComIssProp = operacao.custo_com_iss !== null && operacao.custo_com_iss !== undefined && operacao.custo_com_iss !== '' ? Number(operacao.custo_com_iss) : null;
+  const totalFinalProp = operacao.total_final !== null && operacao.total_final !== undefined && operacao.total_final !== '' ? Number(operacao.total_final) : null;
+
+  const valor_descarga = valorDescargaProp ?? valoresCalculados.valorDescargaCalculado;
+  const custo_com_iss = custoComIssProp ?? valoresCalculados.custoIssCalculado;
+  const total_final = totalFinalProp ?? valoresCalculados.totalFinalCalculado;
 
   const empresa = empresas.find?.((e: any) => e.id === operacao.empresa_id) || {};
 
@@ -188,9 +198,9 @@ export function processarOperacao(operacao: any, empresas: any[] = []) {
 
   return {
     ...operacao,
-    valor_descarga: operacao.valor_descarga != null && operacao.valor_descarga !== '' ? Number(operacao.valor_descarga) : valor_descarga,
-    custo_com_iss: operacao.custo_com_iss != null && operacao.custo_com_iss !== '' ? Number(operacao.custo_com_iss) : custo_com_iss,
-    total_final: operacao.total_final != null && operacao.total_final !== '' ? Number(operacao.total_final) : total_final,
+    valor_descarga,
+    custo_com_iss,
+    total_final,
     valorDescargaCalculado: valor_descarga,
     totalFinalCalculado: total_final,
     modalidadeFinanceira: financeiro.modalidade,
