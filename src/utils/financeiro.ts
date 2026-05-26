@@ -108,7 +108,7 @@ const getLinhaOriginalValue = (item: Record<string, unknown>, key: string) => {
   if (!linhaOriginal) return null;
   const normalizedEntries = Object.entries(linhaOriginal).map(([k, v]) => [k.toUpperCase().replace(":", "").trim(), v]);
   const normalizedKey = key.toUpperCase().replace(":", "").trim();
-  const match = normalizedEntries.find(([k]) => k === normalizedKey || k.includes(normalizedKey));
+  const match = normalizedEntries.find(([k]) => String(k) === normalizedKey || String(k).includes(normalizedKey));
   return match?.[1] ?? null;
 };
 
@@ -149,13 +149,21 @@ export function calcularValoresOperacao({
 export function processarOperacao(operacao: any, empresas: any[] = []) {
   const quantidade = Number(operacao.quantidade || 0);
   const valorUnitario = Number(operacao.valor_unitario_snapshot || operacao.valor_unitario_label || 0);
+  const percentualIss = Number(operacao.percentual_iss || 0);
+  const quantidadeFilme = Number(operacao.quantidade_filme || 0);
+  const valorUnitarioFilme = Number(operacao.valor_unitario_filme || 0);
   
   const valoresCalculados = calcularValoresOperacao({
     quantidade,
     valorUnitario,
+    percentualIss,
+    quantidadeFilme,
+    valorUnitarioFilme,
+    nfRaw: operacao.nf_numero,
   });
 
   const valor_descarga = valoresCalculados.valorDescargaCalculado;
+  const custo_com_iss = valoresCalculados.custoIssCalculado;
   const total_final = valoresCalculados.totalFinalCalculado;
 
   const empresa = empresas.find?.((e: any) => e.id === operacao.empresa_id) || {};
@@ -180,6 +188,9 @@ export function processarOperacao(operacao: any, empresas: any[] = []) {
 
   return {
     ...operacao,
+    valor_descarga: operacao.valor_descarga != null && operacao.valor_descarga !== '' ? Number(operacao.valor_descarga) : valor_descarga,
+    custo_com_iss: operacao.custo_com_iss != null && operacao.custo_com_iss !== '' ? Number(operacao.custo_com_iss) : custo_com_iss,
+    total_final: operacao.total_final != null && operacao.total_final !== '' ? Number(operacao.total_final) : total_final,
     valorDescargaCalculado: valor_descarga,
     totalFinalCalculado: total_final,
     modalidadeFinanceira: financeiro.modalidade,

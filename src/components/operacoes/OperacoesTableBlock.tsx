@@ -60,7 +60,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useSelection } from "@/contexts/SelectionContext";
 import { cn } from "@/lib/utils";
-import { OperacaoProducaoService, OperacaoService, RegraOperacionalService, EmpresaService, RegrasFinanceirasService } from "@/services/base.service";
+import { OperacaoProducaoService, OperacaoService, RegraOperacionalService, EmpresaService, RegrasFinanceirasService, FormaPagamentoOperacionalService } from "@/services/base.service";
 import { classificarFinanceiroSync, processarOperacao, calcularValoresOperacao, getModalidadeLabel, ModalidadeFinanceira, StatusPagamento } from "@/utils/financeiro";
 import { JustificationModal } from "@/components/modals/JustificationModal";
 import { useOperationalPipeline, buildOperacaoVolumePipeline } from "@/contexts/OperationalPipelineContext";
@@ -79,7 +79,7 @@ const isEditableOperation = (item: any) =>
 const buildEditableForm = (item: any): EditableOperationForm => {
   return {
     quantidade: toInputValue(item.quantidade),
-    valor_unitario: toNumericInputValue(item.valor_unitario ?? item.valor_unitario_label ?? item.valor_unitario_snapshot),
+    valor_unitario: toNumericInputValue(item.valor_unitario_snapshot ?? item.valor_unitario_label ?? item.valor_unitario),
     quantidade_colaboradores: toInputValue(item.quantidade_colaboradores ?? 1),
     entrada_ponto: toInputValue(item.entrada_ponto ?? item.horario_inicio_label).slice(0, 5),
     saida_ponto: toInputValue(item.saida_ponto ?? item.horario_fim_label).slice(0, 5),
@@ -138,10 +138,10 @@ const buildOperationUpdatePayload = (editingItem: any, editForm: EditableOperati
     placa: editForm.placa || null,
     nf_numero: editForm.nf_numero || null,
     ctrc: editForm.ctrc || null,
-    percentual_iss: 0,
+    percentual_iss: editingItem.percentual_iss ?? 0,
     valor_descarga: parseLocaleNumber(editForm.valor_descarga),
-    custo_com_iss: 0,
-    valor_total_filme: 0,
+    custo_com_iss: editingItem.custo_com_iss ?? 0,
+    valor_total_filme: editingItem.valor_total_filme ?? 0,
     status_pagamento: editForm.status_pagamento || null,
     data_pagamento: editForm.status_pagamento === "RECEBIDO"
       ? (editingItem.data_pagamento ?? new Date().toISOString().split("T")[0])
@@ -573,10 +573,7 @@ export const OperacoesTableBlock = ({
 
   const { data: formasPagamentoDb = [] } = useQuery({
     queryKey: ["formas_pagamento_operacional_filter"],
-    queryFn: () => {
-      const { FormaPagamentoOperacionalService } = require("@/services/base.service");
-      return FormaPagamentoOperacionalService.getAllActive();
-    },
+    queryFn: () => FormaPagamentoOperacionalService.getAllActive(),
   });
 
   const { data: empresas = [] } = useQuery({
@@ -602,6 +599,7 @@ export const OperacoesTableBlock = ({
       setSelectedOpDetails(null);
       queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
+      queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
     },
     onError: (error: unknown) => {
       const message = error instanceof Error ? error.message : "Não foi possível salvar a edição.";
@@ -654,6 +652,7 @@ export const OperacoesTableBlock = ({
       setBulkValue("");
       queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
+      queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
     },
     onError: (error: unknown) => {
       const message = error instanceof Error ? error.message : "Não foi possível concluir a edição em massa.";
@@ -679,6 +678,7 @@ export const OperacoesTableBlock = ({
       setInlineValue("");
       queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
+      queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
     },
     onError: (error: unknown) => {
       const message = error instanceof Error ? error.message : "Não foi possível salvar a célula.";
@@ -742,6 +742,7 @@ export const OperacoesTableBlock = ({
       toast.success(`Status de pagamento atualizado para ${label}.`);
       queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
+      queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
     },
     onError: (error: unknown, _variables, context) => {
       context?.operacoesSnapshots?.forEach(([queryKey, snapshot]: [readonly unknown[], unknown]) => {

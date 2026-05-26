@@ -586,7 +586,7 @@ const Operacoes = () => {
     };
 
     filteredOperations.forEach((item) => {
-      const totalLinha = Number(item.totalFinalCalculado ?? 0);
+      const totalLinha = Number(item.total_final ?? item.totalFinalCalculado ?? 0);
       const quantidade = Number(item.quantidade ?? 0);
       const quantidadeColaboradores = Number(item.quantidade_colaboradores ?? 1);
       const statusPagamento = String(item.statusPagamento ?? "").toUpperCase();
@@ -653,6 +653,7 @@ const Operacoes = () => {
             ? `Todos os ${deletedCount} registros importados pendentes foram removidos desta visão.`
             : `Todos os ${deletedCount} registros importados da empresa selecionada foram removidos.`,
       });
+      queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
       queryClient.invalidateQueries({ queryKey: ["importacoes"] });
@@ -670,6 +671,7 @@ const Operacoes = () => {
       toast.success("Processamento concluido", {
         description: `Resultado consolidado: R$ ${res.resultado?.[0]?.valor_total_calculado?.toLocaleString("pt-BR") || "0,00"}`,
       });
+      queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
       queryClient.invalidateQueries({ queryKey: ["ponto"] });

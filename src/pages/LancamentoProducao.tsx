@@ -754,18 +754,21 @@ const LancamentoProducao = () => {
         queryKey: ["tipos_servico_operacional"],
         queryFn: () => TipoServicoOperacionalService.getAllActive(),
         enabled: schemaDisponivel,
+        staleTime: 5 * 60 * 1000,
     });
 
     const { data: transportadorasDb = [] } = useQuery({
         queryKey: ["transportadoras_clientes", form.empresa_id],
         queryFn: () => TransportadoraClienteService.getByEmpresa(form.empresa_id),
         enabled: !!form.empresa_id && schemaDisponivel,
+        staleTime: 5 * 60 * 1000,
     });
 
     const { data: fornecedoresDb = [] } = useQuery({
         queryKey: ["fornecedores_operacionais", form.empresa_id],
         queryFn: () => FornecedorService.getByEmpresa(form.empresa_id),
         enabled: !!form.empresa_id && schemaDisponivel,
+        staleTime: 5 * 60 * 1000,
     });
 
     // Produtos: carrega todos se não há fornecedor, ou por fornecedor se selecionado
@@ -783,6 +786,7 @@ const LancamentoProducao = () => {
         queryKey: ["regras_modulos_all"],
         queryFn: () => RegrasModulosService.listar(),
         enabled: schemaDisponivel,
+        staleTime: 5 * 60 * 1000,
     });
 
     const taxModule = useMemo(
@@ -2341,59 +2345,59 @@ const LancamentoProducao = () => {
                                             const qtd = Number(item.quantidade || 0);
                                             const valUnit = Number(item.valor_unitario_snapshot || 0);
                                             return (
-                                            <div key={item.id} className="rounded-2xl border border-border bg-background p-4 space-y-3">
-                                                {/* Header: tipo de servico + hora + status + deletar */}
-                                                <div className="flex items-start justify-between gap-3">
-                                                    <div className="min-w-0">
-                                                        <p className="font-bold text-sm text-foreground">{item.tipos_servico_operacional?.nome ?? "Operacao"}</p>
-                                                        <p className="text-xs text-muted-foreground">
-                                                            {item.criado_em ? format(new Date(item.criado_em), "HH:mm") : ""}
-                                                            {transportadora ? ` · ${transportadora}` : ""}
-                                                        </p>
-                                                    </div>
-                                                    <div className="flex items-center gap-2 shrink-0">
-                                                        <Badge variant={getStatusVariant(
-                                                            item.status_pagamento === "RECEBIDO" || item.status_pagamento === "Recebido" ? "Recebido" : item.status
-                                                        )}>
-                                                            {item.status_pagamento === "RECEBIDO" || item.status_pagamento === "Recebido" ? "Recebido" : item.status}
-                                                        </Badge>
-                                                        {(item.status === "pendente" || item.status === "com_alerta") &&
-                                                            (item.status_pagamento !== "RECEBIDO" && item.status_pagamento !== "Recebido") && (
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="icon"
-                                                                    title="Cancelar Operacao"
-                                                                    onClick={() => setCancelItemId(item.id)}
-                                                                    className="h-8 w-8 text-destructive hover:bg-destructive/10"
-                                                                >
-                                                                    <Trash2 className="w-4 h-4" />
-                                                                </Button>
-                                                            )}
-                                                    </div>
-                                                </div>
-                                                {/* Detalhes: produto/fornecedor + valores */}
-                                                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-border/40">
-                                                    <div className="space-y-0.5 min-w-0">
-                                                        {(produto || fornecedor) && (
-                                                            <p className="text-xs font-semibold text-foreground truncate">
-                                                                {produto ?? fornecedor}
+                                                <div key={item.id} className="rounded-2xl border border-border bg-background p-4 space-y-3">
+                                                    {/* Header: tipo de servico + hora + status + deletar */}
+                                                    <div className="flex items-start justify-between gap-3">
+                                                        <div className="min-w-0">
+                                                            <p className="font-bold text-sm text-foreground">{item.tipos_servico_operacional?.nome ?? "Operacao"}</p>
+                                                            <p className="text-xs text-muted-foreground">
+                                                                {item.criado_em ? format(new Date(item.criado_em), "HH:mm") : ""}
+                                                                {transportadora ? ` · ${transportadora}` : ""}
                                                             </p>
-                                                        )}
-                                                        <p className="text-[10px] text-muted-foreground">
-                                                            {qtd > 0 ? `${qtd} un` : ""}
-                                                            {valUnit > 0 ? ` x ${valUnit.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}` : ""}
-                                                        </p>
+                                                        </div>
+                                                        <div className="flex items-center gap-2 shrink-0">
+                                                            <Badge variant={getStatusVariant(
+                                                                item.status_pagamento === "RECEBIDO" || item.status_pagamento === "Recebido" ? "Recebido" : item.status
+                                                            )}>
+                                                                {item.status_pagamento === "RECEBIDO" || item.status_pagamento === "Recebido" ? "Recebido" : item.status}
+                                                            </Badge>
+                                                            {(item.status === "pendente" || item.status === "com_alerta") &&
+                                                                (item.status_pagamento !== "RECEBIDO" && item.status_pagamento !== "Recebido") && (
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        title="Cancelar Operacao"
+                                                                        onClick={() => setCancelItemId(item.id)}
+                                                                        className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                                                                    >
+                                                                        <Trash2 className="w-4 h-4" />
+                                                                    </Button>
+                                                                )}
+                                                        </div>
                                                     </div>
-                                                    <div className="text-right">
-                                                        <p className={`text-sm font-black leading-none ${valorItem > 0 ? "text-green-600" : "text-muted-foreground"}`}>
-                                                            {valorItem > 0
-                                                                ? valorItem.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
-                                                                : "—"}
-                                                        </p>
-                                                        <p className="text-[10px] text-muted-foreground mt-0.5">total</p>
+                                                    {/* Detalhes: produto/fornecedor + valores */}
+                                                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-border/40">
+                                                        <div className="space-y-0.5 min-w-0">
+                                                            {(produto || fornecedor) && (
+                                                                <p className="text-xs font-semibold text-foreground truncate">
+                                                                    {produto ?? fornecedor}
+                                                                </p>
+                                                            )}
+                                                            <p className="text-[10px] text-muted-foreground">
+                                                                {qtd > 0 ? `${qtd} un` : ""}
+                                                                {valUnit > 0 ? ` x ${valUnit.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}` : ""}
+                                                            </p>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <p className={`text-sm font-black leading-none ${valorItem > 0 ? "text-green-600" : "text-muted-foreground"}`}>
+                                                                {valorItem > 0
+                                                                    ? valorItem.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+                                                                    : "—"}
+                                                            </p>
+                                                            <p className="text-[10px] text-muted-foreground mt-0.5">total</p>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
                                             );
                                         })}
                                     </div>

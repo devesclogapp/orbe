@@ -378,7 +378,7 @@ const CentralFinanceira = () => {
               )}
 
               <Button
-                variant="secondary"
+                variant={filterMonth !== selectedMonth || filterEmpresaId !== selectedEmpresaId ? "default" : "secondary"}
                 size="sm"
                 className="h-10"
                 onClick={() => {
@@ -386,7 +386,7 @@ const CentralFinanceira = () => {
                   setSelectedEmpresaId(filterEmpresaId);
                 }}
               >
-                Aplicar Filtros
+                {filterMonth !== selectedMonth || filterEmpresaId !== selectedEmpresaId ? "⚡ Aplicar Filtros" : "Aplicar Filtros"}
               </Button>
 
               <Badge

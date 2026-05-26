@@ -270,13 +270,15 @@ export class BaseService<T extends Table> {
   }
 
   async create(payload: Database['public']['Tables'][T]['Insert']) {
-    const { data, error } = await supabase.from(this.table).insert(payload).select().single();
+    const cleanPayload = sanitizePayload(payload) as Database['public']['Tables'][T]['Insert'];
+    const { data, error } = await supabase.from(this.table).insert(cleanPayload).select().single();
     if (error) throw error;
     return data;
   }
 
   async update(id: string, payload: Database['public']['Tables'][T]['Update']) {
-    const { data, error } = await supabase.from(this.table).update(payload).eq('id', id).select().single();
+    const cleanPayload = sanitizePayload(payload) as Database['public']['Tables'][T]['Update'];
+    const { data, error } = await supabase.from(this.table).update(cleanPayload).eq('id', id).select().single();
     if (error) throw error;
     return data;
   }
@@ -1156,13 +1158,13 @@ class OperacaoServiceClass extends BaseService<'operacoes'> {
       placa: item.placa ?? null,
       nf_numero: item.nf_numero ?? null,
       ctrc: item.ctrc ?? null,
-      percentual_iss: item.percentual_iss ? Number(item.percentual_iss) : null,
-      valor_descarga: item.valor_descarga ? Number(item.valor_descarga) : null,
-      custo_com_iss: item.custo_com_iss ? Number(item.custo_com_iss) : null,
-      valor_unitario_filme: item.valor_unitario_filme ? Number(item.valor_unitario_filme) : null,
-      quantidade_filme: item.quantidade_filme ? Number(item.quantidade_filme) : null,
-      valor_total_filme: item.valor_total_filme ? Number(item.valor_total_filme) : null,
-      valor_faturamento_nf: item.valor_faturamento_nf ? Number(item.valor_faturamento_nf) : null,
+      percentual_iss: item.percentual_iss != null ? Number(item.percentual_iss) : null,
+      valor_descarga: item.valor_descarga != null ? Number(item.valor_descarga) : null,
+      custo_com_iss: item.custo_com_iss != null ? Number(item.custo_com_iss) : null,
+      valor_unitario_filme: item.valor_unitario_filme != null ? Number(item.valor_unitario_filme) : null,
+      quantidade_filme: item.quantidade_filme != null ? Number(item.quantidade_filme) : null,
+      valor_total_filme: item.valor_total_filme != null ? Number(item.valor_total_filme) : null,
+      valor_faturamento_nf: item.valor_faturamento_nf != null ? Number(item.valor_faturamento_nf) : null,
       criado_em_label: item.criado_em ?? null,
     }));
 
@@ -1272,13 +1274,13 @@ class OperacaoServiceClass extends BaseService<'operacoes'> {
       placa: item.placa ?? null,
       nf_numero: item.nf_numero ?? null,
       ctrc: item.ctrc ?? null,
-      percentual_iss: item.percentual_iss ? Number(item.percentual_iss) : null,
-      valor_descarga: item.valor_descarga ? Number(item.valor_descarga) : null,
-      custo_com_iss: item.custo_com_iss ? Number(item.custo_com_iss) : null,
-      valor_unitario_filme: item.valor_unitario_filme ? Number(item.valor_unitario_filme) : null,
-      quantidade_filme: item.quantidade_filme ? Number(item.quantidade_filme) : null,
-      valor_total_filme: item.valor_total_filme ? Number(item.valor_total_filme) : null,
-      valor_faturamento_nf: item.valor_faturamento_nf ? Number(item.valor_faturamento_nf) : null,
+      percentual_iss: item.percentual_iss != null ? Number(item.percentual_iss) : null,
+      valor_descarga: item.valor_descarga != null ? Number(item.valor_descarga) : null,
+      custo_com_iss: item.custo_com_iss != null ? Number(item.custo_com_iss) : null,
+      valor_unitario_filme: item.valor_unitario_filme != null ? Number(item.valor_unitario_filme) : null,
+      quantidade_filme: item.quantidade_filme != null ? Number(item.quantidade_filme) : null,
+      valor_total_filme: item.valor_total_filme != null ? Number(item.valor_total_filme) : null,
+      valor_faturamento_nf: item.valor_faturamento_nf != null ? Number(item.valor_faturamento_nf) : null,
       criado_em_label: item.criado_em ?? null,
     }));
 
