@@ -305,7 +305,7 @@ function getColaboradorContractLabel(colaborador: any) {
   const contrato = String(colaborador?.tipo_contrato ?? "").trim();
   const normalizedModelo = normalizeText(modelo);
   const normalizedContrato = normalizeText(contrato);
-  
+
   if (normalizedContrato === "MENSAL") {
     return "Mensal";
   }
@@ -1041,10 +1041,33 @@ const CentralCadastros = () => {
       const data = await queryClient.fetchQuery({ queryKey: ["colaboradores_list"], queryFn: () => ColaboradorService.getWithEmpresa() });
       queryClient.setQueryData(["colaboradores_list"], data);
     },
-    onError: (err: any) => {
+    onError: async (err: any) => {
       const msg = err?.message || '';
-      if (msg.includes('duplicate') || msg.includes('já existe') || msg.includes('cpf')) {
-        toast.error("Já existe um colaborador cadastrado com este CPF.");
+      const isDuplicateCpf = msg.toLowerCase().includes('idx_colaboradores_cpf_unico_tenant') ||
+        (msg.includes('23505') && msg.includes('cpf'));
+
+      const isDuplicateMatricula = msg.includes('colaboradores_matricula_tenant_unique');
+
+      if (isDuplicateCpf) {
+        // Tentar buscar o nome do colaborador existente para ajudar o usuário
+        const cpfClean = String(colaboradorForm.cpf).replace(/\D/g, '');
+        let existingName = '';
+        try {
+          const check = await ColaboradorService.checkCpfExists(cpfClean);
+          if (check.exists && check.nome) existingName = check.nome;
+        } catch { /* ignora */ }
+
+        const detail = existingName ? ` (${existingName})` : '';
+        toast.error(`Já existe um colaborador cadastrado com este CPF${detail}.`, {
+          description: 'Corrija o CPF no passo 1 ou edite o colaborador existente.',
+          duration: 8000,
+        });
+        setColaboradorStep(1);
+      } else if (isDuplicateMatricula) {
+        toast.error("Número de matrícula já existe.", {
+          description: "Já existe outro colaborador com esta matrícula neste tenant.",
+        });
+        setColaboradorStep(1); // Matricula também fica no Step 1
       } else {
         toast.error(msg || "Erro ao cadastrar colaborador. Verifique os campos obrigatórios.");
       }
@@ -1052,7 +1075,7 @@ const CentralCadastros = () => {
     onSettled: () => setColaboradorIsProcessing(false),
   });
 
-  const validateColaboradorStep1 = () => {
+  const validateColaboradorStep1 = async (): Promise<boolean> => {
     if (!colaboradorForm.nome.trim()) {
       toast.error("Nome completo é obrigatório.", { icon: null });
       return false;
@@ -1065,6 +1088,19 @@ const CentralCadastros = () => {
     if (cpfClean.length !== 11) {
       toast.error("CPF inválido.", { icon: null });
       return false;
+    }
+    // Verificação antecipada de CPF duplicado no banco
+    try {
+      const cpfCheck = await ColaboradorService.checkCpfExists(cpfClean);
+      if (cpfCheck.exists) {
+        toast.error(
+          `Já existe um colaborador cadastrado com este CPF${cpfCheck.nome ? ` (${cpfCheck.nome})` : ''}.`,
+          { duration: 6000 }
+        );
+        return false;
+      }
+    } catch {
+      // Se falhar a verificação, prossegue — a validação final do create trata
     }
     const phoneError = validatePhoneCC(colaboradorForm.telefone);
     if (phoneError) {
@@ -1509,9 +1545,9 @@ const CentralCadastros = () => {
     };
     const existingProduto = !editingProdutoCarga
       ? (produtosOptions as any[]).find((item) =>
-          normalizeText(String(item.nome ?? "")) === normalizeText(payload.nome) &&
-          String(item.fornecedor_id ?? "") === String(payload.fornecedor_id ?? ""),
-        )
+        normalizeText(String(item.nome ?? "")) === normalizeText(payload.nome) &&
+        String(item.fornecedor_id ?? "") === String(payload.fornecedor_id ?? ""),
+      )
       : null;
 
     const upsertProductServicePrice = async (produtoId: string) => {
@@ -3713,7 +3749,7 @@ const CentralCadastros = () => {
 
           <div className="flex justify-end gap-2 pt-4 border-t">
             <Button variant="outline" onClick={() => { setColaboradorModalOpen(false); setColaboradorStep(1); }}>Cancelar</Button>
-            {colaboradorStep === 1 && <Button onClick={() => { if (validateColaboradorStep1()) setColaboradorStep(2); }} disabled={colaboradorIsProcessing}>Próximo</Button>}
+            {colaboradorStep === 1 && <Button onClick={async () => { setColaboradorIsProcessing(true); try { if (await validateColaboradorStep1()) setColaboradorStep(2); } finally { setColaboradorIsProcessing(false); } }} disabled={colaboradorIsProcessing}>{colaboradorIsProcessing ? "Verificando..." : "Próximo"}</Button>}
             {colaboradorStep === 2 && (
               <>
                 <Button variant="outline" onClick={() => setColaboradorStep(1)}>Voltar</Button>

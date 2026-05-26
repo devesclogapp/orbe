@@ -484,6 +484,7 @@ export const EmpresaService = new EmpresaServiceClass();
 class ColaboradorServiceClass extends BaseService<'colaboradores'> {
   constructor() { super('colaboradores'); }
 
+
   private isMissingColaboradorColumnError(error: any, column: string) {
     const msg = String(error?.message ?? '');
     return msg.includes(`Could not find the '${column}' column of 'colaboradores'`);
@@ -567,6 +568,7 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
         .select('id')
         .eq('cpf', cpfClean)
         .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
         .maybeSingle();
       
       if (existing) {
@@ -588,6 +590,7 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
       origem_detalhe: payload.origem_detalhe ?? null,
       chave_pix: payload.chave_pix ?? null,
       banco_validado: payload.banco_validado ?? false,
+      matricula: payload.matricula?.trim() === "" ? null : payload.matricula,
     };
 
     let insertPayload = { ...cleanedPayload };
@@ -843,6 +846,33 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
       status: c.status,
       empresa_id: c.empresa_id,
     }));
+  }
+
+  /**
+   * Verifica se já existe um colaborador com o CPF informado no tenant atual.
+   * Retorna { exists: true, nome } se houver duplicata; { exists: false } caso contrário.
+   */
+  async checkCpfExists(cpf: string): Promise<{ exists: boolean; nome?: string }> {
+    const cpfClean = String(cpf).replace(/\D/g, '');
+    if (cpfClean.length !== 11) return { exists: false };
+
+    try {
+      const tenantId = await getCurrentTenantId();
+      const { data } = await supabase
+        .from('colaboradores')
+        .select('id, nome')
+        .eq('cpf', cpfClean)
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .maybeSingle();
+
+      if (data) {
+        return { exists: true, nome: data.nome };
+      }
+    } catch {
+      // Em caso de erro de rede, deixa prosseguir — a validação final no create pega
+    }
+    return { exists: false };
   }
 }
 export const ColaboradorService = new ColaboradorServiceClass();

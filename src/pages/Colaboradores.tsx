@@ -248,7 +248,7 @@ const Colaboradores = () => {
     }
   };
 
-  const validateStep1 = () => {
+  const validateStep1 = async (): Promise<boolean> => {
     if (!form.nome.trim()) {
       toast.error("Nome completo é obrigatório.", { icon: null });
       return false;
@@ -261,6 +261,21 @@ const Colaboradores = () => {
     if (cpfClean.length !== 11) {
       toast.error("CPF inválido.", { icon: null });
       return false;
+    }
+    // Verificação antecipada de CPF duplicado (somente para criação)
+    if (!editingId) {
+      try {
+        const cpfCheck = await ColaboradorService.checkCpfExists(cpfClean);
+        if (cpfCheck.exists) {
+          toast.error(
+            `Já existe um colaborador cadastrado com este CPF${cpfCheck.nome ? ` (${cpfCheck.nome})` : ''}.`,
+            { duration: 6000 }
+          );
+          return false;
+        }
+      } catch {
+        // Se falhar a verificação, prossegue — a validação final do create trata
+      }
     }
     const phoneError = validatePhone(form.telefone);
     if (phoneError) {
@@ -1143,7 +1158,7 @@ const Colaboradores = () => {
             ) : (
               <>
                 <Button variant="outline" onClick={() => handleModalOpenChange(false)}>Cancelar</Button>
-                {step === 1 && <Button onClick={() => { if (validateStep1()) setStep(2); }} disabled={isProcessing}>Próximo</Button>}
+                {step === 1 && <Button onClick={async () => { setIsProcessing(true); try { if (await validateStep1()) setStep(2); } finally { setIsProcessing(false); } }} disabled={isProcessing}>{isProcessing ? "Verificando..." : "Próximo"}</Button>}
                 {step === 2 && (
                   <>
                     <Button variant="outline" onClick={() => setStep(1)}>Voltar</Button>
