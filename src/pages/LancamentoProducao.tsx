@@ -1516,7 +1516,7 @@ const LancamentoProducao = () => {
                     data: operacao.data_operacao,
                     empresa_id: operacao.empresa_id,
                     tipo_servico_id: operacao.tipo_servico_id,
-                    descricao: operacao.descricao_servico || "Serviço Adicional",
+                    descricao_servico: operacao.descricao_servico || "Serviço Adicional",
                     quantidade: operacao.quantidade,
                     valor_unitario: operacao.valor_unitario_snapshot,
                     total: operacao.valor_total,

@@ -76,7 +76,7 @@ type ServicoExtraItem = {
     empresas?: { nome?: string | null } | null;
     cliente?: string | null;
     tipo_servico: string;
-    descricao: string;
+    descricao_servico: string;
     quantidade?: number | null;
     valor_unitario?: number | null;
     total?: number | null;
@@ -279,8 +279,8 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
     });
 
     const updateDetailsMutation = useMutation({
-        mutationFn: ({ id, descricao, observacao }: { id: string; descricao: string; observacao: string }) =>
-            ServicosExtrasOperacionaisService.update(id, { descricao, observacao } as any),
+        mutationFn: ({ id, descricao_servico, observacao }: { id: string; descricao_servico: string; observacao: string }) =>
+            ServicosExtrasOperacionaisService.update(id, { descricao_servico, observacao } as any),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["servicos-extras"] });
             queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
@@ -359,7 +359,7 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                 const empresa = item.empresas?.nome ?? item.empresa_nome ?? "";
                 const search = filterText.toLowerCase();
                 const searchMatch =
-                    item.descricao.toLowerCase().includes(search) ||
+                    (item.descricao_servico ?? '').toLowerCase().includes(search) ||
                     empresa.toLowerCase().includes(search) ||
                     (item.cliente ?? "").toLowerCase().includes(search) ||
                     item.tipo_servico.toLowerCase().includes(search);
@@ -496,7 +496,7 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                                     <td className="px-3 py-3 text-center">
                                         <Badge variant="outline">{item.tipo_servico}</Badge>
                                     </td>
-                                    <td className="px-3 py-3 text-center text-foreground max-w-[260px] truncate">{item.descricao}</td>
+                                    <td className="px-3 py-3 text-center text-foreground max-w-[260px] truncate">{item.descricao_servico}</td>
                                     <td className="px-3 py-3 text-center text-muted-foreground">{item.quantidade !== null && item.quantidade !== undefined ? Number(item.quantidade).toLocaleString("pt-BR") : "—"}</td>
                                     <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{item.valor_unitario !== null && item.valor_unitario !== undefined ? currencyFormatter.format(Number(item.valor_unitario)) : "—"}</td>
                                     <td className="px-3 py-3 text-center font-display font-semibold whitespace-nowrap">{item.total !== null && item.total !== undefined ? currencyFormatter.format(Number(item.total)) : "—"}</td>
@@ -554,7 +554,7 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                                                 className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
                                                 onClick={() => {
                                                     setEditingItem(item);
-                                                    setEditDescricao(item.descricao ?? "");
+                                                    setEditDescricao(item.descricao_servico ?? "");
                                                     setEditObservacao(item.observacao ?? "");
                                                 }}
                                                 title="Editar"
@@ -620,7 +620,7 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                                 if (!editingItem) return;
                                 updateDetailsMutation.mutate({
                                     id: editingItem.id,
-                                    descricao: editDescricao,
+                                    descricao_servico: editDescricao,
                                     observacao: editObservacao,
                                 });
                             }}

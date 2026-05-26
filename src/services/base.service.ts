@@ -2872,13 +2872,17 @@ export const RegraOperacionalService = new RegraOperacionalServiceClass();
 
 class OperacaoProducaoServiceClass {
   private sanitizeOperacaoPayload(payload: Record<string, any>) {
-    const { categoria_servico, categoria_custo, tipo_calculo, ...rest } = payload;
-    // tipo_calculo é removido do payload pois operacoes_producao não possui essa coluna.
-    // O campo correto é tipo_calculo_snapshot. O spread de regraFinanceira pode injetar
-    // tipo_calculo inadvertidamente, causando erro no banco.
+    const { categoria_servico, categoria_custo, tipo_calculo, descricao_servico, modalidade_financeira, ...rest } = payload;
+    // Campos removidos pois NÃO existem na tabela operacoes_producao.
+    // categoria_servico/categoria_custo: são flags de roteamento do LancamentoProducao
+    // tipo_calculo: o campo correto é tipo_calculo_snapshot
+    // descricao_servico: existe apenas em servicos_extras_operacionais
+    // modalidade_financeira: existe apenas em servicos_extras_operacionais
     void categoria_servico;
     void categoria_custo;
     void tipo_calculo;
+    void descricao_servico;
+    void modalidade_financeira;
 
     // Normaliza tipo_calculo_snapshot para os únicos valores aceitos pelo banco.
     // Valores legados ('fixo', 'operation', 'daily') são mapeados para 'volume'.
