@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useMemo } from "react";
+import React, { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDownAZ,
@@ -509,6 +509,17 @@ export const OperacoesTableBlock = ({
   const [pendingAction, setPendingAction] = useState<((justification: string) => void) | null>(null);
   const [justificationType, setJustificationType] = useState<"override" | "devolucao">("override");
 
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const toggleRowExpansion = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setExpandedRows(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
   const [lockedCols, setLockedCols] = useState<Record<string, boolean>>(() => {
     try {
@@ -534,7 +545,7 @@ export const OperacoesTableBlock = ({
     inicio: false, fim: false, valUnit: true, valorDescarga: false, valorIss: true, valDia: true, acoes: true,
     placa: false, fornecedor: false, qtdCol: true,
     idPlanilha: false, empresaPlanilha: false, unidade: true, formaPagamento: false, observacao: false,
-    modalidadeFinanceira: true, dataVencimento: true, statusPagamento: true,
+    modalidadeFinanceira: true, dataVencimento: true, statusPagamento: true, encarregado: true,
   };
 
 
@@ -1240,7 +1251,7 @@ export const OperacoesTableBlock = ({
     const isRuleCol = !!RULE_COLUMN_CONFIG[columnKey as RuleApplicableColumn];
     const isActiveRule = isRuleCol && activeRuleCols[columnKey as RuleApplicableColumn];
 
-    let InnerContent = bulkFieldForColumn ? (
+    const InnerContent = bulkFieldForColumn ? (
       <button
         type="button"
         className="inline-flex flex-shrink-0 items-center justify-center gap-1.5 rounded-md px-1.5 py-1 transition-colors hover:bg-muted whitespace-nowrap"
@@ -1362,7 +1373,7 @@ export const OperacoesTableBlock = ({
       matched: availableEditOperationalRules.length,
       rejected: rejected.slice(0, 5),
     };
-  }, [availableEditOperationalRules, editingItem, regrasOperacionais]);
+  }, [availableEditOperationalRules, editingItem, explainOperationalRuleMismatch, regrasOperacionais]);
 
 
   const renderInlineCell = (
@@ -1766,6 +1777,7 @@ export const OperacoesTableBlock = ({
                     {visibleCols.modalidadeFinanceira && <th className="px-3 py-2.5 font-semibold text-center">MODALIDADE</th>}
                     {visibleCols.dataVencimento && <th className="px-3 py-2.5 font-semibold text-center">VENCIMENTO</th>}
                     {visibleCols.statusPagamento && <th className="px-3 py-2.5 font-semibold text-center">STATUS PGTO</th>}
+                    {visibleCols.encarregado && <th className="px-3 py-2.5 font-semibold text-center">ENCARREGADO</th>}
                     {visibleCols.acoes && <th className="px-5 py-2.5 font-semibold text-center"><span className="inline-flex items-center justify-center gap-1.5 w-full"><Hourglass className="h-3.5 w-3.5 text-muted-foreground" />AÇÕES</span></th>}
                   </tr>
                 </thead>
@@ -1801,137 +1813,87 @@ export const OperacoesTableBlock = ({
 
 
                     return (
-                      <tr
-                        key={item.id}
-                        onClick={() => setSelectedOpDetails(item)}
-                        className={cn(
-                          "esc-table-row cursor-pointer transition-all border-b border-border last:border-0 hover:bg-muted/50",
-                          item.status === "inconsistente" && "bg-rowAlert border-l-[3px] border-l-primary",
-                          isSelected && "bg-primary-soft/40 border-l-[3px] border-l-primary"
-                        )}
-                      >
-                        {visibleCols.data && <td style={getStickyProps("data", false).style} className={cn(getStickyProps("data", false).className, "px-3 text-center text-muted-foreground whitespace-nowrap font-mono text-xs")}>{dataOp}</td>}
-                        {visibleCols.idPlanilha && <td style={getStickyProps("idPlanilha", false).style} className={cn(getStickyProps("idPlanilha", false).className, "px-3 text-center text-muted-foreground whitespace-nowrap")}>{String(idPlanilha)}</td>}
-                        {visibleCols.operacao && <td style={getStickyProps("operacao", false).style} className={cn(getStickyProps("operacao", false).className, "px-5 py-3 text-center font-medium whitespace-nowrap text-foreground")}>{operacaoNome}</td>}
-                        {visibleCols.empresaPlanilha && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{String(empresaPlanilha)}</td>}
-                        {visibleCols.unidade && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{item.unidades?.nome || "-"}</td>}
-                        {visibleCols.fornecedor && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{fornecedor}</td>}
-                        {visibleCols.transportadora && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{transportadora}</td>}
-                        {visibleCols.placa && renderInlineCell(item, "placa", placa)}
-                        {visibleCols.servico && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{servico}</td>}
-                        {visibleCols.qtdCol && renderInlineCell(item, "quantidade_colaboradores", qtdColaboradores, "text", "px-3 text-center font-display font-medium whitespace-nowrap")}
-                        {visibleCols.formaPagamento && renderInlineCell(item, "forma_pagamento", String(formaPagamento))}
-                        {visibleCols.nf && renderInlineCell(item, "nf_numero", nf)}
-                        {visibleCols.ctrc && renderInlineCell(item, "ctrc", ctrc)}
-                        {visibleCols.observacao && renderInlineCell(item, "observacao", String(observacao))}
-                        {visibleCols.inicio && renderInlineCell(item, "entrada_ponto", inicio, "time")}
-                        {visibleCols.fim && renderInlineCell(item, "saida_ponto", fim, "time")}
-                        {visibleCols.valUnit && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{valUnit}</td>}
-                        {visibleCols.qtd && renderInlineCell(item, "quantidade", qtdText, "text", "px-3 text-center font-display font-medium whitespace-nowrap")}
-                        {visibleCols.valorDescarga && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{valorDescarga}</td>}
-                        {visibleCols.valorIss && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{valorIss}</td>}
-                        {visibleCols.valDia && <td className="px-3 text-center font-display font-semibold text-foreground whitespace-nowrap">{valDia}</td>}
-                        {visibleCols.modalidadeFinanceira && (
-                          <td className="px-3 text-center whitespace-nowrap">
-                            {item.modalidadeFinanceira ? (
-                              <Badge variant="outline" className={cn(
-                                "font-medium border-0 text-xs",
-                                item.modalidadeFinanceira === "CAIXA_IMEDIATO" && "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
-                                item.modalidadeFinanceira === "TRANSBORDO_30D" && "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300",
-                              )}>
-
-                                {getModalidadeLabel(item.modalidadeFinanceira)}
-                              </Badge>
-                            ) : <span className="text-muted-foreground">-</span>}
-                          </td>
-                        )}
-                        {visibleCols.dataVencimento && (
-                          <td className="px-3 text-center text-muted-foreground whitespace-nowrap font-mono text-xs">
-                            {item.dataVencimento
-                              ? new Date(item.dataVencimento + "T12:00:00Z").toLocaleDateString("pt-BR")
-                              : "-"}
-                          </td>
-                        )}
-                        {visibleCols.statusPagamento && (
-                          <td className="px-3 text-center whitespace-nowrap">
-                            {item.statusPagamento ? (
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild disabled={!isEditableOperation(item) || updateStatusPagamentoMutation.isPending}>
-                                  <button
-                                    type="button"
-                                    className="inline-flex"
-                                    onClick={(e) => e.stopPropagation()}
-                                    title={isEditableOperation(item) ? "Alterar status de pagamento" : "Status de pagamento"}
-                                  >
-                                    <Badge variant="outline" className={cn(
-                                      "font-medium border-0 text-xs",
-                                      isEditableOperation(item) && "cursor-pointer hover:opacity-85",
-                                      item.statusPagamento === "RECEBIDO" && "bg-success-soft text-success-strong",
-                                      item.statusPagamento === "PENDENTE" && "bg-muted text-muted-foreground",
-                                      item.statusPagamento === "ATRASADO" && "bg-destructive-soft text-destructive-strong",
-                                    )}>
-                                      {item.statusPagamento === "RECEBIDO" ? "Recebido" : item.statusPagamento === "ATRASADO" ? "Atrasado" : "Pendente"}
-                                    </Badge>
-                                  </button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="center" onClick={(e) => e.stopPropagation()}>
-                                  <DropdownMenuLabel>Status pgto</DropdownMenuLabel>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem onClick={() => updateStatusPagamentoMutation.mutate({ item, statusPagamento: "RECEBIDO" })}>
-                                    Recebido
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => updateStatusPagamentoMutation.mutate({ item, statusPagamento: "ATRASADO" })}>
-                                    Atrasado
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => updateStatusPagamentoMutation.mutate({ item, statusPagamento: "PENDENTE" })}>
-                                    Pendente
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            ) : <span className="text-muted-foreground">-</span>}
-                          </td>
-                        )}
-                        {visibleCols.acoes && (
-                          <td className="px-5" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-center gap-1">
-                              <button
-                                className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (isEditableOperation(item)) {
-                                    openEditor(item);
-                                    return;
-                                  }
-                                  navigate(`/producao?id=${item.id}`);
-                                }}
-                                title={isEditableOperation(item) ? "Editar nesta tela" : "Abrir lançamento"}
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
+                      <React.Fragment key={item.id}>
+                        <tr
+                          onClick={() => setSelectedOpDetails(item)}
+                          className={cn(
+                            "esc-table-row cursor-pointer transition-all border-b border-border last:border-0 hover:bg-muted/50",
+                            item.status === "inconsistente" && "bg-rowAlert border-l-[3px] border-l-primary",
+                            isSelected && "bg-primary-soft/40 border-l-[3px] border-l-primary"
+                          )}
+                        >
+                          {visibleCols.data && <td style={getStickyProps("data", false).style} className={cn(getStickyProps("data", false).className, "px-3 text-center text-muted-foreground whitespace-nowrap font-mono text-xs")}>{dataOp}</td>}
+                          {visibleCols.idPlanilha && <td style={getStickyProps("idPlanilha", false).style} className={cn(getStickyProps("idPlanilha", false).className, "px-3 text-center text-muted-foreground whitespace-nowrap")}>{String(idPlanilha)}</td>}
+                          {visibleCols.operacao && <td style={getStickyProps("operacao", false).style} className={cn(getStickyProps("operacao", false).className, "px-5 py-3 text-center font-medium whitespace-nowrap text-foreground")}>
+                            <div className="flex items-center gap-2 justify-center">
+                              <button onClick={(e) => toggleRowExpansion(e, item.id)} className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground">
+                                {expandedRows.has(item.id) ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                               </button>
-                              {item.origem === "operacoes_producao" && (
-                                <button
-                                  className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    navigate("/cadastros/regras-operacionais");
-                                  }}
-                                  title="Abrir regras operacionais"
-                                >
-                                  <ExternalLink className="h-3.5 w-3.5" />
-                                </button>
-                              )}
-                              {isEditableOperation(item) && (
+                              {operacaoNome}
+                            </div>
+                          </td>}
+                          {visibleCols.empresaPlanilha && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{String(empresaPlanilha)}</td>}
+                          {visibleCols.unidade && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{item.unidades?.nome || "-"}</td>}
+                          {visibleCols.fornecedor && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{fornecedor}</td>}
+                          {visibleCols.transportadora && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{transportadora}</td>}
+                          {visibleCols.placa && renderInlineCell(item, "placa", placa)}
+                          {visibleCols.servico && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{servico}</td>}
+                          {visibleCols.qtdCol && renderInlineCell(item, "quantidade_colaboradores", qtdColaboradores, "text", "px-3 text-center font-display font-medium whitespace-nowrap")}
+                          {visibleCols.formaPagamento && renderInlineCell(item, "forma_pagamento", String(formaPagamento))}
+                          {visibleCols.nf && renderInlineCell(item, "nf_numero", nf)}
+                          {visibleCols.ctrc && renderInlineCell(item, "ctrc", ctrc)}
+                          {visibleCols.observacao && renderInlineCell(item, "observacao", String(observacao))}
+                          {visibleCols.inicio && renderInlineCell(item, "entrada_ponto", inicio, "time")}
+                          {visibleCols.fim && renderInlineCell(item, "saida_ponto", fim, "time")}
+                          {visibleCols.valUnit && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{valUnit}</td>}
+                          {visibleCols.qtd && renderInlineCell(item, "quantidade", qtdText, "text", "px-3 text-center font-display font-medium whitespace-nowrap")}
+                          {visibleCols.valorDescarga && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{valorDescarga}</td>}
+                          {visibleCols.valorIss && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{valorIss}</td>}
+                          {visibleCols.valDia && <td className="px-3 text-center font-display font-semibold text-foreground whitespace-nowrap">{valDia}</td>}
+                          {visibleCols.modalidadeFinanceira && (
+                            <td className="px-3 text-center whitespace-nowrap">
+                              {item.modalidadeFinanceira ? (
+                                <Badge variant="outline" className={cn(
+                                  "font-medium border-0 text-xs",
+                                  item.modalidadeFinanceira === "CAIXA_IMEDIATO" && "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
+                                  item.modalidadeFinanceira === "TRANSBORDO_30D" && "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300",
+                                )}>
+
+                                  {getModalidadeLabel(item.modalidadeFinanceira)}
+                                </Badge>
+                              ) : <span className="text-muted-foreground">-</span>}
+                            </td>
+                          )}
+                          {visibleCols.dataVencimento && (
+                            <td className="px-3 text-center text-muted-foreground whitespace-nowrap font-mono text-xs">
+                              {item.dataVencimento
+                                ? new Date(item.dataVencimento + "T12:00:00Z").toLocaleDateString("pt-BR")
+                                : "-"}
+                            </td>
+                          )}
+                          {visibleCols.statusPagamento && (
+                            <td className="px-3 text-center whitespace-nowrap">
+                              {item.statusPagamento ? (
                                 <DropdownMenu>
-                                  <DropdownMenuTrigger asChild disabled={updateStatusPagamentoMutation.isPending}>
+                                  <DropdownMenuTrigger asChild disabled={!isEditableOperation(item) || updateStatusPagamentoMutation.isPending}>
                                     <button
-                                      className="h-7 w-7 rounded-md hover:bg-success-soft flex items-center justify-center text-muted-foreground hover:text-success-strong"
+                                      type="button"
+                                      className="inline-flex"
                                       onClick={(e) => e.stopPropagation()}
-                                      title="Alterar status de pagamento"
+                                      title={isEditableOperation(item) ? "Alterar status de pagamento" : "Status de pagamento"}
                                     >
-                                      <CheckCircle2 className="h-3.5 w-3.5" />
+                                      <Badge variant="outline" className={cn(
+                                        "font-medium border-0 text-xs",
+                                        isEditableOperation(item) && "cursor-pointer hover:opacity-85",
+                                        item.statusPagamento === "RECEBIDO" && "bg-success-soft text-success-strong",
+                                        item.statusPagamento === "PENDENTE" && "bg-muted text-muted-foreground",
+                                        item.statusPagamento === "ATRASADO" && "bg-destructive-soft text-destructive-strong",
+                                      )}>
+                                        {item.statusPagamento === "RECEBIDO" ? "Recebido" : item.statusPagamento === "ATRASADO" ? "Atrasado" : "Pendente"}
+                                      </Badge>
                                     </button>
                                   </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                                  <DropdownMenuContent align="center" onClick={(e) => e.stopPropagation()}>
                                     <DropdownMenuLabel>Status pgto</DropdownMenuLabel>
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem onClick={() => updateStatusPagamentoMutation.mutate({ item, statusPagamento: "RECEBIDO" })}>
@@ -1945,24 +1907,132 @@ export const OperacoesTableBlock = ({
                                     </DropdownMenuItem>
                                   </DropdownMenuContent>
                                 </DropdownMenu>
-                              )}
-                              <button
-                                className="h-7 w-7 rounded-md hover:bg-destructive-soft flex items-center justify-center text-muted-foreground hover:text-destructive disabled:opacity-50"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (confirm("Tem certeza que deseja excluir esta operação?")) {
-                                    deleteMutation.mutate(item.id);
-                                  }
-                                }}
-                                disabled={deleteMutation.isPending}
-                                title="Excluir operação"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
-                          </td>
+                              ) : <span className="text-muted-foreground">-</span>}
+                            </td>
+                          )}
+                          {visibleCols.encarregado && (
+                            <td className="px-3 text-center text-muted-foreground whitespace-nowrap">
+                              {item.responsavel_nome || '-'}
+                            </td>
+                          )}
+                          {visibleCols.acoes && (
+                            <td className="px-5" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex items-center justify-center gap-1">
+                                <button
+                                  className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (isEditableOperation(item)) {
+                                      openEditor(item);
+                                      return;
+                                    }
+                                    navigate(`/producao?id=${item.id}`);
+                                  }}
+                                  title={isEditableOperation(item) ? "Editar nesta tela" : "Abrir lançamento"}
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </button>
+                                {item.origem === "operacoes_producao" && (
+                                  <button
+                                    className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      navigate("/cadastros/regras-operacionais");
+                                    }}
+                                    title="Abrir regras operacionais"
+                                  >
+                                    <ExternalLink className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
+                                {isEditableOperation(item) && (
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild disabled={updateStatusPagamentoMutation.isPending}>
+                                      <button
+                                        className="h-7 w-7 rounded-md hover:bg-success-soft flex items-center justify-center text-muted-foreground hover:text-success-strong"
+                                        onClick={(e) => e.stopPropagation()}
+                                        title="Alterar status de pagamento"
+                                      >
+                                        <CheckCircle2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                                      <DropdownMenuLabel>Status pgto</DropdownMenuLabel>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem onClick={() => updateStatusPagamentoMutation.mutate({ item, statusPagamento: "RECEBIDO" })}>
+                                        Recebido
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => updateStatusPagamentoMutation.mutate({ item, statusPagamento: "ATRASADO" })}>
+                                        Atrasado
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => updateStatusPagamentoMutation.mutate({ item, statusPagamento: "PENDENTE" })}>
+                                        Pendente
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                )}
+                                <button
+                                  className="h-7 w-7 rounded-md hover:bg-destructive-soft flex items-center justify-center text-muted-foreground hover:text-destructive disabled:opacity-50"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (confirm("Tem certeza que deseja excluir esta operação?")) {
+                                      deleteMutation.mutate(item.id);
+                                    }
+                                  }}
+                                  disabled={deleteMutation.isPending}
+                                  title="Excluir operação"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                        {expandedRows.has(item.id) && (
+                          <tr className="bg-muted/10 border-b border-border shadow-inner">
+                            <td colSpan={24} className="p-0 border-0">
+                              <div className="p-4 pl-12 pr-4 space-y-4">
+                                <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                                  <User className="h-4 w-4 text-muted-foreground" />
+                                  Colaboradores da Operação
+                                </h4>
+                                {item.production_entry_collaborators && item.production_entry_collaborators.length > 0 ? (
+                                  <div className="rounded-md border border-border bg-background overflow-hidden max-w-3xl">
+                                    <table className="w-full text-sm">
+                                      <thead className="bg-muted text-muted-foreground">
+                                        <tr className="border-b border-border">
+                                          <th className="px-4 py-2 text-left font-medium">Nome</th>
+                                          <th className="px-4 py-2 text-left font-medium">Cargo</th>
+                                          <th className="px-4 py-2 text-left font-medium">Infração?</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-border">
+                                        {item.production_entry_collaborators.map((c: any) => {
+                                          const isInfraction = c.had_infraction === true;
+                                          return (
+                                            <tr key={c.collaborator_id || c.colaboradores?.id || Math.random()} className="hover:bg-muted/50">
+                                              <td className="px-4 py-2">{c.colaboradores?.nome || '-'}</td>
+                                              <td className="px-4 py-2 text-muted-foreground">{c.colaboradores?.cargo || '-'}</td>
+                                              <td className="px-4 py-2">
+                                                {isInfraction ? (
+                                                  <span className="text-destructive font-medium border border-destructive/20 bg-destructive/10 px-2 py-0.5 rounded-full text-xs">Sim</span>
+                                                ) : <span className="text-muted-foreground">-</span>}
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                ) : (
+                                  <div className="text-sm text-muted-foreground italic bg-background p-4 rounded-md border border-border max-w-3xl">
+                                    Nenhum colaborador foi vinculado no momento deste lançamento.
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
                         )}
-                      </tr>
+                      </React.Fragment>
                     );
                   })}
                   {filteredData.length === 0 && (
@@ -2186,22 +2256,56 @@ export const OperacoesTableBlock = ({
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
+                  <p className="text-sm font-medium text-foreground">Empresa</p>
+                  <p className="text-sm text-muted-foreground truncate" title={String(getDisplayEmpresa(selectedOpDetails, empresas))}>
+                    {String(getDisplayEmpresa(selectedOpDetails, empresas))}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-foreground">Unidade / Local</p>
+                  <p className="text-sm text-muted-foreground">{selectedOpDetails.unidades?.nome || "-"}</p>
+                </div>
+                <div className="space-y-1">
                   <p className="text-sm font-medium text-foreground">Data da operação</p>
                   <p className="text-sm text-muted-foreground font-mono">
                     {selectedOpDetails.data_operacao ? new Date(selectedOpDetails.data_operacao + "T00:00:00").toLocaleDateString("pt-BR") : "-"}
                   </p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-sm font-medium text-foreground">Qtd. colaboradores</p>
-                  <p className="text-sm text-muted-foreground">{selectedOpDetails.quantidade_colaboradores ?? 1} col.</p>
+                  <p className="text-sm font-medium text-foreground">Status</p>
+                  <Badge variant="outline" className={cn("font-medium border-0 text-xs px-2 py-0", getStatusConfig(selectedOpDetails.status || "pendente").className)}>
+                    {getStatusConfig(selectedOpDetails.status || "pendente").label}
+                  </Badge>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-foreground">Serviço</p>
                   <p className="text-sm text-muted-foreground">{selectedOpDetails.tipos_servico_operacional?.nome || selectedOpDetails.tipo_servico_label || "Sem servico"}</p>
                 </div>
                 <div className="space-y-1">
+                  <p className="text-sm font-medium text-foreground">Volume</p>
+                  <p className="text-sm text-muted-foreground font-semibold">{selectedOpDetails.quantidade ?? 0}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-foreground">Qtd. colaboradores</p>
+                  <p className="text-sm text-muted-foreground">{selectedOpDetails.quantidade_colaboradores ?? 1} col.</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-foreground">Placa</p>
+                  <p className="text-sm text-muted-foreground font-mono">{selectedOpDetails.placa || "-"}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-foreground">Entrada</p>
+                  <p className="text-sm text-muted-foreground font-mono">{(selectedOpDetails.entrada_ponto || "").substring(0, 5) || "-"}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-foreground">Saída</p>
+                  <p className="text-sm text-muted-foreground font-mono">{(selectedOpDetails.saida_ponto || "").substring(0, 5) || "-"}</p>
+                </div>
+                <div className="space-y-1">
                   <p className="text-sm font-medium text-foreground">Transportadora</p>
-                  <p className="text-sm text-muted-foreground">{selectedOpDetails.transportadoras_clientes?.nome || selectedOpDetails.transportadora_label || "-"}</p>
+                  <p className="text-sm text-muted-foreground truncate" title={selectedOpDetails.transportadoras_clientes?.nome || selectedOpDetails.transportadora_label || "-"}>
+                    {selectedOpDetails.transportadoras_clientes?.nome || selectedOpDetails.transportadora_label || "-"}
+                  </p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-foreground">NF numero</p>
@@ -2212,12 +2316,30 @@ export const OperacoesTableBlock = ({
                   <p className="text-sm text-muted-foreground">{selectedOpDetails.ctrc || "-"}</p>
                 </div>
                 <div className="space-y-1">
+                  <p className="text-sm font-medium text-foreground">Encarregado</p>
+                  <p className="text-sm text-muted-foreground">{selectedOpDetails.responsavel_nome || "-"}</p>
+                </div>
+                <div className="space-y-1">
                   <p className="text-sm font-medium text-foreground">Forma de pagamento</p>
                   <p className="text-sm text-muted-foreground">{String(getDisplayFormaPagamento(selectedOpDetails))}</p>
                 </div>
                 <div className="space-y-1">
+                  <p className="text-sm font-medium text-foreground">Modalidade</p>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedOpDetails.modalidadeFinanceira ? getModalidadeLabel(selectedOpDetails.modalidadeFinanceira) : "-"}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-foreground">Vencimento</p>
+                  <p className="text-sm text-muted-foreground font-mono">
+                    {selectedOpDetails.dataVencimento ? new Date(selectedOpDetails.dataVencimento + "T12:00:00Z").toLocaleDateString("pt-BR") : "-"}
+                  </p>
+                </div>
+                <div className="space-y-1 col-span-2">
                   <p className="text-sm font-medium text-foreground">Observação</p>
-                  <p className="text-sm text-muted-foreground">{String(getDisplayObservacao(selectedOpDetails))}</p>
+                  <p className="text-sm text-muted-foreground italic bg-muted/20 p-2 rounded border border-dashed border-border">
+                    {String(getDisplayObservacao(selectedOpDetails)) || "-"}
+                  </p>
                 </div>
               </div>
 
@@ -2225,8 +2347,14 @@ export const OperacoesTableBlock = ({
                 <p className="text-sm font-medium text-foreground">Valores principais</p>
                 <div className="grid grid-cols-2 gap-4 border border-border rounded-lg p-3 bg-muted/30">
                   <div>
-                    <p className="text-xs text-muted-foreground">Valor descarga</p>
+                    <p className="text-xs text-muted-foreground">Valor Unitário</p>
                     <p className="text-sm font-medium text-foreground">
+                      {valUnitFormatter(selectedOpDetails.valor_unitario_snapshot ?? selectedOpDetails.valor_unitario_label ?? selectedOpDetails.valor_unitario ?? 0)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Valor descarga</p>
+                    <p className="text-sm font-bold text-primary">
                       {valUnitFormatter(selectedOpDetails.valor_descarga)}
                     </p>
                   </div>

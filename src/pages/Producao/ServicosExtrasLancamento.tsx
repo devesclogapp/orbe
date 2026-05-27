@@ -146,8 +146,8 @@ const ServicosExtrasLancamento = () => {
     const { data: historico = [], isLoading: isLoadingHistorico } = useQuery({
         queryKey: ["servicos_extras_historico", form.empresa_id],
         queryFn: () =>
-            OperacaoProducaoService.getByDate(today, form.empresa_id).catch(() => []),
-        enabled: !!form.empresa_id && openHistorico,
+            ServicosExtrasOperacionaisService.getWithEmpresas(form.empresa_id).catch(() => []),
+        enabled: !!form.empresa_id && activeTab === "historico",
     });
 
     // ─── Calculations ─────────────────────────────────────────────────────────

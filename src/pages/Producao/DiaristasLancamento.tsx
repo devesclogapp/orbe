@@ -32,6 +32,7 @@ import { useNavigate } from "react-router-dom";
 import { OperationalShell } from "@/components/layout/OperationalShell";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import {
@@ -127,6 +128,8 @@ const DiaristasLancamento = () => {
 
     /* grade[diarista_id][data_ISO] = codigo */
     const [grade, setGrade] = useState<GradeMap>({});
+    /* observacoes[diarista_id] = string */
+    const [observacoes, setObservacoes] = useState<Record<string, string>>({});
 
     const [openHistorico, setOpenHistorico] = useState(false);
     const [fechandoPeriodo, setFechandoPeriodo] = useState(false);
@@ -168,6 +171,15 @@ const DiaristasLancamento = () => {
         queryKey: ["unidades_operacionais", empresaIdSelecionada],
         queryFn: () => UnidadeOperacionalService.getByEmpresa(empresaIdSelecionada),
         enabled: !!empresaIdSelecionada,
+    });
+
+    const { data: locais = [] } = useQuery({
+        queryKey: ["locais_operacionais", unidadeId],
+        queryFn: async () => {
+            const { data } = await supabase.from("locais_operacionais").select("id, nome").eq("unidade_id", unidadeId).order("nome");
+            return data || [];
+        },
+        enabled: !!unidadeId,
     });
 
     const { data: regrasMarcacao = [], isLoading: isLoadingRegras } = useQuery({
@@ -472,6 +484,7 @@ const DiaristasLancamento = () => {
                         cliente_unidade: clienteUnidade || null,
                         unidade_id: unidadeId,
                         local_id: localId,
+                        observacao: observacoes[d.id] || null,
                         encarregado_id: user?.id ?? null,
                         encarregado_nome: perfil?.full_name || user?.email || null,
                     });
@@ -587,6 +600,7 @@ const DiaristasLancamento = () => {
                                     setUnidadeId(null);
                                     setLocalId(null);
                                     setGrade({});
+                                    setObservacoes({});
                                 }}
                             >
                                 <SelectTrigger>
@@ -607,7 +621,10 @@ const DiaristasLancamento = () => {
                             </label>
                             <Select
                                 value={unidadeId || "nenhuma"}
-                                onValueChange={(val) => setUnidadeId(val === "nenhuma" ? null : val)}
+                                onValueChange={(val) => {
+                                    setUnidadeId(val === "nenhuma" ? null : val);
+                                    setLocalId(null);
+                                }}
                             >
                                 <SelectTrigger>
                                     <SelectValue placeholder="Selecione a Unidade" />
@@ -620,6 +637,29 @@ const DiaristasLancamento = () => {
                                 </SelectContent>
                             </Select>
                         </div>
+
+                        {/* Local */}
+                        {unidadeId && (
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                                    Local
+                                </label>
+                                <Select
+                                    value={localId || "nenhum"}
+                                    onValueChange={(val) => setLocalId(val === "nenhum" ? null : val)}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Opcional" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="nenhum">Nenhum local específico</SelectItem>
+                                        {(locais as any[]).map((l: any) => (
+                                            <SelectItem key={l.id} value={l.id}>{l.nome}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        )}
 
                         {/* Navegação de semana */}
                         <div className="space-y-1.5">
@@ -762,6 +802,9 @@ const DiaristasLancamento = () => {
                                             <th className="text-right text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-4 py-2.5 w-[110px]">
                                                 Total
                                             </th>
+                                            <th className="text-left text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-4 py-2.5 w-[140px] border-l border-border/50">
+                                                Observação / Info Add
+                                            </th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-border">
@@ -891,6 +934,16 @@ const DiaristasLancamento = () => {
                                                         )}>
                                                             {formatCurrency(totalDiarista)}
                                                         </p>
+                                                    </td>
+                                                    {/* Observação individual */}
+                                                    <td className="px-2 py-3 text-right border-l border-border/50 bg-muted/10">
+                                                        <Input
+                                                            value={observacoes[d.id] ?? ""}
+                                                            onChange={(e) => setObservacoes(prev => ({ ...prev, [d.id]: e.target.value }))}
+                                                            className="h-8 text-[11px] bg-muted/40 shadow-none border-transparent hover:border-border focus-visible:border-primary px-2 min-w-[120px] rounded"
+                                                            placeholder="Obs..."
+                                                            disabled={periodoBloqueado}
+                                                        />
                                                     </td>
                                                 </tr>
                                             );

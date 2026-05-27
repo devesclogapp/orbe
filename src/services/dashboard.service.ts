@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { addMonths, format } from 'date-fns';
 
 export type AuditoriaCompetenciaStatus = 'ok' | 'divergente' | 'pendente' | 'sem_dados';
 export type TipoFluxo = 'folha_variavel' | 'diarista' | 'operacional';
@@ -260,7 +261,7 @@ class DashboardConsolidadoServiceClass {
     if (empresaId) qLotesD = qLotesD.eq('empresa_id', empresaId);
 
     let qLotesRh = supabase
-      .from('rh_financeiro_lote')
+      .from('rh_financeiro_lotes')
       .select('status, created_at, updated_at, lote_itens:rh_financeiro_lote_itens(valor_calculado)')
       .eq('competencia', canonicalCompetencia);
     if (empresaId) qLotesRh = qLotesRh.eq('empresa_id', empresaId);
@@ -271,12 +272,12 @@ class DashboardConsolidadoServiceClass {
       .eq('competencia', canonicalCompetencia);
     if (empresaId) qCnabLotes = qCnabLotes.eq('empresa_id', empresaId);
 
-    let qCnabArquivos = supabase
+    const qCnabArquivos = supabase
       .from('cnab_remessas_arquivos')
       .select('id, lote_id, total_valor, status, competencia, data_geracao, updated_at')
       .eq('competencia', canonicalCompetencia);
 
-    let qRetornoItens = supabase
+    const qRetornoItens = supabase
       .from('cnab_retorno_itens')
       .select(`
         valor_retornado,
@@ -287,18 +288,21 @@ class DashboardConsolidadoServiceClass {
         )
       `);
 
+    const nextMonth = format(addMonths(new Date(`${canonicalCompetencia}-01T12:00:00`), 1), 'yyyy-MM');
+
     let qCustos = supabase
       .from('custos_extras_operacionais')
       .select('total, status_pagamento, created_at, updated_at')
       .gte('data', `${canonicalCompetencia}-01`)
-      .lt('data', `${canonicalCompetencia}-32`);
+      .lt('data', `${nextMonth}-01`);
     if (empresaId) qCustos = qCustos.eq('empresa_id', empresaId);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let qServicosExtras = (supabase as any)
       .from('servicos_extras_operacionais')
-      .select('total, pipeline_status, status_pagamento, created_at, updated_at')
+      .select('total, pipeline_status, created_at, updated_at')
       .gte('data', `${canonicalCompetencia}-01`)
-      .lt('data', `${canonicalCompetencia}-32`);
+      .lt('data', `${nextMonth}-01`);
     if (empresaId) qServicosExtras = qServicosExtras.eq('empresa_id', empresaId);
 
     const [

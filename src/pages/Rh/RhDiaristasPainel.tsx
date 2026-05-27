@@ -1594,15 +1594,16 @@ const RhDiaristasPainel = () => {
                                                     <tr key={`${g.data_lancamento}-detail`} className="border-t border-muted/50 bg-muted/20">
                                                         <td colSpan={6} className="px-5 py-4">
                                                             <div className="space-y-2">
-                                                                <div className="grid grid-cols-7 gap-2 text-xs font-bold text-muted-foreground uppercase tracking-widest pb-1 border-b border-border/50">
+                                                                <div className="grid grid-cols-8 gap-2 text-xs font-bold text-muted-foreground uppercase tracking-widest pb-1 border-b border-border/50">
                                                                     <span className="col-span-2">Colaborador / Função</span>
                                                                     <span className="text-center">Marcação / Qtd</span>
                                                                     <span className="text-right">Valor</span>
-                                                                    <span>Cliente / Op.</span>
+                                                                    <span>Cliente / Op. / Local</span>
+                                                                    <span className="col-span-2">Info Add (Obs / Lançado por)</span>
                                                                     <span className="text-center">Status</span>
                                                                 </div>
                                                                 {g.lancamentos.map((l: any) => (
-                                                                    <div key={l.id} className="grid grid-cols-7 gap-2 text-xs items-center">
+                                                                    <div key={l.id} className="grid grid-cols-8 gap-2 text-xs items-center hover:bg-muted/30 p-1 rounded transition-colors">
                                                                         <div className="col-span-2 flex flex-col pt-1 pb-1">
                                                                             <span className="font-bold text-foreground truncate">{l.nome_colaborador}</span>
                                                                             <span className="text-[10px] text-muted-foreground truncate">{l.funcao_colaborador ?? "—"}</span>
@@ -1620,8 +1621,19 @@ const RhDiaristasPainel = () => {
                                                                             <span className="text-[10px] font-mono text-muted-foreground">{formatCurrency(l.valor_diaria_base)} bs.</span>
                                                                         </div>
                                                                         <div className="flex flex-col pt-1 pb-1">
-                                                                            <span className="truncate text-muted-foreground">{l.cliente_unidade ?? "—"}</span>
-                                                                            <span className="truncate text-[10px] text-muted-foreground">{l.operacao_servico ?? "—"}</span>
+                                                                            <span className="truncate text-muted-foreground" title={l.cliente_unidade}>{l.cliente_unidade ?? "—"}</span>
+                                                                            <span className="truncate text-[10px] text-muted-foreground" title={`Local: ${l.local_id || "—"} / Op: ${l.operacao_servico || "—"}`}>
+                                                                                {l.local_id && `Local: ${l.local_id} `}
+                                                                                {l.operacao_servico ?? "—"}
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="col-span-2 flex flex-col pt-1 pb-1 px-1">
+                                                                            <span className="truncate text-muted-foreground" title={l.observacao ?? l.motivo_edicao ?? "Nenhuma observação"}>
+                                                                                {l.observacao ?? l.motivo_edicao ?? "—"}
+                                                                            </span>
+                                                                            <span className="truncate text-[10px] text-foreground/60 w-full" title={`Lançado por: ${l.encarregado_nome || l.encarregado_id || "Não identificado"}`}>
+                                                                                👤 {l.encarregado_nome ?? "Sistema"}
+                                                                            </span>
                                                                         </div>
                                                                         <div className="text-center">
                                                                             <StatusDiaristaBadge status={(() => {

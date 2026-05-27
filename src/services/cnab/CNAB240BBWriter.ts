@@ -94,7 +94,7 @@ async function fetchLoteData(loteId: string, contaBancariaId?: string, rhLoteId?
   // Busca do valor total que originou o lote para auditoria rigorosa (Prevenção contra fraude/divergência)
   let valorEsperadoLote = 0;
   if (rhLoteId) {
-     const { data: rhLot } = await supabase.from('rh_financeiro_lote').select('valor_total').eq('id', rhLoteId).maybeSingle();
+     const { data: rhLot } = await supabase.from('rh_financeiro_lotes').select('valor_total').eq('id', rhLoteId).maybeSingle();
      if(rhLot) valorEsperadoLote = Number(rhLot.valor_total || 0);
   } else {
      const { data: lf } = await supabase.from('lotes_remessa').select('valor_total').eq('id', loteId).maybeSingle();

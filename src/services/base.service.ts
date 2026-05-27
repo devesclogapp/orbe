@@ -2960,6 +2960,7 @@ class OperacaoProducaoServiceClass {
       .select(`
         *,
         colaboradores:colaborador_id(nome, cargo),
+        production_entry_collaborators(had_infraction, infraction_type_id, infraction_notes, colaboradores:collaborator_id(id, nome, cargo, cpf)),
         tipos_servico_operacional:tipo_servico_id(nome),
         transportadoras_clientes:transportadora_id(nome),
         fornecedores:fornecedor_id(nome),
@@ -2990,6 +2991,7 @@ class OperacaoProducaoServiceClass {
       .select(`
         *,
         colaboradores:colaborador_id(nome, cargo),
+        production_entry_collaborators(had_infraction, infraction_type_id, infraction_notes, colaboradores:collaborator_id(id, nome, cargo, cpf)),
         tipos_servico_operacional:tipo_servico_id(nome),
         transportadoras_clientes:transportadora_id(nome),
         fornecedores:fornecedor_id(nome),
@@ -3051,6 +3053,7 @@ class OperacaoProducaoServiceClass {
       .select(`
         *,
         colaboradores:colaborador_id(nome, cargo),
+        production_entry_collaborators(had_infraction, infraction_type_id, infraction_notes, colaboradores:collaborator_id(id, nome, cargo, cpf)),
         tipos_servico_operacional:tipo_servico_id(nome),
         transportadoras_clientes:transportadora_id(nome),
         fornecedores:fornecedor_id(nome),
@@ -3070,6 +3073,7 @@ class OperacaoProducaoServiceClass {
       .select(`
         *,
         colaboradores:colaborador_id(nome, cargo),
+        production_entry_collaborators(had_infraction, infraction_type_id, infraction_notes, colaboradores:collaborator_id(id, nome, cargo, cpf)),
         tipos_servico_operacional:tipo_servico_id(nome),
         transportadoras_clientes:transportadora_id(nome),
         fornecedores:fornecedor_id(nome),
@@ -3102,6 +3106,7 @@ class OperacaoProducaoServiceClass {
       .select(`
         *,
         colaboradores:colaborador_id(nome, cargo),
+        production_entry_collaborators(had_infraction, infraction_type_id, infraction_notes, colaboradores:collaborator_id(id, nome, cargo, cpf)),
         tipos_servico_operacional:tipo_servico_id(nome),
         transportadoras_clientes:transportadora_id(nome),
         fornecedores:fornecedor_id(nome),

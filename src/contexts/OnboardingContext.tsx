@@ -154,14 +154,25 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     try {
       console.log("[OnboardingContext] Fetching data for tenant:", tenantId);
 
-      const [empresasRes, transportadorasRes, fornecedoresRes, colaboradoresRes, regrasRes, operacoesRes] = await Promise.all([
+      const promises = [
         supabase.from("empresas").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("status", "ativa"),
-        supabase.from("transportadoras_clientes").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("tipo_cadastro", "transportadora").eq("ativo", true),
+        supabase.from("transportadoras_clientes").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("ativo", true),
         supabase.from("fornecedores").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("ativo", true),
         supabase.from("colaboradores").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("status", "ativo"),
         supabase.from("fornecedor_valores_servico").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("ativo", true),
         supabase.from("operacoes_producao").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId),
-      ]);
+      ];
+
+      const results = await Promise.all(promises);
+
+      const tables = ["empresas", "transportadoras_clientes", "fornecedores", "colaboradores", "fornecedor_valores_servico", "operacoes_producao"];
+      results.forEach((res, idx) => {
+        if (res.error) {
+          console.error(`[OnboardingContext] Error fetching ${tables[idx]}:`, res.error);
+        }
+      });
+
+      const [empresasRes, transportadorasRes, fornecedoresRes, colaboradoresRes, regrasRes, operacoesRes] = results;
 
       const hasEmpresa = (empresasRes.count ?? 0) > 0;
       const hasTransportadora = (transportadorasRes.count ?? 0) > 0;

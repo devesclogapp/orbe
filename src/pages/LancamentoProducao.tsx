@@ -713,7 +713,7 @@ const LancamentoProducao = () => {
         }
     }, [perfil, empresas, form.empresa_id]);
 
-    const { data: unidadesDb = [] } = useQuery({
+    const { data: unidadesDb = [], isLoading: isLoadingUnidades } = useQuery({
         queryKey: ["unidades_operacionais", form.empresa_id],
         queryFn: () => UnidadeOperacionalService.getByEmpresa(form.empresa_id),
         enabled: !!form.empresa_id && schemaDisponivel,
@@ -964,7 +964,7 @@ const LancamentoProducao = () => {
         if (categoriaServico && form.categoria_servico !== categoriaServico) {
             setForm((prev) => ({ ...prev, categoria_servico: categoriaServico }));
         }
-    }, [categoriaServico]);
+    }, [categoriaServico, form.categoria_servico]);
 
     useEffect(() => {
         if (form.tipo_lancamento === "transbordo_servico_extra" && form.modalidade_financeira !== "CAIXA_IMEDIATO") {
@@ -987,7 +987,10 @@ const LancamentoProducao = () => {
             const formaPagamento = formaPagamentoItem?.nome || form.forma_pagamento;
 
             if (!modalidade || !formaPagamento) {
-                setForm((prev) => ({ ...prev, regra_financeira: null }));
+                setForm((prev) => {
+                    if (prev.regra_financeira === null) return prev;
+                    return { ...prev, regra_financeira: null };
+                });
                 return;
             }
 
@@ -996,29 +999,40 @@ const LancamentoProducao = () => {
                 if (regra?.dados) {
                     const dados = regra.dados;
                     const prazoDias = dados.prazo_dias !== undefined && dados.prazo_dias !== null ? Number(dados.prazo_dias) : 0;
-                    setForm((prev) => ({
-                        ...prev,
-                        regra_financeira: {
-                            modalidade_financeira: dados.modalidade_financeira,
-                            forma_pagamento: dados.forma_pagamento,
-                            prazo_dias: prazoDias,
-                            tipo_liquidacao: dados.tipo_liquidacao,
-                            entra_caixa_imediato: dados.entra_caixa_imediato,
-                            gera_conta_receber: dados.gera_conta_receber,
-                            agrupa_faturamento: dados.agrupa_faturamento,
-                        },
-                    }));
+
+                    const novaRegra = {
+                        modalidade_financeira: dados.modalidade_financeira,
+                        forma_pagamento: dados.forma_pagamento,
+                        prazo_dias: prazoDias,
+                        tipo_liquidacao: dados.tipo_liquidacao,
+                        entra_caixa_imediato: dados.entra_caixa_imediato,
+                        gera_conta_receber: dados.gera_conta_receber,
+                        agrupa_faturamento: dados.agrupa_faturamento,
+                    };
+
+                    setForm((prev) => {
+                        if (JSON.stringify(prev.regra_financeira) === JSON.stringify(novaRegra)) {
+                            return prev;
+                        }
+                        return { ...prev, regra_financeira: novaRegra };
+                    });
                 } else {
-                    setForm((prev) => ({ ...prev, regra_financeira: null }));
+                    setForm((prev) => {
+                        if (prev.regra_financeira === null) return prev;
+                        return { ...prev, regra_financeira: null };
+                    });
                 }
             } catch (error) {
                 console.error("Erro ao buscar regra financeira:", error);
-                setForm((prev) => ({ ...prev, regra_financeira: null }));
+                setForm((prev) => {
+                    if (prev.regra_financeira === null) return prev;
+                    return { ...prev, regra_financeira: null };
+                });
             }
         };
 
         buscarRegraFinanceira();
-    }, [form.modalidade_financeira, form.forma_pagamento]);
+    }, [form.modalidade_financeira, form.forma_pagamento, formaPagamentoOptions]);
 
     const regraLookupHabilitada = !!form.empresa_id && !!form.data && !!form.tipo_servico;
 
@@ -1219,11 +1233,20 @@ const LancamentoProducao = () => {
     ]);
 
     useEffect(() => {
-        setForm((prev) => ({
-            ...prev,
-            valor_unitario: regraFinanceiraAtiva ? String(regraFinanceiraAtiva.valorUnitario) : prev.valor_unitario,
-            forma_pagamento: regraFinanceiraAtiva?.formaPagamentoId ?? prev.forma_pagamento,
-        }));
+        setForm((prev) => {
+            const nextValorUnitario = regraFinanceiraAtiva ? String(regraFinanceiraAtiva.valorUnitario) : prev.valor_unitario;
+            const nextFormaPagamento = regraFinanceiraAtiva?.formaPagamentoId ?? prev.forma_pagamento;
+
+            if (prev.valor_unitario === nextValorUnitario && prev.forma_pagamento === nextFormaPagamento) {
+                return prev;
+            }
+
+            return {
+                ...prev,
+                valor_unitario: nextValorUnitario,
+                forma_pagamento: nextFormaPagamento,
+            };
+        });
     }, [regraFinanceiraAtiva]);
 
     useEffect(() => {
@@ -1376,7 +1399,6 @@ const LancamentoProducao = () => {
         isFluxoSemEquipe,
         isQualquerCusto,
         isTransbordoServicoExtra,
-        isCustosMensaisCLT,
         mensagemRegra,
         quantidadeConsiderada,
         requiresProductSelection,
@@ -1686,7 +1708,8 @@ const LancamentoProducao = () => {
             },
             contexto_importacao: {
                 modalidade_financeira_override: finalModalidade,
-                forma_pagamento: form.forma_pagamento && form.forma_pagamento.includes('-') ? form.forma_pagamento : null
+                data_vencimento_override: form.data_vencimento || null,
+                forma_pagamento: form.forma_pagamento && form.forma_pagamento.includes('-') ? null : form.forma_pagamento
             }
         };
 
@@ -1870,7 +1893,7 @@ const LancamentoProducao = () => {
                                         </div>
                                         <div className="space-y-1.5">
                                             <Label>Empresa</Label>
-                                            <Select value={form.empresa_id} onValueChange={(v) => setForm(f => ({ ...f, empresa_id: v }))}>
+                                            <Select value={form.empresa_id} onValueChange={(v) => setForm(f => ({ ...f, empresa_id: v, unidade_id: "" }))}>
                                                 <SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger>
                                                 <SelectContent>
                                                     {empresas.map((e: any) => <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>)}
@@ -1878,6 +1901,31 @@ const LancamentoProducao = () => {
                                             </Select>
                                         </div>
                                     </div>
+
+                                    {unidadesDb.length > 0 && (
+                                        <div className="space-y-1.5 animate-in fade-in slide-in-from-top-1">
+                                            <Label className="flex items-center gap-1.5">
+                                                <Building2 className="w-3.5 h-3.5" />
+                                                Unidade / Local
+                                            </Label>
+                                            <Select
+                                                value={form.unidade_id}
+                                                onValueChange={(v) => setForm(f => ({ ...f, unidade_id: v }))}
+                                                disabled={!form.empresa_id}
+                                            >
+                                                <SelectTrigger className="h-11 rounded-xl">
+                                                    <SelectValue placeholder="Selecione a unidade (opcional)" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {unidadesDb.map((u: any) => (
+                                                        <SelectItem key={u.id} value={u.id}>
+                                                            {u.nome} {u.codigo ? `(${u.codigo})` : ""}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    )}
                                     {isDataRetroativa && <Textarea value={form.justificativa_data} onChange={e => setForm(f => ({ ...f, justificativa_data: e.target.value }))} placeholder="Justificativa da data retroativa..." className="rounded-xl" />}
 
                                     <div className="space-y-1.5">

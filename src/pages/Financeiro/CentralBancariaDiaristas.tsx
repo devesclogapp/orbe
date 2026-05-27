@@ -267,6 +267,11 @@ export const CentralBancariaDiaristas = ({ onMetricsUpdate }: { onMetricsUpdate?
             toast.success("Lote marcado como pago.");
             queryClient.invalidateQueries({ queryKey: ["lotes_fechamento"] });
             queryClient.invalidateQueries({ queryKey: ["lancamentos_lote"] });
+            // Invalidações globais para sincronizar RH e Mobile instantaneamente
+            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel"] });
+            queryClient.invalidateQueries({ queryKey: ["lotes_fechamento_painel"] });
+            queryClient.invalidateQueries({ queryKey: ["lotes_fechamento_producao"] });
+            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_semana"] });
             setOpenConfirmPago(false);
             setOpenDetalhe(false);
 
