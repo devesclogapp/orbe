@@ -76,8 +76,8 @@ type CustoExtraItem = {
   origem_dado?: string | null;
   pipeline_status?: "PENDENTE" | "EM_VALIDACAO" | "APROVADO_OPERACAO" | "CONSOLIDADO_FINANCEIRO" | "CONCLUIDO" | null;
   justificativa_devolucao?: string | null;
-  centro_custo_nome?: string | null;
-  avaliacao_json?: Record<string, unknown> | null;
+  responsavel_nome?: string | null;
+  observacao?: string | null;
 };
 
 type CustosExtrasTableBlockProps = {
@@ -119,6 +119,7 @@ const defaultVisibleCols = {
   vencimento: true,
   status: true,
   pipelineStatus: true,
+  responsavel: true,
   operacaoId: false,
   acoes: true,
 };
@@ -700,6 +701,7 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
                 {visibleCols.vencimento && <th className="px-3 py-2.5 font-semibold text-center">VENCIMENTO</th>}
                 {visibleCols.status && <th className="px-3 py-2.5 font-semibold text-center">STATUS PGTO</th>}
                 {visibleCols.pipelineStatus && <th className="px-3 py-2.5 font-semibold text-center whitespace-nowrap"><PlayCircle className="h-3.5 w-3.5 inline mr-1" />PIPELINE</th>}
+                {visibleCols.responsavel && <th className="px-3 py-2.5 font-semibold text-center whitespace-nowrap"><User className="h-3.5 w-3.5 inline mr-1" />ENCARREGADO</th>}
                 {visibleCols.operacaoId && <th className="px-3 py-2.5 font-semibold text-center">OPERACAO ID</th>}
                 {visibleCols.acoes && <th className="px-5 py-2.5 font-semibold text-center">ACOES</th>}
               </tr>
@@ -746,16 +748,17 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
                     <td className="px-3 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                       <Badge className={cn(
                         "border-0 font-medium capitalize h-6 px-2 text-[11px]",
-                        item.pipeline_status === 'EM_VALIDACAO' ? "bg-amber-100 text-amber-700 hover:bg-amber-100" :
-                          item.pipeline_status === 'APROVADO_OPERACAO' ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100" :
-                            item.pipeline_status === 'CONSOLIDADO_FINANCEIRO' ? "bg-blue-100 text-blue-700 hover:bg-blue-100" :
-                              item.pipeline_status === 'CONCLUIDO' ? "bg-emerald-500 text-white hover:bg-emerald-600" :
+                        item.pipeline_status === "EM_VALIDACAO" ? "bg-amber-100 text-amber-700 hover:bg-amber-100" :
+                          item.pipeline_status === "APROVADO_OPERACAO" ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100" :
+                            item.pipeline_status === "CONSOLIDADO_FINANCEIRO" ? "bg-blue-100 text-blue-700 hover:bg-blue-100" :
+                              item.pipeline_status === "CONCLUIDO" ? "bg-emerald-500 text-white hover:bg-emerald-600" :
                                 "bg-muted text-muted-foreground hover:bg-muted"
                       )}>
-                        {item.pipeline_status?.toLowerCase().replace(/_/g, ' ') || 'Pendente'}
+                        {item.pipeline_status?.toLowerCase().replace(/_/g, " ") || "Pendente"}
                       </Badge>
                     </td>
                   )}
+                  {visibleCols.responsavel && <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap text-xs">{item.responsavel_nome || "—"}</td>}
                   {visibleCols.operacaoId && <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{item.operacao_id || "—"}</td>}
                   {visibleCols.acoes && (
                     <td className="px-5 py-3" onClick={(e) => e.stopPropagation()}>
@@ -809,7 +812,7 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
             </tbody>
           </table>
         </div>
-      </div>
+      </div >
 
       <Sheet open={!!selectedItem} onOpenChange={(value) => !value && setSelectedItem(null)}>
         <SheetContent className="sm:max-w-md overflow-y-auto">
@@ -1047,6 +1050,6 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
         onClose={() => setJustificationModal({ open: false, itemId: null, targetStatus: null })}
         isLoading={updatePipelineMutation.isPending}
       />
-    </div>
+    </div >
   );
 }

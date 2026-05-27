@@ -41,6 +41,7 @@ export interface CnabRetornoItem {
   retorno_arquivo_id: string;
   remessa_arquivo_id?: string | null;
   lote_id?: string | null;
+  diaristas_lote_id?: string | null;
   fatura_id?: string | null;
   colaborador_id?: string | null;
   nome_favorecido?: string | null;
@@ -226,6 +227,7 @@ export const CnabRetornoService = {
       return {
         remessa_arquivo_id: remessaRelacionada?.id ?? null,
         lote_id: remessaRelacionada?.lote_id ?? null,
+        diaristas_lote_id: remessaRelacionada?.diaristas_lote_id ?? null,
         fatura_id: match.fatura?.id ?? null,
         colaborador_id: match.fatura?.colaborador_id ?? null,
         nome_favorecido: detalhe.nomeFavorecido || match.fatura?.colaboradores?.nome || null,
@@ -305,6 +307,7 @@ export const CnabRetornoService = {
       loteId: remessaRelacionada?.lote_id ?? null,
       acao: 'upload_retorno',
       detalhes: {
+        diaristas_lote_id: remessaRelacionada?.diaristas_lote_id ?? null,
         retorno_arquivo_id: arquivoData.id,
         nome_arquivo: fileName,
         hash: hash.substring(0, 16) + '...',
@@ -316,6 +319,7 @@ export const CnabRetornoService = {
       loteId: remessaRelacionada?.lote_id ?? null,
       acao: 'processamento_retorno',
       detalhes: {
+        diaristas_lote_id: remessaRelacionada?.diaristas_lote_id ?? null,
         retorno_arquivo_id: arquivoData.id,
         total_processado: resumo.totalProcessado,
         pagos: resumo.pagos,
@@ -332,6 +336,7 @@ export const CnabRetornoService = {
         loteId: remessaRelacionada?.lote_id ?? null,
         acao: 'divergencia_retorno',
         detalhes: {
+          diaristas_lote_id: remessaRelacionada?.diaristas_lote_id ?? null,
           retorno_arquivo_id: arquivoData.id,
           divergentes: resumo.divergentes,
           pendentes: resumo.pendentes,
@@ -346,6 +351,7 @@ export const CnabRetornoService = {
         p_details: JSON.stringify({
           retorno_arquivo_id: arquivoData.id,
           remessa_arquivo_id: remessaRelacionada?.id ?? null,
+          diaristas_lote_id: remessaRelacionada?.diaristas_lote_id ?? null,
           nome_arquivo: fileName,
           total_processado: resumo.totalProcessado,
           pagos: resumo.pagos,
@@ -433,6 +439,48 @@ export const CnabRetornoService = {
         .eq('lote_remessa_id', remessaRelacionada.lote_id);
 
       if (error) throw new Error(`Erro ao carregar faturas do lote relacionado: ${error.message}`);
+      return (data ?? []) as FaturaComColaborador[];
+    }
+
+    if (remessaRelacionada?.diaristas_lote_id) {
+      const { data: loteData, error: loteError } = await supabase
+        .from('diaristas_lotes_fechamento')
+        .select('empresa_id, mes_referencia')
+        .eq('id', remessaRelacionada.diaristas_lote_id)
+        .maybeSingle();
+
+      if (loteError || !loteData?.empresa_id || !loteData?.mes_referencia) {
+        return [];
+      }
+
+      const { data: lancamentosData, error: lancamentosError } = await supabase
+        .from('lancamentos_diaristas')
+        .select('diarista_id')
+        .eq('lote_fechamento_id', remessaRelacionada.diaristas_lote_id);
+
+      if (lancamentosError) {
+        return [];
+      }
+
+      const diaristasIds = Array.from(
+        new Set((lancamentosData ?? []).map((item) => item.diarista_id).filter(Boolean))
+      );
+
+      if (!diaristasIds.length) {
+        return [];
+      }
+
+      const { data, error } = await supabase
+        .from('faturas')
+        .select('id, lote_remessa_id, colaborador_id, valor, nosso_numero, competencia, colaboradores(id, nome, cpf)')
+        .eq('empresa_id', loteData.empresa_id)
+        .eq('competencia', loteData.mes_referencia)
+        .in('colaborador_id', diaristasIds);
+
+      if (error) {
+        return [];
+      }
+
       return (data ?? []) as FaturaComColaborador[];
     }
 

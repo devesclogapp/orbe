@@ -171,6 +171,11 @@ const RetornoBancario = () => {
       void queryClient.invalidateQueries({ queryKey: ["itens-retorno", arquivoAtivoId] });
       void queryClient.invalidateQueries({ queryKey: ["conciliacoes-arquivo", arquivoAtivoId] });
       void queryClient.invalidateQueries({ queryKey: ["cnab-retorno-historico"] });
+      void queryClient.invalidateQueries({ queryKey: ["lotes_fechamento"] });
+      void queryClient.invalidateQueries({ queryKey: ["lancamentos_lote"] });
+      void queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel"] });
+      void queryClient.invalidateQueries({ queryKey: ["lotes_fechamento_painel"] });
+      void queryClient.invalidateQueries({ queryKey: ["lotes_fechamento_producao"] });
       setDialogAcao({ open: false, item: null, acao: "conciliado", observacao: "", valorConciliado: "" });
     },
     onError: (error: unknown) => toast.error(getErrorMessage(error, "Erro ao registrar conciliação.")),
@@ -184,6 +189,11 @@ const RetornoBancario = () => {
       void queryClient.invalidateQueries({ queryKey: ["itens-retorno", arquivoAtivoId] });
       void queryClient.invalidateQueries({ queryKey: ["conciliacoes-arquivo", arquivoAtivoId] });
       void queryClient.invalidateQueries({ queryKey: ["cnab-retorno-historico"] });
+      void queryClient.invalidateQueries({ queryKey: ["lotes_fechamento"] });
+      void queryClient.invalidateQueries({ queryKey: ["lancamentos_lote"] });
+      void queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel"] });
+      void queryClient.invalidateQueries({ queryKey: ["lotes_fechamento_painel"] });
+      void queryClient.invalidateQueries({ queryKey: ["lotes_fechamento_producao"] });
       setDialogReversao({ open: false, conciliacao: null, motivo: "" });
     },
     onError: (error: unknown) => toast.error(getErrorMessage(error, "Erro ao reverter conciliação.")),

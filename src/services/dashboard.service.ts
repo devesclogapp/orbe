@@ -255,7 +255,7 @@ class DashboardConsolidadoServiceClass {
     if (empresaId) qReceitas = qReceitas.eq('empresa_id', empresaId);
 
     let qLotesD = supabase
-      .from('lotes_fechamento_diaristas')
+      .from('diaristas_lotes_fechamento')
       .select('valor_total, status, periodo_inicio, created_at, updated_at')
       .like('periodo_inicio', `${canonicalCompetencia}%`);
     if (empresaId) qLotesD = qLotesD.eq('empresa_id', empresaId);

@@ -706,12 +706,18 @@ const LancamentoProducao = () => {
         if (form.empresa_id) return;
         if ((perfil as any)?.empresa_id) {
             setForm((prev) => ({ ...prev, empresa_id: (perfil as any).empresa_id }));
-            return;
-        }
-        if ((empresas as any[]).length > 0) {
+        } else if ((empresas as any[]).length > 0) {
             setForm((prev) => ({ ...prev, empresa_id: (empresas as any[])[0].id }));
         }
     }, [perfil, empresas, form.empresa_id]);
+
+    useEffect(() => {
+        if (form.responsavel_nome) return;
+        const nome = perfil?.nome || perfil?.full_name || user?.user_metadata?.full_name || user?.user_metadata?.name || "";
+        if (nome) {
+            setForm(prev => ({ ...prev, responsavel_nome: nome }));
+        }
+    }, [perfil, user, form.responsavel_nome]);
 
     const { data: unidadesDb = [], isLoading: isLoadingUnidades } = useQuery({
         queryKey: ["unidades_operacionais", form.empresa_id],
@@ -1756,7 +1762,7 @@ const LancamentoProducao = () => {
             nf_numero: form.nf_numero.trim() || null,
             ctrc: form.ctrc.trim() || null,
             observacao: form.observacao.trim() || null,
-            responsavel_nome: form.responsavel_nome.trim() || perfil?.full_name || user?.email || null,
+            responsavel_nome: (form.responsavel_nome?.trim() || perfil?.nome || perfil?.full_name || user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || "N/A").trim(),
             responsavel_id: user?.id,
             descricao_servico: form.descricao_servico.trim() || null,
             categoria_custo: form.categoria_custo,
@@ -1797,6 +1803,7 @@ const LancamentoProducao = () => {
             preset_id: preset.id,
             tipo_lancamento: preset.tipo_lancamento,
             modalidade_financeira: preset.modalidade_financeira,
+            quantidade_colaboradores: preset.tipo_lancamento === "operacao_padrao" ? "1" : "0"
         }));
 
         setEtapaAtual(2);
@@ -2286,10 +2293,10 @@ const LancamentoProducao = () => {
                                             <div className="space-y-1.5">
                                                 <Label>Responsável pelo lançamento</Label>
                                                 <Input
-                                                    value={perfil?.nome || perfil?.full_name || user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || ""}
-                                                    readOnly
+                                                    value={form.responsavel_nome}
+                                                    onChange={e => setForm(f => ({ ...f, responsavel_nome: e.target.value }))}
                                                     placeholder="Nome do responsável"
-                                                    className="h-11 rounded-xl bg-muted/50 cursor-not-allowed text-muted-foreground"
+                                                    className="h-11 rounded-xl bg-background"
                                                 />
                                             </div>
                                             <div className="space-y-1.5">

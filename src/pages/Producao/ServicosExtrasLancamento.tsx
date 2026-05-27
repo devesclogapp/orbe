@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { format } from "date-fns";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -150,6 +150,24 @@ const ServicosExtrasLancamento = () => {
         enabled: !!form.empresa_id && activeTab === "historico",
     });
 
+    const { data: perfil } = useQuery({
+        queryKey: ["profile_usuario", user?.id],
+        queryFn: async () => {
+            if (!user?.id) return null;
+            const { data } = await OperacaoProducaoService.getProfile(user.id);
+            return data;
+        },
+        enabled: !!user?.id,
+    });
+
+    useEffect(() => {
+        if (form.responsavel_nome) return;
+        const nome = perfil?.nome || perfil?.full_name || user?.user_metadata?.full_name || user?.user_metadata?.name || "";
+        if (nome) {
+            setForm(prev => ({ ...prev, responsavel_nome: nome }));
+        }
+    }, [perfil, user, form.responsavel_nome]);
+
     // ─── Calculations ─────────────────────────────────────────────────────────
 
     const quantidade = parseNumeric(form.quantidade);
@@ -227,9 +245,10 @@ const ServicosExtrasLancamento = () => {
                         valor_unitario: valorUnitario,
                         base_calculo: `${quantidade} × ${formatCurrency(valorUnitario)}`,
                         forma_cobranca: form.forma_cobranca,
-                        responsavel_nome: form.responsavel_nome.trim() || null,
+                        responsavel_nome: (form.responsavel_nome.trim() || perfil?.nome || perfil?.full_name || user?.email || "N/A").trim(),
                     },
                 },
+                responsavel_nome: (form.responsavel_nome.trim() || perfil?.nome || perfil?.full_name || user?.email || "N/A").trim(),
             };
 
             return OperacaoProducaoService.createWithColaboradores(operacao, []);

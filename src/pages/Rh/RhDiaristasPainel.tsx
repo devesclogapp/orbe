@@ -16,6 +16,8 @@ import { Badge } from "@/components/ui/badge";
 import {
     DiaristaCicloService,
     EmpresaService,
+    LancamentoDiaristaService,
+    LoteFechamentoDiaristaService,
     UnidadeOperacionalService,
 } from "@/services/base.service";
 import { useAuth } from "@/contexts/AuthContext";
@@ -142,15 +144,19 @@ const RhDiaristasPainel = () => {
     // Visão consolidada: busca lançamentos sem filtro de empresa.
     // O filtro de empresa da UI é aplicado client-side nos dados já carregados.
     const { data: lancamentos = [], isLoading, isFetching, refetch } = useQuery({
-        queryKey: ["lancamentos_diaristas_painel", inicio, fim, statusFiltro === "todos" ? undefined : statusFiltro],
-        queryFn: () =>
-            LancamentoDiaristaService.getByPeriodo(
-                null, // null = todas as empresas
+        queryKey: ["lancamentos_diaristas_painel", inicio, fim, statusFiltro, empresaFiltroId],
+        queryFn: async () => {
+            const empId = empresaFiltroId === "todos" ? null : empresaFiltroId;
+            const result = await LancamentoDiaristaService.getByPeriodo(
+                empId,
                 inicio,
                 fim,
                 statusFiltro !== "todos" ? { status: statusFiltro as any } : undefined,
-            ),
-        enabled: true,
+            );
+            console.log(`[PainelRH] Carregados ${result?.length || 0} registros para empresa: ${empresaFiltroId}`);
+            return result ?? [];
+        },
+        enabled: !!inicio && !!fim,
     });
 
     const { data: lotes = [], refetch: refetchLotes, isLoading: isLoadingLotes } = useQuery({
@@ -481,7 +487,7 @@ const RhDiaristasPainel = () => {
         }
         if (nomeFiltro) {
             const q = nomeFiltro.toLowerCase();
-            items = items.filter((l) => l.nome_colaborador.toLowerCase().includes(q));
+            items = items.filter((l) => (l.nome_colaborador ?? "").toLowerCase().includes(q));
         }
         if (funcaoFiltro !== "todos") {
             items = items.filter((l) => l.funcao_colaborador === funcaoFiltro);
@@ -506,7 +512,7 @@ const RhDiaristasPainel = () => {
             if (!map[key]) {
                 map[key] = {
                     diarista_id: l.diarista_id,
-                    nome: l.nome_colaborador,
+                    nome: l.nome_colaborador ?? "(Sem nome)",
                     funcao: l.funcao_colaborador ?? "—",
                     lancamentos: [],
                     contagem: {},
@@ -535,7 +541,7 @@ const RhDiaristasPainel = () => {
         });
 
 
-        return Object.values(map).sort((a, b) => a.nome.localeCompare(b.nome));
+        return Object.values(map).sort((a, b) => (a.nome ?? "").localeCompare(b.nome ?? ""));
     }, [lancamentos, nomeFiltro, funcaoFiltro, empresaFiltroId, lotes]);
 
     // Agrupar lançamentos por data
@@ -548,7 +554,7 @@ const RhDiaristasPainel = () => {
         }
         if (nomeFiltro) {
             const q = nomeFiltro.toLowerCase();
-            items = items.filter((l) => l.nome_colaborador.toLowerCase().includes(q));
+            items = items.filter((l) => (l.nome_colaborador ?? "").toLowerCase().includes(q));
         }
         if (funcaoFiltro !== "todos") {
             items = items.filter((l) => l.funcao_colaborador === funcaoFiltro);

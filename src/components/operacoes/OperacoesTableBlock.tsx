@@ -526,7 +526,7 @@ export const OperacoesTableBlock = ({
       const saved = localStorage.getItem("orbe_lockedCols_operacoes_v1");
       if (saved) return JSON.parse(saved);
     } catch { }
-    return { data: true, idPlanilha: true, operacao: true };
+    return { expander: true, data: true, idPlanilha: true, operacao: true };
   });
 
   const toggleLock = (colKey: string) => {
@@ -540,6 +540,7 @@ export const OperacoesTableBlock = ({
   const STORAGE_KEY = "orbe_visibleCols_operacoes_v5";
 
   const defaultCols = {
+    expander: true,
     data: true,
     operacao: true, transportadora: true, servico: true, qtd: true,
     inicio: false, fim: false, valUnit: true, valorDescarga: false, valorIss: true, valDia: true, acoes: true,
@@ -1661,6 +1662,7 @@ export const OperacoesTableBlock = ({
               const lockedThClass = "px-3 font-semibold py-2.5 bg-zinc-200/95 dark:bg-zinc-800/95 backdrop-blur-sm";
               const baseTdClass = "px-3 text-center text-muted-foreground whitespace-nowrap bg-background";
               const typeClasses = {
+                expander: "w-10 px-0",
                 data: isHeader ? "" : "font-mono text-xs",
                 idPlanilha: "",
                 operacao: isHeader ? "px-5" : "font-medium text-foreground px-5 py-3"
@@ -1670,17 +1672,23 @@ export const OperacoesTableBlock = ({
                 return { className: cn(isHeader ? baseThClass : baseTdClass, typeClasses[colKey]) };
               }
 
-              const widths = { data: 120, idPlanilha: 80, operacao: 280 };
+              const widths = { expander: 45, data: 120, idPlanilha: 80, operacao: 280 };
               let left = 0;
+              if (colKey === "data") {
+                if (visibleCols.expander !== false && lockedCols.expander) left += widths.expander;
+              }
               if (colKey === "idPlanilha") {
+                if (visibleCols.expander !== false && lockedCols.expander) left += widths.expander;
                 if (visibleCols.data && lockedCols.data) left += widths.data;
               }
               if (colKey === "operacao") {
+                if (visibleCols.expander !== false && lockedCols.expander) left += widths.expander;
                 if (visibleCols.data && lockedCols.data) left += widths.data;
                 if (visibleCols.idPlanilha && lockedCols.idPlanilha) left += widths.idPlanilha;
               }
 
               const activeSticky = [];
+              if (visibleCols.expander !== false && lockedCols.expander) activeSticky.push("expander");
               if (visibleCols.data && lockedCols.data) activeSticky.push("data");
               if (visibleCols.idPlanilha && lockedCols.idPlanilha) activeSticky.push("idPlanilha");
               if (visibleCols.operacao && lockedCols.operacao) activeSticky.push("operacao");
@@ -1752,6 +1760,7 @@ export const OperacoesTableBlock = ({
               <table className="w-full text-sm min-w-max">
                 <thead className="bg-muted/95 backdrop-blur-sm sticky top-0 z-20">
                   <tr className="text-center font-display text-muted-foreground uppercase text-xs tracking-wide">
+                    <th style={getStickyProps("expander" as any, true).style} className={cn(getStickyProps("expander" as any, true).className, "py-2.5")}></th>
                     {visibleCols.data && <th style={getStickyProps("data", true).style} className={getStickyProps("data", true).className}>{renderInteractiveHeader("data", "DATA", CalendarDays)}</th>}
                     {visibleCols.idPlanilha && <th style={getStickyProps("idPlanilha", true).style} className={getStickyProps("idPlanilha", true).className}>{renderInteractiveHeader("idPlanilha", "ID")}</th>}
                     {visibleCols.operacao && <th style={getStickyProps("operacao", true).style} className={getStickyProps("operacao", true).className}>{renderInteractiveHeader("operacao", "OPERAÇÃO/VOLUME", Package)}</th>}
@@ -1822,15 +1831,15 @@ export const OperacoesTableBlock = ({
                             isSelected && "bg-primary-soft/40 border-l-[3px] border-l-primary"
                           )}
                         >
+                          <td style={getStickyProps("expander" as any, false).style} className={cn(getStickyProps("expander" as any, false).className, "py-3 text-center")}>
+                            <button onClick={(e) => toggleRowExpansion(e, item.id)} className="p-1.5 hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-colors">
+                              {expandedRows.has(item.id) ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                            </button>
+                          </td>
                           {visibleCols.data && <td style={getStickyProps("data", false).style} className={cn(getStickyProps("data", false).className, "px-3 text-center text-muted-foreground whitespace-nowrap font-mono text-xs")}>{dataOp}</td>}
                           {visibleCols.idPlanilha && <td style={getStickyProps("idPlanilha", false).style} className={cn(getStickyProps("idPlanilha", false).className, "px-3 text-center text-muted-foreground whitespace-nowrap")}>{String(idPlanilha)}</td>}
                           {visibleCols.operacao && <td style={getStickyProps("operacao", false).style} className={cn(getStickyProps("operacao", false).className, "px-5 py-3 text-center font-medium whitespace-nowrap text-foreground")}>
-                            <div className="flex items-center gap-2 justify-center">
-                              <button onClick={(e) => toggleRowExpansion(e, item.id)} className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground">
-                                {expandedRows.has(item.id) ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                              </button>
-                              {operacaoNome}
-                            </div>
+                            {operacaoNome}
                           </td>}
                           {visibleCols.empresaPlanilha && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{String(empresaPlanilha)}</td>}
                           {visibleCols.unidade && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{item.unidades?.nome || "-"}</td>}
@@ -1988,8 +1997,8 @@ export const OperacoesTableBlock = ({
                           )}
                         </tr>
                         {expandedRows.has(item.id) && (
-                          <tr className="bg-muted/10 border-b border-border shadow-inner">
-                            <td colSpan={24} className="p-0 border-0">
+                          <tr className="bg-muted/5 border-b border-border transition-all animate-in fade-in slide-in-from-top-1 duration-200">
+                            <td colSpan={100} className="p-0 border-0">
                               <div className="p-4 pl-12 pr-4 space-y-4">
                                 <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
                                   <User className="h-4 w-4 text-muted-foreground" />

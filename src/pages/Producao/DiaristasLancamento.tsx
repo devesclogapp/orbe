@@ -508,6 +508,8 @@ const DiaristasLancamento = () => {
             queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_semana", empresaIdSelecionada] });
             // Invalida o histórico com a queryKey completa (empresa + semana)
             queryClient.invalidateQueries({ queryKey: ["historico_recente_diaristas", empresaIdSelecionada, user?.id, inicioISO, fimISO] });
+            // Invalida o Painel de Diaristas (RH) para que veja os novos registros
+            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel"] });
         },
         onError: (err: any) => toast.error("Erro ao salvar.", { description: err.message }),
     });

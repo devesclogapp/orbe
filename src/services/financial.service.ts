@@ -270,6 +270,7 @@ export interface ConciliacaoFinanceira {
   retorno_item_id: string;
   remessa_arquivo_id?: string | null;
   lote_id?: string | null;
+  diaristas_lote_id?: string | null;
   fatura_id?: string | null;
   colaborador_id?: string | null;
   valor_original: number;
@@ -303,6 +304,7 @@ export interface ItemRetornoConciliacao {
   retorno_arquivo_id: string;
   remessa_arquivo_id?: string | null;
   lote_id?: string | null;
+  diaristas_lote_id?: string | null;
   fatura_id?: string | null;
   colaborador_id?: string | null;
   nome_favorecido?: string | null;

@@ -8,6 +8,7 @@ import {
   type EmpresaRemessa,
   type BeneficiarioPagamento,
 } from './cnab/cnab240-posicional';
+import { CnabRemessaArquivoService } from './cnab/cnabRemessaArquivo.service';
 
 type Table = keyof Database['public']['Tables'];
 
@@ -3658,28 +3659,31 @@ class LancamentoDiaristaServiceClass {
       .from('lancamentos_diaristas')
       .select('*')
       .gte('data_lancamento', inicio)
-      .lte('data_lancamento', fim)
-      .order('data_lancamento', { ascending: false })
-      .order('nome_colaborador', { ascending: true });
+      .lte('data_lancamento', fim);
 
-    if (empresaId) query = query.eq('empresa_id', empresaId);
+    // Aplica filtro de empresa quando fornecido
+    if (empresaId) {
+      query = query.eq('empresa_id', empresaId);
+    }
 
+    // Aplica filtros opcionais
     if (filtros?.status) {
-      // Normalização defensiva: se for 'em_aberto' ou 'EM_ABERTO', busca por ambos para cobrir legado e novo
-      if (['em_aberto', 'EM_ABERTO'].includes(filtros.status)) {
-        query = query.in('status', ['em_aberto', 'EM_ABERTO']);
-      } else if (['cancelado', 'CANCELADO'].includes(filtros.status)) {
-        query = query.in('status', ['cancelado', 'CANCELADO']);
-      } else {
+      // Aceita tanto lowercase quanto uppercase
+      const statusLower = filtros.status.toLowerCase();
+      const statusUpper = filtros.status.toUpperCase();
+      if (statusLower === statusUpper) {
         query = query.eq('status', filtros.status);
+      } else {
+        query = query.in('status', [statusLower, statusUpper, filtros.status]);
       }
     }
-    
-    if (filtros?.funcao) query = query.eq('funcao_colaborador', filtros.funcao);
-    if (filtros?.encarregado_id) query = query.eq('encarregado_id', filtros.encarregado_id);
-    if (filtros?.cliente_unidade) query = query.ilike('cliente_unidade', `%${filtros.cliente_unidade}%`);
+
+    if (filtros?.encarregado_id) {
+      query = query.eq('encarregado_id', filtros.encarregado_id);
+    }
 
     const { data, error } = await query;
+    console.log(`[DiaristaService.getByPeriodo] empresa=${empresaId ?? 'TODAS'} periodo=${inicio}→${fim} status=${filtros?.status ?? 'todos'} | resultado=${(data ?? []).length} registros`, error ? `ERRO: ${error.message}` : '');
     if (error) throw error;
     return data ?? [];
   }
@@ -3777,11 +3781,28 @@ class LancamentoDiaristaServiceClass {
 
     const tenantId = await getCurrentTenantId();
 
-    // Remove campo local que não existe na tabela
-    const payload = registros.map(({ ...r }) => {
-      const p: Record<string, unknown> = { ...r, tenant_id: tenantId };
-      delete p['tipo_lancamento'];
-      return p;
+    // Whitelist: somente colunas que existem na tabela lancamentos_diaristas
+    const VALID_COLUMNS = new Set([
+      'empresa_id', 'diarista_id', 'nome_colaborador', 'cpf_colaborador',
+      'funcao_colaborador', 'data_lancamento', 'codigo_marcacao',
+      'quantidade_diaria', 'valor_diaria_base', 'valor_calculado',
+      'cliente_unidade', 'operacao_servico', 'encarregado_id',
+      'encarregado_nome', 'observacao', 'status', 'lote_fechamento_id',
+      'unidade_id', 'local_id', 'tipo_registro',
+      'editado_admin', 'editado_por', 'editado_em', 'motivo_edicao',
+      'tenant_id',
+    ]);
+
+    const payload = registros.map((r) => {
+      const raw: Record<string, unknown> = { ...r, tenant_id: tenantId, status: 'EM_ABERTO' };
+      // Remove campos que não existem na tabela (ex: tipo_lancamento)
+      const sanitized: Record<string, unknown> = {};
+      for (const key of Object.keys(raw)) {
+        if (VALID_COLUMNS.has(key)) {
+          sanitized[key] = raw[key];
+        }
+      }
+      return sanitized;
     });
 
     // Estratégia idempotente: DELETE + INSERT
@@ -3808,12 +3829,17 @@ class LancamentoDiaristaServiceClass {
         .in('status', ['em_aberto', 'EM_ABERTO']);
     }
 
+    console.log(`[DiaristaService.createBatch] Inserindo ${payload.length} registros. Primeiro:`, payload[0]);
     const { data, error } = await (supabase as any)
       .from('lancamentos_diaristas')
       .insert(payload)
       .select('id, nome_colaborador, data_lancamento');
 
-    if (error) throw error;
+    if (error) {
+      console.error(`[DiaristaService.createBatch] ERRO no INSERT:`, error);
+      throw error;
+    }
+    console.log(`[DiaristaService.createBatch] OK — ${(data ?? []).length} registros inseridos`);
     return data ?? [];
   }
 
@@ -4057,16 +4083,20 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
   }
 
   async marcarComoPago(loteId: string, usuarioId: string | undefined, usuarioNome: string) {
-    // Usa RPC SECURITY DEFINER para garantir bypass de RLS e atomicidade
-    // (atualiza lote + lançamentos + log em uma transação)
-    const { error } = await this.supabase.rpc('marcar_como_pago_diaristas' as any, {
-      p_lote_id:     loteId,
-      p_usuario_id:  usuarioId ?? null,
-      p_usuario_nome: usuarioNome ?? 'Sistema',
-    });
+    void loteId;
+    void usuarioId;
+    void usuarioNome;
+    throw new Error('Pagamento manual desabilitado: o lote de diaristas so pode virar PAGO apos retorno bancario conciliado.');
+    /*
+    
+    if (!lote) throw new Error('Lote não encontrado.');
+    if (String(lote.status) !== 'cnab_gerado') {
+      throw new Error('Pagamento bloqueado: o lote precisa ter remessa CNAB gerada antes da liquidação manual.');
+    }
 
-    if (error) throw error;
-    return true;
+    // Usa RPC SECURITY DEFINER para garantir bypass de RLS e atomicidade
+    */
+    // (atualiza lote + lançamentos + log em uma transação)
   }
 
 
@@ -4095,6 +4125,7 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
     };
   }): Promise<{ nomeArquivo: string; totalRegistros: number; valorTotal: number }> {
     const { loteId, empresaId, geradoPor, geradoPorNome, empresaRemetente } = params;
+    const normalizeDigits = (value?: string | null) => String(value ?? '').replace(/\D/g, '');
 
     // ── 1. Buscar lote ────────────────────────────────────────────────────────
     const { data: lote, error: loteErr } = await this.supabase
@@ -4103,6 +4134,9 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
       .eq('id', loteId)
       .single();
     if (loteErr || !lote) throw new Error('Lote não encontrado.');
+    if (!['FECHADO_FINANCEIRO', 'AGUARDANDO_PAGAMENTO'].includes(String(lote.status || ''))) {
+      throw new Error('Geração de CNAB bloqueada: o lote precisa estar aprovado pelo Financeiro antes da remessa.');
+    }
 
     // ── 2. Buscar lançamentos — tenta por lote_fechamento_id, depois por período
     let lancamentos: any[] = [];
@@ -4224,25 +4258,75 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
       conta_digito:   empresaRemetente.digito_conta || ' ',
       convenio:       empresaRemetente.convenio_bancario || '',
     };
+    const { data: contasEmpresaData } = await this.supabase
+      .from('contas_bancarias_empresa')
+      .select('id, banco_codigo, banco_nome, agencia, agencia_digito, conta, conta_digito, convenio, ativo, is_padrao')
+      .eq('empresa_id', empresaId)
+      .eq('ativo', true);
+
+    const contaBancariaSelecionada = (contasEmpresaData ?? []).find((conta: any) =>
+      normalizeDigits(conta?.banco_codigo) === normalizeDigits(empresaRemetente.banco_codigo) &&
+      normalizeDigits(conta?.agencia) === normalizeDigits(empresaRemetente.agencia) &&
+      normalizeDigits(conta?.conta) === normalizeDigits(empresaRemetente.conta) &&
+      normalizeDigits(conta?.convenio) === normalizeDigits(empresaRemetente.convenio_bancario)
+    ) ?? (contasEmpresaData ?? []).find((conta: any) => Boolean(conta?.is_padrao)) ?? null;
+
+    let sequencialArquivo = 1;
+    if (contaBancariaSelecionada?.id) {
+      sequencialArquivo = await CnabRemessaArquivoService.getNextSequencial(
+        contaBancariaSelecionada.id,
+        empresaRemetente.banco_codigo || '001'
+      );
+    } else {
+      const { data: ultimoSequencial } = await this.supabase
+        .from('cnab_remessas_arquivos')
+        .select('sequencial_arquivo')
+        .eq('banco_codigo', empresaRemetente.banco_codigo || '001')
+        .is('conta_bancaria_id', null)
+        .order('sequencial_arquivo', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      sequencialArquivo = Math.max(1, Number(ultimoSequencial?.sequencial_arquivo || 0) + 1);
+    }
 
     // ── 7. Gerar CNAB240 posicional ───────────────────────────────────────────
     // Tipo serviço: 20=Fornecedor (pagamentos a prestadores de serviço)
     const resultado = gerarCNAB240BB(empresaRemessa, beneficiarios, {
       tipo_servico: 20,
+      numero_arquivo: sequencialArquivo,
     });
 
     // ── 8. Disparar download ──────────────────────────────────────────────────
     // Exportação em Windows-1252 (ANSI) — padrão bancário FEBRABAN
+    const tenantId = await getCurrentTenantId();
+    await CnabRemessaArquivoService.registrar({
+      loteId: null,
+      diaristasLoteId: loteId,
+      nomeArquivo: resultado.nome_arquivo,
+      conteudoArquivo: resultado.conteudo,
+      totalRegistros: resultado.total_linhas,
+      totalValor: resultado.valor_total,
+      bancoCodigo: empresaRemetente.banco_codigo || '001',
+      bancoNome: empresaRemetente.nome_empresa_banco || contaBancariaSelecionada?.banco_nome || 'BANCO DO BRASIL',
+      contaBancariaId: contaBancariaSelecionada?.id,
+      competencia: lote.mes_referencia,
+      modo: 'producao',
+      sequencialArquivo,
+    });
     downloadCNAB240(resultado);
 
     // ── 9. Atualizar status do lote ───────────────────────────────────────────
     await this.supabase
       .from('diaristas_lotes_fechamento')
-      .update({ status: 'cnab_gerado', updated_at: new Date().toISOString() })
+      .update({
+        status: 'cnab_gerado',
+        status_conciliacao: 'aguardando_conciliacao',
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', loteId);
 
     // ── 10. Registrar auditoria ───────────────────────────────────────────────
-    const tenantId = await getCurrentTenantId();
     await this.supabase.from('diaristas_logs_fechamento' as any).insert({
       empresa_id:     empresaId,
       tenant_id:      tenantId,

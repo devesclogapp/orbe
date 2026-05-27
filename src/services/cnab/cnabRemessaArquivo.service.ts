@@ -29,6 +29,7 @@ export interface CnabRemessaArquivo {
   id: string;
   tenant_id: string;
   lote_id: string | null;
+  diaristas_lote_id?: string | null;
   nome_arquivo: string;
   sequencial_arquivo: number;
   hash_arquivo: string;
@@ -52,6 +53,7 @@ export interface CnabRemessaArquivo {
 
 export interface RegistrarRemessaParams {
   loteId: string | null;
+  diaristasLoteId?: string | null;
   nomeArquivo: string;
   conteudoArquivo: string; // texto do arquivo CNAB
   totalRegistros: number;
@@ -182,6 +184,18 @@ export const CnabRemessaArquivoService = {
     return data as CnabRemessaArquivo | null;
   },
 
+  async checkDiaristasLoteJaRemessado(diaristasLoteId: string): Promise<CnabRemessaArquivo | null> {
+    const { data, error } = await supabase
+      .from('cnab_remessas_arquivos')
+      .select('*')
+      .eq('diaristas_lote_id', diaristasLoteId)
+      .not('status', 'eq', 'erro_homologacao')
+      .maybeSingle();
+
+    if (error) throw new Error(`Erro ao verificar lote de diaristas: ${error.message}`);
+    return data as CnabRemessaArquivo | null;
+  },
+
   // ——— Registro ————————————————————————————————————————————
   /**
    * Registra um novo arquivo CNAB gerado com todos os metadados.
@@ -190,6 +204,7 @@ export const CnabRemessaArquivoService = {
   async registrar(params: RegistrarRemessaParams): Promise<CnabRemessaArquivo> {
     const {
       loteId,
+      diaristasLoteId,
       nomeArquivo,
       conteudoArquivo,
       totalRegistros,
@@ -208,6 +223,16 @@ export const CnabRemessaArquivoService = {
       if (existente) {
         throw new Error(
           `Lote já possui remessa CNAB gerada (arquivo: ${existente.nome_arquivo}, status: ${existente.status}). ` +
+          `Para reenviar, marque o arquivo anterior como erro primeiro.`
+        );
+      }
+    }
+
+    if (diaristasLoteId) {
+      const existenteDiaristas = await this.checkDiaristasLoteJaRemessado(diaristasLoteId);
+      if (existenteDiaristas) {
+        throw new Error(
+          `Lote de diaristas ja possui remessa CNAB gerada (arquivo: ${existenteDiaristas.nome_arquivo}, status: ${existenteDiaristas.status}). ` +
           `Para reenviar, marque o arquivo anterior como erro primeiro.`
         );
       }
@@ -239,6 +264,7 @@ export const CnabRemessaArquivoService = {
       .from('cnab_remessas_arquivos')
       .insert({
         lote_id: loteId,
+        diaristas_lote_id: diaristasLoteId ?? null,
         nome_arquivo: nomeArquivo,
         sequencial_arquivo: sequencial,
         hash_arquivo: hash,

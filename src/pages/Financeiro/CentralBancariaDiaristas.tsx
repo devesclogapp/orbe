@@ -49,6 +49,11 @@ const formatCurrency = (v: number) =>
 const formatDate = (d: string) =>
     format(new Date(d + "T12:00:00"), "dd/MM/yyyy", { locale: ptBR });
 
+const canGenerateCnabForStatus = (status?: string | null) =>
+    ["FECHADO_FINANCEIRO", "AGUARDANDO_PAGAMENTO"].includes(String(status || ""));
+
+const canMarkPaidForStatus = (_status?: string | null) => false;
+
 // ─────────────────────────────────────────────────────────────────────
 // Tipos locais
 // ─────────────────────────────────────────────────────────────────────
@@ -598,14 +603,23 @@ export const CentralBancariaDiaristas = ({ onMetricsUpdate }: { onMetricsUpdate?
                                                 {(() => {
                                                     const isPago = l.status === "pago" || l.status === "PAGO";
                                                     const isCnabGerado = l.status === "cnab_gerado";
+                                                    const canGenerateCnab = canGenerateCnabForStatus(l.status);
                                                     return (
                                                         <Button
                                                             variant="outline"
                                                             size="sm"
                                                             className="border-indigo-400 text-indigo-700 hover:bg-indigo-50 disabled:opacity-40 disabled:cursor-not-allowed"
                                                             onClick={() => handleAbrirCnab(l)}
-                                                            disabled={isPago || isCnabGerado}
-                                                            title={isPago ? "CNAB indisponível: lote já pago" : isCnabGerado ? "Arquivo já gerado" : "Gerar arquivo CNAB240"}
+                                                            disabled={isPago || isCnabGerado || !canGenerateCnab}
+                                                            title={
+                                                                isPago
+                                                                    ? "CNAB indisponível: lote já pago"
+                                                                    : isCnabGerado
+                                                                        ? "Arquivo já gerado"
+                                                                        : !canGenerateCnab
+                                                                            ? "CNAB liberado apenas após aprovação financeira"
+                                                                            : "Gerar arquivo CNAB240"
+                                                            }
                                                         >
                                                             <FileCode2 className="h-4 w-4 mr-1.5" /> CNAB
                                                         </Button>
@@ -622,6 +636,8 @@ export const CentralBancariaDiaristas = ({ onMetricsUpdate }: { onMetricsUpdate?
                                                     <Button
                                                         size="sm"
                                                         className="bg-emerald-600 hover:bg-emerald-700"
+                                                        disabled={!canMarkPaidForStatus(l.status)}
+                                                        title={!canMarkPaidForStatus(l.status) ? "Pagamento liberado somente após CNAB gerado" : "Marcar como pago"}
                                                         onClick={() => { setLoteParaPagar(l); setOpenConfirmPago(true); }}
                                                     >
                                                         <CheckCircle2 className="h-4 w-4 mr-1.5" /> Pago
@@ -866,7 +882,7 @@ export const CentralBancariaDiaristas = ({ onMetricsUpdate }: { onMetricsUpdate?
                                 <Download className="h-4 w-4 mr-2" /> Exportar Planilha
                             </Button>
                             {/* CNAB: bloqueado para lote já pago */}
-                            {selectedLote && !(selectedLote.status === "pago" || selectedLote.status === "PAGO") && selectedLote.status !== "cnab_gerado" && (
+                            {selectedLote && !(selectedLote.status === "pago" || selectedLote.status === "PAGO") && selectedLote.status !== "cnab_gerado" && canGenerateCnabForStatus(selectedLote.status) && (
                                 <Button
                                     variant="outline"
                                     className="border-indigo-400 text-indigo-700 hover:bg-indigo-50"
@@ -890,8 +906,8 @@ export const CentralBancariaDiaristas = ({ onMetricsUpdate }: { onMetricsUpdate?
                             ) : (
                                 <Button
                                     className="bg-emerald-600 hover:bg-emerald-700"
+                                    disabled={marcarPagoMutation.isPending || !canMarkPaidForStatus(selectedLote?.status)}
                                     onClick={() => { setLoteParaPagar(selectedLote); setOpenConfirmPago(true); }}
-                                    disabled={marcarPagoMutation.isPending}
                                 >
                                     <CheckCircle2 className="h-4 w-4 mr-2" />
                                     {marcarPagoMutation.isPending ? "Salvando..." : "Marcar como Pago"}
