@@ -14,10 +14,9 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import {
-    LancamentoDiaristaService,
-    LoteFechamentoDiaristaService,
     DiaristaCicloService,
     EmpresaService,
+    UnidadeOperacionalService,
 } from "@/services/base.service";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
@@ -114,6 +113,24 @@ const RhDiaristasPainel = () => {
         queryKey: ["empresas"],
         queryFn: () => EmpresaService.getAll(),
     });
+
+    // Buscar unidades para resolução de nomes no painel
+    const { data: unidadesRes = [] } = useQuery({
+        queryKey: ["unidades_operacionais_todas"],
+        queryFn: async () => {
+            // Se tiver muitas empresas, pode ser pesado, mas para o painel de RH é necessário
+            // por ora buscamos todas as unidades para o mapeamento
+            const { data, error } = await supabase.from('unidades_operacionais').select('id, nome');
+            if (error) return [];
+            return data;
+        }
+    });
+
+    const unidadeMap = useMemo(() => {
+        const map = new Map<string, string>();
+        (unidadesRes as any[]).forEach(u => map.set(u.id, u.nome));
+        return map;
+    }, [unidadesRes]);
 
     const rawRole = perfil?.role || user?.user_metadata?.role || user?.app_metadata?.role || user?.role || "";
     const role = (typeof rawRole === "string" ? rawRole : "").toLowerCase();
@@ -479,6 +496,9 @@ const RhDiaristasPainel = () => {
             totalDiarias: number;
             valorTotal: number;
             status: string;
+            unidade_id: string | null;
+            local_id: string | null;
+            cliente_unidade_fallback: string | null;
         }> = {};
 
         items.forEach((l) => {
@@ -493,6 +513,9 @@ const RhDiaristasPainel = () => {
                     totalDiarias: 0,
                     valorTotal: 0,
                     status: l.status,
+                    unidade_id: l.unidade_id,
+                    local_id: l.local_id,
+                    cliente_unidade_fallback: l.cliente_unidade,
                 };
             }
             map[key].lancamentos.push(l);

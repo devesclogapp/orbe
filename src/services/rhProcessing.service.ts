@@ -1060,6 +1060,7 @@ export const processRhPeriod = async ({
   const ciclosOperacionais = await CicloOperacionalService.getCiclosDaCompetencia(
     tenantId,
     competenciaAtual,
+    empresaId ?? null,
   );
 
   const validPontos = [];

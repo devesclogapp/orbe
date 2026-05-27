@@ -16,6 +16,7 @@ import {
     RotateCcw,
     Tag,
     Trash2,
+    User,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -482,6 +483,10 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                                 <th className="px-3 py-2.5 font-semibold text-center whitespace-nowrap">
                                     <span className="inline-flex items-center gap-1"><PlayCircle className="h-3.5 w-3.5" />PIPELINE</span>
                                 </th>
+                                <th className="px-3 py-2.5 font-semibold text-center whitespace-nowrap">
+                                    <span className="inline-flex items-center gap-1"><User className="h-3.5 w-3.5" />RESPONSÁVEL</span>
+                                </th>
+                                <th className="px-3 py-2.5 font-semibold text-center">OBSERVAÇÃO</th>
                                 <th className="px-5 py-2.5 font-semibold text-center">AÇÕES</th>
                             </tr>
                         </thead>
@@ -527,6 +532,12 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                                         <Badge className={cn("border-0 font-medium capitalize h-6 px-2 text-[11px]", getPipelineBadgeClass(item.pipeline_status))}>
                                             {(item.pipeline_status ?? "PENDENTE").toLowerCase().replace(/_/g, " ")}
                                         </Badge>
+                                    </td>
+                                    <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap text-xs">
+                                        {item.responsavel_nome ?? "—"}
+                                    </td>
+                                    <td className="px-3 py-3 text-center text-muted-foreground max-w-[200px] truncate italic text-xs">
+                                        {item.observacao || "—"}
                                     </td>
                                     <td className="px-5 py-3" onClick={(e) => e.stopPropagation()}>
                                         <div className="flex items-center justify-center gap-1">

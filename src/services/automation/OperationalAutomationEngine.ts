@@ -749,7 +749,7 @@ export const OperationalAutomationEngine = {
 
     const operacao = data?.[0] as any;
     if (!operacao) return { estado: 'resolvido', mensagem: 'Producao removida; alerta encerrado.' };
-    if (!['INCONSISTENTE', 'erro'].includes(operacao.status) && operacao.status_processamento !== 'INCONSISTENTE') {
+    if (!['INCONSISTENTE', 'erro', 'com_alerta', 'aguardando_validacao'].includes(operacao.status) && operacao.status_processamento !== 'INCONSISTENTE') {
       return { estado: 'resolvido', mensagem: 'Producao corrigida ou ciclo reprocessado.' };
     }
     return { estado: 'ativo' };

@@ -67,10 +67,32 @@ const Fechamento = () => {
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return [];
-      const { data: profile } = await supabase.from('profiles').select('tenant_id').eq('user_id', user.id).single();
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('user_id', user.id)
+        .single();
       const tenantId = profile?.tenant_id;
       if (!tenantId) return [];
-      return CicloOperacionalService.getCiclosDaCompetencia(tenantId, currentMonth);
+
+      // Busca empresas do tenant para criar ciclos isolados por empresa
+      const { data: empresas } = await supabase
+        .from('empresas')
+        .select('id')
+        .eq('tenant_id', tenantId);
+
+      if (!empresas || empresas.length === 0) {
+        // Fallback: busca sem filtro de empresa (compatibilidade com tenants de empresa única)
+        return CicloOperacionalService.getCiclosDaCompetencia(tenantId, currentMonth);
+      }
+
+      // Busca e consolida ciclos de todas as empresas do tenant
+      const ciclosPorEmpresa = await Promise.all(
+        empresas.map(e =>
+          CicloOperacionalService.getCiclosDaCompetencia(tenantId, currentMonth, e.id)
+        )
+      );
+      return ciclosPorEmpresa.flat();
     },
   });
 

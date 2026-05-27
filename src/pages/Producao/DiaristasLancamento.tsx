@@ -41,13 +41,14 @@ import {
     LancamentoDiaristaService,
     LoteFechamentoDiaristaService,
     RegraMarcacaoDiaristaService,
-    DiaristaCicloService
+    DiaristaCicloService,
+    UnidadeOperacionalService
 } from "@/services/base.service";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useOperationalPipeline, buildDiaristasPipeline } from "@/contexts/OperationalPipelineContext";
 
-// ─── Mapa de status: cobre todos os valores conhecidos ───
+// ─── Mapa de status: cobre todos os valores conhecidos (v2) ───
 const STATUS_DIARISTA_MAP: Record<string, { label: string; cls: string }> = {
     em_aberto: { label: "Em aberto", cls: "bg-amber-500/15 text-amber-700" },
     EM_ABERTO: { label: "Em aberto", cls: "bg-amber-500/15 text-amber-700" },
@@ -121,6 +122,8 @@ const DiaristasLancamento = () => {
 
     const [empresaIdSelecionada, setEmpresaIdSelecionada] = useState("");
     const [clienteUnidade, setClienteUnidade] = useState("");
+    const [unidadeId, setUnidadeId] = useState<string | null>(null);
+    const [localId, setLocalId] = useState<string | null>(null);
 
     /* grade[diarista_id][data_ISO] = codigo */
     const [grade, setGrade] = useState<GradeMap>({});
@@ -159,6 +162,12 @@ const DiaristasLancamento = () => {
         enabled: !!empresaIdSelecionada,
         throwOnError: false,
         retry: 0,
+    });
+
+    const { data: unidades = [] } = useQuery({
+        queryKey: ["unidades_operacionais", empresaIdSelecionada],
+        queryFn: () => UnidadeOperacionalService.getByEmpresa(empresaIdSelecionada),
+        enabled: !!empresaIdSelecionada,
     });
 
     const { data: regrasMarcacao = [], isLoading: isLoadingRegras } = useQuery({
@@ -231,6 +240,8 @@ const DiaristasLancamento = () => {
 
         setEmpresaIdSelecionada(empresaSelecionada.id);
         setClienteUnidade(empresaSelecionada.nome ?? "");
+        setUnidadeId(null);
+        setLocalId(null);
     }, [perfil, empresas, empresaIdSelecionada, user?.user_metadata?.empresa_id]);
 
     useEffect(() => {
@@ -264,13 +275,13 @@ const DiaristasLancamento = () => {
     }, [lotes, empresaIdSelecionada, regraFechamento, inicioISO, fimISO]);
 
     const { data: historicoRecente = [], isLoading: isLoadingHistorico } = useQuery({
-        queryKey: ["historico_recente_diaristas", empresaIdSelecionada, user?.id],
-        queryFn: () => {
-            return LancamentoDiaristaService.getByPeriodo(empresaIdSelecionada, fourteenDaysAgoStr, today, {
+        queryKey: ["historico_recente_diaristas", empresaIdSelecionada, user?.id, inicioISO, fimISO],
+        queryFn: () =>
+            LancamentoDiaristaService.getByPeriodo(empresaIdSelecionada, inicioISO, fimISO, {
                 encarregado_id: user?.id,
-            });
-        },
-        enabled: !!empresaIdSelecionada && openHistorico && !!user?.id,
+            }),
+        enabled: !!empresaIdSelecionada && !!user?.id,
+        staleTime: 0,
         throwOnError: false,
         retry: 0,
     });
@@ -342,6 +353,31 @@ const DiaristasLancamento = () => {
         });
     }, [diaristas]);
 
+    // ── Sincronizar grade com lançamentos já salvos no banco ─────────────────
+    // Garante que ao navegar entre semanas ou recarregar, o usuário veja
+    // o que já foi marcado e o UPSERT opere sobre os dados corretos.
+    useEffect(() => {
+        const existentes = lancamentosExistentes as any[];
+        if (!existentes.length) return;
+
+        setGrade((prev) => {
+            const next = { ...prev };
+            existentes.forEach((l: any) => {
+                if (!l.diarista_id || !l.data_lancamento || !l.codigo_marcacao) return;
+                // Só pré-carrega status editável (em aberto); fechados são só leitura
+                const statusAberto = ['em_aberto', 'EM_ABERTO'].includes(l.status);
+                if (!statusAberto) return;
+
+                if (!next[l.diarista_id]) next[l.diarista_id] = {};
+                // Não sobrescreve se o usuário já interagiu (tem valor diferente do banco)
+                if (!next[l.diarista_id][l.data_lancamento]) {
+                    next[l.diarista_id][l.data_lancamento] = l.codigo_marcacao;
+                }
+            });
+            return next;
+        });
+    }, [lancamentosExistentes]);
+
     // ── Ciclo de toque ───────────────────────────────────────────────────────
     const toggleMarcacao = useCallback(
         (diaristaId: string, dateISO: string) => {
@@ -401,9 +437,23 @@ const DiaristasLancamento = () => {
 
             const diaristasArr = diaristas as DiaristaRow[];
             const registros: LancamentoDiaristaPayload[] = [];
+            const idsParaRemover: { diarista_id: string; data: string }[] = [];
 
             diaristasArr.forEach((d) => {
                 const diasDiarista = grade[d.id] ?? {};
+
+                // Nós verificamos se havia algo no banco que foi "limpo".
+                // Se o cara ciclou pra vazio, precisamos apagar do banco.
+                Object.keys(lancamentosExistentesMap[d.id] || {}).forEach(dataBase => {
+                    const statusBanco = lancamentosExistentesMap[d.id][dataBase]?.status;
+                    const codigoNaGrade = diasDiarista[dataBase];
+
+                    // Se tava em aberto no banco e agora tá vazio na grade OUUUU a semana foi salva pulando ele: removemos
+                    if (['em_aberto', 'EM_ABERTO'].includes(statusBanco) && !codigoNaGrade) {
+                        idsParaRemover.push({ diarista_id: d.id, data: dataBase });
+                    }
+                });
+
                 Object.entries(diasDiarista).forEach(([dateISO, codigo]) => {
                     if (!codigo) return;
                     const regra = regrasMarcacaoAtivas.find((r: any) => r.codigo === codigo);
@@ -420,24 +470,31 @@ const DiaristasLancamento = () => {
                         valor_diaria_base: d.valor_diaria,
                         valor_calculado: calcularValor(codigo, d.valor_diaria, regrasMarcacaoAtivas as any[]),
                         cliente_unidade: clienteUnidade || null,
+                        unidade_id: unidadeId,
+                        local_id: localId,
                         encarregado_id: user?.id ?? null,
                         encarregado_nome: perfil?.full_name || user?.email || null,
                     });
                 });
             });
 
-            if (registros.length === 0) throw new Error("Nenhuma marcação preenchida na semana.");
-            return LancamentoDiaristaService.createBatch(registros);
+            // Se for SÓ apagar, passamos os deletes e retornamos os inserts normalmente.
+            if (idsParaRemover.length > 0) {
+                await LancamentoDiaristaService.apagarLoteAberto(empresaIdSelecionada, idsParaRemover);
+            }
+
+            if (registros.length === 0 && idsParaRemover.length === 0) {
+                throw new Error("Nenhuma marcação alterada.");
+            }
+
+            return registros.length > 0 ? LancamentoDiaristaService.createBatch(registros) : [];
         },
         onSuccess: (data) => {
-            toast.success(`${data.length} lançamento(s) salvos com sucesso.`);
+            toast.success(`${(data as any[]).length} lançamento(s) salvos/atualizados com sucesso.`);
+            // Invalida a semana atual
             queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_semana", empresaIdSelecionada] });
-            // Limpar apenas as células salvas
-            setGrade((prev) => {
-                const next = { ...prev };
-                Object.keys(next).forEach((k) => { next[k] = {}; });
-                return next;
-            });
+            // Invalida o histórico com a queryKey completa (empresa + semana)
+            queryClient.invalidateQueries({ queryKey: ["historico_recente_diaristas", empresaIdSelecionada, user?.id, inicioISO, fimISO] });
         },
         onError: (err: any) => toast.error("Erro ao salvar.", { description: err.message }),
     });
@@ -487,15 +544,19 @@ const DiaristasLancamento = () => {
             empresa: empresaNome,
             currentStep: "lancamento"
         });
-    }, [empresas, empresaIdSelecionada, semanaInicio]);
-
-    // ─── Render ──────────────────────────────────────────────────────────────
+    }, [empresaIdSelecionada, empresas, semanaInicio]);
 
     return (
-        <OperationalShell title="Lançamento de Diaristas" showBack={false} onBack={() => navigate("/producao")} hideFab={true} pipelineTrigger={diaristasReviewTrigger}>
+        <OperationalShell
+            title="Lançamento de Diaristas"
+            showBack={false}
+            onBack={() => navigate("/producao")}
+            hideFab={true}
+            pipelineTrigger={diaristasReviewTrigger}
+        >
             <div className="max-w-5xl mx-auto space-y-5 pb-28">
 
-                {/* Header: seletor de empresa + semana */}
+                {/* Header: seletor de empresa + unidade + semana */}
                 <section className="esc-card p-5 space-y-4">
                     <div className="flex items-center gap-3">
                         <button onClick={() => navigate("/producao")} className="text-muted-foreground hover:text-foreground p-1">
@@ -507,7 +568,7 @@ const DiaristasLancamento = () => {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {/* Empresa */}
                         <div className="space-y-1.5">
                             <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
@@ -523,6 +584,8 @@ const DiaristasLancamento = () => {
                                     const empresa = (empresas as any[]).find((e: any) => e.id === empresaId);
                                     setClienteUnidade(empresa?.nome ?? "");
                                     setEmpresaIdSelecionada(empresa?.id ?? "");
+                                    setUnidadeId(null);
+                                    setLocalId(null);
                                     setGrade({});
                                 }}
                             >
@@ -532,6 +595,27 @@ const DiaristasLancamento = () => {
                                 <SelectContent>
                                     {(empresas as any[]).map((e: any) => (
                                         <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {/* Unidade */}
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                                Unidade / Ponto de Operação
+                            </label>
+                            <Select
+                                value={unidadeId || "nenhuma"}
+                                onValueChange={(val) => setUnidadeId(val === "nenhuma" ? null : val)}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Selecione a Unidade" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="nenhuma">Não especificado / Geral</SelectItem>
+                                    {(unidades as any[]).map((u: any) => (
+                                        <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
@@ -654,11 +738,11 @@ const DiaristasLancamento = () => {
                                                 Diarista
                                             </th>
                                             {diasSemana.map((dia) => {
-                                                const dateISO = format(dia, "yyyy-MM-dd");
-                                                const futuro = isFuture(dia) && dateISO !== today;
+                                                const dDateISO = format(dia, "yyyy-MM-dd");
+                                                const futuro = isFuture(dia) && dDateISO !== today;
                                                 return (
                                                     <th
-                                                        key={dateISO}
+                                                        key={dDateISO}
                                                         className={cn(
                                                             "text-center text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-1 py-2.5 w-[80px]",
                                                             isToday(dia) && "text-primary"
@@ -817,133 +901,133 @@ const DiaristasLancamento = () => {
                         </section>
                     </>
                 )}
+            </div>
 
-                {/* ── Bottom dock mobile-first ── */}
-                {empresaIdSelecionada && diaristasArr.length > 0 && (
-                    <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/98 backdrop-blur-md shadow-2xl safe-bottom">
-                        {/* KPI strip — horizontal scroll on mobile */}
-                        <div className="flex overflow-x-auto gap-1.5 px-4 pt-2 pb-1 scrollbar-hide">
-                            {/* Diaristas */}
-                            <div className="flex flex-col items-center justify-center shrink-0 bg-muted/40 rounded-lg min-w-[64px] py-1.5 px-2">
-                                <p className="text-[8px] uppercase tracking-widest text-muted-foreground font-bold leading-none">Diaristas</p>
-                                <p className="text-sm font-black text-foreground leading-tight">{diaristasArr.length}</p>
-                            </div>
-
-                            {/* Separador */}
-                            <div className="shrink-0 w-px bg-border mx-0.5 self-stretch" />
-
-                            {/* Códigos marcados */}
-                            {Object.entries(resumo.contadorCodigos).map(([codigo, qtd]) => {
-                                const isP = codigo === "P";
-                                const isMP = codigo === "MP";
-                                const isF = codigo === "F" || codigo === "FERIADO";
-                                return (
-                                    <div key={codigo} className={cn(
-                                        "flex items-center gap-1.5 shrink-0 rounded-lg px-2.5 py-1.5",
-                                        isP && "bg-green-50 dark:bg-green-900/20",
-                                        isMP && "bg-yellow-50 dark:bg-yellow-900/20",
-                                        isF && "bg-red-50 dark:bg-red-900/20",
-                                        !isP && !isMP && !isF && "bg-primary/10"
-                                    )}>
-                                        <span className={cn(
-                                            "min-w-[18px] h-[18px] rounded text-[9px] font-black flex items-center justify-center px-0.5",
-                                            isP && "bg-green-500 text-white",
-                                            isMP && "bg-yellow-500 text-white",
-                                            isF && "bg-red-500 text-white",
-                                            !isP && !isMP && !isF && "bg-primary text-primary-foreground"
-                                        )}>{codigo}</span>
-                                        <span className={cn(
-                                            "text-sm font-black leading-tight",
-                                            isP && "text-green-700 dark:text-green-300",
-                                            isMP && "text-yellow-700 dark:text-yellow-300",
-                                            isF && "text-red-700 dark:text-red-300",
-                                            !isP && !isMP && !isF && "text-primary"
-                                        )}>{qtd}</span>
-                                    </div>
-                                );
-                            })}
-
-                            {/* Separador */}
-                            <div className="shrink-0 w-px bg-border mx-0.5 self-stretch" />
-
-                            {/* Total */}
-                            <div className="flex flex-col items-center justify-center shrink-0 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg min-w-[100px] py-1.5 px-3 ml-auto">
-                                <p className="text-[8px] uppercase tracking-widest text-emerald-600 dark:text-emerald-400 font-bold leading-none">Total</p>
-                                <p className="text-sm font-black text-emerald-700 dark:text-emerald-300 font-mono leading-tight">{formatCurrency(resumo.valorTotal)}</p>
-                            </div>
+            {/* ── Bottom dock mobile-first ── */}
+            {empresaIdSelecionada && diaristasArr.length > 0 && (
+                <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/98 backdrop-blur-md shadow-2xl safe-bottom">
+                    {/* KPI strip — horizontal scroll on mobile */}
+                    <div className="flex overflow-x-auto gap-1.5 px-4 pt-2 pb-1 scrollbar-hide">
+                        {/* Diaristas */}
+                        <div className="flex flex-col items-center justify-center shrink-0 bg-muted/40 rounded-lg min-w-[64px] py-1.5 px-2">
+                            <p className="text-[8px] uppercase tracking-widest text-muted-foreground font-bold leading-none">Diaristas</p>
+                            <p className="text-sm font-black text-foreground leading-tight">{diaristasArr.length}</p>
                         </div>
 
-                        {/* Action bar */}
-                        <div className="flex items-center gap-2 px-4 py-2.5">
-                            {/* Histórico */}
+                        {/* Separador */}
+                        <div className="shrink-0 w-px bg-border mx-0.5 self-stretch" />
+
+                        {/* Códigos marcados */}
+                        {Object.entries(resumo.contadorCodigos).map(([codigo, qtd]) => {
+                            const isP = codigo === "P";
+                            const isMP = codigo === "MP";
+                            const isF = codigo === "F" || codigo === "FERIADO";
+                            return (
+                                <div key={codigo} className={cn(
+                                    "flex items-center gap-1.5 shrink-0 rounded-lg px-2.5 py-1.5",
+                                    isP && "bg-green-50 dark:bg-green-900/20",
+                                    isMP && "bg-yellow-50 dark:bg-yellow-900/20",
+                                    isF && "bg-red-50 dark:bg-red-900/20",
+                                    !isP && !isMP && !isF && "bg-primary/10"
+                                )}>
+                                    <span className={cn(
+                                        "min-w-[18px] h-[18px] rounded text-[9px] font-black flex items-center justify-center px-0.5",
+                                        isP && "bg-green-500 text-white",
+                                        isMP && "bg-yellow-500 text-white",
+                                        isF && "bg-red-500 text-white",
+                                        !isP && !isMP && !isF && "bg-primary text-primary-foreground"
+                                    )}>{codigo}</span>
+                                    <span className={cn(
+                                        "text-sm font-black leading-tight",
+                                        isP && "text-green-700 dark:text-green-300",
+                                        isMP && "text-yellow-700 dark:text-yellow-300",
+                                        isF && "text-red-700 dark:text-red-300",
+                                        !isP && !isMP && !isF && "text-primary"
+                                    )}>{qtd}</span>
+                                </div>
+                            );
+                        })}
+
+                        {/* Separador */}
+                        <div className="shrink-0 w-px bg-border mx-0.5 self-stretch" />
+
+                        {/* Total */}
+                        <div className="flex flex-col items-center justify-center shrink-0 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg min-w-[100px] py-1.5 px-3 ml-auto">
+                            <p className="text-[8px] uppercase tracking-widest text-emerald-600 dark:text-emerald-400 font-bold leading-none">Total</p>
+                            <p className="text-sm font-black text-emerald-700 dark:text-emerald-300 font-mono leading-tight">{formatCurrency(resumo.valorTotal)}</p>
+                        </div>
+                    </div>
+
+                    {/* Action bar */}
+                    <div className="flex items-center gap-2 px-4 py-2.5">
+                        {/* Histórico */}
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setOpenHistorico(true)}
+                            className="h-11 w-11 p-0 rounded-xl shrink-0"
+                            title="Histórico"
+                        >
+                            <History className="h-4 w-4" />
+                        </Button>
+
+                        {/* Fechar período */}
+                        {!isSemanaFechada && !periodoBloqueado && (
                             <Button
                                 type="button"
                                 variant="outline"
                                 size="sm"
-                                onClick={() => setOpenHistorico(true)}
-                                className="h-11 w-11 p-0 rounded-xl shrink-0"
-                                title="Histórico"
+                                onClick={() => setFechandoPeriodo(true)}
+                                disabled={!empresaIdSelecionada || (lancamentosExistentes as any[]).length === 0}
+                                className="h-11 w-11 p-0 rounded-xl shrink-0 border-amber-300 text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                                title="Fechar período"
                             >
-                                <History className="h-4 w-4" />
+                                <Lock className="h-4 w-4" />
                             </Button>
+                        )}
 
-                            {/* Fechar período */}
-                            {!isSemanaFechada && !periodoBloqueado && (
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => setFechandoPeriodo(true)}
-                                    disabled={!empresaIdSelecionada || (lancamentosExistentes as any[]).length === 0}
-                                    className="h-11 w-11 p-0 rounded-xl shrink-0 border-amber-300 text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/20"
-                                    title="Fechar período"
-                                >
-                                    <Lock className="h-4 w-4" />
-                                </Button>
-                            )}
-
-                            {/* Salvar - expande */}
-                            <Button
-                                type="button"
-                                size="sm"
-                                className="flex-1 h-11 gap-2 font-display font-bold rounded-xl text-sm"
-                                onClick={() => salvarMutation.mutate()}
-                                disabled={salvarMutation.isPending || (!temMarcacoesNovaBatch && !isSemanaFechada && !periodoBloqueado) || !empresaIdSelecionada || isSemanaFechada || periodoBloqueado}
-                            >
-                                {isSemanaFechada || periodoBloqueado ? <Lock className="h-4 w-4 shrink-0" /> : <Save className="h-4 w-4 shrink-0" />}
-                                {salvarMutation.isPending
-                                    ? "Salvando..."
-                                    : (isSemanaFechada || periodoBloqueado)
-                                        ? (statusSemana || (periodoBloqueado ? (lotes[0]?.status) : null)) === 'AGUARDANDO_VALIDACAO_RH'
-                                            ? "Aguardando Validação RH"
-                                            : (statusSemana || (periodoBloqueado ? (lotes[0]?.status) : null)) === 'VALIDADO_RH'
-                                                ? "Validado pelo RH"
-                                                : (statusSemana || (periodoBloqueado ? (lotes[0]?.status) : null)) === 'FECHADO_FINANCEIRO'
-                                                    ? "Aprovado — Financeiro"
-                                                    : (statusSemana || (periodoBloqueado ? (lotes[0]?.status) : null)) === 'PAGO'
-                                                        ? "Pago"
-                                                        : "Período Fechado"
-                                        : temMarcacoesNovaBatch
-                                            ? "Salvar lançamentos"
-                                            : "Preencha a grade"}
-                            </Button>
-                        </div>
+                        {/* Salvar - expande */}
+                        <Button
+                            type="button"
+                            size="sm"
+                            className="flex-1 h-11 gap-2 font-display font-bold rounded-xl text-sm"
+                            onClick={() => salvarMutation.mutate()}
+                            disabled={salvarMutation.isPending || (!temMarcacoesNovaBatch && !isSemanaFechada && !periodoBloqueado) || !empresaIdSelecionada || isSemanaFechada || periodoBloqueado}
+                        >
+                            {isSemanaFechada || periodoBloqueado ? <Lock className="h-4 w-4 shrink-0" /> : <Save className="h-4 w-4 shrink-0" />}
+                            {salvarMutation.isPending
+                                ? "Salvando..."
+                                : (isSemanaFechada || periodoBloqueado)
+                                    ? (statusSemana || (periodoBloqueado ? (lotes[0]?.status) : null)) === 'AGUARDANDO_VALIDACAO_RH'
+                                        ? "Aguardando Validação RH"
+                                        : (statusSemana || (periodoBloqueado ? (lotes[0]?.status) : null)) === 'VALIDADO_RH'
+                                            ? "Validado pelo RH"
+                                            : (statusSemana || (periodoBloqueado ? (lotes[0]?.status) : null)) === 'FECHADO_FINANCEIRO'
+                                                ? "Aprovado — Financeiro"
+                                                : (statusSemana || (periodoBloqueado ? (lotes[0]?.status) : null)) === 'PAGO'
+                                                    ? "Pago"
+                                                    : "Período Fechado"
+                                    : temMarcacoesNovaBatch
+                                        ? "Salvar lançamentos"
+                                        : "Preencha a grade"}
+                        </Button>
                     </div>
-                )}
-            </div>
+                </div>
+            )}
 
             {/* ── Modal: Histórico ── */}
             <Dialog open={openHistorico} onOpenChange={setOpenHistorico}>
-                <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+                <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" aria-describedby={undefined}>
                     <DialogHeader>
-                        <DialogTitle>Meus Lançamentos — Últimos 14 dias</DialogTitle>
+                        <DialogTitle>Lançamentos da Semana</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4">
                         {isLoadingHistorico ? (
                             <div className="text-center p-8 text-muted-foreground animate-pulse text-sm">Carregando...</div>
                         ) : (historicoRecente as any[]).length === 0 ? (
                             <div className="text-center p-8 text-muted-foreground border border-dashed rounded-lg">
-                                Nenhum lançamento nos últimos 14 dias para esta empresa.
+                                Nenhum lançamento salvo nesta semana para esta empresa.
                             </div>
                         ) : (
                             <div className="divide-y divide-border border rounded-lg overflow-hidden">
@@ -971,7 +1055,6 @@ const DiaristasLancamento = () => {
                                                 return h.status;
                                             })()} />
                                             <span className="font-mono font-semibold text-sm text-foreground">
-
                                                 {formatCurrency(Number(h.valor_calculado ?? 0))}
                                             </span>
                                         </div>
@@ -1037,8 +1120,9 @@ const DiaristasLancamento = () => {
                     </div>
                 </DialogContent>
             </Dialog>
-        </OperationalShell>
+        </OperationalShell >
     );
 };
 
 export default DiaristasLancamento;
+

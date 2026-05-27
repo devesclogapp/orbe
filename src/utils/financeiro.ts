@@ -170,7 +170,11 @@ export function processarOperacao(operacao: any, empresas: any[] = []) {
 
   const valorDescargaProp = operacao.valor_descarga !== null && operacao.valor_descarga !== undefined && operacao.valor_descarga !== '' ? Number(operacao.valor_descarga) : null;
   const custoComIssProp = operacao.custo_com_iss !== null && operacao.custo_com_iss !== undefined && operacao.custo_com_iss !== '' ? Number(operacao.custo_com_iss) : null;
-  const totalFinalProp = operacao.total_final !== null && operacao.total_final !== undefined && operacao.total_final !== '' ? Number(operacao.total_final) : null;
+  const totalFinalProp = operacao.total_final !== null && operacao.total_final !== undefined && operacao.total_final !== '' 
+    ? Number(operacao.total_final) 
+    : (operacao.valor_total !== null && operacao.valor_total !== undefined && operacao.valor_total !== '' 
+       ? Number(operacao.valor_total) 
+       : null);
 
   const valor_descarga = valorDescargaProp ?? valoresCalculados.valorDescargaCalculado;
   const custo_com_iss = custoComIssProp ?? valoresCalculados.custoIssCalculado;

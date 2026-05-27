@@ -84,59 +84,86 @@ export class CicloOperacionalService {
   }
 
   /**
-   * Obtém os ciclos de uma competência. Se não existirem, são criados automaticamente.
+   * Obtém os ciclos de uma competência.
+   * Suporta isolamento por empresa: se `empresaId` for fornecido, filtra somente os ciclos
+   * daquela empresa. Caso contrário, retorna todos os ciclos do tenant para a competência.
+   * Se não existirem ciclos, são criados automaticamente.
    */
-  static async getCiclosDaCompetencia(tenantId: string, competencia: string): Promise<CicloOperacional[]> {
-    const { data: ciclos, error } = await supabase
+  static async getCiclosDaCompetencia(
+    tenantId: string,
+    competencia: string,
+    empresaId?: string | null,
+  ): Promise<CicloOperacional[]> {
+    let query = supabase
       .from('ciclos_operacionais')
       .select('*')
       .eq('tenant_id', tenantId)
       .eq('competencia', competencia)
       .order('semana_operacional', { ascending: true });
 
+    // Isolamento opcional por empresa
+    if (empresaId) {
+      query = (query as any).eq('empresa_id', empresaId);
+    }
+
+    const { data: ciclos, error } = await query;
     if (error) throw error;
-    
+
     // Se já existem registros de ciclos, apenas retornar
     if (ciclos && ciclos.length > 0) {
       return ciclos as CicloOperacional[];
     }
 
-    // Se não existem, vamos criar até 5 ou 6 semanas do mês
-    return this.gerarCiclosAutomaticosDaCompetencia(tenantId, competencia);
+    // Se não existem, criar automaticamente para o tenant (ou empresa específica)
+    return this.gerarCiclosAutomaticosDaCompetencia(tenantId, competencia, empresaId);
   }
 
   /**
    * Obtém o ciclo operacional aplicável a uma data, criando-o se necessário.
+   * Respeita o isolamento por empresa.
    */
-  static async getCicloIdParaData(tenantId: string, dataProcessamento: string): Promise<CicloOperacional> {
+  static async getCicloIdParaData(
+    tenantId: string,
+    dataProcessamento: string,
+    empresaId?: string | null,
+  ): Promise<CicloOperacional> {
     const competencia = dataProcessamento.substring(0, 7);
     const semana = this.getSemanaOperacionalDaData(dataProcessamento);
-    const ciclos = await this.getCiclosDaCompetencia(tenantId, competencia);
-    
+    const ciclos = await this.getCiclosDaCompetencia(tenantId, competencia, empresaId);
+
     const ciclo = ciclos.find(c => c.semana_operacional === semana);
     if (!ciclo) {
-       throw new Error(`Ciclo não encontrado para semana ${semana} de ${competencia}`);
+      throw new Error(`Ciclo não encontrado para semana ${semana} de ${competencia}`);
     }
     return ciclo;
   }
 
-  private static async gerarCiclosAutomaticosDaCompetencia(tenantId: string, competencia: string): Promise<CicloOperacional[]> {
+  private static async gerarCiclosAutomaticosDaCompetencia(
+    tenantId: string,
+    competencia: string,
+    empresaId?: string | null,
+  ): Promise<CicloOperacional[]> {
     const [year, month] = competencia.split('-').map(Number);
-    const lastDayOfMonth = new Date(year, month, 0); // último dia do mês
-    const numberOfWeeks = this.getSemanaOperacionalDaData(`${year}-${String(month).padStart(2, '0')}-${String(lastDayOfMonth.getDate()).padStart(2, '0')}`);
-    
+    const lastDayOfMonth = new Date(year, month, 0);
+    const numberOfWeeks = this.getSemanaOperacionalDaData(
+      `${year}-${String(month).padStart(2, '0')}-${String(lastDayOfMonth.getDate()).padStart(2, '0')}`,
+    );
+
     const ciclosParaInserir = [];
 
     for (let sem = 1; sem <= numberOfWeeks; sem++) {
       const { data_inicio, data_fim } = this.getLimitesSemana(competencia, sem);
-      ciclosParaInserir.push({
+      const ciclo: Record<string, unknown> = {
         tenant_id: tenantId,
         competencia,
         semana_operacional: sem,
         data_inicio,
         data_fim,
         status: 'aberto',
-      });
+      };
+      // Vincula à empresa específica quando fornecida
+      if (empresaId) ciclo.empresa_id = empresaId;
+      ciclosParaInserir.push(ciclo);
     }
 
     const { data, error } = await supabase
@@ -144,7 +171,7 @@ export class CicloOperacionalService {
       .insert(ciclosParaInserir)
       .select('*')
       .order('semana_operacional', { ascending: true });
-      
+
     if (error) throw error;
     return data as CicloOperacional[];
   }

@@ -2954,6 +2954,34 @@ class OperacaoProducaoServiceClass {
     return !error;
   }
 
+  async getInconsistencies() {
+    const { data, error } = await operationalClient
+      .from('operacoes_producao')
+      .select(`
+        *,
+        colaboradores:colaborador_id(nome, cargo),
+        tipos_servico_operacional:tipo_servico_id(nome),
+        transportadoras_clientes:transportadora_id(nome),
+        fornecedores:fornecedor_id(nome),
+        produtos_carga:produto_carga_id(nome),
+        formas_pagamento_operacional:forma_pagamento_id(nome),
+        unidades:unidade_id(nome)
+      `)
+      .in('status', ['inconsistente', 'com_alerta', 'aguardando_validacao'])
+      .is('deleted_at', null)
+      .order('criado_em', { ascending: false });
+
+    if (error) throw error;
+    return data;
+  }
+
+  async updateWithOverride(id: string, payload: Record<string, any>, justification: string) {
+    if (justification) {
+      payload.justificativa_retroativa = justification;
+    }
+    return this.update(id, payload);
+  }
+
   async create(payload: Record<string, any>) {
     const safePayload = this.sanitizeOperacaoPayload(payload);
     const { data, error } = await operationalClient
@@ -2966,7 +2994,8 @@ class OperacaoProducaoServiceClass {
         transportadoras_clientes:transportadora_id(nome),
         fornecedores:fornecedor_id(nome),
         produtos_carga:produto_carga_id(nome),
-        formas_pagamento_operacional:forma_pagamento_id(nome)
+        formas_pagamento_operacional:forma_pagamento_id(nome),
+        unidades:unidade_id(nome)
       `)
       .single();
 
@@ -3026,7 +3055,8 @@ class OperacaoProducaoServiceClass {
         transportadoras_clientes:transportadora_id(nome),
         fornecedores:fornecedor_id(nome),
         produtos_carga:produto_carga_id(nome),
-        formas_pagamento_operacional:forma_pagamento_id(nome)
+        formas_pagamento_operacional:forma_pagamento_id(nome),
+        unidades:unidade_id(nome)
       `)
       .single();
 
@@ -3044,7 +3074,8 @@ class OperacaoProducaoServiceClass {
         transportadoras_clientes:transportadora_id(nome),
         fornecedores:fornecedor_id(nome),
         produtos_carga:produto_carga_id(nome),
-        formas_pagamento_operacional:forma_pagamento_id(nome)
+        formas_pagamento_operacional:forma_pagamento_id(nome),
+        unidades:unidade_id(nome)
       `)
       .eq('data_operacao', date)
       .is('deleted_at', null)
@@ -3075,7 +3106,8 @@ class OperacaoProducaoServiceClass {
         transportadoras_clientes:transportadora_id(nome),
         fornecedores:fornecedor_id(nome),
         produtos_carga:produto_carga_id(nome),
-        formas_pagamento_operacional:forma_pagamento_id(nome)
+        formas_pagamento_operacional:forma_pagamento_id(nome),
+        unidades:unidade_id(nome)
       `)
       .is('deleted_at', null)
       .order('criado_em', { ascending: false });
@@ -3488,6 +3520,8 @@ export interface LancamentoDiaristaPayload {
   valor_diaria_base: number;
   valor_calculado: number;
   cliente_unidade?: string | null;
+  unidade_id?: string | null;
+  local_id?: string | null;
   operacao_servico?: string | null;
   encarregado_id?: string | null;
   encarregado_nome?: string | null;
@@ -3625,14 +3659,17 @@ class LancamentoDiaristaServiceClass {
 
     if (empresaId) query = query.eq('empresa_id', empresaId);
 
-    if (filtros?.status) query = query.eq('status', filtros.status);
-    if (filtros?.funcao) query = query.eq('funcao_colaborador', filtros.funcao);
-    if (filtros?.encarregado_id) query = query.eq('encarregado_id', filtros.encarregado_id);
-    if (filtros?.cliente_unidade) query = query.ilike('cliente_unidade', `%${filtros.cliente_unidade}%`);
-
-    if (empresaId) query = query.eq('empresa_id', empresaId);
-
-    if (filtros?.status) query = query.eq('status', filtros.status);
+    if (filtros?.status) {
+      // Normalização defensiva: se for 'em_aberto' ou 'EM_ABERTO', busca por ambos para cobrir legado e novo
+      if (['em_aberto', 'EM_ABERTO'].includes(filtros.status)) {
+        query = query.in('status', ['em_aberto', 'EM_ABERTO']);
+      } else if (['cancelado', 'CANCELADO'].includes(filtros.status)) {
+        query = query.in('status', ['cancelado', 'CANCELADO']);
+      } else {
+        query = query.eq('status', filtros.status);
+      }
+    }
+    
     if (filtros?.funcao) query = query.eq('funcao_colaborador', filtros.funcao);
     if (filtros?.encarregado_id) query = query.eq('encarregado_id', filtros.encarregado_id);
     if (filtros?.cliente_unidade) query = query.ilike('cliente_unidade', `%${filtros.cliente_unidade}%`);
@@ -3712,17 +3749,59 @@ class LancamentoDiaristaServiceClass {
     return data;
   }
 
+  async apagarLoteAberto(empresaId: string, registros: { diarista_id: string; data: string }[]) {
+    if (registros.length === 0) return true;
+    
+    const diaristaIds = [...new Set(registros.map(r => r.diarista_id))];
+    const datas = [...new Set(registros.map(r => r.data))];
+
+    const { error } = await (supabase as any)
+      .from('lancamentos_diaristas')
+      .delete()
+      .eq('empresa_id', empresaId)
+      .in('diarista_id', diaristaIds)
+      .in('data_lancamento', datas)
+      .in('status', ['em_aberto', 'EM_ABERTO']);
+
+    if (error) throw error;
+    return true;
+  }
+
   async createBatch(registros: LancamentoDiaristaPayload[]) {
     if (registros.length === 0) return [];
 
     const tenantId = await getCurrentTenantId();
 
-    // Remove campos que podem não existir na tabela (tipo_lancamento é apenas local)
+    // Remove campo local que não existe na tabela
     const payload = registros.map(({ ...r }) => {
       const p: Record<string, unknown> = { ...r, tenant_id: tenantId };
       delete p['tipo_lancamento'];
       return p;
     });
+
+    // Estratégia idempotente: DELETE + INSERT
+    // Apaga registros em aberto existentes para as mesmas chaves (empresa/diarista/data)
+    // antes de inserir os novos. Isso evita duplicatas sem depender de constraint parcial.
+    const chaves = payload.map(p => ({
+      empresa_id: p.empresa_id as string,
+      diarista_id: p.diarista_id as string,
+      data_lancamento: p.data_lancamento as string,
+    }));
+
+    // Agrupa por empresa para minimizar roundtrips
+    const empresaId = chaves[0]?.empresa_id;
+    if (empresaId) {
+      const datas = [...new Set(chaves.map(c => c.data_lancamento))];
+      const diaristaIds = [...new Set(chaves.map(c => c.diarista_id))];
+
+      await (supabase as any)
+        .from('lancamentos_diaristas')
+        .delete()
+        .eq('empresa_id', empresaId)
+        .in('diarista_id', diaristaIds)
+        .in('data_lancamento', datas)
+        .in('status', ['em_aberto', 'EM_ABERTO']);
+    }
 
     const { data, error } = await (supabase as any)
       .from('lancamentos_diaristas')

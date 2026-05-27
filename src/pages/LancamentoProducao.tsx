@@ -1497,6 +1497,7 @@ const LancamentoProducao = () => {
                 const payload = {
                     data: operacao.data_operacao,
                     empresa_id: operacao.empresa_id,
+                    unidade_id: operacao.unidade_id,
                     categoria_custo: operacao.categoria_custo || 'OPERACIONAL',
                     descricao: operacao.descricao_servico || "Lançamento manual de custo",
                     valor_unitario: operacao.valor_unitario_snapshot,
@@ -1507,6 +1508,8 @@ const LancamentoProducao = () => {
                     tipo_lancamento: 'DESPESA',
                     origem_dado: 'manual',
                     pipeline_status: 'PENDENTE',
+                    responsavel_nome: operacao.responsavel_nome,
+                    observacao: operacao.observacao,
                     avaliacao_json: operacao.avaliacao_json,
                 };
                 return CustoExtraOperacionalService.createMany([payload]);
@@ -1515,6 +1518,7 @@ const LancamentoProducao = () => {
                 const payload = {
                     data: operacao.data_operacao,
                     empresa_id: operacao.empresa_id,
+                    unidade_id: operacao.unidade_id,
                     tipo_servico_id: operacao.tipo_servico_id,
                     descricao_servico: operacao.descricao_servico || "Serviço Adicional",
                     quantidade: operacao.quantidade,
@@ -1533,12 +1537,13 @@ const LancamentoProducao = () => {
             }
             return OperacaoProducaoService.createWithColaboradores(operacao, colaboradores);
         },
-        onSuccess: () => {
+        onSuccess: async () => {
             toast.success("Produção registrada com sucesso!");
+            await queryClient.refetchQueries({ queryKey: ["producao_recente", form.empresa_id, form.unidade_id, form.data] });
+            await queryClient.refetchQueries({ queryKey: ["resumo_producao_dia", form.empresa_id, form.unidade_id, form.data] });
             queryClient.invalidateQueries({ queryKey: ["operacoes"] });
             queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
             queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
-            queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
             queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
             queryClient.invalidateQueries({ queryKey: ["servicos-extras"] });
             queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
@@ -1555,6 +1560,8 @@ const LancamentoProducao = () => {
                 fornecedor: "",
                 produto: "",
                 quantidade: "",
+                quantidade_colaboradores: "1",
+                nf_emite: false,
                 valor_unitario: "",
                 valor_unitario_manual: "",
                 valor_unitario_filme: "",
@@ -1580,12 +1587,13 @@ const LancamentoProducao = () => {
     const cancelMutation = useMutation({
         mutationFn: ({ id, reason }: { id: string; reason: string }) =>
             OperacaoProducaoService.cancel(id, user?.id || "", reason),
-        onSuccess: () => {
+        onSuccess: async () => {
             toast.success("Operação cancelada com sucesso!");
+            await queryClient.refetchQueries({ queryKey: ["producao_recente", form.empresa_id, form.unidade_id, form.data] });
+            await queryClient.refetchQueries({ queryKey: ["resumo_producao_dia", form.empresa_id, form.unidade_id, form.data] });
             queryClient.invalidateQueries({ queryKey: ["operacoes"] });
             queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
             queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
-            queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
             queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
             queryClient.invalidateQueries({ queryKey: ["servicos-extras"] });
             queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
@@ -1725,6 +1733,7 @@ const LancamentoProducao = () => {
             nf_numero: form.nf_numero.trim() || null,
             ctrc: form.ctrc.trim() || null,
             observacao: form.observacao.trim() || null,
+            responsavel_nome: form.responsavel_nome.trim() || perfil?.full_name || user?.email || null,
             responsavel_id: user?.id,
             descricao_servico: form.descricao_servico.trim() || null,
             categoria_custo: form.categoria_custo,

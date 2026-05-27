@@ -386,6 +386,8 @@ const getContextoImportacaoValue = (item: Record<string, unknown>, key: string) 
 
 const getDisplayFormaPagamento = (item: Record<string, unknown>) => {
   const base = (item as { formas_pagamento_operacional?: { nome?: string | null } }).formas_pagamento_operacional?.nome ??
+    (item as any).forma_pagamento_snapshot ??
+    (item as any).forma_pagamento ??
     ((item as { formaPagamento?: string | null }).formaPagamento ?? null) ??
     ((item as { forma_pagamento?: string | null }).forma_pagamento ?? null) ??
     getContextoImportacaoValue(item, "forma_pagamento") ??
@@ -404,6 +406,7 @@ const getDisplayFormaPagamento = (item: Record<string, unknown>) => {
 };
 
 const getDisplayObservacao = (item: Record<string, unknown>) =>
+  (item as any).observacao ??
   getContextoImportacaoValue(item, "observacao") ??
   getLinhaOriginalValue(item, "OBSERVACAO", "OBSERVAÇÃO") ??
   "";
@@ -530,7 +533,7 @@ export const OperacoesTableBlock = ({
     operacao: true, transportadora: true, servico: true, qtd: true,
     inicio: false, fim: false, valUnit: true, valorDescarga: false, valorIss: true, valDia: true, acoes: true,
     placa: false, fornecedor: false, qtdCol: true,
-    idPlanilha: false, empresaPlanilha: false, formaPagamento: false, observacao: false,
+    idPlanilha: false, empresaPlanilha: false, unidade: true, formaPagamento: false, observacao: false,
     modalidadeFinanceira: true, dataVencimento: true, statusPagamento: true,
   };
 
@@ -1742,6 +1745,7 @@ export const OperacoesTableBlock = ({
                     {visibleCols.idPlanilha && <th style={getStickyProps("idPlanilha", true).style} className={getStickyProps("idPlanilha", true).className}>{renderInteractiveHeader("idPlanilha", "ID")}</th>}
                     {visibleCols.operacao && <th style={getStickyProps("operacao", true).style} className={getStickyProps("operacao", true).className}>{renderInteractiveHeader("operacao", "OPERAÇÃO/VOLUME", Package)}</th>}
                     {visibleCols.empresaPlanilha && <th className="px-3 py-2.5 font-semibold text-center">EMPRESA</th>}
+                    {visibleCols.unidade && <th className="px-3 py-2.5 font-semibold text-center">UNIDADE / LOCAL</th>}
                     {visibleCols.transportadora && <th className="px-3 py-2.5 font-semibold text-left">{renderInteractiveHeader("transportadora", "TRANSPORTADORA", Truck)}</th>}
                     {visibleCols.fornecedor && <th className="px-3 py-2.5 font-semibold text-left">{renderInteractiveHeader("fornecedor", "FORNECEDOR", Building2)}</th>}
                     {visibleCols.placa && renderHeaderCell("placa", "PLACA", "px-3 py-2.5 font-semibold text-center")}
@@ -1785,7 +1789,7 @@ export const OperacoesTableBlock = ({
                     const inicio = (item.entrada_ponto || "").substring(0, 5);
                     const fim = (item.saida_ponto || "").substring(0, 5);
                     const qtdText = item.quantidade !== undefined && item.quantidade !== null ? item.quantidade : "0";
-                    const valorTotal = item.total_final ?? item.valor_descarga ?? 0;
+                    const valorTotal = item.valor_total ?? item.total_final ?? item.valor_descarga ?? 0;
 
                     const valUnit = valUnitFormatter(item.valor_unitario_snapshot ?? item.valor_unitario_label ?? item.valor_unitario ?? 0);
                     const valorDescarga = valUnitFormatter(item.valor_descarga);
@@ -1810,6 +1814,7 @@ export const OperacoesTableBlock = ({
                         {visibleCols.idPlanilha && <td style={getStickyProps("idPlanilha", false).style} className={cn(getStickyProps("idPlanilha", false).className, "px-3 text-center text-muted-foreground whitespace-nowrap")}>{String(idPlanilha)}</td>}
                         {visibleCols.operacao && <td style={getStickyProps("operacao", false).style} className={cn(getStickyProps("operacao", false).className, "px-5 py-3 text-center font-medium whitespace-nowrap text-foreground")}>{operacaoNome}</td>}
                         {visibleCols.empresaPlanilha && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{String(empresaPlanilha)}</td>}
+                        {visibleCols.unidade && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{item.unidades?.nome || "-"}</td>}
                         {visibleCols.fornecedor && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{fornecedor}</td>}
                         {visibleCols.transportadora && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{transportadora}</td>}
                         {visibleCols.placa && renderInlineCell(item, "placa", placa)}

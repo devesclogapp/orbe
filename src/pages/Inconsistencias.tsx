@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { OperacaoService } from "@/services/base.service";
+import { OperacaoProducaoService } from "@/services/base.service";
 import { AppShell } from "@/components/layout/AppShell";
 import { StatusChip } from "@/components/painel/StatusChip";
 import { AlertTriangle, Sparkles, Loader2, CheckCircle2 } from "lucide-react";
@@ -13,7 +13,7 @@ const Inconsistencias = () => {
   const queryClient = useQueryClient();
   const { data: issues = [], isLoading } = useQuery({
     queryKey: ["inconsistencias"],
-    queryFn: () => OperacaoService.getInconsistencies(),
+    queryFn: () => OperacaoProducaoService.getInconsistencies(),
   });
 
   const {
@@ -25,7 +25,7 @@ const Inconsistencias = () => {
     handleClose
   } = useAdminOverride({
     onUpdate: async (id, payload, justification) => {
-      await OperacaoService.updateWithOverride(id, payload, justification);
+      await OperacaoProducaoService.updateWithOverride(id, payload, justification);
       queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
     }
   });
@@ -39,7 +39,7 @@ const Inconsistencias = () => {
 
     if (!needsOverride) {
       try {
-        await OperacaoService.update(id, payload);
+        await OperacaoProducaoService.update(id, payload);
         toast.success("Inconsistência resolvida com sucesso");
         queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
       } catch (error: any) {
@@ -76,12 +76,12 @@ const Inconsistencias = () => {
                       <td className="px-5 h-[60px]">
                         <div className="flex items-center gap-2">
                           <AlertTriangle className={`h-4 w-4 ${grav === "alta" ? "text-destructive" : "text-warning"}`} />
-                          <span className="font-medium text-foreground">{it.tipo_servico}</span>
+                          <span className="font-medium text-foreground">{it.tipos_servico_operacional?.nome || 'Operação por Volume'}</span>
                         </div>
                       </td>
                       <td className="px-3 text-foreground">{it.id.substring(0, 8)}</td>
                       <td className="px-3 text-muted-foreground">
-                        {it.quantidade} {it.tipo_servico === 'Volume' ? 'volumes' : 'carros'} lançados por {it.colaboradores?.nome}
+                        {it.quantidade} eventos lançados por {it.colaboradores?.nome}
                       </td>
                       <td className="px-3 text-center capitalize">
                         <span className={`esc-chip ${grav === "alta" ? "bg-destructive-soft text-destructive-strong" : "bg-warning-soft text-warning-strong"}`}>
