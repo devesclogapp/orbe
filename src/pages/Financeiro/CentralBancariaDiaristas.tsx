@@ -96,7 +96,22 @@ type Lancamento = {
 // ─────────────────────────────────────────────────────────────────────
 // Componente Principal
 // ─────────────────────────────────────────────────────────────────────
-export const CentralBancariaDiaristas = ({ onMetricsUpdate }: { onMetricsUpdate?: (metrics: any) => void }) => {
+interface CentralBancariaDiaristasProps {
+    onMetricsUpdate?: (metrics: {
+        totalRemessas: number;
+        totalTitulos: number;
+        totalValor: number;
+        remessasComErro: number
+    }) => void;
+    empresaId?: string;
+    competencia?: string;
+}
+
+export const CentralBancariaDiaristas = ({
+    onMetricsUpdate,
+    empresaId: PropEmpresaId,
+    competencia: PropCompetencia
+}: CentralBancariaDiaristasProps) => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
     const { openPipeline } = useOperationalPipeline();
@@ -154,16 +169,20 @@ export const CentralBancariaDiaristas = ({ onMetricsUpdate }: { onMetricsUpdate?
     const canAdjust = isAdmin || isFinanceiro;
     const userName = user?.email || "";
 
-    // Acesso baseado em papel (role), não em empresa vinculada.
-    // Usuários sem empresa_id fixo usam a primeira empresa disponível como contexto padrão.
-    const empresaId = (empresas as any[])[0]?.id ?? "";
+    // Acesso baseado em papel (role). Prioriza prop, senão pega a primeira empresa disponível.
+    const empresaId = PropEmpresaId || ((empresas as any[])[0]?.id ?? "");
 
     // ── lotes ──
-    const { data: lotes = [], isLoading } = useQuery({
+    const { data: rawLotes = [], isLoading } = useQuery({
         queryKey: ["lotes_fechamento", empresaId],
         queryFn: () => LoteFechamentoDiaristaService.getByEmpresaParaFinanceiro(empresaId),
         enabled: !!empresaId,
     });
+
+    const lotes = useMemo(() => {
+        if (!PropCompetencia) return rawLotes;
+        return (rawLotes as Lote[]).filter(l => l.periodo_inicio.startsWith(PropCompetencia) || l.periodo_fim.startsWith(PropCompetencia));
+    }, [rawLotes, PropCompetencia]);
 
     React.useEffect(() => {
         if (onMetricsUpdate && lotes) {

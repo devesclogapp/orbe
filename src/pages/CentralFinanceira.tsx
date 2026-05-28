@@ -40,9 +40,11 @@ import {
   CustoExtraOperacionalService,
   EmpresaService,
   ResultadosService,
+  LoteFechamentoDiaristaService,
 } from "@/services/base.service";
 import { RHFinanceiroService } from "@/services/rhFinanceiro.service";
-import { buildFolhaVariavelPipeline, useOperationalPipeline } from "@/contexts/OperationalPipelineContext";
+import { buildFolhaVariavelPipeline, buildDiaristasPipeline, useOperationalPipeline } from "@/contexts/OperationalPipelineContext";
+import { useAuth } from "@/contexts/AuthContext";
 
 const formatCompetenciaLabel = (competencia: string) => {
   const [year, month] = competencia.split("-").map(Number);
@@ -57,6 +59,7 @@ const formatPipelineTimestamp = (value?: string | null) => {
 const CentralFinanceira = () => {
   const navigate = useNavigate();
   const { openPipeline } = useOperationalPipeline();
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [filterMonth, setFilterMonth] = useState(new Date().toISOString().substring(0, 7));
@@ -132,11 +135,35 @@ const CentralFinanceira = () => {
     queryFn: () => ResultadosService.getSummary(),
   });
 
-  const { data: lotesRh = [], isLoading: loadingRhLotes } = useQuery<any[]>({
+  const { data: rawLotesRh = [], isLoading: loadingRhLotes } = useQuery<any[]>({
     queryKey: ["rh-financeiro-lotes", selectedMonth, selectedEmpresaId],
     queryFn: () => RHFinanceiroService.listLotesRecebidos(selectedMonth, selectedEmpresaId),
     enabled: !!selectedEmpresaId,
   });
+
+  const { data: lotesDiaristas = [], isLoading: loadingDiaristas } = useQuery({
+    queryKey: ["lotes-diaristas-financeiro", selectedEmpresaId],
+    queryFn: () => LoteFechamentoDiaristaService.getByEmpresaParaFinanceiro(selectedEmpresaId!),
+    enabled: !!selectedEmpresaId,
+  });
+
+  const lotesRh = useMemo(() => {
+    const diaristasFormatted = lotesDiaristas
+      .filter((l: any) => l.status === "VALIDADO_RH" || l.status === "FECHADO_FINANCEIRO" || l.status === "AGUARDANDO_PAGAMENTO")
+      .map((l: any) => ({
+        ...l,
+        tipo: "DIARISTAS",
+        origem: "OPERACIONAL",
+        status: l.status === "VALIDADO_RH" ? "AGUARDANDO_FINANCEIRO" :
+          l.status === "FECHADO_FINANCEIRO" ? "AGUARDANDO_PAGAMENTO" : l.status,
+        competencia: l.periodo_inicio.slice(0, 7), // YYYY-MM
+      }))
+      .filter((l: any) => !selectedMonth || l.competencia === selectedMonth);
+
+    return [...rawLotesRh, ...diaristasFormatted].sort((a, b) =>
+      new Date(b.created_at).getTime() - new Date(a.getTime ? a.getTime() : a.created_at ? new Date(a.created_at).getTime() : 0)
+    );
+  }, [rawLotesRh, lotesDiaristas, selectedMonth]);
 
   const latestRhSentAt = useMemo(
     () => formatPipelineTimestamp(lotesRh.find((lote: any) => lote.status !== "DEVOLVIDO_RH")?.created_at),
@@ -163,13 +190,22 @@ const CentralFinanceira = () => {
 
   const { data: rhLoteDetalhe, isLoading: loadingRhLoteDetalhe } = useQuery({
     queryKey: ["rh-financeiro-lote-detalhe", rhLoteSelecionado?.id],
-    queryFn: () => RHFinanceiroService.getLoteDetalhe(rhLoteSelecionado!.id),
+    queryFn: async () => {
+      if (!rhLoteSelecionado?.id) return null;
+      if (rhLoteSelecionado.tipo === "DIARISTAS") {
+        return LoteFechamentoDiaristaService.getLoteDetalhe(rhLoteSelecionado.id);
+      }
+      return RHFinanceiroService.getLoteDetalhe(rhLoteSelecionado.id);
+    },
     enabled: !!rhLoteSelecionado?.id,
   });
 
   const { data: logsDoLote = [], isLoading: loadingLogs } = useQuery({
     queryKey: ["rh-lote-historico", rhLoteSelecionado?.id],
-    queryFn: () => RHFinanceiroService.getLogsLote(rhLoteSelecionado!.id),
+    queryFn: () => {
+      if (rhLoteSelecionado?.tipo === "DIARISTAS") return [];
+      return RHFinanceiroService.getLogsLote(rhLoteSelecionado!.id);
+    },
     enabled: !!rhLoteSelecionado?.id && showLogHistorico,
   });
 
@@ -272,8 +308,11 @@ const CentralFinanceira = () => {
   // helpers status
   const invalidateLotes = () => {
     queryClient.invalidateQueries({ queryKey: ["rh-financeiro-lotes"] });
+    queryClient.invalidateQueries({ queryKey: ["lotes-diaristas-financeiro"] });
     queryClient.invalidateQueries({ queryKey: ["rh-financeiro-lote-detalhe", rhLoteSelecionado?.id] });
     queryClient.invalidateQueries({ queryKey: ["rh-lote-historico", rhLoteSelecionado?.id] });
+    // Invalidações para Diaristas no Central Bancaria (se estiver aberto em outra aba)
+    queryClient.invalidateQueries({ queryKey: ["lotes_fechamento"] });
   };
 
   const iniciarAnaliseMutation = useMutation({
@@ -286,25 +325,40 @@ const CentralFinanceira = () => {
   });
 
   const aprovarFinanceiroMutation = useMutation({
-    mutationFn: ({ id, obs }: { id: string; obs: string }) =>
-      RHFinanceiroService.aprovarFinanceiro(id, obs),
+    mutationFn: ({ id, obs }: { id: string; obs: string }) => {
+      if (rhLoteSelecionado?.tipo === "DIARISTAS") {
+        return LoteFechamentoDiaristaService.aprovarFinanceiro(id, user?.id || "", user?.email || "Financeiro", "financeiro");
+      }
+      return RHFinanceiroService.aprovarFinanceiro(id, obs);
+    },
     onSuccess: () => {
       toast.success("Lote aprovado!", { description: "Liberado para a próxima etapa bancária." });
       invalidateLotes();
 
       const empresaNome = empresas.find(e => e.id === selectedEmpresaId)?.nome || "Empresa";
-      openPipeline(
-        buildFolhaVariavelPipeline({
-          competencia: selectedMonth,
-          empresa: empresaNome,
-          currentStep: "cnab",
-          completedStage: "aprovacao_financeira",
-          timestamps: {
-            envio_financeiro: latestRhSentAt,
-            aprovacao_financeira: formatPipelineTimestamp(new Date().toISOString()),
-          },
-        })
-      );
+
+      if (rhLoteSelecionado?.tipo === "DIARISTAS") {
+        openPipeline(
+          buildDiaristasPipeline({
+            competencia: rhLoteSelecionado.competencia,
+            empresa: empresaNome,
+            currentStep: "central_financeira",
+          })
+        );
+      } else {
+        openPipeline(
+          buildFolhaVariavelPipeline({
+            competencia: selectedMonth,
+            empresa: empresaNome,
+            currentStep: "cnab",
+            completedStage: "aprovacao_financeira",
+            timestamps: {
+              envio_financeiro: latestRhSentAt,
+              aprovacao_financeira: formatPipelineTimestamp(new Date().toISOString()),
+            },
+          })
+        );
+      }
 
       setObservacaoAprovacao("");
       setRhLoteSelecionado(null);
@@ -313,8 +367,12 @@ const CentralFinanceira = () => {
   });
 
   const devolverRHMutation = useMutation({
-    mutationFn: ({ id, motivo }: { id: string; motivo: string }) =>
-      RHFinanceiroService.devolverAoRH(id, motivo),
+    mutationFn: ({ id, motivo }: { id: string; motivo: string }) => {
+      if (rhLoteSelecionado?.tipo === "DIARISTAS") {
+        return LoteFechamentoDiaristaService.reabrirPeriodo(id, user?.id || "", user?.email || "Financeiro", "financeiro", motivo, "administrativa");
+      }
+      return RHFinanceiroService.devolverAoRH(id, motivo);
+    },
     onSuccess: () => {
       toast.warning("Lote devolvido ao RH", { description: "O RH foi notificado e o lote reaparece na fila deles." });
       invalidateLotes();
@@ -467,7 +525,7 @@ const CentralFinanceira = () => {
                   Lotes do RH
                   {(lotesRhPendentes.length > 0 || lotesRhProntosBancario.length > 0) && (
                     <span className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-info text-white text-[10px] font-bold px-1">
-                      {lotesRhPendentes.length}
+                      {lotesRhPendentes.length + lotesRhProntosBancario.length}
                     </span>
                   )}
                 </TabsTrigger>
@@ -493,8 +551,8 @@ const CentralFinanceira = () => {
                       {
                         step: "1",
                         label: "RH → Financeiro",
-                        detail: lotesRhPendentes.length > 0 ? `${lotesRhPendentes.length} lote(s) aguardando` : "Fila vazia",
-                        tone: lotesRhPendentes.length > 0 ? "warning" : "ok",
+                        detail: (lotesRhPendentes.length + lotesRhProntosBancario.length) > 0 ? `${lotesRhPendentes.length + lotesRhProntosBancario.length} lote(s) recebidos` : "Fila vazia",
+                        tone: (lotesRhPendentes.length + lotesRhProntosBancario.length) > 0 ? "ok" : "idle",
                       },
                       {
                         step: "2",
@@ -631,7 +689,9 @@ const CentralFinanceira = () => {
                             return (
                               <tr key={lote.id} className="border-t border-muted hover:bg-background transition-colors">
                                 <td className="px-5 h-12">
-                                  <div className="font-medium text-foreground">{lote.tipo === "BANCO_HORAS" ? "Banco de Horas" : "Folha Variável"}</div>
+                                  <div className="font-medium text-foreground">
+                                    {lote.tipo === "BANCO_HORAS" ? "Banco de Horas" : lote.tipo === "DIARISTAS" ? "Diaristas" : "Folha Variável"}
+                                  </div>
                                   <div className="text-[11px] text-muted-foreground">{lote.empresa?.nome || "-"}</div>
                                 </td>
                                 <td className="px-3 text-right font-display font-semibold">
@@ -685,7 +745,7 @@ const CentralFinanceira = () => {
                     <div className="flex items-center gap-2">
                       {(lotesRhPendentes.length > 0 || lotesRhProntosBancario.length > 0) && (
                         <Badge className="bg-warning-soft text-warning-strong">
-                          {lotesRhPendentes.length} aguardando
+                          {lotesRhPendentes.length + lotesRhProntosBancario.length} aguardando
                         </Badge>
                       )}
                       <Badge className="bg-muted text-muted-foreground">
@@ -731,7 +791,7 @@ const CentralFinanceira = () => {
                                 <td className="px-5 h-12 font-medium text-foreground">{lote.competencia}</td>
                                 <td className="px-3 text-muted-foreground text-xs">{lote.empresa?.nome || "-"}</td>
                                 <td className="px-3 text-muted-foreground">
-                                  {lote.tipo === "BANCO_HORAS" ? "Banco de Horas" : "Folha Variável"}
+                                  {lote.tipo === "BANCO_HORAS" ? "Banco de Horas" : lote.tipo === "DIARISTAS" ? "Diaristas" : "Folha Variável"}
                                 </td>
                                 <td className="px-3 text-center text-muted-foreground">{lote.total_colaboradores}</td>
                                 <td className="px-3 text-right font-display font-semibold">
@@ -1114,7 +1174,7 @@ const CentralFinanceira = () => {
             </DialogTitle>
             <DialogDescription>
               {rhLoteSelecionado
-                ? `${rhLoteSelecionado.competencia} · ${rhLoteSelecionado.empresa?.nome || ""} · ${rhLoteSelecionado.tipo === "BANCO_HORAS" ? "Banco de Horas" : "Folha Variável"}`
+                ? `${rhLoteSelecionado.competencia} · ${rhLoteSelecionado.empresa?.nome || ""} · ${rhLoteSelecionado.tipo === "BANCO_HORAS" ? "Banco de Horas" : (rhLoteSelecionado.tipo === "DIARISTAS" ? "Diaristas" : "Folha Variável")}`
                 : "Carregando lote..."}
             </DialogDescription>
           </DialogHeader>
@@ -1130,8 +1190,10 @@ const CentralFinanceira = () => {
                 const st = rhLoteDetalhe.status as string;
                 const cfg: Record<string, { label: string; cls: string }> = {
                   AGUARDANDO_FINANCEIRO: { label: "Aguardando Financeiro", cls: "bg-warning-soft text-warning-strong" },
+                  VALIDADO_RH: { label: "Aguardando Financeiro", cls: "bg-warning-soft text-warning-strong" },
                   EM_ANALISE_FINANCEIRA: { label: "Em Análise Financeira", cls: "bg-info-soft text-info-strong" },
                   APROVADO_FINANCEIRO: { label: "Aprovado pelo Financeiro", cls: "bg-success-soft text-success-strong" },
+                  FECHADO_FINANCEIRO: { label: "Aprovado pelo Financeiro", cls: "bg-success-soft text-success-strong" },
                   AGUARDANDO_PAGAMENTO: { label: "Aguardando Pagamento/CNAB", cls: "bg-success-soft text-success-strong" },
                   DEVOLVIDO_RH: { label: "Devolvido ao RH", cls: "bg-destructive/10 text-destructive" },
                 };

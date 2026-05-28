@@ -912,7 +912,11 @@ const CentralBancaria = () => {
 
             <TabsContent value="diaristas">
               <div className="bg-card text-card-foreground border border-border shadow-sm rounded-xl overflow-hidden">
-                <CentralBancariaDiaristas onMetricsUpdate={setDiaristasMetrics} />
+                <CentralBancariaDiaristas
+                  onMetricsUpdate={setDiaristasMetrics}
+                  empresaId={empresaId}
+                  competencia={competencia}
+                />
               </div>
             </TabsContent>
           </Tabs>

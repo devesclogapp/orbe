@@ -3934,6 +3934,45 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
     return data ?? [];
   }
 
+  async getLoteDetalhe(loteId: string) {
+    const { data: lote, error: loteError } = await this.supabase
+      .from('diaristas_lotes_fechamento')
+      .select('*, empresa:empresas(nome)')
+      .eq('id', loteId)
+      .single();
+
+    if (loteError) throw loteError;
+
+    const { data: itens, error: itensError } = await this.supabase
+      .from('lancamentos_diaristas')
+      .select('*')
+      .eq('lote_fechamento_id', loteId)
+      .order('nome_colaborador', { ascending: true });
+
+    if (itensError) throw itensError;
+
+    const mappedItens = (itens || []).map(it => ({
+      id: it.id,
+      tipo_evento: it.tipo_registro === 'ajuste' ? 'AJUSTE' : 'DIARIA',
+      nome_colaborador: it.nome_colaborador,
+      minutos: 0,
+      horas: it.quantidade_diaria || 1,
+      valor_calculado: it.valor_calculado,
+      status: it.status
+    }));
+
+    // Contagem de colaboradores distintos
+    const distinctColaboradores = new Set((itens || []).map(it => it.diarista_id)).size;
+
+    // Mapear para o formato que o modal da Central Financeira espera
+    return {
+      ...lote,
+      competencia: lote.mes_referencia, // Mapeia mes_referencia para competencia
+      total_colaboradores: distinctColaboradores || lote.total_registros, // Mapeia total_registros ou conta distintos
+      itens: mappedItens
+    };
+  }
+
   async fecharPeriodo({ empresaId, periodoInicio, periodoFim, fechadoPor, fechadoPorNome, fechadoPorRole, observacoes, tipoFechamento = 'operacional' }: {
     empresaId: string;
     periodoInicio: string;
