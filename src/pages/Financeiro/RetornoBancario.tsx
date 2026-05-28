@@ -173,7 +173,8 @@ const RetornoBancario = () => {
       void queryClient.invalidateQueries({ queryKey: ["cnab-retorno-historico"] });
       void queryClient.invalidateQueries({ queryKey: ["lotes_fechamento"] });
       void queryClient.invalidateQueries({ queryKey: ["lancamentos_lote"] });
-      void queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel"] });
+      void queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel_periodo"] });
+      void queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel_lotes"] });
       void queryClient.invalidateQueries({ queryKey: ["lotes_fechamento_painel"] });
       void queryClient.invalidateQueries({ queryKey: ["lotes_fechamento_producao"] });
       setDialogAcao({ open: false, item: null, acao: "conciliado", observacao: "", valorConciliado: "" });
@@ -191,7 +192,8 @@ const RetornoBancario = () => {
       void queryClient.invalidateQueries({ queryKey: ["cnab-retorno-historico"] });
       void queryClient.invalidateQueries({ queryKey: ["lotes_fechamento"] });
       void queryClient.invalidateQueries({ queryKey: ["lancamentos_lote"] });
-      void queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel"] });
+      void queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel_periodo"] });
+      void queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel_lotes"] });
       void queryClient.invalidateQueries({ queryKey: ["lotes_fechamento_painel"] });
       void queryClient.invalidateQueries({ queryKey: ["lotes_fechamento_producao"] });
       setDialogReversao({ open: false, conciliacao: null, motivo: "" });
@@ -621,9 +623,8 @@ const RetornoBancario = () => {
                       key={arquivo.id}
                       type="button"
                       onClick={() => setArquivoSelecionadoId(arquivo.id)}
-                      className={`w-full rounded-2xl border p-4 text-left transition ${
-                        ativo ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
-                      }`}
+                      className={`w-full rounded-2xl border p-4 text-left transition ${ativo ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
+                        }`}
                     >
                       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                         <div>

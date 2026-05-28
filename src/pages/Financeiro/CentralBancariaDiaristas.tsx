@@ -273,7 +273,8 @@ export const CentralBancariaDiaristas = ({ onMetricsUpdate }: { onMetricsUpdate?
             queryClient.invalidateQueries({ queryKey: ["lotes_fechamento"] });
             queryClient.invalidateQueries({ queryKey: ["lancamentos_lote"] });
             // Invalidações globais para sincronizar RH e Mobile instantaneamente
-            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel"] });
+            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel_periodo"] });
+            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel_lotes"] });
             queryClient.invalidateQueries({ queryKey: ["lotes_fechamento_painel"] });
             queryClient.invalidateQueries({ queryKey: ["lotes_fechamento_producao"] });
             queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_semana"] });
@@ -312,7 +313,8 @@ export const CentralBancariaDiaristas = ({ onMetricsUpdate }: { onMetricsUpdate?
             toast.success("Período reaberto com sucesso. Registros voltaram para em_aberto.");
             queryClient.invalidateQueries({ queryKey: ["lotes_fechamento"] });
             queryClient.invalidateQueries({ queryKey: ["lancamentos_lote"] });
-            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel"] });
+            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel_periodo"] });
+            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel_lotes"] });
             queryClient.invalidateQueries({ queryKey: ["lotes_fechamento_painel"] });
             queryClient.invalidateQueries({ queryKey: ["lotes_fechamento_producao"] });
             queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_semana"] });

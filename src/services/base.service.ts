@@ -3060,7 +3060,8 @@ class OperacaoProducaoServiceClass {
         fornecedores:fornecedor_id(nome),
         produtos_carga:produto_carga_id(nome),
         formas_pagamento_operacional:forma_pagamento_id(nome),
-        unidades:unidade_id(nome)
+        unidades:unidade_id(nome),
+        empresas:empresa_id(id, nome)
       `)
       .single();
 
@@ -3080,7 +3081,8 @@ class OperacaoProducaoServiceClass {
         fornecedores:fornecedor_id(nome),
         produtos_carga:produto_carga_id(nome),
         formas_pagamento_operacional:forma_pagamento_id(nome),
-        unidades:unidade_id(nome)
+        unidades:unidade_id(nome),
+        empresas:empresa_id(id, nome)
       `)
       .eq('data_operacao', date)
       .is('deleted_at', null)
@@ -3113,7 +3115,8 @@ class OperacaoProducaoServiceClass {
         fornecedores:fornecedor_id(nome),
         produtos_carga:produto_carga_id(nome),
         formas_pagamento_operacional:forma_pagamento_id(nome),
-        unidades:unidade_id(nome)
+        unidades:unidade_id(nome),
+        empresas:empresa_id(id, nome)
       `)
       .is('deleted_at', null)
       .order('criado_em', { ascending: false });
@@ -3657,7 +3660,10 @@ class LancamentoDiaristaServiceClass {
 
     let query = client
       .from('lancamentos_diaristas')
-      .select('*')
+      .select(`
+        *,
+        empresa:empresas(id, nome)
+      `)
       .gte('data_lancamento', inicio)
       .lte('data_lancamento', fim);
 
@@ -3881,11 +3887,14 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
   }
 
   async getLotesPorPeriodo(inicio: string, fim: string, empresaId?: string | null) {
+    // Lógica de INTERSEÇÃO: retorna lotes cujo período se sobrepõe ao intervalo filtrado.
+    // Um lote intersecta [inicio, fim] se: periodo_inicio <= fim AND periodo_fim >= inicio
+    // (ao contrário da lógica de contenção que só retornava lotes completamente dentro do filtro)
     let query = this.supabase
       .from('diaristas_lotes_fechamento')
       .select('*, empresa:empresas(nome)')
-      .gte('periodo_inicio', inicio)
-      .lte('periodo_fim', fim)
+      .lte('periodo_inicio', fim)    // lote começa antes ou no final do nosso período
+      .gte('periodo_fim', inicio)    // lote termina depois ou no início do nosso período
       .order('created_at', { ascending: false });
 
     if (empresaId) {
@@ -3894,6 +3903,23 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
 
     const { data, error } = await query;
     if (error) throw error;
+    return data ?? [];
+  }
+
+  async getLancamentosByLoteIds(loteIds: string[]) {
+    if (!loteIds.length) return [];
+    const { data, error } = await (this.supabase as any)
+      .from('lancamentos_diaristas')
+      .select(`
+        *,
+        empresa:empresas(id, nome)
+      `)
+      .in('lote_fechamento_id', loteIds)
+      .order('data_lancamento', { ascending: true });
+    if (error) {
+      console.error('[LoteFechamentoDiaristaService.getLancamentosByLoteIds] Erro:', error);
+      throw error;
+    }
     return data ?? [];
   }
 
@@ -4046,6 +4072,18 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
       p_usuario_id: usuarioId,
       p_usuario_nome: usuarioNome,
       p_usuario_role: usuarioRole
+    });
+    if (error) throw error;
+    return true;
+  }
+
+  async validarEEncerrar(loteId: string, usuarioId: string, usuarioNome: string, usuarioRole: string, targetStatus: 'FECHADO_FINANCEIRO' | 'PAGO') {
+    const { error } = await this.supabase.rpc('validar_e_encerrar_diaristas', {
+      p_lote_id: loteId,
+      p_usuario_id: usuarioId,
+      p_usuario_nome: usuarioNome,
+      p_usuario_role: usuarioRole,
+      p_target_status: targetStatus
     });
     if (error) throw error;
     return true;

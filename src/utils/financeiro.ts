@@ -52,6 +52,7 @@ export function classificarFinanceiroSync(operacao: any, empresa: any = {}): { m
   // 3. CAIXA IMEDIATO
 
   const meio_pagamento = normalizeFinanceText(
+    operacao.formas_pagamento_operacional?.nome ??
     operacao.forma_pagamento?.nome ??
     contextoImportacao.forma_pagamento ??
     getLinhaOriginalValue(operacao, "FORMA DE PAGAMENTO") ?? 
@@ -195,7 +196,8 @@ export function processarOperacao(operacao: any, empresas: any[] = []) {
   }
 
   const contextoImportacao = getContextoImportacao(operacao);
-  const formaPagamentoValue = operacao.forma_pagamento?.nome ?? 
+  const formaPagamentoValue = operacao.formas_pagamento_operacional?.nome ??
+    operacao.forma_pagamento?.nome ?? 
     contextoImportacao.forma_pagamento ?? 
     getLinhaOriginalValue(operacao, "FORMA DE PAGAMENTO") ?? 
     getLinhaOriginalValue(operacao, "MEIO DE PAGAMENTO") ?? "";

@@ -141,24 +141,7 @@ const RhDiaristasPainel = () => {
     // Empresa do usuário — Como empresa_id não está no profile base, tentamos ler do tenant context ou ignoramos
     const empresaIdDoUsuario = perfil?.tenant_id ?? ((empresas as any[])[0]?.id ?? "");
 
-    // Visão consolidada: busca lançamentos sem filtro de empresa.
-    // O filtro de empresa da UI é aplicado client-side nos dados já carregados.
-    const { data: lancamentos = [], isLoading, isFetching, refetch } = useQuery({
-        queryKey: ["lancamentos_diaristas_painel", inicio, fim, statusFiltro, empresaFiltroId],
-        queryFn: async () => {
-            const empId = empresaFiltroId === "todos" ? null : empresaFiltroId;
-            const result = await LancamentoDiaristaService.getByPeriodo(
-                empId,
-                inicio,
-                fim,
-                statusFiltro !== "todos" ? { status: statusFiltro as any } : undefined,
-            );
-            console.log(`[PainelRH] Carregados ${result?.length || 0} registros para empresa: ${empresaFiltroId}`);
-            return result ?? [];
-        },
-        enabled: !!inicio && !!fim,
-    });
-
+    // ── Busca de lotes: usa interseção de período (já corrigida no service) ──────────────────
     const { data: lotes = [], refetch: refetchLotes, isLoading: isLoadingLotes } = useQuery({
         queryKey: ["lotes_fechamento_painel", inicio, fim, empresaFiltroId],
         queryFn: () => LoteFechamentoDiaristaService.getLotesPorPeriodo(
@@ -168,6 +151,70 @@ const RhDiaristasPainel = () => {
         ),
         enabled: true,
     });
+
+    // ── Lançamentos: estratégia dupla para cobrir ciclos consolidados ─────────────────────────
+    // 1) Busca por período: captura registros EM_ABERTO dentro do filtro UI
+    // 2) Busca por lote IDs: captura todos os registros dos lotes que intersectam o período,
+    //    independentemente de o data_lancamento estar dentro do filtro da UI
+    // Ambos são mesclados e deduplicados por ID para garantir visão completa.
+    const loteIds = useMemo(() => (lotes as any[]).map(l => l.id).filter(Boolean), [lotes]);
+
+    const { data: lancamentosPorPeriodo = [], isLoading: isLoadingPorPeriodo, isFetching: isFetchingPorPeriodo } = useQuery({
+        queryKey: ["lancamentos_diaristas_painel_periodo", inicio, fim, statusFiltro, empresaFiltroId],
+        queryFn: async () => {
+            const empId = empresaFiltroId === "todos" ? null : empresaFiltroId;
+            const result = await LancamentoDiaristaService.getByPeriodo(
+                empId,
+                inicio,
+                fim,
+                statusFiltro !== "todos" ? { status: statusFiltro as any } : undefined,
+            );
+            console.log(`[PainelRH][período] ${result?.length || 0} registros | empresa: ${empresaFiltroId} | período: ${inicio}→${fim}`);
+            return result ?? [];
+        },
+        enabled: !!inicio && !!fim,
+    });
+
+    const { data: lancamentosPorLote = [], isLoading: isLoadingPorLote, isFetching: isFetchingPorLote } = useQuery({
+        queryKey: ["lancamentos_diaristas_painel_lotes", loteIds],
+        queryFn: async () => {
+            if (!loteIds.length) return [];
+            const result = await LoteFechamentoDiaristaService.getLancamentosByLoteIds(loteIds);
+            console.log(`[PainelRH][lotes] ${result?.length || 0} registros | loteIds: ${loteIds.length}`);
+            return result ?? [];
+        },
+        enabled: loteIds.length > 0,
+    });
+
+    // Mescla e deduplicação por ID — precedência para registro do lote (mais completo/atualizado)
+    const lancamentos = useMemo(() => {
+        const map = new Map<string, any>();
+        // Primeiro insere os lançamentos por período (podem estar em_aberto)
+        for (const l of lancamentosPorPeriodo as any[]) {
+            map.set(l.id, l);
+        }
+        // Depois sobrescreve com os lançamentos dos lotes (status atualizado)
+        for (const l of lancamentosPorLote as any[]) {
+            // Aplica filtro de status aqui também para manter consistência
+            if (statusFiltro !== "todos") {
+                const s = l.status?.toLowerCase();
+                const f = statusFiltro.toLowerCase();
+                if (s !== f) continue;
+            }
+            map.set(l.id, l);
+        }
+        const merged = Array.from(map.values());
+        console.log(`[PainelRH][merged] ${merged.length} registros únicos (${lancamentosPorPeriodo.length} por período + ${lancamentosPorLote.length} por lote)`);
+        return merged;
+    }, [lancamentosPorPeriodo, lancamentosPorLote, statusFiltro]);
+
+    const isLoading = isLoadingPorPeriodo || isLoadingPorLote;
+    const isFetching = isFetchingPorPeriodo || isFetchingPorLote;
+
+    const refetch = () => {
+        queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel_periodo"] });
+        queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel_lotes"] });
+    };
 
     const periodoBloqueado = useMemo(() => {
         if (empresaFiltroId === "todos") return false;
@@ -455,7 +502,8 @@ const RhDiaristasPainel = () => {
         },
         onSuccess: () => {
             toast.success("Edição administrativa registrada e totais recalculados.");
-            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel"] });
+            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel_periodo"] });
+            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel_lotes"] });
             queryClient.invalidateQueries({ queryKey: ["lotes_fechamento_painel"] });
             queryClient.invalidateQueries({ queryKey: ["lotes_fechamento"] });
             queryClient.invalidateQueries({ queryKey: ["diaristas_logs_fechamento"] });
@@ -686,7 +734,8 @@ const RhDiaristasPainel = () => {
             setOpenFechamento(false);
             setObsLote("");
             setConfirmText("");
-            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel"] });
+            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel_periodo"] });
+            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel_lotes"] });
             queryClient.invalidateQueries({ queryKey: ["lotes_fechamento_painel"] });
             queryClient.invalidateQueries({ queryKey: ["lotes_fechamento"] });
             queryClient.invalidateQueries({ queryKey: ["diaristas_logs_fechamento"] });
@@ -698,39 +747,32 @@ const RhDiaristasPainel = () => {
     const validarMutation = useMutation({
         mutationFn: async (loteId: string) => {
             if (!user?.id) throw new Error("Usuário não identificado.");
-            await LoteFechamentoDiaristaService.validarPeriodo(loteId, user.id, perfil?.nome_completo || user.email, role || "rh");
 
-            // Se não exigir aprovação financeira, já pula para o próximo status ou finaliza
-            if ((regraFechamento as any)?.enviar_financeiro === false) {
+            const bypassFinanceiro = (regraFechamento as any)?.enviar_financeiro === false;
+
+            if (bypassFinanceiro) {
                 const finalStatus = (regraFechamento as any)?.auto_fechar ? "PAGO" : "FECHADO_FINANCEIRO";
-
-                await supabase
-                    .from("diaristas_lotes_fechamento")
-                    .update({ status: finalStatus, updated_at: new Date().toISOString() })
-                    .eq("id", loteId);
-
-                await supabase
-                    .from("lancamentos_diaristas")
-                    .update({ status: finalStatus, updated_at: new Date().toISOString() })
-                    .eq("lote_fechamento_id", loteId);
-
-                await supabase.from("diaristas_logs_fechamento").insert({
-                    empresa_id: (lotes as any[]).find(l => l.id === loteId)?.empresa_id,
-                    tenant_id: perfil?.tenant_id,
-                    usuario_id: user.id,
-                    usuario_nome: "SISTEMA (Auto)",
-                    usuario_role: "sistema",
-                    acao: finalStatus === "PAGO" ? "ENCERROU" : "APROVOU",
-                    periodo_inicio: (lotes as any[]).find(l => l.id === loteId)?.periodo_inicio,
-                    periodo_fim: (lotes as any[]).find(l => l.id === loteId)?.periodo_fim,
-                    motivo: finalStatus === "PAGO" ? "Encerramento automático (Configuração)" : "Aprovação financeira automática (Configuração)"
-                });
+                await LoteFechamentoDiaristaService.validarEEncerrar(
+                    loteId,
+                    user.id,
+                    perfil?.nome_completo || user.email || "RH",
+                    role || "rh",
+                    finalStatus
+                );
+            } else {
+                await LoteFechamentoDiaristaService.validarPeriodo(
+                    loteId,
+                    user.id,
+                    perfil?.nome_completo || user.email || "RH",
+                    role || "rh"
+                );
             }
         },
         onSuccess: () => {
             const isAutoFinalizado = (regraFechamento as any)?.enviar_financeiro === false;
             toast.success("Lote validado pelo RH" + (isAutoFinalizado ? " e finalizado." : "."));
-            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel"] });
+            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel_periodo"] });
+            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel_lotes"] });
             queryClient.invalidateQueries({ queryKey: ["lotes_fechamento_painel"] });
             queryClient.invalidateQueries({ queryKey: ["lotes_fechamento"] });
             queryClient.invalidateQueries({ queryKey: ["diaristas_logs_fechamento"] });
@@ -767,7 +809,8 @@ const RhDiaristasPainel = () => {
                 ? "Lote reaberto em modo administrativo. Encarregado bloqueado — RH/Admin assume a correção."
                 : "Lote reaberto com sucesso. Registros voltaram a Em Aberto.";
             toast.success(msg);
-            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel"] });
+            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel_periodo"] });
+            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel_lotes"] });
             queryClient.invalidateQueries({ queryKey: ["lotes_fechamento_painel"] });
             queryClient.invalidateQueries({ queryKey: ["lotes_fechamento"] });
             queryClient.invalidateQueries({ queryKey: ["diaristas_logs_fechamento"] });
@@ -835,7 +878,8 @@ const RhDiaristasPainel = () => {
         onSuccess: () => {
             const autoFechou = (regraFechamento as any)?.auto_fechar;
             toast.success("Lote aprovado" + (autoFechou ? " e encerrado automaticamente." : "."));
-            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel"] });
+            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel_periodo"] });
+            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel_lotes"] });
             queryClient.invalidateQueries({ queryKey: ["lotes_fechamento_painel"] });
             queryClient.invalidateQueries({ queryKey: ["lotes_fechamento"] });
             queryClient.invalidateQueries({ queryKey: ["diaristas_logs_fechamento"] });
