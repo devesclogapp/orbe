@@ -28,7 +28,17 @@ const calculateWorkedHours = (row: any): string => {
 const formatDate = (dateStr: string | null) => {
   if (!dateStr) return "-";
   try {
-    return new Date(dateStr).toLocaleDateString("pt-BR");
+    const normalized = String(dateStr).trim();
+
+    // `YYYY-MM-DD` vindo do banco representa uma data civil, não um instante em UTC.
+    // Usar `new Date("2026-05-27")` em fusos negativos (ex.: Brasil) faz a UI voltar 1 dia.
+    const localDateMatch = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (localDateMatch) {
+      const [, year, month, day] = localDateMatch;
+      return `${day}/${month}/${year}`;
+    }
+
+    return new Date(normalized).toLocaleDateString("pt-BR");
   } catch {
     return "-";
   }

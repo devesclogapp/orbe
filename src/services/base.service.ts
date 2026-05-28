@@ -1361,7 +1361,7 @@ class PontoServiceClass extends BaseService<'registros_ponto'> {
     let query = supabase
       .from('registros_ponto')
       .select('*, colaboradores(nome, cargo, matricula, cpf, empresas(nome))')
-      .or(`and(data.gte.${month}-01,data.lt.${nextMonthStr}),competencia.eq.${month}`)
+      .or(`competencia.eq.${month},and(data.gte.${month}-01,data.lt.${nextMonthStr})`)
       .order('data', { ascending: false });
 
     if (empresaId) {
