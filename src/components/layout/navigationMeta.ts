@@ -26,7 +26,7 @@ const routeMeta: RouteMeta[] = [
 
   // Processamento / Pipeline
   { pattern: "/operacional/pipeline", label: "Pipeline Operacional", section: "Processamento / Pipeline" },
-  { pattern: "/rh/diaristas", label: "Aprovações RH", section: "Processamento / Pipeline" },
+  { pattern: "/rh/aprovacoes", label: "Aprovações RH", section: "Processamento / Pipeline" },
   { pattern: "/inconsistencias", label: "Pendências", section: "Processamento / Pipeline", parentPath: "/operacional/pipeline" },
   { pattern: "/fechamento", label: "Lotes e Fechamentos", section: "Processamento / Pipeline" },
   { pattern: "/processamento", label: "Redirecionamento operacional", section: "Processamento / Pipeline", parentPath: "/operacional/pipeline" },

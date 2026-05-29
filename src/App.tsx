@@ -89,7 +89,9 @@ import CentralOperacional from "./pages/CentralOperacional";
 import DiaristasLancamento from "./pages/Producao/DiaristasLancamento";
 import CustosExtrasLancamento from "./pages/Producao/CustosExtrasLancamento";
 import ServicosExtrasLancamento from "./pages/Producao/ServicosExtrasLancamento";
+// Rh
 import RhDiaristasPainel from "./pages/Rh/RhDiaristasPainel";
+import AprovacoesRh from "./pages/Rh/AprovacoesRh";
 import RhDiaristasGestao from "./pages/Rh/RhDiaristasGestao";
 
 // Onboarding
@@ -147,7 +149,8 @@ const App = () => (
                           <Route path="/producao/diaristas" element={<AuthGuard><DiaristasLancamento /></AuthGuard>} />
                           <Route path="/producao/custos-extras" element={<AuthGuard><CustosExtrasLancamento /></AuthGuard>} />
                           <Route path="/producao/servicos-extras" element={<AuthGuard><ServicosExtrasLancamento /></AuthGuard>} />
-                          <Route path="/rh/diaristas" element={<AuthGuard><RhDiaristasPainel /></AuthGuard>} />
+                          <Route path="/rh/diaristas" element={<AuthGuard><AprovacoesRh /></AuthGuard>} />
+                          <Route path="/rh/aprovacoes" element={<AuthGuard><AprovacoesRh /></AuthGuard>} />
                           <Route path="/rh/diaristas/cadastros" element={<AuthGuard><RhDiaristasGestao /></AuthGuard>} />
                           <Route path="/processamento" element={<Navigate to="/operacional/operacoes" replace />} />
                           <Route path="/processamento/legado" element={<Navigate to="/operacional/operacoes" replace />} />

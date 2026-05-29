@@ -104,7 +104,7 @@ const groups: MenuGroup[] = [
     label: "Processamento / Pipeline",
     items: [
       { icon: Rocket, label: "Pipeline Operacional", to: "/operacional/pipeline", module: "dashboard" },
-      { icon: Shield, label: "Aprovações RH", to: "/rh/diaristas", module: "processamento_rh" },
+      { icon: Shield, label: "Aprovações RH", to: "/rh/aprovacoes", module: "processamento_rh" },
       { icon: AlertTriangle, label: "Pendências", to: "/inconsistencias", module: "operacoes_recebidas" },
       { icon: CalendarCheck, label: "Lotes e Fechamentos", to: "/fechamento", module: "fechamento_mensal", pulseKey: "fechamento_mensal" },
       { icon: RefreshCw, label: "Reprocessamentos", to: "/processamento/reprocessamentos", module: "processamento_rh" },
