@@ -71,6 +71,8 @@ import PainelGeralBH from "./pages/BancoHoras/PainelGeral";
 import RegrasBH from "./pages/BancoHoras/Regras";
 import ExtratoColaborador from "./pages/BancoHoras/ExtratoColaborador";
 import ProcessamentoRH from "./pages/BancoHoras/ProcessamentoRH";
+import PipelineOperacional from "./pages/PipelineOperacional";
+import Reprocessamentos from "./pages/Reprocessamentos";
 
 // V4 — Governança
 import UsuariosGestao from "./pages/Governanca/Usuarios";
@@ -149,6 +151,8 @@ const App = () => (
                           <Route path="/rh/diaristas/cadastros" element={<AuthGuard><RhDiaristasGestao /></AuthGuard>} />
                           <Route path="/processamento" element={<Navigate to="/operacional/operacoes" replace />} />
                           <Route path="/processamento/legado" element={<Navigate to="/operacional/operacoes" replace />} />
+                          <Route path="/operacional/pipeline" element={<AuthGuard><PipelineOperacional /></AuthGuard>} />
+                          <Route path="/processamento/reprocessamentos" element={<AuthGuard><Reprocessamentos /></AuthGuard>} />
                           <Route path="/cadastros" element={<AuthGuard><CentralCadastros /></AuthGuard>} />
                           <Route path="/cadastros/regras-operacionais" element={<AuthGuard><RegrasOperacionais /></AuthGuard>} />
                           <Route path="/colaboradores" element={<AuthGuard><Colaboradores /></AuthGuard>} />

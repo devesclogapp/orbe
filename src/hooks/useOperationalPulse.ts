@@ -64,7 +64,7 @@ const safeCount = async (
   options?: { tenantId?: string | null; skipTenant?: boolean },
 ) => {
   try {
-    let query = supabase.from(table).select("id", { count: "exact", head: true });
+    let query = supabase.from(table).select("*", { count: "exact", head: true });
     if (options?.tenantId && !options.skipTenant) {
       query = query.eq("tenant_id", options.tenantId);
     }
@@ -228,15 +228,15 @@ export const useOperationalPulse = () => {
         safeCount("diaristas_lotes_fechamento", (q) => q.eq("status", "AGUARDANDO_FINANCEIRO"), { tenantId }),
         safeCount("custos_extras_operacionais", (q) => q.eq("status_pagamento", "PENDENTE"), { tenantId }),
         safeCount("custos_extras_operacionais", (q) => q.eq("status_pagamento", "ATRASADO"), { tenantId }),
-        safeCount("operacoes_producao", (q) => q.in("status", ["pendente", "aguardando_validacao"]), { tenantId }),
-        safeCount("operacoes_producao", (q) => q.in("status", ["com_alerta", "bloqueado"]), { tenantId }),
+        safeCount("servicos_extras_operacionais", (q) => q.in("status", ["pendente", "aguardando_validacao"]), { tenantId }),
+        safeCount("servicos_extras_operacionais", (q) => q.in("status", ["com_alerta", "bloqueado"]), { tenantId }),
         safeCount("colaboradores", (q) => q.or("status_cadastro.eq.pendente_complemento,cadastro_provisorio.eq.true"), { tenantId }),
         safeCount("registros_ponto", (q) => q.eq("status_processamento", "PENDENTE_PROCESSAMENTO"), { tenantId }),
         safeCount("processamento_rh_inconsistencias", (q) => q.eq("resolvida", false), { tenantId }),
         safeCount("ciclos_operacionais", (q) => q.eq("status", "fechado").eq("status_rh", "pendente"), { tenantId }),
         safeCount("financeiro_consolidados_cliente", (q) => q.neq("status", "aprovado"), { tenantId, skipTenant: true }),
         safeCount("ciclos_operacionais", (q) => q.or("status_financeiro.eq.validado_financeiro,status_remessa.eq.nao_gerada,status_remessa.eq.pronta"), { tenantId }),
-        safeCount("rh_financeiro_lotes", (q) => q.eq("status", "AGUARDANDO_FINANCEIRO"), { tenantId }),
+        safeCount("rh_financeiro_lotes", (q) => q.eq("status", "AGUARDANDO_FINANCEIRO"), { tenantId, skipTenant: true }),
         safeCount("ciclos_operacionais", (q) => q.in("status_automacao", ["bloqueado_automacao", "inconsistencias_detectadas"]), { tenantId }),
         safeCount("ciclos_operacionais", (q) => q.eq("status_automacao", "aguardando_validacao"), { tenantId }),
         safeSelect(
@@ -255,7 +255,7 @@ export const useOperationalPulse = () => {
           "rh_financeiro_lotes",
           "id,competencia,origem,tipo,status,valor_total,total_colaboradores",
           (q) => q.eq("status", "AGUARDANDO_FINANCEIRO").order("created_at", { ascending: false }).limit(6),
-          { tenantId },
+          { tenantId, skipTenant: true },
         ),
         safeSelect(
           "ciclos_operacionais",
@@ -289,12 +289,11 @@ export const useOperationalPulse = () => {
             subtitle: item.status_label,
             detail: item.saldo_formatado,
             route: `/banco-horas/extrato/${item.id}`,
-            tone:
-              item.status === "debito_critico"
+            tone: (item.status === "debito_critico"
                 ? "red"
                 : item.status === "aguardando_rh"
                   ? "blue"
-                  : "yellow",
+                  : "yellow") as OperationalTone,
             actionLabel: "Abrir extrato",
           }));
       } catch {}
@@ -318,7 +317,7 @@ export const useOperationalPulse = () => {
             subtitle: inconsistente ? "Critico para processamento" : "Aguardando acao RH",
             detail,
             route: "/banco-horas/processamento",
-            tone: inconsistente ? "red" : "blue",
+            tone: (inconsistente ? "red" : "blue") as OperationalTone,
             actionLabel: "Abrir processamento",
           };
         })
@@ -337,7 +336,7 @@ export const useOperationalPulse = () => {
               ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valor)
               : "Consolidado financeiro pendente",
             route: `/financeiro/faturamento/${item.id}`,
-            tone: aguardandoAprovacao ? "yellow" : "green",
+            tone: (aguardandoAprovacao ? "yellow" : "green") as OperationalTone,
             actionLabel: "Abrir memoria",
           };
         })
@@ -354,7 +353,7 @@ export const useOperationalPulse = () => {
           detail:
             `${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valor)} · ${Number(item.total_colaboradores || 0)} colaborador(es)`,
           route: "/financeiro",
-          tone: "blue",
+          tone: "blue" as OperationalTone,
           actionLabel: "Analisar lote",
         };
       });

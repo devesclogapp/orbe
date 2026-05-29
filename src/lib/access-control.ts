@@ -129,7 +129,7 @@ export const ACCESS_MODULE_LABELS: Record<AccessModule, string> = {
   diaristas_recebidos: "Diaristas Recebidos",
   banco_de_horas: "Banco de Horas",
   regras_de_banco: "Regras de Banco",
-  processamento_rh: "Processamento RH",
+  processamento_rh: "Processamento de Ponto",
   cadastro_de_diaristas: "Cadastro de Diaristas",
   regras_operacionais: "Regras Operacionais",
   fechamento_mensal: "Fechamento Mensal",

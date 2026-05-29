@@ -4978,14 +4978,32 @@ class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extra
   constructor() { super('servicos_extras_operacionais' as any); }
 
   async getWithEmpresas(empresaId?: string) {
-    let query = supabase
-      .from('servicos_extras_operacionais' as any)
-      .select('*, empresas(nome)')
-      .order('data', { ascending: false });
-    if (empresaId) query = query.eq('empresa_id', empresaId);
-    const { data, error } = await query;
-    if (error) throw error;
-    return data ?? [];
+    try {
+      let query = supabase
+        .from('servicos_extras_operacionais' as any)
+        .select('*, empresas(nome)');
+      
+      if (empresaId) query = query.eq('empresa_id', empresaId);
+      
+      const { data, error } = await query.order('data', { ascending: false });
+      
+      if (error) {
+        console.warn('Falha ao buscar serviços extras com empresas, tentando simplificado:', error);
+        let simpleQuery = supabase
+          .from('servicos_extras_operacionais' as any)
+          .select('*');
+        
+        if (empresaId) simpleQuery = simpleQuery.eq('empresa_id', empresaId);
+        const { data: simpleData, error: simpleError } = await simpleQuery.order('data', { ascending: false });
+        
+        if (simpleError) throw simpleError;
+        return simpleData ?? [];
+      }
+      return data ?? [];
+    } catch (e) {
+      console.error('Erro crítico em ServicosExtrasOperacionaisService:', e);
+      return [];
+    }
   }
 }
 export const ServicosExtrasOperacionaisService = new ServicosExtrasOperacionaisServiceClass();

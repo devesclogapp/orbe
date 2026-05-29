@@ -1,5 +1,6 @@
 import {
   Activity,
+  AlertTriangle,
   ArrowRightLeft,
   BarChart3,
   Banknote,
@@ -14,6 +15,7 @@ import {
   LayoutDashboard,
   LayoutGrid,
   LogOut,
+  RefreshCw,
   Rocket,
   Scale,
   Settings,
@@ -87,7 +89,7 @@ const dashboardItems: MenuItem[] = [
 const groups: MenuGroup[] = [
   {
     id: "entradas",
-    label: "Entradas",
+    label: "Entradas / Captura",
     stageKey: "entradas",
     items: [
       { icon: ClipboardCheck, label: "Operações Recebidas", to: "/operacional/operacoes", module: "operacoes_recebidas", pulseKey: "operacoes_recebidas" },
@@ -98,14 +100,24 @@ const groups: MenuGroup[] = [
     ],
   },
   {
+    id: "pipeline",
+    label: "Processamento / Pipeline",
+    items: [
+      { icon: Rocket, label: "Pipeline Operacional", to: "/operacional/pipeline", module: "dashboard" },
+      { icon: Shield, label: "Aprovações RH", to: "/rh/diaristas", module: "processamento_rh" },
+      { icon: AlertTriangle, label: "Pendências", to: "/inconsistencias", module: "operacoes_recebidas" },
+      { icon: CalendarCheck, label: "Lotes e Fechamentos", to: "/fechamento", module: "fechamento_mensal", pulseKey: "fechamento_mensal" },
+      { icon: RefreshCw, label: "Reprocessamentos", to: "/processamento/reprocessamentos", module: "processamento_rh" },
+    ],
+  },
+  {
     id: "rh",
     label: "RH",
     stageKey: "rh",
     items: [
+      { icon: Clock, label: "Banco de Horas", to: "/banco-horas", module: "banco_de_horas", pulseKey: "banco_de_horas" },
+      { icon: CalendarCheck, label: "Processamento de Ponto", to: "/banco-horas/processamento", module: "processamento_rh", pulseKey: "processamento_rh" },
       { icon: LayoutGrid, label: "Cadastros", to: "/cadastros", module: "central_de_cadastros", pulseKey: "central_de_cadastros" },
-      { icon: Activity, label: "Processamento", to: "/banco-horas/processamento", module: "processamento_rh", pulseKey: "processamento_rh" },
-      { icon: Scale, label: "Banco de Horas", to: "/banco-horas", end: true, module: "banco_de_horas", pulseKey: "banco_de_horas" },
-      { icon: CalendarCheck, label: "Fechamento Mensal", to: "/fechamento", module: "fechamento_mensal", pulseKey: "fechamento_mensal" },
     ],
   },
   {
@@ -114,7 +126,8 @@ const groups: MenuGroup[] = [
     stageKey: "financeiro",
     items: [
       { icon: Wallet, label: "Central Financeira", to: "/financeiro", end: true, module: "central_financeira", pulseKey: "central_financeira" },
-      { icon: Banknote, label: "Bancário", to: "/bancario", module: "pagamentos_remessas", pulseKey: "pagamentos_remessas" },
+      { icon: Banknote, label: "Bancário / Remessas", to: "/bancario", module: "pagamentos_remessas", pulseKey: "pagamentos_remessas" },
+      { icon: ArrowRightLeft, label: "Conciliação", to: "/financeiro/retorno", module: "pagamentos_remessas" },
       { icon: CreditCard, label: "Contas Bancárias", to: "/financeiro/contas-bancarias", module: "pagamentos_remessas" },
     ],
   },
@@ -125,7 +138,7 @@ const groups: MenuGroup[] = [
       { icon: BarChart3, label: "Relatórios", to: "/relatorios", module: "central_de_relatorios", pulseKey: "central_de_relatorios" },
       { icon: Shield, label: "Usuários", to: "/admin/usuarios-acessos", module: "governanca" },
       { icon: Zap, label: "Automação", to: "/governanca/automacao", module: "automacao_operacional", pulseKey: "automacao_operacional" },
-      { icon: Database, label: "Governança", to: "/governanca", module: "governanca", pulseKey: "governanca" },
+      { icon: Database, label: "Auditoria", to: "/governanca", module: "governanca", pulseKey: "governanca" },
     ],
   },
   {

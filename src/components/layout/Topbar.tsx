@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { ArrowLeft, Bell, ChevronRight, Compass, CornerUpLeft, GitBranch, Moon, Search, Sun } from "lucide-react";
+import { Activity, ArrowLeft, Bell, ChevronRight, Compass, CornerUpLeft, GitBranch, Moon, Search, Sun } from "lucide-react";
 
 import { usePreferences } from "@/contexts/PreferencesContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -16,11 +16,12 @@ import { getBackTarget, getBreadcrumbs, getRouteLabel, getSectionLabel } from ".
 type TopbarProps = {
   title: string;
   subtitle?: string;
+  badge?: string;
   backPath?: string;
   pipelineTrigger?: PipelineTrigger | null;
 };
 
-export const Topbar = ({ title, subtitle, backPath, pipelineTrigger }: TopbarProps) => {
+export const Topbar = ({ title, subtitle, badge, backPath, pipelineTrigger }: TopbarProps) => {
   const { theme, toggleTheme } = usePreferences();
   const { user } = useAuth();
   const { openPipeline } = useOperationalPipeline();
@@ -39,108 +40,108 @@ export const Topbar = ({ title, subtitle, backPath, pipelineTrigger }: TopbarPro
     : user?.email?.slice(0, 2).toUpperCase() || "??";
 
   return (
-    <header className="bg-card border-b border-border sticky top-0 z-40 min-h-[var(--app-topbar-height)] px-6 py-3">
-      <div className="flex items-start justify-between gap-6">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 text-[11px] text-muted-foreground mb-1.5 flex-wrap">
-            {sectionLabel && (
-              <Badge
-                variant="outline"
-                className="h-6 rounded-full px-2.5 text-[10px] uppercase tracking-wider border-primary/20 bg-primary-soft/40 text-primary"
-              >
-                <Compass className="h-3 w-3 mr-1" />
-                {sectionLabel}
-              </Badge>
-            )}
+    <header className="bg-card border-b border-border sticky top-0 z-40 min-h-[var(--app-topbar-height)] px-6 py-3 flex flex-col justify-center">
+      <div className="flex items-center justify-between gap-6 w-full">
+        <div className="flex items-center gap-4 min-w-0">
+          {resolvedBackPath && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => navigate(resolvedBackPath)}
+              className="h-9 w-9 shrink-0 bg-muted/20 hover:bg-muted/40 transition-colors"
+              title={backLabel ? `Voltar para ${backLabel}` : "Voltar"}
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+          )}
 
-            {breadcrumbs.map((crumb, index) => (
-              <div key={`${crumb.label}-${index}`} className="inline-flex items-center gap-2 min-w-0">
-                {index > 0 && <ChevronRight className="h-3 w-3 shrink-0 opacity-60" />}
-                {crumb.path ? (
-                  <Link to={crumb.path} className="truncate hover:text-foreground transition-colors">
-                    {crumb.label}
-                  </Link>
-                ) : (
-                  <span className="truncate text-foreground font-medium">{crumb.label}</span>
-                )}
+          <div className="flex flex-col min-w-0">
+            <div className="flex items-center gap-2 mb-0.5 whitespace-nowrap overflow-hidden">
+              {badge && (
+                <Badge
+                  variant="outline"
+                  className="h-5 rounded-full px-2 text-[8px] font-black uppercase tracking-widest border-orange-200 bg-orange-100 text-orange-600"
+                >
+                  <Activity className="h-2.5 w-2.5 mr-1" />
+                  {badge}
+                </Badge>
+              )}
+
+              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/60 font-black uppercase tracking-widest overflow-hidden">
+                {breadcrumbs.slice(0, -1).map((crumb, index) => (
+                  <div key={`${crumb.label}-${index}`} className="flex items-center gap-1.5 shrink-0">
+                    {index > 0 && <span className="opacity-40">/</span>}
+                    {crumb.path ? (
+                      <Link to={crumb.path} className="hover:text-foreground transition-colors truncate max-w-[120px]">
+                        {crumb.label}
+                      </Link>
+                    ) : (
+                      <span className="truncate max-w-[120px]">{crumb.label}</span>
+                    )}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
 
-          <div className="flex items-start gap-3">
-            {resolvedBackPath && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => navigate(resolvedBackPath)}
-                className="h-8 w-8 mt-0.5 shrink-0"
-                title={backLabel ? `Voltar para ${backLabel}` : "Voltar"}
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-            )}
-
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="font-display font-semibold text-[18px] text-foreground leading-none">{title}</h1>
-                {resolvedBackPath && backLabel && (
-                  <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                    <CornerUpLeft className="h-3 w-3" />
-                    Voltar para {backLabel}
-                  </span>
-                )}
-              </div>
-              {subtitle && <p className="text-xs text-muted-foreground mt-1 truncate">{subtitle}</p>}
+            <div className="flex items-center gap-3">
+              <h1 className="font-display font-black text-xl text-foreground leading-tight tracking-tight whitespace-nowrap">
+                {title}
+              </h1>
+              {subtitle && (
+                <p className="text-[11px] text-muted-foreground/70 font-medium truncate hidden md:block border-l border-border/60 pl-3 mt-0.5">
+                  {subtitle}
+                </p>
+              )}
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-3 shrink-0">
-          <div className="relative cursor-pointer" onClick={() => setOpen(true)}>
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <div className="relative group hidden lg:block">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none group-focus-within:text-primary transition-colors" />
             <Input
-              placeholder="Buscar colaborador, operação... (⌘K)"
+              placeholder="Buscar (⌘K)"
               readOnly
-              className="h-9 w-72 pl-9 bg-background border-input cursor-pointer focus-visible:ring-0"
+              onClick={() => setOpen(true)}
+              className="h-9 w-48 focus-within:w-64 transition-all pl-9 bg-muted/20 border-transparent cursor-pointer hover:bg-muted/40 focus:ring-1 focus:ring-primary/20"
             />
           </div>
 
           {pipelineTrigger && (
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
               onClick={() => openPipeline(pipelineTrigger)}
-              className="h-9 rounded-full px-3 text-[11px] text-muted-foreground hover:text-foreground"
-              title="Reabrir pipeline desta tela"
+              className="h-9 rounded-lg border-muted/30 bg-muted/10 text-[11px] font-bold text-muted-foreground hover:text-foreground hover:bg-background"
             >
               <GitBranch className="mr-1.5 h-3.5 w-3.5" />
-              Ver pipeline
+              Pipeline
             </Button>
           )}
 
           <CommandMenu open={open} setOpen={setOpen} />
 
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={toggleTheme}
-            aria-label={theme === "dark" ? "Ativar modo claro" : "Ativar modo escuro"}
-            className="h-9 w-9 text-muted-foreground"
-          >
-            {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-          </Button>
+          <div className="flex items-center gap-1 bg-muted/20 p-1 rounded-lg">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleTheme}
+              className="h-7 w-7 text-muted-foreground hover:bg-background"
+            >
+              {theme === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+            </Button>
 
-          <Button variant="ghost" size="icon" className="relative h-9 w-9">
-            <Bell className="h-4 w-4 text-muted-foreground" />
-            <span className="absolute top-2.5 right-2.5 h-2 w-2 rounded-full bg-primary ring-2 ring-card" />
-          </Button>
+            <Button variant="ghost" size="icon" className="relative h-7 w-7 text-muted-foreground hover:bg-background">
+              <Bell className="h-3.5 w-3.5" />
+              <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-primary" />
+            </Button>
+          </div>
 
           <button
             onClick={() => navigate("/configuracoes?tab=conta")}
-            title="Meu Perfil"
             className={cn(
-              "h-9 w-9 rounded-full bg-secondary flex items-center justify-center font-display font-semibold",
-              "text-foreground text-sm hover:ring-2 hover:ring-primary/20 transition-all overflow-hidden border border-border"
+              "h-8 w-8 rounded-lg bg-orange-500 text-white flex items-center justify-center font-display font-black",
+              "text-xs hover:ring-4 hover:ring-orange-500/10 transition-all overflow-hidden"
             )}
           >
             {user?.user_metadata?.avatar_url ? (
