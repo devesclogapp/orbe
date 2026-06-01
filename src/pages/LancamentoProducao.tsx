@@ -1572,6 +1572,7 @@ const LancamentoProducao = () => {
             queryClient.invalidateQueries({ queryKey: ["operacoes"] });
             queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
             queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+            queryClient.invalidateQueries({ queryKey: ["operacoes-pipeline"] });
             queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
             queryClient.invalidateQueries({ queryKey: ["servicos-extras"] });
             queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
@@ -1622,6 +1623,7 @@ const LancamentoProducao = () => {
             queryClient.invalidateQueries({ queryKey: ["operacoes"] });
             queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
             queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+            queryClient.invalidateQueries({ queryKey: ["operacoes-pipeline"] });
             queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
             queryClient.invalidateQueries({ queryKey: ["servicos-extras"] });
             queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
@@ -1679,6 +1681,17 @@ const LancamentoProducao = () => {
         const status = infracoesCount > 0 ? "Com alerta" : (isDataRetroativa ? "Aguardando validação" : "Pendente");
         const regraFinanceira = form.regra_financeira as any;
         const valorUnitarioFinal = valorUnitarioEfetivo;
+        const colaboradoresSelecionadosResumo = colaboradoresSelecionados.map((colaborador: any) => {
+            const conduta = condutaColaboradores[colaborador.id];
+            return {
+                id: colaborador.id,
+                nome: colaborador.nome,
+                cargo: colaborador.cargo || null,
+                had_infraction: conduta?.hadInfraction ?? false,
+                infraction_type_id: conduta?.infractionTypes?.[0] || null,
+                infraction_notes: conduta?.notes?.trim() || null,
+            };
+        });
 
         let finalModalidade = form.modalidade_financeira || regraFinanceira?.modalidade_financeira;
 
@@ -1711,6 +1724,7 @@ const LancamentoProducao = () => {
                 valor_unitario: valorUnitarioFinal,
                 base_calculo: baseCalculoResumo,
                 quantidade_colaboradores: quantidadeColaboradores,
+                colaboradores_selecionados: colaboradoresSelecionadosResumo,
             },
             contexto_importacao: {
                 modalidade_financeira_override: finalModalidade,
@@ -1770,9 +1784,8 @@ const LancamentoProducao = () => {
             tenant_id: tenantId,
         };
 
-        const colaboradores = Object.entries(condutaColaboradores)
-            .filter(([, conduta]) => conduta.selected)
-            .map(([colaborador_id, conduta]) => {
+        const colaboradores = colaboradoresSelecionadosResumo.map((colaborador) => {
+                const conduta = condutaColaboradores[colaborador.id];
                 const infractionNotes = conduta.hadInfraction
                     ? [
                         conduta.notes.trim() || null,
@@ -1781,7 +1794,7 @@ const LancamentoProducao = () => {
                     : null;
 
                 return {
-                    collaborator_id: colaborador_id,
+                    collaborator_id: colaborador.id,
                     had_infraction: conduta.hadInfraction,
                     infraction_type_id: conduta.infractionTypes[0] || null,
                     infraction_notes: infractionNotes,

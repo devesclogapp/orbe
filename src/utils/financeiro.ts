@@ -196,11 +196,34 @@ export function processarOperacao(operacao: any, empresas: any[] = []) {
   }
 
   const contextoImportacao = getContextoImportacao(operacao);
-  const formaPagamentoValue = operacao.formas_pagamento_operacional?.nome ??
-    operacao.forma_pagamento?.nome ?? 
-    contextoImportacao.forma_pagamento ?? 
-    getLinhaOriginalValue(operacao, "FORMA DE PAGAMENTO") ?? 
+  // Resolução robusta da forma de pagamento:
+  // 1. Join direto formas_pagamento_operacional (operacoes_producao com FK)
+  // 2. forma_pagamento_snapshot (texto gravado no lançamento original)
+  // 3. forma_pagamento_label (normalizado via getAllPainel)
+  // 4. Legacy: forma_pagamento como texto direto
+  // 5. contexto_importacao JSON
+  // 6. Linha original da planilha
+  const formaPagamentoValue =
+    operacao.formas_pagamento_operacional?.nome ??
+    operacao.forma_pagamento_snapshot ??
+    operacao.forma_pagamento_label ??
+    (typeof operacao.forma_pagamento === 'string' ? operacao.forma_pagamento : null) ??
+    contextoImportacao.forma_pagamento ??
+    getLinhaOriginalValue(operacao, "FORMA DE PAGAMENTO") ??
     getLinhaOriginalValue(operacao, "MEIO DE PAGAMENTO") ?? "";
+
+  // Normalizar observação — pode vir de coluna direta ou JSON
+  const observacaoValue =
+    operacao.observacao ??
+    contextoImportacao.observacao ??
+    getLinhaOriginalValue(operacao, "OBSERVACAO") ??
+    getLinhaOriginalValue(operacao, "OBSERVAÇÃO") ?? "";
+
+  // Normalizar nome do encarregado/responsável
+  const encarregadoValue =
+    operacao.responsavel_nome ??
+    operacao.encarregado_label ??
+    "";
 
   return {
     ...operacao,
@@ -213,5 +236,7 @@ export function processarOperacao(operacao: any, empresas: any[] = []) {
     dataVencimento: dataVencimento.toISOString().split("T")[0],
     statusPagamento: status_pagamento,
     formaPagamento: formaPagamentoValue,
+    observacao: observacaoValue,
+    encarregadoLabel: encarregadoValue,
   };
 }

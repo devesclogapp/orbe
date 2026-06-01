@@ -386,10 +386,11 @@ const getContextoImportacaoValue = (item: Record<string, unknown>, key: string) 
 
 const getDisplayFormaPagamento = (item: Record<string, unknown>) => {
   const base = (item as { formas_pagamento_operacional?: { nome?: string | null } }).formas_pagamento_operacional?.nome ??
+    (item as any).forma_pagamento_label ??
     (item as any).forma_pagamento_snapshot ??
     (item as any).forma_pagamento ??
     ((item as { formaPagamento?: string | null }).formaPagamento ?? null) ??
-    ((item as { forma_pagamento?: string | null }).forma_pagamento ?? null) ??
+    (typeof (item as any).forma_pagamento === 'string' ? (item as any).forma_pagamento : null) ??
     getContextoImportacaoValue(item, "forma_pagamento") ??
     getLinhaOriginalValue(item, "FORMA DE PAGAMENTO");
 
@@ -419,6 +420,7 @@ const getDisplayStatusOriginal = (item: Record<string, unknown>) =>
 const getDisplayEmpresa = (item: Record<string, unknown>, empresas: any[] = []) =>
   (empresas.find((empresaItem: any) => empresaItem.id === (item as { empresa_id?: string | null }).empresa_id)?.nome ?? null) ??
   ((item as { empresas?: { nome?: string | null } }).empresas?.nome ?? null) ??
+  (item as any).empresa_label ??
   getContextoImportacaoValue(item, "empresa") ??
   getLinhaOriginalValue(item, "EMPRESA") ??
   "";
@@ -639,6 +641,7 @@ export const OperacoesTableBlock = ({
       queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+      queryClient.invalidateQueries({ queryKey: ["operacoes-pipeline"] });
       queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
       queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
     },
@@ -694,6 +697,7 @@ export const OperacoesTableBlock = ({
       queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+      queryClient.invalidateQueries({ queryKey: ["operacoes-pipeline"] });
       queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
       queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
     },
@@ -722,6 +726,7 @@ export const OperacoesTableBlock = ({
       queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+      queryClient.invalidateQueries({ queryKey: ["operacoes-pipeline"] });
       queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
       queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
     },
@@ -788,6 +793,7 @@ export const OperacoesTableBlock = ({
       queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+      queryClient.invalidateQueries({ queryKey: ["operacoes-pipeline"] });
       queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
       queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
     },
@@ -858,6 +864,7 @@ export const OperacoesTableBlock = ({
       setSelectedOperationalRuleId("");
       queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
+      queryClient.invalidateQueries({ queryKey: ["operacoes-pipeline"] });
     },
     onError: (error: unknown) => {
       const message = error instanceof Error ? error.message : "Não foi possível aplicar a regra na coluna.";
@@ -899,6 +906,7 @@ export const OperacoesTableBlock = ({
       queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+      queryClient.invalidateQueries({ queryKey: ["operacoes-pipeline"] });
       queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
       queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
     },
@@ -915,6 +923,7 @@ export const OperacoesTableBlock = ({
       queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+      queryClient.invalidateQueries({ queryKey: ["operacoes-pipeline"] });
       queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
       queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
     },
@@ -1795,30 +1804,31 @@ export const OperacoesTableBlock = ({
                     const isSelected = kind === "operacao" && selectedId === item.id;
 
                     const dataOp = item.data_operacao ? new Date(item.data_operacao + "T12:00:00Z").toLocaleDateString("pt-BR") : "";
-                    const idPlanilha = item.created_at || item.id;
-                    const operacaoNome = item.produto_label || item.fornecedores?.nome || "";
+                    const idPlanilha = item.criado_em ?? item.created_at ?? item.id;
+                    const operacaoNome = item.produto_label || item.produtos_carga?.nome || item.fornecedore_label || item.fornecedores?.nome || "";
                     const empresaPlanilha = getDisplayEmpresa(item, empresas);
-                    const fornecedor = item.fornecedores?.nome || "";
-                    const transportadora = item.transportadoras_clientes?.nome || "";
+                    const fornecedor = item.fornecedor_label || item.fornecedores?.nome || item.fornecedor || "";
+                    const transportadora = item.transportadora_label || item.transportadoras_clientes?.nome || item.transportadora || "";
                     const placa = item.placa || "";
-                    const servico = item.tipos_servico_operacional?.nome || "";
+                    const servico = item.tipo_servico_label || item.tipos_servico_operacional?.nome || item.tipo_servico || "";
                     const qtdColaboradores = item.quantidade_colaboradores ?? "-";
                     const formaPagamento = getDisplayFormaPagamento(item);
                     const nf = item.nf_numero || "";
                     const ctrc = item.ctrc || "";
                     const observacao = getDisplayObservacao(item);
-                    const inicio = (item.entrada_ponto || "").substring(0, 5);
-                    const fim = (item.saida_ponto || "").substring(0, 5);
-                    const qtdText = item.quantidade !== undefined && item.quantidade !== null ? item.quantidade : "0";
-                    const valorTotal = item.valor_total ?? item.total_final ?? item.valor_descarga ?? 0;
+                    const inicio = (item.horario_inicio_label || item.entrada_ponto || "").substring(0, 5);
+                    const fim = (item.horario_fim_label || item.saida_ponto || "").substring(0, 5);
+                    const qtdText = item.quantidade_label ?? (item.quantidade !== undefined && item.quantidade !== null ? item.quantidade : "0");
+                    const valorTotal = item.valor_total_label ?? item.valor_total ?? item.total_final ?? item.valor_descarga ?? 0;
 
-                    const valUnit = valUnitFormatter(item.valor_unitario_snapshot ?? item.valor_unitario_label ?? item.valor_unitario ?? 0);
+                    const valUnit = valUnitFormatter(item.valor_unitario_label ?? item.valor_unitario_snapshot ?? item.valor_unitario ?? 0);
                     const valorDescarga = valUnitFormatter(item.valor_descarga);
                     const valorIss = valUnitFormatter(item.custo_com_iss);
                     const valDia = valUnitFormatter(valorTotal);
 
-                    const statusOriginal = String(getDisplayStatusOriginal(item));
+                    const statusOriginal = String(item.status || getDisplayStatusOriginal(item));
                     const statusCfg = getStatusConfig(statusOriginal);
+                    const encarregado = item.encarregado_label || item.responsavel_nome || item.encarregado || "-";
 
 
                     return (
@@ -1921,7 +1931,7 @@ export const OperacoesTableBlock = ({
                           )}
                           {visibleCols.encarregado && (
                             <td className="px-3 text-center text-muted-foreground whitespace-nowrap">
-                              {item.responsavel_nome || '-'}
+                              {encarregado}
                             </td>
                           )}
                           {visibleCols.acoes && (
@@ -2004,39 +2014,72 @@ export const OperacoesTableBlock = ({
                                   <User className="h-4 w-4 text-muted-foreground" />
                                   Colaboradores da Operação
                                 </h4>
-                                {item.production_entry_collaborators && item.production_entry_collaborators.length > 0 ? (
-                                  <div className="rounded-md border border-border bg-background overflow-hidden max-w-3xl">
-                                    <table className="w-full text-sm">
-                                      <thead className="bg-muted text-muted-foreground">
-                                        <tr className="border-b border-border">
-                                          <th className="px-4 py-2 text-left font-medium">Nome</th>
-                                          <th className="px-4 py-2 text-left font-medium">Cargo</th>
-                                          <th className="px-4 py-2 text-left font-medium">Infração?</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody className="divide-y divide-border">
-                                        {item.production_entry_collaborators.map((c: any) => {
-                                          const isInfraction = c.had_infraction === true;
-                                          return (
-                                            <tr key={c.collaborator_id || c.colaboradores?.id || Math.random()} className="hover:bg-muted/50">
-                                              <td className="px-4 py-2">{c.colaboradores?.nome || '-'}</td>
-                                              <td className="px-4 py-2 text-muted-foreground">{c.colaboradores?.cargo || '-'}</td>
-                                              <td className="px-4 py-2">
-                                                {isInfraction ? (
-                                                  <span className="text-destructive font-medium border border-destructive/20 bg-destructive/10 px-2 py-0.5 rounded-full text-xs">Sim</span>
-                                                ) : <span className="text-muted-foreground">-</span>}
-                                              </td>
-                                            </tr>
-                                          );
-                                        })}
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                ) : (
-                                  <div className="text-sm text-muted-foreground italic bg-background p-4 rounded-md border border-border max-w-3xl">
-                                    Nenhum colaborador foi vinculado no momento deste lançamento.
-                                  </div>
-                                )}
+                                {(() => {
+                                  const colaboradoresRelacionados = Array.isArray(item.production_entry_collaborators)
+                                    ? item.production_entry_collaborators
+                                    : [];
+                                  const colaboradoresFallback = Array.isArray(item.avaliacao_json?.contexto_operacional?.colaboradores_selecionados)
+                                    ? item.avaliacao_json.contexto_operacional.colaboradores_selecionados.map((c: any) => ({
+                                      collaborator_id: c.id,
+                                      had_infraction: c.had_infraction === true,
+                                      colaboradores: {
+                                        id: c.id,
+                                        nome: c.nome,
+                                        cargo: c.cargo,
+                                      },
+                                    }))
+                                    : [];
+                                  const colaboradorRaiz = item.colaboradores?.nome
+                                    ? [{
+                                      collaborator_id: item.colaborador_id ?? item.colaboradores?.id ?? "colaborador-raiz",
+                                      had_infraction: false,
+                                      colaboradores: {
+                                        id: item.colaborador_id ?? item.colaboradores?.id ?? null,
+                                        nome: item.colaboradores?.nome,
+                                        cargo: item.colaboradores?.cargo ?? null,
+                                      },
+                                    }]
+                                    : [];
+                                  const colaboradoresOperacao = colaboradoresRelacionados.length > 0
+                                    ? colaboradoresRelacionados
+                                    : colaboradoresFallback.length > 0
+                                      ? colaboradoresFallback
+                                      : colaboradorRaiz;
+
+                                  return colaboradoresOperacao.length > 0 ? (
+                                    <div className="rounded-md border border-border bg-background overflow-hidden max-w-3xl">
+                                      <table className="w-full text-sm">
+                                        <thead className="bg-muted text-muted-foreground">
+                                          <tr className="border-b border-border">
+                                            <th className="px-4 py-2 text-left font-medium">Nome</th>
+                                            <th className="px-4 py-2 text-left font-medium">Cargo</th>
+                                            <th className="px-4 py-2 text-left font-medium">Infração?</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-border">
+                                          {colaboradoresOperacao.map((c: any) => {
+                                            const isInfraction = c.had_infraction === true;
+                                            return (
+                                              <tr key={c.collaborator_id || c.colaboradores?.id || `collab-${idx}`} className="hover:bg-muted/50">
+                                                <td className="px-4 py-2">{c.colaboradores?.nome || '-'}</td>
+                                                <td className="px-4 py-2 text-muted-foreground">{c.colaboradores?.cargo || '-'}</td>
+                                                <td className="px-4 py-2">
+                                                  {isInfraction ? (
+                                                    <span className="text-destructive font-medium border border-destructive/20 bg-destructive/10 px-2 py-0.5 rounded-full text-xs">Sim</span>
+                                                  ) : <span className="text-muted-foreground">-</span>}
+                                                </td>
+                                              </tr>
+                                            );
+                                          })}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  ) : (
+                                    <div className="text-sm text-muted-foreground italic bg-background p-4 rounded-md border border-border max-w-3xl">
+                                      Nenhum colaborador foi vinculado no momento deste lançamento.
+                                    </div>
+                                  );
+                                })()}
                               </div>
                             </td>
                           </tr>

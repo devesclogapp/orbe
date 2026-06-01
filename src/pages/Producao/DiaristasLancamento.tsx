@@ -388,6 +388,18 @@ const DiaristasLancamento = () => {
             });
             return next;
         });
+
+        // Hydrate observacoes ensuring we don't overwrite user edits
+        setObservacoes((prev) => {
+            const next = { ...prev };
+            existentes.forEach((l: any) => {
+                // Since the UI uses one observation per diarista per week, we take the first truthy observation found
+                if (l.diarista_id && l.observacao && !next[l.diarista_id]) {
+                    next[l.diarista_id] = l.observacao;
+                }
+            });
+            return next;
+        });
     }, [lancamentosExistentes]);
 
     // ── Ciclo de toque ───────────────────────────────────────────────────────

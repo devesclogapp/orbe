@@ -1102,6 +1102,40 @@ export const ResultadosService = new ResultadosServiceClass();
 class OperacaoServiceClass extends BaseService<'operacoes'> {
   constructor() { super('operacoes'); }
 
+  private normalizePainelToken(value: unknown) {
+    return String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim()
+      .replace(/\s+/g, ' ');
+  }
+
+  private buildPainelDedupKey(item: any) {
+    const data = item.data_operacao ?? item.data_referencia ?? item.data ?? '';
+    const empresa = item.empresa_id ?? '';
+    const tipoServico = this.normalizePainelToken(item.tipo_servico_label ?? item.tipo_servico ?? '');
+    const transportadora = this.normalizePainelToken(item.transportadora_label ?? item.transportadora ?? '');
+    const fornecedor = this.normalizePainelToken(item.fornecedores?.nome ?? item.fornecedor?.nome ?? '');
+    const produto = this.normalizePainelToken(item.produto_label ?? item.produto ?? '');
+    const quantidade = Number(item.quantidade ?? item.quantidade_label ?? 0);
+    const placa = this.normalizePainelToken(item.placa ?? '');
+
+    return [data, empresa, tipoServico, transportadora, fornecedor, produto, quantidade, placa].join('|');
+  }
+
+  private mergePainelOperacoes(producaoNormalizada: any[], legadasNormalizadas: any[]) {
+    const dedupKeysProducao = new Set(producaoNormalizada.map((item) => this.buildPainelDedupKey(item)));
+    const legadasFiltradas = legadasNormalizadas.filter((item) => !dedupKeysProducao.has(this.buildPainelDedupKey(item)));
+
+    return [...producaoNormalizada, ...legadasFiltradas].sort((a: any, b: any) => {
+      const aTime = new Date(a.criado_em_label ?? `${a.data_referencia}T${a.horario_inicio_label ?? '00:00:00'}`).getTime();
+      const bTime = new Date(b.criado_em_label ?? `${b.data_referencia}T${b.horario_inicio_label ?? '00:00:00'}`).getTime();
+      return bTime - aTime;
+    });
+  }
+
   private async getEmpresaIdsFromTenant(tenantId: string | null): Promise<string[] | null> {
     if (!tenantId) return null;
     const { data } = await supabase.from('empresas').select('id').eq('tenant_id', tenantId);
@@ -1197,13 +1231,17 @@ class OperacaoServiceClass extends BaseService<'operacoes'> {
       valor_total_filme: item.valor_total_filme != null ? Number(item.valor_total_filme) : null,
       valor_faturamento_nf: item.valor_faturamento_nf != null ? Number(item.valor_faturamento_nf) : null,
       criado_em_label: item.criado_em ?? null,
+      // ─── Campos normalizados para exibição consistente ───
+      forma_pagamento_label: item.formas_pagamento_operacional?.nome ?? item.forma_pagamento_snapshot ?? null,
+      forma_pagamento_snapshot: item.forma_pagamento_snapshot ?? item.formas_pagamento_operacional?.nome ?? null,
+      observacao: item.observacao ?? (item.avaliacao_json?.contexto_importacao as any)?.observacao ?? null,
+      encarregado_label: item.responsavel_nome ?? null,
+      data_vencimento: item.data_vencimento ?? (item.avaliacao_json?.contexto_importacao as any)?.data_vencimento_override ?? null,
+      empresa_label: item.empresas?.nome ?? null,
+      unidade_label: item.unidades?.nome ?? null,
     }));
 
-    return [...producaoNormalizada, ...legadasNormalizadas].sort((a: any, b: any) => {
-      const aTime = new Date(a.criado_em_label ?? `${a.data_referencia}T${a.horario_inicio_label ?? '00:00:00'}`).getTime();
-      const bTime = new Date(b.criado_em_label ?? `${b.data_referencia}T${b.horario_inicio_label ?? '00:00:00'}`).getTime();
-      return bTime - aTime;
-    });
+    return this.mergePainelOperacoes(producaoNormalizada, legadasNormalizadas);
   }
 
   async getByDate(date: string, empresaId?: string) {
@@ -1315,11 +1353,7 @@ class OperacaoServiceClass extends BaseService<'operacoes'> {
       criado_em_label: item.criado_em ?? null,
     }));
 
-    return [...producaoNormalizada, ...legadasNormalizadas].sort((a: any, b: any) => {
-      const aTime = new Date(a.criado_em_label ?? `${a.data_referencia}T${a.horario_inicio_label ?? '00:00:00'}`).getTime();
-      const bTime = new Date(b.criado_em_label ?? `${b.data_referencia}T${b.horario_inicio_label ?? '00:00:00'}`).getTime();
-      return bTime - aTime;
-    });
+    return this.mergePainelOperacoes(producaoNormalizada, legadasNormalizadas);
   }
 }
 export const OperacaoService = new OperacaoServiceClass();
@@ -3019,6 +3053,7 @@ class OperacaoProducaoServiceClass {
     payload: Record<string, any>,
     colaboradores: Array<{
       collaborator_id: string;
+      colaborador_id?: string;
       had_infraction: boolean;
       infraction_type_id?: string | null;
       infraction_notes?: string | null;
@@ -3027,10 +3062,24 @@ class OperacaoProducaoServiceClass {
     const registro = await this.create(payload);
 
     if (colaboradores.length > 0) {
+      const colaboradoresNormalizados = colaboradores
+        .map((item) => ({
+          collaborator_id: item.collaborator_id ?? item.colaborador_id ?? null,
+          had_infraction: item.had_infraction,
+          infraction_type_id: item.infraction_type_id ?? null,
+          infraction_notes: item.infraction_notes ?? null,
+        }))
+        .filter((item) => Boolean(item.collaborator_id));
+
+      if (colaboradoresNormalizados.length === 0) {
+        return this.getByDate(registro.data_operacao, registro.empresa_id, registro.unidade_id)
+          .then((items) => items.find((item: any) => item.id === registro.id) ?? registro);
+      }
+
       const { error } = await operationalClient
         .from('production_entry_collaborators')
         .insert(
-          colaboradores.map((item) => ({
+          colaboradoresNormalizados.map((item) => ({
             production_entry_id: registro.id,
             collaborator_id: item.collaborator_id,
             had_infraction: item.had_infraction,
@@ -3042,7 +3091,8 @@ class OperacaoProducaoServiceClass {
       if (error) throw error;
     }
 
-    return registro;
+    return this.getByDate(registro.data_operacao, registro.empresa_id, registro.unidade_id)
+      .then((items) => items.find((item: any) => item.id === registro.id) ?? registro);
   }
 
   async update(id: string, payload: Record<string, any>) {

@@ -511,9 +511,9 @@ export default function AprovacoesRh() {
                 <Card className="p-4 border-border/40 shadow-sm bg-white/80 backdrop-blur-md">
                     <div className="flex flex-wrap items-end gap-3">
                         <div className="flex flex-col gap-1.5 min-w-[160px]">
-                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Período</label>
+                            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Período</label>
                             <Select value={periodo} onValueChange={handlePeriodo}>
-                                <SelectTrigger className="h-10 bg-white border-muted font-medium">
+                                <SelectTrigger className="h-10 bg-white border-muted font-medium cursor-pointer w-full">
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -526,19 +526,19 @@ export default function AprovacoesRh() {
                         </div>
 
                         <div className="flex flex-col gap-1.5">
-                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Início</label>
+                            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Início</label>
                             <Input type="date" value={inicio} onChange={e => { setInicio(e.target.value); setPeriodo("personalizado"); setCurrentPage(1); }} className="h-10 w-[140px] font-medium" />
                         </div>
 
                         <div className="flex flex-col gap-1.5">
-                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Fim</label>
+                            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Fim</label>
                             <Input type="date" value={fim} onChange={e => { setFim(e.target.value); setPeriodo("personalizado"); setCurrentPage(1); }} className="h-10 w-[140px] font-medium" />
                         </div>
 
                         <div className="flex flex-col gap-1.5 min-w-[140px]">
-                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Tipo</label>
+                            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Tipo</label>
                             <Select value={filterType} onValueChange={v => { setFilterType(v); setCurrentPage(1); }}>
-                                <SelectTrigger className="h-10 bg-white border-muted font-medium">
+                                <SelectTrigger className="h-10 bg-white border-muted font-medium cursor-pointer w-full">
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -553,9 +553,9 @@ export default function AprovacoesRh() {
                         </div>
 
                         <div className="flex flex-col gap-1.5 flex-[2] min-w-[200px]">
-                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Empresa</label>
+                            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Empresa</label>
                             <Select value={filterEmpresaId} onValueChange={v => { setFilterEmpresaId(v); setCurrentPage(1); }}>
-                                <SelectTrigger className="h-10 bg-white border-muted font-medium">
+                                <SelectTrigger className="h-10 bg-white border-muted font-medium cursor-pointer w-full">
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -568,9 +568,9 @@ export default function AprovacoesRh() {
                         </div>
 
                         <div className="flex flex-col gap-1.5 flex-[2] min-w-[240px]">
-                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Busca</label>
+                            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Busca</label>
                             <div className="relative">
-                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
                                 <Input
                                     placeholder="Lote, colaborador, operação..."
                                     className="pl-10 h-10 font-medium bg-white"
@@ -594,10 +594,10 @@ export default function AprovacoesRh() {
                                         { value: "devolvidos", label: "Devolvidos", icon: RotateCcw, count: devolvidosItems.length, color: "data-[state=active]:border-rose-500 data-[state=active]:text-rose-600" },
                                         { value: "historico", label: "Histórico", icon: History, count: filtered.length, color: "data-[state=active]:border-primary" },
                                     ].map(tab => (
-                                        <TabsTrigger key={tab.value} value={tab.value} className={cn("bg-transparent border-b-2 border-transparent data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none text-xs font-bold px-0 h-14 gap-2 transition-all", tab.color)}>
+                                        <TabsTrigger key={tab.value} value={tab.value} className={cn("bg-transparent border-b-2 border-transparent data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none text-xs font-medium px-0 h-14 gap-2 transition-all", tab.color)}>
                                             <tab.icon size={14} />
                                             {tab.label}
-                                            <span className="ml-1 text-[10px] bg-muted/60 rounded-full px-1.5 py-0.5 font-black">{tab.count}</span>
+                                            <span className="ml-1 text-[10px] bg-muted/60 rounded-full px-1.5 py-0.5 font-medium">{tab.count}</span>
                                         </TabsTrigger>
                                     ))}
                                 </TabsList>
@@ -694,7 +694,7 @@ function ItensTable({
                                 <Checkbox checked={items.length > 0 && selectedItems.length === items.length} onCheckedChange={onSelectAll} />
                             </th>
                             {["Tipo", "Referência / Lote", "Colaborador / Descrição", "Empresa / Operação", "Valor / Horas", "Competência", "Data Recebimento", "Situação"].map(h => (
-                                <th key={h} className="px-4 py-4 text-left font-bold text-muted-foreground uppercase tracking-wider text-[10px] whitespace-nowrap">{h}</th>
+                                <th key={h} className="px-4 py-4 text-left font-medium text-muted-foreground uppercase tracking-wider text-[10px] whitespace-nowrap">{h}</th>
                             ))}
                         </tr>
                     </thead>
@@ -727,31 +727,31 @@ function ItensTable({
                                     </Badge>
                                 </td>
                                 <td className="px-4 py-3">
-                                    <span className="font-bold text-slate-700 whitespace-nowrap">{item.referencia}</span>
+                                    <span className="font-medium text-slate-700 whitespace-nowrap">{item.referencia}</span>
                                 </td>
                                 <td className="px-4 py-3 max-w-[200px]">
                                     <div className="flex flex-col">
-                                        <span className="font-bold text-foreground truncate">{item.colaborador}</span>
+                                        <span className="font-medium text-foreground truncate">{item.colaborador}</span>
                                         <span className="text-[11px] text-muted-foreground uppercase">{item.descricao}</span>
                                     </div>
                                 </td>
                                 <td className="px-4 py-3 max-w-[180px]">
                                     <div className="flex flex-col">
-                                        <span className="font-black text-slate-800 text-[11px] uppercase truncate">{item.empresa}</span>
+                                        <span className="font-medium text-slate-800 text-[11px] uppercase truncate">{item.empresa}</span>
                                         <span className="text-[11px] text-muted-foreground truncate">{item.operacao}</span>
                                     </div>
                                 </td>
                                 <td className="px-4 py-3 text-right whitespace-nowrap">
                                     <div className="flex flex-col items-end">
-                                        {item.horas && <span className="font-bold text-slate-700 text-[11px]">{item.horas}</span>}
-                                        <span className="font-bold text-slate-900">{fmt(item.valor)}</span>
+                                        {item.horas && <span className="font-medium text-slate-700 text-[11px]">{item.horas}</span>}
+                                        <span className="font-medium text-slate-900">{fmt(item.valor)}</span>
                                     </div>
                                 </td>
                                 <td className="px-4 py-3 text-center whitespace-nowrap">
                                     <span className="font-medium text-slate-600">{item.competencia}</span>
                                 </td>
                                 <td className="px-4 py-3 whitespace-nowrap">
-                                    <span className="text-[12px] font-bold text-slate-700">{item.dataRecebimento}</span>
+                                    <span className="text-[12px] font-medium text-slate-700">{item.dataRecebimento}</span>
                                 </td>
                                 <td className="px-4 py-3 text-center whitespace-nowrap">
                                     <Badge className={cn("border px-3 font-bold text-[10px] shadow-none hover:opacity-80", SITUACAO_COLORS[item.situacao])}>
@@ -776,7 +776,7 @@ function ItensTable({
                     <div className="flex items-center gap-2">
                         <span className="text-xs text-muted-foreground">Registros por página</span>
                         <Select value={String(itemsPerPage)} onValueChange={v => onItemsPerPageChange(Number(v))}>
-                            <SelectTrigger className="h-8 w-20 bg-white border-muted font-bold text-xs">
+                            <SelectTrigger className="h-8 w-20 bg-white border-muted font-medium text-xs cursor-pointer w-full">
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -793,7 +793,7 @@ function ItensTable({
                             {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                                 const pg = Math.max(1, Math.min(totalPages - 4, currentPage - 2)) + i;
                                 return (
-                                    <Button key={pg} variant={currentPage === pg ? "default" : "ghost"} className={cn("h-8 w-8 p-0 text-xs font-bold", currentPage === pg && "bg-orange-600 border-none")} onClick={() => onPageChange(pg)}>
+                                    <Button key={pg} variant={currentPage === pg ? "default" : "ghost"} className={cn("h-8 w-8 p-0 text-xs font-medium", currentPage === pg && "bg-orange-600 border-none")} onClick={() => onPageChange(pg)}>
                                         {pg}
                                     </Button>
                                 );
@@ -823,7 +823,7 @@ function DetailPanel({
     return (
         <Card className="w-[360px] shrink-0 flex flex-col border-border/40 shadow-lg shadow-black/5 bg-white overflow-hidden sticky top-24 max-h-[calc(100vh-120px)]">
             <div className="p-5 border-b border-border/40 bg-slate-50/60 flex items-center justify-between">
-                <h3 className="font-black text-slate-800 tracking-tight">Detalhes do Item</h3>
+                <h3 className="font-bold text-slate-800 tracking-tight">Detalhes do Item</h3>
                 <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" onClick={onClose}>
                     <X size={18} />
                 </Button>
@@ -836,19 +836,19 @@ function DetailPanel({
                         <Badge variant="outline" className={cn("text-[10px] font-black uppercase border-none px-2 py-0.5", TIPO_COLORS[item.tipo])}>
                             {item.tipo}
                         </Badge>
-                        <Badge className={cn("border text-[10px] font-black uppercase", SITUACAO_COLORS[item.situacao])}>
+                        <Badge className={cn("border text-[10px] font-bold uppercase", SITUACAO_COLORS[item.situacao])}>
                             {item.situacao}
                         </Badge>
                     </div>
-                    <h2 className="text-xl font-black text-slate-900 leading-tight mb-2">{item.colaborador}</h2>
+                    <h2 className="text-xl font-bold text-slate-900 leading-tight mb-2">{item.colaborador}</h2>
                     <div className="space-y-1">
                         {[
                             { label: "Referência", v: item.referencia },
                             { label: "Empresa", v: item.empresa },
                             { label: "Operação", v: item.operacao },
                         ].map(r => (
-                            <p key={r.label} className="text-xs text-muted-foreground font-bold uppercase flex gap-2">
-                                {r.label}: <span className="text-slate-800 normal-case font-semibold">{r.v}</span>
+                            <p key={r.label} className="text-xs text-muted-foreground font-medium uppercase flex gap-2">
+                                {r.label}: <span className="text-slate-800 normal-case font-medium">{r.v}</span>
                             </p>
                         ))}
                     </div>
@@ -860,10 +860,10 @@ function DetailPanel({
                 <div className="space-y-2">
                     <div className="flex items-center gap-2 text-slate-700">
                         <Calendar size={15} />
-                        <span className="text-xs font-black uppercase tracking-wide">Período / Competência</span>
+                        <span className="text-xs font-bold uppercase tracking-wide">Período / Competência</span>
                     </div>
                     <div className="bg-slate-50 border border-border/30 rounded-lg px-4 py-3">
-                        <span className="text-[13px] font-bold text-slate-800">{item.competencia}</span>
+                        <span className="text-[13px] font-medium text-slate-800">{item.competencia}</span>
                     </div>
                 </div>
 
@@ -871,7 +871,7 @@ function DetailPanel({
                 <div className="space-y-2">
                     <div className="flex items-center gap-2 text-slate-700">
                         <Activity size={15} />
-                        <span className="text-xs font-black uppercase tracking-wide">Resumo</span>
+                        <span className="text-xs font-bold uppercase tracking-wide">Resumo</span>
                     </div>
                     <div className="space-y-2 bg-slate-50 border border-border/30 rounded-lg px-4 py-3">
                         {item.horas && <SummaryLine label="Horas / Diárias" value={item.horas} />}
@@ -883,7 +883,7 @@ function DetailPanel({
                 <div className="space-y-2">
                     <div className="flex items-center gap-2 text-slate-700">
                         <Info size={15} />
-                        <span className="text-xs font-black uppercase tracking-wide">Informações</span>
+                        <span className="text-xs font-bold uppercase tracking-wide">Informações</span>
                     </div>
                     <div className="space-y-2 bg-slate-50 border border-border/30 rounded-lg px-4 py-3">
                         <SummaryLine label="Recebido em" value={item.dataRecebimento} />
@@ -893,7 +893,7 @@ function DetailPanel({
 
                 {/* Ações */}
                 <div className="pt-2 flex flex-col gap-2">
-                    <label className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.15em]">Ações</label>
+                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.15em]">Ações</label>
                     <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-11 gap-2" onClick={onAprovar} disabled={isAprovando || item.situacao === "Aprovado"}>
                         {isAprovando ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
                         Aprovar
@@ -936,11 +936,11 @@ function KPICard({ label, value, subtext, icon: Icon, iconColor, iconBg, isAlert
                     <Icon size={20} strokeWidth={2.5} />
                 </div>
                 <div className="flex flex-col min-w-0">
-                    <span className="text-[10px] font-black text-muted-foreground uppercase tracking-wider truncate">{label}</span>
-                    {loading ? <div className="h-7 w-10 bg-muted/40 animate-pulse rounded mt-0.5" /> : <span className="text-2xl font-black text-slate-900 leading-tight">{value}</span>}
+                    <span className="text-[11px] font-semibold text-foreground/80 uppercase tracking-wider truncate">{label}</span>
+                    {loading ? <div className="h-7 w-10 bg-muted/40 animate-pulse rounded mt-0.5" /> : <span className="text-3xl font-bold text-slate-900 leading-tight">{value}</span>}
                 </div>
             </div>
-            <span className="text-[11px] font-bold text-slate-600 mt-auto">{loading ? "—" : subtext}</span>
+            <span className="text-xs font-medium text-muted-foreground mt-auto">{loading ? "—" : subtext}</span>
         </Card>
     );
 }

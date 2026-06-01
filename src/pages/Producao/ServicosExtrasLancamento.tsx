@@ -256,6 +256,7 @@ const ServicosExtrasLancamento = () => {
         onSuccess: () => {
             toast.success("Serviço extra registrado com sucesso!");
             queryClient.invalidateQueries({ queryKey: ["operacoes"] });
+            queryClient.invalidateQueries({ queryKey: ["operacoes-pipeline"] });
             queryClient.invalidateQueries({ queryKey: ["producao_recente"] });
             queryClient.invalidateQueries({ queryKey: ["servicos_extras_historico"] });
 

@@ -579,6 +579,7 @@ const CustosExtrasLancamento = () => {
       });
       queryClient.invalidateQueries({ queryKey: ["operacoes"] });
       queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
+      queryClient.invalidateQueries({ queryKey: ["operacoes-pipeline"] });
       queryClient.invalidateQueries({ queryKey: ["ponto"] });
       queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
       queryClient.invalidateQueries({ queryKey: ["importacoes"] });

@@ -67,8 +67,11 @@ export const LancamentoRapidoDialog = ({ open, onOpenChange }: LancamentoRapidoD
             };
 
             const colabs = colaboradores.map(c => ({
-                colaborador_id: c.id,
-                marcacao: marcacoes[c.id] || "P", // Default to Present
+                collaborator_id: c.id,
+                had_infraction: false,
+                infraction_notes: marcacoes[c.id] && marcacoes[c.id] !== "P"
+                    ? `Marcação rápida: ${marcacoes[c.id]}`
+                    : null,
             }));
 
             // This is a simplified version of the payload.

@@ -76,6 +76,7 @@ const Processamento = () => {
         description: `Resultado: R$ ${res.resultado?.[0]?.valor_total_calculado?.toLocaleString('pt-BR') || '0,00'}`
       });
       queryClient.invalidateQueries({ queryKey: ["operacoes"] });
+      queryClient.invalidateQueries({ queryKey: ["operacoes-pipeline"] });
       queryClient.invalidateQueries({ queryKey: ["ponto"] });
       queryClient.invalidateQueries({ queryKey: ["resultados_mensais"] });
       queryClient.invalidateQueries({ queryKey: ["resultados_processamento"] });
