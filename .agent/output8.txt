@@ -1,0 +1,54 @@
+﻿node : file:///Y:/2026/
+ERP%20ESC%20LOG/Orbe/.a
+gent/ast_refactor.js:1
+No linha:1 caractere:1
++ node ast_refactor.js 
+> output.txt 2>&1
++ ~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~
+    + CategoryInfo     
+         : NotSpecifi  
+  ed: (file:///Y:/20   
+ 26...t_refactor.js    
+:1:String) [], Rem    
+oteException
+    + FullyQualifiedEr 
+   rorId : NativeComm  
+  andError
+ 
+const fs = 
+require('fs');
+           ^
+
+ReferenceError: 
+require is not defined 
+in ES module scope, 
+you can use import 
+instead
+This file is being 
+treated as an ES 
+module because it has 
+a '.js' file extension 
+and 'Y:\2026\ERP ESC 
+LOG\Orbe\package.json' 
+contains "type": 
+"module". To treat it 
+as a CommonJS script, 
+rename it to use the 
+'.cjs' file extension.
+    at file:///Y:/2026/
+ERP%20ESC%20LOG/Orbe/.a
+gent/ast_refactor.js:1:
+12
+    at ModuleJob.run (n
+ode:internal/modules/es
+m/module_job:437:25)
+    at async node:inter
+nal/modules/esm/loader:
+639:26
+    at async asyncRunEn
+tryPointWithESMLoader (
+node:internal/modules/r
+un_main:101:5)
+
+Node.js v24.15.0

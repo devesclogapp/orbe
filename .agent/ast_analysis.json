@@ -1,0 +1,190 @@
+{
+  "imports": [
+    "import { supabase } from '@/lib/supabase';",
+    "import { Database } from '@/types/database';",
+    "import { getTransportadoraDuplicateMessage, getTransportadoraErrorMessage } from '@/utils/transportadoraValidation';",
+    "import {"
+  ],
+  "blocks": [
+    {
+      "name": "core",
+      "size": 8
+    },
+    {
+      "name": "Table",
+      "size": 3
+    },
+    {
+      "name": "cleanUuid",
+      "size": 8
+    },
+    {
+      "name": "extractReferencedTableFromFkError",
+      "size": 10
+    },
+    {
+      "name": "sanitizePayload",
+      "size": 24
+    },
+    {
+      "name": "validateUuidFields",
+      "size": 11
+    },
+    {
+      "name": "normalizeCpfDigits",
+      "size": 4
+    },
+    {
+      "name": "hasDadosBancariosMinimosColaborador",
+      "size": 25
+    },
+    {
+      "name": "hasComplementoMinimoColaborador",
+      "size": 10
+    },
+    {
+      "name": "inferRegimeTrabalho",
+      "size": 10
+    },
+    {
+      "name": "inferModeloCalculo",
+      "size": 11
+    },
+    {
+      "name": "normalizeContratoToken",
+      "size": 41
+    },
+    {
+      "name": "normalizeConfigTipoOperacaoValue",
+      "size": 8
+    },
+    {
+      "name": "isDuplicateConstraintError",
+      "size": 5
+    },
+    {
+      "name": "getConfigTipoOperacaoErrorMessage",
+      "size": 1645
+    },
+    {
+      "name": "ConsolidadoServiceClass",
+      "size": 149
+    },
+    {
+      "name": "EncarregadoColaboradorFiltroConfig",
+      "size": 74
+    },
+    {
+      "name": "operationalClient",
+      "size": 2
+    },
+    {
+      "name": "UnidadeOperacionalServiceClass",
+      "size": 36
+    },
+    {
+      "name": "TipoServicoOperacionalServiceClass",
+      "size": 132
+    },
+    {
+      "name": "TransportadoraClienteServiceClass",
+      "size": 134
+    },
+    {
+      "name": "FornecedorServiceClass",
+      "size": 167
+    },
+    {
+      "name": "ProdutoCargaServiceClass",
+      "size": 66
+    },
+    {
+      "name": "FormaPagamentoOperacionalServiceClass",
+      "size": 28
+    },
+    {
+      "name": "FornecedorValorServicoServiceClass",
+      "size": 40
+    },
+    {
+      "name": "RegraOperacionalServiceClass",
+      "size": 282
+    },
+    {
+      "name": "OperacaoProducaoServiceClass",
+      "size": 350
+    },
+    {
+      "name": "CustoExtraOperacionalServiceClass",
+      "size": 174
+    },
+    {
+      "name": "ImportacaoModeloLink",
+      "size": 11
+    },
+    {
+      "name": "ImportacaoModelosServiceClass",
+      "size": 63
+    },
+    {
+      "name": "TipoRegraOperacionalServiceClass",
+      "size": 30
+    },
+    {
+      "name": "CodigoMarcacao",
+      "size": 1
+    },
+    {
+      "name": "StatusLancamentoDiarista",
+      "size": 2
+    },
+    {
+      "name": "LancamentoDiaristaPayload",
+      "size": 25
+    },
+    {
+      "name": "DiaristaServiceClass",
+      "size": 102
+    },
+    {
+      "name": "LancamentoDiaristaServiceClass",
+      "size": 791
+    },
+    {
+      "name": "RegraModulo",
+      "size": 9
+    },
+    {
+      "name": "RegraCampo",
+      "size": 10
+    },
+    {
+      "name": "RegraDado",
+      "size": 10
+    },
+    {
+      "name": "RegrasModulosServiceClass",
+      "size": 74
+    },
+    {
+      "name": "RegrasCamposServiceClass",
+      "size": 46
+    },
+    {
+      "name": "RegrasDadosServiceClass",
+      "size": 62
+    },
+    {
+      "name": "RegraMarcacaoDiaristaPayload",
+      "size": 8
+    },
+    {
+      "name": "RegraMarcacaoDiaristaServiceClass",
+      "size": 77
+    },
+    {
+      "name": "DiaristaCicloServiceClass",
+      "size": 278
+    }
+  ]
+}
