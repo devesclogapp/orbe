@@ -7,10 +7,10 @@ import {
   validarBeneficiarios,
   type EmpresaRemessa,
   type BeneficiarioPagamento,
-} from './cnab/cnab240-posicional';
-import { CnabRemessaArquivoService } from './cnab/cnabRemessaArquivo.service';
+} from '../cnab/cnab240-posicional';
+import { CnabRemessaArquivoService } from '../cnab/cnabRemessaArquivo.service';
 
-import { BaseService, sanitizePayload, cleanUuid, validateUuidFields, getCurrentTenantId, getTenantQueryFilter, extractReferencedTableFromFkError } from './core.service';
+import { BaseService, sanitizePayload, cleanUuid, validateUuidFields, getCurrentTenantId, getTenantQueryFilter, extractReferencedTableFromFkError, operationalClient } from './base.service';
 
 
 
@@ -98,8 +98,14 @@ class CustoExtraOperacionalServiceClass {
         *,
         empresas:empresa_id(nome)
       `)
-      .like('data', `${competencia}%`)
-      .order('data', { ascending: false });
+    if (competencia) {
+      const [year, mo] = competencia.split('-').map(Number);
+      const nextMonth = mo === 12 ? 1 : mo + 1;
+      const nextYear = mo === 12 ? year + 1 : year;
+      const nextMonthStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+      query = query.gte('data', `${competencia}-01`).lt('data', nextMonthStr);
+    }
+    query = query.order('data', { ascending: false });
 
     if (empresaId) query = query.eq('empresa_id', empresaId);
 
@@ -186,23 +192,31 @@ export const TaxasImpostosService = new TaxasImpostosServiceClass();
 class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extras_operacionais'> {
   constructor() { super('servicos_extras_operacionais' as any); }
 
-  async getWithEmpresas(empresaId?: string) {
+  async getWithEmpresas(empresaId?: string, competencia?: string) {
     try {
-      let query = supabase
+      let query = operationalClient
         .from('servicos_extras_operacionais' as any)
         .select('*, empresas(nome)');
       
       if (empresaId) query = query.eq('empresa_id', empresaId);
+      if (competencia) {
+        const [year, mo] = competencia.split('-').map(Number);
+        const nextMonth = mo === 12 ? 1 : mo + 1;
+        const nextYear = mo === 12 ? year + 1 : year;
+        const nextMonthStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+        query = query.gte('data', `${competencia}-01`).lt('data', nextMonthStr);
+      }
       
       const { data, error } = await query.order('data', { ascending: false });
       
       if (error) {
         console.warn('Falha ao buscar serviços extras com empresas, tentando simplificado:', error);
-        let simpleQuery = supabase
+        let simpleQuery = operationalClient
           .from('servicos_extras_operacionais' as any)
           .select('*');
         
         if (empresaId) simpleQuery = simpleQuery.eq('empresa_id', empresaId);
+        if (competencia) simpleQuery = simpleQuery.like('data', `${competencia}%`);
         const { data: simpleData, error: simpleError } = await simpleQuery.order('data', { ascending: false });
         
         if (simpleError) throw simpleError;

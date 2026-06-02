@@ -1,4 +1,4 @@
-import { BaseService } from './base.service';
+import { BaseService } from './domain/base.service';
 import { supabase } from '@/lib/supabase';
 
 class AccountingServiceClass extends BaseService<'contabil_configuracao'> {

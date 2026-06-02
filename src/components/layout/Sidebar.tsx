@@ -14,6 +14,7 @@ import {
   FilePlus,
   LayoutDashboard,
   LayoutGrid,
+  ListChecks,
   LogOut,
   RefreshCw,
   Rocket,
@@ -21,6 +22,7 @@ import {
   Settings,
   Shield,
   UserCheck,
+  Users,
   Wallet,
   Wrench,
   Zap,
@@ -413,16 +415,17 @@ const SidebarItem = ({
       end={item.end}
       className={({ isActive }) =>
         cn(
-          "relative ml-3 flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] transition-colors",
+          "relative flex items-center gap-3 px-3 py-2 text-[13px] transition-colors",
           isActive
-            ? "bg-primary/6 text-foreground ring-1 ring-inset ring-primary/10 font-medium"
-            : "text-sidebar-foreground hover:bg-secondary/60 hover:text-foreground",
+            ? "bg-[#FFF1EC] text-[#FD4C00] font-semibold border-l-[3px] border-[#FD4C00]"
+            : "text-[#4D4D4D] hover:bg-[#F0F0F0] hover:text-[#171717] rounded-md mx-2",
+          !isActive && "mx-2"
         )
       }
     >
       {({ isActive }) => (
         <>
-          <div className={cn("flex h-4 w-4 shrink-0 items-center justify-center", isActive ? "text-primary/80" : "text-muted-foreground/70")}>
+          <div className={cn("flex h-4 w-4 shrink-0 items-center justify-center", isActive ? "text-[#FD4C00]" : "text-[#737373]")}>
             <Icon className="h-4 w-4" strokeWidth={1.75} />
           </div>
           <span className="min-w-0 flex-1 truncate">{item.label}</span>

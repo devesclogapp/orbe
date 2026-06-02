@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import { BaseService } from './base.service';
+import { BaseService } from './domain/base.service';
 
 import { BankAccountService } from './bankAccount.service';
 import { CnabBBValidatorService } from './cnabBBValidator.service';

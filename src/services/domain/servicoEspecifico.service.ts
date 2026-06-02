@@ -10,7 +10,7 @@ import {
   extractReferencedTableFromFkError,
   operationalClient,
   requireAuthenticatedUserId
-} from './core.service';
+} from './base.service';
 
 export type ServicoEspecificoRegra = Database['public']['Tables']['servicos_especificos_regras']['Row'];
 export type ServicoEspecificoLancamento = Database['public']['Tables']['servicos_especificos_lancamentos']['Row'];

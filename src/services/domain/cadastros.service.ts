@@ -10,7 +10,28 @@ import {
 } from '../cnab/cnab240-posicional';
 import { CnabRemessaArquivoService } from '../cnab/cnabRemessaArquivo.service';
 
-import { BaseService, sanitizePayload, cleanUuid, validateUuidFields, getCurrentTenantId, getTenantQueryFilter, extractReferencedTableFromFkError, requireAuthenticatedUserId, operationalClient, inferRegimeTrabalho, inferModeloCalculo, normalizeContratoToken, hasComplementoMinimoColaborador, type EncarregadoColaboradorFiltroConfig } from './core.service';
+import { 
+  BaseService, 
+  sanitizePayload, 
+  cleanUuid, 
+  validateUuidFields, 
+  getCurrentTenantId, 
+  getTenantQueryFilter, 
+  extractReferencedTableFromFkError, 
+  requireAuthenticatedUserId, 
+  operationalClient,
+  Table
+} from './base.service';
+
+import { 
+  inferRegimeTrabalho, 
+  inferModeloCalculo, 
+  normalizeContratoToken, 
+  hasComplementoMinimoColaborador 
+} from './core.service';
+
+import type { EncarregadoColaboradorFiltroConfig } from './core.service';
+export type { EncarregadoColaboradorFiltroConfig };
 
 
 
@@ -933,13 +954,14 @@ class FornecedorServiceClass {
       empresa_id: payload.empresa_id ? cleanUuid(payload.empresa_id) : null,
       tenant_id: tenantId
     };
-    delete payloadWithTenant.produtos_associados;
-    delete payloadWithTenant.produto_id;
-    delete payloadWithTenant.produtos_carga;
+    const payloadToInsert = { ...payloadWithTenant } as any;
+    delete payloadToInsert.produtos_associados;
+    delete payloadToInsert.produto_id;
+    delete payloadToInsert.produtos_carga;
 
     const { data, error } = await operationalClient
       .from('fornecedores')
-      .insert(payloadWithTenant)
+      .insert(payloadToInsert)
       .select()
       .single();
 
@@ -981,13 +1003,14 @@ class FornecedorServiceClass {
       nome,
       empresa_id: payload.empresa_id ? cleanUuid(payload.empresa_id) : null,
     };
-    delete payloadCleaned.produtos_associados;
-    delete payloadCleaned.produto_id;
-    delete payloadCleaned.produtos_carga;
+    const payloadToUpdate = { ...payloadCleaned } as any;
+    delete payloadToUpdate.produtos_associados;
+    delete payloadToUpdate.produto_id;
+    delete payloadToUpdate.produtos_carga;
 
     const { data, error } = await operationalClient
       .from('fornecedores')
-      .update(payloadCleaned)
+      .update(payloadToUpdate)
       .eq('id', id)
       .select();
 

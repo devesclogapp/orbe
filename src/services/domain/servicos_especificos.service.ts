@@ -1,4 +1,4 @@
-import { BaseService } from './core.service';
+import { BaseService } from './base.service';
 import { supabase } from '@/lib/supabase';
 
 export type ServicoEspecificoPeriodo = 'N1' | 'N2' | 'DIA' | 'INTEGRAL';

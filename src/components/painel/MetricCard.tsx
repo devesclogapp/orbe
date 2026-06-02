@@ -21,7 +21,7 @@ export const MetricCard = ({ label, value, delta, icon: Icon, accent, variant = 
   const isSmall = size === "small";
 
   return (
-    <div 
+    <div
       onClick={onClick}
       className={cn(
         "group relative overflow-hidden transition-all duration-200 flex flex-col justify-between text-left w-full",
@@ -33,9 +33,9 @@ export const MetricCard = ({ label, value, delta, icon: Icon, accent, variant = 
     >
       <div className="flex items-start justify-between relative z-10 w-full shrink-0">
         <div className={cn(
-          "uppercase tracking-wide font-medium",
-          isSolid ? "text-primary-foreground/80" : "text-muted-foreground",
-          isSmall ? "text-[10px]" : "text-xs"
+          "uppercase tracking-wider font-semibold",
+          isSolid ? "text-primary-foreground/80" : "text-gray-500",
+          isSmall ? "text-[10px]" : "text-[12px]"
         )}>{label}</div>
         {Icon && (
           <div className={cn("rounded-md flex items-center justify-center shrink-0 ml-2",

@@ -12,7 +12,7 @@ import {
     TableHeader,
     TableRow
 } from "@/components/ui/table";
-import { EmpresaService } from "@/services/base.service";
+import { EmpresaService } from "@/services/domain/cadastros.service";
 
 export function CadastrosEmpresas() {
     const queryClient = useQueryClient();

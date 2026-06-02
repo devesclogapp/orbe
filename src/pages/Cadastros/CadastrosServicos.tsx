@@ -10,7 +10,7 @@ import {
     TableHeader,
     TableRow
 } from "@/components/ui/table";
-import { TipoServicoOperacionalService } from "@/services/base.service";
+import { TipoServicoOperacionalService } from "@/services/domain/core.service";
 
 export function CadastrosServicos() {
     const { data: tiposServico = [], isLoading } = useQuery({

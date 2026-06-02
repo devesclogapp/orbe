@@ -68,9 +68,9 @@ import {
 import { cn } from "@/lib/utils";
 import {
   CustoExtraOperacionalService,
-  OperacaoService,
-  ConsolidadoService,
-} from "@/services/base.service";
+} from "@/services/domain/despesas.service";
+import { OperacaoService } from "@/services/domain/core.service";
+import { ConsolidadoService } from "@/services/domain/producao.service";
 import { AuditoriaService } from "@/services/v4.service";
 import { ReportService } from "@/services/report.service";
 
@@ -1324,6 +1324,7 @@ const DashboardReportsSection = ({ navigate, selectedYear, selectedMonthNumber }
     queryKey: ["auditoria-logs"],
     queryFn: () => AuditoriaService.getAll(),
   });
+
 
   const { data: reports = [] } = useQuery({
     queryKey: ["reports_catalog"],

@@ -32,7 +32,7 @@ import {
     SelectTrigger,
     SelectValue
 } from "@/components/ui/select";
-import { ColaboradorService } from "@/services/base.service";
+import { ColaboradorService } from "@/services/domain/cadastros.service";
 import { cn } from "@/lib/utils";
 
 // --- HELPERS (Traga as funções de negócio de CentralCadastros.tsx) ---

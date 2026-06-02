@@ -60,7 +60,7 @@ export const Topbar = ({ title, subtitle, badge, backPath, pipelineTrigger }: To
               {badge && (
                 <Badge
                   variant="outline"
-                  className="h-5 rounded-full px-2 text-[8px] font-black uppercase tracking-widest border-orange-200 bg-orange-100 text-orange-600"
+                  className="h-5 rounded-full px-2 text-[8px] font-semibold uppercase tracking-wider border-border bg-bg-subtle text-muted-foreground"
                 >
                   <Activity className="h-2.5 w-2.5 mr-1" />
                   {badge}
@@ -84,11 +84,11 @@ export const Topbar = ({ title, subtitle, badge, backPath, pipelineTrigger }: To
             </div>
 
             <div className="flex items-center gap-3">
-              <h1 className="font-display font-black text-xl text-foreground leading-tight tracking-tight whitespace-nowrap">
+              <h1 className="font-display font-semibold text-lg text-foreground leading-tight tracking-tight whitespace-nowrap">
                 {title}
               </h1>
               {subtitle && (
-                <p className="text-[11px] text-muted-foreground/70 font-medium truncate hidden md:block border-l border-border/60 pl-3 mt-0.5">
+                <p className="text-[11px] text-gray-500 font-medium truncate hidden md:block border-l border-border pl-3">
                   {subtitle}
                 </p>
               )}
@@ -140,8 +140,8 @@ export const Topbar = ({ title, subtitle, badge, backPath, pipelineTrigger }: To
           <button
             onClick={() => navigate("/configuracoes?tab=conta")}
             className={cn(
-              "h-8 w-8 rounded-lg bg-orange-500 text-white flex items-center justify-center font-display font-black",
-              "text-xs hover:ring-4 hover:ring-orange-500/10 transition-all overflow-hidden"
+              "h-8 w-8 rounded-lg bg-gray-100 text-gray-600 flex items-center justify-center font-display font-semibold",
+              "text-xs hover:ring-2 hover:ring-primary/10 transition-all overflow-hidden border border-border"
             )}
           >
             {user?.user_metadata?.avatar_url ? (

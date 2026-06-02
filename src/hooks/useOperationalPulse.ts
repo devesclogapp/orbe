@@ -220,8 +220,8 @@ export const useOperationalPulse = () => {
         lotesRhDetalhe,
         ciclosDetalhe,
       ] = await Promise.all([
-        safeCount("operacoes_producao", (q) => q.eq("status", "Pendente"), { tenantId }),
-        safeCount("operacoes_producao", (q) => q.in("status", ["Bloqueado", "Com alerta", "Inconsistente"]), { tenantId }),
+        safeCount("operacoes_producao", (q) => q.eq("status", "pendente"), { tenantId }),
+        safeCount("operacoes_producao", (q) => q.in("status", ["bloqueado", "com_alerta", "inconsistente"]), { tenantId }),
         safeCount("registros_ponto", (q) => q.eq("status_processamento", "PENDENTE_PROCESSAMENTO"), { tenantId }),
         safeCount("registros_ponto", (q) => q.eq("status_processamento", "INCONSISTENTE"), { tenantId }),
         safeCount("diaristas_lotes_fechamento", (q) => q.eq("status", "AGUARDANDO_VALIDACAO_RH"), { tenantId }),
@@ -247,7 +247,7 @@ export const useOperationalPulse = () => {
         ),
         safeSelect(
           "financeiro_consolidados_cliente",
-          "id,status,valor_total,clientes(nome)",
+          "id,status,valor_total,empresas(nome)",
           (q) => q.neq("status", "aprovado").order("valor_total", { ascending: false }).limit(6),
           { tenantId, skipTenant: true },
         ),

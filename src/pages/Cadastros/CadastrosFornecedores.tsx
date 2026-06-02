@@ -10,7 +10,7 @@ import {
     TableHeader,
     TableRow
 } from "@/components/ui/table";
-import { FornecedorService } from "@/services/base.service";
+import { FornecedorService } from "@/services/domain/cadastros.service";
 import { useAuth } from "@/contexts/AuthContext";
 
 export function CadastrosFornecedores() {

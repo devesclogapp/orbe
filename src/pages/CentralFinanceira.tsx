@@ -36,12 +36,12 @@ import { cn } from "@/lib/utils";
 import {
   AIService,
   CompetenciaService,
-  ConsolidadoService,
-  CustoExtraOperacionalService,
-  EmpresaService,
-  ResultadosService,
-  LoteFechamentoDiaristaService,
-} from "@/services/base.service";
+  ResultadosService
+} from "@/services/domain/core.service";
+import { ConsolidadoService } from "@/services/domain/producao.service";
+import { EmpresaService } from "@/services/domain/cadastros.service";
+import { CustoExtraOperacionalService } from "@/services/domain/despesas.service";
+import { LoteFechamentoDiaristaService } from "@/services/domain/diaristas.service";
 import { RHFinanceiroService } from "@/services/rhFinanceiro.service";
 import { buildFolhaVariavelPipeline, buildDiaristasPipeline, useOperationalPipeline } from "@/contexts/OperationalPipelineContext";
 import { useAuth } from "@/contexts/AuthContext";

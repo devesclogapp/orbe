@@ -10,6 +10,7 @@ import {
 } from './cnab/cnab240-posicional';
 import { CnabRemessaArquivoService } from './cnab/cnabRemessaArquivo.service';
 
+export * from './domain/base.service';
 export * from './domain/core.service';
 export * from './domain/cadastros.service';
 export * from './domain/producao.service';

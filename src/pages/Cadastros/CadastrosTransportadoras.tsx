@@ -10,7 +10,7 @@ import {
     TableHeader,
     TableRow
 } from "@/components/ui/table";
-import { TransportadoraClienteService } from "@/services/base.service";
+import { TransportadoraClienteService } from "@/services/domain/cadastros.service";
 import { useAuth } from "@/contexts/AuthContext";
 
 export function CadastrosTransportadoras() {

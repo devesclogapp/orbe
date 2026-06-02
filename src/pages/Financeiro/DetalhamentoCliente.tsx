@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { CompetenciaService, ConsolidadoService } from "@/services/base.service";
+import { CompetenciaService } from "@/services/domain/core.service";
+import { ConsolidadoService } from "@/services/domain/producao.service";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Building2, Calendar, History, ArrowLeft, Loader2, Download, Printer, TrendingUp } from "lucide-react";

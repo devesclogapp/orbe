@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 
 interface FormStepSelectorProps {
     form: UseFormReturn<ProductionFormValues>;
-    onNext: () => void;
+    onNext: (preset: typeof PRESETS[0]) => void;
 }
 
 const PRESETS = [
@@ -52,13 +52,31 @@ const PRESETS = [
         icon: Building2,
         color: "bg-orange-100 text-orange-700",
     },
+    {
+        id: "diaristas",
+        tipo: "diaristas",
+        modalidade: "CAIXA_IMEDIATO",
+        title: "Diaristas",
+        description: "Lançamento de presença e grade semanal.",
+        icon: Users,
+        color: "bg-amber-100 text-amber-700",
+    },
+    {
+        id: "servicos_especificos",
+        tipo: "servicos_especificos",
+        modalidade: "DUPLICATA",
+        title: "Serviços Específicos",
+        description: "Lançamento de serviços tabulados (ex: CN5C).",
+        icon: ListChecks,
+        color: "bg-indigo-100 text-indigo-700",
+    },
 ];
 
 export function FormStepSelector({ form, onNext }: FormStepSelectorProps) {
     const handleSelect = (preset: typeof PRESETS[0]) => {
         form.setValue("tipo_lancamento", preset.tipo as any);
         form.setValue("modalidade_financeira", preset.modalidade as any);
-        onNext();
+        onNext(preset);
     };
 
     return (

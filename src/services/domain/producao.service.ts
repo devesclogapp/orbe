@@ -10,7 +10,17 @@ import {
 } from '../cnab/cnab240-posicional';
 import { CnabRemessaArquivoService } from '../cnab/cnabRemessaArquivo.service';
 
-import { BaseService, sanitizePayload, cleanUuid, validateUuidFields, getCurrentTenantId, getTenantQueryFilter, extractReferencedTableFromFkError, requireAuthenticatedUserId, operationalClient } from './core.service';
+import { 
+  BaseService, 
+  sanitizePayload, 
+  cleanUuid, 
+  validateUuidFields, 
+  getCurrentTenantId, 
+  getTenantQueryFilter, 
+  extractReferencedTableFromFkError, 
+  requireAuthenticatedUserId, 
+  operationalClient 
+} from './base.service';
 
 
 
@@ -851,7 +861,7 @@ class OperacaoProducaoServiceClass {
     return data ?? [];
   }
 
-  async getAll(empresaId?: string, tenantId?: string | null, unidadeId?: string | null) {
+  async getAll(empresaId?: string, tenantId?: string | null, unidadeId?: string | null, competencia?: string) {
     const currentTenantId = tenantId || await getCurrentTenantId();
     
     let query = operationalClient
@@ -876,6 +886,13 @@ class OperacaoProducaoServiceClass {
       query = query.eq('empresa_id', empresaId);
     }
     if (unidadeId) query = query.eq('unidade_id', unidadeId);
+    if (competencia) {
+      const [year, mo] = competencia.split('-').map(Number);
+      const nextMonth = mo === 12 ? 1 : mo + 1;
+      const nextYear = mo === 12 ? year + 1 : year;
+      const nextMonthStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+      query = query.gte('data_operacao', `${competencia}-01`).lt('data_operacao', nextMonthStr);
+    }
 
     const { data, error } = await query;
     if (error) throw error;

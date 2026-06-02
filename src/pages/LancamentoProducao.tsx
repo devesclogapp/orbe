@@ -13,7 +13,9 @@ import { OperationalShell } from "@/components/layout/OperationalShell";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/contexts/AuthContext";
-import { OperacaoProducaoService, EmpresaService, UnidadeOperacionalService, TipoServicoOperacionalService, ProdutoCargaService, FormaPagamentoOperacionalService, ColaboradorService } from "@/services/base.service";
+import { OperacaoProducaoService } from "@/services/domain/producao.service";
+import { EmpresaService, ColaboradorService } from "@/services/domain/cadastros.service";
+import { UnidadeOperacionalService, TipoServicoOperacionalService, ProdutoCargaService, FormaPagamentoOperacionalService } from "@/services/domain/core.service";
 
 // Modular Components
 import { useProductionForm } from "@/components/operacoes/lancamento/hooks/useProductionForm";
@@ -110,7 +112,24 @@ const LancamentoProducao = () => {
                 </div>
 
                 <form onSubmit={form.handleSubmit((data) => mutation.mutate(data))} className="space-y-6">
-                    {etapa === 1 && <FormStepSelector form={form} onNext={() => setEtapa(2)} />}
+                    {etapa === 1 && (
+                        <FormStepSelector
+                            form={form}
+                            onNext={(preset) => {
+                                if (preset.tipo === "diaristas") {
+                                    navigate("/producao/diaristas");
+                                } else if (preset.tipo === "servicos_especificos") {
+                                    navigate("/producao/servicos-especificos");
+                                } else if (preset.id === "servicos_extras") {
+                                    navigate("/producao/servicos-extras");
+                                } else if (preset.id === "custos_operacionais") {
+                                    navigate("/producao/custos-extras");
+                                } else {
+                                    setEtapa(2);
+                                }
+                            }}
+                        />
+                    )}
 
                     {etapa === 2 && (
                         <div className="esc-card p-6">

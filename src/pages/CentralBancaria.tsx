@@ -41,7 +41,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
-import { EmpresaService } from "@/services/base.service";
+import { EmpresaService } from "@/services/domain/cadastros.service";
 import { CNAB240BBWriter } from "@/services/cnab/CNAB240BBWriter";
 import { CNABService, ContaBancariaService, CnabRemessaArquivoService } from "@/services/financial.service";
 import { RHFinanceiroService } from "@/services/rhFinanceiro.service";

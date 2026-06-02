@@ -10,7 +10,7 @@ import {
 } from '../cnab/cnab240-posicional';
 import { CnabRemessaArquivoService } from '../cnab/cnabRemessaArquivo.service';
 
-import { BaseService, sanitizePayload, cleanUuid, validateUuidFields, getCurrentTenantId, getTenantQueryFilter, extractReferencedTableFromFkError } from './core.service';
+import { BaseService, sanitizePayload, cleanUuid, validateUuidFields, getCurrentTenantId, getTenantQueryFilter, extractReferencedTableFromFkError } from './base.service';
 
 type StatusLancamentoDiarista =
   | 'em_aberto' | 'EM_ABERTO'

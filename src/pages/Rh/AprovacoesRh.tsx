@@ -20,6 +20,7 @@ import {
     Calendar,
     Loader2,
     ExternalLink,
+    Layers,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, startOfWeek, endOfWeek, subWeeks } from "date-fns";
@@ -42,15 +43,17 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
+import { EmpresaService } from "@/services/domain/cadastros.service";
+import { PontoService } from "@/services/domain/producao.service";
+import { OperacaoService } from "@/services/domain/core.service";
 import {
-    EmpresaService,
-    PontoService,
-    OperacaoService,
     CustoExtraOperacionalService,
-    ServicosExtrasOperacionaisService,
+    ServicosExtrasOperacionaisService
+} from "@/services/domain/despesas.service";
+import {
     LancamentoDiaristaService,
-    LoteFechamentoDiaristaService,
-} from "@/services/base.service";
+    LoteFechamentoDiaristaService
+} from "@/services/domain/diaristas.service";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -477,6 +480,15 @@ export default function AprovacoesRh() {
         }
     };
 
+    const APPROVAL_TYPES = [
+        { id: "all", label: "Fila Geral", icon: Layers, color: "text-primary" },
+        { id: "PONTO", label: "Folha de Ponto", icon: Clock, color: "text-blue-500" },
+        { id: "DIARISTA", label: "Diaristas", icon: Users, color: "text-emerald-500" },
+        { id: "CUSTO EXTRA", label: "Custos Extras", icon: DollarSign, color: "text-orange-500" },
+        { id: "SERVIÇO EXTRA", label: "Serviços Extras", icon: Activity, color: "text-purple-500" },
+        { id: "OPERAÇÃO", label: "Operações", icon: CheckCircle2, color: "text-cyan-500" },
+    ];
+
     // ── Render ───────────────────────────────────────
     return (
         <AppShell
@@ -484,17 +496,44 @@ export default function AprovacoesRh() {
             subtitle="Fila de aprovações do RH - decisões pendentes"
             badge="PROCESSAMENTO / PIPELINE"
         >
-            <div className="flex flex-col gap-6">
-                {/* Header Actions */}
-                <div className="flex justify-end gap-3 -mt-12 mb-4">
-                    <Button variant="outline" size="sm" onClick={handleRefresh} className="gap-2 bg-white/50 border-border/40 hover:bg-white shadow-sm" disabled={isLoading}>
-                        <RotateCcw size={14} className={cn("text-muted-foreground", isLoading && "animate-spin")} />
-                        Reprocessar dados
-                    </Button>
-                    <Button variant="default" size="sm" onClick={handleRefresh} className="gap-2 bg-orange-600 hover:bg-orange-700 text-white shadow-md" disabled={isLoading}>
-                        <RefreshCw size={14} className={cn(isLoading && "animate-spin")} />
-                        Atualizar
-                    </Button>
+            <div className="flex flex-col gap-6 max-w-[1700px] mx-auto pb-12 px-4 md:px-6">
+
+                {/* FILTROS TIPO (Pills horizontais) */}
+                <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                    {APPROVAL_TYPES.map((type) => {
+                        const Icon = type.icon;
+                        const isActive = filterType === type.id;
+                        const count = type.id === "all"
+                            ? allItems.filter(i => i.situacao === "Em análise").length
+                            : allItems.filter(i => i.tipo === type.id && i.situacao === "Em análise").length;
+
+                        return (
+                            <button
+                                key={type.id}
+                                onClick={() => {
+                                    setFilterType(type.id);
+                                    setCurrentPage(1);
+                                }}
+                                className={cn(
+                                    "h-9 px-4 rounded-full flex items-center gap-2 border transition-all whitespace-nowrap text-xs font-medium",
+                                    isActive
+                                        ? "bg-[#FFF1EC] text-[#FD4C00] border-[#FD4C00]/20 shadow-sm"
+                                        : "bg-white text-muted-foreground border-border hover:bg-bg-subtle"
+                                )}
+                            >
+                                <Icon className={cn("h-3.5 w-3.5", isActive ? "text-[#FD4C00]" : "text-muted-foreground/60")} />
+                                <span>{type.label}</span>
+                                {count > 0 && (
+                                    <span className={cn(
+                                        "ml-1 h-4 min-w-[16px] px-1 rounded-full text-[9px] flex items-center justify-center font-bold",
+                                        isActive ? "bg-[#FD4C00] text-white" : "bg-gray-100 text-gray-600"
+                                    )}>
+                                        {count}
+                                    </span>
+                                )}
+                            </button>
+                        );
+                    })}
                 </div>
 
                 {/* KPI Grid */}
@@ -507,14 +546,13 @@ export default function AprovacoesRh() {
                     <KPICard label="Atualização" value={format(new Date(), "HH:mm", { locale: ptBR })} subtext={format(new Date(), "dd/MM/yyyy", { locale: ptBR })} icon={CalendarDays} iconColor="text-slate-600" iconBg="bg-slate-50" />
                 </div>
 
-                {/* Filters */}
-                <Card className="p-4 border-border/40 shadow-sm bg-white/80 backdrop-blur-md">
-                    <div className="flex flex-wrap items-end gap-3">
-                        <div className="flex flex-col gap-1.5 min-w-[160px]">
-                            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Período</label>
+                {/* Filters Row */}
+                <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 py-4 border-y border-border/60">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <div className="flex items-center gap-2">
                             <Select value={periodo} onValueChange={handlePeriodo}>
-                                <SelectTrigger className="h-10 bg-white border-muted font-medium cursor-pointer w-full">
-                                    <SelectValue />
+                                <SelectTrigger className="h-10 px-4 rounded-lg border border-border bg-card text-sm font-medium text-foreground cursor-pointer min-w-[160px]">
+                                    <SelectValue placeholder="Período" />
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="semana-atual">Semana atual</SelectItem>
@@ -523,97 +561,73 @@ export default function AprovacoesRh() {
                                     <SelectItem value="personalizado">Personalizado</SelectItem>
                                 </SelectContent>
                             </Select>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Início</label>
                             <Input type="date" value={inicio} onChange={e => { setInicio(e.target.value); setPeriodo("personalizado"); setCurrentPage(1); }} className="h-10 w-[140px] font-medium" />
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Fim</label>
                             <Input type="date" value={fim} onChange={e => { setFim(e.target.value); setPeriodo("personalizado"); setCurrentPage(1); }} className="h-10 w-[140px] font-medium" />
                         </div>
 
-                        <div className="flex flex-col gap-1.5 min-w-[140px]">
-                            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Tipo</label>
-                            <Select value={filterType} onValueChange={v => { setFilterType(v); setCurrentPage(1); }}>
-                                <SelectTrigger className="h-10 bg-white border-muted font-medium cursor-pointer w-full">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">Todos</SelectItem>
-                                    <SelectItem value="PONTO">Ponto</SelectItem>
-                                    <SelectItem value="DIARISTA">Diarista</SelectItem>
-                                    <SelectItem value="CUSTO EXTRA">Custo Extra</SelectItem>
-                                    <SelectItem value="SERVIÇO EXTRA">Serviço Extra</SelectItem>
-                                    <SelectItem value="OPERAÇÃO">Operação</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
+                        <Select value={filterEmpresaId} onValueChange={v => { setFilterEmpresaId(v); setCurrentPage(1); }}>
+                            <SelectTrigger className="h-10 px-4 rounded-lg border border-border bg-card text-sm font-medium text-foreground cursor-pointer min-w-[200px]">
+                                <SelectValue placeholder="Todas as empresas" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">Todas as empresas</SelectItem>
+                                {(empresas as any[]).map(e => (
+                                    <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
 
-                        <div className="flex flex-col gap-1.5 flex-[2] min-w-[200px]">
-                            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Empresa</label>
-                            <Select value={filterEmpresaId} onValueChange={v => { setFilterEmpresaId(v); setCurrentPage(1); }}>
-                                <SelectTrigger className="h-10 bg-white border-muted font-medium cursor-pointer w-full">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">Todas as empresas</SelectItem>
-                                    {(empresas as any[]).map(e => (
-                                        <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5 flex-[2] min-w-[240px]">
-                            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Busca</label>
-                            <div className="relative">
-                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-                                <Input
-                                    placeholder="Lote, colaborador, operação..."
-                                    className="pl-10 h-10 font-medium bg-white"
-                                    value={searchTerm}
-                                    onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-                                />
-                            </div>
+                        <div className="relative group min-w-[240px]">
+                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60" />
+                            <Input
+                                placeholder="Pesquisa rápida..."
+                                value={searchTerm}
+                                onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+                                className="pl-10 h-10 w-full rounded-lg border-border bg-card font-medium"
+                            />
                         </div>
                     </div>
-                </Card>
 
-                {/* Content: Table + Detail Panel */}
-                <div className="flex gap-6 items-start">
-                    <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" onClick={handleRefresh} className="h-10 gap-2 border-border/40 hover:bg-white shadow-sm" disabled={isLoading}>
+                            <RotateCcw size={14} className={cn("text-muted-foreground", isLoading && "animate-spin")} />
+                            <span>Sincronizar</span>
+                        </Button>
+                    </div>
+                </div>
+
+                {/* Content Area */}
+                <div className="flex flex-col lg:flex-row gap-6 items-start">
+                    <div className="flex-1 min-w-0 w-full">
                         <Tabs value={activeTab} onValueChange={v => { setActiveTab(v); setCurrentPage(1); setSelectedItems([]); }} className="w-full">
-                            <div className="flex items-center justify-between border-b border-border/40 mb-0 bg-white/60 backdrop-blur-sm rounded-t-xl px-4">
-                                <TabsList className="bg-transparent h-14 p-0 gap-8">
+                            <div className="flex flex-col md:flex-row items-center justify-between border-b border-border/40 mb-0 bg-white/60 backdrop-blur-sm rounded-t-xl px-4 gap-4 py-2 md:py-0">
+                                <TabsList className="bg-transparent h-14 p-0 gap-6">
                                     {[
                                         { value: "fila", label: "Fila de Aprovação", icon: Activity, count: filaItems.length, color: "data-[state=active]:border-orange-500 data-[state=active]:text-orange-600" },
                                         { value: "aprovados", label: "Aprovados", icon: CheckCircle2, count: aprovadosItems.length, color: "data-[state=active]:border-emerald-500 data-[state=active]:text-emerald-700" },
                                         { value: "devolvidos", label: "Devolvidos", icon: RotateCcw, count: devolvidosItems.length, color: "data-[state=active]:border-rose-500 data-[state=active]:text-rose-600" },
                                         { value: "historico", label: "Histórico", icon: History, count: filtered.length, color: "data-[state=active]:border-primary" },
                                     ].map(tab => (
-                                        <TabsTrigger key={tab.value} value={tab.value} className={cn("bg-transparent border-b-2 border-transparent data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none text-xs font-medium px-0 h-14 gap-2 transition-all", tab.color)}>
+                                        <TabsTrigger key={tab.value} value={tab.value} className={cn("bg-transparent border-b-2 border-transparent data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none text-[11px] uppercase tracking-wider font-bold px-0 h-14 gap-2 transition-all opacity-70 data-[state=active]:opacity-100", tab.color)}>
                                             <tab.icon size={14} />
                                             {tab.label}
-                                            <span className="ml-1 text-[10px] bg-muted/60 rounded-full px-1.5 py-0.5 font-medium">{tab.count}</span>
+                                            <span className="ml-1 text-[9px] bg-muted/60 rounded-full px-1.5 py-0.5 font-bold">{tab.count}</span>
                                         </TabsTrigger>
                                     ))}
                                 </TabsList>
 
-                                <div className="flex items-center gap-2">
-                                    <Button size="sm" className="h-9 bg-emerald-600 hover:bg-emerald-700 text-white gap-2 px-4 shadow-sm" disabled={selectedItems.length === 0 || aprovarMutation.isPending} onClick={handleBulkAprovar}>
+                                <div className="flex items-center gap-2 pb-2 md:pb-0">
+                                    <Button size="sm" className="h-9 bg-emerald-600 hover:bg-emerald-700 text-white gap-2 px-4 shadow-sm font-bold text-xs" disabled={selectedItems.length === 0 || aprovarMutation.isPending} onClick={handleBulkAprovar}>
                                         {aprovarMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                                        Aprovar Selecionados
+                                        Validar Selecionados
                                     </Button>
-                                    <Button variant="outline" size="sm" className="h-9 border-orange-200 text-orange-600 hover:bg-orange-50 gap-2 px-4" disabled={selectedItems.length === 0 || devolverMutation.isPending} onClick={handleBulkDevolver}>
+                                    <Button variant="outline" size="sm" className="h-9 border-orange-200 text-orange-600 hover:bg-orange-50 gap-2 px-4 font-bold text-xs" disabled={selectedItems.length === 0 || devolverMutation.isPending} onClick={handleBulkDevolver}>
                                         {devolverMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
-                                        Devolver Selecionados
+                                        Devolver
                                     </Button>
-                                    <Button variant="outline" size="sm" className="h-9 gap-2 px-4" onClick={handleExport}>
+                                    <Button variant="outline" size="sm" className="h-9 gap-2 px-4 font-bold text-xs border-border/60" onClick={handleExport}>
                                         <Download size={14} className="text-muted-foreground" />
-                                        Exportar
+                                        Excel
                                     </Button>
                                 </div>
                             </div>
@@ -928,19 +942,37 @@ function KPICard({ label, value, subtext, icon: Icon, iconColor, iconBg, isAlert
 }) {
     return (
         <Card className={cn(
-            "p-4 flex flex-col border-border/40 shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 bg-white",
+            "esc-card p-5 transition-all hover:shadow-md hover:-translate-y-0.5 bg-white",
             isAlert ? "border-l-4 border-l-rose-500" : ""
         )}>
-            <div className="flex items-center gap-3 mb-3">
-                <div className={cn("p-2.5 rounded-xl flex items-center justify-center shrink-0", iconBg, iconColor)}>
-                    <Icon size={20} strokeWidth={2.5} />
+            <div className="flex items-start justify-between">
+                <div className="flex flex-col">
+                    <span className={cn(
+                        "text-[10px] font-bold uppercase tracking-[0.1em]",
+                        isAlert ? "text-rose-600" : "text-slate-500"
+                    )}>{label}</span>
+                    <div className="mt-3">
+                        {loading ? (
+                            <div className="h-9 w-16 bg-slate-100 animate-pulse rounded" />
+                        ) : (
+                            <span className={cn(
+                                "text-3xl font-bold font-display leading-none",
+                                isAlert ? "text-rose-600" : "text-slate-900"
+                            )}>
+                                {value}
+                            </span>
+                        )}
+                    </div>
                 </div>
-                <div className="flex flex-col min-w-0">
-                    <span className="text-[11px] font-semibold text-foreground/80 uppercase tracking-wider truncate">{label}</span>
-                    {loading ? <div className="h-7 w-10 bg-muted/40 animate-pulse rounded mt-0.5" /> : <span className="text-3xl font-bold text-slate-900 leading-tight">{value}</span>}
+                <div className={cn("p-2 rounded-lg opacity-40 shrink-0", iconColor)}>
+                    <Icon size={24} strokeWidth={1.5} />
                 </div>
             </div>
-            <span className="text-xs font-medium text-muted-foreground mt-auto">{loading ? "—" : subtext}</span>
+            <div className="mt-4 pt-3 border-t border-slate-50">
+                <span className="text-xs font-bold text-slate-400">
+                    {loading ? "Sincronizando..." : subtext}
+                </span>
+            </div>
         </Card>
     );
 }

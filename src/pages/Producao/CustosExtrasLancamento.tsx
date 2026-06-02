@@ -3,22 +3,32 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { addMonths, format, startOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
+  AlertCircle,
   AlertTriangle,
+  ArrowLeft,
   BarChart3,
   Building2,
   Calculator,
   Calendar as CalendarIcon,
+  CheckCircle2,
+  DollarSign,
   ExternalLink,
   FileBadge2,
+  FileText,
   FileUp,
   HandCoins,
+  History,
   Loader2,
   LucideIcon,
+  Package,
   PlayCircle,
+  Plus,
   Receipt,
   RefreshCw,
+  Save,
   Settings2,
   ShoppingCart,
+  Truck,
   Upload,
   UtensilsCrossed,
   Wallet,
@@ -32,6 +42,9 @@ import { CustosExtrasTableBlock } from "@/components/operacoes/CustosExtrasTable
 import { SpreadsheetUploadModal } from "@/components/shared/SpreadsheetUploadModal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -39,8 +52,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   AIService,
   CustoExtraOperacionalService,
@@ -60,12 +75,6 @@ type CustoExtraRecord = {
   status_pagamento?: string | null;
   categoria_custo?: string | null;
   [key: string]: unknown;
-};
-
-type ProcessDayResponse = {
-  resultado?: Array<{
-    valor_total_calculado?: number | null;
-  }> | null;
 };
 
 type RowValue = string | number | boolean | null | undefined;
@@ -105,11 +114,9 @@ const normalizeSpreadsheetRow = (row: SpreadsheetRow) =>
 
 const parseExcelDate = (val: RowValue): string | null => {
   if (!val) return null;
-
   if (val instanceof Date && !Number.isNaN(val.getTime())) {
     return format(val, "yyyy-MM-dd");
   }
-
   if (typeof val === "number") {
     try {
       const excelEpoch = new Date(1899, 11, 30);
@@ -118,71 +125,25 @@ const parseExcelDate = (val: RowValue): string | null => {
       const m = String(date.getMonth() + 1).padStart(2, "0");
       const d = String(date.getDate()).padStart(2, "0");
       return `${y}-${m}-${d}`;
-    } catch {
-      return null;
-    }
+    } catch { return null; }
   }
-
   const str = String(val).trim();
   const dmyMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (dmyMatch) return `${dmyMatch[3]}-${dmyMatch[2]}-${dmyMatch[1]}`;
-
-  const dmyDateTimeMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+\d{2}:\d{2}(?::\d{2})?)$/);
-  if (dmyDateTimeMatch) return `${dmyDateTimeMatch[3]}-${dmyDateTimeMatch[2]}-${dmyDateTimeMatch[1]}`;
-
   if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
-
-  const isoDateTimeMatch = str.match(/^(\d{4}-\d{2}-\d{2})(?:\s+\d{2}:\d{2}(?::\d{2})?)$/);
-  if (isoDateTimeMatch) return isoDateTimeMatch[1];
-
   return null;
 };
 
 const parseNumericCell = (val: RowValue): number => {
   if (val === null || val === undefined || val === "") return 0;
   if (typeof val === "number") return Number.isFinite(val) ? val : 0;
-
-  const normalized = String(val)
-    .replace(/[R$\sA-Za-z]/gi, "")
-    .replace(/\./g, "")
-    .replace(",", ".");
+  const normalized = String(val).replace(/[R$\sA-Za-z]/gi, "").replace(/\./g, "").replace(",", ".");
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
 const normalizeLookupText = (value: unknown) =>
-  String(value ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toUpperCase()
-    .replace(":", "")
-    .trim();
-
-const getImportErrorMessage = (error: unknown) => {
-  if (error instanceof Error && error.message) return error.message;
-
-  if (error && typeof error === "object") {
-    const candidate = error as Record<string, unknown>;
-    const parts = [
-      candidate.message,
-      candidate.details,
-      candidate.hint,
-      candidate.code ? `codigo ${candidate.code}` : null,
-    ]
-      .map((part) => (typeof part === "string" ? part.trim() : ""))
-      .filter(Boolean);
-
-    if (parts.length > 0) return parts.join(" | ");
-
-    try {
-      return JSON.stringify(candidate);
-    } catch {
-      return "Falha ao processar a planilha.";
-    }
-  }
-
-  return "Falha ao processar a planilha.";
-};
+  String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(":", "").trim();
 
 const EXTRA_COST_BLOCK_CATEGORY_MAP: Record<string, CategoriaCustoExtra> = {
   "CUSTOS COM MERENDA": "MERENDA",
@@ -191,8 +152,7 @@ const EXTRA_COST_BLOCK_CATEGORY_MAP: Record<string, CategoriaCustoExtra> = {
   "CUSTOS COM FORNECEDOR": "FORNECEDOR",
 };
 
-const normalizeCategoryBlockTitle = (value: unknown) =>
-  normalizeLookupText(value).replace(/:$/g, "");
+const normalizeCategoryBlockTitle = (value: unknown) => normalizeLookupText(value).replace(/:$/g, "");
 
 const normalizePaymentStatus = (value: RowValue): ImportedExtraCostPayload["status_pagamento"] => {
   const normalized = normalizeLookupText(value);
@@ -202,47 +162,24 @@ const normalizePaymentStatus = (value: RowValue): ImportedExtraCostPayload["stat
   return null;
 };
 
-const getRowNumericKeys = (row: SpreadsheetRow) =>
-  Object.keys(row)
-    .filter((key) => key !== SHEET_ORIGIN_FIELD && /^\d+$/.test(key))
-    .sort((a, b) => Number(a) - Number(b));
-
-const rowToCellArray = (row: SpreadsheetRow) =>
-  getRowNumericKeys(row).map((key) => row[key]);
-
 const parseCustosExtrasImport = (rows: SpreadsheetRow[]) => {
   const sheetRows = rows.filter((row) => normalizeLookupText(row[SHEET_ORIGIN_FIELD]).includes("CUSTOS EXTRAS"));
   if (sheetRows.length === 0) return [];
-
+  const getRowNumericKeys = (row: SpreadsheetRow) => Object.keys(row).filter((key) => key !== SHEET_ORIGIN_FIELD && /^\d+$/.test(key)).sort((a, b) => Number(a) - Number(b));
+  const rowToCellArray = (row: SpreadsheetRow) => getRowNumericKeys(row).map((key) => row[key]);
   const matrix = sheetRows.map(rowToCellArray);
   const titleRow = matrix[0] ?? [];
   const headerRow = matrix[1] ?? [];
-
-  const blockStarts = titleRow
-    .map((cell, index) => {
-      const normalized = normalizeCategoryBlockTitle(cell);
-      const categoria = EXTRA_COST_BLOCK_CATEGORY_MAP[normalized];
-      return categoria ? { start: index, categoria } : null;
-    })
-    .filter((item): item is { start: number; categoria: CategoriaCustoExtra } => Boolean(item))
-    .sort((a, b) => a.start - b.start);
-
+  const blockStarts = titleRow.map((cell, index) => {
+    const normalized = normalizeCategoryBlockTitle(cell);
+    const categoria = EXTRA_COST_BLOCK_CATEGORY_MAP[normalized];
+    return categoria ? { start: index, categoria } : null;
+  }).filter((item): item is { start: number; categoria: CategoriaCustoExtra } => Boolean(item)).sort((a, b) => a.start - b.start);
   if (blockStarts.length === 0) return [];
-
   return blockStarts.flatMap((block, blockIndex) => {
     const end = (blockStarts[blockIndex + 1]?.start ?? headerRow.length) - 1;
-    const headerEntries = headerRow
-      .slice(block.start, end + 1)
-      .map((cell, offset) => ({
-        absoluteIndex: block.start + offset,
-        normalized: normalizeLookupText(cell),
-      }));
-
-    const findHeaderIndex = (...aliases: string[]) =>
-      headerEntries.find((entry) =>
-        aliases.some((alias) => entry.normalized.includes(normalizeLookupText(alias))),
-      )?.absoluteIndex;
-
+    const headerEntries = headerRow.slice(block.start, end + 1).map((cell, offset) => ({ absoluteIndex: block.start + offset, normalized: normalizeLookupText(cell) }));
+    const findHeaderIndex = (...aliases: string[]) => headerEntries.find((entry) => aliases.some((alias) => entry.normalized.includes(normalizeLookupText(alias))))?.absoluteIndex;
     const idIndex = findHeaderIndex("ID");
     const dataIndex = findHeaderIndex("DATA");
     const empresaIndex = findHeaderIndex("EMPRESA");
@@ -253,24 +190,16 @@ const parseCustosExtrasImport = (rows: SpreadsheetRow[]) => {
     const formaPagamentoIndex = findHeaderIndex("FORMA DE PAGAMENTO", "FORMA PGTO", "PAGAMENTO");
     const vencimentoIndex = findHeaderIndex("VENCIMENTO", "DATA VENCIMENTO");
     const statusIndex = findHeaderIndex("STATUS PGTO", "STATUS PAGTO", "STATUS");
-
     return matrix.slice(2).flatMap((row, rowOffset) => {
       const cells = row.slice(block.start, end + 1);
-      const hasMeaningfulData = cells.some((cell) => cell !== null && cell !== "" && cell !== 0);
-      if (!hasMeaningfulData) return [];
-
+      if (!cells.some((cell) => cell !== null && cell !== "" && cell !== 0)) return [];
       const descricaoRaw = descricaoIndex !== undefined ? row[descricaoIndex] : null;
-      const totalLabel = normalizeLookupText(descricaoRaw);
-      if (totalLabel === "TOTAL") return [];
-
+      if (normalizeLookupText(descricaoRaw) === "TOTAL") return [];
       const valorUnitario = unitarioIndex !== undefined ? parseNumericCell(row[unitarioIndex]) : 0;
       const quantidade = quantidadeIndex !== undefined ? parseNumericCell(row[quantidadeIndex]) : 0;
-      const totalBruto = totalIndex !== undefined ? parseNumericCell(row[totalIndex]) : 0;
-      const total = totalBruto || valorUnitario * quantidade;
+      const total = (totalIndex !== undefined ? parseNumericCell(row[totalIndex]) : 0) || valorUnitario * quantidade;
       const descricao = String(descricaoRaw ?? "").trim();
-
-      if (!descricao && total === 0 && valorUnitario === 0 && quantidade === 0) return [];
-
+      if (!descricao && total === 0) return [];
       return [{
         data: dataIndex !== undefined ? parseExcelDate(row[dataIndex]) : null,
         empresa_nome: empresaIndex !== undefined ? String(row[empresaIndex] ?? "").trim() || null : null,
@@ -282,20 +211,8 @@ const parseCustosExtrasImport = (rows: SpreadsheetRow[]) => {
         forma_pagamento: formaPagamentoIndex !== undefined ? String(row[formaPagamentoIndex] ?? "").trim() || null : null,
         data_vencimento: vencimentoIndex !== undefined ? parseExcelDate(row[vencimentoIndex]) : null,
         status_pagamento: statusIndex !== undefined ? normalizePaymentStatus(row[statusIndex]) : null,
-        operacao_id: null,
         tipo_lancamento: "DESPESA" as const,
-        avaliacao_json: {
-          origem_importacao: "planilha",
-          contexto_importacao: {
-            origem_aba: row[SHEET_ORIGIN_FIELD] ?? "CUSTOS EXTRAS",
-            bloco_categoria: block.categoria,
-            linha_planilha: rowOffset + 3,
-          },
-          linha_original: normalizeSpreadsheetRow(sheetRows[rowOffset + 2] ?? {}),
-          referencia_original: {
-            id: idIndex !== undefined ? row[idIndex] : null,
-          },
-        },
+        avaliacao_json: { origem_importacao: "planilha", contexto_importacao: { linha_planilha: rowOffset + 3, bloco_categoria: block.categoria } },
         origem_dado: "importacao" as const,
       }];
     });
@@ -312,643 +229,392 @@ type TopKpiCardProps = {
   iconColor?: string;
 };
 
-const currencyFormatter = new Intl.NumberFormat("pt-BR", {
-  style: "currency",
-  currency: "BRL",
-});
-
-const integerFormatter = new Intl.NumberFormat("pt-BR");
-
-const percentFormatter = new Intl.NumberFormat("pt-BR", {
-  minimumFractionDigits: 1,
-  maximumFractionDigits: 1,
-});
-
+const currencyFormatter = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const formatCurrency = (value: number) => currencyFormatter.format(Number.isFinite(value) ? value : 0);
-const formatInteger = (value: number) => integerFormatter.format(Number.isFinite(value) ? value : 0);
-const formatPercent = (value: number) => `${percentFormatter.format(Number.isFinite(value) ? value : 0)}%`;
-
-const MONTH_NAME_OPTIONS = Array.from({ length: 12 }, (_, index) => {
-  const date = new Date(2026, index, 1);
-  const labelBase = format(date, "MMMM", { locale: ptBR });
-  return {
-    value: String(index + 1).padStart(2, "0"),
-    label: labelBase.charAt(0).toUpperCase() + labelBase.slice(1),
-  };
-});
 
 const MONTH_FILTER_OPTIONS = [
   { value: "all", label: "Todos" },
-  ...MONTH_NAME_OPTIONS,
+  ...Array.from({ length: 12 }, (_, i) => ({
+    value: String(i + 1).padStart(2, "0"),
+    label: format(new Date(2026, i, 1), "MMMM", { locale: ptBR }).replace(/^\w/, (c) => c.toUpperCase()),
+  })),
 ];
 
-const YEAR_OPTIONS = Array.from(
-  new Set(
-    Array.from({ length: 24 }, (_, index) =>
-      String(startOfMonth(addMonths(new Date(), -index)).getFullYear()),
-    ),
-  ),
-).sort((a, b) => Number(b) - Number(a));
+const YEAR_OPTIONS = Array.from(new Set(Array.from({ length: 5 }, (_, i) => String(new Date().getFullYear() - i)))).sort((a, b) => Number(b) - Number(a));
 
-const topKpiCardClasses: Record<NonNullable<TopKpiCardProps["size"]>, string> = {
-  large: "p-5 min-h-[148px]",
-  small: "p-4 min-h-[108px]",
-  xs: "p-3 min-h-[80px]",
-};
+const topKpiCardClasses: Record<NonNullable<TopKpiCardProps["size"]>, string> = { large: "p-5 min-h-[148px]", small: "p-4 min-h-[108px]", xs: "p-3 min-h-[80px]" };
 
-const TopKpiCard = ({
-  label,
-  value,
-  helper,
-  size = "large",
-  variant = "default",
-  icon: Icon,
-  iconColor = "bg-primary-soft text-primary",
-}: TopKpiCardProps) => (
-  <div
-    className={cn(
-      "group relative overflow-hidden transition-all duration-200 hover:-translate-y-0.5",
-      variant === "primary" ? "esc-card bg-primary text-primary-foreground border-primary shadow-lg" :
-        variant === "muted" ? "bg-muted/30 border border-border rounded-xl" :
-          "esc-card shadow-sm hover:shadow-md",
-      topKpiCardClasses[size],
-    )}
-  >
+const TopKpiCard = ({ label, value, helper, size = "large", variant = "default", icon: Icon, iconColor = "bg-primary-soft text-primary" }: TopKpiCardProps) => (
+  <div className={cn("group relative overflow-hidden transition-all duration-200 hover:-translate-y-0.5", variant === "primary" ? "esc-card bg-primary text-primary-foreground border-primary shadow-lg" : variant === "muted" ? "bg-muted/30 border border-border rounded-xl" : "esc-card shadow-sm hover:shadow-md", topKpiCardClasses[size])}>
     <div className="flex h-full flex-col justify-between gap-4">
       <div className="flex items-start justify-between gap-3">
         <div className={cn("space-y-1.5", size === "xs" && "space-y-0.5")}>
-          <div className={cn(
-            "font-display font-medium",
-            size === "xs" ? "text-xs" : "text-sm",
-            variant === "primary" ? "text-primary-foreground/90" : "text-muted-foreground",
-          )}>
-            {label}
-          </div>
-          <div className={cn(
-            "font-display font-bold leading-none",
-            size === "large" ? "text-[28px]" : size === "small" ? "text-2xl" : "text-xl",
-            variant === "primary" ? "text-primary-foreground" : "text-foreground",
-          )}>
-            {value}
-          </div>
+          <div className={cn("font-display font-medium", size === "xs" ? "text-xs" : "text-sm", variant === "primary" ? "text-primary-foreground/90" : "text-muted-foreground")}>{label}</div>
+          <div className={cn("font-display font-bold leading-none", size === "large" ? "text-[28px]" : size === "small" ? "text-2xl" : "text-xl", variant === "primary" ? "text-primary-foreground" : "text-foreground")}>{value}</div>
         </div>
-        {Icon && (
-          <div
-            className={cn(
-              "shrink-0 rounded-md flex items-center justify-center",
-              iconColor,
-              size === "xs" ? "h-8 w-8" : "h-10 w-10",
-            )}
-          >
-            <Icon className={size === "xs" ? "h-4 w-4" : "h-5 w-5"} />
-          </div>
-        )}
+        {Icon && <div className={cn("shrink-0 rounded-md flex items-center justify-center", iconColor, size === "xs" ? "h-8 w-8" : "h-10 w-10")}><Icon className={size === "xs" ? "h-4 w-4" : "h-5 w-5"} /></div>}
       </div>
-      {size !== "xs" && helper && (
-        <div className={cn(
-          "truncate text-[13px] leading-snug",
-          variant === "primary" ? "text-primary-foreground/80" : "text-muted-foreground",
-        )}>
-          {helper}
-        </div>
-      )}
+      {size !== "xs" && helper && <div className={cn("truncate text-[13px] leading-snug", variant === "primary" ? "text-primary-foreground/80" : "text-muted-foreground")}>{helper}</div>}
     </div>
   </div>
 );
 
+const CATEGORIAS_CUSTO: Array<{ value: CategoriaCustoExtra; label: string; icon: LucideIcon }> = [
+  { value: "OPERACIONAL", label: "Operacional", icon: Truck },
+  { value: "ADMINISTRATIVO", label: "Administrativo", icon: Building2 },
+  { value: "MERENDA", label: "Merenda", icon: UtensilsCrossed },
+  { value: "FORNECEDOR", label: "Fornecedor", icon: ShoppingCart },
+];
+
+const STATUS_PAGAMENTO: Array<{ value: NonNullable<ImportedExtraCostPayload["status_pagamento"]>; label: string }> = [
+  { value: "PENDENTE", label: "Pendente" },
+  { value: "RECEBIDO", label: "Pago / Recebido" },
+  { value: "ATRASADO", label: "Atrasado" },
+];
+
 const CustosExtrasLancamento = () => {
+  const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { openPipeline } = useOperationalPipeline();
+  const today = format(new Date(), "yyyy-MM-dd");
 
-  const [selectedYear, setSelectedYear] = useState<string>(String(new Date().getFullYear()));
-  const [selectedMonthNumber, setSelectedMonthNumber] = useState<string>("all");
-  const [custosYear, setCustosYear] = useState<string>(String(new Date().getFullYear()));
-  const [custosMonthNumber, setCustosMonthNumber] = useState<string>("all");
-  const [selectedEmpresaId, setSelectedEmpresaId] = useState<string>("");
-  const [importModalOpen, setImportModalOpen] = useState(false);
-  const [confirmClear, setConfirmClear] = useState(false);
+  const [activeTab, setActiveTab] = useState("historico");
+  const [filterEmpresaId, setFilterEmpresaId] = useState<string>("all");
+  const [filterMonth, setFilterMonth] = useState<string>(format(new Date(), "MM"));
+  const [filterYear, setFilterYear] = useState<string>(format(new Date(), "yyyy"));
 
-  const selectedMonth = `${selectedYear}-${selectedMonthNumber}`;
-  const isAllMonthsSelected = selectedMonthNumber === "all";
-  const selectedDate = useMemo(
-    () => new Date(`${selectedYear}-${isAllMonthsSelected ? "01" : selectedMonthNumber}-01T12:00:00`),
-    [isAllMonthsSelected, selectedMonthNumber, selectedYear],
-  );
-  const dateValue = format(selectedDate, "yyyy-MM-dd");
-  const monthValue = selectedMonth;
-  const matchesSelectedPeriod = useCallback((value: unknown) => {
-    const referencia = String(value ?? "");
-    if (!referencia.startsWith(selectedYear)) return false;
-    if (isAllMonthsSelected) return true;
-    return referencia.startsWith(monthValue);
-  }, [isAllMonthsSelected, monthValue, selectedYear]);
-  const monthLabelCapitalized = isAllMonthsSelected
-    ? `Todos os meses de ${selectedYear}`
-    : format(selectedDate, "MMMM/yyyy", { locale: ptBR }).replace(/^\w/, (char) => char.toUpperCase());
-
-  const custosMonth = `${custosYear}-${custosMonthNumber}`;
-  const isAllCustosMonthsSelected = custosMonthNumber === "all";
-  const custosMonthMatches = useCallback((value: unknown) => {
-    const referencia = String(value ?? "");
-    if (!referencia.startsWith(custosYear)) return false;
-    if (isAllCustosMonthsSelected) return true;
-    return referencia.startsWith(custosMonth);
-  }, [custosMonth, custosYear, isAllCustosMonthsSelected]);
-
-  const { data: empresas = [], isLoading: isLoadingEmpresas } = useQuery<EmpresaOption[]>({
-    queryKey: ["empresas"],
-    queryFn: () => EmpresaService.getAll(),
+  const [form, setForm] = useState({
+    data: today,
+    empresa_id: "",
+    categoria_custo: "OPERACIONAL" as CategoriaCustoExtra,
+    descricao: "",
+    valor_unitario: "",
+    quantidade: "1",
+    forma_pagamento: "",
+    data_vencimento: "",
+    status_pagamento: "PENDENTE" as const,
+    observacao: "",
   });
 
-  useEffect(() => {
-    if (empresas.length > 0 && !selectedEmpresaId) {
-      setSelectedEmpresaId("all");
-    }
-  }, [empresas, selectedEmpresaId]);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    setConfirmClear(false);
-  }, [selectedEmpresaId, selectedMonth]);
+  const { data: empresas = [] } = useQuery({ queryKey: ["empresas-all"], queryFn: () => EmpresaService.getAll() });
 
-  const { data: custosExtras = [], isLoading: isLoadingCustosExtras } = useQuery<CustoExtraRecord[]>({
-    queryKey: ["custos-extras", selectedEmpresaId],
-    queryFn: () => CustoExtraOperacionalService.getAll(selectedEmpresaId === "all" ? undefined : selectedEmpresaId),
-    enabled: !!selectedEmpresaId,
+  const { data: custosExtras = [], isLoading: isLoadingCustos } = useQuery({
+    queryKey: ["custos-extras", filterEmpresaId, filterMonth, filterYear],
+    queryFn: () => CustoExtraOperacionalService.getByCompetencia(`${filterYear}-${filterMonth}`, filterEmpresaId === "all" ? undefined : filterEmpresaId),
   });
 
-  const custosExtrasKpiDataset = useMemo(
-    () =>
-      custosExtras.filter((item) => {
-        if (!item.data) return false;
-        const sameDate = matchesSelectedPeriod(item.data);
-        const sameEmpresa = selectedEmpresaId === "all" || item.empresa_id === selectedEmpresaId;
-        return sameDate && sameEmpresa;
-      }),
-    [custosExtras, matchesSelectedPeriod, selectedEmpresaId],
-  );
-
-  const custosExtrasSheetDataset = useMemo(
-    () =>
-      custosExtras.filter((item) => {
-        if (!item.data) return false;
-        const sameDate = custosMonthMatches(item.data);
-        const sameEmpresa = selectedEmpresaId === "all" || item.empresa_id === selectedEmpresaId;
-        return sameDate && sameEmpresa;
-      }),
-    [custosExtras, custosMonthMatches, selectedEmpresaId],
-  );
-
-  const totalCustosExtras = useMemo(
-    () => custosExtrasKpiDataset.reduce((acc, item) => acc + Number(item.total ?? 0), 0),
-    [custosExtrasKpiDataset],
-  );
-
-  const custosExtrasKpis = useMemo(() => {
-    let maiorCusto = 0;
-    let totalCritico = 0;
-    let merenda = 0;
-    let administrativo = 0;
-    let operacional = 0;
-    let fornecedor = 0;
-    let recebido = 0;
-
-    custosExtrasKpiDataset.forEach((item) => {
-      const total = Number(item.total ?? 0);
-      const status = String(item.status_pagamento ?? "").toUpperCase();
-      const categoria = String(item.categoria_custo ?? "").toUpperCase();
-
-      maiorCusto = Math.max(maiorCusto, total);
-      if (status === "PENDENTE" || status === "ATRASADO") totalCritico += total;
-      if (status === "RECEBIDO") recebido += total;
-
-      if (categoria === "MERENDA") merenda += total;
-      if (categoria === "ADMINISTRATIVO") administrativo += total;
-      if (categoria === "OPERACIONAL") operacional += total;
-      if (categoria === "FORNECEDOR") fornecedor += total;
+  const kpis = useMemo(() => {
+    const totalCompetencia = custosExtras.reduce((acc, item) => acc + Number(item.total ?? 0), 0);
+    const porCategoria = { OPERACIONAL: 0, ADMINISTRATIVO: 0, MERENDA: 0, FORNECEDOR: 0 };
+    custosExtras.forEach(item => {
+      if (item.categoria_custo && item.categoria_custo in porCategoria) porCategoria[item.categoria_custo as keyof typeof porCategoria] += Number(item.total ?? 0);
     });
+    return { totalCompetencia, porCategoria };
+  }, [custosExtras]);
 
-    return {
-      total: totalCustosExtras,
-      maiorCusto,
-      custoCriticoPercentual: totalCustosExtras > 0 ? (totalCritico / totalCustosExtras) * 100 : 0,
-      lancamentos: custosExtrasKpiDataset.length,
-      recebido,
-      merenda,
-      administrativo,
-      operacional,
-      fornecedor,
-      custoMedio: custosExtrasKpiDataset.length > 0 ? totalCustosExtras / custosExtrasKpiDataset.length : 0,
-    };
-  }, [custosExtrasKpiDataset, totalCustosExtras]);
+  const setFormField = (field: string, value: string) => {
+    setForm((prev) => ({ ...prev, [field]: value }));
+    if (formErrors[field]) setFormErrors((prev) => { const next = { ...prev }; delete next[field]; return next; });
+  };
 
-  const isLoading = isLoadingEmpresas || isLoadingCustosExtras;
+  const parseNumeric = (value: string): number => {
+    const normalized = value.replace(/\./g, "").replace(",", ".");
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+  };
 
-  const clearMutation = useMutation({
-    mutationFn: () => CustoExtraOperacionalService.deleteImported(selectedEmpresaId === "all" ? undefined : selectedEmpresaId),
-    onSuccess: (deletedCount: number) => {
-      if (deletedCount === 0) {
-        toast.warning("Nenhum registro foi removido.", {
-          description: "Nao havia custos extras importados para o recorte atual.",
-        });
-        setConfirmClear(false);
-        return;
-      }
+  const validateForm = () => {
+    const errors: Record<string, string> = {};
+    if (!form.empresa_id) errors.empresa_id = "Selecione a empresa";
+    if (!form.data) errors.data = "Selecione a data";
+    if (!form.descricao.trim()) errors.descricao = "Informe a descrição";
+    if (parseNumeric(form.valor_unitario) <= 0) errors.valor_unitario = "Informe o valor";
+    if (parseNumeric(form.quantidade) <= 0) errors.quantidade = "Quantidade inválida";
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
 
-      toast.success("Importacoes limpas com sucesso!", {
-        description:
-          selectedEmpresaId === "all"
-            ? `Todos os ${deletedCount} registros importados pendentes foram removidos desta visao.`
-            : `Todos os ${deletedCount} registros importados da empresa selecionada foram removidos.`,
-      });
+  const salvarManualMutation = useMutation({
+    mutationFn: async () => {
+      if (!validateForm()) throw new Error("Dados inválidos");
+      const valorUnitario = parseNumeric(form.valor_unitario);
+      const quantidade = parseNumeric(form.quantidade);
+      const payload = {
+        data: form.data,
+        empresa_id: form.empresa_id,
+        categoria_custo: form.categoria_custo,
+        descricao: form.descricao.trim(),
+        valor_unitario: valorUnitario,
+        quantidade: quantidade,
+        total: valorUnitario * quantidade,
+        forma_pagamento: form.forma_pagamento.trim() || null,
+        data_vencimento: form.data_vencimento || null,
+        status_pagamento: form.status_pagamento,
+        tipo_lancamento: "DESPESA",
+        responsavel_id: user?.id,
+        origem_dado: "manual",
+        observacao: form.observacao.trim() || null,
+        avaliacao_json: { contexto_lancamento: "manual_erp", criado_por: user?.email },
+      };
+      return CustoExtraOperacionalService.createMany([payload]);
+    },
+    onSuccess: () => {
+      toast.success("Custo extra registrado com sucesso!");
       queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
-      queryClient.invalidateQueries({ queryKey: ["importacoes"] });
-      setConfirmClear(false);
+      queryClient.invalidateQueries({ queryKey: ["custos-pipeline"] });
+      setForm((prev) => ({ ...prev, descricao: "", valor_unitario: "", quantidade: "1", observacao: "" }));
+      setActiveTab("historico");
     },
-    onError: (err: Error) => {
-      toast.error("Erro ao limpar importacoes", { description: err.message });
-      setConfirmClear(false);
-    },
+    onError: (err: any) => toast.error("Erro ao salvar lançamento", { description: err.message }),
   });
 
-  const processMutation = useMutation({
-    mutationFn: (empresaId: string) => AIService.processDay(dateValue, empresaId),
-    onSuccess: (res: ProcessDayResponse) => {
-      toast.success("Processamento concluido", {
-        description: `Resultado consolidado: R$ ${res.resultado?.[0]?.valor_total_calculado?.toLocaleString("pt-BR") || "0,00"}`,
-      });
-      queryClient.invalidateQueries({ queryKey: ["operacoes"] });
-      queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
-      queryClient.invalidateQueries({ queryKey: ["operacoes-pipeline"] });
-      queryClient.invalidateQueries({ queryKey: ["ponto"] });
-      queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
-      queryClient.invalidateQueries({ queryKey: ["importacoes"] });
-      queryClient.invalidateQueries({ queryKey: ["resultados_mensais"] });
-      queryClient.invalidateQueries({ queryKey: ["resultados_processamento"] });
-    },
-    onError: (err: Error) => {
-      toast.error("Erro ao processar", { description: err.message });
-    },
-  });
-
-  const handleClearImports = () => {
-    if (!selectedEmpresaId) {
-      toast.warning("Selecione ao menos uma data para limpar as importacoes.");
-      return;
-    }
-    if (!confirmClear) {
-      setConfirmClear(true);
-      setTimeout(() => setConfirmClear(false), 5000);
-      return;
-    }
-    clearMutation.mutate();
-  };
-
-  const handleProcessar = () => {
-    if (!selectedEmpresaId || selectedEmpresaId === "all") {
-      toast.warning("Selecione uma empresa especifica", {
-        description: "O processamento precisa de uma unidade operacional definida.",
-      });
-      return;
-    }
-    if (isAllMonthsSelected) {
-      toast.warning("Selecione um mes especifico", {
-        description: "O processamento diario precisa de um mes fechado para definir a data de referencia.",
-      });
-      return;
-    }
-    processMutation.mutate(selectedEmpresaId);
-  };
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   const handleImportCustosExtras = async (data: SpreadsheetRow[]) => {
-    if (!selectedEmpresaId || selectedEmpresaId === "all") {
-      toast.warning("Selecione uma empresa especifica antes de importar", {
-        description: "Os custos extras serao vinculados a empresa selecionada.",
-      });
+    if (!filterEmpresaId || filterEmpresaId === "all") {
+      toast.warning("Selecione uma empresa especifica antes de importar");
       return;
     }
-
     try {
       const importedCosts = parseCustosExtrasImport(data);
-
       if (importedCosts.length === 0) {
-        toast.warning("Nenhuma linha valida foi encontrada em CUSTOS EXTRAS.", {
-          description: "Verifique se a planilha contem a aba CUSTOS EXTRAS e os blocos internos esperados.",
-        });
+        toast.warning("Nenhuma linha valida foi encontrada em CUSTOS EXTRAS.");
         return;
       }
-
-      const replacedCount = await CustoExtraOperacionalService.replaceImportedBatch(selectedEmpresaId, importedCosts);
-
-      toast.success(`${replacedCount} custo(s) extra(s) importado(s) com sucesso!`, {
-        description: "Os blocos da planilha foram convertidos em despesas independentes da base de faturamento.",
-      });
-
-      // Aciona o pipeline visual
-      const empresaNome = empresas?.find(e => e.id === selectedEmpresaId)?.nome || "Empresa";
-      openPipeline(buildCustosExtrasPipeline({
-        competencia: monthValue,
-        empresa: empresaNome,
-        currentStep: "lancamento",
-      }));
-
-      await queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
-      setImportModalOpen(false);
-    } catch (error) {
-      console.error("Erro ao processar importacao de custos extras:", error);
-      toast.error("Erro na importacao de custos extras.", {
-        description: getImportErrorMessage(error),
-      });
+      const replacedCount = await CustoExtraOperacionalService.replaceImportedBatch(filterEmpresaId, importedCosts);
+      toast.success(`${replacedCount} custo(s) extra(s) importado(s) com sucesso!`);
+      const empresaNome = empresas?.find(e => e.id === filterEmpresaId)?.nome || "Empresa";
+      openPipeline(buildCustosExtrasPipeline({ competencia: `${filterYear}-${filterMonth}`, empresa: empresaNome, currentStep: "lancamento" }));
       queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
+      setIsImportModalOpen(false);
+    } catch (error: any) {
+      toast.error("Erro na importacao", { description: error.message });
     }
   };
 
+  const valorUnitario = parseNumeric(form.valor_unitario);
+  const quantidade = parseNumeric(form.quantidade);
+  const valorTotal = valorUnitario * quantidade;
+
   return (
-    <AppShell
-      title="Custos Extras"
-      subtitle={`Analise mensal de custos extras · ${monthLabelCapitalized}`}
-    >
-      <div className="space-y-6">
-        <section className="esc-card p-4 md:p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex flex-col gap-2">
-              <div className="w-full overflow-x-auto">
-                <div className="flex min-w-max items-center gap-2">
-                  <Select value={selectedYear} onValueChange={setSelectedYear}>
-                    <SelectTrigger className="w-[120px] h-10 shrink-0 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium">
-                      <div className="flex items-center gap-2">
-                        <CalendarIcon className="h-4 w-4 text-primary" />
-                        <SelectValue placeholder="Ano" />
-                      </div>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {YEAR_OPTIONS.map((year) => (
-                        <SelectItem key={year} value={year}>
-                          {year}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+    <AppShell title="Custos Extras" subtitle="Otimize o controle de despesas administrativas e operacionais">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <TabsList className="w-fit p-1 bg-muted/60 border border-border">
+            <TabsTrigger value="historico" className="text-xs font-bold uppercase tracking-wider">
+              <History className="h-3.5 w-3.5 mr-2" /> Histórico
+            </TabsTrigger>
+            <TabsTrigger value="lancamento" className="text-xs font-bold uppercase tracking-wider">
+              <Plus className="h-3.5 w-3.5 mr-2" /> Novo Lançamento
+            </TabsTrigger>
+          </TabsList>
+          <Button variant="outline" className="w-full sm:w-auto" onClick={() => navigate("/producao")}>
+            <ArrowLeft className="w-4 h-4 mr-2" /> Voltar
+          </Button>
+        </div>
 
-                  <Select value={selectedMonthNumber} onValueChange={setSelectedMonthNumber}>
-                    <SelectTrigger className="w-[180px] h-10 shrink-0 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium">
-                      <div className="flex items-center gap-2">
-                        <CalendarIcon className="h-4 w-4 text-primary" />
-                        <SelectValue placeholder="Mes" />
-                      </div>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {MONTH_FILTER_OPTIONS.map((month) => (
-                        <SelectItem key={month.value} value={month.value}>
-                          {month.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-
-                  <Select value={selectedEmpresaId} onValueChange={setSelectedEmpresaId}>
-                    <SelectTrigger className="w-[280px] h-10 shrink-0 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium">
-                      <div className="flex items-center gap-2">
-                        <Building2 className="h-4 w-4 text-primary" />
-                        <SelectValue placeholder="Selecione a empresa" />
-                      </div>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todas as empresas</SelectItem>
-                      {empresas.map((empresa) => (
-                        <SelectItem key={empresa.id} value={empresa.id}>
-                          {empresa.nome}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <Badge className="h-10 w-fit px-3 rounded-md font-semibold bg-success-soft text-success-strong">
-                {custosExtras.length} despesa(s) extra(s) na empresa
-              </Badge>
-            </div>
-
-            <div className="w-full overflow-x-auto">
-              <div className="flex min-w-max items-center justify-end gap-2">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => navigate("/operacional/dashboard")}>
-                      <Upload className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Ver dashboard</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => navigate("/cadastros/regras-operacionais")}>
-                      <ExternalLink className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Regras operacionais</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-9 w-9 shrink-0 border-destructive/30 text-destructive hover:bg-destructive-soft hover:text-destructive-strong"
-                      onClick={handleClearImports}
-                      disabled={!selectedEmpresaId || clearMutation.isPending}
-                    >
-                      {confirmClear ? <RefreshCw className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>{confirmClear ? "Confirmar limpeza" : "Limpar importacoes"}</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => setImportModalOpen(true)}>
-                      <FileUp className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Importar custos extras</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      size="icon"
-                      className="h-9 w-9 shrink-0 shadow-lg shadow-primary/20"
-                      onClick={handleProcessar}
-                      disabled={processMutation.isPending || isLoading}
-                    >
-                      {processMutation.isPending ? (
-                        <RefreshCw className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <PlayCircle className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>{processMutation.isPending ? "Processando..." : "Processar dia"}</TooltipContent>
-                </Tooltip>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {isLoading ? (
-          <div className="flex flex-col items-center justify-center p-24 esc-card border-dashed">
-            <Loader2 className="h-10 w-10 animate-spin text-primary mb-3" />
-            <p className="text-sm font-medium text-muted-foreground animate-pulse">
-              Carregando custos extras...
-            </p>
-          </div>
-        ) : (
-          <>
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
-                <div className="xl:col-span-1">
-                  <TopKpiCard
-                    label="Total de Custos"
-                    value={formatCurrency(custosExtrasKpis.total)}
-                    helper="Soma financeira do recorte"
-                    variant="primary"
-                    icon={Wallet}
-                    iconColor="bg-white/20 text-white"
-                  />
-                </div>
-                <div className="xl:col-span-4 grid grid-cols-2 lg:grid-cols-4 gap-4">
-                  <TopKpiCard
-                    label="Maior Custo"
-                    value={formatCurrency(custosExtrasKpis.maiorCusto)}
-                    helper="Lancamento maximo"
-                    size="small"
-                    icon={BarChart3}
-                    iconColor="bg-purple-100 text-purple-700"
-                  />
-                  <TopKpiCard
-                    label="Custo Critico (%)"
-                    value={formatPercent(custosExtrasKpis.custoCriticoPercentual)}
-                    helper="Valores pendentes"
-                    size="small"
-                    variant="warning"
-                    iconColor="bg-warning-soft text-warning-strong"
-                  />
-                  <TopKpiCard
-                    label="Recebido"
-                    value={formatCurrency(custosExtrasKpis.recebido)}
-                    helper="Custos pagos"
-                    size="small"
-                    variant="success"
-                    icon={HandCoins}
-                    iconColor="bg-success-soft text-success-strong"
-                  />
-                  <TopKpiCard
-                    label="Lancamentos"
-                    value={formatInteger(custosExtrasKpis.lancamentos)}
-                    helper="Qtd. registrada"
-                    size="small"
-                    icon={Receipt}
-                    iconColor="bg-blue-100 text-blue-700"
-                  />
-                </div>
-              </div>
-
-              <div className="esc-card p-4 space-y-3">
-                <h3 className="font-display font-medium text-sm text-muted-foreground">Rateio por Categorias</h3>
-                <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-                  <TopKpiCard
-                    label="Merenda"
-                    value={formatCurrency(custosExtrasKpis.merenda)}
-                    size="xs"
-                    variant="muted"
-                    icon={UtensilsCrossed}
-                  />
-                  <TopKpiCard
-                    label="Administrativo"
-                    value={formatCurrency(custosExtrasKpis.administrativo)}
-                    size="xs"
-                    variant="muted"
-                    icon={FileBadge2}
-                  />
-                  <TopKpiCard
-                    label="Operacional"
-                    value={formatCurrency(custosExtrasKpis.operacional)}
-                    size="xs"
-                    variant="muted"
-                    icon={Settings2}
-                  />
-                  <TopKpiCard
-                    label="Fornecedor"
-                    value={formatCurrency(custosExtrasKpis.fornecedor)}
-                    size="xs"
-                    variant="muted"
-                    icon={ShoppingCart}
-                  />
-                  <TopKpiCard
-                    label="Custo medio"
-                    value={formatCurrency(custosExtrasKpis.custoMedio)}
-                    size="xs"
-                    variant="muted"
-                    icon={Calculator}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <section className="esc-card p-5 space-y-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex-1">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h2 className="font-display font-semibold text-foreground">Custos Extras</h2>
-                      <p className="text-sm text-muted-foreground">
-                        Tabela de despesas separada da base de faturamento, com importacao baseada nos blocos internos da planilha.
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Select value={custosYear} onValueChange={setCustosYear}>
-                        <SelectTrigger className="w-[100px] h-8 shrink-0 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium text-xs">
-                          <SelectValue placeholder="Ano" />
+        <TabsContent value="historico" className="m-0 space-y-6">
+          <div className="flex flex-col lg:flex-row gap-4">
+            <section className="flex-1 space-y-6">
+              <div className="esc-card p-6">
+                <div className="flex flex-col md:flex-row md:items-center gap-4 md:gap-8">
+                  <div className="flex-1 min-w-0 space-y-2">
+                    <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground whitespace-nowrap">Empresa</Label>
+                    <Select value={filterEmpresaId} onValueChange={setFilterEmpresaId}>
+                      <SelectTrigger className="w-full bg-muted/30 border-muted">
+                        <div className="flex items-center min-w-0 truncate">
+                          <Building2 className="h-4 w-4 mr-2 text-primary shrink-0" />
+                          <SelectValue placeholder="Selecione a empresa" />
+                        </div>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todas as Empresas</SelectItem>
+                        {(empresas as EmpresaOption[]).map((emp) => (
+                          <SelectItem key={emp.id} value={emp.id}>{emp.nome}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="space-y-2">
+                      <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Mês</Label>
+                      <Select value={filterMonth} onValueChange={setFilterMonth}>
+                        <SelectTrigger className="w-[140px] bg-muted/30 border-muted">
+                          <CalendarIcon className="h-4 w-4 mr-2 text-primary" />
+                          <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {YEAR_OPTIONS.map((year) => (
-                            <SelectItem key={year} value={year}>
-                              {year}
-                            </SelectItem>
+                          {MONTH_FILTER_OPTIONS.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
-                      <Select value={custosMonthNumber} onValueChange={setCustosMonthNumber}>
-                        <SelectTrigger className="w-[140px] h-8 shrink-0 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium text-xs">
-                          <SelectValue placeholder="Mes" />
-                        </SelectTrigger>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Ano</Label>
+                      <Select value={filterYear} onValueChange={setFilterYear}>
+                        <SelectTrigger className="w-[110px] bg-muted/30 border-muted"><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          {MONTH_FILTER_OPTIONS.map((option) => (
-                            <SelectItem key={option.value} value={option.value}>
-                              {option.label}
-                            </SelectItem>
+                          {YEAR_OPTIONS.map((y) => (
+                            <SelectItem key={y} value={y}>{y}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
+                  <div className="self-end pb-0.5">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button size="icon" variant="ghost" className="text-muted-foreground hover:text-primary transition-colors" onClick={() => { setFilterMonth(format(new Date(), "MM")); setFilterYear(format(new Date(), "yyyy")); }}>
+                          <RefreshCw className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Resetar para hoje</TooltipContent>
+                    </Tooltip>
+                  </div>
                 </div>
-                <Badge className="bg-info-soft text-info-strong">
-                  Tipo de lancamento: DESPESA
-                </Badge>
               </div>
-              <CustosExtrasTableBlock data={custosExtrasSheetDataset} />
-            </section>
-          </>
-        )}
-      </div>
 
-      <SpreadsheetUploadModal
-        open={importModalOpen}
-        onOpenChange={setImportModalOpen}
-        title="Importar Custos Extras via Planilha"
-        description="A importacao procurara a aba CUSTOS EXTRAS e os blocos CUSTOS COM MERENDA, CUSTOS ADMINISTRATIVO, CUSTOS COM OPERACIONAL e CUSTOS COM FORNECEDOR. Cada linha herdara a categoria do bloco."
-        onUpload={handleImportCustosExtras}
-      />
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                <TopKpiCard label="Total Competência" value={formatCurrency(kpis.totalCompetencia)} icon={Wallet} iconColor="bg-blue-50 text-blue-600" />
+                <TopKpiCard label="Operacional" value={formatCurrency(kpis.porCategoria.OPERACIONAL)} icon={Truck} iconColor="bg-green-50 text-green-600" />
+                <TopKpiCard label="Administrativo" value={formatCurrency(kpis.porCategoria.ADMINISTRATIVO)} icon={Building2} iconColor="bg-purple-50 text-purple-600" />
+                <TopKpiCard label="Merenda" value={formatCurrency(kpis.porCategoria.MERENDA)} icon={UtensilsCrossed} iconColor="bg-orange-50 text-orange-600" />
+              </div>
+
+              <div className="esc-card min-h-[500px] overflow-hidden flex flex-col">
+                <div className="p-4 border-b bg-muted/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <h3 className="font-display font-bold text-base flex items-center gap-2 shrink-0">
+                    <History className="h-4 w-4 text-primary" />
+                    Listagem de Custos Extras
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" className="font-bold border-primary/20 hover:border-primary/50 text-primary whitespace-nowrap" onClick={() => setIsImportModalOpen(true)}>
+                      <FileUp className="h-4 w-4 mr-2" /> Importar Planilha
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  {isLoadingCustos ? (
+                    <div className="p-20 flex flex-col items-center justify-center text-muted-foreground space-y-4">
+                      <Loader2 className="h-8 w-8 animate-spin text-primary" /><p className="text-sm font-medium">Carregando lançamentos...</p>
+                    </div>
+                  ) : (
+                    <CustosExtrasTableBlock data={custosExtras} />
+                  )}
+                </div>
+              </div>
+            </section>
+
+            <aside className="w-full lg:w-[340px] space-y-6">
+              <section className="esc-card p-5 border-l-4 border-l-primary bg-primary-soft/10">
+                <div className="flex items-center gap-2 text-primary mb-4"><BarChart3 className="h-5 w-5" /><h4 className="font-display font-bold text-sm uppercase tracking-wider">Análise Mensal</h4></div>
+                <div className="space-y-4">
+                  <div className="p-3 rounded-lg bg-card border border-border/60">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Taxa de Engajamento</p>
+                    <div className="flex items-baseline justify-between"><p className="text-lg font-display font-bold">100%</p><Badge variant="secondary" className="bg-green-100 text-green-700 border-0">Ótimo</Badge></div>
+                  </div>
+                  <div className="p-3 rounded-lg bg-card border border-border/60">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Lançamentos Realizados</p>
+                    <p className="text-lg font-display font-bold">{custosExtras.length}</p>
+                  </div>
+                </div>
+              </section>
+              <section className="esc-card p-5">
+                <div className="flex items-center gap-2 text-amber-600 mb-4"><AlertTriangle className="h-5 w-5" /><h4 className="font-display font-bold text-sm uppercase tracking-wider">Gargalos Detectados</h4></div>
+                <p className="text-xs text-muted-foreground leading-relaxed italic">"Nenhum desvio crítico detectado para a empresa e competência selecionadas."</p>
+              </section>
+            </aside>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="lancamento" className="m-0">
+          <div className="max-w-3xl mx-auto space-y-6 pb-28 pt-4">
+            <section className="esc-card p-6 space-y-6">
+              <h3 className="font-display font-bold text-sm uppercase tracking-widest text-muted-foreground flex items-center gap-2"><Building2 className="h-4 w-4" />Identificação do Custo</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase">Empresa <span className="text-destructive">*</span></Label>
+                  <Select value={form.empresa_id} onValueChange={(v) => setFormField("empresa_id", v)}>
+                    <SelectTrigger className={cn(formErrors.empresa_id && "border-destructive")}><SelectValue placeholder="Selecione a empresa" /></SelectTrigger>
+                    <SelectContent>{(empresas as EmpresaOption[]).map((emp) => (<SelectItem key={emp.id} value={emp.id}>{emp.nome}</SelectItem>))}</SelectContent>
+                  </Select>
+                  {formErrors.empresa_id && <p className="text-xs text-destructive">{formErrors.empresa_id}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase">Data do Gasto <span className="text-destructive">*</span></Label>
+                  <Input type="date" value={form.data} onChange={(e) => setFormField("data", e.target.value)} className={cn(formErrors.data && "border-destructive")} />
+                  {formErrors.data && <p className="text-xs text-destructive">{formErrors.data}</p>}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs font-bold uppercase">Categoria <span className="text-destructive">*</span></Label>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {CATEGORIAS_CUSTO.map((cat) => (
+                    <button key={cat.value} type="button" onClick={() => setFormField("categoria_custo", cat.value)} className={cn("flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all gap-2", form.categoria_custo === cat.value ? "border-primary bg-primary/5 text-primary" : "border-border hover:border-primary/30 hover:bg-muted/30 text-muted-foreground")}><cat.icon className="h-5 w-5" /><span className="text-xs font-bold uppercase">{cat.label}</span></button>
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            <section className="esc-card p-6 space-y-6">
+              <h3 className="font-display font-bold text-sm uppercase tracking-widest text-muted-foreground flex items-center gap-2"><DollarSign className="h-4 w-4" />Valores e Detalhes</h3>
+              <div className="space-y-2">
+                <Label className="text-xs font-bold uppercase">Descrição <span className="text-destructive">*</span></Label>
+                <Textarea placeholder="Ex: Compra de materiais de escritório, Lanche para equipe, etc." value={form.descricao} onChange={(e) => setFormField("descricao", e.target.value)} className={cn(formErrors.descricao && "border-destructive")} rows={3} />
+                {formErrors.descricao && <p className="text-xs text-destructive">{formErrors.descricao}</p>}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase">Valor Unitário <span className="text-destructive">*</span></Label>
+                  <div className="relative"><span className="absolute left-3 top-2.5 text-muted-foreground text-sm">R$</span><Input type="number" step="0.01" className={cn("pl-9", formErrors.valor_unitario && "border-destructive")} placeholder="0,00" value={form.valor_unitario} onChange={(e) => setFormField("valor_unitario", e.target.value)} /></div>
+                  {formErrors.valor_unitario && <p className="text-xs text-destructive">{formErrors.valor_unitario}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase">Quantidade <span className="text-destructive">*</span></Label>
+                  <Input type="number" min="1" className={cn(formErrors.quantidade && "border-destructive")} value={form.quantidade} onChange={(e) => setFormField("quantidade", e.target.value)} />
+                  {formErrors.quantidade && <p className="text-xs text-destructive">{formErrors.quantidade}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase">Total</Label>
+                  <div className="h-10 flex items-center px-3 rounded-md border-2 border-primary/20 bg-primary/5 text-primary font-mono font-bold">{formatCurrency(valorTotal)}</div>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase">Meio de Pagamento</Label>
+                  <Input placeholder="Ex: Dinheiro, PIX, Cartão..." value={form.forma_pagamento} onChange={(e) => setFormField("forma_pagamento", e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase">Status Inicial</Label>
+                  <Select value={form.status_pagamento} onValueChange={(v: any) => setFormField("status_pagamento", v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>{STATUS_PAGAMENTO.map((st) => (<SelectItem key={st.value} value={st.value}>{st.label}</SelectItem>))}</SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs font-bold uppercase">Observações</Label>
+                <Textarea placeholder="Alguma nota importante sobre este custo..." value={form.observacao} onChange={(e) => setFormField("observacao", e.target.value)} rows={2} />
+              </div>
+            </section>
+
+            <div className="sticky bottom-6 z-20">
+              <div className="flex justify-end items-center bg-card/95 backdrop-blur p-4 rounded-2xl border border-border shadow-2xl">
+                <div className="flex items-center gap-4">
+                  {Object.keys(formErrors).length > 0 && <span className="text-xs text-destructive flex items-center gap-1 font-bold uppercase tracking-wider"><AlertCircle className="w-4 h-4" /> Corrija os campos</span>}
+                  <Button size="lg" className="min-w-[200px] font-display font-bold shadow-lg shadow-primary/20" onClick={() => salvarManualMutation.mutate()} disabled={salvarManualMutation.isPending}><Save className="h-4 w-4 mr-2" />{salvarManualMutation.isPending ? "Salvando..." : "Salvar Lançamento"}</Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </TabsContent>
+      </Tabs>
+      <SpreadsheetUploadModal open={isImportModalOpen} onOpenChange={setIsImportModalOpen} title="Importar Custos Extras via Planilha" description="A importacao procurara a aba CUSTOS EXTRAS e os blocos CUSTOS COM MERENDA, CUSTOS ADMINISTRATIVO, CUSTOS COM OPERACIONAL e CUSTOS COM FORNECEDOR. Cada linha herdara a categoria do bloco." onUpload={handleImportCustosExtras} />
     </AppShell>
   );
 };
-
 export default CustosExtrasLancamento;

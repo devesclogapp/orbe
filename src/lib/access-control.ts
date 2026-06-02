@@ -91,9 +91,7 @@ export const ACCESS_PRESETS: Record<AccessRole, PermissionMatrix> = {
     central_de_relatorios: allowActions(["ver", "exportar"]),
   },
   encarregado: {
-    central_operacional: allowActions(["ver"]),
-    operacoes_recebidas: allowActions(["ver", "criar", "editar", "processar", "exportar"]),
-    diaristas_recebidos: allowActions(["ver", "criar", "editar", "processar"]),
+    central_operacional: allowActions(["ver", "criar", "editar"]),
     importacoes: allowActions(["ver", "criar", "importar"]),
   },
   gestor: {
@@ -170,7 +168,7 @@ export const ROUTE_ACCESS_RULES: Array<{
   { prefix: "/operacional/operacoes", module: "operacoes_recebidas" },
   { prefix: "/operacional/pontos", module: "pontos_recebidos" },
   { prefix: "/operacional/diaristas", module: "diaristas_recebidos" },
-  { prefix: "/producao/diaristas", module: "diaristas_recebidos" },
+  { prefix: "/producao/diaristas", module: "central_operacional" },
   { prefix: "/rh/diaristas", module: "diaristas_recebidos" },
   { prefix: "/banco-horas/regras", module: "regras_de_banco" },
   { prefix: "/banco-horas/processamento", module: "processamento_rh" },

@@ -5,7 +5,8 @@ import {
     Activity, Clock, CheckCircle2, AlertTriangle, ArrowRight, Layers,
     Search, Filter, Settings, DollarSign, Timer, RefreshCw, ChevronRight,
     Building2, Calendar, FileText, Users, PieChart, BarChart3, AlertCircle,
-    Zap, Flag, Target, ShieldAlert, ArrowUpRight
+    Zap, Flag, Target, ShieldAlert, ArrowUpRight, Rocket, ClipboardCheck,
+    UserCheck, Wallet, Wrench
 } from "lucide-react";
 
 import { format, differenceInDays } from "date-fns";
@@ -17,15 +18,14 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-import {
-    EmpresaService,
-    OperacaoService,
-    CustoExtraOperacionalService,
-    PontoService,
-    ServicosExtrasOperacionaisService,
-    LoteFechamentoDiaristaService
-} from "@/services/base.service";
+import { EmpresaService } from "@/services/domain/cadastros.service";
+import { OperacaoService } from "@/services/domain/core.service";
+import { CustoExtraOperacionalService, ServicosExtrasOperacionaisService } from "@/services/domain/despesas.service";
+import { PontoService } from "@/services/domain/producao.service";
+import { LoteFechamentoDiaristaService } from "@/services/domain/diaristas.service";
 import { cn } from "@/lib/utils";
 
 const STAGES = [
@@ -72,12 +72,16 @@ export default function PipelineOperacional() {
         queryFn: () => EmpresaService.getAll(),
     });
 
-    const { data: operacoes = [], isLoading: isOpLoading } = useQuery({
-        queryKey: ["operacoes-pipeline", filterEmpresaId],
-        queryFn: () => OperacaoService.getAllPainel(filterEmpresaId === "all" ? undefined : filterEmpresaId),
+    const { data: operacoes = [], isLoading: isOpLoading, isError: isOpError } = useQuery({
+        queryKey: ["pipeline-operacoes", filterEmpresaId, filterCompetencia],
+        queryFn: () => OperacaoService.getAllPainel(
+            filterEmpresaId === "all" ? undefined : filterEmpresaId,
+            null,
+            filterCompetencia
+        ),
     });
 
-    const { data: diaristas = [], isLoading: isDiaLoading } = useQuery({
+    const { data: diaristas = [], isLoading: isDiaLoading, isError: isDiaError } = useQuery({
         queryKey: ["diaristas-pipeline", filterEmpresaId, filterCompetencia],
         queryFn: () => {
             // calcular o intervalo do mês selecionado
@@ -93,22 +97,29 @@ export default function PipelineOperacional() {
         },
     });
 
-    const { data: custos = [], isLoading: isCustosLoading } = useQuery({
-        queryKey: ["custos-pipeline", filterEmpresaId],
-        queryFn: () => CustoExtraOperacionalService.getAll(filterEmpresaId === "all" ? undefined : filterEmpresaId),
+    const { data: custos = [], isLoading: isCustosLoading, isError: isCustosError } = useQuery({
+        queryKey: ["custos-pipeline", filterEmpresaId, filterCompetencia],
+        queryFn: () => CustoExtraOperacionalService.getByCompetencia(
+            filterCompetencia,
+            filterEmpresaId === "all" ? undefined : filterEmpresaId
+        ),
     });
 
-    const { data: pontos = [], isLoading: isPontosLoading } = useQuery({
+    const { data: pontos = [], isLoading: isPontosLoading, isError: isPontosError } = useQuery({
         queryKey: ["pontos-pipeline", filterEmpresaId, filterCompetencia],
         queryFn: () => PontoService.getByMonth(filterCompetencia, filterEmpresaId === "all" ? undefined : filterEmpresaId),
     });
 
-    const { data: servicosExtras = [], isLoading: isServicosLoading } = useQuery({
-        queryKey: ["servicos-extras-pipeline", filterEmpresaId],
-        queryFn: () => ServicosExtrasOperacionaisService.getWithEmpresas(filterEmpresaId === "all" ? undefined : filterEmpresaId),
+    const { data: servicosExtras = [], isLoading: isServicosLoading, isError: isServicosError } = useQuery({
+        queryKey: ["servicos-extras-pipeline", filterEmpresaId, filterCompetencia],
+        queryFn: () => ServicosExtrasOperacionaisService.getWithEmpresas(
+            filterEmpresaId === "all" ? undefined : filterEmpresaId,
+            filterCompetencia
+        ),
     });
 
-    const isGlobalLoading = isEmpresasLoading || isOpLoading || isDiaLoading || isCustosLoading || isPontosLoading || isServicosLoading;
+    const isAnyError = isOpError || isDiaError || isCustosError || isPontosError || isServicosError;
+    const isGlobalLoading = (isEmpresasLoading || isOpLoading || isDiaLoading || isCustosLoading || isPontosLoading || isServicosLoading) && !isAnyError;
 
     const unifiedItems = useMemo(() => {
         const result: any[] = [];
@@ -370,38 +381,119 @@ export default function PipelineOperacional() {
     // Color definitions for UI mapping
     const getBadgeColor = (tone: string) => {
         const map: any = {
-            blue: "bg-blue-50 text-blue-700 border-blue-200",
-            amber: "bg-amber-50 text-amber-700 border-amber-200",
+            blue: "bg-info-soft text-info-strong border-info/20",
+            amber: "bg-warning-soft text-warning-strong border-warning/20",
             cyan: "bg-cyan-50 text-cyan-700 border-cyan-200",
             purple: "bg-purple-50 text-purple-700 border-purple-200",
             indigo: "bg-indigo-50 text-indigo-700 border-indigo-200",
             orange: "bg-orange-50 text-orange-700 border-orange-200",
-            emerald: "bg-emerald-50 text-emerald-700 border-emerald-200"
+            emerald: "bg-success-soft text-success-strong border-success/20"
         };
         return map[tone] || map.blue;
     };
+
+    const INPUT_TYPES = [
+        { id: "all", label: "Visão Geral", icon: Rocket, color: "text-primary" },
+        { id: "operações", label: "Operações por Volume", icon: ClipboardCheck, color: "text-orange-500" },
+        { id: "pontos", label: "Pontos Recebidos", icon: Clock, color: "text-blue-500" },
+        { id: "diaristas", label: "Diaristas Recebidos", icon: UserCheck, color: "text-yellow-600" },
+        { id: "custos extras", label: "Custos Extras", icon: Wallet, color: "text-purple-500" },
+        { id: "serviços extras", label: "Serviços Extras", icon: Zap, color: "text-indigo-500" },
+    ];
 
     return (
         <AppShell
             title="Torre de Controle Operacional"
             subtitle="Monitoramento executivo: Fluxos, Gargalos e SLAs"
-            badge="PIPELINE GERENCIAL"
         >
-            {isGlobalLoading ? (
+            {isAnyError ? (
+                <div className="flex flex-col items-center justify-center py-32 space-y-4 px-4 text-center">
+                    <div className="h-16 w-16 rounded-full bg-red-100 flex items-center justify-center text-red-600 mb-2">
+                        <AlertTriangle className="h-8 w-8" />
+                    </div>
+                    <h2 className="text-xl font-bold text-foreground">Falha ao sincronizar dados</h2>
+                    <Button variant="outline" onClick={() => window.location.reload()} className="mt-4 gap-2">
+                        <RefreshCw className="h-4 w-4" />
+                        Tentar Novamente
+                    </Button>
+                </div>
+            ) : isGlobalLoading ? (
                 <div className="flex flex-col items-center justify-center py-32 space-y-4">
                     <RefreshCw className="h-10 w-10 text-primary animate-spin" />
                     <p className="text-muted-foreground font-medium">Carregando pipeline operacional...</p>
                 </div>
             ) : (
-                <div className="space-y-6 max-w-[1600px] mx-auto pb-12">
+                <div className="space-y-6 max-w-[1700px] mx-auto pb-12 px-4 md:px-6">
+                    {/* ALERTAS TÉCNICOS */}
+                    {(kpis.pendencias > 0 || kpis.atrasados > 0) && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-500">
+                            {kpis.pendencias > 0 && (
+                                <div className="flex items-center gap-4 p-4 rounded-xl border border-red-100 bg-red-50/50">
+                                    <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center text-red-600 shrink-0">
+                                        <Zap className="h-5 w-5 fill-red-600" />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-bold text-red-900 leading-none">Radar Executivo: Pendências</p>
+                                        <p className="text-xs text-red-800/70 mt-1">Existem <strong>{kpis.pendencias} lançamentos</strong> com inconsistências.</p>
+                                    </div>
+                                </div>
+                            )}
+                            {kpis.atrasados > 0 && (
+                                <div className="flex items-center gap-4 p-4 rounded-xl border border-orange-100 bg-orange-50/50">
+                                    <div className="h-10 w-10 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 shrink-0">
+                                        <Timer className="h-5 w-5" />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-bold text-orange-900 leading-none">Atrasos de Processamento</p>
+                                        <p className="text-xs text-orange-800/70 mt-1">Identificamos <strong>{kpis.atrasados} registros</strong> fora do SLA.</p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
 
-                    {/* BLOCO 1: Filtros */}
-                    <div className="bg-white p-4 rounded-xl shadow-sm border border-border flex flex-col xl:flex-row xl:items-center justify-between gap-4 sticky top-0 z-10">
+                    {/* FILTROS TIPO */}
+                    <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                        {INPUT_TYPES.map((type) => {
+                            const Icon = type.icon;
+                            const isActive = filterTipo === type.id;
+                            const count = type.id === "all"
+                                ? unifiedItems.length
+                                : unifiedItems.filter(i => i.tipo.toLowerCase().includes(type.id)).length;
+
+                            return (
+                                <button
+                                    key={type.id}
+                                    onClick={() => setFilterTipo(type.id)}
+                                    className={cn(
+                                        "h-9 px-4 rounded-full flex items-center gap-2 border transition-all whitespace-nowrap text-xs font-medium",
+                                        isActive
+                                            ? "bg-[#FFF1EC] text-[#FD4C00] border-[#FD4C00]/20 shadow-sm"
+                                            : "bg-white text-muted-foreground border-border hover:bg-bg-subtle"
+                                    )}
+                                >
+                                    <Icon className={cn("h-3.5 w-3.5", isActive ? "text-[#FD4C00]" : "text-muted-foreground/60")} />
+                                    <span>{type.label}</span>
+                                    {count > 0 && (
+                                        <span className={cn(
+                                            "ml-1 h-4 min-w-[16px] px-1 rounded-full text-[9px] flex items-center justify-center font-bold",
+                                            isActive ? "bg-[#FD4C00] text-white" : "bg-gray-100 text-gray-600"
+                                        )}>
+                                            {count}
+                                        </span>
+                                    )}
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {/* FILTROS GERAIS */}
+                    <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 py-4 border-y border-border/60">
                         <div className="flex flex-wrap items-center gap-3">
                             <select
                                 value={filterEmpresaId}
                                 onChange={(e) => setFilterEmpresaId(e.target.value)}
-                                className="h-10 px-4 rounded-lg border border-muted bg-gray-50 text-sm focus:ring-2 focus:ring-primary outline-none font-medium text-foreground cursor-pointer w-full md:w-auto"
+                                className="h-10 px-4 rounded-lg border border-border bg-card text-sm font-medium text-foreground cursor-pointer w-full md:w-auto"
                             >
                                 <option value="all">Todas as Empresas</option>
                                 {empresas.map((emp) => (
@@ -412,45 +504,20 @@ export default function PipelineOperacional() {
                             <select
                                 value={filterCompetencia}
                                 onChange={(e) => setFilterCompetencia(e.target.value)}
-                                className="h-10 px-4 rounded-lg border border-muted bg-gray-50 text-sm focus:ring-2 focus:ring-primary outline-none font-medium text-foreground cursor-pointer w-full md:w-auto"
+                                className="h-10 px-4 rounded-lg border border-border bg-card text-sm font-medium text-foreground cursor-pointer w-full md:w-auto"
                             >
                                 {competenciaOptions.map(opt => (
                                     <option key={opt.value} value={opt.value}>{opt.label}</option>
                                 ))}
                             </select>
 
-                            <select
-                                value={filterTipo}
-                                onChange={(e) => setFilterTipo(e.target.value)}
-                                className="h-10 px-4 rounded-lg border border-muted bg-gray-50 text-sm focus:ring-2 focus:ring-primary outline-none font-medium text-foreground cursor-pointer w-full md:w-auto"
-                            >
-                                <option value="all">Todos os Tipos de Entrada</option>
-                                <option value="operações">Operações</option>
-                                <option value="pontos">Pontos</option>
-                                <option value="diaristas">Diaristas</option>
-                                <option value="custos extras">Custos Extras</option>
-                                <option value="serviços extras">Serviços Extras</option>
-                            </select>
-
-                            <select
-                                value={filterResponsavel}
-                                onChange={(e) => setFilterResponsavel(e.target.value)}
-                                className="h-10 px-4 rounded-lg border border-muted bg-gray-50 text-sm focus:ring-2 focus:ring-primary outline-none font-medium text-foreground cursor-pointer w-full md:w-auto"
-                            >
-                                <option value="all">Todos os Responsáveis</option>
-                                <option value="joão">João Victor</option>
-                                <option value="maria">Maria Eduarda</option>
-                                <option value="carlos">Carlos Lima</option>
-                                <option value="juliana">Juliana Costa</option>
-                            </select>
-
                             <div className="relative group w-full md:w-auto">
-                                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60" />
                                 <Input
-                                    placeholder="Pesquisa global..."
+                                    placeholder="Pesquisa rápida..."
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="pl-10 h-10 w-full md:w-[260px] rounded-lg border-muted bg-gray-50 font-medium"
+                                    className="pl-10 h-10 w-full md:w-[240px] rounded-lg border-border bg-card font-medium"
                                 />
                             </div>
                         </div>
@@ -458,7 +525,7 @@ export default function PipelineOperacional() {
                         <Button
                             variant="default"
                             size="sm"
-                            className="h-10 gap-2 font-semibold px-6 shadow-sm"
+                            className="bg-[#FD4C00] hover:bg-[#E54300] h-10 gap-2 font-semibold px-6 shadow-sm rounded-lg"
                             onClick={handleRefresh}
                         >
                             <RefreshCw className="h-4 w-4" />
@@ -466,122 +533,79 @@ export default function PipelineOperacional() {
                         </Button>
                     </div>
 
-                    {/* BLOCO 3: KPIs Executivos */}
-                    <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-3">
-                        <Card className="p-4 flex flex-col justify-between shadow-sm border-border/60 hover:shadow-md transition-shadow">
-                            <span className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Total Lançamentos</span>
-                            <div className="flex items-end justify-between mt-2">
-                                <span className="text-2xl font-black font-display text-foreground">{kpis.totalLancamentos.toLocaleString('pt-BR')}</span>
-                                <Layers className="text-blue-500 opacity-80 h-5 w-5 mb-1" />
+                    {/* KPIs */}
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="esc-card p-5">
+                            <span className="text-[11px] text-gray-500 font-semibold uppercase tracking-wider">Total Lançamentos</span>
+                            <div className="flex items-end justify-between mt-3">
+                                <span className="text-3xl font-bold font-display">{kpis.totalLancamentos.toLocaleString('pt-BR')}</span>
+                                <Layers className="text-blue-500 h-6 w-6 opacity-40" />
                             </div>
-                        </Card>
-                        <Card className="p-4 flex flex-col justify-between shadow-sm border-border/60 hover:shadow-md transition-shadow">
-                            <span className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Total Lotes</span>
-                            <div className="flex items-end justify-between mt-2">
-                                <span className="text-2xl font-black font-display text-foreground">{kpis.totalLotes.toLocaleString('pt-BR')}</span>
-                                <FileText className="text-emerald-500 opacity-80 h-5 w-5 mb-1" />
+                        </div>
+                        <div className="esc-card p-5">
+                            <span className="text-[11px] text-gray-500 font-semibold uppercase tracking-wider">Valor Total</span>
+                            <div className="flex items-end justify-between mt-3">
+                                <span className="text-3xl font-bold font-display text-emerald-600">R$ {(kpis.valorTotal / 1000).toFixed(1)}k</span>
+                                <DollarSign className="text-emerald-500 h-6 w-6 opacity-40" />
                             </div>
-                        </Card>
-                        <Card className="p-4 flex flex-col justify-between shadow-sm border-border/60 hover:shadow-md transition-shadow bg-emerald-50/30">
-                            <span className="text-xs text-emerald-800 font-semibold uppercase tracking-wider">Valor Total</span>
-                            <div className="flex items-end justify-between mt-2">
-                                <span className="text-2xl font-black font-display text-emerald-700">R$ {(kpis.valorTotal / 1000).toFixed(1)}k</span>
-                                <DollarSign className="text-emerald-600 opacity-80 h-5 w-5 mb-1" />
+                        </div>
+                        <div className="esc-card p-5 border-destructive/20">
+                            <span className="text-[11px] text-destructive font-semibold uppercase tracking-wider">Pendências</span>
+                            <div className="flex items-end justify-between mt-3">
+                                <span className="text-3xl font-bold font-display text-destructive">{kpis.pendencias}</span>
+                                <AlertTriangle className="text-destructive h-6 w-6 opacity-40" />
                             </div>
-                        </Card>
-                        <Card className="p-4 flex flex-col justify-between shadow-sm border-border/60 hover:shadow-md transition-shadow">
-                            <span className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Horas Totais</span>
-                            <div className="flex items-end justify-between mt-2">
-                                <span className="text-2xl font-black font-display text-foreground">{kpis.horasTotais.toLocaleString('pt-BR')}</span>
-                                <Clock className="text-purple-500 opacity-80 h-5 w-5 mb-1" />
+                        </div>
+                        <div className="esc-card p-5 border-blue-200">
+                            <span className="text-[11px] text-blue-600 font-semibold uppercase tracking-wider">SLA Médio (Dias)</span>
+                            <div className="flex items-end justify-between mt-3">
+                                <span className="text-3xl font-bold font-display text-blue-600">{kpis.slaMedio}</span>
+                                <Activity className="text-blue-500 h-6 w-6 opacity-40" />
                             </div>
-                        </Card>
-                        <Card className="p-4 flex flex-col justify-between shadow-sm border-destructive/20 bg-destructive/5 hover:border-destructive/40 transition-shadow">
-                            <span className="text-xs text-destructive font-semibold uppercase tracking-wider">Pendências</span>
-                            <div className="flex items-end justify-between mt-2">
-                                <span className="text-2xl font-black font-display text-destructive">{kpis.pendencias}</span>
-                                <AlertTriangle className="text-destructive opacity-80 h-5 w-5 mb-1" />
-                            </div>
-                        </Card>
-                        <Card className="p-4 flex flex-col justify-between shadow-sm border-orange-200 bg-orange-50 hover:border-orange-300 transition-shadow">
-                            <span className="text-xs text-orange-800 font-semibold uppercase tracking-wider">Atrasados</span>
-                            <div className="flex items-end justify-between mt-2">
-                                <span className="text-2xl font-black font-display text-orange-600">{kpis.atrasados}</span>
-                                <Timer className="text-orange-500 opacity-80 h-5 w-5 mb-1" />
-                            </div>
-                        </Card>
-                        <Card className="p-4 flex flex-col justify-between shadow-sm border-border/60 hover:shadow-md transition-shadow">
-                            <span className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">SLA Médio (Dias)</span>
-                            <div className="flex items-end justify-between mt-2">
-                                <span className="text-2xl font-black font-display text-foreground">{kpis.slaMedio}</span>
-                                <Activity className="text-blue-400 opacity-80 h-5 w-5 mb-1" />
-                            </div>
-                        </Card>
-                        <Card className="p-4 flex flex-col justify-between shadow-sm border-cyan-200 bg-cyan-50/50 hover:border-cyan-300 transition-shadow">
-                            <span className="text-xs text-cyan-800 font-semibold uppercase tracking-wider">Já Processado</span>
-                            <div className="flex items-end justify-between mt-2">
-                                <span className="text-2xl font-black font-display text-cyan-700">R$ {(kpis.valorProcessado / 1000).toFixed(1)}k</span>
-                                <CheckCircle2 className="text-cyan-600 opacity-80 h-5 w-5 mb-1" />
-                            </div>
-                        </Card>
+                        </div>
                     </div>
 
-                    {/* BLOCO 2: Fluxo Operacional */}
-                    <div className="bg-white rounded-xl shadow-sm border border-border p-5">
-                        <h2 className="text-base font-bold text-foreground mb-6 flex items-center gap-2">
-                            <ArrowRight className="h-5 w-5 text-primary" />
-                            Fluxo Operacional <span className="text-muted-foreground font-normal text-sm ml-2">- Distribuição na esteira</span>
+                    {/* PIPELINE VISUAL */}
+                    <div className="esc-card p-6 overflow-hidden">
+                        <h2 className="font-display font-semibold text-lg text-foreground mb-8 flex items-center gap-2">
+                            <ArrowRight className="h-5 w-5 text-[#FD4C00]" />
+                            Esteira Operacional <span className="text-gray-500 font-normal text-sm ml-2">· Fluxo de processamento</span>
                         </h2>
 
-                        <div className="flex flex-col lg:flex-row justify-between w-full relative pt-2">
-                            <div className="hidden lg:block absolute left-12 right-12 top-[32px] h-0.5 bg-muted -z-0" />
+                        <div className="flex flex-col lg:flex-row justify-between w-full relative pt-2 gap-4 lg:gap-0 overflow-x-auto pb-4 scrollbar-hide">
+                            <div className="hidden lg:block absolute left-12 right-12 top-[32px] h-px bg-border -z-0" />
 
-                            {STAGES.map((stage, idx) => {
+                            {STAGES.map((stage) => {
                                 const data = fluxStats[stage.id] || { lancamentos: 0, lotes: 0, valor: 0, sumDias: 0 };
                                 const sla = data.lancamentos > 0 ? (data.sumDias / data.lancamentos).toFixed(1) : "0";
                                 const Icon = STAGE_ICONS[stage.id] || Filter;
                                 const isActive = data.lancamentos > 0;
 
                                 return (
-                                    <div key={stage.id} className="relative z-10 flex flex-col items-center flex-1 mb-6 lg:mb-0">
-                                        {/* Connection Line on Mobile */}
-                                        {idx !== STAGES.length - 1 && (
-                                            <div className="block lg:hidden absolute top-[44px] bottom-[-24px] left-1/2 w-0.5 bg-muted -translate-x-1/2 -z-0" />
-                                        )}
-
+                                    <div key={stage.id} className="relative z-10 flex flex-col items-center flex-1 min-w-[140px]">
                                         <div className={cn(
-                                            "relative z-10 w-12 h-12 rounded-full flex items-center justify-center border-[4px] border-white shadow-sm mb-4 transition-transform hover:scale-110",
-                                            isActive ? "bg-white text-primary ring-2 ring-primary/20" : "bg-gray-100 text-muted-foreground"
+                                            "relative z-10 w-14 h-14 rounded-full flex items-center justify-center border-4 border-[#F7F7F7] shadow-sm mb-4 transition-all",
+                                            isActive ? "bg-white text-[#FD4C00] ring-1 ring-border" : "bg-gray-100 text-gray-400"
                                         )}>
-                                            <Icon className={cn("h-5 w-5", isActive ? "text-primary" : "")} />
+                                            <Icon className={cn("h-6 w-6", isActive ? "text-[#FD4C00]" : "")} />
                                         </div>
 
                                         <div className="text-center w-full px-2">
-                                            <p className="text-sm font-bold text-foreground leading-tight mb-4 flex items-center justify-center">
+                                            <p className="text-xs font-semibold text-foreground uppercase tracking-wider mb-4 border-b border-border/40 pb-2 truncate">
                                                 {stage.label}
                                             </p>
-                                            <Card className={cn("p-3 flex flex-col border shadow-none bg-gray-50/50 hover:bg-white transition-colors", isActive ? "border-primary/20" : "")}>
-                                                <div className="flex flex-col gap-1.5">
-                                                    <div className="flex justify-between items-center text-xs">
-                                                        <span className="text-muted-foreground font-medium">Lançamentos</span>
-                                                        <span className="font-bold">{data.lancamentos}</span>
-                                                    </div>
-                                                    <div className="flex justify-between items-center text-xs">
-                                                        <span className="text-muted-foreground font-medium">Lotes</span>
-                                                        <span className="font-bold">{data.lotes}</span>
-                                                    </div>
-                                                    <div className="flex justify-between items-center text-xs pt-1 border-t">
-                                                        <span className="text-muted-foreground font-medium">SLA Médio</span>
-                                                        <span className={cn("font-bold", parseFloat(sla) > 3 ? "text-red-500" : "text-emerald-600")}>
-                                                            {sla} d
-                                                        </span>
-                                                    </div>
-                                                    <div className="flex justify-between items-center text-xs text-primary font-bold">
-                                                        <span>R$</span>
-                                                        <span>{(data.valor).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</span>
-                                                    </div>
+                                            <div className={cn("p-4 rounded-xl border space-y-3 bg-gray-50/50", isActive ? "border-border shadow-sm bg-white" : "border-transparent opacity-60")}>
+                                                <div className="flex justify-between items-center text-[10px]">
+                                                    <span className="text-gray-500 font-medium">Itens</span>
+                                                    <span className="font-bold">{data.lancamentos}</span>
                                                 </div>
-                                            </Card>
+                                                <div className="flex justify-between items-center text-[10px] pt-1 border-t border-border/40">
+                                                    <span className="text-gray-500 font-medium text-left">SLA</span>
+                                                    <span className={cn("font-bold", parseFloat(sla) > 3 ? "text-destructive" : "text-success-strong")}>
+                                                        {sla}d
+                                                    </span>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 );
@@ -589,253 +613,66 @@ export default function PipelineOperacional() {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-                        {/* COLUNA ESQUERDA (Ocupa 2/3) */}
-                        <div className="lg:col-span-2 space-y-6">
-
-                            {/* BLOCO 5: Distribuição por Empresa */}
-                            <Card className="p-5 shadow-sm border-border overflow-hidden">
-                                <h3 className="text-base font-bold flex items-center gap-2 mb-5">
-                                    <Building2 className="text-primary h-5 w-5" />
-                                    Distribuição de Lançamentos por Empresa
-                                </h3>
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-sm">
-                                        <thead>
-                                            <tr className="border-b border-muted bg-gray-50/80">
-                                                <th className="h-10 px-4 text-left font-semibold text-muted-foreground uppercase text-[10px]">Ranking / Empresa</th>
-                                                <th className="h-10 px-4 text-right font-semibold text-muted-foreground uppercase text-[10px]">Lançamentos</th>
-                                                <th className="h-10 px-4 text-right font-semibold text-muted-foreground uppercase text-[10px]">Volume Financeiro</th>
-                                                <th className="h-10 px-4 text-left font-semibold text-muted-foreground uppercase text-[10px]">Gargalo Principal</th>
-                                                <th className="h-10 px-4 text-center font-semibold text-muted-foreground uppercase text-[10px]">Atrasos</th>
+                    {/* TABELAS COMPLEMENTARES */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div className="esc-card p-6">
+                            <h3 className="font-display font-semibold text-base flex items-center gap-2 mb-6">
+                                <Building2 className="text-[#FD4C00] h-5 w-5" />
+                                Top 5 por Empresa
+                            </h3>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="esc-table-header">
+                                            <th className="px-4 text-left">Empresa</th>
+                                            <th className="px-2 text-right">Itens</th>
+                                            <th className="px-4 text-right">Volume</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-border">
+                                        {companyDistribution.slice(0, 5).map((comp, i) => (
+                                            <tr key={comp.empresa} className="esc-table-row">
+                                                <td className="px-4 py-4 font-semibold text-foreground">{comp.empresa}</td>
+                                                <td className="px-2 py-4 text-right">
+                                                    <span className="bg-gray-100 px-2 py-1 rounded text-xs font-bold text-gray-600">{comp.lancamentos}</span>
+                                                </td>
+                                                <td className="px-4 py-4 text-right font-semibold text-emerald-600">
+                                                    R${comp.valor.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                                                </td>
                                             </tr>
-                                        </thead>
-                                        <tbody>
-                                            {companyDistribution.map((comp, i) => (
-                                                <tr key={comp.empresa} className="border-b border-border hover:bg-muted/10 last:border-0 group">
-                                                    <td className="px-4 py-3">
-                                                        <div className="flex items-center gap-3">
-                                                            <span className="text-muted-foreground font-bold text-xs opacity-50">#{i + 1}</span>
-                                                            <span className="font-bold text-foreground text-xs">{comp.empresa}</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-4 py-3 text-right">
-                                                        <span className="font-bold text-sm bg-muted/30 px-2 py-0.5 rounded">{comp.lancamentos}</span>
-                                                    </td>
-                                                    <td className="px-4 py-3 text-right font-semibold text-emerald-600">
-                                                        R$ {comp.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        <Badge variant="outline" className={cn("text-[10px] py-0", getBadgeColor(STAGES.find(s => s.id === comp.etapa)?.tone || "blue"))}>
-                                                            {STAGES.find(s => s.id === comp.etapa)?.label || comp.etapa}
-                                                        </Badge>
-                                                    </td>
-                                                    <td className="px-4 py-3 text-center">
-                                                        {comp.atrasos > 0 ? (
-                                                            <Badge variant="destructive" className="text-[10px] py-0 px-2">{comp.atrasos}</Badge>
-                                                        ) : (
-                                                            <span className="text-muted-foreground text-xs font-semibold">-</span>
-                                                        )}
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                            {companyDistribution.length === 0 && (
-                                                <tr>
-                                                    <td colSpan={5} className="py-8 text-center text-muted-foreground text-sm">Sem dados para exibir.</td>
-                                                </tr>
-                                            )}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </Card>
-
-                            {/* BLOCO 6 e BLOCO 8 (Lado a lado dentro da col da esquerda) */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-
-                                {/* Gargalos do Processo */}
-                                <Card className="p-5 shadow-sm border-border flex flex-col h-full">
-                                    <h3 className="text-base font-bold flex items-center gap-2 mb-5">
-                                        <ShieldAlert className="text-orange-500 h-5 w-5" />
-                                        Gargalos do Processo
-                                    </h3>
-                                    <div className="space-y-4 flex-1">
-                                        {bottleneckDistribution.map((bot, i) => (
-                                            <div key={i} className="flex flex-col gap-2 p-3 bg-gray-50 rounded-lg border border-border/60 relative overflow-hidden">
-                                                {/* Progress indicator background */}
-                                                <div
-                                                    className="absolute left-0 top-0 bottom-0 bg-orange-100/30 -z-0"
-                                                    style={{ width: `${Math.min(100, (parseFloat(bot.diasMedio) / 5) * 100)}%` }}
-                                                />
-
-                                                <div className="flex justify-between items-start relative z-10">
-                                                    <div>
-                                                        <p className="font-bold text-sm">{bot.responsavel}</p>
-                                                        <p className="text-[11px] font-medium text-muted-foreground truncate max-w-[120px]">{bot.etapa}</p>
-                                                    </div>
-                                                    <div className="text-right">
-                                                        <p className="text-lg font-black text-orange-600 font-display">{bot.diasMedio} d</p>
-                                                        <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">{bot.quantidade} ref.</p>
-                                                    </div>
-                                                </div>
-                                            </div>
                                         ))}
-                                        {bottleneckDistribution.length === 0 && (
-                                            <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">Sem dados para exibir.</div>
-                                        )}
-                                    </div>
-                                </Card>
-
-                                {/* SLA Operacional (Bloco 8) */}
-                                <Card className="p-5 shadow-sm border-border flex flex-col h-full">
-                                    <h3 className="text-base font-bold flex items-center gap-2 mb-5">
-                                        <Clock className="text-blue-500 h-5 w-5" />
-                                        SLA Médio por Etapa
-                                    </h3>
-                                    <div className="space-y-5 flex-1 relative">
-                                        <div className="absolute top-0 bottom-0 left-[62%] w-px border-l-2 border-dashed border-red-300 opacity-50 z-0 hidden lg:block" title="Limite SLA (3 dias)" />
-
-                                        {STAGES.filter(s => s.id !== "concluido").map(stage => {
-                                            const stat = fluxStats[stage.id];
-                                            if (!stat) return null;
-                                            const val = stat.lancamentos > 0 ? (stat.sumDias / stat.lancamentos) : 0;
-                                            return (
-                                                <div key={stage.id} className="relative z-10">
-                                                    <div className="flex justify-between text-xs mb-1 font-medium">
-                                                        <span className="text-foreground">{stage.label}</span>
-                                                        <span className={cn(val > 3 ? "text-red-500 font-bold" : "text-emerald-600 font-bold")}>
-                                                            {val.toFixed(1)} dias
-                                                        </span>
-                                                    </div>
-                                                    <SimpleBar value={val} max={5} colorClass={val > 3 ? "bg-red-400" : "bg-blue-400"} />
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </Card>
+                                    </tbody>
+                                </table>
                             </div>
-
                         </div>
 
-                        {/* COLUNA DIREITA (Ocupa 1/3) */}
-                        <div className="space-y-6">
-
-                            {/* BLOCO 9: Alertas Executivos */}
-                            <Card className="p-5 shadow-sm border-red-200 bg-red-50/30 overflow-hidden">
-                                <h3 className="text-base font-bold flex items-center gap-2 mb-4 text-red-800">
-                                    <Zap className="text-red-600 h-5 w-5 fill-red-600" />
-                                    Radar Executivo
-                                </h3>
-                                <ul className="space-y-3">
-                                    {kpis.pendencias > 0 && (
-                                        <li className="flex items-start gap-2.5">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-red-500 mt-1.5 shrink-0 animate-pulse" />
-                                            <span className="text-sm font-medium text-red-900 leading-snug">
-                                                <strong>{kpis.pendencias} lançamentos</strong> possuem inconsistências graves e estão travados no funil.
-                                            </span>
-                                        </li>
-                                    )}
-                                    {kpis.atrasados > 0 && (
-                                        <li className="flex items-start gap-2.5">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-orange-500 mt-1.5 shrink-0" />
-                                            <span className="text-sm font-medium text-orange-900 leading-snug">
-                                                <strong>{kpis.atrasados} registros</strong> romperam o limite do SLA de processamento.
-                                            </span>
-                                        </li>
-                                    )}
-                                    {fluxStats['pronto-cnab']?.valor > 50000 && (
-                                        <li className="flex items-start gap-2.5">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 shrink-0" />
-                                            <span className="text-sm font-medium text-blue-900 leading-snug">
-                                                <strong>R$ {(fluxStats['pronto-cnab']?.valor / 1000).toFixed(0)}k</strong> acumulados aguardando remessa bancária.
-                                            </span>
-                                        </li>
-                                    )}
-                                    {typeDistribution.find(t => t.name === 'Operações' && t.value > 100) && (
-                                        <li className="flex items-start gap-2.5">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-1.5 shrink-0" />
-                                            <span className="text-sm font-medium text-indigo-900 leading-snug">
-                                                Pico anormal de registros operacionais recebidos nesta competência.
-                                            </span>
-                                        </li>
-                                    )}
-                                    {kpis.pendencias === 0 && kpis.atrasados === 0 && (
-                                        <li className="flex items-start gap-2.5">
-                                            <CheckCircle2 className="text-emerald-500 h-4 w-4 shrink-0" />
-                                            <span className="text-sm font-medium text-emerald-800">
-                                                Fluxo normal. Não há alertas graves identificados no momento.
-                                            </span>
-                                        </li>
-                                    )}
-                                </ul>
-                            </Card>
-
-                            {/* BLOCO 7: Pendências Críticas */}
-                            <Card className="p-5 shadow-sm border-border">
-                                <div className="flex items-center justify-between mb-4">
-                                    <h3 className="text-base font-bold flex items-center gap-2">
-                                        <Flag className="text-destructive h-5 w-5 fill-destructive/20" />
-                                        Pendências Críticas
-                                    </h3>
-                                    <Badge variant="secondary" className="bg-destructive/10 text-destructive border-transparent">
-                                        {kpis.pendencias} ITENS
-                                    </Badge>
-                                </div>
-
-                                <div className="space-y-3">
-                                    {[
-                                        { label: "Sem contrato associado", count: Math.floor(kpis.pendencias * 0.4), path: "/Governanca" },
-                                        { label: "Sem conta bancária ativa", count: Math.floor(kpis.pendencias * 0.25), path: "/Financeiro" },
-                                        { label: "Aguardando aprovação superior", count: Math.floor(kpis.pendencias * 0.2), path: "/RH" },
-                                        { label: "Centro de custo inválido", count: Math.floor(kpis.pendencias * 0.15), path: "/Configuracoes" }
-                                    ].map((pend, i) => pend.count > 0 && (
-                                        <div key={i} className="flex justify-between items-center group cursor-pointer p-2 -mx-2 rounded-lg hover:bg-muted/40 transition-colors">
-                                            <div className="flex items-center gap-3 text-sm font-medium">
-                                                <div className="bg-destructive/10 text-destructive px-2 py-0.5 rounded text-xs font-bold w-8 text-center">
-                                                    {pend.count}
-                                                </div>
-                                                <span>{pend.label}</span>
+                        <div className="esc-card p-6">
+                            <h3 className="font-display font-semibold text-base flex items-center gap-2 mb-6">
+                                <ShieldAlert className="text-orange-500 h-5 w-5" />
+                                Gargalos Operacionais
+                            </h3>
+                            <div className="space-y-4">
+                                {bottleneckDistribution.map((bot, i) => (
+                                    <div key={i} className="flex flex-col gap-2 p-3 bg-gray-50/50 rounded-xl border border-border relative overflow-hidden">
+                                        <div
+                                            className="absolute left-0 top-0 bottom-0 bg-orange-100/20 -z-0"
+                                            style={{ width: `${Math.min(100, (parseFloat(bot.diasMedio) / 5) * 100)}%` }}
+                                        />
+                                        <div className="flex justify-between items-start relative z-10">
+                                            <div>
+                                                <p className="font-bold text-xs uppercase text-gray-700">{bot.responsavel}</p>
+                                                <p className="text-[10px] font-medium text-gray-500 truncate mt-0.5">{bot.etapa}</p>
                                             </div>
-                                            <ArrowUpRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                                            <div className="text-right">
+                                                <p className="text-lg font-bold text-orange-600 font-display leading-tight">{bot.diasMedio}d</p>
+                                                <p className="text-[10px] text-gray-400 font-semibold uppercase">{bot.quantidade} itens</p>
+                                            </div>
                                         </div>
-                                    ))}
-                                    {kpis.pendencias === 0 && (
-                                        <p className="text-sm text-muted-foreground text-center py-4">
-                                            Nenhuma pendência crítica.
-                                        </p>
-                                    )}
-                                </div>
-                            </Card>
-
-                            {/* BLOCO 4: Distribuição por Tipo */}
-                            <Card className="p-5 shadow-sm border-border">
-                                <h3 className="text-base font-bold flex items-center gap-2 mb-5">
-                                    <PieChart className="text-purple-500 h-5 w-5" />
-                                    Volume por Origem
-                                </h3>
-                                <div className="space-y-4">
-                                    {typeDistribution.map((tipo, idx) => {
-                                        const max = typeDistribution[0]?.value || 1;
-                                        const colors = ["bg-blue-500", "bg-emerald-500", "bg-purple-500", "bg-amber-500", "bg-orange-500"];
-                                        return (
-                                            <div key={idx}>
-                                                <div className="flex justify-between text-xs mb-1.5 font-semibold">
-                                                    <span className="text-muted-foreground uppercase tracking-wide">{tipo.name}</span>
-                                                    <span className="text-foreground">{tipo.value}</span>
-                                                </div>
-                                                <SimpleBar value={tipo.value} max={max} colorClass={colors[idx % colors.length]} />
-                                            </div>
-                                        );
-                                    })}
-                                    {typeDistribution.length === 0 && (
-                                        <p className="text-sm text-muted-foreground text-center py-4">Sem dados.</p>
-                                    )}
-                                </div>
-                            </Card>
-
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     </div>
-
                 </div>
             )}
         </AppShell>

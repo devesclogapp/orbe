@@ -18,6 +18,7 @@ import {
   Tag,
   Trash2,
   Unlock,
+  User,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useOperationalPipeline, buildCustosExtrasPipeline, type CustoExtraStepId } from "@/contexts/OperationalPipelineContext";
@@ -600,12 +601,12 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
   );
 
   return (
-    <div className="space-y-4 p-5 pt-2">
-      <div className="w-full overflow-x-auto">
-        <div className="flex min-w-max flex-nowrap items-center gap-2">
+    <div className="space-y-4 p-5 pt-2 min-w-0 overflow-hidden">
+      <div className="w-full overflow-x-auto pb-2 scrollbar-thin">
+        <div className="flex items-center gap-2 min-w-max">
           <Input
-            placeholder="Buscar por descricao, empresa ou categoria..."
-            className="h-9 w-[320px] shrink-0"
+            placeholder="Buscar por descrição, empresa ou categoria..."
+            className="h-9 w-[280px] md:w-[320px] shrink-0"
             value={filterText}
             onChange={(e) => setFilterText(e.target.value)}
           />
@@ -804,7 +805,7 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
               ))}
               {filteredData.length === 0 && (
                 <tr>
-                  <td colSpan={12} className="p-12 text-center text-muted-foreground italic">
+                  <td colSpan={14} className="p-12 text-center text-muted-foreground italic">
                     Nenhum custo extra atende aos filtros atuais.
                   </td>
                 </tr>

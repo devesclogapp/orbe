@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { CompetenciaService, ConsolidadoService } from "@/services/base.service";
+import { CompetenciaService } from "@/services/domain/core.service";
+import { ConsolidadoService } from "@/services/domain/producao.service";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { User, Calendar, History, ArrowLeft, Loader2, Download, Printer } from "lucide-react";
@@ -7,13 +8,23 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
+import { supabase } from "@/lib/supabase";
+
 const DetalhamentoColaborador = () => {
     const navigate = useNavigate();
     const { id } = useParams();
 
     const { data: comp } = useQuery({
-        queryKey: ["competencia_atual"],
-        queryFn: () => CompetenciaService.getAtual(),
+        queryKey: ["competencia_atual", id],
+        queryFn: async () => {
+            const { data: colab } = await supabase
+                .from('colaboradores')
+                .select('empresa_id')
+                .eq('id', id)
+                .single();
+            return CompetenciaService.getAtual(colab?.empresa_id);
+        },
+        enabled: !!id,
     });
 
     const { data: consolidado, isLoading } = useQuery({

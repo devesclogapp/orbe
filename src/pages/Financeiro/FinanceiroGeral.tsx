@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { CompetenciaService, ConsolidadoService, AIService, EmpresaService } from "@/services/base.service";
+import { EmpresaService } from "@/services/domain/cadastros.service";
+import { CompetenciaService, AIService } from "@/services/domain/core.service";
+import { ConsolidadoService } from "@/services/domain/producao.service";
 import { AppShell } from "@/components/layout/AppShell";
 import { MetricCard } from "@/components/painel/MetricCard";
 import { Wallet, Users, Building2, AlertTriangle, ArrowRight, Loader2, Filter, RefreshCw, Layers } from "lucide-react";
