@@ -7,10 +7,10 @@ import {
   validarBeneficiarios,
   type EmpresaRemessa,
   type BeneficiarioPagamento,
-} from './cnab/cnab240-posicional';
-import { CnabRemessaArquivoService } from './cnab/cnabRemessaArquivo.service';
+} from '../cnab/cnab240-posicional';
+import { CnabRemessaArquivoService } from '../cnab/cnabRemessaArquivo.service';
 
-import { BaseService, sanitizePayload, cleanUuid, validateUuidFields, getCurrentTenantId, getTenantQueryFilter, extractReferencedTableFromFkError } from './core.service';
+import { BaseService, sanitizePayload, cleanUuid, validateUuidFields, getCurrentTenantId, getTenantQueryFilter, extractReferencedTableFromFkError, requireAuthenticatedUserId, operationalClient, inferRegimeTrabalho, inferModeloCalculo, normalizeContratoToken, hasComplementoMinimoColaborador, type EncarregadoColaboradorFiltroConfig } from './core.service';
 
 
 

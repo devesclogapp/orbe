@@ -20,6 +20,8 @@ import { TabRegrasDiaristas } from "@/pages/Rh/TabRegrasDiaristas";
 import { TabMeiosPagamento } from "@/pages/Financeiro/TabMeiosPagamento";
 import { TabTaxasImpostos } from "@/pages/Financeiro/TabTaxasImpostos";
 import DynamicRuleTabsContainer from "@/components/regras/DynamicRuleTabsContainer";
+import { TabServicosEspecificos } from "./TabServicosEspecificos";
+
 import {
   SpreadsheetUploadModal,
   type SpreadsheetValidationResult,
@@ -2226,7 +2228,9 @@ const RegrasOperacionais = () => {
               </TabsTrigger>
             )
           })}
+          <TabsTrigger value="especificos">Serviços Específicos</TabsTrigger>
           {canAccess && (
+
             <Button variant="outline" size="sm" onClick={() => setIsNewTabModalOpen(true)} className="ml-2">
               <Plus className="h-4 w-4 mr-2" /> Nova Aba
             </Button>
@@ -2383,7 +2387,12 @@ const RegrasOperacionais = () => {
           </Card>
         </TabsContent>
 
+        <TabsContent value="especificos" className="m-0">
+          <TabServicosEspecificos />
+        </TabsContent>
+
         <TabsContent value="meios_pagamento" className="m-0">
+
           <TabMeiosPagamento />
         </TabsContent>
 

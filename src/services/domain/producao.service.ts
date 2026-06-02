@@ -7,10 +7,10 @@ import {
   validarBeneficiarios,
   type EmpresaRemessa,
   type BeneficiarioPagamento,
-} from './cnab/cnab240-posicional';
-import { CnabRemessaArquivoService } from './cnab/cnabRemessaArquivo.service';
+} from '../cnab/cnab240-posicional';
+import { CnabRemessaArquivoService } from '../cnab/cnabRemessaArquivo.service';
 
-import { BaseService, sanitizePayload, cleanUuid, validateUuidFields, getCurrentTenantId, getTenantQueryFilter, extractReferencedTableFromFkError } from './core.service';
+import { BaseService, sanitizePayload, cleanUuid, validateUuidFields, getCurrentTenantId, getTenantQueryFilter, extractReferencedTableFromFkError, requireAuthenticatedUserId, operationalClient } from './core.service';
 
 
 
@@ -852,13 +852,8 @@ class OperacaoProducaoServiceClass {
   }
 
   async getAll(empresaId?: string, tenantId?: string | null, unidadeId?: string | null) {
-    let empresaIds = empresaId ? [empresaId] : undefined;
+    const currentTenantId = tenantId || await getCurrentTenantId();
     
-    if (!empresaId && tenantId) {
-      empresaIds = await this.getEmpresaIdsFromTenant(tenantId);
-      if (!empresaIds || empresaIds.length === 0) return [];
-    }
-
     let query = operationalClient
       .from('operacoes_producao')
       .select(`
@@ -873,12 +868,11 @@ class OperacaoProducaoServiceClass {
         unidades:unidade_id(nome),
         empresas:empresa_id(id, nome)
       `)
+      .eq('tenant_id', currentTenantId)
       .is('deleted_at', null)
       .order('criado_em', { ascending: false });
 
-    if (empresaIds && empresaIds.length > 0) {
-      query = query.in('empresa_id', empresaIds);
-    } else if (empresaId) {
+    if (empresaId) {
       query = query.eq('empresa_id', empresaId);
     }
     if (unidadeId) query = query.eq('unidade_id', unidadeId);

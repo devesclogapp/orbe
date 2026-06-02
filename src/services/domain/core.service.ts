@@ -7,15 +7,15 @@ import {
   validarBeneficiarios,
   type EmpresaRemessa,
   type BeneficiarioPagamento,
-} from './cnab/cnab240-posicional';
-import { CnabRemessaArquivoService } from './cnab/cnabRemessaArquivo.service';
+} from '../cnab/cnab240-posicional';
+import { CnabRemessaArquivoService } from '../cnab/cnabRemessaArquivo.service';
 
 
 
 type Table = keyof Database['public']['Tables'];
 
 // Helper para limpar valores UUID
-function cleanUuid(value?: string | null): string | null {
+export function cleanUuid(value?: string | null): string | null {
   if (!value) return null;
   const v = value.trim();
   if (!v) return null;
@@ -23,7 +23,7 @@ function cleanUuid(value?: string | null): string | null {
   return uuidRegex.test(v) ? v : null;
 }
 
-function extractReferencedTableFromFkError(error: { details?: string | null; message?: string | null }) {
+export function extractReferencedTableFromFkError(error: { details?: string | null; message?: string | null }) {
   const raw = `${error.details ?? ""} ${error.message ?? ""}`;
   const match = raw.match(/table\s+"([^"]+)"/i);
   return match?.[1] ?? null;
@@ -97,7 +97,7 @@ function hasDadosBancariosMinimosColaborador(payload: Record<string, any>) {
   );
 }
 
-function hasComplementoMinimoColaborador(payload: Record<string, any>) {
+export function hasComplementoMinimoColaborador(payload: Record<string, any>) {
   const cpf = normalizeCpfDigits(payload.cpf);
   const telefone = String(payload.telefone ?? '').replace(/\D/g, '').trim();
   const matricula = String(payload.matricula ?? '').trim();
@@ -107,7 +107,7 @@ function hasComplementoMinimoColaborador(payload: Record<string, any>) {
   return Boolean(cpf && telefone && matricula && empresaId && cargo) && hasDadosBancariosMinimosColaborador(payload);
 }
 
-function inferRegimeTrabalho(tipoColaborador?: string | null): string {
+export function inferRegimeTrabalho(tipoColaborador?: string | null): string {
   const tipo = String(tipoColaborador ?? "").trim().toUpperCase();
   if (tipo === "CLT") return "CLT";
   if (tipo === "INTERMITENTE") return "Intermitente";
@@ -117,7 +117,7 @@ function inferRegimeTrabalho(tipoColaborador?: string | null): string {
   return "CLT";
 }
 
-function inferModeloCalculo(tipoColaborador?: string | null): string {
+export function inferModeloCalculo(tipoColaborador?: string | null): string {
   const tipo = String(tipoColaborador ?? "").trim().toUpperCase();
   if (tipo === "CLT") return "Mensal";
   if (tipo === "DIARISTA") return "Diária";
@@ -128,7 +128,7 @@ function inferModeloCalculo(tipoColaborador?: string | null): string {
 }
 
 // Função helper para obter tenant_id de forma segura
-function normalizeContratoToken(value?: string | null): string {
+export function normalizeContratoToken(value?: string | null): string {
   return String(value ?? '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -137,7 +137,7 @@ function normalizeContratoToken(value?: string | null): string {
     .toLowerCase();
 }
 
-async function getCurrentTenantId(): Promise<string> {
+export async function getCurrentTenantId(): Promise<string> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Usuário não autenticado');
 
@@ -161,7 +161,7 @@ async function getCurrentTenantId(): Promise<string> {
   return profile.tenant_id;
 }
 
-async function requireAuthenticatedUserId(): Promise<string> {
+export async function requireAuthenticatedUserId(): Promise<string> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user?.id) {
     throw new Error('Sessão inválida. Faça login novamente para continuar.');
@@ -963,7 +963,7 @@ export interface EncarregadoColaboradorFiltroConfig {
 // ==================================================
 // SERVIÇOS OPERACIONAIS V2 (/producao)
 // ==================================================
-const operationalClient: any = supabase;
+export const operationalClient: any = supabase;
 
 class UnidadeOperacionalServiceClass {
   async getByEmpresa(empresaId: string) {

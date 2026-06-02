@@ -90,6 +90,7 @@ import CentralOperacional from "./pages/CentralOperacional";
 import DiaristasLancamento from "./pages/Producao/DiaristasLancamento";
 import CustosExtrasLancamento from "./pages/Producao/CustosExtrasLancamento";
 import ServicosExtrasLancamento from "./pages/Producao/ServicosExtrasLancamento";
+import ServicosEspecificosLancamento from "./pages/Producao/ServicosEspecificosLancamento";
 // Rh
 import RhDiaristasPainel from "./pages/Rh/RhDiaristasPainel";
 import AprovacoesRh from "./pages/Rh/AprovacoesRh";
@@ -151,6 +152,7 @@ const App = () => (
                             <Route path="/producao/diaristas" element={<AuthGuard><DiaristasLancamento /></AuthGuard>} />
                             <Route path="/producao/custos-extras" element={<AuthGuard><CustosExtrasLancamento /></AuthGuard>} />
                             <Route path="/producao/servicos-extras" element={<AuthGuard><ServicosExtrasLancamento /></AuthGuard>} />
+                            <Route path="/producao/servicos-especificos" element={<AuthGuard><ServicosEspecificosLancamento /></AuthGuard>} />
                             <Route path="/rh/diaristas" element={<AuthGuard><AprovacoesRh /></AuthGuard>} />
                             <Route path="/rh/aprovacoes" element={<AuthGuard><AprovacoesRh /></AuthGuard>} />
                             <Route path="/rh/diaristas/cadastros" element={<AuthGuard><RhDiaristasGestao /></AuthGuard>} />

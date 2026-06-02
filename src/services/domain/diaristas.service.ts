@@ -7,14 +7,47 @@ import {
   validarBeneficiarios,
   type EmpresaRemessa,
   type BeneficiarioPagamento,
-} from './cnab/cnab240-posicional';
-import { CnabRemessaArquivoService } from './cnab/cnabRemessaArquivo.service';
+} from '../cnab/cnab240-posicional';
+import { CnabRemessaArquivoService } from '../cnab/cnabRemessaArquivo.service';
 
 import { BaseService, sanitizePayload, cleanUuid, validateUuidFields, getCurrentTenantId, getTenantQueryFilter, extractReferencedTableFromFkError } from './core.service';
 
+type StatusLancamentoDiarista =
+  | 'em_aberto' | 'EM_ABERTO'
+  | 'AGUARDANDO_VALIDACAO_RH' | 'aguardando_validacao_rh'
+  | 'VALIDADO_RH' | 'validado_rh'
+  | 'FECHADO_FINANCEIRO' | 'fechado_financeiro'
+  | 'AGUARDANDO_PAGAMENTO' | 'aguardando_pagamento'
+  | 'cnab_gerado' | 'CNAB_GERADO'
+  | 'pago' | 'PAGO'
+  | 'conciliado' | 'CONCILIADO';
 
+type LancamentoDiaristaPayload = {
+  empresa_id: string;
+  diarista_id: string;
+  nome_colaborador: string;
+  cpf_colaborador?: string | null;
+  funcao_colaborador?: string | null;
+  data_lancamento: string;
+  codigo_marcacao: string;
+  quantidade_diaria: number;
+  valor_diaria_base?: number;
+  valor_calculado?: number;
+  cliente_unidade?: string | null;
+  operacao_servico?: string | null;
+  encarregado_id?: string | null;
+  encarregado_nome?: string | null;
+  observacao?: string | null;
+  status?: string;
+  lote_fechamento_id?: string | null;
+  unidade_id?: string | null;
+  local_id?: string | null;
+  tipo_registro?: string;
+  tenant_id?: string;
+};
 
 class LancamentoDiaristaServiceClass {
+
   async getByPeriodo(
     empresaId: string | null | undefined,
     inicio: string,
