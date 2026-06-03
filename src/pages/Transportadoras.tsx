@@ -382,6 +382,23 @@ const Transportadoras = () => {
                 placeholder="Rua, número, bairro, cidade"
               />
             </div>
+            <div className="grid gap-2">
+              <Label htmlFor="transportadora_empresa">
+                Empresa <span className="text-destructive">*</span>
+              </Label>
+              <select
+                id="transportadora_empresa"
+                value={form.empresa_id}
+                onChange={(e) => updateField("empresa_id", e.target.value)}
+                className="h-10 px-3 rounded-md border border-input bg-background text-sm w-full"
+              >
+                <option value="" disabled>Selecione uma empresa</option>
+                {empresaOptions.map((emp: any) => (
+                  <option key={emp.id} value={emp.id}>{emp.nome}</option>
+                ))}
+              </select>
+              {formErrors.empresa_id ? <p className="text-sm text-destructive" role="alert">{formErrors.empresa_id}</p> : null}
+            </div>
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"

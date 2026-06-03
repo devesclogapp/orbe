@@ -44,6 +44,10 @@ export function validateTransportadoraPayload(
     errors.nome = "Informe o nome da transportadora.";
   }
 
+  if (!payload.empresa_id) {
+    errors.empresa_id = "Selecione uma empresa vinculada.";
+  }
+
   if (payload.documento) {
     const digits = payload.documento.replace(/\D/g, "");
     if (!(digits.length === 11 || digits.length === 14)) {
