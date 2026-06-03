@@ -8,15 +8,15 @@ interface OnboardingRedirectProps {
 
 export function OnboardingRedirect({ children }: OnboardingRedirectProps) {
   const navigate = useNavigate();
-  const { isActive, dataStatus, progressPercentage } = useOnboarding();
+  const { isActive, isOnboardingComplete } = useOnboarding();
 
   useEffect(() => {
-    if (isActive && progressPercentage < 100) {
+    if (isActive && !isOnboardingComplete) {
       navigate("/onboarding", { replace: true });
     }
-  }, [isActive, progressPercentage, navigate]);
+  }, [isActive, isOnboardingComplete, navigate]);
 
-  if (isActive && progressPercentage < 100) {
+  if (isActive && !isOnboardingComplete) {
     return null;
   }
 

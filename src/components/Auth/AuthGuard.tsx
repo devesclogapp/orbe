@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAccessControl } from "@/contexts/AccessControlContext";
+import { useOnboarding } from "@/contexts/OnboardingContext";
 import { getRouteAccessRule } from "@/lib/access-control";
 
 interface AuthGuardProps {
@@ -11,6 +12,7 @@ interface AuthGuardProps {
 export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
     const { session, loading } = useAuth();
     const { role, canAccess, isBlocked, loading: accessLoading } = useAccessControl();
+    const { isActive: isOnboardingActive, isOnboardingComplete } = useOnboarding();
     const location = useLocation();
     const hasResolvedRoute = useRef(false);
 
@@ -36,6 +38,13 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
 
     if (isBlocked) {
         return <Navigate to="/login" replace />;
+    }
+
+    const searchParams = new URLSearchParams(location.search);
+    const isOnboardingReturn = searchParams.get("onboarding_return") === "true";
+
+    if (isOnboardingActive && !isOnboardingComplete && location.pathname !== "/onboarding" && !isOnboardingReturn) {
+        return <Navigate to="/onboarding" replace />;
     }
 
     const rule = getRouteAccessRule(location.pathname);

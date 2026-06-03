@@ -107,7 +107,9 @@ export const ACCESS_PRESETS: Record<AccessRole, PermissionMatrix> = {
     pagamentos_remessas: allowActions(["ver", "aprovar"]),
     central_de_relatorios: allowActions(["ver", "exportar"]),
   },
-  user: {},
+  user: {
+    onboarding: allowActions(["ver"]),
+  },
 };
 
 export const ACCESS_PRESET_OPTIONS: Array<{ value: AccessRole; label: string }> = [

@@ -242,8 +242,35 @@ const Cadastro = () => {
       const result = await response.json();
 
       if (!response.ok) {
-        console.error("Erro ao criar tenant:", result);
-        throw new Error(result.error || "Falha ao criar ambiente da empresa");
+        console.warn("Erro ao criar tenant via Edge Function. Tentando inserção direta local (fallback)...", result);
+
+        // Fallback direto
+        const { data: tenant, error: tenantError } = await supabase
+          .from("tenants")
+          .insert({
+            name: tenantName,
+            created_by: session.user.id
+          })
+          .select()
+          .single();
+
+        if (tenantError) {
+          throw new Error(result.error || tenantError.message || "Falha ao criar ambiente da empresa");
+        }
+
+        const { error: profileError } = await supabase
+          .from("profiles")
+          .insert({
+            user_id: session.user.id,
+            tenant_id: tenant.id,
+            full_name: formData.fullName,
+            role: "admin", // O primeiro usuário recebe admin da sua empresa
+          });
+
+        if (profileError) {
+          console.error("Erro ao criar perfil fallback:", profileError);
+          throw new Error("Falha ao criar perfil de usuário");
+        }
       }
 
       toast.success("Conta criada com sucesso!");

@@ -113,6 +113,7 @@ interface OnboardingContextType {
   isActive: boolean;
   dataStatus: OnboardingDataStatus;
   canAdvance: boolean;
+  isOnboardingComplete: boolean;
   progressPercentage: number;
   setStep: (step: OnboardingStep) => void;
   completeStep: (step: OnboardingStep) => void;
@@ -137,6 +138,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     hasRule: false,
     hasOperation: false,
     hasEmpresa: false,
+    hasTransportadora: false,
     totalClientes: 0,
     totalFornecedores: 0,
     totalColaboradores: 0,
@@ -270,7 +272,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
-  const getCurrentStepRequirements = useCallback((): OnboardingStep["minDataRequired"] => {
+  const getCurrentStepRequirements = useCallback((): OnboardingStepInfo["minDataRequired"] => {
     const stepInfo = ONBOARDING_STEPS.find(s => s.id === currentStep);
     return stepInfo?.minDataRequired || {
       hasClient: false,
@@ -300,40 +302,33 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   }, [currentStep, dataStatus, getCurrentStepRequirements]);
 
+  const isOnboardingComplete = useMemo(() => {
+    return (
+      dataStatus.hasEmpresa &&
+      dataStatus.hasTransportadora &&
+      dataStatus.hasSupplier &&
+      dataStatus.hasCollaborator &&
+      dataStatus.hasRule &&
+      dataStatus.hasOperation
+    );
+  }, [dataStatus]);
+
   const progressPercentage = useMemo(() => {
-    // Calcular progresso baseado nos dados reais do banco
-    let itemsCompleted = 0;
-    let totalItems = 0;
+    const flags = [
+      dataStatus.hasEmpresa,
+      dataStatus.hasTransportadora,
+      dataStatus.hasSupplier,
+      dataStatus.hasCollaborator,
+      dataStatus.hasRule,
+      dataStatus.hasOperation
+    ];
 
-    switch (currentStep) {
-      case "cadastro_base":
-        totalItems = 3;
-        if (dataStatus.hasEmpresa) itemsCompleted++;
-        if (dataStatus.hasTransportadora) itemsCompleted++;
-        if (dataStatus.hasSupplier) itemsCompleted++;
-        break;
-      case "colaboradores":
-        totalItems = 1;
-        if (dataStatus.hasCollaborator) itemsCompleted = 1;
-        break;
-      case "regras":
-        totalItems = 1;
-        if (dataStatus.hasRule) itemsCompleted = 1;
-        break;
-      case "primeira_operacao":
-        totalItems = 1;
-        if (dataStatus.hasOperation) itemsCompleted = 1;
-        break;
-      case "resultados":
-        totalItems = 1;
-        if (dataStatus.hasOperation) itemsCompleted = 1;
-        break;
-    }
+    const itemsCompleted = flags.filter(Boolean).length;
+    const totalItems = flags.length; // 6 items totais para o onboarding ser completo
 
-    // Progresso global considerando etapas anteriores completadas
     const globalProgress = (itemsCompleted / totalItems) * 100;
     return Math.round(globalProgress);
-  }, [currentStep, dataStatus]);
+  }, [dataStatus]);
 
   const setStep = useCallback((step: OnboardingStep) => {
     setCurrentStep(step);
@@ -375,6 +370,12 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [user]);
 
   const skipOnboarding = useCallback(async () => {
+    // Apenas pode pular na parte de sistema se dados estiverem validos (prevenindo burla)
+    if (!isOnboardingComplete) {
+      console.warn("[OnboardingContext] Tenant tentou pular onboarding mas faltam dados obrigatórios");
+      return;
+    }
+
     setIsActive(false);
     if (user) {
       try {
@@ -390,7 +391,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         console.warn("[OnboardingContext] Erro ao pular onboarding");
       }
     }
-  }, [user]);
+  }, [user, isOnboardingComplete]);
 
   const value = useMemo(() => ({
     currentStep,
@@ -398,6 +399,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     isActive,
     dataStatus,
     canAdvance,
+    isOnboardingComplete,
     progressPercentage,
     setStep,
     completeStep,
@@ -405,7 +407,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     finishOnboarding,
     skipOnboarding,
     refetchStatus: fetchDataStatus,
-  }), [currentStep, completedSteps, isActive, dataStatus, canAdvance, progressPercentage, setStep, completeStep, startOnboarding, finishOnboarding, skipOnboarding, fetchDataStatus]);
+  }), [currentStep, completedSteps, isActive, dataStatus, canAdvance, isOnboardingComplete, progressPercentage, setStep, completeStep, startOnboarding, finishOnboarding, skipOnboarding, fetchDataStatus]);
 
   return (
     <OnboardingContext.Provider value={value}>

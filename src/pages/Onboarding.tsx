@@ -32,7 +32,7 @@ interface StepChecklistItem {
 
 function getStepChecklist(stepId: string, dataStatus: any): StepChecklistItem[] {
   const returnParam = "?onboarding_return=true";
-  
+
   switch (stepId) {
     case "cadastro_base":
       return [
@@ -47,7 +47,7 @@ function getStepChecklist(stepId: string, dataStatus: any): StepChecklistItem[] 
           id: "transportadora",
           label: "Cadastrar pelo menos 1 transportadora",
           isComplete: dataStatus.hasTransportadora,
-          link: `/transportadoras?tab=transportadoras${returnParam}`,
+          link: `/transportadoras?tab=transportadoras&onboarding_return=true`,
           linkLabel: "Ir para Transportadoras",
         },
         {
@@ -105,11 +105,11 @@ function getStepChecklist(stepId: string, dataStatus: any): StepChecklistItem[] 
 
 export default function Onboarding() {
   const navigate = useNavigate();
-  const { 
-    currentStep, 
-    completedSteps, 
-    dataStatus, 
-    canAdvance, 
+  const {
+    currentStep,
+    completedSteps,
+    dataStatus,
+    canAdvance,
     progressPercentage,
     setStep,
     completeStep,
@@ -149,7 +149,7 @@ export default function Onboarding() {
   }
 
   return (
-    <AppShell>
+    <AppShell title="Onboarding Inicial">
       <div className="max-w-4xl mx-auto space-y-8">
         <div className="text-center space-y-2">
           <h1 className="text-3xl font-bold">Bem-vindo ao ERP Orbe!</h1>
@@ -177,12 +177,12 @@ export default function Onboarding() {
               <h3 className="font-medium">O que você precisa fazer:</h3>
               <div className="space-y-3">
                 {checklist.map((item) => (
-                  <div 
+                  <div
                     key={item.id}
                     className={cn(
                       "flex items-center justify-between p-3 rounded-lg border",
-                      item.isComplete 
-                        ? "border-green-500 bg-green-50/50" 
+                      item.isComplete
+                        ? "border-green-500 bg-green-50/50"
                         : "border-muted"
                     )}
                   >
@@ -205,8 +205,8 @@ export default function Onboarding() {
                       )}
                     </div>
                     {!item.isComplete && item.link && (
-                      <Button 
-                        variant="outline" 
+                      <Button
+                        variant="outline"
                         size="sm"
                         onClick={() => navigate(item.link!)}
                       >
@@ -220,7 +220,7 @@ export default function Onboarding() {
             </div>
 
             <div className="flex justify-between pt-4 border-t">
-              <Button 
+              <Button
                 variant="outline"
                 onClick={handlePrevious}
                 disabled={isFirstStep}
@@ -228,15 +228,9 @@ export default function Onboarding() {
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Anterior
               </Button>
-              
+
               <div className="flex gap-2">
-                <Button 
-                  variant="ghost"
-                  onClick={skipOnboarding}
-                >
-                  Pular onboarding
-                </Button>
-                <Button 
+                <Button
                   onClick={handleNext}
                   disabled={!canAdvance}
                 >
@@ -310,7 +304,7 @@ function OnboardingSuccess() {
   }, [finishOnboarding]);
 
   return (
-    <AppShell>
+    <AppShell title="Sucesso">
       <div className="max-w-2xl mx-auto text-center space-y-8 py-12">
         <div className="space-y-4">
           <div className="w-20 h-20 mx-auto rounded-full bg-green-100 flex items-center justify-center animate-bounce">
@@ -329,8 +323,8 @@ function OnboardingSuccess() {
               <CheckCircle2 className="w-5 h-5 text-green-600" />
             </div>
             <p className="text-sm text-muted-foreground">
-              Agora você pode utilizar todas as funcionalidades do ERP Orbe. 
-              Comece pelo Dashboard para visualizar seus indicadores ou navegue pelos 
+              Agora você pode utilizar todas as funcionalidades do ERP Orbe.
+              Comece pelo Dashboard para visualizar seus indicadores ou navegue pelos
               menus laterais para acessar os diferentes módulos do sistema.
             </p>
           </CardContent>
