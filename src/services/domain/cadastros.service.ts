@@ -480,6 +480,7 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
       conta_digito: payload.conta_digito ?? null,
       digito_conta: payload.conta_digito ?? payload.digito_conta ?? null,
       tipo_conta: payload.tipo_conta ?? null,
+      pis: payload.pis ? String(payload.pis).replace(/\D/g, '') : null,
       chave_pix: payload.chave_pix ?? null,
       banco_validado: payload.banco_validado ?? false,
       unidade_id: cleanUuid(payload.unidade_id),
