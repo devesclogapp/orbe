@@ -34,12 +34,25 @@ const Login = () => {
     const onSubmit = async (data: LoginFormValues) => {
         setLoading(true);
         try {
-            const { error } = await supabase.auth.signInWithPassword({
+            const { data: authData, error } = await supabase.auth.signInWithPassword({
                 email: data.email,
                 password: data.password,
             });
 
             if (error) throw error;
+
+            // Verificar se o usuário é encarregado — encarregados NÃO podem acessar pelo login convencional
+            const { data: perfil } = await supabase
+                .from('profiles')
+                .select('role')
+                .eq('user_id', authData.user.id)
+                .maybeSingle();
+
+            if (perfil?.role === 'encarregado') {
+                await supabase.auth.signOut();
+                toast.error("Acesso negado. Encarregados devem utilizar o portal \"Acesso Encarregado\".");
+                return;
+            }
 
             toast.success("Login realizado com sucesso!");
             navigate("/");
