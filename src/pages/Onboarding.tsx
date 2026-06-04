@@ -72,10 +72,38 @@ function getStepChecklist(stepId: string, dataStatus: any): StepChecklistItem[] 
       return [
         {
           id: "regra",
-          label: "Criar pelo menos 1 regra de valor de serviço",
+          label: "Criar regra de valor de serviço",
           isComplete: dataStatus.hasRule,
-          link: `/cadastros/regras-operacionais${returnParam}`,
+          link: `/cadastros/regras-operacionais?tab=operacional&onboarding_return=true`,
           linkLabel: "Ir para Regras",
+        },
+        {
+          id: "diarista",
+          label: "Criar regra/multiplicador de diarista",
+          isComplete: dataStatus.hasDiaristaRule,
+          link: `/cadastros/regras-operacionais?tab=diaristas&onboarding_return=true`,
+          linkLabel: "Ir para Diaristas",
+        },
+        {
+          id: "pagamento",
+          label: "Configurar meios de pagamento",
+          isComplete: dataStatus.hasPagamento,
+          link: `/cadastros/regras-operacionais?tab=meios-pagamento&onboarding_return=true`,
+          linkLabel: "Ir para Meios Pagt.",
+        },
+        {
+          id: "taxas",
+          label: "Configurar taxas e impostos",
+          isComplete: dataStatus.hasTaxa,
+          link: `/cadastros/regras-operacionais?tab=taxas-impostos&onboarding_return=true`,
+          linkLabel: "Ir para Taxas",
+        },
+        {
+          id: "servicos_especificos",
+          label: "Configurar serviços específicos, se aplicável",
+          isComplete: true, // Opcional, consideramos sempre true para liberar mas exibimos o link para incentivar
+          link: `/cadastros/regras-operacionais?tab=especificos&onboarding_return=true`,
+          linkLabel: "Acessar",
         },
       ];
     case "primeira_operacao":

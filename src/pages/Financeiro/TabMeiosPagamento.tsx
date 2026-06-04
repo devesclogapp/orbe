@@ -35,23 +35,14 @@ export const TabMeiosPagamento = () => {
         (m) => m.module_type === 'financial' || m.slug === 'meios-pagamento' || m.slug === 'meios_pagamento'
     );
 
-    if (isLoading) {
-        return <Card className="p-5 text-center text-muted-foreground">Carregando módulo...</Card>;
-    }
+    React.useEffect(() => {
+        if (!isLoading && !modulo && !createModuloMutation.isPending) {
+            createModuloMutation.mutate();
+        }
+    }, [isLoading, modulo, createModuloMutation.isPending, createModuloMutation.mutate]);
 
-    if (!modulo) {
-        return (
-            <Card className="p-5 text-center space-y-4">
-                <p className="text-muted-foreground">O módulo de sistema para Meios de Pagamento ainda não foi configurado nesta instalação.</p>
-                <Button
-                    onClick={() => createModuloMutation.mutate()}
-                    disabled={createModuloMutation.isPending}
-                >
-                    <Plus className="h-4 w-4 mr-2" />
-                    {createModuloMutation.isPending ? "Inicializando..." : "Inicializar Módulo de Pagamentos"}
-                </Button>
-            </Card>
-        );
+    if (isLoading || createModuloMutation.isPending || !modulo) {
+        return <Card className="p-5 text-center text-muted-foreground">Preparando módulo de Meios de Pagamento...</Card>;
     }
 
     return (

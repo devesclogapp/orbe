@@ -20,6 +20,9 @@ export interface OnboardingStepInfo {
     hasSupplier: boolean;
     hasCollaborator: boolean;
     hasRule: boolean;
+    hasDiaristaRule?: boolean;
+    hasPagamento?: boolean;
+    hasTaxa?: boolean;
     hasOperation: boolean;
   };
 }
@@ -61,6 +64,9 @@ export const ONBOARDING_STEPS: OnboardingStepInfo[] = [
       hasSupplier: true,
       hasCollaborator: true,
       hasRule: true,
+      hasDiaristaRule: true,
+      hasPagamento: true,
+      hasTaxa: true,
       hasOperation: false,
     },
   },
@@ -97,6 +103,9 @@ interface OnboardingDataStatus {
   hasSupplier: boolean;
   hasCollaborator: boolean;
   hasRule: boolean;
+  hasDiaristaRule: boolean;
+  hasPagamento: boolean;
+  hasTaxa: boolean;
   hasOperation: boolean;
   hasEmpresa: boolean;
   hasTransportadora: boolean;
@@ -136,6 +145,9 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     hasSupplier: false,
     hasCollaborator: false,
     hasRule: false,
+    hasDiaristaRule: false,
+    hasPagamento: false,
+    hasTaxa: false,
     hasOperation: false,
     hasEmpresa: false,
     hasTransportadora: false,
@@ -163,18 +175,20 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         supabase.from("colaboradores").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("status", "ativo"),
         supabase.from("fornecedor_valores_servico").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("ativo", true),
         supabase.from("operacoes_producao").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId),
+        supabase.from("regras_marcacao_diaristas").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("ativo", true),
+        supabase.from("regras_dados").select("id, regras_modulos!inner(slug)").eq("regras_modulos.tenant_id", tenantId).in("regras_modulos.slug", ["meios_pagamento", "taxas_impostos", "meios-pagamento", "taxas-impostos"])
       ];
 
       const results = await Promise.all(promises);
 
-      const tables = ["empresas", "transportadoras_clientes", "fornecedores", "colaboradores", "fornecedor_valores_servico", "operacoes_producao"];
+      const tables = ["empresas", "transportadoras_clientes", "fornecedores", "colaboradores", "fornecedor_valores_servico", "operacoes_producao", "regras_marcacao_diaristas", "regras_dados"];
       results.forEach((res, idx) => {
         if (res.error) {
           console.error(`[OnboardingContext] Error fetching ${tables[idx]}:`, res.error);
         }
       });
 
-      const [empresasRes, transportadorasRes, fornecedoresRes, colaboradoresRes, regrasRes, operacoesRes] = results;
+      const [empresasRes, transportadorasRes, fornecedoresRes, colaboradoresRes, regrasRes, operacoesRes, diaristasRes, modulosRes] = results;
 
       const hasEmpresa = (empresasRes.count ?? 0) > 0;
       const hasTransportadora = (transportadorasRes.count ?? 0) > 0;
@@ -182,6 +196,11 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const hasCollaborator = (colaboradoresRes.count ?? 0) > 0;
       const hasRule = (regrasRes.count ?? 0) > 0;
       const hasOperation = (operacoesRes.count ?? 0) > 0;
+      const hasDiaristaRule = (diaristasRes.count ?? 0) > 0;
+
+      const dadosRecuperados = (modulosRes.data || []) as any[];
+      const hasPagamento = dadosRecuperados.some(d => d.regras_modulos?.slug === 'meios_pagamento' || d.regras_modulos?.slug === 'meios-pagamento');
+      const hasTaxa = dadosRecuperados.some(d => d.regras_modulos?.slug === 'taxas_impostos' || d.regras_modulos?.slug === 'taxas-impostos');
 
       console.log("[OnboardingContext] Results:", {
         hasEmpresa,
@@ -197,6 +216,9 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         hasSupplier,
         hasCollaborator,
         hasRule,
+        hasDiaristaRule,
+        hasPagamento,
+        hasTaxa,
         hasOperation,
         hasEmpresa,
         hasTransportadora,
@@ -292,7 +314,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       case "colaboradores":
         return dataStatus.hasCollaborator;
       case "regras":
-        return dataStatus.hasRule;
+        return dataStatus.hasRule && dataStatus.hasDiaristaRule && dataStatus.hasPagamento && dataStatus.hasTaxa;
       case "primeira_operacao":
         return dataStatus.hasOperation;
       case "resultados":
@@ -309,6 +331,9 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       dataStatus.hasSupplier &&
       dataStatus.hasCollaborator &&
       dataStatus.hasRule &&
+      dataStatus.hasDiaristaRule &&
+      dataStatus.hasPagamento &&
+      dataStatus.hasTaxa &&
       dataStatus.hasOperation
     );
   }, [dataStatus]);
@@ -320,6 +345,9 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       dataStatus.hasSupplier,
       dataStatus.hasCollaborator,
       dataStatus.hasRule,
+      dataStatus.hasDiaristaRule,
+      dataStatus.hasPagamento,
+      dataStatus.hasTaxa,
       dataStatus.hasOperation
     ];
 
