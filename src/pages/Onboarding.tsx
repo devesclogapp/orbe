@@ -101,11 +101,11 @@ function getStepChecklist(stepId: string, dataStatus: any): StepChecklistItem[] 
     case "regras":
       return [
         {
-          id: "regra",
-          label: "Criar regra de valor de serviço",
+          id: "produto_com_preco",
+          label: "Cadastrar produto/carga com preço operacional",
           isComplete: dataStatus.hasRule,
-          link: `/cadastros/regras-operacionais?tab=operacional&onboarding_return=true`,
-          linkLabel: "Ir para Regras",
+          link: `/cadastros?tab=parametros&subtab=produtos&onboarding_return=true`,
+          linkLabel: "Ir para Produtos",
         },
         {
           id: "diarista",
@@ -130,7 +130,7 @@ function getStepChecklist(stepId: string, dataStatus: any): StepChecklistItem[] 
         },
         {
           id: "servicos_especificos",
-          label: "Configurar serviços específicos, se aplicável",
+          label: "Configurar períodos operacionais (turnos)",
           isComplete: true, // Opcional, consideramos sempre true para liberar mas exibimos o link para incentivar
           link: `/cadastros/regras-operacionais?tab=especificos&onboarding_return=true`,
           linkLabel: "Acessar",

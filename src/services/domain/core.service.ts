@@ -1034,7 +1034,37 @@ class ProdutoCargaServiceClass {
 export const ProdutoCargaService = new ProdutoCargaServiceClass();
 
 class FormaPagamentoOperacionalServiceClass {
+  private async repararTenants() {
+    try {
+      const tenantId = await getCurrentTenantId();
+      // Tenta atualizar registros que estão sem tenant_id para o tenant atual
+      // Isso resolve problemas de registros inseridos via migração que ficam invisíveis por RLS
+      const { error } = await operationalClient
+        .from('formas_pagamento_operacional')
+        .update({ tenant_id: tenantId })
+        .is('tenant_id', null);
+      
+      if (error && (error as any).status !== 404) {
+        console.warn('[FormaPagamentoOperacionalService] Aviso ao reparar tenants:', error.message);
+      }
+    } catch (e) {
+      // Ignora erro se não conseguir pegar tenant (ex: deslogado)
+    }
+  }
+
+  async getAll() {
+    await this.repararTenants();
+    const { data, error } = await operationalClient
+      .from('formas_pagamento_operacional')
+      .select('*')
+      .order('nome', { ascending: true });
+
+    if (error) throw error;
+    return data ?? [];
+  }
+
   async getAllActive() {
+    await this.repararTenants();
     const { data, error } = await operationalClient
       .from('formas_pagamento_operacional')
       .select('*')
@@ -1051,29 +1081,114 @@ class FormaPagamentoOperacionalServiceClass {
    * Inclui também registros com modalidade = 'AMBOS'.
    */
   async getByModalidade(modalidade: 'CAIXA_IMEDIATO' | 'DUPLICATA') {
-    const { data, error } = await operationalClient
-      .from('formas_pagamento_operacional')
-      .select('*')
-      .eq('ativo', true)
-      .or(`modalidade.eq.${modalidade},modalidade.eq.AMBOS,modalidade.is.null`)
-      .order('nome', { ascending: true });
+    await this.repararTenants();
+    try {
+      const { data, error } = await operationalClient
+        .from('formas_pagamento_operacional')
+        .select('*')
+        .eq('ativo', true)
+        .or(`modalidade.eq.${modalidade},modalidade.eq.AMBOS,modalidade.is.null`)
+        .order('nome', { ascending: true });
 
-    if (error) throw error;
-    return data ?? [];
+      if (error) {
+        console.error('[FormaPagamentoOperacionalService.getByModalidade] Erro na consulta filtrada:', error);
+        // Se o erro for 400, é provável que a coluna modalidade não exista ainda (migração pendente)
+        if (error.code === '42703' || (error as any).status === 400) {
+          console.warn('[FormaPagamentoOperacionalService.getByModalidade] Fallback para getAllActive() devido a provável ausência de coluna no banco.');
+          return this.getAllActive();
+        }
+        throw error;
+      }
+
+      console.log(`[FormaPagamentoOperacionalService.getByModalidade] Encontradas ${data?.length || 0} formas para modalidade ${modalidade}`);
+      return data ?? [];
+    } catch (err) {
+      console.error('[FormaPagamentoOperacionalService.getByModalidade] Catch error:', err);
+      return this.getAllActive();
+    }
   }
 
   async create(payload: Record<string, any>) {
     const tenantId = await getCurrentTenantId();
     const payloadWithTenant = { ...payload, tenant_id: tenantId };
 
-    const { data, error } = await operationalClient
+    try {
+      const { data, error } = await operationalClient
+        .from('formas_pagamento_operacional')
+        .insert(payloadWithTenant)
+        .select()
+        .single();
+
+      if (error) {
+        if ((error as any).status === 400) {
+          console.warn('[FormaPagamentoOperacionalService.create] Erro 400. Tentando salvar sem coluna modalidade...');
+          const { modalidade: _m, ...safePayload } = payloadWithTenant as any;
+          const { data: retryData, error: retryError } = await operationalClient
+            .from('formas_pagamento_operacional')
+            .insert(safePayload)
+            .select()
+            .single();
+          if (retryError) throw retryError;
+          return retryData;
+        }
+        throw error;
+      }
+      return data;
+    } catch (err) {
+      console.error('[FormaPagamentoOperacionalService.create] Catch error:', err);
+      throw err;
+    }
+  }
+
+  async update(id: string, payload: Record<string, any>) {
+    try {
+      const { data, error } = await operationalClient
+        .from('formas_pagamento_operacional')
+        .update(payload)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) {
+        if ((error as any).status === 400) {
+          console.warn('[FormaPagamentoOperacionalService.update] Erro 400. Tentando atualizar sem coluna modalidade...');
+          const { modalidade: _m, ...safePayload } = payload as any;
+          const { data: retryData, error: retryError } = await operationalClient
+            .from('formas_pagamento_operacional')
+            .update(safePayload)
+            .eq('id', id)
+            .select()
+            .single();
+          if (retryError) throw retryError;
+          return retryData;
+        }
+        throw error;
+      }
+      return data;
+    } catch (err) {
+      console.error('[FormaPagamentoOperacionalService.update] Catch error:', err);
+      throw err;
+    }
+  }
+
+  async delete(id: string) {
+    const { error } = await operationalClient
       .from('formas_pagamento_operacional')
-      .insert(payloadWithTenant)
-      .select()
-      .single();
+      .delete()
+      .eq('id', id);
 
     if (error) throw error;
-    return data;
+    return true;
+  }
+
+  async toggleAtivo(id: string, ativo: boolean) {
+    const { error } = await operationalClient
+      .from('formas_pagamento_operacional')
+      .update({ ativo })
+      .eq('id', id);
+
+    if (error) throw error;
+    return true;
   }
 }
 export const FormaPagamentoOperacionalService = new FormaPagamentoOperacionalServiceClass();
@@ -1423,8 +1538,8 @@ class RegrasModulosServiceClass {
     return data as RegraModulo | null;
   }
 
-  async criar(data: Omit<RegraModulo, 'id' | 'ativo'>): Promise<RegraModulo> {
-    const tenantId = await getCurrentTenantId();
+  async criar(data: Omit<RegraModulo, 'id' | 'ativo'>, isGlobal = false): Promise<RegraModulo> {
+    const tenantId = isGlobal ? null : await getCurrentTenantId();
     const { data: result, error } = await supabase
       .from(this.table)
       .insert({ ...data, ativo: true, tenant_id: tenantId })
@@ -1432,6 +1547,85 @@ class RegrasModulosServiceClass {
       .single();
     if (error) throw error;
     return result as RegraModulo;
+  }
+
+  async duplicar(id: number): Promise<RegraModulo> {
+    const tenantId = await getCurrentTenantId();
+    
+    // 1. Buscar o módulo original
+    const { data: original, error: originalError } = await (supabase as any)
+      .from(this.table)
+      .select('*')
+      .eq('id', id)
+      .single();
+    if (originalError) throw originalError;
+
+    // 2. Criar novo módulo
+    const novoNome = `${original.nome} (Cópia)`;
+    let baseSlug = `${original.slug}-copia`;
+    // Garantir slug único básico
+    const novoSlug = `${baseSlug}-${Math.random().toString(36).substring(2, 6)}`;
+    
+    const { data: novoModulo, error: createModuloError } = await (supabase as any)
+      .from(this.table)
+      .insert({
+        nome: novoNome,
+        slug: novoSlug,
+        descricao: original.descricao,
+        module_type: 'custom', // Cópias são sempre customizáveis
+        ativo: true,
+        tenant_id: tenantId
+      })
+      .select('*')
+      .single();
+    if (createModuloError) throw createModuloError;
+
+    // 3. Buscar e duplicar campos
+    const { data: campos, error: camposError } = await (supabase as any)
+      .from('regras_campos')
+      .select('*')
+      .eq('modulo_id', id);
+    if (camposError) throw camposError;
+
+    if (campos && campos.length > 0) {
+      const novosCampos = campos.map((c: any) => ({
+        modulo_id: novoModulo.id,
+        nome: c.nome,
+        slug: c.slug,
+        tipo: c.tipo,
+        obrigatorio: c.obrigatorio,
+        ordem: c.ordem,
+        opcoes: c.opcoes,
+        tenant_id: tenantId
+      }));
+      const { error: createCamposError } = await (supabase as any)
+        .from('regras_campos')
+        .insert(novosCampos);
+      if (createCamposError) throw createCamposError;
+    }
+
+    // 4. Buscar e duplicar dados
+    const { data: dados, error: dadosError } = await (supabase as any)
+      .from('regras_dados')
+      .select('*')
+      .eq('modulo_id', id);
+    if (dadosError) throw dadosError;
+
+    if (dados && dados.length > 0) {
+      // Chunking para grandes volumes de dados se necessário, 
+      // mas para regras operacionais geralmente é um volume manejável.
+      const novosDados = dados.map((d: any) => ({
+        modulo_id: novoModulo.id,
+        dados: d.dados,
+        tenant_id: tenantId
+      }));
+      const { error: createDadosError } = await (supabase as any)
+        .from('regras_dados')
+        .insert(novosDados);
+      if (createDadosError) throw createDadosError;
+    }
+
+    return novoModulo as RegraModulo;
   }
 
   async atualizar(id: number, data: Partial<Omit<RegraModulo, 'id' | 'ativo'>>): Promise<RegraModulo> {

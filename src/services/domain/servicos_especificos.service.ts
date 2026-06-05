@@ -6,10 +6,12 @@ export type ServicoEspecificoStatus = 'RECEBIDO' | 'CONCLUIDO' | 'CANCELADO';
 
 export interface ServicoEspecificoRegra {
     id: string;
-    codigo: string;
+    codigo: string; // Agora representa o Período (D1, N1...)
     descricao: string;
-    periodo: ServicoEspecificoPeriodo;
-    quantidade_colaboradores: number;
+    tipo_periodo: 'DIURNO' | 'NOTURNO';
+    peso_multiplicador: number;
+    periodo?: string; // Legado ou informativo
+    quantidade_colaboradores?: number; // Legado ou informativo
     valor_padrao: number;
     empresa_id: string | null;
     tenant_id: string;
@@ -22,10 +24,21 @@ export interface ServicoEspecificoLancamento {
     regra_id: string;
     empresa_id: string;
     unidade_id: string | null;
+    fornecedor_id?: string | null;
+    transportadora_id?: string | null;
+    produto_carga_id?: string | null;
+    tipo_servico_id?: string | null;
     data_operacao: string;
     quantidade: number;
-    valor_unitario: number;
+    quantidade_colaboradores: number;
+    codigo_operacional: string;
+    valor_unitario: number; // Agora mantido por compatibilidade
     valor_total: number;
+    // Snapshots obrigatórios
+    valor_unitario_snapshot: number;
+    fator_periodo_snapshot: number;
+    tipo_calculo_snapshot: string;
+    
     colaboradores_vinculados: any[];
     observacao: string | null;
     forma_pagamento_id: string | null;
@@ -59,6 +72,56 @@ class ServicosEspecificosRegrasServiceClass extends BaseService<any> {
         }
 
         return data as ServicoEspecificoRegra[];
+    }
+
+    /**
+     * Auto-provisionamento de períodos padrão para o tenant atual
+     */
+    async ensureDefaultPeriods(tenantId: string) {
+        const defaults = [
+            { codigo: 'D1', descricao: 'Primeiro Período Diurno', tipo_periodo: 'DIURNO', peso_multiplicador: 1.00 },
+            { codigo: 'D2', descricao: 'Segundo Período Diurno', tipo_periodo: 'DIURNO', peso_multiplicador: 1.00 },
+            { codigo: 'N1', descricao: 'Primeiro Período Noturno', tipo_periodo: 'NOTURNO', peso_multiplicador: 1.25 },
+            { codigo: 'N2', descricao: 'Segundo Período Noturno', tipo_periodo: 'NOTURNO', peso_multiplicador: 1.50 },
+        ];
+
+        for (const item of defaults) {
+            await this.supabase
+                .from('servicos_especificos_regras')
+                .upsert({
+                    ...item,
+                    tenant_id: tenantId,
+                    ativo: true,
+                    valor_padrao: 0 
+                }, { onConflict: 'tenant_id,codigo' });
+        }
+    }
+
+    async duplicar(id: string) {
+        const { data: original, error: fetchError } = await this.supabase
+            .from('servicos_especificos_regras')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (fetchError) throw fetchError;
+
+        const { id: _, created_at: __, ...copyData } = original;
+        const newPayload = {
+            ...copyData,
+            codigo: `${original.codigo} (C)`,
+            descricao: `${original.descricao} (Cópia)`,
+            ativo: true
+        };
+
+        const { data: novo, error: insertError } = await this.supabase
+            .from('servicos_especificos_regras')
+            .insert(newPayload)
+            .select()
+            .single();
+
+        if (insertError) throw insertError;
+        return novo;
     }
 }
 

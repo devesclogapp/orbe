@@ -21,7 +21,7 @@ export const TabTaxasImpostos = () => {
             slug: 'taxas_impostos',
             descricao: 'Gerencie taxas e impostos, como ISS',
             module_type: 'tax'
-        }),
+        }, true),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["regras_modulos"] });
             toast.success("Módulo de Taxas inicializado com sucesso!");

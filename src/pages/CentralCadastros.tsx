@@ -91,6 +91,8 @@ import {
 import { formatCpfCnpj, formatPhone } from "@/utils/fornecedorValidation";
 import { buildOperationalStagePipeline, buildOperationalStageReviewPipeline } from "@/contexts/OperationalPipelineContext";
 import { buildOperationalPipelineSeenKey, useOperationalPipelineAutoTrigger } from "@/hooks/useOperationalPipelineAutoTrigger";
+import { useOnboardingCallback } from "@/hooks/useOnboardingCallback";
+import { OnboardingSuccessModal } from "@/components/onboarding/OnboardingSuccessModal";
 
 type CadastroTabValue =
   | "colaboradores"
@@ -564,7 +566,29 @@ const CentralCadastros = () => {
 
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<CadastroTabValue>("colaboradores");
+
+  const [activeTab, setActiveTab] = useState<CadastroTabValue>(
+    (searchParams.get("tab") as CadastroTabValue) || "colaboradores"
+  );
+
+  useEffect(() => {
+    const tabFromUrl = searchParams.get("tab") as CadastroTabValue;
+    if (tabFromUrl && tabFromUrl !== activeTab) {
+      setActiveTab(tabFromUrl);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (activeTab) {
+      const currentTab = searchParams.get("tab");
+      if (currentTab !== activeTab) {
+        const newParams = new URLSearchParams(searchParams);
+        newParams.set("tab", activeTab);
+        setSearchParams(newParams, { replace: true });
+      }
+    }
+  }, [activeTab, setSearchParams, searchParams]);
+
   const [operacionalFilters, setOperacionalFilters] = useState<OperacionalQuickFilter[]>([]);
   const [contractFilter, setContractFilter] = useState("todos");
   const [configType, setConfigType] = useState<"operacao" | "produto" | "dia">("operacao");
@@ -573,10 +597,32 @@ const CentralCadastros = () => {
   const [configFormErrors, setConfigFormErrors] = useState<any>({});
   const [selectedColaboradorDrawer, setSelectedColaboradorDrawer] = useState<any>(null);
 
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [activeSubTab, setActiveSubTab] = useState<string>(
+    searchParams.get("subtab") || "operacao"
+  );
+
+  useEffect(() => {
+    const subTabFromUrl = searchParams.get("subtab");
+    if (subTabFromUrl && subTabFromUrl !== activeSubTab) {
+      setActiveSubTab(subTabFromUrl);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (activeSubTab && activeTab === "parametros") {
+      const currentSubTab = searchParams.get("subtab");
+      if (currentSubTab !== activeSubTab) {
+        const newParams = new URLSearchParams(searchParams);
+        newParams.set("subtab", activeSubTab);
+        setSearchParams(newParams, { replace: true });
+      }
+    }
+  }, [activeSubTab, activeTab, setSearchParams, searchParams]);
   const [deleteModalType, setDeleteModalType] = useState<"transportadora" | "fornecedor" | "servico" | null>(null);
   const [itemToDelete, setItemToDelete] = useState<any>(null);
   const [deleteErrorDetails, setDeleteErrorDetails] = useState<{ tabela: string; count: number; ids?: string[] }[]>([]);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const { isOnboardingReturn, handleOnboardingReturn, showSuccessModal, setShowSuccessModal } = useOnboardingCallback();
 
   const [colaboradorModalOpen, setColaboradorModalOpen] = useState(false);
   const [colaboradorStep, setColaboradorStep] = useState(1);
@@ -1615,8 +1661,13 @@ const CentralCadastros = () => {
         await queryClient.invalidateQueries({ queryKey: ["produtos_carga_service_rules"] });
       }
 
+
       setProdutoCargaModalOpen(false);
       resetProdutoCargaForm();
+
+      if (isOnboardingReturn) {
+        handleOnboardingReturn();
+      }
     } catch {
       // feedback já tratado nas mutations
     }
@@ -3087,7 +3138,7 @@ const CentralCadastros = () => {
 
               <TabsContent value="parametros" className="space-y-4 min-h-[400px]">
 
-                <Tabs defaultValue="operacao" className="space-y-4">
+                <Tabs value={activeSubTab} onValueChange={setActiveSubTab} className="space-y-4">
                   <TabsList className="bg-muted p-1 h-9 rounded-lg">
                     <TabsTrigger value="operacao" className="text-xs py-1 px-4">Tipos de operação</TabsTrigger>
                     <TabsTrigger value="produtos" className="text-xs py-1 px-4">Produtos</TabsTrigger>
@@ -5079,6 +5130,15 @@ const CentralCadastros = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <OnboardingSuccessModal
+        open={showSuccessModal}
+        onOpenChange={setShowSuccessModal}
+        onContinue={() => {
+          const newParams = new URLSearchParams(searchParams);
+          newParams.delete("onboarding_return");
+          setSearchParams(newParams, { replace: true });
+        }}
+      />
     </AppShell>
   );
 };

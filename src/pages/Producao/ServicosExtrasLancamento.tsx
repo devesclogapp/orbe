@@ -255,9 +255,7 @@ const ServicosExtrasLancamento = () => {
             queryClient.invalidateQueries({ queryKey: ["operacoes"] });
             queryClient.invalidateQueries({ queryKey: ["operacoes-pipeline"] });
             queryClient.invalidateQueries({ queryKey: ["servicos_extras_historico"] });
-            setForm(prev => ({ ...INITIAL_FORM, data: prev.data, empresa_id: prev.empresa_id, responsavel_nome: prev.responsavel_nome }));
-            setErrors({});
-            setActiveTab("historico");
+            navigate("/producao");
         },
         onError: (err: any) => toast.error("Erro ao salvar serviço extra.", { description: err.message }),
     });

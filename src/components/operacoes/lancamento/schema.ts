@@ -29,14 +29,19 @@ export const productionSchema = z.object({
   data_vencimento: z.string().optional().nullable(),
   status_financeiro: z.string().default("PENDENTE"),
   
+  // Fiscal
+  nf_emite: z.boolean().default(false),
+  nf_numero: z.string().optional(),
+  ctrc: z.string().optional(),
+  iss_percentual: z.coerce.number().default(0),
+  valor_iss: z.coerce.number().default(0),
+  valor_total_liquido: z.coerce.number().default(0),
+  
   // Logística / Detalhes
   horario_inicio: z.string().optional(),
   horario_fim: z.string().optional(),
   placa_veiculo: z.string().optional(),
   justificativa_data: z.string().optional(),
-  nf_emite: z.boolean().default(false),
-  nf_numero: z.string().optional(),
-  ctrc: z.string().optional(),
   observacao: z.string().optional(),
   responsavel_nome: z.string().optional(),
 });

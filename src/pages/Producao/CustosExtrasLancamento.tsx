@@ -365,8 +365,7 @@ const CustosExtrasLancamento = () => {
       toast.success("Custo extra registrado com sucesso!");
       queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
       queryClient.invalidateQueries({ queryKey: ["custos-pipeline"] });
-      setForm((prev) => ({ ...prev, descricao: "", valor_unitario: "", quantidade: "1", observacao: "" }));
-      setActiveTab("historico");
+      navigate("/producao");
     },
     onError: (err: any) => toast.error("Erro ao salvar lançamento", { description: err.message }),
   });

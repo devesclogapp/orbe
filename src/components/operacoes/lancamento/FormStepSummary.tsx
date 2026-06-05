@@ -74,7 +74,20 @@ export function FormStepSummary({ form, produtos, formasPagamento, loadingPreco 
                 </div>
 
                 <div className="space-y-2">
-                    <Label>Forma de Pagamento</Label>
+                    <Label>Qtd. Colab. (Manual)</Label>
+                    <Input type="number" {...register("quantidade_colaboradores")} placeholder="Ex: 5" />
+                    {errors.quantidade_colaboradores && <p className="text-xs text-red-500">{errors.quantidade_colaboradores.message}</p>}
+                </div>
+
+                <div className="space-y-2">
+                    <Label className="flex justify-between items-center text-xs">
+                        Forma de Pagamento
+                        {values.modalidade_financeira && (
+                            <span className="text-[10px] text-muted-foreground bg-slate-100 px-1.5 py-0.5 rounded uppercase">
+                                Mod: {values.modalidade_financeira?.split('_')[0]}
+                            </span>
+                        )}
+                    </Label>
                     <Select
                         onValueChange={(val) => form.setValue("forma_pagamento", val)}
                         defaultValue={form.getValues("forma_pagamento")}
@@ -83,9 +96,17 @@ export function FormStepSummary({ form, produtos, formasPagamento, loadingPreco 
                             <SelectValue placeholder="Selecione a forma" />
                         </SelectTrigger>
                         <SelectContent>
-                            {formasPagamento.map((f) => (
-                                <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>
-                            ))}
+                            {formasPagamento.length === 0 ? (
+                                <div className="px-3 py-2 text-xs text-muted-foreground text-center">
+                                    Nenhuma forma encontrada para esta modalidade.
+                                    <br />
+                                    <span className="text-[10px] italic">Verifique as Regras Operacionais.</span>
+                                </div>
+                            ) : (
+                                formasPagamento.map((f) => (
+                                    <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>
+                                ))
+                            )}
                         </SelectContent>
                     </Select>
                     {errors.forma_pagamento && <p className="text-xs text-red-500">{errors.forma_pagamento.message}</p>}
@@ -105,12 +126,76 @@ export function FormStepSummary({ form, produtos, formasPagamento, loadingPreco 
                 </div>
             </div>
 
-            <Card className="p-4 bg-primary/5 border-primary/20">
-                <div className="flex justify-between items-center text-sm font-medium text-primary">
-                    <span>Total Previsto:</span>
-                    <span className="text-lg font-bold">
-                        {formatCurrency((Number(values.quantidade || 0) * Number(values.valor_unitario || 0)))}
-                    </span>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-100">
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                        <div className="space-y-0.5">
+                            <Label className="text-sm font-semibold">Emissão de Nota Fiscal?</Label>
+                            <p className="text-[10px] text-muted-foreground">Obrigatório para faturamento e impostos.</p>
+                        </div>
+                        <input
+                            type="checkbox"
+                            className="h-5 w-5 rounded border-slate-300 text-primary focus:ring-primary"
+                            {...register("nf_emite")}
+                        />
+                    </div>
+
+                    {values.nf_emite && (
+                        <div className="grid grid-cols-2 gap-3 animate-in fade-in slide-in-from-top-1 duration-200">
+                            <div className="space-y-1.5">
+                                <Label className="text-xs">Alíquota ISS (%)</Label>
+                                <Input
+                                    type="number"
+                                    placeholder="Ex: 5"
+                                    {...register("iss_percentual")}
+                                    className="h-8 text-sm"
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label className="text-xs text-muted-foreground">Valor ISS</Label>
+                                <div className="h-8 px-3 flex items-center bg-slate-50 border border-slate-200 rounded-md text-sm text-red-600 font-medium">
+                                    - {formatCurrency(values.valor_iss || 0)}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                <div className="space-y-3">
+                    <Label className="text-xs text-muted-foreground uppercase tracking-wider">Fórmula de Cálculo</Label>
+                    <div className="p-4 bg-slate-900 rounded-xl text-slate-300 font-mono text-[11px] space-y-1 relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-2 opacity-10">
+                            <Plus className="h-12 w-12" />
+                        </div>
+                        <div className="flex justify-between border-b border-white/5 pb-1 mb-1">
+                            <span>Base: {values.quantidade || 0} x {formatCurrency(values.valor_unitario || 0)}</span>
+                            <span className="text-white font-bold">{formatCurrency(Number(values.quantidade || 0) * Number(values.valor_unitario || 0))}</span>
+                        </div>
+                        {values.nf_emite && (
+                            <div className="flex justify-between text-red-400">
+                                <span>ISS ({values.iss_percentual || 0}%):</span>
+                                <span>- {formatCurrency(values.valor_iss || 0)}</span>
+                            </div>
+                        )}
+                        <div className="flex justify-between text-green-400 pt-1 text-sm border-t border-white/10 mt-1">
+                            <span className="font-bold">TOTAL LÍQUIDO:</span>
+                            <span className="font-bold">{formatCurrency(values.valor_total_liquido || 0)}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <Card className="p-4 bg-primary text-primary-foreground shadow-lg shadow-primary/20 border-none overflow-hidden relative group">
+                <div className="absolute top-0 right-0 -mr-4 -mt-4 h-24 w-24 bg-white/10 rounded-full blur-2xl group-hover:bg-white/20 transition-all duration-500"></div>
+                <div className="flex justify-between items-center relative z-10">
+                    <div className="space-y-0.5">
+                        <span className="text-[10px] uppercase tracking-widest opacity-80">Valor Final Lançado</span>
+                        <div className="text-2xl font-black">{formatCurrency(values.valor_total_liquido || 0)}</div>
+                    </div>
+                    <div className="text-right">
+                        <span className="text-[10px] uppercase tracking-widest opacity-80 block mb-1">Status Base</span>
+                        <span className="bg-white/20 backdrop-blur-sm px-2 py-0.5 rounded text-[10px] font-bold">AGUARDANDO VALIDAÇÃO</span>
+                    </div>
                 </div>
             </Card>
 

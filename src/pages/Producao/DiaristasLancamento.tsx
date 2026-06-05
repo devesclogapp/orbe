@@ -555,6 +555,7 @@ const DiaristasLancamento = () => {
                 empresa: empresaNome,
                 currentStep: "lote_fechado",
             }));
+            navigate("/producao");
         },
         onError: (err: any) => toast.error("Erro ao fechar período.", { description: err.message }),
     });

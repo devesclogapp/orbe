@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+﻿import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import {
@@ -6,7 +6,8 @@ import {
     ChevronRight,
     ChevronLeft,
     Save,
-    Loader2
+    Loader2,
+    History
 } from "lucide-react";
 import { toast } from "sonner";
 import { OperationalShell } from "@/components/layout/OperationalShell";
@@ -32,6 +33,7 @@ import { FormStepContext } from "@/components/operacoes/lancamento/FormStepConte
 import { FormStepSummary } from "@/components/operacoes/lancamento/FormStepSummary";
 import { FormStepTeam } from "@/components/operacoes/lancamento/FormStepTeam";
 import { DEFAULT_PRODUCTION_VALUES } from "@/components/operacoes/lancamento/schema";
+import { RecentLaunchesList } from "@/components/operacoes/lancamento/RecentLaunchesList";
 
 const LancamentoProducao = () => {
     const { user } = useAuth();
@@ -76,28 +78,79 @@ const LancamentoProducao = () => {
             : FormaPagamentoOperacionalService.getAllActive(),
         enabled: etapa >= 3, // só carrega quando chega no passo 3
     });
-    const { data: colaboradores = [] } = useQuery({
+    const { data: allColaboradores = [] } = useQuery({
         queryKey: ["colaboradores_prod", currentEmpresaId],
         queryFn: () => ColaboradorService.getWithEmpresa(currentEmpresaId),
         enabled: !!currentEmpresaId
     });
 
+    const currentTipoLancamento = form.watch("tipo_lancamento");
+
+    const colaboradores = useMemo(() => {
+        return allColaboradores.filter(c => {
+            const tipo = String(c.tipo_colaborador || '').toUpperCase();
+
+            // Nunca mostrar CLT em lançamentos manuais do encarregado
+            if (tipo === 'CLT') return false;
+
+            if (currentTipoLancamento === 'diaristas') {
+                return tipo === 'DIARISTA';
+            }
+
+            // Para operações de volume/específicos: mostrar Intermitentes, etc, EXCETO Diaristas
+            return tipo !== 'DIARISTA';
+        });
+    }, [allColaboradores, currentTipoLancamento]);
+
     const mutation = useMutation({
-        mutationFn: async (data: any) => {
+        mutationFn: async (formData: any) => {
+            // Destructuring exato para NUNCA enviar campos que não existem no banco
+            const {
+                data,
+                quantidade_colaboradores,
+                tipo_lancamento,
+                tipo_servico,
+                transportadora,
+                fornecedor,
+                produto,
+                forma_pagamento,
+                valor_unitario,
+                iss_percentual,
+                valor_iss,
+                valor_total_liquido,
+                nf_emite, // Campo local para controle da UI
+                valor_unitario_manual,
+                descricao_servico,
+                categoria_servico,
+                justificativa_data,
+                placa_veiculo,
+                status_financeiro,
+                data_vencimento,
+                horario_inicio,
+                horario_fim,
+                ...rest
+            } = formData;
+
             const payload = {
-                ...data,
+                ...rest,
+                data_operacao: data,
+                placa: placa_veiculo || rest.placa || null,
                 // Mapeamento de nomes de campo do esquema para nomes de campo do banco
-                tipo_servico_id: data.tipo_servico,
-                transportadora_id: data.transportadora,
-                fornecedor_id: data.fornecedor,
-                produto_carga_id: data.produto,
-                forma_pagamento_id: data.forma_pagamento,
-                valor_unitario_snapshot: data.valor_unitario,
-                tipo_calculo_snapshot: "volume", // Encarregado lança volume
-                valor_total: data.quantidade * (data.valor_unitario || 0),
+                tipo_servico_id: tipo_servico,
+                transportadora_id: transportadora,
+                fornecedor_id: fornecedor,
+                produto_carga_id: produto,
+                forma_pagamento_id: forma_pagamento,
+                valor_unitario_snapshot: valor_unitario,
+                percentual_iss: (iss_percentual || 0) / 100,
+                custo_com_iss: valor_iss || 0,
+                valor_total: valor_total_liquido || (formData.quantidade * (valor_unitario || 0)),
+                valor_descarga: formData.quantidade * (valor_unitario || 0),
+                tipo_calculo_snapshot: "volume",
                 status: "aguardando_validacao",
                 origem_dado: "manual",
                 responsavel_nome: user?.user_metadata?.full_name || "Encarregado",
+                colaborador_id: selectedColaboradores[0] || null,
             };
 
             const colabPayload = selectedColaboradores.map(id => ({
@@ -110,7 +163,14 @@ const LancamentoProducao = () => {
         onSuccess: () => {
             toast.success("Produção lançada com sucesso!");
             queryClient.invalidateQueries({ queryKey: ["producao_recente"] });
-            navigate("/operacional/pipeline");
+
+            // Resetar para novo lançamento
+            setEtapa(1);
+            form.reset(DEFAULT_PRODUCTION_VALUES);
+            setSelectedColaboradores([]);
+
+            // Garantir que a lista de hoje de baixo atualize
+            queryClient.refetchQueries({ queryKey: ["producao_recente"] });
         },
         onError: (err: any) => toast.error("Erro ao salvar: " + err.message)
     });
@@ -128,6 +188,7 @@ const LancamentoProducao = () => {
     return (
         <OperationalShell
             title="Lançamento Operacional"
+            hideFab
         >
             <div className="max-w-4xl mx-auto space-y-6 pb-20">
                 <div className="flex items-center justify-between px-2">
@@ -221,6 +282,21 @@ const LancamentoProducao = () => {
                         </div>
                     )}
                 </form>
+
+                {/* Seção de Lançamentos Recentes */}
+                <div className="space-y-4 pt-10 border-t border-slate-200">
+                    <div className="flex items-center gap-2 px-2">
+                        <History className="h-5 w-5 text-muted-foreground" />
+                        <h2 className="text-lg font-bold">Lançamentos de Hoje</h2>
+                    </div>
+
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                        <RecentLaunchesList
+                            date={new Date().toISOString().split('T')[0]}
+                            empresaId={empresaId}
+                        />
+                    </div>
+                </div>
             </div>
         </OperationalShell>
     );

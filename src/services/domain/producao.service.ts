@@ -653,12 +653,12 @@ export const RegraOperacionalService = new RegraOperacionalServiceClass();
 class OperacaoProducaoServiceClass {
   private sanitizeOperacaoPayload(payload: Record<string, any>) {
     const { 
+      // Campos de UI/Display que não existem no banco
       categoria_servico, 
       categoria_custo, 
       tipo_calculo, 
       descricao_servico, 
       modalidade_financeira, 
-      // Campos de display gerados no frontend (_label)
       produto_label,
       transportadora_label,
       tipo_servico_label,
@@ -672,14 +672,25 @@ class OperacaoProducaoServiceClass {
       encarregado_label,
       empresa_label,
       unidade_label,
-      origem,
+      tipo_lancamento,
+      quantidade_colaboradores,
+      data,
+      nf_emite,
+      iss_percentual,
+      valor_iss,
+      valor_total_liquido,
+      justificativa_data,
+      placa_veiculo,
+      valor_unitario_manual,
+      status_financeiro,
+      data_vencimento,
+      horario_inicio,
+      horario_fim,
       ...rest 
     } = payload;
+
     // Campos removidos pois NÃO existem na tabela operacoes_producao.
-    // categoria_servico/categoria_custo: são flags de roteamento do LancamentoProducao
     // tipo_calculo: o campo correto é tipo_calculo_snapshot
-    // descricao_servico: existe apenas em servicos_extras_operacionais
-    // modalidade_financeira: existe apenas em servicos_extras_operacionais
     // *_label e origem: criados na camada de serviço para display
     void categoria_servico;
     void categoria_custo;

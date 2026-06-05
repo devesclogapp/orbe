@@ -36,7 +36,7 @@ export type { EncarregadoColaboradorFiltroConfig };
 
 
 // ==================================================
-// SERVIÇOS ESPECÍFICOS
+// PERÍODOS OPERACIONAIS (D1, N1...)
 // ==================================================
 
 class EmpresaServiceClass extends BaseService<'empresas'> {

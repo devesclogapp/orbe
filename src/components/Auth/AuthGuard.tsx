@@ -12,7 +12,7 @@ interface AuthGuardProps {
 export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
     const { session, loading } = useAuth();
     const { role, canAccess, isBlocked, loading: accessLoading } = useAccessControl();
-    const { isActive: isOnboardingActive, isOnboardingComplete } = useOnboarding();
+    const { isActive: isOnboardingActive, isOnboardingComplete, isSystemReady } = useOnboarding();
     const location = useLocation();
     const hasResolvedRoute = useRef(false);
 
@@ -46,7 +46,7 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
     if (isOnboardingActive && !isOnboardingComplete && location.pathname !== "/onboarding" && !isOnboardingReturn) {
         if (role === "admin" || canAccess("onboarding", "ver")) {
             return <Navigate to="/onboarding" replace />;
-        } else {
+        } else if (!isSystemReady) {
             return (
                 <div className="flex min-h-screen items-center justify-center bg-background p-6 text-center">
                     <div className="max-w-md rounded-2xl border border-border bg-card p-8 shadow-sm">

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
@@ -20,7 +21,7 @@ import { TabRegrasDiaristas } from "@/pages/Rh/TabRegrasDiaristas";
 import { TabMeiosPagamento } from "@/pages/Financeiro/TabMeiosPagamento";
 import { TabTaxasImpostos } from "@/pages/Financeiro/TabTaxasImpostos";
 import DynamicRuleTabsContainer from "@/components/regras/DynamicRuleTabsContainer";
-import { TabServicosEspecificos } from "./TabServicosEspecificos";
+import { ServicosEspecificosRegrasTab } from "@/components/regras/ServicosEspecificosRegrasTab";
 import { useOnboardingCallback } from "@/hooks/useOnboardingCallback";
 import { OnboardingSuccessModal } from "@/components/onboarding/OnboardingSuccessModal";
 
@@ -98,11 +99,13 @@ import {
   TipoServicoOperacionalService,
   TransportadoraClienteService,
   TipoRegraOperacionalService,
-  RegraModulo, // Nova importação
-  RegrasModulosService, // Nova importação
-  RegrasCamposService, // Nova importação
-  RegrasDadosService, // Nova importação
+  RegraModulo,
+  RegrasModulosService,
+  RegrasCamposService,
+  RegrasDadosService,
 } from "@/services/base.service";
+import { useAccessControl } from "@/contexts/AccessControlContext";
+import { useTenant } from "@/contexts/TenantContext";
 
 type LookupItem = {
   id: string;
@@ -731,12 +734,35 @@ const QuickCreateLookup = ({
 };
 
 const RegrasOperacionais = () => {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+  const { isAdmin: contextIsAdmin, role: contextRole, loading: accessLoading } = useAccessControl();
+  const { tenantId, loading: tenantLoading } = useTenant();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { isOnboardingReturn, handleOnboardingReturn, showSuccessModal, setShowSuccessModal } = useOnboardingCallback();
 
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<string>("operacional");
+  const [activeTab, setActiveTab] = useState<string>(
+    searchParams.get("tab") || "operacional"
+  );
+
+  useEffect(() => {
+    const tabFromUrl = searchParams.get("tab");
+    if (tabFromUrl && tabFromUrl !== activeTab) {
+      setActiveTab(tabFromUrl);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (activeTab) {
+      const currentTab = searchParams.get("tab");
+      if (currentTab !== activeTab) {
+        const newParams = new URLSearchParams(searchParams);
+        newParams.set("tab", activeTab);
+        setSearchParams(newParams, { replace: true });
+      }
+    }
+  }, [activeTab, setSearchParams, searchParams]);
   const [isNewTabModalOpen, setIsNewTabModalOpen] = useState(false);
   const [newTabForm, setNewTabForm] = useState<Partial<RegraModulo>>({
     nome: "",
@@ -790,8 +816,10 @@ const RegrasOperacionais = () => {
     enabled: !!user?.id,
   });
 
-  const role = perfil?.role?.toLowerCase();
-  const canAccess = role === "admin" || role === "financeiro";
+  const role = (perfil?.role || contextRole || "")?.toLowerCase();
+  const isAdmin = contextIsAdmin || role === "admin" || role === "administrador" || role.includes("admin");
+  const isFinanceiro = role === "financeiro";
+  const canAccess = isAdmin || isFinanceiro;
 
   const { data: empresas = [] } = useQuery({
     queryKey: ["empresas_regras_operacionais"],
@@ -1715,6 +1743,20 @@ const RegrasOperacionais = () => {
     },
   });
 
+  const duplicateModuleMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return RegrasModulosService.duplicar(id);
+    },
+    onSuccess: (newModule) => {
+      queryClient.invalidateQueries({ queryKey: ["regras_modulos"] });
+      toast.success("Aba duplicada com sucesso!");
+      setActiveTab(newModule.slug);
+    },
+    onError: (error: any) => {
+      toast.error("Não foi possível duplicar a aba.", { description: error.message });
+    },
+  });
+
   const quickCreateMutation = useMutation({
     mutationFn: async () => {
       if (!quickCreate) throw new Error("Cadastro rápido indisponível.");
@@ -2110,10 +2152,15 @@ const RegrasOperacionais = () => {
     toast.success("Item existente selecionado.");
   };
 
-  if (isLoadingPerfil) {
+  if (authLoading || accessLoading || tenantLoading || isLoadingPerfil) {
     return (
       <AppShell title="Regras Operacionais" subtitle="Carregando permissões..." backPath="/cadastros">
-        <div />
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="animate-pulse flex flex-col items-center gap-4">
+            <div className="h-10 w-10 bg-primary/20 rounded-full animate-bounce" />
+            <p className="text-sm text-muted-foreground">Validando acesso...</p>
+          </div>
+        </div>
       </AppShell>
     );
   }
@@ -2143,12 +2190,12 @@ const RegrasOperacionais = () => {
       backPath="/cadastros"
     >
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="bg-white border text-muted-foreground w-full flex-wrap h-auto md:w-auto md:inline-flex md:h-10 mb-2">
-          <TabsTrigger value="operacional">
+        <TabsList className="bg-slate-100/50 border p-1 text-muted-foreground w-full flex flex-nowrap overflow-x-auto h-auto justify-start gap-1 md:w-auto md:inline-flex md:h-11 mb-2 no-scrollbar scroll-smooth rounded-lg">
+          <TabsTrigger value="operacional" className="px-5 flex-none">
             Operacional
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-6 w-4 p-0 ml-1" onClick={(e) => e.stopPropagation()}>
+                <Button variant="ghost" size="sm" className="h-6 w-4 p-0 ml-2" onClick={(e) => e.stopPropagation()}>
                   <MoreVertical className="h-3 w-3" />
                 </Button>
               </DropdownMenuTrigger>
@@ -2157,11 +2204,11 @@ const RegrasOperacionais = () => {
               </DropdownMenuContent>
             </DropdownMenu>
           </TabsTrigger>
-          <TabsTrigger value="diaristas">
+          <TabsTrigger value="diaristas" className="px-5 flex-none">
             Diaristas
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-6 w-4 p-0 ml-1" onClick={(e) => e.stopPropagation()}>
+                <Button variant="ghost" size="sm" className="h-6 w-4 p-0 ml-2" onClick={(e) => e.stopPropagation()}>
                   <MoreVertical className="h-3 w-3" />
                 </Button>
               </DropdownMenuTrigger>
@@ -2170,11 +2217,11 @@ const RegrasOperacionais = () => {
               </DropdownMenuContent>
             </DropdownMenu>
           </TabsTrigger>
-          <TabsTrigger value="meios_pagamento">
+          <TabsTrigger value="meios_pagamento" className="px-5 flex-none">
             Meios de Pagamento
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-6 w-4 p-0 ml-1" onClick={(e) => e.stopPropagation()}>
+                <Button variant="ghost" size="sm" className="h-6 w-4 p-0 ml-2" onClick={(e) => e.stopPropagation()}>
                   <MoreVertical className="h-3 w-3" />
                 </Button>
               </DropdownMenuTrigger>
@@ -2183,11 +2230,11 @@ const RegrasOperacionais = () => {
               </DropdownMenuContent>
             </DropdownMenu>
           </TabsTrigger>
-          <TabsTrigger value="taxas_impostos">
+          <TabsTrigger value="taxas_impostos" className="px-5 flex-none">
             Taxas e Impostos
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-6 w-4 p-0 ml-1" onClick={(e) => e.stopPropagation()}>
+                <Button variant="ghost" size="sm" className="h-6 w-4 p-0 ml-2" onClick={(e) => e.stopPropagation()}>
                   <MoreVertical className="h-3 w-3" />
                 </Button>
               </DropdownMenuTrigger>
@@ -2199,11 +2246,11 @@ const RegrasOperacionais = () => {
           {dynamicModules.filter(m => m.module_type !== 'tax' && m.module_type !== 'financial').map((module) => {
             const isFixedModule = module.module_type === 'system_fixed';
             return (
-              <TabsTrigger key={module.slug} value={module.slug}>
+              <TabsTrigger key={module.slug} value={module.slug} className="px-5 flex-none">
                 {module.nome}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm" className="h-6 w-4 p-0 ml-1" onClick={(e) => e.stopPropagation()}>
+                    <Button variant="ghost" size="sm" className="h-6 w-4 p-0 ml-2" onClick={(e) => e.stopPropagation()}>
                       <MoreVertical className="h-3 w-3" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -2221,6 +2268,14 @@ const RegrasOperacionais = () => {
                           Editar
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => {
+                          if (confirm(`Deseja duplicar a aba "${module.nome}"? Todas as configurações de campos e dados serão copiadas.`)) {
+                            duplicateModuleMutation.mutate(module.id);
+                          }
+                        }}>
+                          <Copy className="h-4 w-4 mr-2" />
+                          Duplicar
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => {
                           if (confirm(`Tem certeza que deseja excluir a aba "${module.nome}"?`)) {
                             deleteModuleMutation.mutate(module.id);
                           }
@@ -2235,10 +2290,10 @@ const RegrasOperacionais = () => {
               </TabsTrigger>
             )
           })}
-          <TabsTrigger value="especificos">Serviços Específicos</TabsTrigger>
+          <TabsTrigger value="especificos" className="px-5 flex-none">Períodos Operacionais</TabsTrigger>
           {canAccess && (
 
-            <Button variant="outline" size="sm" onClick={() => setIsNewTabModalOpen(true)} className="ml-2">
+            <Button variant="outline" size="sm" onClick={() => setIsNewTabModalOpen(true)} className="flex-none">
               <Plus className="h-4 w-4 mr-2" /> Nova Aba
             </Button>
           )}
@@ -2395,7 +2450,9 @@ const RegrasOperacionais = () => {
         </TabsContent>
 
         <TabsContent value="especificos" className="m-0">
-          <TabServicosEspecificos />
+          <Card className="p-5 space-y-4">
+            <ServicosEspecificosRegrasTab />
+          </Card>
         </TabsContent>
 
         <TabsContent value="meios_pagamento" className="m-0">
