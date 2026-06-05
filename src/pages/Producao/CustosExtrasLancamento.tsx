@@ -37,7 +37,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useOperationalPipeline, buildCustosExtrasPipeline } from "@/contexts/OperationalPipelineContext";
 
-import { AppShell } from "@/components/layout/AppShell";
+import { OperationalShell } from "@/components/layout/OperationalShell";
 import { CustosExtrasTableBlock } from "@/components/operacoes/CustosExtrasTableBlock";
 import { SpreadsheetUploadModal } from "@/components/shared/SpreadsheetUploadModal";
 import { Badge } from "@/components/ui/badge";
@@ -400,7 +400,7 @@ const CustosExtrasLancamento = () => {
   const valorTotal = valorUnitario * quantidade;
 
   return (
-    <AppShell title="Custos Extras" subtitle="Otimize o controle de despesas administrativas e operacionais">
+    <OperationalShell title="Custos Extras">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <TabsList className="w-fit p-1 bg-muted/60 border border-border">
@@ -614,7 +614,7 @@ const CustosExtrasLancamento = () => {
         </TabsContent>
       </Tabs>
       <SpreadsheetUploadModal open={isImportModalOpen} onOpenChange={setIsImportModalOpen} title="Importar Custos Extras via Planilha" description="A importacao procurara a aba CUSTOS EXTRAS e os blocos CUSTOS COM MERENDA, CUSTOS ADMINISTRATIVO, CUSTOS COM OPERACIONAL e CUSTOS COM FORNECEDOR. Cada linha herdara a categoria do bloco." onUpload={handleImportCustosExtras} />
-    </AppShell>
+    </OperationalShell>
   );
 };
 export default CustosExtrasLancamento;

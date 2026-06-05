@@ -48,12 +48,19 @@ export function FormStepTeam({ form, colaboradores, selectedIds, onToggleColabor
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {colaboradores.map((colab) => (
-                    <button
+                    <div
                         key={colab.id}
-                        type="button"
+                        role="button"
+                        tabIndex={0}
                         onClick={() => onToggleColaborador(colab.id)}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                onToggleColaborador(colab.id);
+                            }
+                        }}
                         className={cn(
-                            "flex items-center gap-3 p-4 rounded-xl border text-left transition-all",
+                            "flex items-center gap-3 p-4 rounded-xl border text-left transition-all cursor-pointer",
                             selectedIds.includes(colab.id)
                                 ? "border-primary bg-primary/5 ring-1 ring-primary"
                                 : "bg-white hover:bg-slate-50 border-border"
@@ -62,12 +69,13 @@ export function FormStepTeam({ form, colaboradores, selectedIds, onToggleColabor
                         <Checkbox
                             checked={selectedIds.includes(colab.id)}
                             onCheckedChange={() => onToggleColaborador(colab.id)}
+                            onClick={(e) => e.stopPropagation()} // Evita duplo clique ao clicar direto no check
                         />
                         <div className="flex flex-col min-w-0">
                             <span className="font-medium text-sm truncate">{colab.nome}</span>
                             <span className="text-[10px] text-muted-foreground uppercase">{colab.regime_trabalho || colab.tipo_colaborador}</span>
                         </div>
-                    </button>
+                    </div>
                 ))}
             </div>
         </div>

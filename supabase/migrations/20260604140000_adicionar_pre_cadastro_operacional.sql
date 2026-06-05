@@ -1,0 +1,16 @@
+-- MIGRATION CANCELADA — NÃO APLICAR
+-- 
+-- Análise de schema (2026-06-04) confirmou que a estrutura existente
+-- já suporta o fluxo de curadoria sem alteração:
+--
+-- transportadoras_clientes  → usa ativo=false para registros provisórios
+-- fornecedores              → usa ativo=false para registros provisórios
+-- produtos_carga            → usa ativo=false para registros provisórios
+-- tipos_servico_operacional → usa ativo=false para registros provisórios
+-- operacoes_producao        → usa status='aguardando_validacao' para lançamentos pendentes de curadoria
+--
+-- Não são necessárias colunas extras: cadastro_provisorio, status_cadastro,
+-- origem_cadastro ou necessita_curadoria.
+--
+-- Nenhuma instrução SQL executável neste arquivo intencionalmente.
+

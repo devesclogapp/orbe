@@ -26,7 +26,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
-import { AppShell } from "@/components/layout/AppShell";
+import { OperationalShell } from "@/components/layout/OperationalShell";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -241,7 +241,7 @@ const ServicosExtrasLancamento = () => {
                 forma_pagamento_id: form.forma_pagamento_id || null,
                 nf_numero: form.nf_numero.trim() || null,
                 observacao: form.observacao.trim() || null,
-                status: "pendente",
+                status: "aguardando_validacao",
                 origem_dado: "manual",
                 responsavel_id: user?.id ?? null,
                 modalidade_financeira: form.forma_cobranca,
@@ -263,7 +263,7 @@ const ServicosExtrasLancamento = () => {
     });
 
     return (
-        <AppShell title="Serviços Extras" subtitle="Gestão e lançamento de serviços operacionais adicionais">
+        <OperationalShell title="Serviços Extras">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full space-y-6">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <TabsList className="w-fit p-1 bg-muted/60 border border-border">
@@ -467,7 +467,7 @@ const ServicosExtrasLancamento = () => {
                     </div>
                 </TabsContent>
             </Tabs>
-        </AppShell>
+        </OperationalShell>
     );
 };
 export default ServicosExtrasLancamento;

@@ -652,12 +652,35 @@ export const RegraOperacionalService = new RegraOperacionalServiceClass();
 
 class OperacaoProducaoServiceClass {
   private sanitizeOperacaoPayload(payload: Record<string, any>) {
-    const { categoria_servico, categoria_custo, tipo_calculo, descricao_servico, modalidade_financeira, ...rest } = payload;
+    const { 
+      categoria_servico, 
+      categoria_custo, 
+      tipo_calculo, 
+      descricao_servico, 
+      modalidade_financeira, 
+      // Campos de display gerados no frontend (_label)
+      produto_label,
+      transportadora_label,
+      tipo_servico_label,
+      quantidade_label,
+      horario_inicio_label,
+      horario_fim_label,
+      valor_unitario_label,
+      valor_total_label,
+      criado_em_label,
+      forma_pagamento_label,
+      encarregado_label,
+      empresa_label,
+      unidade_label,
+      origem,
+      ...rest 
+    } = payload;
     // Campos removidos pois NÃO existem na tabela operacoes_producao.
     // categoria_servico/categoria_custo: são flags de roteamento do LancamentoProducao
     // tipo_calculo: o campo correto é tipo_calculo_snapshot
     // descricao_servico: existe apenas em servicos_extras_operacionais
     // modalidade_financeira: existe apenas em servicos_extras_operacionais
+    // *_label e origem: criados na camada de serviço para display
     void categoria_servico;
     void categoria_custo;
     void tipo_calculo;
@@ -734,7 +757,8 @@ class OperacaoProducaoServiceClass {
   }
 
   async create(payload: Record<string, any>) {
-    const safePayload = this.sanitizeOperacaoPayload(payload);
+    const tenantId = await getCurrentTenantId();
+    const safePayload = { ...this.sanitizeOperacaoPayload(payload), tenant_id: tenantId };
     const { data, error } = await operationalClient
       .from('operacoes_producao')
       .insert(safePayload)

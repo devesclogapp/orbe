@@ -1045,6 +1045,23 @@ class FormaPagamentoOperacionalServiceClass {
     return data ?? [];
   }
 
+  /**
+   * Retorna formas de pagamento filtradas por modalidade.
+   * modalidade: 'CAIXA_IMEDIATO' (à vista) | 'DUPLICATA' (boleto/fat. mensal)
+   * Inclui também registros com modalidade = 'AMBOS'.
+   */
+  async getByModalidade(modalidade: 'CAIXA_IMEDIATO' | 'DUPLICATA') {
+    const { data, error } = await operationalClient
+      .from('formas_pagamento_operacional')
+      .select('*')
+      .eq('ativo', true)
+      .or(`modalidade.eq.${modalidade},modalidade.eq.AMBOS,modalidade.is.null`)
+      .order('nome', { ascending: true });
+
+    if (error) throw error;
+    return data ?? [];
+  }
+
   async create(payload: Record<string, any>) {
     const tenantId = await getCurrentTenantId();
     const payloadWithTenant = { ...payload, tenant_id: tenantId };

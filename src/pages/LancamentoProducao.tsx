@@ -14,8 +14,16 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/contexts/AuthContext";
 import { OperacaoProducaoService } from "@/services/domain/producao.service";
-import { EmpresaService, ColaboradorService } from "@/services/domain/cadastros.service";
-import { UnidadeOperacionalService, TipoServicoOperacionalService, ProdutoCargaService, FormaPagamentoOperacionalService } from "@/services/domain/core.service";
+import {
+    EmpresaService,
+    ColaboradorService,
+    UnidadeOperacionalService,
+    TipoServicoOperacionalService,
+    ProdutoCargaService,
+    FormaPagamentoOperacionalService,
+    TransportadoraClienteService,
+    FornecedorService
+} from "@/services/base.service";
 
 // Modular Components
 import { useProductionForm } from "@/components/operacoes/lancamento/hooks/useProductionForm";
@@ -38,28 +46,56 @@ const LancamentoProducao = () => {
         defaultValues: DEFAULT_PRODUCTION_VALUES,
     });
 
+    const currentEmpresaId = form.watch("empresa_id") || empresaId;
+    const currentModalidade = form.watch("modalidade_financeira") as "CAIXA_IMEDIATO" | "DUPLICATA" | undefined;
+
     // Queries globais necessárias para os selects nas sub-telas
     const { data: empresas = [] } = useQuery({ queryKey: ["empresas"], queryFn: () => EmpresaService.getAll() });
     const { data: unidades = [] } = useQuery({
-        queryKey: ["unidades", form.watch("empresa_id")],
-        queryFn: () => UnidadeOperacionalService.getByEmpresa(form.watch("empresa_id")),
-        enabled: !!form.watch("empresa_id")
+        queryKey: ["unidades", currentEmpresaId],
+        queryFn: () => UnidadeOperacionalService.getByEmpresa(currentEmpresaId),
+        enabled: !!currentEmpresaId
     });
     const { data: tiposServico = [] } = useQuery({ queryKey: ["tipos_servico"], queryFn: () => TipoServicoOperacionalService.getAllActive() });
+    const { data: transportadoras = [] } = useQuery({
+        queryKey: ["transportadoras", currentEmpresaId],
+        queryFn: () => TransportadoraClienteService.getByEmpresa(currentEmpresaId),
+        enabled: !!currentEmpresaId
+    });
+    const { data: fornecedores = [] } = useQuery({
+        queryKey: ["fornecedores", currentEmpresaId],
+        queryFn: () => FornecedorService.getByEmpresa(currentEmpresaId),
+        enabled: !!currentEmpresaId
+    });
     const { data: produtos = [] } = useQuery({ queryKey: ["produtos"], queryFn: () => ProdutoCargaService.getAll() });
-    const { data: formasPagamento = [] } = useQuery({ queryKey: ["formas_pagamento"], queryFn: () => FormaPagamentoOperacionalService.getAllActive() });
+    // Filtra formas de pagamento pela modalidade selecionada no passo 1
+    const { data: formasPagamento = [] } = useQuery({
+        queryKey: ["formas_pagamento", currentModalidade],
+        queryFn: () => currentModalidade
+            ? FormaPagamentoOperacionalService.getByModalidade(currentModalidade)
+            : FormaPagamentoOperacionalService.getAllActive(),
+        enabled: etapa >= 3, // só carrega quando chega no passo 3
+    });
     const { data: colaboradores = [] } = useQuery({
-        queryKey: ["colaboradores_prod", form.watch("empresa_id")],
-        queryFn: () => ColaboradorService.getWithEmpresa(form.watch("empresa_id")),
-        enabled: !!form.watch("empresa_id")
+        queryKey: ["colaboradores_prod", currentEmpresaId],
+        queryFn: () => ColaboradorService.getWithEmpresa(currentEmpresaId),
+        enabled: !!currentEmpresaId
     });
 
     const mutation = useMutation({
         mutationFn: async (data: any) => {
             const payload = {
                 ...data,
+                // Mapeamento de nomes de campo do esquema para nomes de campo do banco
+                tipo_servico_id: data.tipo_servico,
+                transportadora_id: data.transportadora,
+                fornecedor_id: data.fornecedor,
+                produto_carga_id: data.produto,
+                forma_pagamento_id: data.forma_pagamento,
+                valor_unitario_snapshot: data.valor_unitario,
+                tipo_calculo_snapshot: "volume", // Encarregado lança volume
                 valor_total: data.quantidade * (data.valor_unitario || 0),
-                status: "Pendente",
+                status: "aguardando_validacao",
                 origem_dado: "manual",
                 responsavel_nome: user?.user_metadata?.full_name || "Encarregado",
             };
@@ -138,6 +174,8 @@ const LancamentoProducao = () => {
                                 empresas={empresas}
                                 unidades={unidades}
                                 tiposServico={tiposServico}
+                                transportadoras={transportadoras}
+                                fornecedores={fornecedores}
                             />
                         </div>
                     )}

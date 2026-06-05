@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { UseFormReturn } from "react-hook-form";
 import { ProductionFormValues } from "./schema";
 import { Input } from "@/components/ui/input";
@@ -11,6 +12,9 @@ import {
 } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
 import { formatCurrency } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Plus } from "lucide-react";
+import { QuickRegisterDialog } from "./QuickRegisterDialog";
 
 interface FormStepSummaryProps {
     form: UseFormReturn<ProductionFormValues>;
@@ -22,23 +26,43 @@ interface FormStepSummaryProps {
 export function FormStepSummary({ form, produtos, formasPagamento, loadingPreco }: FormStepSummaryProps) {
     const { register, watch, formState: { errors } } = form;
     const values = watch();
+    const empresaId = watch("empresa_id");
+
+    const [quickRegOpen, setQuickRegOpen] = useState(false);
 
     return (
         <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                    <Label>Produto / Carga</Label>
+                    <Label className="flex justify-between items-center">
+                        Produto / Carga
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5 text-primary"
+                            onClick={() => setQuickRegOpen(true)}
+                            disabled={!empresaId || !watch("fornecedor")}
+                        >
+                            <Plus className="h-3 w-3" />
+                        </Button>
+                    </Label>
                     <Select
                         onValueChange={(val) => form.setValue("produto", val)}
-                        defaultValue={form.getValues("produto")}
+                        key={`produto-${form.getValues("produto")}`}
+                        defaultValue={form.getValues("produto") || undefined}
                     >
                         <SelectTrigger>
                             <SelectValue placeholder="Selecione o produto" />
                         </SelectTrigger>
                         <SelectContent>
-                            {produtos.map((p) => (
-                                <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
-                            ))}
+                            {produtos.length === 0 ? (
+                                <div className="px-3 py-2 text-xs text-muted-foreground">Nenhum encontrado</div>
+                            ) : (
+                                produtos.map((p) => (
+                                    <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
+                                ))
+                            )}
                         </SelectContent>
                     </Select>
                 </div>
@@ -89,6 +113,15 @@ export function FormStepSummary({ form, produtos, formasPagamento, loadingPreco 
                     </span>
                 </div>
             </Card>
+
+            <QuickRegisterDialog
+                open={quickRegOpen}
+                onOpenChange={setQuickRegOpen}
+                type="produto"
+                empresaId={empresaId}
+                fornecedorId={watch("fornecedor")}
+                onSuccess={(id) => form.setValue("produto", id)}
+            />
         </div>
     );
 }
