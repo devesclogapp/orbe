@@ -43,7 +43,7 @@ const LancamentoProducao = () => {
     const [selectedColaboradores, setSelectedColaboradores] = useState<string[]>([]);
     const empresaId = user?.user_metadata?.empresa_id || "";
 
-    const { form, loadingPreco } = useProductionForm({
+    const { form, loadingPreco, regrasPeriodo, selectedPeriodo } = useProductionForm({
         empresaId,
         defaultValues: DEFAULT_PRODUCTION_VALUES,
     });
@@ -151,6 +151,8 @@ const LancamentoProducao = () => {
                 origem_dado: "manual",
                 responsavel_nome: user?.user_metadata?.full_name || "Encarregado",
                 colaborador_id: selectedColaboradores[0] || null,
+                regra_id: formData.regra_periodo_id || null, // Para serviços específicos
+                codigo_operacional: selectedPeriodo ? `${selectedPeriodo.codigo}C${formData.quantidade_colaboradores}` : null,
             };
 
             const colabPayload = selectedColaboradores.map(id => ({
@@ -168,6 +170,7 @@ const LancamentoProducao = () => {
             setEtapa(1);
             form.reset(DEFAULT_PRODUCTION_VALUES);
             setSelectedColaboradores([]);
+            navigate('/producao');
 
             // Garantir que a lista de hoje de baixo atualize
             queryClient.refetchQueries({ queryKey: ["producao_recente"] });
@@ -176,7 +179,12 @@ const LancamentoProducao = () => {
     });
 
     const handleNext = async () => {
-        setEtapa(prev => prev + 1);
+        const isValid = await form.trigger();
+        if (isValid) {
+            setEtapa(prev => prev + 1);
+        } else {
+            toast.warning("Por favor, preencha todos os campos obrigatórios para continuar.");
+        }
     };
 
     const handleToggleColaborador = (id: string) => {
@@ -198,8 +206,8 @@ const LancamentoProducao = () => {
                         </Button>
                         <div>
                             <h1 className="text-xl font-bold tracking-tight">Passo {etapa} de 4</h1>
-                            <p className="text-xs text-muted-foreground uppercase tracking-widest font-semibold">
-                                {etapa === 1 ? "Seleção de Fluxo" : etapa === 2 ? "Contexto Operacional" : etapa === 3 ? "Valores e Faturamento" : "Equipe e Conduta"}
+                            <p className="text-xs text-muted-foreground uppercase tracking-widest font-semibold flex items-center gap-2">
+                                {etapa === 1 ? "Opções" : etapa === 2 ? "Contexto Operacional" : etapa === 3 ? "Detalhamento e Valores" : "Equipe / Colaboradores"}
                             </p>
                         </div>
                     </div>
@@ -215,12 +223,6 @@ const LancamentoProducao = () => {
                             onNext={(preset) => {
                                 if (preset.tipo === "diaristas") {
                                     navigate("/producao/diaristas");
-                                } else if (preset.tipo === "servicos_especificos") {
-                                    navigate("/producao/servicos-especificos");
-                                } else if (preset.id === "servicos_extras") {
-                                    navigate("/producao/servicos-extras");
-                                } else if (preset.id === "custos_operacionais") {
-                                    navigate("/producao/custos-extras");
                                 } else {
                                     setEtapa(2);
                                 }
@@ -248,6 +250,8 @@ const LancamentoProducao = () => {
                                 produtos={produtos}
                                 formasPagamento={formasPagamento}
                                 loadingPreco={loadingPreco}
+                                regrasPeriodo={regrasPeriodo}
+                                selectedPeriodo={selectedPeriodo}
                             />
                         </div>
                     )}

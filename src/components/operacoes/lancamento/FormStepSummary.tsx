@@ -21,11 +21,18 @@ interface FormStepSummaryProps {
     produtos: any[];
     formasPagamento: any[];
     loadingPreco?: boolean;
+    regrasPeriodo?: any[];
+    selectedPeriodo?: any;
 }
 
-export function FormStepSummary({ form, produtos, formasPagamento, loadingPreco }: FormStepSummaryProps) {
+export function FormStepSummary({ form, produtos, formasPagamento, loadingPreco, regrasPeriodo = [], selectedPeriodo: periodObj }: FormStepSummaryProps) {
     const { register, watch, formState: { errors } } = form;
     const values = watch();
+    const isEspecífico = values.tipo_lancamento === 'servicos_especificos';
+    const selectedPeriodo = periodObj as any;
+
+    // Código Operacional Automático (ex: N1C5)
+    const generatedCode = selectedPeriodo ? `${selectedPeriodo.codigo}C${values.quantidade_colaboradores}` : '';
     const empresaId = watch("empresa_id");
 
     const [quickRegOpen, setQuickRegOpen] = useState(false);
@@ -112,6 +119,33 @@ export function FormStepSummary({ form, produtos, formasPagamento, loadingPreco 
                     {errors.forma_pagamento && <p className="text-xs text-red-500">{errors.forma_pagamento.message}</p>}
                 </div>
 
+                {isEspecífico && (
+                    <div className="space-y-2 animate-in fade-in slide-in-from-left-1 duration-300">
+                        <Label>Turno / Período (D1, N1...)</Label>
+                        <Select
+                            onValueChange={(val) => form.setValue("regra_periodo_id", val)}
+                            defaultValue={form.getValues("regra_periodo_id") || undefined}
+                        >
+                            <SelectTrigger className="border-primary/50">
+                                <SelectValue placeholder="Selecione o turno" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {regrasPeriodo.map((r) => (
+                                    <SelectItem key={r.id} value={r.id}>
+                                        {r.codigo} - {r.descricao} ({Number(r.peso_multiplicador).toFixed(2)}x)
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        {generatedCode && (
+                            <div className="text-[10px] text-primary font-bold uppercase tracking-tighter">
+                                Código Gerado: {generatedCode}
+                            </div>
+                        )}
+                        {errors.regra_periodo_id && <p className="text-xs text-red-500">{errors.regra_periodo_id.message}</p>}
+                    </div>
+                )}
+
                 <div className="space-y-2">
                     <Label>Valor Unitário (Automático)</Label>
                     <div className="relative">
@@ -175,6 +209,12 @@ export function FormStepSummary({ form, produtos, formasPagamento, loadingPreco 
                             <div className="flex justify-between text-red-400">
                                 <span>ISS ({values.iss_percentual || 0}%):</span>
                                 <span>- {formatCurrency(values.valor_iss || 0)}</span>
+                            </div>
+                        )}
+                        {isEspecífico && selectedPeriodo && (
+                            <div className="flex justify-between text-indigo-400 border-t border-white/5 mt-1 pt-1 italic text-[10px]">
+                                <span>Mult. Turno ({selectedPeriodo.codigo}):</span>
+                                <span>x {Number(selectedPeriodo.peso_multiplicador).toFixed(2)}</span>
                             </div>
                         )}
                         <div className="flex justify-between text-green-400 pt-1 text-sm border-t border-white/10 mt-1">

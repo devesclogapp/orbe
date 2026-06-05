@@ -6,7 +6,8 @@ import { useEffect, useMemo } from "react";
 import { 
   FornecedorValorServicoService, 
   RegraOperacionalService, 
-  RegrasDadosService 
+  RegrasDadosService,
+  ServicosEspecificosRegrasService
 } from "@/services/base.service";
 
 interface UseProductionFormProps {
@@ -55,6 +56,17 @@ export function useProductionForm({ empresaId, defaultValues }: UseProductionFor
     },
     enabled: !!values.empresa_id && !!values.data && values.nf_emite,
   });
+  
+  // Regras de Período (D1, N1...)
+  const { data: regrasPeriodo = [] } = useQuery({
+    queryKey: ["servicos_especificos_regras", values.empresa_id],
+    queryFn: () => ServicosEspecificosRegrasService.getAtivosByEmpresa(values.empresa_id),
+    enabled: !!values.empresa_id && values.tipo_lancamento === 'servicos_especificos'
+  });
+
+  const selectedPeriodo = useMemo(() => {
+    return regrasPeriodo.find(r => r.id === values.regra_periodo_id);
+  }, [regrasPeriodo, values.regra_periodo_id]);
 
   // Atualiza valor unitário e forma de pagamento automaticamente quando a regra muda
   useEffect(() => {
@@ -86,13 +98,19 @@ export function useProductionForm({ empresaId, defaultValues }: UseProductionFor
 
   // Cálculo de total e ISS
   useEffect(() => {
-    const bruto = Number(values.quantidade || 0) * Number(values.valor_unitario || 0);
+    let bruto = Number(values.quantidade || 0) * Number(values.valor_unitario || 0);
+    
+    // Aplicar Multiplicador de Turno se for Serviço Específico
+    if (values.tipo_lancamento === 'servicos_especificos' && selectedPeriodo) {
+      bruto = bruto * Number(selectedPeriodo.peso_multiplicador || 1);
+    }
+
     const taxa = Number(values.iss_percentual || 0);
     const iss = values.nf_emite ? (bruto * (taxa / 100)) : 0;
     
     setValue("valor_iss", iss);
     setValue("valor_total_liquido", bruto - iss);
-  }, [values.quantidade, values.valor_unitario, values.iss_percentual, values.nf_emite, setValue]);
+  }, [values.quantidade, values.valor_unitario, values.iss_percentual, values.nf_emite, values.tipo_lancamento, selectedPeriodo, setValue]);
 
   // Lookup de Regra Financeira (Modalidade vs Forma)
   const { data: regraFinanceira } = useQuery({
@@ -106,6 +124,8 @@ export function useProductionForm({ empresaId, defaultValues }: UseProductionFor
     loadingPreco,
     regraFinanceira,
     precoRegra,
-    regraIss
+    regraIss,
+    regrasPeriodo,
+    selectedPeriodo
   };
 }
