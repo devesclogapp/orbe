@@ -4,6 +4,8 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Plus, Pencil, Trash2, Search, ToggleLeft, ToggleRight, PowerOff } from "lucide-react";
 import { TransportadoraClienteService, EmpresaService } from "@/services/base.service";
+import { useOnboardingCallback } from "@/hooks/useOnboardingCallback";
+import { OnboardingSuccessModal } from "@/components/onboarding/OnboardingSuccessModal";
 import {
   Dialog,
   DialogContent,
@@ -32,6 +34,7 @@ const Transportadoras = () => {
   const [itemToDelete, setItemToDelete] = useState<any>(null);
   const [deleteErrorDetails, setDeleteErrorDetails] = useState<{ tabela: string; count: number; ids?: string[] }[]>([]);
   const [formErrors, setFormErrors] = useState<TransportadoraValidationErrors>({});
+  const { isOnboardingReturn, handleOnboardingReturn, showSuccessModal, setShowSuccessModal } = useOnboardingCallback();
 
   const { data: list = [], isLoading } = useQuery({
     queryKey: ["transportadoras"],
@@ -76,6 +79,10 @@ const Transportadoras = () => {
       queryClient.invalidateQueries({ queryKey: ["transportadoras"] });
       setOpen(false);
       reset();
+
+      if (isOnboardingReturn) {
+        handleOnboardingReturn();
+      }
     },
     onError: (err: any) => {
       toast.error(getTransportadoraErrorMessage(err));
@@ -462,6 +469,15 @@ const Transportadoras = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <OnboardingSuccessModal
+        open={showSuccessModal}
+        onOpenChange={setShowSuccessModal}
+        onContinue={() => {
+          setShowSuccessModal(false);
+          reset();
+        }}
+      />
     </AppShell>
   );
 };

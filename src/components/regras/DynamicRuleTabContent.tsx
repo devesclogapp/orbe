@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Pencil, Trash2, Ban, Save, X, Copy } from "lucide-react";
 import { toast } from "sonner";
+import { useOnboardingCallback } from "@/hooks/useOnboardingCallback";
 
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -75,6 +76,7 @@ interface DynamicRuleTabContentProps {
 
 const DynamicRuleTabContent: React.FC<DynamicRuleTabContentProps> = ({ moduloId, title, description }) => {
   const queryClient = useQueryClient();
+  const { isOnboardingReturn, handleOnboardingReturn } = useOnboardingCallback();
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [editingDadoId, setEditingDadoId] = useState<number | null>(null);
   const [dadoToDelete, setDadoToDelete] = useState<RegraDado | null>(null);
@@ -113,9 +115,12 @@ const DynamicRuleTabContent: React.FC<DynamicRuleTabContentProps> = ({ moduloId,
     mutationFn: (newDado: Omit<RegraDado, "id">) => RegrasDadosService.criar(newDado),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["regras_dados", moduloId] });
-      toast.success("Dado criado com sucesso!");
       resetForm();
       setIsFormOpen(false);
+
+      if (isOnboardingReturn) {
+        handleOnboardingReturn();
+      }
     },
     onError: (error: any) => {
       toast.error("Erro ao criar dado.", { description: error.message });
@@ -127,9 +132,12 @@ const DynamicRuleTabContent: React.FC<DynamicRuleTabContentProps> = ({ moduloId,
       RegrasDadosService.atualizar(id, updatedDado),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["regras_dados", moduloId] });
-      toast.success("Dado atualizado com sucesso!");
       resetForm();
       setIsFormOpen(false);
+
+      if (isOnboardingReturn) {
+        handleOnboardingReturn();
+      }
     },
     onError: (error: any) => {
       toast.error("Erro ao atualizar dado.", { description: error.message });

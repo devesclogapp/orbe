@@ -12,6 +12,7 @@ import {
   Circle,
   ExternalLink,
   PartyPopper,
+  AlertTriangle,
 } from "lucide-react";
 import { useOnboarding, ONBOARDING_STEPS } from "@/contexts/OnboardingContext";
 import { AppShell } from "@/components/layout/AppShell";
@@ -28,6 +29,7 @@ interface StepChecklistItem {
   isComplete: boolean;
   link?: string;
   linkLabel?: string;
+  isHeader?: boolean;
 }
 
 function getStepChecklist(stepId: string, dataStatus: any): StepChecklistItem[] {
@@ -61,9 +63,37 @@ function getStepChecklist(stepId: string, dataStatus: any): StepChecklistItem[] 
     case "colaboradores":
       return [
         {
-          id: "colaborador",
-          label: "Cadastrar pelo menos 1 colaborador",
-          isComplete: dataStatus.hasCollaborator,
+          id: "header_detectados",
+          label: "Colaboradores detectados:",
+          isComplete: true,
+          isHeader: true,
+        },
+        {
+          id: "colaborador_clt",
+          label: dataStatus.totalPontoImportado > 0
+            ? `✓ ${dataStatus.totalPontoImportado} colaboradores importados do ponto`
+            : "Colaboradores CLT detectados",
+          isComplete: dataStatus.hasClt,
+          link: `/colaboradores${returnParam}`,
+          linkLabel: "Ver CLT",
+        },
+        {
+          id: "header_pendencias",
+          label: "Pendências para utilização do sistema:",
+          isComplete: dataStatus.hasOperational && dataStatus.hasDiarista,
+          isHeader: true,
+        },
+        {
+          id: "colaborador_operacional",
+          label: "Cadastrar colaborador operacional",
+          isComplete: dataStatus.hasOperational,
+          link: `/colaboradores${returnParam}`,
+          linkLabel: "Ir para Colaboradores",
+        },
+        {
+          id: "colaborador_diarista",
+          label: "Cadastrar diarista",
+          isComplete: dataStatus.hasDiarista,
           link: `/colaboradores${returnParam}`,
           linkLabel: "Ir para Colaboradores",
         },
@@ -204,46 +234,74 @@ export default function Onboarding() {
             <div className="space-y-4">
               <h3 className="font-medium">O que você precisa fazer:</h3>
               <div className="space-y-3">
-                {checklist.map((item) => (
-                  <div
-                    key={item.id}
-                    className={cn(
-                      "flex items-center justify-between p-3 rounded-lg border",
-                      item.isComplete
-                        ? "border-green-500 bg-green-50/50"
-                        : "border-muted"
-                    )}
-                  >
-                    <div className="flex items-center gap-3">
-                      {item.isComplete ? (
-                        <CheckCircle2 className="w-5 h-5 text-green-500" />
-                      ) : (
-                        <Circle className="w-5 h-5 text-muted-foreground" />
-                      )}
-                      <span className={cn(
-                        "text-sm",
-                        item.isComplete && "text-muted-foreground line-through"
-                      )}>
+                {checklist.map((item) => {
+                  if (item.isHeader) {
+                    return (
+                      <h4 key={item.id} className="text-sm font-semibold mt-4 mb-2 first:mt-0">
                         {item.label}
-                      </span>
-                      {item.isComplete && (
-                        <Badge variant="outline" className="text-green-500 border-green-500">
-                          Concluído
-                        </Badge>
+                      </h4>
+                    );
+                  }
+
+                  return (
+                    <div key={item.id} className="space-y-2">
+                      <div
+                        className={cn(
+                          "flex items-center justify-between p-3 rounded-lg border",
+                          item.isComplete
+                            ? "border-green-500 bg-green-50/50"
+                            : "border-muted"
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          {item.isComplete ? (
+                            <CheckCircle2 className="w-5 h-5 text-green-500" />
+                          ) : (
+                            <Circle className="w-5 h-5 text-muted-foreground" />
+                          )}
+                          <span className={cn(
+                            "text-sm",
+                            item.isComplete && "text-muted-foreground line-through"
+                          )}>
+                            {item.label}
+                          </span>
+                          {item.isComplete && (
+                            <Badge variant="outline" className="text-green-500 border-green-500">
+                              Concluído
+                            </Badge>
+                          )}
+                        </div>
+                        {(!item.isComplete || item.id === 'colaborador_clt') && item.link && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => navigate(item.link!)}
+                          >
+                            {item.linkLabel}
+                            <ExternalLink className="w-3 h-3 ml-1" />
+                          </Button>
+                        )}
+                      </div>
+
+                      {item.id === "colaborador_clt" && dataStatus.totalCltPendentes > 0 && (
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                          <div className="flex items-center gap-2 text-amber-700 text-xs font-medium">
+                            <AlertTriangle className="h-4 w-4 shrink-0" />
+                            <span>{dataStatus.totalCltPendentes} colaboradores precisam de complemento para liberar processamento RH</span>
+                          </div>
+                          <Button
+                            variant="link"
+                            size="sm"
+                            className="h-auto p-0 text-amber-700 font-bold hover:text-amber-800"
+                            onClick={() => navigate(`/colaboradores?status=pendente&onboarding_return=true`)}
+                          >
+                            Ver pendências CLT
+                          </Button>
+                        </div>
                       )}
                     </div>
-                    {!item.isComplete && item.link && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => navigate(item.link!)}
-                      >
-                        {item.linkLabel}
-                        <ExternalLink className="w-3 h-3 ml-1" />
-                      </Button>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 

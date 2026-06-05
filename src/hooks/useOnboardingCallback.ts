@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useOnboarding } from "@/contexts/OnboardingContext";
 
@@ -5,7 +6,8 @@ const ONBOARDING_RETURN_PARAM = "onboarding_return";
 
 export function useOnboardingCallback() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { refetchStatus, isActive } = useOnboarding();
+  const { refetchStatus } = useOnboarding();
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   const setOnboardingReturn = () => {
     const currentParams = new URLSearchParams(searchParams);
@@ -24,10 +26,12 @@ export function useOnboardingCallback() {
   const handleOnboardingReturn = async () => {
     console.log("[OnboardingCallback] handleOnboardingReturn called, isOnboardingReturn:", isOnboardingReturn);
     if (isOnboardingReturn) {
-      clearOnboardingReturn();
+      // Don't clear immediately, we might need it for the modal logic if we want to be safe, 
+      // but the component state showSuccessModal will handle the UI.
       console.log("[OnboardingCallback] Calling refetchStatus...");
       await refetchStatus();
       console.log("[OnboardingCallback] refetchStatus completed");
+      setShowSuccessModal(true);
       return true;
     }
     return false;
@@ -38,5 +42,7 @@ export function useOnboardingCallback() {
     clearOnboardingReturn,
     isOnboardingReturn,
     handleOnboardingReturn,
+    showSuccessModal,
+    setShowSuccessModal,
   };
 }

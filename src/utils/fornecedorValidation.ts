@@ -6,6 +6,7 @@ export interface FornecedorFormValues {
   endereco: string;
   empresa_id: string;
   ativo: boolean;
+  produto_id?: string;
 }
 
 export type FornecedorValidationErrors = Partial<Record<keyof FornecedorFormValues, string>>;
@@ -28,6 +29,7 @@ export function normalizeFornecedorPayload(payload: FornecedorFormValues): Forne
     telefone: payload.telefone?.trim() ?? "",
     email: payload.email?.trim() ?? "",
     endereco: payload.endereco?.trim() ?? "",
+    produto_id: payload.produto_id?.trim() || undefined,
   };
 }
 

@@ -102,6 +102,9 @@ interface OnboardingDataStatus {
   hasClient: boolean;
   hasSupplier: boolean;
   hasCollaborator: boolean;
+  hasClt: boolean;
+  hasOperational: boolean;
+  hasDiarista: boolean;
   hasRule: boolean;
   hasDiaristaRule: boolean;
   hasPagamento: boolean;
@@ -112,6 +115,11 @@ interface OnboardingDataStatus {
   totalClientes: number;
   totalFornecedores: number;
   totalColaboradores: number;
+  totalClt: number;
+  totalCltPendentes: number;
+  totalOperational: number;
+  totalDiaristas: number;
+  totalPontoImportado: number;
   totalRegras: number;
   totalOperacoes: number;
 }
@@ -144,6 +152,9 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     hasClient: false,
     hasSupplier: false,
     hasCollaborator: false,
+    hasClt: false,
+    hasOperational: false,
+    hasDiarista: false,
     hasRule: false,
     hasDiaristaRule: false,
     hasPagamento: false,
@@ -154,6 +165,11 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     totalClientes: 0,
     totalFornecedores: 0,
     totalColaboradores: 0,
+    totalClt: 0,
+    totalCltPendentes: 0,
+    totalOperational: 0,
+    totalDiaristas: 0,
+    totalPontoImportado: 0,
     totalRegras: 0,
     totalOperacoes: 0,
   });
@@ -172,7 +188,8 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         supabase.from("empresas").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("status", "ativa"),
         supabase.from("transportadoras_clientes").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("ativo", true),
         supabase.from("fornecedores").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("ativo", true),
-        supabase.from("colaboradores").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("status", "ativo"),
+        // Colaboradores - Busca detalhada (SEM filtro de status para detecção inicial)
+        supabase.from("colaboradores").select("id, status, status_cadastro, cadastro_provisorio, tipo_colaborador, origem_cadastro, permitir_lancamento_operacional").eq("tenant_id", tenantId),
         supabase.from("fornecedor_valores_servico").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("ativo", true),
         supabase.from("operacoes_producao").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId),
         supabase.from("regras_marcacao_diaristas").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("ativo", true),
@@ -193,10 +210,47 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const hasEmpresa = (empresasRes.count ?? 0) > 0;
       const hasTransportadora = (transportadorasRes.count ?? 0) > 0;
       const hasSupplier = (fornecedoresRes.count ?? 0) > 0;
-      const hasCollaborator = (colaboradoresRes.count ?? 0) > 0;
       const hasRule = (regrasRes.count ?? 0) > 0;
       const hasOperation = (operacoesRes.count ?? 0) > 0;
       const hasDiaristaRule = (diaristasRes.count ?? 0) > 0;
+
+      // Processamento granular de colaboradores
+      const allColaboradores = (colaboradoresRes.data || []) as any[];
+
+      const isClt = (c: any) =>
+        String(c.tipo_colaborador || '').toUpperCase() === 'CLT' ||
+        c.origem_cadastro === 'ponto_importado' ||
+        c.origem_cadastro === 'importacao_ponto';
+
+      const isPendente = (c: any) =>
+        c.status !== 'ativo' ||
+        c.status_cadastro === 'pendente_complemento' ||
+        c.cadastro_provisorio === true;
+
+      const cltColabs = allColaboradores.filter(isClt);
+      const cltPendentes = cltColabs.filter(isPendente);
+
+      // Critérios Operacionais exigem status ATIVO
+      const operationalColabs = allColaboradores.filter(c =>
+        c.status === 'ativo' &&
+        c.permitir_lancamento_operacional === true &&
+        String(c.tipo_colaborador || '').toUpperCase() !== 'DIARISTA'
+      );
+      const diaristaColabs = allColaboradores.filter(c =>
+        c.status === 'ativo' &&
+        String(c.tipo_colaborador || '').toUpperCase() === 'DIARISTA' &&
+        c.permitir_lancamento_operacional === true
+      );
+
+      const pontoImportadoColabs = allColaboradores.filter(c =>
+        c.origem_cadastro === 'ponto_importado' ||
+        c.origem_cadastro === 'importacao_ponto'
+      );
+
+      const hasClt = cltColabs.length > 0;
+      const hasOperational = operationalColabs.length > 0;
+      const hasDiarista = diaristaColabs.length > 0;
+      const hasCollaborator = hasClt && hasOperational && hasDiarista;
 
       const dadosRecuperados = (modulosRes.data || []) as any[];
       const hasPagamento = dadosRecuperados.some(d => d.regras_modulos?.slug === 'meios_pagamento' || d.regras_modulos?.slug === 'meios-pagamento');
@@ -206,15 +260,20 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         hasEmpresa,
         hasTransportadora,
         hasSupplier,
-        hasCollaborador: hasCollaborator,
+        hasClt,
+        hasOperational,
+        hasDiarista,
         hasRule,
         hasOperation
       });
 
       setDataStatus({
-        hasClient: hasTransportadora, // Para manter compatibilidade, usa transportadora como "cliente"
+        hasClient: hasTransportadora,
         hasSupplier,
         hasCollaborator,
+        hasClt,
+        hasOperational,
+        hasDiarista,
         hasRule,
         hasDiaristaRule,
         hasPagamento,
@@ -224,7 +283,12 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         hasTransportadora,
         totalClientes: transportadorasRes.count ?? 0,
         totalFornecedores: fornecedoresRes.count ?? 0,
-        totalColaboradores: colaboradoresRes.count ?? 0,
+        totalColaboradores: allColaboradores.length,
+        totalClt: cltColabs.length,
+        totalCltPendentes: cltPendentes.length,
+        totalOperational: operationalColabs.length,
+        totalDiaristas: diaristaColabs.length,
+        totalPontoImportado: pontoImportadoColabs.length,
         totalRegras: regrasRes.count ?? 0,
         totalOperacoes: operacoesRes.count ?? 0,
       });
@@ -312,7 +376,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       case "cadastro_base":
         return dataStatus.hasEmpresa && dataStatus.hasTransportadora && dataStatus.hasSupplier;
       case "colaboradores":
-        return dataStatus.hasCollaborator;
+        return dataStatus.hasClt && dataStatus.hasOperational && dataStatus.hasDiarista;
       case "regras":
         return dataStatus.hasRule && dataStatus.hasDiaristaRule && dataStatus.hasPagamento && dataStatus.hasTaxa;
       case "primeira_operacao":
@@ -329,7 +393,9 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       dataStatus.hasEmpresa &&
       dataStatus.hasTransportadora &&
       dataStatus.hasSupplier &&
-      dataStatus.hasCollaborator &&
+      dataStatus.hasClt &&
+      dataStatus.hasOperational &&
+      dataStatus.hasDiarista &&
       dataStatus.hasRule &&
       dataStatus.hasDiaristaRule &&
       dataStatus.hasPagamento &&
@@ -343,7 +409,9 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       dataStatus.hasEmpresa,
       dataStatus.hasTransportadora,
       dataStatus.hasSupplier,
-      dataStatus.hasCollaborator,
+      dataStatus.hasClt,
+      dataStatus.hasOperational,
+      dataStatus.hasDiarista,
       dataStatus.hasRule,
       dataStatus.hasDiaristaRule,
       dataStatus.hasPagamento,

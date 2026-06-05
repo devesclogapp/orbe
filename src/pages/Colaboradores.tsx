@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
 import { useOnboardingCallback } from "@/hooks/useOnboardingCallback";
+import { OnboardingSuccessModal } from "@/components/onboarding/OnboardingSuccessModal";
 import { StatusChip } from "@/components/painel/StatusChip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -52,6 +53,7 @@ const getInitialColaboradorFormData = (defaultEmpresaId = "") => ({
   conta_digito: "",
   tipo_conta: "corrente",
   pis: "",
+  syncNomeBancario: true,
 });
 
 const getColaboradorStatusMeta = (colaborador: any) => {
@@ -102,7 +104,7 @@ const inferModeloCalculo = (tipoColaborador?: string) => {
 const Colaboradores = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { isOnboardingReturn, handleOnboardingReturn } = useOnboardingCallback();
+  const { isOnboardingReturn, handleOnboardingReturn, showSuccessModal, setShowSuccessModal } = useOnboardingCallback();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(1);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -181,7 +183,6 @@ const Colaboradores = () => {
       setOpen(false);
       if (isOnboardingReturn) {
         await handleOnboardingReturn();
-        navigate("/onboarding");
       }
     },
     onError: (err: any) => {
@@ -238,6 +239,7 @@ const Colaboradores = () => {
       conta_digito: c.conta_digito || "",
       tipo_conta: c.tipo_conta || "corrente",
       pis: c.pis || "",
+      syncNomeBancario: (c.nome_completo === c.nome || !c.nome_completo),
     });
     setOpen(true);
   };
@@ -891,9 +893,31 @@ const Colaboradores = () => {
 
                 {step === 3 && (
                   <div className="grid grid-cols-2 gap-4 py-2">
-                    <div className="col-span-2 space-y-1.5">
-                      <Label htmlFor="nome_completo">Nome completo (como conta) <span className="text-destructive">*</span></Label>
-                      <Input id="nome_completo" value={form.nome_completo} onChange={(e) => setForm({ ...form, nome_completo: e.target.value })} />
+                    <div className="col-span-2 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="nome_completo">Nome completo (como conta) <span className="text-destructive">*</span></Label>
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            id="sync-name"
+                            checked={form.syncNomeBancario}
+                            onCheckedChange={(v) => {
+                              const updates: any = { syncNomeBancario: v };
+                              if (v) updates.nome_completo = form.nome;
+                              setForm({ ...form, ...updates });
+                            }}
+                          />
+                          <Label htmlFor="sync-name" className="text-xs font-normal cursor-pointer text-muted-foreground">Mesmo nome do colaborador</Label>
+                        </div>
+                      </div>
+                      <Input
+                        id="nome_completo"
+                        value={form.nome_completo}
+                        disabled={form.syncNomeBancario}
+                        onChange={(e) => setForm({ ...form, nome_completo: e.target.value, syncNomeBancario: false })}
+                      />
+                      {form.syncNomeBancario && (
+                        <p className="text-[10px] text-muted-foreground italic">Sincronizado com o cadastro principal</p>
+                      )}
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="banco_codigo">Cód. Banco <span className="text-destructive">*</span></Label>
@@ -930,7 +954,18 @@ const Colaboradores = () => {
               <div className="grid grid-cols-2 gap-4 py-2">
                 <div className="col-span-2 space-y-1.5">
                   <Label htmlFor="nome">Nome completo <span className="text-destructive">*</span></Label>
-                  <Input id="nome" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
+                  <Input
+                    id="nome"
+                    value={form.nome}
+                    onChange={(e) => {
+                      const newNome = e.target.value;
+                      const updates: any = { nome: newNome };
+                      if (form.syncNomeBancario) {
+                        updates.nome_completo = newNome;
+                      }
+                      setForm({ ...form, ...updates });
+                    }}
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="cpf">CPF <span className="text-destructive">*</span></Label>
@@ -1109,9 +1144,31 @@ const Colaboradores = () => {
                 <div className="col-span-2 border-t pt-4 mt-2">
                   <h4 className="text-sm font-semibold mb-3">Dados Bancários</h4>
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5 col-span-2">
-                      <Label htmlFor="nome_completo">Nome completo (como conta)</Label>
-                      <Input id="nome_completo" value={form.nome_completo} onChange={(e) => setForm({ ...form, nome_completo: e.target.value })} />
+                    <div className="col-span-2 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="nome_completo_edit">Nome completo (como conta) <span className="text-destructive">*</span></Label>
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            id="sync-name-edit"
+                            checked={form.syncNomeBancario}
+                            onCheckedChange={(v) => {
+                              const updates: any = { syncNomeBancario: v };
+                              if (v) updates.nome_completo = form.nome;
+                              setForm({ ...form, ...updates });
+                            }}
+                          />
+                          <Label htmlFor="sync-name-edit" className="text-xs font-normal cursor-pointer text-muted-foreground">Mesmo nome do colaborador</Label>
+                        </div>
+                      </div>
+                      <Input
+                        id="nome_completo_edit"
+                        value={form.nome_completo}
+                        disabled={form.syncNomeBancario}
+                        onChange={(e) => setForm({ ...form, nome_completo: e.target.value, syncNomeBancario: false })}
+                      />
+                      {form.syncNomeBancario && (
+                        <p className="text-[10px] text-muted-foreground italic">Sincronizado com o cadastro principal</p>
+                      )}
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="banco_codigo">Cód. Banco</Label>
@@ -1178,12 +1235,20 @@ const Colaboradores = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      <OnboardingSuccessModal
+        open={showSuccessModal}
+        onOpenChange={setShowSuccessModal}
+        onContinue={() => {
+          setShowSuccessModal(false);
+          resetWizardState();
+        }}
+      />
     </AppShell>
   );
 };
 
 export default Colaboradores;
-
 
 
 

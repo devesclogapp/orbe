@@ -4,6 +4,8 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Plus, Pencil, Trash2, Search, ToggleLeft, ToggleRight, PowerOff } from "lucide-react";
 import { FornecedorService, EmpresaService, ProdutoCargaService } from "@/services/base.service";
+import { useOnboardingCallback } from "@/hooks/useOnboardingCallback";
+import { OnboardingSuccessModal } from "@/components/onboarding/OnboardingSuccessModal";
 import {
   Dialog,
   DialogContent,
@@ -40,6 +42,7 @@ const Fornecedores = () => {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<any>(null);
   const [deleteErrorDetails, setDeleteErrorDetails] = useState<{ tabela: string; count: number; ids?: string[] }[]>([]);
+  const { isOnboardingReturn, handleOnboardingReturn, showSuccessModal, setShowSuccessModal } = useOnboardingCallback();
 
   const { data: list = [], isLoading, refetch } = useQuery({
     queryKey: ["fornecedores"],
@@ -93,6 +96,10 @@ const Fornecedores = () => {
       await refetch();
       setOpen(false);
       reset();
+
+      if (isOnboardingReturn) {
+        handleOnboardingReturn();
+      }
     },
     onError: (err: any) => {
       toast.error(getFornecedorErrorMessage(err));
@@ -503,6 +510,15 @@ const Fornecedores = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <OnboardingSuccessModal
+        open={showSuccessModal}
+        onOpenChange={setShowSuccessModal}
+        onContinue={() => {
+          setShowSuccessModal(false);
+          reset();
+        }}
+      />
     </AppShell>
   );
 };

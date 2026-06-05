@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useOnboardingCallback } from "@/hooks/useOnboardingCallback";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
     Plus,
@@ -42,6 +43,7 @@ const PERIODOS = ["DIA", "N1", "N2", "INTEGRAL"];
 
 export function TabServicosEspecificos() {
     const queryClient = useQueryClient();
+    const { isOnboardingReturn, handleOnboardingReturn } = useOnboardingCallback();
     const [selectedEmpresa, setSelectedEmpresa] = useState<string>("");
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingRegra, setEditingRegra] = useState<Partial<ServicoEspecificoRegra> | null>(null);
@@ -64,6 +66,10 @@ export function TabServicosEspecificos() {
             toast.success("Regra salva com sucesso");
             setIsModalOpen(false);
             setEditingRegra(null);
+
+            if (isOnboardingReturn) {
+                handleOnboardingReturn();
+            }
         },
         onError: (error: any) => {
             toast.error(`Erro ao salvar regra: ${error.message}`);

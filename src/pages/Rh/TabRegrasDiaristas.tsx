@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ban, CheckCircle2, Pencil, Plus, Save } from "lucide-react";
 import { toast } from "sonner";
+import { useOnboardingCallback } from "@/hooks/useOnboardingCallback";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,6 +38,7 @@ const normalizeCodigo = (codigo: string) =>
 
 export const TabRegrasDiaristas = () => {
   const queryClient = useQueryClient();
+  const { isOnboardingReturn, handleOnboardingReturn } = useOnboardingCallback();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRule, setEditingRule] = useState<any>(null);
 
@@ -128,6 +130,10 @@ export const TabRegrasDiaristas = () => {
         queryKey: ["regras_marcacao_diaristas"],
       });
       resetForm();
+
+      if (isOnboardingReturn) {
+        handleOnboardingReturn();
+      }
     },
     onError: (err: any) => {
       const message = String(err?.message ?? "");

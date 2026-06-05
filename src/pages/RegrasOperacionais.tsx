@@ -21,6 +21,8 @@ import { TabMeiosPagamento } from "@/pages/Financeiro/TabMeiosPagamento";
 import { TabTaxasImpostos } from "@/pages/Financeiro/TabTaxasImpostos";
 import DynamicRuleTabsContainer from "@/components/regras/DynamicRuleTabsContainer";
 import { TabServicosEspecificos } from "./TabServicosEspecificos";
+import { useOnboardingCallback } from "@/hooks/useOnboardingCallback";
+import { OnboardingSuccessModal } from "@/components/onboarding/OnboardingSuccessModal";
 
 import {
   SpreadsheetUploadModal,
@@ -731,6 +733,7 @@ const QuickCreateLookup = ({
 const RegrasOperacionais = () => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { isOnboardingReturn, handleOnboardingReturn, showSuccessModal, setShowSuccessModal } = useOnboardingCallback();
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<string>("operacional");
@@ -781,8 +784,8 @@ const RegrasOperacionais = () => {
     queryKey: ["profile_regras_operacionais", user?.id],
     queryFn: async () => {
       if (!user?.id) return null;
-      const { data } = await supabase.from("profiles").select("role").eq("user_id", user.id).maybeSingle();
-      return data;
+      const { data } = await supabase.from("profiles").select("role, empresa_id").eq("user_id", user.id).maybeSingle();
+      return data as { role: string; empresa_id: string } | null;
     },
     enabled: !!user?.id,
   });
@@ -1638,6 +1641,10 @@ const RegrasOperacionais = () => {
         toast.success("Regra operacional cadastrada.");
       }
       resetForm();
+
+      if (isOnboardingReturn) {
+        handleOnboardingReturn();
+      }
     },
     onError: (error: any) => {
       const message = String(error?.message ?? "");
@@ -3055,7 +3062,7 @@ const RegrasOperacionais = () => {
         description={activeImportConfig.description}
         onDownloadTemplate={
           activeImportConfig.downloadUrl
-            ? () => window.open(activeImportConfig.downloadUrl, "_blank", "noopener,noreferrer")
+            ? () => { window.open(activeImportConfig.downloadUrl, "_blank", "noopener,noreferrer"); }
             : undefined
         }
         expectedColumns={activeImportConfig.expectedColumns}
@@ -3065,7 +3072,16 @@ const RegrasOperacionais = () => {
         validateData={activeImportConfig.validateData}
         onUpload={handleImportRules}
       />
-    </AppShell>
+
+      <OnboardingSuccessModal
+        open={showSuccessModal}
+        onOpenChange={setShowSuccessModal}
+        onContinue={() => {
+          setShowSuccessModal(false);
+          resetForm();
+        }}
+      />
+    </AppShell >
   );
 };
 
