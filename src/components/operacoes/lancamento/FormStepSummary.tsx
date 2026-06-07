@@ -261,7 +261,7 @@ export function FormStepSummary({
                                         setSelectedMateriais?.([...selectedMateriais, {
                                             material_id: mat.id,
                                             nome_snapshot: mat.nome,
-                                            unidade_snapshot: mat.unidade_medida,
+                                            unidade_snapshot: mat.unidade,
                                             valor_unitario_snapshot: mat.valor_unitario,
                                             quantidade: 1,
                                             valor_total: mat.valor_unitario

@@ -1092,7 +1092,6 @@ class MateriaisOperacionaisServiceClass extends BaseService<'materiais_operacion
     const { data, error } = await supabase
       .from('materiais_operacionais')
       .select('*')
-      .is('deleted_at', null)
       .order('nome', { ascending: true });
     if (error) throw error;
     return data ?? [];
@@ -1103,7 +1102,6 @@ class MateriaisOperacionaisServiceClass extends BaseService<'materiais_operacion
       .from('materiais_operacionais')
       .select('*')
       .eq('ativo', true)
-      .is('deleted_at', null)
       .order('nome', { ascending: true });
     if (error) throw error;
     return data ?? [];

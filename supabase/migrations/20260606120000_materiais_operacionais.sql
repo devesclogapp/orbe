@@ -72,7 +72,7 @@ FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
 CREATE OR REPLACE FUNCTION public.calcular_valor_total_operacao_producao()
 RETURNS TRIGGER
 LANGUAGE plpgsql
-AS supabase/migrations/$migrationName
+AS $$
 BEGIN
   -- Cálculo base do serviço/produção
   DECLARE
@@ -91,4 +91,7 @@ BEGIN
   NEW.atualizado_em := now();
   RETURN NEW;
 END;
-supabase/migrations/$migrationName;
+$$;
+
+-- 8. Atualizar cache do PostgREST
+NOTIFY pgrst, 'reload schema';

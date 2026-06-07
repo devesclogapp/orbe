@@ -80,6 +80,7 @@ import {
   TransportadoraClienteService,
   UnidadeOperacionalService,
 } from "@/services/base.service";
+import { MateriaisOperacionaisService } from "@/services/domain/cadastros.service";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   normalizeTransportadoraPayload,
@@ -1403,7 +1404,7 @@ const CentralCadastros = () => {
   const [editingMaterial, setEditingMaterial] = useState<any>(null);
   const [materialForm, setMaterialForm] = useState({
     nome: "",
-    unidade_medida: "",
+    unidade: "",
     valor_unitario: "",
     ativo: true,
   });
@@ -1419,7 +1420,7 @@ const CentralCadastros = () => {
     onSuccess: async () => {
       toast.success("Material cadastrado com sucesso");
       setMaterialModalOpen(false);
-      setMaterialForm({ nome: "", unidade_medida: "", valor_unitario: "", ativo: true });
+      setMaterialForm({ nome: "", unidade: "", valor_unitario: "", ativo: true });
       await queryClient.invalidateQueries({ queryKey: ["materiais_operacionais"] });
     },
     onError: (err: any) => toast.error("Erro ao cadastrar material", { description: err.message }),
@@ -2276,9 +2277,18 @@ const CentralCadastros = () => {
         description: "Envie uma planilha compatível com o modelo da aba Parâmetros Operacionais.",
         unsupportedMessage: "Modelo de importação de parâmetros operacionais ainda não configurado.",
       },
+      materiais: {
+        label: "Materiais",
+        description: "Envie uma planilha compatível com o modelo da aba Materiais.",
+        unsupportedMessage: "Modelo de importação de materiais ainda não configurado.",
+      },
     };
 
-    return configs[activeTab];
+    return configs[activeTab] || {
+      label: "Cadastro",
+      description: "Envie uma planilha compatível.",
+      unsupportedMessage: "Modelo de importação não configurado para esta aba.",
+    };
   }, [activeTab, empresas, empresaId, importacaoModelos, queryClient]);
 
   const itemToDeleteLabel =
@@ -2292,7 +2302,7 @@ const CentralCadastros = () => {
           : "Este registro");
 
   const handleContextualImport = async (rows: Record<string, any>[]) => {
-    if (!activeImportConfig.onUpload) return;
+    if (!activeImportConfig?.onUpload) return;
     await activeImportConfig.onUpload(rows);
     toast.success(`${rows.length} registros importados com sucesso em ${activeImportConfig.label}.`);
   };
@@ -3220,7 +3230,7 @@ const CentralCadastros = () => {
                           materiais.map((material) => (
                             <tr key={material.id} className="border-t border-muted hover:bg-background">
                               <td className="px-5 h-[56px] font-medium text-foreground text-center">{material.nome}</td>
-                              <td className="px-3 text-muted-foreground text-center">{material.unidade_medida}</td>
+                              <td className="px-3 text-muted-foreground text-center">{material.unidade}</td>
                               <td className="px-3 text-center font-display font-medium">
                                 {formatCurrencyBRL(material.valor_unitario)}
                               </td>
@@ -3238,7 +3248,7 @@ const CentralCadastros = () => {
                                     setEditingMaterial(material);
                                     setMaterialForm({
                                       nome: material.nome,
-                                      unidade_medida: material.unidade_medida,
+                                      unidade: material.unidade,
                                       valor_unitario: formatCurrencyBRL(material.valor_unitario),
                                       ativo: material.ativo
                                     });
@@ -3602,7 +3612,7 @@ const CentralCadastros = () => {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label htmlFor="mat_unidade">Unidade <span className="text-destructive">*</span></Label>
-                <Select value={materialForm.unidade_medida} onValueChange={(v) => setMaterialForm({ ...materialForm, unidade_medida: v })}>
+                <Select value={materialForm.unidade} onValueChange={(v) => setMaterialForm({ ...materialForm, unidade: v })}>
                   <SelectTrigger id="mat_unidade"><SelectValue placeholder="Selecione" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="UN">Unidade (UN)</SelectItem>
@@ -3638,7 +3648,7 @@ const CentralCadastros = () => {
                   ...materialForm,
                   valor_unitario: parseCurrencyBRL(materialForm.valor_unitario)
                 };
-                if (!payload.nome || !payload.unidade_medida || payload.valor_unitario <= 0) {
+                if (!payload.nome || !payload.unidade || payload.valor_unitario <= 0) {
                   toast.error("Preencha todos os campos obrigatórios.");
                   return;
                 }
@@ -5158,19 +5168,19 @@ const CentralCadastros = () => {
       <SpreadsheetUploadModal
         open={importModalOpen}
         onOpenChange={setImportModalOpen}
-        title={`Importar planilha - ${activeImportConfig.label}`}
-        description={activeImportConfig.description}
+        title={`Importar planilha - ${activeImportConfig?.label || "Cadastro"}`}
+        description={activeImportConfig?.description || ""}
         onDownloadTemplate={
-          activeImportConfig.downloadUrl
+          activeImportConfig?.downloadUrl
             ? () => window.open(activeImportConfig.downloadUrl, "_blank", "noopener,noreferrer")
             : undefined
         }
-        expectedColumns={activeImportConfig.expectedColumns}
-        templateColumns={activeImportConfig.expectedColumns}
-        templateFileName={activeImportConfig.templateFileName}
-        unsupportedMessage={activeImportConfig.unsupportedMessage}
+        expectedColumns={activeImportConfig?.expectedColumns}
+        templateColumns={activeImportConfig?.expectedColumns}
+        templateFileName={activeImportConfig?.templateFileName}
+        unsupportedMessage={activeImportConfig?.unsupportedMessage}
         requireValidation
-        validateData={activeImportConfig.validateData}
+        validateData={activeImportConfig?.validateData}
         onUpload={handleContextualImport}
       />
 
