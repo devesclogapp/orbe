@@ -25,6 +25,9 @@ import {
   Trash2,
   Truck,
   User,
+  Plus,
+  Trash,
+  PackagePlus,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -60,7 +63,15 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useSelection } from "@/contexts/SelectionContext";
 import { cn } from "@/lib/utils";
-import { OperacaoProducaoService, OperacaoService, RegraOperacionalService, EmpresaService, RegrasFinanceirasService, FormaPagamentoOperacionalService } from "@/services/base.service";
+import {
+  OperacaoProducaoService,
+  OperacaoService,
+  RegraOperacionalService,
+  EmpresaService,
+  RegrasFinanceirasService,
+  FormaPagamentoOperacionalService,
+  MateriaisOperacionaisService
+} from "@/services/base.service";
 import { classificarFinanceiroSync, processarOperacao, calcularValoresOperacao, getModalidadeLabel, ModalidadeFinanceira, StatusPagamento } from "@/utils/financeiro";
 import { JustificationModal } from "@/components/modals/JustificationModal";
 import { useOperationalPipeline, buildOperacaoVolumePipeline } from "@/contexts/OperationalPipelineContext";
@@ -506,6 +517,8 @@ export const OperacoesTableBlock = ({
 
 
   const [inlineValue, setInlineValue] = useState("");
+  const [selectedMateriaisEdit, setSelectedMateriaisEdit] = useState<any[]>([]);
+  const [showMateriaisEdit, setShowMateriaisEdit] = useState(false);
   const tableScrollRef = useRef<HTMLDivElement>(null);
 
   const { openPipeline } = useOperationalPipeline();
@@ -619,6 +632,11 @@ export const OperacoesTableBlock = ({
     queryFn: () => FormaPagamentoOperacionalService.getAllActive(),
   });
 
+  const { data: materiaisDisponiveis = [] } = useQuery({
+    queryKey: ["materiais_ativos"],
+    queryFn: () => MateriaisOperacionaisService.getAllActive()
+  });
+
   const { data: empresas = [] } = useQuery({
     queryKey: ["empresas"],
     queryFn: () => EmpresaService.getAll(),
@@ -633,7 +651,16 @@ export const OperacoesTableBlock = ({
   const updateMutation = useMutation({
     mutationFn: async () => {
       if (!editingItem || !editForm) throw new Error("Nenhuma operação selecionada para edição.");
-      return OperacaoProducaoService.update(editingItem.id, buildOperationUpdatePayload(editingItem, editForm));
+
+      const updatePromise = OperacaoProducaoService.update(editingItem.id, buildOperationUpdatePayload(editingItem, editForm));
+
+      const promises: any[] = [updatePromise];
+
+      if (selectedMateriaisEdit.length > 0) {
+        promises.push(OperacaoProducaoService.vincularMateriais(editingItem.id, selectedMateriaisEdit));
+      }
+
+      return Promise.all(promises);
     },
     onSuccess: (updated) => {
       toast.success("Operação atualizada na tela operacional.");
@@ -1027,6 +1054,46 @@ export const OperacoesTableBlock = ({
     if (updateMutation.isPending) return;
     setEditingItem(null);
     setEditForm(null);
+    setSelectedMateriaisEdit([]);
+    setShowMateriaisEdit(false);
+  };
+
+  const handleAddMaterialToEdit = (materialId: string) => {
+    const material = materiaisDisponiveis.find((m: any) => m.id === materialId);
+    if (!material) return;
+
+    const exists = selectedMateriaisEdit.find(m => m.material_id === materialId);
+    if (exists) {
+      toast.warning("Este material já foi adicionado.");
+      return;
+    }
+
+    setSelectedMateriaisEdit([...selectedMateriaisEdit, {
+      material_id: material.id,
+      nome_snapshot: material.nome,
+      unidade_snapshot: material.unidade,
+      valor_unitario_snapshot: material.valor_unitario,
+      quantidade: 1,
+      valor_total: material.valor_unitario
+    }]);
+  };
+
+  const removeMaterialFromEdit = (materialId: string) => {
+    setSelectedMateriaisEdit(prev => prev.filter(m => m.material_id !== materialId));
+  };
+
+  const updateMaterialQtyInEdit = (materialId: string, qty: number) => {
+    setSelectedMateriaisEdit(prev => prev.map(m => {
+      if (m.material_id === materialId) {
+        const newQty = Math.max(0.01, qty);
+        return {
+          ...m,
+          quantidade: newQty,
+          valor_total: newQty * m.valor_unitario_snapshot
+        };
+      }
+      return m;
+    }));
   };
 
   const openJustification = (type: "override" | "devolucao", action: (justification: string) => void) => {
@@ -1791,9 +1858,9 @@ export const OperacoesTableBlock = ({
                     {visibleCols.valUnit && renderHeaderCell("valUnit", "VAL. UNIT.", "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.qtd && renderHeaderCell("qtd", "VOLUME", "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.valorDescarga && renderHeaderCell("valorDescarga", "VALOR DESCARGA", "px-3 py-2.5 font-semibold text-center")}
+                    {visibleCols.materiais && renderHeaderCell("materiais", "MATERIAIS", "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.valorIss && renderHeaderCell("valorIss", "VALOR ISS", "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.valDia && renderHeaderCell("conferido_final", <span className="inline-flex items-center justify-center gap-1.5 w-full"><BadgeDollarSign className="h-3.5 w-3.5 text-muted-foreground" />TOTAL DIA</span>, "px-3 py-2.5 font-semibold text-center")}
-                    {visibleCols.materiais && renderHeaderCell("materiais", "MATERIAIS", "px-3 py-2.5 font-semibold text-center")}
 
                     {visibleCols.modalidadeFinanceira && <th className="px-3 py-2.5 font-semibold text-center">MODALIDADE</th>}
                     {visibleCols.dataVencimento && <th className="px-3 py-2.5 font-semibold text-center">VENCIMENTO</th>}
@@ -1871,9 +1938,9 @@ export const OperacoesTableBlock = ({
                           {visibleCols.valUnit && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{valUnit}</td>}
                           {visibleCols.qtd && renderInlineCell(item, "quantidade", qtdText, "text", "px-3 text-center font-display font-medium whitespace-nowrap")}
                           {visibleCols.valorDescarga && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{valorDescarga}</td>}
+                          {visibleCols.materiais && <td className="px-3 py-3 text-center whitespace-nowrap"><span className="text-blue-600 font-medium">{materiais !== "R$ 0,00" ? materiais : "-"}</span></td>}
                           {visibleCols.valorIss && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{valorIss}</td>}
                           {visibleCols.valDia && <td className="px-3 py-3 text-center whitespace-nowrap"><span className="font-display font-bold text-foreground">{valDia}</span></td>}
-                          {visibleCols.materiais && <td className="px-3 py-3 text-center whitespace-nowrap"><span className="text-blue-600 font-medium">{materiais !== "R$ 0,00" ? materiais : "-"}</span></td>}
                           {visibleCols.modalidadeFinanceira && (
                             <td className="px-3 text-center whitespace-nowrap">
                               {item.modalidadeFinanceira ? (
@@ -2560,6 +2627,97 @@ export const OperacoesTableBlock = ({
                   <Input id="valor_descarga" value={editForm.valor_descarga} readOnly disabled className="bg-muted/50 cursor-not-allowed" />
                 </div>
 
+                {/* Seção de Materiais Extras (Reposicionada para logo após os dados operacionais) */}
+                <div className="space-y-4 md:col-span-2 pt-4 border-t border-border bg-muted/5 rounded-lg p-3">
+                  <div className="flex items-center gap-3">
+                    <Checkbox
+                      id="showMateriaisEdit"
+                      checked={showMateriaisEdit}
+                      onCheckedChange={(checked) => setShowMateriaisEdit(checked === true)}
+                    />
+                    <div className="space-y-1">
+                      <Label htmlFor="showMateriaisEdit" className="cursor-pointer font-semibold flex items-center gap-2">
+                        <PackagePlus className="h-4 w-4 text-primary" />
+                        Acrescentar materiais nesta operação?
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        Use para adicionar novos materiais que não foram lançados inicialmente.
+                      </p>
+                    </div>
+                  </div>
+
+                  {showMateriaisEdit && (
+                    <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                      <div className="flex gap-2">
+                        <Select onValueChange={handleAddMaterialToEdit}>
+                          <SelectTrigger className="flex-1 h-10 bg-background">
+                            <SelectValue placeholder="Selecione um material para adicionar..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {materiaisDisponiveis.map((m: any) => (
+                              <SelectItem key={m.id} value={m.id}>
+                                {m.nome} ({m.unidade}) - {valUnitFormatter(m.valor_unitario)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {selectedMateriaisEdit.length > 0 && (
+                        <div className="rounded-xl border border-border bg-background overflow-hidden shadow-sm">
+                          <table className="w-full text-sm">
+                            <thead className="bg-muted/50 text-muted-foreground uppercase text-[10px] tracking-wider">
+                              <tr>
+                                <th className="px-3 py-2 text-left font-medium">Material</th>
+                                <th className="px-3 py-2 text-center font-medium w-24">Qtd</th>
+                                <th className="px-3 py-2 text-right font-medium">Subtotal</th>
+                                <th className="px-3 py-2 text-center font-medium w-10"></th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border">
+                              {selectedMateriaisEdit.map((m) => (
+                                <tr key={m.material_id} className="hover:bg-muted/30">
+                                  <td className="px-3 py-2 font-medium">{m.nome_snapshot}</td>
+                                  <td className="px-3 py-2">
+                                    <Input
+                                      type="number"
+                                      className="h-8 text-center"
+                                      value={m.quantidade}
+                                      onChange={(e) => updateMaterialQtyInEdit(m.material_id, parseFloat(e.target.value))}
+                                    />
+                                  </td>
+                                  <td className="px-3 py-2 text-right text-blue-600 font-semibold">
+                                    {valUnitFormatter(m.valor_total)}
+                                  </td>
+                                  <td className="px-3 py-2 text-center">
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7 text-destructive hover:bg-destructive/10"
+                                      onClick={() => removeMaterialFromEdit(m.material_id)}
+                                    >
+                                      <Trash className="h-4 w-4" />
+                                    </Button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                            <tfoot className="bg-muted/10 font-bold border-t border-border">
+                              <tr>
+                                <td colSpan={2} className="px-3 py-4 text-right text-xs uppercase text-muted-foreground">Total Novos Materiais:</td>
+                                <td className="px-3 py-4 text-right text-blue-700 text-base">
+                                  {valUnitFormatter(selectedMateriaisEdit.reduce((acc, m) => acc + m.valor_total, 0))}
+                                </td>
+                                <td></td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 <div className="space-y-2 md:col-span-2">
                   <Label>Forma de pagamento</Label>
                   <Select value={editForm.forma_pagamento || ""} onValueChange={(v) => updateField("forma_pagamento", v)}>
@@ -2623,6 +2781,6 @@ export const OperacoesTableBlock = ({
         title={justificationType === "devolucao" ? "Motivo da Devolução" : "Justificativa de Alteração (Override)"}
         description={justificationType === "devolucao" ? "Forneça o motivo pelo qual esta operação está sendo devolvida." : undefined}
       />
-    </div>
+    </div >
   );
 };

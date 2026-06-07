@@ -49,6 +49,7 @@ export function FormStepSummary({
     const empresaId = watch("empresa_id");
 
     const [quickRegOpen, setQuickRegOpen] = useState(false);
+    const [usouMateriais, setUsouMateriais] = useState(selectedMateriais.length > 0);
 
     return (
         <div className="space-y-6">
@@ -92,6 +93,132 @@ export function FormStepSummary({
                     <Input type="number" {...register("quantidade")} />
                     {errors.quantidade && <p className="text-xs text-red-500">{errors.quantidade.message}</p>}
                 </div>
+                {/* Seção de Materiais Estilo Nota Fiscal */}
+                {materiaisDisponiveis.length > 0 && (
+                    <div className="md:col-span-2 space-y-4">
+                        <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                            <div className="space-y-0.5">
+                                <Label className="text-sm font-bold">Utilizou materiais extras?</Label>
+                                <p className="text-[10px] text-muted-foreground">Marque para adicionar itens como filme, pallets, etc.</p>
+                            </div>
+                            <input
+                                type="checkbox"
+                                checked={usouMateriais}
+                                onChange={(e) => {
+                                    const checked = e.target.checked;
+                                    setUsouMateriais(checked);
+                                    if (!checked) setSelectedMateriais?.([]);
+                                }}
+                                className="h-6 w-6 rounded-md border-slate-300 text-primary focus:ring-primary cursor-pointer"
+                            />
+                        </div>
+
+                        {usouMateriais && (
+                            <div className="space-y-3 p-4 bg-white rounded-xl border border-primary/10 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-semibold text-primary uppercase">Selecionar Materiais</Label>
+                                    <div className="flex gap-2">
+                                        <Select
+                                            onValueChange={(matId) => {
+                                                const mat = materiaisDisponiveis.find(m => m.id === matId);
+                                                if (mat && !selectedMateriais.find(sm => sm.material_id === matId)) {
+                                                    setSelectedMateriais?.([...selectedMateriais, {
+                                                        material_id: mat.id,
+                                                        nome_snapshot: mat.nome,
+                                                        unidade_snapshot: mat.unidade,
+                                                        valor_unitario_snapshot: mat.valor_unitario,
+                                                        quantidade: 1,
+                                                        valor_total: mat.valor_unitario
+                                                    }]);
+                                                }
+                                            }}
+                                        >
+                                            <SelectTrigger className="flex-1 h-11 bg-slate-50 border-slate-200">
+                                                <SelectValue placeholder="Toque para escolher um material..." />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {materiaisDisponiveis
+                                                    .filter(m => !selectedMateriais.find(sm => sm.material_id === m.id))
+                                                    .map(m => (
+                                                        <SelectItem key={m.id} value={m.id}>
+                                                            {m.nome} - {formatCurrency(m.valor_unitario)}
+                                                        </SelectItem>
+                                                    ))
+                                                }
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+
+                                {/* Lista de Materiais Adicionados */}
+                                <div className="space-y-2 pt-2">
+                                    {selectedMateriais.length === 0 ? (
+                                        <div className="text-center py-6 border-2 border-dashed border-slate-100 rounded-xl">
+                                            <Package className="h-8 w-8 text-slate-200 mx-auto mb-2" />
+                                            <p className="text-xs text-muted-foreground">Nenhum material adicionado ainda.</p>
+                                        </div>
+                                    ) : (
+                                        <div className="grid gap-2">
+                                            {selectedMateriais.map((mat, idx) => (
+                                                <div key={mat.material_id} className="flex flex-col sm:flex-row sm:items-center gap-2 p-2 bg-slate-50 rounded-xl border border-slate-200 animate-in slide-in-from-right-1">
+                                                    {/* Nome e Preço Unitário */}
+                                                    <div className="flex-1 min-w-0 px-1">
+                                                        <p className="text-xs font-bold text-slate-800 truncate">{mat.nome_snapshot}</p>
+                                                        <p className="text-[9px] text-muted-foreground">
+                                                            {formatCurrency(mat.valor_unitario_snapshot)} / {mat.unidade_snapshot}
+                                                        </p>
+                                                    </div>
+
+                                                    {/* Controles: Qtd, Subtotal e Delete */}
+                                                    <div className="flex items-center gap-2 bg-white/50 p-1 rounded-lg sm:bg-transparent sm:p-0">
+                                                        <div className="w-12">
+                                                            <Input
+                                                                type="number"
+                                                                className="h-8 text-[10px] text-center font-bold px-1"
+                                                                value={mat.quantidade}
+                                                                min={1}
+                                                                step={mat.unidade_snapshot === 'KG' ? '0.1' : '1'}
+                                                                onChange={(e) => {
+                                                                    const newQty = Number(e.target.value);
+                                                                    if (newQty >= 0) {
+                                                                        const newMats = [...selectedMateriais];
+                                                                        newMats[idx] = {
+                                                                            ...newMats[idx],
+                                                                            quantidade: newQty,
+                                                                            valor_total: newQty * mat.valor_unitario_snapshot
+                                                                        };
+                                                                        setSelectedMateriais?.(newMats);
+                                                                    }
+                                                                }}
+                                                            />
+                                                        </div>
+                                                        <div className="text-right min-w-[60px]">
+                                                            <p className="text-[11px] font-black text-primary">{formatCurrency(mat.valor_total)}</p>
+                                                        </div>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-8 w-8 text-destructive hover:bg-red-50 rounded-full shrink-0"
+                                                            onClick={() => setSelectedMateriais?.(selectedMateriais.filter((_, i) => i !== idx))}
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            <div className="flex justify-between items-center px-3 py-2 bg-primary/5 rounded-lg border border-primary/10 mt-1">
+                                                <span className="text-[9px] font-bold text-primary uppercase tracking-wider">Subtotal Materiais:</span>
+                                                <span className="text-sm font-black text-primary">
+                                                    {formatCurrency(selectedMateriais.reduce((acc, m) => acc + m.valor_total, 0))}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 <div className="space-y-2">
                     <Label>Qtd. Colab. (Manual)</Label>
@@ -244,100 +371,6 @@ export function FormStepSummary({
                     </div>
                 </div>
             </div>
-
-            {/* Materiais Utilizados Section */}
-            {materiaisDisponiveis.length > 0 && (
-                <div className="space-y-3 bg-slate-50/50 p-4 rounded-xl border border-slate-100">
-                    <div className="flex items-center justify-between">
-                        <Label className="text-sm font-bold flex items-center gap-2">
-                            <Package className="h-4 w-4 text-primary" />
-                            Materiais utilizados (Opcional)
-                        </Label>
-                        {selectedMateriais.length < materiaisDisponiveis.length && (
-                            <Select
-                                onValueChange={(matId) => {
-                                    const mat = materiaisDisponiveis.find(m => m.id === matId);
-                                    if (mat && !selectedMateriais.find(sm => sm.material_id === matId)) {
-                                        setSelectedMateriais?.([...selectedMateriais, {
-                                            material_id: mat.id,
-                                            nome_snapshot: mat.nome,
-                                            unidade_snapshot: mat.unidade,
-                                            valor_unitario_snapshot: mat.valor_unitario,
-                                            quantidade: 1,
-                                            valor_total: mat.valor_unitario
-                                        }]);
-                                    }
-                                }}
-                            >
-                                <SelectTrigger className="w-[180px] h-8 bg-white">
-                                    <SelectValue placeholder="Adicionar material..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {materiaisDisponiveis
-                                        .filter(m => !selectedMateriais.find(sm => sm.material_id === m.id))
-                                        .map(m => (
-                                            <SelectItem key={m.id} value={m.id}>{m.nome}</SelectItem>
-                                        ))
-                                    }
-                                </SelectContent>
-                            </Select>
-                        )}
-                    </div>
-
-                    <div className="space-y-2">
-                        {selectedMateriais.length === 0 ? (
-                            <p className="text-[10px] text-muted-foreground italic text-center py-2 border border-dashed border-slate-200 rounded-lg">
-                                Nenhum material selecionado. Use o botão acima para adicionar.
-                            </p>
-                        ) : (
-                            <div className="grid gap-2">
-                                {selectedMateriais.map((mat, idx) => (
-                                    <div key={mat.material_id} className="flex items-center gap-3 p-2 bg-white rounded-lg border border-slate-200 shadow-sm animate-in slide-in-from-right-1">
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-xs font-bold truncate">{mat.nome_snapshot}</p>
-                                            <p className="text-[10px] text-muted-foreground">
-                                                {formatCurrency(mat.valor_unitario_snapshot)} / {mat.unidade_snapshot}
-                                            </p>
-                                        </div>
-                                        <div className="w-20">
-                                            <Input
-                                                type="number"
-                                                className="h-8 text-xs text-center"
-                                                value={mat.quantidade}
-                                                min={1}
-                                                step={mat.unidade_snapshot === 'KG' ? '0.1' : '1'}
-                                                onChange={(e) => {
-                                                    const newQty = Number(e.target.value);
-                                                    if (newQty >= 0) {
-                                                        const newMats = [...selectedMateriais];
-                                                        newMats[idx] = {
-                                                            ...newMats[idx],
-                                                            quantidade: newQty,
-                                                            valor_total: newQty * mat.valor_unitario_snapshot
-                                                        };
-                                                        setSelectedMateriais?.(newMats);
-                                                    }
-                                                }}
-                                            />
-                                        </div>
-                                        <div className="text-right w-24">
-                                            <p className="text-xs font-bold">{formatCurrency(mat.valor_total)}</p>
-                                        </div>
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-7 w-7 text-destructive hover:bg-red-50"
-                                            onClick={() => setSelectedMateriais?.(selectedMateriais.filter((_, i) => i !== idx))}
-                                        >
-                                            <Trash2 className="h-3.5 w-3.5" />
-                                        </Button>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
 
             <Card className="p-4 bg-primary text-primary-foreground shadow-lg shadow-primary/20 border-none overflow-hidden relative group">
                 <div className="absolute top-0 right-0 -mr-4 -mt-4 h-24 w-24 bg-white/10 rounded-full blur-2xl group-hover:bg-white/20 transition-all duration-500"></div>

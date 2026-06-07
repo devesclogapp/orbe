@@ -144,6 +144,7 @@ export function calcularValoresOperacao({
 
   const custoIssCalculado = valorDescargaCalculado * percentualCalculado;
   const totalFilmeCalculado = Math.max(quantidadeFilme, 0) * Math.max(valorUnitarioFilme, 0);
+  // Fórmula ajustada: O ISS aumenta o valor total do dia
   const totalFinalCalculado = valorDescargaCalculado + custoIssCalculado + totalFilmeCalculado + (valorTotalMateriais || 0);
 
   return {
@@ -173,17 +174,10 @@ export function processarOperacao(operacao: any, empresas: any[] = []) {
     valorTotalMateriais: Number(operacao.valor_total_materiais || 0),
   });
 
-  const valorDescargaProp = operacao.valor_descarga !== null && operacao.valor_descarga !== undefined && operacao.valor_descarga !== '' ? Number(operacao.valor_descarga) : null;
-  const custoComIssProp = operacao.custo_com_iss !== null && operacao.custo_com_iss !== undefined && operacao.custo_com_iss !== '' ? Number(operacao.custo_com_iss) : null;
-  const totalFinalProp = operacao.total_final !== null && operacao.total_final !== undefined && operacao.total_final !== '' 
-    ? Number(operacao.total_final) 
-    : (operacao.valor_total !== null && operacao.valor_total !== undefined && operacao.valor_total !== '' 
-       ? Number(operacao.valor_total) 
-       : null);
-
-  const valor_descarga = valorDescargaProp ?? valoresCalculados.valorDescargaCalculado;
-  const custo_com_iss = custoComIssProp ?? valoresCalculados.custoIssCalculado;
-  const total_final = totalFinalProp ?? valoresCalculados.totalFinalCalculado;
+  // Priorizamos o cálculo em tempo real para garantir que a regra (Descarga + ISS + Materiais) seja refletida
+  const valor_descarga = valoresCalculados.valorDescargaCalculado;
+  const custo_com_iss = valoresCalculados.custoIssCalculado;
+  const total_final = valoresCalculados.totalFinalCalculado;
 
   const empresa = empresas.find?.((e: any) => e.id === operacao.empresa_id) || {};
 

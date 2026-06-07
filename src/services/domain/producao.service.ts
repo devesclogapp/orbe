@@ -871,6 +871,37 @@ class OperacaoProducaoServiceClass {
       .then((items) => items.find((item: any) => item.id === registro.id) ?? registro);
   }
 
+  async vincularMateriais(
+    operacaoId: string,
+    materiais: Array<{
+      material_id: string;
+      nome_snapshot: string;
+      unidade_snapshot: string;
+      valor_unitario_snapshot: number;
+      quantidade: number;
+      valor_total: number;
+    }>
+  ) {
+    if (!materiais || materiais.length === 0) return null;
+
+    const { error } = await operationalClient
+      .from('operacao_producao_materiais')
+      .insert(
+        materiais.map((m) => ({
+          operacao_id: operacaoId,
+          material_id: m.material_id,
+          nome_snapshot: m.nome_snapshot,
+          unidade_snapshot: m.unidade_snapshot,
+          valor_unitario_snapshot: m.valor_unitario_snapshot,
+          quantidade: m.quantidade,
+          valor_total: m.valor_total,
+        }))
+      );
+
+    if (error) throw error;
+    return true;
+  }
+
   async update(id: string, payload: Record<string, any>) {
     const safePayload = this.sanitizeOperacaoPayload(payload);
     const { data, error } = await operationalClient
