@@ -164,6 +164,8 @@ const buildOperationUpdatePayload = (editingItem: any, editForm: EditableOperati
     valor_descarga: valores.valorDescargaCalculado,
     custo_com_iss: valores.custoIssCalculado,
     valor_total_filme: valores.totalFilmeCalculado, // Valor correto calculado para filme
+    valor_total_materiais: Number(editingItem.valor_total_materiais || 0),
+    valor_total: valores.totalFinalCalculado,
     status_pagamento: editForm.status_pagamento || null,
     data_pagamento: editForm.status_pagamento === "RECEBIDO"
       ? (editingItem.data_pagamento ?? new Date().toISOString().split("T")[0])
@@ -548,7 +550,7 @@ export const OperacoesTableBlock = ({
     inicio: false, fim: false, valUnit: true, valorDescarga: false, valorIss: true, valDia: true, acoes: true,
     placa: false, fornecedor: false, qtdCol: true,
     idPlanilha: false, empresaPlanilha: false, unidade: true, formaPagamento: false, observacao: false,
-    modalidadeFinanceira: true, dataVencimento: true, statusPagamento: true, encarregado: true,
+    modalidadeFinanceira: true, dataVencimento: true, statusPagamento: true, encarregado: true, materiais: true,
   };
 
 
@@ -1791,6 +1793,7 @@ export const OperacoesTableBlock = ({
                     {visibleCols.valorDescarga && renderHeaderCell("valorDescarga", "VALOR DESCARGA", "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.valorIss && renderHeaderCell("valorIss", "VALOR ISS", "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.valDia && renderHeaderCell("conferido_final", <span className="inline-flex items-center justify-center gap-1.5 w-full"><BadgeDollarSign className="h-3.5 w-3.5 text-muted-foreground" />TOTAL DIA</span>, "px-3 py-2.5 font-semibold text-center")}
+                    {visibleCols.materiais && renderHeaderCell("materiais", "MATERIAIS", "px-3 py-2.5 font-semibold text-center")}
 
                     {visibleCols.modalidadeFinanceira && <th className="px-3 py-2.5 font-semibold text-center">MODALIDADE</th>}
                     {visibleCols.dataVencimento && <th className="px-3 py-2.5 font-semibold text-center">VENCIMENTO</th>}
@@ -1824,6 +1827,7 @@ export const OperacoesTableBlock = ({
                     const valUnit = valUnitFormatter(item.valor_unitario_label ?? item.valor_unitario_snapshot ?? item.valor_unitario ?? 0);
                     const valorDescarga = valUnitFormatter(item.valor_descarga);
                     const valorIss = valUnitFormatter(item.custo_com_iss);
+                    const materiais = valUnitFormatter(item.valor_total_materiais);
                     const valDia = valUnitFormatter(valorTotal);
 
                     const statusOriginal = String(item.status || getDisplayStatusOriginal(item));
@@ -1868,7 +1872,8 @@ export const OperacoesTableBlock = ({
                           {visibleCols.qtd && renderInlineCell(item, "quantidade", qtdText, "text", "px-3 text-center font-display font-medium whitespace-nowrap")}
                           {visibleCols.valorDescarga && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{valorDescarga}</td>}
                           {visibleCols.valorIss && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{valorIss}</td>}
-                          {visibleCols.valDia && <td className="px-3 text-center font-display font-semibold text-foreground whitespace-nowrap">{valDia}</td>}
+                          {visibleCols.valDia && <td className="px-3 py-3 text-center whitespace-nowrap"><span className="font-display font-bold text-foreground">{valDia}</span></td>}
+                          {visibleCols.materiais && <td className="px-3 py-3 text-center whitespace-nowrap"><span className="text-blue-600 font-medium">{materiais !== "R$ 0,00" ? materiais : "-"}</span></td>}
                           {visibleCols.modalidadeFinanceira && (
                             <td className="px-3 text-center whitespace-nowrap">
                               {item.modalidadeFinanceira ? (
@@ -2057,7 +2062,7 @@ export const OperacoesTableBlock = ({
                                           </tr>
                                         </thead>
                                         <tbody className="divide-y divide-border">
-                                          {colaboradoresOperacao.map((c: any) => {
+                                          {colaboradoresOperacao.map((c: any, idx: number) => {
                                             const isInfraction = c.had_infraction === true;
                                             return (
                                               <tr key={c.collaborator_id || c.colaboradores?.id || `collab-${idx}`} className="hover:bg-muted/50">
@@ -2080,6 +2085,46 @@ export const OperacoesTableBlock = ({
                                     </div>
                                   );
                                 })()}
+
+                                {/* Materiais Utilizados */}
+                                {Array.isArray(item.operacao_producao_materiais) && item.operacao_producao_materiais.length > 0 && (
+                                  <div className="space-y-4">
+                                    <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                                      <Package className="h-4 w-4 text-muted-foreground" />
+                                      Materiais Utilizados
+                                    </h4>
+                                    <div className="rounded-md border border-border bg-background overflow-hidden max-w-3xl">
+                                      <table className="w-full text-sm">
+                                        <thead className="bg-muted text-muted-foreground">
+                                          <tr className="border-b border-border">
+                                            <th className="px-4 py-2 text-left font-medium">Material</th>
+                                            <th className="px-4 py-2 text-center font-medium">Qtd</th>
+                                            <th className="px-4 py-2 text-right font-medium">Val. Unit.</th>
+                                            <th className="px-4 py-2 text-right font-medium">Subtotal</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-border">
+                                          {item.operacao_producao_materiais.map((m: any, idx: number) => (
+                                            <tr key={m.id || `mat-${idx}`} className="hover:bg-muted/50">
+                                              <td className="px-4 py-2">{m.nome_snapshot || 'Material'}</td>
+                                              <td className="px-4 py-2 text-center">{m.quantidade} {m.unidade_snapshot}</td>
+                                              <td className="px-4 py-2 text-right">{valUnitFormatter(m.valor_unitario_snapshot)}</td>
+                                              <td className="px-4 py-2 text-right font-medium text-blue-600">{valUnitFormatter(m.valor_total)}</td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                        <tfoot className="bg-muted/50 font-semibold">
+                                          <tr>
+                                            <td colSpan={3} className="px-4 py-2 text-right">Total Materiais:</td>
+                                            <td className="px-4 py-2 text-right text-blue-700">
+                                              {valUnitFormatter(item.operacao_producao_materiais.reduce((acc: number, m: any) => acc + (m.valor_total || 0), 0))}
+                                            </td>
+                                          </tr>
+                                        </tfoot>
+                                      </table>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -2406,8 +2451,20 @@ export const OperacoesTableBlock = ({
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Valor descarga</p>
-                    <p className="text-sm font-bold text-primary">
+                    <p className="text-sm font-medium text-foreground">
                       {valUnitFormatter(selectedOpDetails.valor_descarga)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Materiais</p>
+                    <p className="text-sm font-medium text-blue-600">
+                      {valUnitFormatter(selectedOpDetails.valor_total_materiais)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground text-brand">Total Final</p>
+                    <p className="text-sm font-bold text-brand">
+                      {valUnitFormatter(selectedOpDetails.total_final || selectedOpDetails.valor_total)}
                     </p>
                   </div>
                 </div>

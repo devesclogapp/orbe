@@ -1081,3 +1081,37 @@ class FornecedorServiceClass {
   }
 }
 export const FornecedorService = new FornecedorServiceClass();
+// ==================================================
+// MATERIAIS OPERACIONAIS
+// ==================================================
+
+class MateriaisOperacionaisServiceClass extends BaseService<'materiais_operacionais'> {
+  constructor() { super('materiais_operacionais'); }
+
+  async getAll() {
+    const { data, error } = await supabase
+      .from('materiais_operacionais')
+      .select('*')
+      .is('deleted_at', null)
+      .order('nome', { ascending: true });
+    if (error) throw error;
+    return data ?? [];
+  }
+
+  async getAllActive() {
+    const { data, error } = await supabase
+      .from('materiais_operacionais')
+      .select('*')
+      .eq('ativo', true)
+      .is('deleted_at', null)
+      .order('nome', { ascending: true });
+    if (error) throw error;
+    return data ?? [];
+  }
+
+  async create(payload: Record<string, any>) {
+    const tenantId = await getCurrentTenantId();
+    return super.create({ ...payload, tenant_id: tenantId } as any);
+  }
+}
+export const MateriaisOperacionaisService = new MateriaisOperacionaisServiceClass();

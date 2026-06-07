@@ -120,6 +120,7 @@ export function calcularValoresOperacao({
   quantidadeFilme = 0,
   valorUnitarioFilme = 0,
   nfRaw,
+  valorTotalMateriais = 0,
 }: {
   quantidade: number;
   valorUnitario: number;
@@ -127,6 +128,7 @@ export function calcularValoresOperacao({
   quantidadeFilme?: number;
   valorUnitarioFilme?: number;
   nfRaw?: string | null;
+  valorTotalMateriais?: number;
 }) {
   const valorDescargaCalculado = Math.max(quantidade, 0) * Math.max(valorUnitario, 0);
   const nfInformada = String(nfRaw ?? "")
@@ -142,13 +144,14 @@ export function calcularValoresOperacao({
 
   const custoIssCalculado = valorDescargaCalculado * percentualCalculado;
   const totalFilmeCalculado = Math.max(quantidadeFilme, 0) * Math.max(valorUnitarioFilme, 0);
-  const totalFinalCalculado = valorDescargaCalculado + custoIssCalculado + totalFilmeCalculado;
+  const totalFinalCalculado = valorDescargaCalculado + custoIssCalculado + totalFilmeCalculado + (valorTotalMateriais || 0);
 
   return {
     percentualCalculado,
     valorDescargaCalculado,
     custoIssCalculado,
     totalFilmeCalculado,
+    valorTotalMateriais: valorTotalMateriais || 0,
     totalFinalCalculado,
   };
 }
@@ -167,6 +170,7 @@ export function processarOperacao(operacao: any, empresas: any[] = []) {
     quantidadeFilme,
     valorUnitarioFilme,
     nfRaw: operacao.nf_numero,
+    valorTotalMateriais: Number(operacao.valor_total_materiais || 0),
   });
 
   const valorDescargaProp = operacao.valor_descarga !== null && operacao.valor_descarga !== undefined && operacao.valor_descarga !== '' ? Number(operacao.valor_descarga) : null;
@@ -238,5 +242,6 @@ export function processarOperacao(operacao: any, empresas: any[] = []) {
     formaPagamento: formaPagamentoValue,
     observacao: observacaoValue,
     encarregadoLabel: encarregadoValue,
+    valor_total_materiais: Number(operacao.valor_total_materiais || 0),
   };
 }

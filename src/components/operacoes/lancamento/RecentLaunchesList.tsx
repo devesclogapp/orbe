@@ -15,12 +15,13 @@ import { cn } from "@/lib/utils";
 interface RecentLaunchesListProps {
     date: string;
     empresaId: string;
+    unidadeId?: string | null;
 }
 
-export function RecentLaunchesList({ date, empresaId }: RecentLaunchesListProps) {
+export function RecentLaunchesList({ date, empresaId, unidadeId }: RecentLaunchesListProps) {
     const { data: launches = [], isLoading } = useQuery({
-        queryKey: ["producao_recente", date, empresaId],
-        queryFn: () => OperacaoProducaoService.getByDate(date, empresaId),
+        queryKey: ["producao_recente", date, empresaId, unidadeId],
+        queryFn: () => OperacaoProducaoService.getByDate(date, empresaId, unidadeId),
         enabled: !!empresaId
     });
 
@@ -74,7 +75,7 @@ export function RecentLaunchesList({ date, empresaId }: RecentLaunchesListProps)
                                     <td className="px-4 py-4">
                                         <div className="space-y-0.5">
                                             <div className="text-xs font-bold text-slate-900 line-clamp-1">
-                                                {op.fornecedores?.nome || op.fornecedor_label || "Fornecedor s/ nome"}
+                                                {op.fornecedores?.nome || op.fornecedor_label || op.fornecedor_id || "Fornecedor"}
                                             </div>
                                             <div className="text-[10px] text-muted-foreground flex items-center gap-1">
                                                 <Package className="h-2.5 w-2.5" />

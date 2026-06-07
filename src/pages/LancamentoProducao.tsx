@@ -23,7 +23,8 @@ import {
     ProdutoCargaService,
     FormaPagamentoOperacionalService,
     TransportadoraClienteService,
-    FornecedorService
+    FornecedorService,
+    MateriaisOperacionaisService
 } from "@/services/base.service";
 
 // Modular Components
@@ -32,7 +33,7 @@ import { FormStepSelector } from "@/components/operacoes/lancamento/FormStepSele
 import { FormStepContext } from "@/components/operacoes/lancamento/FormStepContext";
 import { FormStepSummary } from "@/components/operacoes/lancamento/FormStepSummary";
 import { FormStepTeam } from "@/components/operacoes/lancamento/FormStepTeam";
-import { DEFAULT_PRODUCTION_VALUES } from "@/components/operacoes/lancamento/schema";
+import { DEFAULT_PRODUCTION_VALUES, type ProductionFormValues } from "@/components/operacoes/lancamento/schema";
 import { RecentLaunchesList } from "@/components/operacoes/lancamento/RecentLaunchesList";
 
 const LancamentoProducao = () => {
@@ -41,6 +42,14 @@ const LancamentoProducao = () => {
     const queryClient = useQueryClient();
     const [etapa, setEtapa] = useState(1);
     const [selectedColaboradores, setSelectedColaboradores] = useState<string[]>([]);
+    const [selectedMateriais, setSelectedMateriais] = useState<Array<{
+        material_id: string;
+        nome_snapshot: string;
+        unidade_snapshot: string;
+        valor_unitario_snapshot: number;
+        quantidade: number;
+        valor_total: number;
+    }>>([]);
     const empresaId = user?.user_metadata?.empresa_id || "";
 
     const { form, loadingPreco, regrasPeriodo, selectedPeriodo } = useProductionForm({
@@ -82,6 +91,10 @@ const LancamentoProducao = () => {
         queryKey: ["colaboradores_prod", currentEmpresaId],
         queryFn: () => ColaboradorService.getWithEmpresa(currentEmpresaId),
         enabled: !!currentEmpresaId
+    });
+    const { data: materiaisDisponiveis = [] } = useQuery({
+        queryKey: ["materiais_ativos"],
+        queryFn: () => MateriaisOperacionaisService.getAllActive()
     });
 
     const currentTipoLancamento = form.watch("tipo_lancamento");
@@ -144,7 +157,8 @@ const LancamentoProducao = () => {
                 valor_unitario_snapshot: valor_unitario,
                 percentual_iss: (iss_percentual || 0) / 100,
                 custo_com_iss: valor_iss || 0,
-                valor_total: valor_total_liquido || (formData.quantidade * (valor_unitario || 0)),
+                valor_total_materiais: selectedMateriais.reduce((acc, m) => acc + m.valor_total, 0),
+                valor_total: (valor_total_liquido || (formData.quantidade * (valor_unitario || 0))) + selectedMateriais.reduce((acc, m) => acc + m.valor_total, 0),
                 valor_descarga: formData.quantidade * (valor_unitario || 0),
                 tipo_calculo_snapshot: "volume",
                 status: "aguardando_validacao",
@@ -160,7 +174,7 @@ const LancamentoProducao = () => {
                 had_infraction: false
             }));
 
-            return OperacaoProducaoService.createWithColaboradores(payload, colabPayload);
+            return OperacaoProducaoService.createWithColaboradores(payload, colabPayload, selectedMateriais);
         },
         onSuccess: () => {
             toast.success("Produção lançada com sucesso!");
@@ -170,6 +184,7 @@ const LancamentoProducao = () => {
             setEtapa(1);
             form.reset(DEFAULT_PRODUCTION_VALUES);
             setSelectedColaboradores([]);
+            setSelectedMateriais([]);
             navigate('/producao');
 
             // Garantir que a lista de hoje de baixo atualize
@@ -179,7 +194,18 @@ const LancamentoProducao = () => {
     });
 
     const handleNext = async () => {
-        const isValid = await form.trigger();
+        let fieldsToValidate: any[] = [];
+
+        if (etapa === 2) {
+            fieldsToValidate = ['empresa_id', 'data', 'tipo_servico'];
+        } else if (etapa === 3) {
+            fieldsToValidate = ['quantidade', 'quantidade_colaboradores', 'forma_pagamento'];
+            if (currentTipoLancamento === 'servicos_especificos') {
+                fieldsToValidate.push('regra_periodo_id');
+            }
+        }
+
+        const isValid = await form.trigger(fieldsToValidate);
         if (isValid) {
             setEtapa(prev => prev + 1);
         } else {
@@ -216,7 +242,16 @@ const LancamentoProducao = () => {
                     </div>
                 </div>
 
-                <form onSubmit={form.handleSubmit((data) => mutation.mutate(data))} className="space-y-6">
+                <form
+                    onSubmit={form.handleSubmit((data) => mutation.mutate(data))}
+                    className="space-y-6"
+                    onKeyDown={(e) => {
+                        // Impedir que o Enter submeta o formulário acidentalmente, exceto em campos de texto área
+                        if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
+                            e.preventDefault();
+                        }
+                    }}
+                >
                     {etapa === 1 && (
                         <FormStepSelector
                             form={form}
@@ -252,6 +287,9 @@ const LancamentoProducao = () => {
                                 loadingPreco={loadingPreco}
                                 regrasPeriodo={regrasPeriodo}
                                 selectedPeriodo={selectedPeriodo}
+                                materiaisDisponiveis={materiaisDisponiveis}
+                                selectedMateriais={selectedMateriais}
+                                setSelectedMateriais={setSelectedMateriais}
                             />
                         </div>
                     )}
@@ -278,7 +316,11 @@ const LancamentoProducao = () => {
                                     Próximo <ChevronRight className="h-4 w-4 ml-2" />
                                 </Button>
                             ) : (
-                                <Button type="submit" className="flex-1 bg-primary" disabled={mutation.isPending}>
+                                <Button
+                                    type="submit"
+                                    className="flex-1 bg-primary"
+                                    disabled={mutation.isPending || selectedColaboradores.length === 0}
+                                >
                                     {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
                                     Finalizar Lançamento
                                 </Button>
@@ -296,8 +338,9 @@ const LancamentoProducao = () => {
 
                     <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
                         <RecentLaunchesList
-                            date={new Date().toISOString().split('T')[0]}
-                            empresaId={empresaId}
+                            date={new Date().toLocaleDateString('en-CA')} // Formato YYYY-MM-DD local
+                            empresaId={currentEmpresaId}
+                            unidadeId={form.watch("unidade_id")}
                         />
                     </div>
                 </div>

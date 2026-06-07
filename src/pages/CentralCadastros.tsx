@@ -101,6 +101,7 @@ type CadastroTabValue =
   | "transportadoras"
   | "fornecedores"
   | "servicos"
+  | "materiais"
   | "parametros";
 
 type ProdutoCargaTargetType = "fornecedor" | "transportadora" | "empresa";
@@ -1398,6 +1399,51 @@ const CentralCadastros = () => {
     });
   };
 
+  const [materialModalOpen, setMaterialModalOpen] = useState(false);
+  const [editingMaterial, setEditingMaterial] = useState<any>(null);
+  const [materialForm, setMaterialForm] = useState({
+    nome: "",
+    unidade_medida: "",
+    valor_unitario: "",
+    ativo: true,
+  });
+
+  const { data: materiais = [] } = useQuery({
+    queryKey: ["materiais_operacionais"],
+    queryFn: () => MateriaisOperacionaisService.getAll(),
+    enabled: activeTab === "materiais",
+  });
+
+  const createMaterialMutation = useMutation({
+    mutationFn: (payload: any) => MateriaisOperacionaisService.create(payload),
+    onSuccess: async () => {
+      toast.success("Material cadastrado com sucesso");
+      setMaterialModalOpen(false);
+      setMaterialForm({ nome: "", unidade_medida: "", valor_unitario: "", ativo: true });
+      await queryClient.invalidateQueries({ queryKey: ["materiais_operacionais"] });
+    },
+    onError: (err: any) => toast.error("Erro ao cadastrar material", { description: err.message }),
+  });
+
+  const updateMaterialMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: any }) => MateriaisOperacionaisService.update(id, payload),
+    onSuccess: async () => {
+      toast.success("Material atualizado com sucesso");
+      setEditingMaterial(null);
+      await queryClient.invalidateQueries({ queryKey: ["materiais_operacionais"] });
+    },
+    onError: (err: any) => toast.error("Erro ao atualizar material", { description: err.message }),
+  });
+
+  const deleteMaterialMutation = useMutation({
+    mutationFn: (id: string) => MateriaisOperacionaisService.delete(id),
+    onSuccess: async () => {
+      toast.success("Material excluído com sucesso");
+      await queryClient.invalidateQueries({ queryKey: ["materiais_operacionais"] });
+    },
+    onError: (err: any) => toast.error("Erro ao excluir material", { description: err.message }),
+  });
+
   const submitFornecedorForm = () => {
     if (!fornecedorForm.nome?.trim()) {
       setFornecedorFormErrors({ nome: 'Informe o nome do fornecedor.' });
@@ -2435,6 +2481,7 @@ const CentralCadastros = () => {
                 <CadastroTabTrigger value="transportadoras" icon={Truck}>Transportadoras</CadastroTabTrigger>
                 <CadastroTabTrigger value="fornecedores" icon={Store}>Fornecedores</CadastroTabTrigger>
                 <CadastroTabTrigger value="servicos" icon={Wrench}>Serviços</CadastroTabTrigger>
+                <CadastroTabTrigger value="materiais" icon={ShoppingCart}>Materiais</CadastroTabTrigger>
                 <CadastroTabTrigger value="parametros" icon={Settings2}>Parâmetros operacionais</CadastroTabTrigger>
               </TabsList>
 
@@ -3136,6 +3183,83 @@ const CentralCadastros = () => {
                 </section>
               </TabsContent>
 
+              <TabsContent value="materiais" className="space-y-4 min-h-[400px]">
+                <section className="esc-card overflow-hidden">
+                  <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-3">
+                    <div>
+                      <h2 className="font-display font-semibold text-foreground">Materiais Operacionais</h2>
+                      <p className="text-sm text-muted-foreground">
+                        Insumos utilizados nas operações (ex: filme stretch, fita, pallets).
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={() => setMaterialModalOpen(true)}>
+                        <Plus className="h-4 w-4 mr-1.5" /> Novo material
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="max-h-[60vh] overflow-y-scroll pr-1">
+                    <table className="w-full text-sm">
+                      <thead className="esc-table-header">
+                        <tr className="text-left">
+                          <th className="px-5 h-11 font-medium text-center">Nome</th>
+                          <th className="px-3 h-11 font-medium text-center">Unidade</th>
+                          <th className="px-3 h-11 font-medium text-center">Valor Unitário</th>
+                          <th className="px-5 h-11 font-medium text-center">Status</th>
+                          <th className="px-3 h-11 font-medium text-center">Ações</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {materiais.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} className="px-5 py-8 text-center text-muted-foreground">
+                              Nenhum material cadastrado
+                            </td>
+                          </tr>
+                        ) : (
+                          materiais.map((material) => (
+                            <tr key={material.id} className="border-t border-muted hover:bg-background">
+                              <td className="px-5 h-[56px] font-medium text-foreground text-center">{material.nome}</td>
+                              <td className="px-3 text-muted-foreground text-center">{material.unidade_medida}</td>
+                              <td className="px-3 text-center font-display font-medium">
+                                {formatCurrencyBRL(material.valor_unitario)}
+                              </td>
+                              <td className="px-5 text-center">
+                                <Badge className={cn(
+                                  "font-semibold",
+                                  material.ativo ? "bg-success-soft text-success-strong" : "bg-muted text-muted-foreground"
+                                )}>
+                                  {material.ativo ? "Ativo" : "Inativo"}
+                                </Badge>
+                              </td>
+                              <td className="px-3 text-center">
+                                <div className="flex items-center justify-center gap-1">
+                                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
+                                    setEditingMaterial(material);
+                                    setMaterialForm({
+                                      nome: material.nome,
+                                      unidade_medida: material.unidade_medida,
+                                      valor_unitario: formatCurrencyBRL(material.valor_unitario),
+                                      ativo: material.ativo
+                                    });
+                                    setMaterialModalOpen(true);
+                                  }}>
+                                    <PencilLine className="h-4 w-4" />
+                                  </Button>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => { if (confirm("Confirmar exclusão definitiva?")) deleteMaterialMutation.mutate(material.id) }}>
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              </TabsContent>
+
               <TabsContent value="parametros" className="space-y-4 min-h-[400px]">
 
                 <Tabs value={activeSubTab} onValueChange={setActiveSubTab} className="space-y-4">
@@ -3451,6 +3575,85 @@ const CentralCadastros = () => {
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
               {configMutation.isPending ? "Salvando..." : "Salvar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={materialModalOpen} onOpenChange={(open) => { setMaterialModalOpen(open); if (!open) setEditingMaterial(null); }}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>{editingMaterial ? "Editar material" : "Novo material"}</DialogTitle>
+            <DialogDescription>
+              Cadastre insumos utilizados nas operações para tracking de custos.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="mat_nome">Nome do material <span className="text-destructive">*</span></Label>
+              <Input
+                id="mat_nome"
+                value={materialForm.nome}
+                onChange={(e) => setMaterialForm({ ...materialForm, nome: e.target.value })}
+                placeholder="Ex: Filme Stretch"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="mat_unidade">Unidade <span className="text-destructive">*</span></Label>
+                <Select value={materialForm.unidade_medida} onValueChange={(v) => setMaterialForm({ ...materialForm, unidade_medida: v })}>
+                  <SelectTrigger id="mat_unidade"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="UN">Unidade (UN)</SelectItem>
+                    <SelectItem value="KG">Quilo (KG)</SelectItem>
+                    <SelectItem value="M">Metro (M)</SelectItem>
+                    <SelectItem value="RL">Rolo (RL)</SelectItem>
+                    <SelectItem value="CX">Caixa (CX)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="mat_valor">Valor Unitário (R$) <span className="text-destructive">*</span></Label>
+                <Input
+                  id="mat_valor"
+                  inputMode="numeric"
+                  value={materialForm.valor_unitario}
+                  onChange={(e) => handleCurrencyInput(e.target.value, (v) => setMaterialForm({ ...materialForm, valor_unitario: v }))}
+                  placeholder="0,00"
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-between rounded-md border border-border p-3">
+              <Label>Material Ativo</Label>
+              <Switch checked={materialForm.ativo} onCheckedChange={(v) => setMaterialForm({ ...materialForm, ativo: v })} />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMaterialModalOpen(false)}>Cancelar</Button>
+            <Button
+              onClick={() => {
+                const payload = {
+                  ...materialForm,
+                  valor_unitario: parseCurrencyBRL(materialForm.valor_unitario)
+                };
+                if (!payload.nome || !payload.unidade_medida || payload.valor_unitario <= 0) {
+                  toast.error("Preencha todos os campos obrigatórios.");
+                  return;
+                }
+                if (editingMaterial) {
+                  updateMaterialMutation.mutate({ id: editingMaterial.id, payload });
+                } else {
+                  createMaterialMutation.mutate(payload);
+                }
+              }}
+              disabled={createMaterialMutation.isPending || updateMaterialMutation.isPending}
+            >
+              {(createMaterialMutation.isPending || updateMaterialMutation.isPending) && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              {editingMaterial ? "Atualizar" : "Cadastrar"}
             </Button>
           </DialogFooter>
         </DialogContent>

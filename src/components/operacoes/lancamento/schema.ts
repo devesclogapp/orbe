@@ -2,7 +2,7 @@ import * as z from "zod";
 
 export const productionSchema = z.object({
   // Identificação e Contexto
-  tipo_lancamento: z.enum(["operacao_padrao", "transbordo_servico_extra", "custos_extras", "servicos_especificos"]),
+  tipo_lancamento: z.enum(["operacao_padrao", "transbordo_servico_extra", "custos_extras", "servicos_especificos", "diaristas"]),
   modalidade_financeira: z.enum(["CAIXA_IMEDIATO", "DUPLICATA", "FATURAMENTO_MENSAL", "CUSTO_DESPESA", "FECHAMENTO_MENSAL_EMPRESA", "DUPLICATA_FORNECEDOR"]),
   data: z.string().min(1, "Data é obrigatória"),
   empresa_id: z.string().uuid("Selecione uma empresa válida"),

@@ -112,13 +112,14 @@ const RelatorioDetalhe = () => {
                 l.impacto
             ]);
         } else {
-            headers = ["ID", "Colaborador", "Data", "Serviço", "Valor"];
+            headers = ["ID", "Colaborador", "Data", "Serviço", "Materiais", "Valor Total"];
             rows = reportData.map((row: any) => [
                 row.id,
-                row.transportadora || "N/A",
+                row.transportadora || row.colaboradores?.nome || "N/A",
                 format(new Date(row.data || row.created_at || new Date()), "dd/MM/yyyy"),
                 row.tipo_servico || row.status || "Padrão",
-                (Number(row.quantidade || 0) * Number(row.valor_unitario || 0)).toFixed(2)
+                (row.valor_total_materiais || 0).toFixed(2),
+                Number(row.valor_total || (Number(row.quantidade || 0) * Number(row.valor_unitario || 0))).toFixed(2)
             ]);
         }
 
@@ -337,7 +338,8 @@ const RelatorioDetalhe = () => {
                                             <TableHead>Colaborador</TableHead>
                                             <TableHead>Data</TableHead>
                                             <TableHead>Serviço</TableHead>
-                                            <TableHead className="text-right px-5">Valor</TableHead>
+                                            <TableHead className="text-right">Materiais</TableHead>
+                                            <TableHead className="text-right px-5">Valor Total</TableHead>
                                         </TableRow>
                                     )}
                                 </TableHeader>
@@ -345,7 +347,7 @@ const RelatorioDetalhe = () => {
                                     {loadingData ? (
                                         Array.from({ length: 5 }).map((_, i) => (
                                             <TableRow key={i}>
-                                                <TableCell colSpan={5}><Skeleton className="h-8 w-full" /></TableCell>
+                                                <TableCell colSpan={6}><Skeleton className="h-8 w-full" /></TableCell>
                                             </TableRow>
                                         ))
                                     ) : reportData.length > 0 ? (
@@ -369,8 +371,11 @@ const RelatorioDetalhe = () => {
                                                         <TableCell className="font-medium">{row.transportadora || row.colaboradores?.nome || "N/A"}</TableCell>
                                                         <TableCell>{format(new Date(row.data || row.created_at || new Date()), "dd/MM/yyyy")}</TableCell>
                                                         <TableCell><Badge variant="secondary" className="font-normal">{row.tipo_servico || row.status || "Ativo"}</Badge></TableCell>
+                                                        <TableCell className="text-right text-blue-600">
+                                                            {row.valor_total_materiais > 0 ? `R$ ${Number(row.valor_total_materiais).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : "-"}
+                                                        </TableCell>
                                                         <TableCell className="text-right px-5 font-semibold">
-                                                            R$ {(Number(row.quantidade || 0) * Number(row.valor_unitario || 0) || Number(row.valor_total || 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                            R$ {(Number(row.valor_total) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                                         </TableCell>
                                                     </>
                                                 )}
@@ -378,7 +383,7 @@ const RelatorioDetalhe = () => {
                                         ))
                                     ) : (
                                         <TableRow>
-                                            <TableCell colSpan={5} className="h-32 text-center text-muted-foreground italic">
+                                            <TableCell colSpan={6} className="h-32 text-center text-muted-foreground italic">
                                                 Nenhum dado encontrado para os filtros selecionados.
                                             </TableCell>
                                         </TableRow>

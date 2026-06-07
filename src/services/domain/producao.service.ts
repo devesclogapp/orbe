@@ -673,7 +673,7 @@ class OperacaoProducaoServiceClass {
       empresa_label,
       unidade_label,
       tipo_lancamento,
-      quantidade_colaboradores,
+      // quantidade_colaboradores, // Mantido: é coluna no banco
       data,
       nf_emite,
       iss_percentual,
@@ -750,7 +750,8 @@ class OperacaoProducaoServiceClass {
         fornecedores:fornecedor_id(nome),
         produtos_carga:produto_carga_id(nome),
         formas_pagamento_operacional:forma_pagamento_id(nome),
-        unidades:unidade_id(nome)
+        unidades:unidade_id(nome),
+        operacao_producao_materiais!operacao_id(*)
       `)
       .in('status', ['inconsistente', 'com_alerta', 'aguardando_validacao'])
       .is('deleted_at', null)
@@ -808,10 +809,19 @@ class OperacaoProducaoServiceClass {
       infraction_type_id?: string | null;
       infraction_notes?: string | null;
     }>,
+    materiais?: Array<{
+      material_id: string;
+      nome_snapshot: string;
+      unidade_snapshot: string;
+      valor_unitario_snapshot: number;
+      quantidade: number;
+      valor_total: number;
+    }>,
   ) {
     const registro = await this.create(payload);
 
-    if (colaboradores.length > 0) {
+    // 1. Vincular Colaboradores
+    if (colaboradores && colaboradores.length > 0) {
       const colaboradoresNormalizados = colaboradores
         .map((item) => ({
           collaborator_id: item.collaborator_id ?? item.colaborador_id ?? null,
@@ -821,24 +831,40 @@ class OperacaoProducaoServiceClass {
         }))
         .filter((item) => Boolean(item.collaborator_id));
 
-      if (colaboradoresNormalizados.length === 0) {
-        return this.getByDate(registro.data_operacao, registro.empresa_id, registro.unidade_id)
-          .then((items) => items.find((item: any) => item.id === registro.id) ?? registro);
-      }
+      if (colaboradoresNormalizados.length > 0) {
+        const { error } = await operationalClient
+          .from('production_entry_collaborators')
+          .insert(
+            colaboradoresNormalizados.map((item) => ({
+              production_entry_id: registro.id,
+              collaborator_id: item.collaborator_id,
+              had_infraction: item.had_infraction,
+              infraction_type_id: item.infraction_type_id ?? null,
+              infraction_notes: item.infraction_notes ?? null,
+            })),
+          );
 
-      const { error } = await operationalClient
-        .from('production_entry_collaborators')
+        if (error) throw error;
+      }
+    }
+
+    // 2. Vincular Materiais
+    if (materiais && materiais.length > 0) {
+      const { error: matError } = await operationalClient
+        .from('operacao_producao_materiais')
         .insert(
-          colaboradoresNormalizados.map((item) => ({
-            production_entry_id: registro.id,
-            collaborator_id: item.collaborator_id,
-            had_infraction: item.had_infraction,
-            infraction_type_id: item.infraction_type_id ?? null,
-            infraction_notes: item.infraction_notes ?? null,
+          materiais.map((m) => ({
+            operacao_id: registro.id,
+            material_id: m.material_id,
+            nome_snapshot: m.nome_snapshot,
+            unidade_snapshot: m.unidade_snapshot,
+            valor_unitario_snapshot: m.valor_unitario_snapshot,
+            quantidade: m.quantidade,
+            valor_total: m.valor_total,
           })),
         );
 
-      if (error) throw error;
+      if (matError) throw matError;
     }
 
     return this.getByDate(registro.data_operacao, registro.empresa_id, registro.unidade_id)
@@ -882,7 +908,8 @@ class OperacaoProducaoServiceClass {
         produtos_carga:produto_carga_id(nome),
         formas_pagamento_operacional:forma_pagamento_id(nome),
         unidades:unidade_id(nome),
-        empresas:empresa_id(id, nome)
+        empresas:empresa_id(id, nome),
+        operacao_producao_materiais!operacao_id(*)
       `)
       .eq('data_operacao', date)
       .is('deleted_at', null)
@@ -911,7 +938,8 @@ class OperacaoProducaoServiceClass {
         produtos_carga:produto_carga_id(nome),
         formas_pagamento_operacional:forma_pagamento_id(nome),
         unidades:unidade_id(nome),
-        empresas:empresa_id(id, nome)
+        empresas:empresa_id(id, nome),
+        operacao_producao_materiais!operacao_id(*)
       `)
       .eq('tenant_id', currentTenantId)
       .is('deleted_at', null)
@@ -1035,3 +1063,16 @@ class OperacaoProducaoServiceClass {
   }
 }
 export const OperacaoProducaoService = new OperacaoProducaoServiceClass();
+class OperacaoProducaoMateriaisServiceClass extends BaseService<'operacao_producao_materiais'> {
+  constructor() { super('operacao_producao_materiais'); }
+
+  async getByOperacao(operacaoId: string) {
+    const { data, error } = await supabase
+      .from('operacao_producao_materiais')
+      .select('*')
+      .eq('operacao_id', operacaoId);
+    if (error) throw error;
+    return data ?? [];
+  }
+}
+export const OperacaoProducaoMateriaisService = new OperacaoProducaoMateriaisServiceClass();
