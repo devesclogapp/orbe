@@ -228,5 +228,32 @@ class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extra
       return [];
     }
   }
+
+  async create(payload: Record<string, any>) {
+    const tenantId = await getCurrentTenantId();
+    const userId = await requireAuthenticatedUserId();
+    
+    // Garantir que campos obrigatórios de pipeline e total estejam presentes
+    const payloadClean = sanitizePayload({
+      ...payload,
+      tenant_id: tenantId,
+      criado_por: userId,
+      pipeline_status: 'PENDENTE',
+      status_pagamento: 'PENDENTE',
+      atualizado_em: new Date().toISOString()
+    }) as any;
+
+    const { data, error } = await operationalClient
+      .from('servicos_extras_operacionais')
+      .insert(payloadClean)
+      .select(`
+        *,
+        empresas(nome)
+      `)
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
 }
 export const ServicosExtrasOperacionaisService = new ServicosExtrasOperacionaisServiceClass();

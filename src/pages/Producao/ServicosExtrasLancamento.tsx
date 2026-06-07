@@ -227,28 +227,21 @@ const ServicosExtrasLancamento = () => {
     const salvarMutation = useMutation({
         mutationFn: async () => {
             if (!validate()) throw new Error("Corrija os campos obrigatórios.");
-            const operacao = {
+
+            const payload = {
+                data: form.data,
                 empresa_id: form.empresa_id,
-                data_operacao: form.data,
-                tipo_servico_id: form.tipo_servico_id,
-                descricao_servico: form.descricao.trim(),
                 quantidade: quantidade,
-                valor_unitario_snapshot: valorUnitario,
-                tipo_calculo_snapshot: "volume",
-                valor_descarga: valorTotal,
-                valor_total: valorTotal,
-                transportadora_id: form.transportadora_id || null,
-                forma_pagamento_id: form.forma_pagamento_id || null,
-                nf_numero: form.nf_numero.trim() || null,
-                observacao: form.observacao.trim() || null,
-                status: "aguardando_validacao",
-                origem_dado: "manual",
-                responsavel_id: user?.id ?? null,
+                valor_unitario: valorUnitario,
+                total: valorTotal,
+                tipo_servico: tiposServico.find((s: any) => s.id === form.tipo_servico_id)?.nome || "Outro",
+                descricao_servico: form.descricao.trim(),
                 modalidade_financeira: form.forma_cobranca,
-                avaliacao_json: { categoria_servico: "SERVICO_EXTRA", criado_por: user?.email },
                 responsavel_nome: (form.responsavel_nome.trim() || perfil?.nome || user?.email || "N/A").trim(),
+                observacao: form.observacao.trim(),
             };
-            return OperacaoProducaoService.createWithColaboradores(operacao, []);
+
+            return ServicosExtrasOperacionaisService.create(payload);
         },
         onSuccess: () => {
             toast.success("Serviço extra registrado com sucesso!");
