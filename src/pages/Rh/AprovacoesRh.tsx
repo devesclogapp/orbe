@@ -362,6 +362,14 @@ export default function AprovacoesRh() {
                 if (error) throw error;
                 return;
             }
+            // Operações por Volume
+            if (item.tipo === "OPERAÇÃO") {
+                const { error } = await supabase.from("operacoes_producao")
+                    .update({ status: "validado_rh", atualizado_em: new Date().toISOString() })
+                    .eq("id", item.id);
+                if (error) throw error;
+                return;
+            }
         },
         onSuccess: () => {
             toast.success("Item aprovado com sucesso!");
@@ -397,6 +405,14 @@ export default function AprovacoesRh() {
             if (item.tipo === "SERVIÇO EXTRA") {
                 const { error } = await supabase.from("servicos_extras_operacionais" as any)
                     .update({ status: "devolvido", updated_at: new Date().toISOString() })
+                    .eq("id", item.id);
+                if (error) throw error;
+                return;
+            }
+            // Operações por Volume
+            if (item.tipo === "OPERAÇÃO") {
+                const { error } = await supabase.from("operacoes_producao")
+                    .update({ status: "pendente", atualizado_em: new Date().toISOString() })
                     .eq("id", item.id);
                 if (error) throw error;
                 return;
