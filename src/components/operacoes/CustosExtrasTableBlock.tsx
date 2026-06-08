@@ -77,7 +77,7 @@ type CustoExtraItem = {
   operacao_id?: string | null;
   tipo_lancamento?: string | null;
   origem_dado?: string | null;
-  pipeline_status?: "PENDENTE" | "EM_VALIDACAO" | "APROVADO_OPERACAO" | "CONSOLIDADO_FINANCEIRO" | "CONCLUIDO" | null;
+  pipeline_status?: "RECEBIDO" | "EM_VALIDACAO" | "APROVADO_OPERACAO" | "REPROVADO" | "ENVIADO_FINANCEIRO" | "FINALIZADO" | null;
   justificativa_devolucao?: string | null;
   responsavel_nome?: string | null;
   observacao?: string | null;
@@ -136,7 +136,7 @@ const BULK_FIELDS: Array<{ value: BulkEditableField; label: string }> = [
 ];
 
 const categoryOptions = ["OPERACIONAL", "ADMINISTRATIVO", "MERENDA/LANCHE", "MANUTENCAO", "TRANSPORTE", "COMUNICACAO", "OUTROS"] as const;
-const statusOptions = ["PENDENTE", "ATRASADO", "RECEBIDO"] as const;
+const statusOptions = ["A PAGAR", "PAGO", "ATRASADO", "CANCELADO"] as const;
 const paymentOptions = ["DEPOSITO", "DEPOSITO MENSAL", "PIX", "TRANSFERENCIA", "BOLETO", "DINHEIRO"] as const;
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
@@ -164,15 +164,18 @@ const toInputValue = (value: unknown) => {
 };
 
 const getStatusBadgeClass = (status?: string | null) => {
-  switch (String(status ?? "").toUpperCase()) {
-    case "RECEBIDO":
+  const s = String(status ?? "").toUpperCase().replace(/_/g, " ");
+  switch (s) {
+    case "PAGO":
       return "bg-success-soft text-success-strong";
     case "ATRASADO":
       return "bg-warning-soft text-warning-strong";
-    case "PENDENTE":
-      return "bg-muted text-muted-foreground";
+    case "A PAGAR":
+      return "bg-amber-100 text-amber-700";
+    case "CANCELADO":
+      return "bg-destructive-soft text-destructive";
     default:
-      return "bg-muted/60 text-muted-foreground";
+      return "bg-muted text-muted-foreground";
   }
 };
 
@@ -185,7 +188,7 @@ const buildEditForm = (item: CustoExtraItem): EditableCostForm => ({
   quantidade: toInputValue(item.quantidade ?? 0),
   forma_pagamento: toInputValue(item.forma_pagamento),
   data_vencimento: toInputValue(item.data_vencimento),
-  status_pagamento: toInputValue(item.status_pagamento || "PENDENTE"),
+  status_pagamento: toInputValue(item.status_pagamento || "A PAGAR"),
   operacao_id: toInputValue(item.operacao_id),
 });
 
@@ -257,24 +260,24 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
 
   const handleAdvancePipeline = (item: CustoExtraItem) => {
     const current = item.pipeline_status || 'PENDENTE';
-    let next: CustoExtraItem['pipeline_status'] = 'PENDENTE';
+    let next: CustoExtraItem['pipeline_status'] = 'RECEBIDO';
     let stepId: CustoExtraStepId = 'lancamento';
 
-    if (current === 'PENDENTE') {
+    if (current === 'RECEBIDO') {
       next = 'EM_VALIDACAO';
       stepId = 'validacao_operacional';
     } else if (current === 'EM_VALIDACAO') {
       next = 'APROVADO_OPERACAO';
       stepId = 'financeiro';
     } else if (current === 'APROVADO_OPERACAO') {
-      next = 'CONSOLIDADO_FINANCEIRO';
+      next = 'ENVIADO_FINANCEIRO';
       stepId = 'centro_custo';
-    } else if (current === 'CONSOLIDADO_FINANCEIRO') {
-      next = 'CONCLUIDO';
+    } else if (current === 'ENVIADO_FINANCEIRO') {
+      next = 'FINALIZADO';
       stepId = 'concluido';
     }
 
-    if (next !== 'PENDENTE') {
+    if (next !== 'RECEBIDO') {
       updatePipelineMutation.mutate({ id: item.id, status: next });
 
       const competencia = item.data ? format(new Date(item.data), "yyyy-MM") : format(new Date(), "yyyy-MM");
@@ -291,7 +294,7 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
     setJustificationModal({
       open: true,
       itemId: id,
-      targetStatus: 'PENDENTE',
+      targetStatus: 'RECEBIDO',
     });
   };
 
@@ -310,9 +313,9 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
     if (isAdmin) return true;
     const status = item.pipeline_status || 'PENDENTE';
 
-    if (status === 'PENDENTE' && (role === 'encarregado' || role === 'gestor')) return true;
+    if (status === 'RECEBIDO' && (role === 'encarregado' || role === 'gestor')) return true;
     if (status === 'EM_VALIDACAO' && (role === 'gestor')) return true;
-    if ((status === 'APROVADO_OPERACAO' || status === 'CONSOLIDADO_FINANCEIRO') && role === 'financeiro') return true;
+    if ((status === 'APROVADO_OPERACAO' || status === 'ENVIADO_FINANCEIRO') && role === 'financeiro') return true;
 
     return false;
   };
@@ -320,11 +323,11 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
   const canDevolve = (item: CustoExtraItem) => {
     if (isAdmin) return true;
     const status = item.pipeline_status;
-    if (!status || status === 'PENDENTE') return false;
+    if (!status || status === 'RECEBIDO') return false;
 
     if (status === 'EM_VALIDACAO' && (role === 'gestor')) return true;
     if (status === 'APROVADO_OPERACAO' && (role === 'financeiro' || role === 'gestor')) return true;
-    if (status === 'CONSOLIDADO_FINANCEIRO' && role === 'financeiro') return true;
+    if (status === 'ENVIADO_FINANCEIRO' && role === 'financeiro') return true;
 
     return false;
   };
@@ -750,14 +753,20 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
                   {visibleCols.pipelineStatus && (
                     <td className="px-3 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                       <Badge className={cn(
-                        "border-0 font-medium capitalize h-6 px-2 text-[11px]",
+                        "border-0 font-medium h-6 px-2 text-[11px]",
                         item.pipeline_status === "EM_VALIDACAO" ? "bg-amber-100 text-amber-700 hover:bg-amber-100" :
                           item.pipeline_status === "APROVADO_OPERACAO" ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100" :
-                            item.pipeline_status === "CONSOLIDADO_FINANCEIRO" ? "bg-blue-100 text-blue-700 hover:bg-blue-100" :
-                              item.pipeline_status === "CONCLUIDO" ? "bg-emerald-500 text-white hover:bg-emerald-600" :
-                                "bg-muted text-muted-foreground hover:bg-muted"
+                            item.pipeline_status === "ENVIADO_FINANCEIRO" ? "bg-blue-100 text-blue-700 hover:bg-blue-100" :
+                              item.pipeline_status === "FINALIZADO" ? "bg-emerald-500 text-white hover:bg-emerald-600" :
+                                item.pipeline_status === "REPROVADO" ? "bg-destructive text-white hover:bg-destructive" :
+                                  "bg-muted text-muted-foreground hover:bg-muted"
                       )}>
-                        {item.pipeline_status?.toLowerCase().replace(/_/g, " ") || "Pendente"}
+                        {item.pipeline_status === 'RECEBIDO' ? 'Recebido' :
+                          item.pipeline_status === 'EM_VALIDACAO' ? 'Em Validação' :
+                            item.pipeline_status === 'APROVADO_OPERACAO' ? 'Aprovado Op.' :
+                              item.pipeline_status === 'REPROVADO' ? 'Reprovado' :
+                                item.pipeline_status === 'ENVIADO_FINANCEIRO' ? 'Financeiro' :
+                                  item.pipeline_status === 'FINALIZADO' ? 'Finalizado' : 'Pendente'}
                       </Badge>
                     </td>
                   )}
@@ -766,7 +775,7 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
                   {visibleCols.acoes && (
                     <td className="px-5 py-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-center gap-1">
-                        {item.pipeline_status !== 'CONCLUIDO' && canAdvance(item) && (
+                        {item.pipeline_status !== 'FINALIZADO' && canAdvance(item) && (
                           <button
                             className="h-7 w-7 rounded-md hover:bg-emerald-50 flex items-center justify-center text-emerald-600 hover:text-emerald-700"
                             onClick={() => handleAdvancePipeline(item)}
@@ -776,7 +785,7 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
                             <PlayCircle className="h-4 w-4" />
                           </button>
                         )}
-                        {item.pipeline_status && item.pipeline_status !== 'PENDENTE' && canDevolve(item) && (
+                        {item.pipeline_status && item.pipeline_status !== 'RECEBIDO' && canDevolve(item) && (
                           <button
                             className="h-7 w-7 rounded-md hover:bg-orange-50 flex items-center justify-center text-orange-600 hover:text-orange-700"
                             onClick={() => handleDevolvePipeline(item.id)}
