@@ -39,6 +39,14 @@ import {
     CustoExtraOperacionalService,
     EmpresaService,
 } from "@/services/base.service";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle
+} from "@/components/ui/dialog";
+import { CustosExtrasForm } from "@/components/forms/CustosExtrasForm";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -125,6 +133,7 @@ const CustosExtrasRecebidos = () => {
     const [filterEmpresaId, setFilterEmpresaId] = useState<string>("all");
     const [filterMonth, setFilterMonth] = useState<string>(format(new Date(), "MM"));
     const [filterYear, setFilterYear] = useState<string>(format(new Date(), "yyyy"));
+    const [isLaunchSheetOpen, setIsLaunchSheetOpen] = useState(false);
 
     const { data: empresas = [] } = useQuery({ queryKey: ["empresas-all"], queryFn: () => EmpresaService.getAll() });
 
@@ -137,7 +146,7 @@ const CustosExtrasRecebidos = () => {
         const total = custosExtras.reduce((acc, item) => acc + Number(item.total ?? 0), 0);
         const operacional = custosExtras.filter((i: any) => i.categoria_custo === 'OPERACIONAL').reduce((acc, item) => acc + Number(item.total ?? 0), 0);
         const administrativo = custosExtras.filter((i: any) => i.categoria_custo === 'ADMINISTRATIVO').reduce((acc, item) => acc + Number(item.total ?? 0), 0);
-        const merenda = custosExtras.filter((i: any) => i.categoria_custo === 'MERENDA').reduce((acc, item) => acc + Number(item.total ?? 0), 0);
+        const merenda = custosExtras.filter((i: any) => i.categoria_custo === 'MERENDA' || i.categoria_custo === 'MERENDA/LANCHE').reduce((acc, item) => acc + Number(item.total ?? 0), 0);
         return { total, operacional, administrativo, merenda, count: custosExtras.length };
     }, [custosExtras]);
 
@@ -196,7 +205,7 @@ const CustosExtrasRecebidos = () => {
 
                             <Button
                                 className="bg-primary hover:bg-[#E54300] text-white font-manrope font-semibold h-9 px-4 rounded-[6px]"
-                                onClick={() => navigate("/producao/custos-extras")}
+                                onClick={() => setIsLaunchSheetOpen(true)}
                             >
                                 <Plus className="h-4 w-4 mr-2 text-white" />
                                 Novo Lançamento
@@ -230,6 +239,26 @@ const CustosExtrasRecebidos = () => {
                         )}
                     </div>
                 </div>
+
+                <Dialog open={isLaunchSheetOpen} onOpenChange={setIsLaunchSheetOpen}>
+                    <DialogContent className="sm:max-w-[540px] overflow-y-auto max-h-[90vh]">
+                        <DialogHeader className="mb-6">
+                            <DialogTitle className="text-2xl font-bold flex items-center gap-2">
+                                <Plus className="h-6 w-6 text-primary" />
+                                Novo Custo Extra
+                            </DialogTitle>
+                            <DialogDescription>
+                                Registre despesas manuais que não requerem aprovação prévia de orçamento.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="py-4">
+                            <CustosExtrasForm
+                                onSuccess={() => setIsLaunchSheetOpen(false)}
+                                empresaPadraoId={filterEmpresaId !== "all" ? filterEmpresaId : undefined}
+                            />
+                        </div>
+                    </DialogContent>
+                </Dialog>
             </section>
         </AppShell>
     );

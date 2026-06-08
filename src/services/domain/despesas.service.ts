@@ -51,7 +51,8 @@ class CustoExtraOperacionalServiceClass {
       .from('custos_extras_operacionais')
       .select(`
         *,
-        empresas:empresa_id(nome)
+        empresas:empresa_id(nome),
+        forma_pagamento_ref:forma_pagamento_id(nome)
       `)
       .eq('data', date)
       .order('criado_em', { ascending: false });
@@ -96,7 +97,8 @@ class CustoExtraOperacionalServiceClass {
       .from('custos_extras_operacionais')
       .select(`
         *,
-        empresas:empresa_id(nome)
+        empresas:empresa_id(nome),
+        forma_pagamento_ref:forma_pagamento_id(nome)
       `)
     if (competencia) {
       const [year, mo] = competencia.split('-').map(Number);
@@ -130,10 +132,13 @@ class CustoExtraOperacionalServiceClass {
 
   async createMany(items: Record<string, unknown>[]) {
     if (items.length === 0) return [];
+    
+    // Sanitiza todos os itens para converter strings vazias em null
+    const sanitizedItems = items.map(item => sanitizePayload(item) as Record<string, unknown>);
 
     const { data, error } = await operationalClient
       .from('custos_extras_operacionais')
-      .insert(items)
+      .insert(sanitizedItems)
       .select('id');
 
     if (error) throw error;

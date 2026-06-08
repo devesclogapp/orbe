@@ -70,6 +70,8 @@ type CustoExtraItem = {
   quantidade?: number | null;
   total?: number | null;
   forma_pagamento?: string | null;
+  forma_pagamento_id?: string | null;
+  forma_pagamento_ref?: { nome?: string | null } | null;
   data_vencimento?: string | null;
   status_pagamento?: string | null;
   operacao_id?: string | null;
@@ -133,9 +135,9 @@ const BULK_FIELDS: Array<{ value: BulkEditableField; label: string }> = [
   { value: "status_pagamento", label: "Status pgto" },
 ];
 
-const categoryOptions = ["MERENDA", "ADMINISTRATIVO", "OPERACIONAL", "FORNECEDOR"] as const;
+const categoryOptions = ["OPERACIONAL", "ADMINISTRATIVO", "MERENDA/LANCHE", "MANUTENCAO", "TRANSPORTE", "COMUNICACAO", "OUTROS"] as const;
 const statusOptions = ["PENDENTE", "ATRASADO", "RECEBIDO"] as const;
-const paymentOptions = ["DEPOSITO", "DEPOSITO MENSAL", "PIX", "TRANSFERENCIA", "BOLETO"] as const;
+const paymentOptions = ["DEPOSITO", "DEPOSITO MENSAL", "PIX", "TRANSFERENCIA", "BOLETO", "DINHEIRO"] as const;
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   style: "currency",
@@ -721,7 +723,7 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
                   {visibleCols.valorUnitario && <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{item.valor_unitario !== null && item.valor_unitario !== undefined ? currencyFormatter.format(Number(item.valor_unitario)) : "—"}</td>}
                   {visibleCols.quantidade && <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap font-display font-medium">{item.quantidade !== null && item.quantidade !== undefined ? Number(item.quantidade).toLocaleString("pt-BR") : "—"}</td>}
                   {visibleCols.total && <td className="px-3 py-3 text-center text-foreground whitespace-nowrap font-display font-semibold">{item.total !== null && item.total !== undefined ? currencyFormatter.format(Number(item.total)) : "—"}</td>}
-                  {visibleCols.formaPagamento && <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{item.forma_pagamento || "—"}</td>}
+                  {visibleCols.formaPagamento && <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{item.forma_pagamento_ref?.nome || item.forma_pagamento || "—"}</td>}
                   {visibleCols.vencimento && <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{formatDate(item.data_vencimento)}</td>}
                   {visibleCols.status && (
                     <td className="px-3 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
