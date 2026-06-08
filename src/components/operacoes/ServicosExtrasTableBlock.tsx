@@ -75,6 +75,8 @@ type ServicoExtraItem = {
     empresa_id?: string | null;
     empresa_nome?: string | null;
     empresas?: { nome?: string | null } | null;
+    formas_pagamento_operacional?: { nome?: string | null } | null;
+    tipos_servico_operacional?: { nome?: string | null } | null;
     cliente?: string | null;
     tipo_servico: string;
     descricao_servico: string;
@@ -82,6 +84,7 @@ type ServicoExtraItem = {
     valor_unitario?: number | null;
     total?: number | null;
     forma_pagamento?: string | null;
+    forma_pagamento_id?: string | null;
     modalidade_financeira?: string | null;
     data_vencimento?: string | null;
     status_pagamento?: string | null;
@@ -499,14 +502,14 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                                     <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{formatDate(item.data)}</td>
                                     <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{item.empresas?.nome ?? item.empresa_nome ?? "—"}</td>
                                     <td className="px-3 py-3 text-center">
-                                        <Badge variant="outline">{item.tipo_servico}</Badge>
+                                        <Badge variant="outline">{item.tipos_servico_operacional?.nome ?? item.tipo_servico}</Badge>
                                     </td>
                                     <td className="px-3 py-3 text-center text-foreground max-w-[260px] truncate">{item.descricao_servico}</td>
                                     <td className="px-3 py-3 text-center text-muted-foreground">{item.quantidade !== null && item.quantidade !== undefined ? Number(item.quantidade).toLocaleString("pt-BR") : "—"}</td>
                                     <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{item.valor_unitario !== null && item.valor_unitario !== undefined ? currencyFormatter.format(Number(item.valor_unitario)) : "—"}</td>
                                     <td className="px-3 py-3 text-center font-display font-semibold whitespace-nowrap">{item.total !== null && item.total !== undefined ? currencyFormatter.format(Number(item.total)) : "—"}</td>
                                     <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap text-xs">
-                                        {item.modalidade_financeira?.replace(/_/g, " ") ?? "—"}
+                                        {item.formas_pagamento_operacional?.nome ?? item.forma_pagamento ?? item.modalidade_financeira?.replace(/_/g, " ") ?? "—"}
                                     </td>
                                     <td className="px-3 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                                         <DropdownMenu>

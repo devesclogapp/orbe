@@ -79,6 +79,7 @@ type CustoExtraItem = {
   origem_dado?: string | null;
   pipeline_status?: "RECEBIDO" | "EM_VALIDACAO" | "APROVADO_OPERACAO" | "REPROVADO" | "ENVIADO_FINANCEIRO" | "FINALIZADO" | null;
   justificativa_devolucao?: string | null;
+  responsavel?: { full_name?: string | null } | null;
   responsavel_nome?: string | null;
   observacao?: string | null;
 };
@@ -726,7 +727,11 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
                   {visibleCols.valorUnitario && <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{item.valor_unitario !== null && item.valor_unitario !== undefined ? currencyFormatter.format(Number(item.valor_unitario)) : "—"}</td>}
                   {visibleCols.quantidade && <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap font-display font-medium">{item.quantidade !== null && item.quantidade !== undefined ? Number(item.quantidade).toLocaleString("pt-BR") : "—"}</td>}
                   {visibleCols.total && <td className="px-3 py-3 text-center text-foreground whitespace-nowrap font-display font-semibold">{item.total !== null && item.total !== undefined ? currencyFormatter.format(Number(item.total)) : "—"}</td>}
-                  {visibleCols.formaPagamento && <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{item.forma_pagamento_ref?.nome || item.forma_pagamento || "—"}</td>}
+                  {visibleCols.formaPagamento && (
+                    <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap text-xs">
+                      {item.forma_pagamento_ref?.nome || item.forma_pagamento || '—'}
+                    </td>
+                  )}
                   {visibleCols.vencimento && <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{formatDate(item.data_vencimento)}</td>}
                   {visibleCols.status && (
                     <td className="px-3 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
@@ -770,7 +775,11 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
                       </Badge>
                     </td>
                   )}
-                  {visibleCols.responsavel && <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap text-xs">{item.responsavel_nome || "—"}</td>}
+                  {visibleCols.responsavel && (
+                    <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap text-xs">
+                      {item.responsavel?.full_name || item.responsavel_nome || "—"}
+                    </td>
+                  )}
                   {visibleCols.operacaoId && <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{item.operacao_id || "—"}</td>}
                   {visibleCols.acoes && (
                     <td className="px-5 py-3" onClick={(e) => e.stopPropagation()}>

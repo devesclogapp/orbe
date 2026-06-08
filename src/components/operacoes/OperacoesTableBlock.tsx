@@ -430,6 +430,14 @@ const getDisplayStatusOriginal = (item: Record<string, unknown>) =>
   getLinhaOriginalValue(item, "STATUS") ??
   "";
 
+const getDisplayResponsavel = (item: Record<string, unknown>) => {
+  const base = (item as any).responsavel?.full_name ||
+    (item as any).encarregado_label ||
+    (item as any).responsavel_nome ||
+    (item as any).encarregado;
+  return base || "—";
+};
+
 const getDisplayEmpresa = (item: Record<string, unknown>, empresas: any[] = []) =>
   (empresas.find((empresaItem: any) => empresaItem.id === (item as { empresa_id?: string | null }).empresa_id)?.nome ?? null) ??
   ((item as { empresas?: { nome?: string | null } }).empresas?.nome ?? null) ??
@@ -1875,12 +1883,12 @@ export const OperacoesTableBlock = ({
 
                     const dataOp = item.data_operacao ? new Date(item.data_operacao + "T12:00:00Z").toLocaleDateString("pt-BR") : "";
                     const idPlanilha = item.criado_em ?? item.created_at ?? item.id;
-                    const operacaoNome = item.produto_label || item.produtos_carga?.nome || item.fornecedore_label || item.fornecedores?.nome || "";
+                    const operacaoNome = item.produtos_carga?.nome || item.produto_label || item.fornecedore_label || item.fornecedores?.nome || "";
                     const empresaPlanilha = getDisplayEmpresa(item, empresas);
-                    const fornecedor = item.fornecedor_label || item.fornecedores?.nome || item.fornecedor || "";
-                    const transportadora = item.transportadora_label || item.transportadoras_clientes?.nome || item.transportadora || "";
+                    const fornecedor = item.fornecedores?.nome || item.fornecedor_label || item.fornecedor || "";
+                    const transportadora = item.transportadoras_clientes?.nome || item.transportadora_label || item.transportadora || "";
                     const placa = item.placa || "";
-                    const servico = item.tipo_servico_label || item.tipos_servico_operacional?.nome || item.tipo_servico || "";
+                    const servico = item.tipos_servico_operacional?.nome || item.tipo_servico_label || item.tipo_servico || "";
                     const qtdColaboradores = item.quantidade_colaboradores ?? "-";
                     const formaPagamento = getDisplayFormaPagamento(item);
                     const nf = item.nf_numero || "";
@@ -1899,7 +1907,7 @@ export const OperacoesTableBlock = ({
 
                     const statusOriginal = String(item.status || getDisplayStatusOriginal(item));
                     const statusCfg = getStatusConfig(statusOriginal);
-                    const encarregado = item.encarregado_label || item.responsavel_nome || item.encarregado || "-";
+                    const encarregado = getDisplayResponsavel(item);
 
 
                     return (

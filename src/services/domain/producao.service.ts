@@ -940,7 +940,8 @@ class OperacaoProducaoServiceClass {
         formas_pagamento_operacional:forma_pagamento_id(nome),
         unidades:unidade_id(nome),
         empresas:empresa_id(id, nome),
-        operacao_producao_materiais!operacao_id(*)
+        operacao_producao_materiais!operacao_id(*),
+        responsavel:criado_por(full_name)
       `)
       .eq('data_operacao', date)
       .is('deleted_at', null)
@@ -970,7 +971,8 @@ class OperacaoProducaoServiceClass {
         formas_pagamento_operacional:forma_pagamento_id(nome),
         unidades:unidade_id(nome),
         empresas:empresa_id(id, nome),
-        operacao_producao_materiais!operacao_id(*)
+        operacao_producao_materiais!operacao_id(*),
+        responsavel:criado_por(full_name)
       `)
       .eq('tenant_id', currentTenantId)
       .is('deleted_at', null)

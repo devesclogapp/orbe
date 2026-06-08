@@ -1655,8 +1655,10 @@ const RhDiaristasPainel = () => {
                                                                 {g.lancamentos.map((l: any) => (
                                                                     <div key={l.id} className="grid grid-cols-8 gap-2 text-xs items-center hover:bg-muted/30 p-1 rounded transition-colors">
                                                                         <div className="col-span-2 flex flex-col pt-1 pb-1">
-                                                                            <span className="font-bold text-foreground truncate">{l.nome_colaborador}</span>
-                                                                            <span className="text-[10px] text-muted-foreground truncate">{l.funcao_colaborador ?? "—"}</span>
+                                                                            <span className="font-bold text-foreground truncate" title={l.colaborador?.nome || l.nome_colaborador}>
+                                                                                {l.colaborador?.nome || l.nome_colaborador}
+                                                                            </span>
+                                                                            <span className="text-[10px] text-muted-foreground truncate">{l.colaborador?.cargo || l.funcao_colaborador || "—"}</span>
                                                                         </div>
                                                                         <div className="text-center">
                                                                             <span className={cn(
@@ -1678,11 +1680,11 @@ const RhDiaristasPainel = () => {
                                                                             </span>
                                                                         </div>
                                                                         <div className="col-span-2 flex flex-col pt-1 pb-1 px-1">
-                                                                            <span className="truncate text-muted-foreground" title={l.observacao ?? l.motivo_edicao ?? "Nenhuma observação"}>
-                                                                                {l.observacao ?? l.motivo_edicao ?? "—"}
+                                                                            <span className="truncate text-muted-foreground" title={l.observacao || l.motivo_edicao || "Nenhuma observação"}>
+                                                                                {l.observacao || l.motivo_edicao || "—"}
                                                                             </span>
-                                                                            <span className="truncate text-[10px] text-foreground/60 w-full" title={`Lançado por: ${l.encarregado_nome || l.encarregado_id || "Não identificado"}`}>
-                                                                                👤 {l.encarregado_nome ?? "Sistema"}
+                                                                            <span className="truncate text-[10px] text-foreground/60 w-full" title={`Lançado por: ${l.responsavel?.full_name || l.encarregado_nome || l.encarregado_id || "Não identificado"}`}>
+                                                                                👤 {l.responsavel?.full_name || l.encarregado_nome || "Sistema"}
                                                                             </span>
                                                                         </div>
                                                                         <div className="text-center">

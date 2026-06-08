@@ -66,7 +66,9 @@ class LancamentoDiaristaServiceClass {
       .from('lancamentos_diaristas')
       .select(`
         *,
-        empresa:empresas(id, nome)
+        empresa:empresas(id, nome),
+        responsavel:encarregado_id(full_name),
+        colaborador:diarista_id(nome, cpf, cargo)
       `)
       .gte('data_lancamento', inicio)
       .lte('data_lancamento', fim);
@@ -316,7 +318,9 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
       .from('lancamentos_diaristas')
       .select(`
         *,
-        empresa:empresas(id, nome)
+        empresa:empresas(id, nome),
+        responsavel:encarregado_id(full_name),
+        colaborador:diarista_id(nome, cpf, cargo)
       `)
       .in('lote_fechamento_id', loteIds)
       .order('data_lancamento', { ascending: true });
@@ -349,7 +353,7 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
 
     const { data: itens, error: itensError } = await this.supabase
       .from('lancamentos_diaristas')
-      .select('*')
+      .select('*, responsavel:encarregado_id(full_name), colaborador:diarista_id(nome, cpf, cargo)')
       .eq('lote_fechamento_id', loteId)
       .order('nome_colaborador', { ascending: true });
 

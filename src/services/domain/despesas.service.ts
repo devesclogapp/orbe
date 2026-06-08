@@ -46,22 +46,16 @@ class CustoExtraOperacionalServiceClass {
     return true;
   }
 
-  async getByDate(date: string, empresaId?: string) {
-    let query = operationalClient
+  async getByDate(date: string) {
+    const { data, error } = await operationalClient
       .from('custos_extras_operacionais')
-      .select(`
-        *,
-        empresas:empresa_id(nome),
-        forma_pagamento_ref:forma_pagamento_id(nome)
-      `)
+      .select('*, empresas:empresa_id(nome), responsavel:responsavel_id(full_name), forma_pagamento_ref:forma_pagamento_id(nome)')
       .eq('data', date)
-      .order('criado_em', { ascending: false });
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false });
 
-    if (empresaId) query = query.eq('empresa_id', empresaId);
-
-    const { data, error } = await query;
     if (error) throw error;
-    return data ?? [];
+    return data;
   }
 
   async getAll(empresaId?: string, tenantId?: string | null) {
@@ -95,11 +89,9 @@ class CustoExtraOperacionalServiceClass {
   async getByCompetencia(competencia: string, empresaId?: string) {
     let query = operationalClient
       .from('custos_extras_operacionais')
-      .select(`
-        *,
-        empresas:empresa_id(nome),
-        forma_pagamento_ref:forma_pagamento_id(nome)
-      `)
+      .select('*, empresas:empresa_id(nome), responsavel:responsavel_id(full_name), forma_pagamento_ref:forma_pagamento_id(nome)')
+      .is('deleted_at', null);
+
     if (competencia) {
       const [year, mo] = competencia.split('-').map(Number);
       const nextMonth = mo === 12 ? 1 : mo + 1;
@@ -201,7 +193,13 @@ class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extra
     try {
       let query = operationalClient
         .from('servicos_extras_operacionais' as any)
-        .select('*, empresas(nome)');
+        .select(`
+          *, 
+          empresas(nome),
+          formas_pagamento_operacional(nome),
+          tipos_servico_operacional(nome),
+          responsavel:criado_por(full_name)
+        `);
       
       if (empresaId) query = query.eq('empresa_id', empresaId);
       if (competencia) {
