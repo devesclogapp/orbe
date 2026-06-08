@@ -1113,3 +1113,30 @@ class MateriaisOperacionaisServiceClass extends BaseService<'materiais_operacion
   }
 }
 export const MateriaisOperacionaisService = new MateriaisOperacionaisServiceClass();
+
+class MaterialOperacionalServiceClass extends BaseService<'materiais_operacionais'> {
+  constructor() {
+    super('materiais_operacionais');
+  }
+
+  async getAllActive() {
+    const tenantId = await getCurrentTenantId();
+    const { data, error } = await supabase
+      .from('materiais_operacionais')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('ativo', true)
+      .order('nome', { ascending: true });
+    if (error) throw error;
+    return data ?? [];
+  }
+
+  async createWithTenant(payload: Record<string, any>) {
+    const tenantId = await getCurrentTenantId();
+    return this.create({
+      ...payload,
+      tenant_id: tenantId
+    } as any);
+  }
+}
+export const MaterialOperacionalService = new MaterialOperacionalServiceClass();

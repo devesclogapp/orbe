@@ -1,39 +1,31 @@
 import { useState, useMemo, useEffect } from "react";
-import { format, addMonths, startOfMonth } from "date-fns";
-import { ptBR } from "date-fns/locale";
+import { format } from "date-fns";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
     AlertCircle,
-    AlertTriangle,
     ArrowLeft,
-    BarChart3,
     Building2,
-    Calendar as CalendarIcon,
     CheckCircle2,
     DollarSign,
     FileText,
     History,
     Loader2,
-    LucideIcon,
     Package,
     Plus,
-    RefreshCw,
+    Receipt,
     Save,
-    Settings2,
     Truck,
-    Wallet,
+    Trash2,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 import { OperationalShell } from "@/components/layout/OperationalShell";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
     Select,
     SelectContent,
@@ -50,9 +42,10 @@ import {
     TipoServicoOperacionalService,
     TransportadoraClienteService,
     ServicosExtrasOperacionaisService,
+    ServicosEspecificosRegrasService,
+    MateriaisOperacionaisService,
+    FornecedorValorServicoService,
 } from "@/services/base.service";
-import { useOperationalPipeline, buildServicosExtrasPipeline } from "@/contexts/OperationalPipelineContext";
-import { ServicosExtrasTableBlock } from "@/components/operacoes/ServicosExtrasTableBlock";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -64,24 +57,30 @@ interface ServicosExtrasFormState {
     tipo_servico_id: string;
     descricao: string;
     quantidade: string;
+    quantidade_colaboradores: string;
+    regra_periodo_id: string;
     valor_unitario: string;
     forma_cobranca: FormaCobranca | "";
     forma_pagamento_id: string;
+    nf_emite: boolean;
     nf_numero: string;
     transportadora_id: string;
     responsavel_nome: string;
     observacao: string;
+    unidade_cobranca_snapshot?: string;
+    tipo_calculo_snapshot?: string;
+    valor_unitario_snapshot?: number;
+    iss_percentual: string;
 }
 
-type TopKpiCardProps = {
-    label: string;
-    value: string;
-    helper?: string;
-    size?: "large" | "small" | "xs";
-    variant?: "default" | "primary" | "warning" | "success" | "muted" | "info";
-    icon?: LucideIcon;
-    iconColor?: string;
-};
+interface MaterialItem {
+    material_id: string;
+    nome_snapshot: string;
+    unidade_snapshot: string;
+    valor_unitario_snapshot: number;
+    quantidade: number;
+    valor_total: number;
+}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -104,59 +103,35 @@ const INITIAL_FORM: ServicosExtrasFormState = {
     tipo_servico_id: "",
     descricao: "",
     quantidade: "1",
+    quantidade_colaboradores: "",
+    regra_periodo_id: "",
     valor_unitario: "",
     forma_cobranca: "DEPOSITO_IMEDIATO",
     forma_pagamento_id: "",
+    nf_emite: false,
     nf_numero: "",
     transportadora_id: "",
     responsavel_nome: "",
     observacao: "",
+    tipo_calculo_snapshot: "por_operacao",
+    unidade_cobranca_snapshot: "op",
+    valor_unitario_snapshot: 0,
+    iss_percentual: "0",
 };
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const formatCurrency = (value: number) => currencyFormatter.format(Number.isFinite(value) ? value : 0);
 
-const MONTH_FILTER_OPTIONS = [
-    { value: "all", label: "Todos" },
-    ...Array.from({ length: 12 }, (_, i) => ({
-        value: String(i + 1).padStart(2, "0"),
-        label: format(new Date(2026, i, 1), "MMMM", { locale: ptBR }).replace(/^\w/, (c) => c.toUpperCase()),
-    })),
-];
-
-const YEAR_OPTIONS = Array.from(new Set(Array.from({ length: 5 }, (_, i) => String(new Date().getFullYear() - i)))).sort((a, b) => Number(b) - Number(a));
-
-const topKpiCardClasses: Record<NonNullable<TopKpiCardProps["size"]>, string> = { large: "p-5 min-h-[148px]", small: "p-4 min-h-[108px]", xs: "p-3 min-h-[80px]" };
-
-const TopKpiCard = ({ label, value, helper, size = "large", variant = "default", icon: Icon, iconColor = "bg-primary-soft text-primary" }: TopKpiCardProps) => (
-    <div className={cn("group relative overflow-hidden transition-all duration-200 hover:-translate-y-0.5", variant === "primary" ? "esc-card bg-primary text-primary-foreground border-primary shadow-lg" : variant === "muted" ? "bg-muted/30 border border-border rounded-xl" : "esc-card shadow-sm hover:shadow-md", topKpiCardClasses[size])}>
-        <div className="flex h-full flex-col justify-between gap-4">
-            <div className="flex items-start justify-between gap-3">
-                <div className={cn("space-y-1.5", size === "xs" && "space-y-0.5")}>
-                    <div className={cn("font-display font-medium", size === "xs" ? "text-xs" : "text-sm", variant === "primary" ? "text-primary-foreground/90" : "text-muted-foreground")}>{label}</div>
-                    <div className={cn("font-display font-bold leading-none", size === "large" ? "text-[28px]" : size === "small" ? "text-2xl" : "text-xl", variant === "primary" ? "text-primary-foreground" : "text-foreground")}>{value}</div>
-                </div>
-                {Icon && <div className={cn("shrink-0 rounded-md flex items-center justify-center", iconColor, size === "xs" ? "h-8 w-8" : "h-10 w-10")}><Icon className={size === "xs" ? "h-4 w-4" : "h-5 w-5"} /></div>}
-            </div>
-            {size !== "xs" && helper && <div className={cn("truncate text-[13px] leading-snug", variant === "primary" ? "text-primary-foreground/80" : "text-muted-foreground")}>{helper}</div>}
-        </div>
-    </div>
-);
-
 const ServicosExtrasLancamento = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
     const queryClient = useQueryClient();
-    const { openPipeline } = useOperationalPipeline();
     const today = format(new Date(), "yyyy-MM-dd");
-
-    const [activeTab, setActiveTab] = useState("historico");
-    const [filterEmpresaId, setFilterEmpresaId] = useState<string>("all");
-    const [filterMonth, setFilterMonth] = useState<string>(format(new Date(), "MM"));
-    const [filterYear, setFilterYear] = useState<string>(format(new Date(), "yyyy"));
 
     const [form, setForm] = useState<ServicosExtrasFormState>({ ...INITIAL_FORM });
     const [errors, setErrors] = useState<Partial<Record<keyof ServicosExtrasFormState, string>>>({});
+    const [selectedMateriais, setSelectedMateriais] = useState<MaterialItem[]>([]);
+    const [usouMateriais, setUsouMateriais] = useState(false);
 
     const setField = <K extends keyof ServicosExtrasFormState>(key: K, value: ServicosExtrasFormState[K]) => {
         setForm(prev => ({ ...prev, [key]: value }));
@@ -166,13 +141,32 @@ const ServicosExtrasLancamento = () => {
     // ─── Queries ─────────────────────────────────────────────────────────────
 
     const { data: empresas = [] } = useQuery({ queryKey: ["empresas_all"], queryFn: () => EmpresaService.getAll() });
-    const { data: tiposServico = [] } = useQuery({ queryKey: ["tipos_servico_operacional"], queryFn: () => TipoServicoOperacionalService.getAllActive() });
+    const { data: todosTiposServico = [] } = useQuery({ queryKey: ["tipos_servico_operacional"], queryFn: () => TipoServicoOperacionalService.getAllActive() });
+
+    const tiposServico = useMemo(() =>
+        (todosTiposServico as any[]).filter(t => t.is_extra_service && t.ativo_encarregado),
+        [todosTiposServico]
+    );
+
     const { data: transportadoras = [] } = useQuery({ queryKey: ["transportadoras_servicos", form.empresa_id], queryFn: () => TransportadoraClienteService.getByEmpresa(form.empresa_id), enabled: !!form.empresa_id });
     const { data: formasPagamento = [] } = useQuery({ queryKey: ["formas_pagamento_operacional"], queryFn: () => FormaPagamentoOperacionalService.getAllActive() });
+    const { data: regrasPeriodo = [] } = useQuery({ queryKey: ["regras_operacionais"], queryFn: () => ServicosEspecificosRegrasService.getAll() });
+    const { data: materiaisDisponiveis = [] } = useQuery({ queryKey: ["materiais_ativos"], queryFn: () => MateriaisOperacionaisService.getAllActive() });
 
-    const { data: historico = [], isLoading: isLoadingHistorico } = useQuery({
-        queryKey: ["servicos_extras_historico", filterEmpresaId, filterMonth, filterYear],
-        queryFn: () => ServicosExtrasOperacionaisService.getWithEmpresas(filterEmpresaId === "all" ? undefined : filterEmpresaId, `${filterYear}-${filterMonth}`).catch(() => []),
+    const { data: regraIss } = useQuery({
+        queryKey: ["resolver_iss_extra", form.empresa_id, form.tipo_servico_id, form.data],
+        queryFn: () => FornecedorValorServicoService.resolverIss({
+            empresaId: form.empresa_id,
+            tipoServicoId: form.tipo_servico_id || null,
+            dataOperacao: form.data,
+        }),
+        enabled: !!form.empresa_id && form.nf_emite,
+    });
+
+
+    const { data: historicoHoje = [], isLoading: isLoadingHistorico } = useQuery({
+        queryKey: ["servicos_extras_hoje", today],
+        queryFn: () => ServicosExtrasOperacionaisService.getWithEmpresas(undefined, today),
     });
 
     const { data: perfil } = useQuery({
@@ -190,22 +184,61 @@ const ServicosExtrasLancamento = () => {
     // ─── Calculations ─────────────────────────────────────────────────────────
 
     const parseNumeric = (value: string): number => {
-        const normalized = value.replace(/\./g, "").replace(",", ".");
+        const normalized = String(value).replace(/\./g, "").replace(",", ".");
         const parsed = Number(normalized);
         return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
     };
 
+    const periodSelecionado = useMemo(() =>
+        regrasPeriodo.find((r: any) => r.id === form.regra_periodo_id),
+        [regrasPeriodo, form.regra_periodo_id]
+    );
+
+    const multiplicadorPeriodo = Number(periodSelecionado?.peso_multiplicador || 1);
     const quantidade = parseNumeric(form.quantidade);
-    const valorUnitario = parseNumeric(form.valor_unitario);
-    const valorTotal = quantidade * valorUnitario;
+    const valorUnitarioBase = parseNumeric(form.valor_unitario);
+    const valorUnitarioEfetivo = valorUnitarioBase * multiplicadorPeriodo;
+    const valorTotalServico = quantidade * valorUnitarioEfetivo;
 
-    const kpis = useMemo(() => {
-        const total = historico.reduce((acc, item: any) => acc + Number(item.total ?? 0), 0);
-        const count = historico.length;
-        return { total, count };
-    }, [historico]);
+    const issPercentual = parseNumeric(form.iss_percentual);
+    const valorIss = form.nf_emite ? (valorTotalServico * (issPercentual / 100)) : 0;
+    const valorTotalServicoLiquido = valorTotalServico - valorIss;
 
-    const tipoServicoSelecionado = useMemo(() => (tiposServico as any[]).find((t: any) => t.id === form.tipo_servico_id), [tiposServico, form.tipo_servico_id]);
+    const valorTotalMateriais = selectedMateriais.reduce((acc, m) => acc + m.valor_total, 0);
+    const valorTotalGeral = valorTotalServico + valorTotalMateriais;
+    const valorLiquidoTotal = valorTotalServicoLiquido + valorTotalMateriais;
+
+    const tipoServicoSelecionado = useMemo(() =>
+        (tiposServico as any[]).find((t: any) => t.id === form.tipo_servico_id),
+        [tiposServico, form.tipo_servico_id]
+    );
+
+    useEffect(() => {
+        if (tipoServicoSelecionado) {
+            setField("valor_unitario", String(tipoServicoSelecionado.valor_unitario || "0"));
+            setField("valor_unitario_snapshot", tipoServicoSelecionado.valor_unitario || 0);
+            if (tipoServicoSelecionado.tipo_calculo) {
+                setField("tipo_calculo_snapshot", tipoServicoSelecionado.tipo_calculo);
+            }
+            if (tipoServicoSelecionado.unidade_cobranca) {
+                setField("unidade_cobranca_snapshot", tipoServicoSelecionado.unidade_cobranca);
+            }
+        }
+    }, [tipoServicoSelecionado]);
+
+    // Aplica ISS automaticamente quando NF é ligada
+    useEffect(() => {
+        if (form.nf_emite) {
+            if (regraIss?.regra_encontrada) {
+                setField("iss_percentual", (Number(regraIss.percentual_iss) * 100).toString());
+            } else if (Number(form.iss_percentual) === 0) {
+                // Fallback de 5% se não houver regra mas NF estiver ligada
+                setField("iss_percentual", "5");
+            }
+        } else {
+            setField("iss_percentual", "0");
+        }
+    }, [form.nf_emite, regraIss]);
 
     // ─── Validation ───────────────────────────────────────────────────────────
 
@@ -216,8 +249,8 @@ const ServicosExtrasLancamento = () => {
         if (!form.tipo_servico_id) newErrors.tipo_servico_id = "Selecione o tipo de serviço.";
         if (!form.descricao.trim()) newErrors.descricao = "Informe a descrição.";
         if (quantidade <= 0) newErrors.quantidade = "Quantidade inválida.";
-        if (valorUnitario <= 0) newErrors.valor_unitario = "Informe o valor.";
-        if (!form.forma_cobranca) newErrors.forma_cobranca = "Selecione a forma de cobrança.";
+        if (valorUnitarioBase <= 0 && form.tipo_calculo_snapshot !== "manual") newErrors.valor_unitario = "Informe o valor.";
+        if (!form.forma_pagamento_id) newErrors.forma_pagamento_id = "Informe a forma de pagamento.";
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
@@ -232,13 +265,28 @@ const ServicosExtrasLancamento = () => {
                 data: form.data,
                 empresa_id: form.empresa_id,
                 quantidade: quantidade,
-                valor_unitario: valorUnitario,
-                total: valorTotal,
-                tipo_servico: tiposServico.find((s: any) => s.id === form.tipo_servico_id)?.nome || "Outro",
+                valor_unitario: valorUnitarioEfetivo,
+                total: valorTotalGeral,
+                tipo_servico: tipoServicoSelecionado?.nome || "Outro",
+                tipo_servico_id: form.tipo_servico_id,
                 descricao_servico: form.descricao.trim(),
-                modalidade_financeira: form.forma_cobranca,
+                descricao: form.descricao.trim(),
+                modalidade_financeira: form.forma_cobranca || "DEPOSITO_IMEDIATO",
+                forma_pagamento_id: form.forma_pagamento_id,
                 responsavel_nome: (form.responsavel_nome.trim() || perfil?.nome || user?.email || "N/A").trim(),
                 observacao: form.observacao.trim(),
+                tipo_calculo_snapshot: form.tipo_calculo_snapshot,
+                unidade_cobranca_snapshot: form.unidade_cobranca_snapshot,
+                valor_unitario_snapshot: form.valor_unitario_snapshot,
+                quantidade_colaboradores: parseNumeric(form.quantidade_colaboradores) || null,
+                iss_percentual: issPercentual / 100,
+                valor_iss: valorIss,
+                regra_id: (form.regra_periodo_id && form.regra_periodo_id !== "none") ? form.regra_periodo_id : null,
+                emite_nf: form.nf_emite,
+                nf_numero: form.nf_numero,
+                materiais_snapshot: selectedMateriais.length > 0 ? selectedMateriais : null,
+                custo_materiais: valorTotalMateriais,
+                transportadora_id: (form.transportadora_id && form.transportadora_id !== "none") ? form.transportadora_id : null,
             };
 
             return ServicosExtrasOperacionaisService.create(payload);
@@ -246,124 +294,36 @@ const ServicosExtrasLancamento = () => {
         onSuccess: () => {
             toast.success("Serviço extra registrado com sucesso!");
             queryClient.invalidateQueries({ queryKey: ["operacoes"] });
-            queryClient.invalidateQueries({ queryKey: ["operacoes-pipeline"] });
-            queryClient.invalidateQueries({ queryKey: ["servicos_extras_historico"] });
-            navigate("/producao");
+            queryClient.invalidateQueries({ queryKey: ["servicos_extras_hoje"] });
+            setForm({ ...INITIAL_FORM, responsavel_nome: form.responsavel_nome });
+            setSelectedMateriais([]);
+            setUsouMateriais(false);
         },
         onError: (err: any) => toast.error("Erro ao salvar serviço extra.", { description: err.message }),
     });
 
     return (
-        <OperationalShell title="Serviços Extras">
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full space-y-6">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <TabsList className="w-fit p-1 bg-muted/60 border border-border">
-                        <TabsTrigger value="historico" className="text-xs font-bold uppercase tracking-wider">
-                            <History className="h-3.5 w-3.5 mr-2" /> Histórico
-                        </TabsTrigger>
-                        <TabsTrigger value="lancamento" className="text-xs font-bold uppercase tracking-wider">
-                            <Plus className="h-3.5 w-3.5 mr-2" /> Novo Lançamento
-                        </TabsTrigger>
-                    </TabsList>
-                    <Button variant="outline" className="w-full sm:w-auto" onClick={() => navigate("/producao")}>
+        <OperationalShell title="Lançamento de Serviço Extra">
+            <div className="max-w-4xl mx-auto space-y-8 pb-20 pt-4 px-4">
+                <div className="flex items-center justify-between">
+                    <h2 className="text-xl font-bold flex items-center gap-2">
+                        <Plus className="h-5 w-5 text-primary" />
+                        Novo Lançamento
+                    </h2>
+                    <Button variant="outline" size="sm" onClick={() => navigate("/producao")}>
                         <ArrowLeft className="w-4 h-4 mr-2" /> Voltar
                     </Button>
                 </div>
 
-                <TabsContent value="historico" className="m-0 space-y-6">
-                    <div className="flex flex-col lg:flex-row gap-4">
-                        <section className="flex-1 space-y-6">
-                            <div className="esc-card p-6">
-                                <div className="flex flex-wrap items-center gap-6">
-                                    <div className="flex-1 min-w-[240px] space-y-2">
-                                        <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Empresa</Label>
-                                        <Select value={filterEmpresaId} onValueChange={setFilterEmpresaId}>
-                                            <SelectTrigger className="bg-muted/30 border-muted">
-                                                <Building2 className="h-4 w-4 mr-2 text-primary" />
-                                                <SelectValue placeholder="Selecione a empresa" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="all">Todas as Empresas</SelectItem>
-                                                {(empresas as any[]).map((emp) => (
-                                                    <SelectItem key={emp.id} value={emp.id}>{emp.nome}</SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                        <div className="space-y-2">
-                                            <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Mês</Label>
-                                            <Select value={filterMonth} onValueChange={setFilterMonth}>
-                                                <SelectTrigger className="w-[140px] bg-muted/30 border-muted">
-                                                    <CalendarIcon className="h-4 w-4 mr-2 text-primary" />
-                                                    <SelectValue />
-                                                </SelectTrigger>
-                                                <SelectContent>{MONTH_FILTER_OPTIONS.map((opt) => (<SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>))}</SelectContent>
-                                            </Select>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Ano</Label>
-                                            <Select value={filterYear} onValueChange={setFilterYear}>
-                                                <SelectTrigger className="w-[110px] bg-muted/30 border-muted"><SelectValue /></SelectTrigger>
-                                                <SelectContent>{YEAR_OPTIONS.map((y) => (<SelectItem key={y} value={y}>{y}</SelectItem>))}</SelectContent>
-                                            </Select>
-                                        </div>
-                                    </div>
-                                    <div className="self-end pb-0.5">
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <Button size="icon" variant="ghost" className="text-muted-foreground hover:text-primary transition-colors" onClick={() => { setFilterMonth(format(new Date(), "MM")); setFilterYear(format(new Date(), "yyyy")); }}>
-                                                    <RefreshCw className="h-4 w-4" />
-                                                </Button>
-                                            </TooltipTrigger>
-                                            <TooltipContent>Resetar para hoje</TooltipContent>
-                                        </Tooltip>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <TopKpiCard label="Faturamento Total (Competência)" value={formatCurrency(kpis.total)} icon={Wallet} iconColor="bg-purple-50 text-purple-600" />
-                                <TopKpiCard label="Total de Serviços" value={String(kpis.count)} icon={Package} iconColor="bg-blue-50 text-blue-600" />
-                            </div>
-
-                            <div className="esc-card min-h-[500px] overflow-hidden">
-                                <div className="p-4 border-b bg-muted/10 flex items-center justify-between">
-                                    <h3 className="font-display font-bold text-base flex items-center gap-2"><History className="h-4 w-4 text-primary" />Listagem de Serviços Extras</h3>
-                                </div>
-                                {isLoadingHistorico ? (
-                                    <div className="p-20 flex flex-col items-center justify-center text-muted-foreground space-y-4">
-                                        <Loader2 className="h-8 w-8 animate-spin text-primary" /><p className="text-sm font-medium">Carregando serviços...</p>
-                                    </div>
-                                ) : (
-                                    <ServicosExtrasTableBlock data={historico} />
-                                )}
-                            </div>
-                        </section>
-
-                        <aside className="w-full lg:w-[340px] space-y-6">
-                            <section className="esc-card p-5 border-l-4 border-l-primary bg-primary-soft/10">
-                                <div className="flex items-center gap-2 text-primary mb-4"><BarChart3 className="h-5 w-5" /><h4 className="font-display font-bold text-sm uppercase tracking-wider">Análise Operacional</h4></div>
-                                <div className="space-y-4">
-                                    <div className="p-3 rounded-lg bg-card border border-border/60">
-                                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Média por Serviço</p>
-                                        <p className="text-lg font-display font-bold">{formatCurrency(kpis.count > 0 ? kpis.total / kpis.count : 0)}</p>
-                                    </div>
-                                </div>
-                            </section>
-                            <section className="esc-card p-5">
-                                <div className="flex items-center gap-2 text-amber-600 mb-4"><AlertTriangle className="h-5 w-5" /><h4 className="font-display font-bold text-sm uppercase tracking-wider">Observações</h4></div>
-                                <p className="text-xs text-muted-foreground leading-relaxed italic">"Serviços extras representam faturamento imediato e devem ser validados pelo gestor antes do fechamento financeiro."</p>
-                            </section>
-                        </aside>
-                    </div>
-                </TabsContent>
-
-                <TabsContent value="lancamento" className="m-0">
-                    <div className="max-w-3xl mx-auto space-y-6 pb-28 pt-4">
-                        <section className="esc-card p-6 space-y-6">
-                            <h3 className="font-display font-bold text-sm uppercase tracking-widest text-muted-foreground flex items-center gap-2"><Building2 className="h-4 w-4" />Identificação do Serviço</h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* FORMULÁRIO */}
+                    <div className="space-y-6">
+                        <section className="esc-card p-6 space-y-6 shadow-sm">
+                            <h3 className="font-display font-bold text-sm uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                                <Building2 className="h-4 w-4" />
+                                Identificação
+                            </h3>
+                            <div className="space-y-4">
                                 <div className="space-y-2">
                                     <Label className="text-xs font-bold uppercase">Empresa <span className="text-destructive">*</span></Label>
                                     <Select value={form.empresa_id} onValueChange={(v) => setField("empresa_id", v)}>
@@ -372,93 +332,284 @@ const ServicosExtrasLancamento = () => {
                                     </Select>
                                     {errors.empresa_id && <p className="text-xs text-destructive">{errors.empresa_id}</p>}
                                 </div>
-                                <div className="space-y-2">
-                                    <Label className="text-xs font-bold uppercase">Data <span className="text-destructive">*</span></Label>
-                                    <Input type="date" value={form.data} onChange={(e) => setField("data", e.target.value)} className={cn(errors.data && "border-destructive")} />
-                                    {errors.data && <p className="text-xs text-destructive">{errors.data}</p>}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-bold uppercase">Data <span className="text-destructive">*</span></Label>
+                                        <Input type="date" value={form.data} onChange={(e) => setField("data", e.target.value)} className={cn(errors.data && "border-destructive")} />
+                                        {errors.data && <p className="text-xs text-destructive">{errors.data}</p>}
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-bold uppercase">Tipo de Serviço <span className="text-destructive">*</span></Label>
+                                        <Select value={form.tipo_servico_id} onValueChange={(v) => setField("tipo_servico_id", v)}>
+                                            <SelectTrigger className={cn(errors.tipo_servico_id && "border-destructive")}><SelectValue placeholder="Selecione o tipo" /></SelectTrigger>
+                                            <SelectContent>{(tiposServico as any[]).map((s: any) => (
+                                                <SelectItem key={s.id} value={s.id}>
+                                                    {s.nome}
+                                                </SelectItem>
+                                            ))}</SelectContent>
+                                        </Select>
+                                        {errors.tipo_servico_id && <p className="text-xs text-destructive">{errors.tipo_servico_id}</p>}
+                                    </div>
                                 </div>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        </section>
+
+                        <section className="esc-card p-6 space-y-6 shadow-sm">
+                            <h3 className="font-display font-bold text-sm uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                                <FileText className="h-4 w-4" />
+                                Detalhes e Valores
+                            </h3>
+                            <div className="space-y-4">
                                 <div className="space-y-2">
-                                    <Label className="text-xs font-bold uppercase">Tipo de Serviço <span className="text-destructive">*</span></Label>
-                                    <Select value={form.tipo_servico_id} onValueChange={(v) => setField("tipo_servico_id", v)}>
-                                        <SelectTrigger className={cn(errors.tipo_servico_id && "border-destructive")}><SelectValue placeholder="Selecione o tipo" /></SelectTrigger>
-                                        <SelectContent>{(tiposServico as any[]).map((s: any) => (<SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>))}</SelectContent>
+                                    <Label className="text-xs font-bold uppercase">Descrição do Serviço <span className="text-destructive">*</span></Label>
+                                    <Textarea placeholder="Descreva o serviço realizado..." value={form.descricao} onChange={(e) => setField("descricao", e.target.value)} className={cn(errors.descricao && "border-destructive")} rows={2} />
+                                    {errors.descricao && <p className="text-xs text-destructive">{errors.descricao}</p>}
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-bold uppercase">
+                                            Quantidade {form.unidade_cobranca_snapshot && <span className="text-muted-foreground font-normal">({form.unidade_cobranca_snapshot})</span>} <span className="text-destructive">*</span>
+                                        </Label>
+                                        <Input type="number" step="0.01" value={form.quantidade} onChange={(e) => setField("quantidade", e.target.value)} className={cn(errors.quantidade && "border-destructive")} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-bold uppercase">Período Operacional</Label>
+                                        <Select value={form.regra_periodo_id} onValueChange={(v) => setField("regra_periodo_id", v)}>
+                                            <SelectTrigger><SelectValue placeholder="Selecione o período" /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="none">Padrão (1.00x)</SelectItem>
+                                                {regrasPeriodo.map((r: any) => (
+                                                    <SelectItem key={r.id} value={r.id}>
+                                                        {r.codigo} - {r.descricao} ({Number(r.peso_multiplicador).toFixed(2)}x)
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-bold uppercase">Qtd. Colaboradores</Label>
+                                        <Input type="number" placeholder="Opcional" value={form.quantidade_colaboradores} onChange={(e) => setField("quantidade_colaboradores", e.target.value)} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-bold uppercase">Valor Unitário</Label>
+                                        <div className="relative">
+                                            <span className="absolute left-3 top-2.5 text-muted-foreground text-sm">R$</span>
+                                            <Input
+                                                type="number"
+                                                step="0.01"
+                                                className={cn("pl-9 font-bold", form.tipo_calculo_snapshot === "manual" ? "bg-background" : "bg-muted text-primary")}
+                                                value={form.valor_unitario}
+                                                onChange={(e) => form.tipo_calculo_snapshot === "manual" && setField("valor_unitario", e.target.value)}
+                                                readOnly={form.tipo_calculo_snapshot !== "manual"}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section className="esc-card p-6 space-y-6 shadow-sm">
+                            <h3 className="font-display font-bold text-sm uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                                <DollarSign className="h-4 w-4" />
+                                Financeiro
+                            </h3>
+                            <div className="space-y-4">
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-bold uppercase">Forma de Pagamento <span className="text-destructive">*</span></Label>
+                                    <Select value={form.forma_pagamento_id} onValueChange={(v) => setField("forma_pagamento_id", v)}>
+                                        <SelectTrigger className={cn(errors.forma_pagamento_id && "border-destructive")}><SelectValue placeholder="Selecione a forma" /></SelectTrigger>
+                                        <SelectContent>{(formasPagamento as any[]).map((f: any) => (<SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>))}</SelectContent>
                                     </Select>
-                                    {errors.tipo_servico_id && <p className="text-xs text-destructive">{errors.tipo_servico_id}</p>}
                                 </div>
-                                <div className="space-y-2">
-                                    <Label className="text-xs font-bold uppercase">Transportadora <span className="text-xs text-muted-foreground">(opcional)</span></Label>
-                                    <Select value={form.transportadora_id} onValueChange={(v) => setField("transportadora_id", v)} disabled={!form.empresa_id}>
-                                        <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                                        <SelectContent><SelectItem value=" ">Nenhuma</SelectItem>{(transportadoras as any[]).map((t: any) => (<SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>))}</SelectContent>
+
+                                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200">
+                                    <div className="space-y-0.5">
+                                        <Label className="text-xs font-bold uppercase">Emitir Nota Fiscal (NF)?</Label>
+                                        <p className="text-[10px] text-muted-foreground italic">Marque se este serviço exige faturamento oficial.</p>
+                                    </div>
+                                    <input
+                                        type="checkbox"
+                                        checked={form.nf_emite}
+                                        onChange={(e) => setField("nf_emite", e.target.checked)}
+                                        className="h-5 w-5 rounded border-slate-300 text-primary focus:ring-primary"
+                                    />
+                                </div>
+
+                                {form.nf_emite && (
+                                    <div className="space-y-2 animate-in fade-in slide-in-from-top-1">
+                                        <Label className="text-xs font-bold uppercase text-primary">Número da NF</Label>
+                                        <Input placeholder="Opcional" value={form.nf_numero} onChange={(e) => setField("nf_numero", e.target.value)} />
+                                    </div>
+                                )}
+                            </div>
+                        </section>
+
+                        {/* SEÇÃO DE MATERIAIS EXTRAS */}
+                        <section className="esc-card p-6 space-y-4 shadow-sm border-l-4 border-l-blue-400">
+                            <div className="flex items-center justify-between">
+                                <h3 className="font-display font-bold text-sm uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                                    <Package className="h-4 w-4" />
+                                    Materiais Extras
+                                </h3>
+                                <input
+                                    type="checkbox"
+                                    checked={usouMateriais}
+                                    onChange={(e) => setUsouMateriais(e.target.checked)}
+                                    className="h-4 w-4 rounded border-slate-300 text-blue-500"
+                                />
+                            </div>
+
+                            {usouMateriais && (
+                                <div className="space-y-3 animate-in fade-in zoom-in-95 duration-200">
+                                    <Select
+                                        onValueChange={(matId) => {
+                                            const mat = materiaisDisponiveis.find((m: any) => m.id === matId);
+                                            if (mat && !selectedMateriais.find(sm => sm.material_id === matId)) {
+                                                setSelectedMateriais([...selectedMateriais, {
+                                                    material_id: mat.id,
+                                                    nome_snapshot: mat.nome,
+                                                    unidade_snapshot: mat.unidade,
+                                                    valor_unitario_snapshot: mat.valor_unitario,
+                                                    quantidade: 1,
+                                                    valor_total: mat.valor_unitario
+                                                }]);
+                                            }
+                                        }}
+                                    >
+                                        <SelectTrigger className="h-9"><SelectValue placeholder="Adicionar material..." /></SelectTrigger>
+                                        <SelectContent>
+                                            {materiaisDisponiveis.map((m: any) => (
+                                                <SelectItem key={m.id} value={m.id}>{m.nome} ({formatCurrency(m.valor_unitario)})</SelectItem>
+                                            ))}
+                                        </SelectContent>
                                     </Select>
+
+                                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                                        {selectedMateriais.map((mat, idx) => (
+                                            <div key={mat.material_id} className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-100">
+                                                <div className="flex-1">
+                                                    <p className="text-[10px] font-bold truncate">{mat.nome_snapshot}</p>
+                                                    <p className="text-[8px] text-muted-foreground">{formatCurrency(mat.valor_unitario_snapshot)}/{mat.unidade_snapshot}</p>
+                                                </div>
+                                                <Input
+                                                    type="number"
+                                                    className="w-16 h-7 text-[10px] text-center"
+                                                    value={mat.quantidade}
+                                                    onChange={(e) => {
+                                                        const q = Number(e.target.value);
+                                                        const newMats = [...selectedMateriais];
+                                                        newMats[idx] = { ...mat, quantidade: q, valor_total: q * mat.valor_unitario_snapshot };
+                                                        setSelectedMateriais(newMats);
+                                                    }}
+                                                />
+                                                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setSelectedMateriais(selectedMateriais.filter((_, i) => i !== idx))}>
+                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                </Button>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
-                            </div>
+                            )}
                         </section>
 
-                        <section className="esc-card p-6 space-y-6">
-                            <h3 className="font-display font-bold text-sm uppercase tracking-widest text-muted-foreground flex items-center gap-2"><FileText className="h-4 w-4" />Detalhes e Valores</h3>
-                            <div className="space-y-2">
-                                <Label className="text-xs font-bold uppercase">Descrição <span className="text-destructive">*</span></Label>
-                                <Textarea placeholder="Descreva o serviço realizado..." value={form.descricao} onChange={(e) => setField("descricao", e.target.value)} className={cn(errors.descricao && "border-destructive")} rows={3} />
-                                {errors.descricao && <p className="text-xs text-destructive">{errors.descricao}</p>}
+                        <div className="space-y-4 sticky bottom-6 z-10 transition-all">
+                            <div className="p-4 rounded-2xl border-2 border-primary/20 bg-primary/5 flex flex-col gap-1 backdrop-blur-md shadow-lg shadow-primary/5">
+                                <div className="flex items-center justify-between text-muted-foreground text-[10px] uppercase font-bold tracking-wider px-1">
+                                    <span>Base: {quantidade} x R$ {valorUnitarioEfetivo.toFixed(2)}</span>
+                                    {valorTotalMateriais > 0 && <span>+ R$ {formatCurrency(valorTotalMateriais)} Mat.</span>}
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs font-black uppercase text-primary">Total Bruto</span>
+                                    <span className="text-2xl font-black text-primary font-mono">{formatCurrency(valorTotalGeral)}</span>
+                                </div>
+                                {form.nf_emite && (
+                                    <div className="flex flex-col gap-0.5 mt-1 pt-2 border-t border-primary/10">
+                                        <div className="flex justify-between items-center text-[10px] text-destructive/70 italic px-1">
+                                            <span>ISS ({form.iss_percentual}%):</span>
+                                            <span>-{formatCurrency(valorIss)}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-[10px] font-bold text-primary px-1">
+                                            <span className="uppercase">Líquido Estimado:</span>
+                                            <span>{formatCurrency(valorLiquidoTotal)}</span>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                <div className="space-y-2">
-                                    <Label className="text-xs font-bold uppercase">Quantidade <span className="text-destructive">*</span></Label>
-                                    <Input type="number" step="0.01" value={form.quantidade} onChange={(e) => setField("quantidade", e.target.value)} className={cn(errors.quantidade && "border-destructive")} />
-                                    {errors.quantidade && <p className="text-xs text-destructive">{errors.quantidade}</p>}
-                                </div>
-                                <div className="space-y-2">
-                                    <Label className="text-xs font-bold uppercase">Valor Unitário <span className="text-destructive">*</span></Label>
-                                    <div className="relative"><span className="absolute left-3 top-2.5 text-muted-foreground text-sm">R$</span><Input type="number" step="0.01" className={cn("pl-9", errors.valor_unitario && "border-destructive")} value={form.valor_unitario} onChange={(e) => setField("valor_unitario", e.target.value)} /></div>
-                                    {errors.valor_unitario && <p className="text-xs text-destructive">{errors.valor_unitario}</p>}
-                                </div>
-                                <div className="space-y-2">
-                                    <Label className="text-xs font-bold uppercase">Total</Label>
-                                    <div className="h-10 flex items-center px-3 rounded-md border-2 border-primary/20 bg-primary/5 text-primary font-mono font-bold">{formatCurrency(valorTotal)}</div>
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div className="space-y-2">
-                                    <Label className="text-xs font-bold uppercase">NF / Referência</Label>
-                                    <Input value={form.nf_numero} onChange={(e) => setField("nf_numero", e.target.value)} />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label className="text-xs font-bold uppercase">Responsável</Label>
-                                    <Input value={form.responsavel_nome} onChange={(e) => setField("responsavel_nome", e.target.value)} />
-                                </div>
-                            </div>
-                        </section>
 
-                        <section className="esc-card p-6 space-y-6">
-                            <h3 className="font-display font-bold text-sm uppercase tracking-widest text-muted-foreground flex items-center gap-2"><DollarSign className="h-4 w-4" />Cobrança</h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                {FORMAS_COBRANCA.map(fc => (
-                                    <button key={fc.value} type="button" onClick={() => setField("forma_cobranca", fc.value)} className={cn("p-4 rounded-xl border-2 text-left transition-all", form.forma_cobranca === fc.value ? "border-primary bg-primary/5" : "border-border hover:border-primary/30")}><p className="font-bold text-sm text-foreground">{fc.label}</p><p className="text-xs text-muted-foreground mt-0.5">{fc.description}</p></button>
-                                ))}
-                            </div>
-                            <div className="space-y-2">
-                                <Label className="text-xs font-bold uppercase">Forma de Pagamento</Label>
-                                <Select value={form.forma_pagamento_id} onValueChange={(v) => setField("forma_pagamento_id", v)}>
-                                    <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                                    <SelectContent><SelectItem value=" ">Não especificada</SelectItem>{(formasPagamento as any[]).map((fp: any) => (<SelectItem key={fp.id} value={fp.id}>{fp.nome}</SelectItem>))}</SelectContent>
-                                </Select>
-                            </div>
-                        </section>
-
-                        <div className="sticky bottom-6 z-20">
-                            <div className="flex justify-end items-center bg-card/95 backdrop-blur p-4 rounded-2xl border border-border shadow-2xl">
-                                <div className="flex items-center gap-4">
-                                    <Button size="lg" className="min-w-[200px] font-display font-bold shadow-lg shadow-primary/20" onClick={() => salvarMutation.mutate()} disabled={salvarMutation.isPending}><Save className="h-4 w-4 mr-2" />{salvarMutation.isPending ? "Salvando..." : "Salvar Serviço Extra"}</Button>
-                                </div>
-                            </div>
+                            <Button
+                                className="w-full size-lg font-bold py-7 text-xl shadow-xl shadow-primary/30 rounded-2xl"
+                                onClick={() => salvarMutation.mutate()}
+                                disabled={salvarMutation.isPending}
+                            >
+                                {salvarMutation.isPending ? <Loader2 className="h-6 w-6 animate-spin mr-2" /> : <Save className="h-6 w-6 mr-2" />}
+                                Finalizar Lançamento
+                            </Button>
                         </div>
                     </div>
-                </TabsContent>
-            </Tabs>
+
+                    {/* HISTÓRICO DE HOJE */}
+                    <div className="space-y-4">
+                        <div className="flex items-center gap-2 px-2 sticky top-4">
+                            <History className="h-5 w-5 text-muted-foreground" />
+                            <h2 className="text-lg font-bold">Lançamentos de Hoje</h2>
+                        </div>
+
+                        <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden divide-y divide-slate-50 min-h-[400px]">
+                            {isLoadingHistorico ? (
+                                <div className="p-12 text-center text-muted-foreground animate-pulse flex flex-col items-center gap-2">
+                                    <Loader2 className="h-8 w-8 animate-spin text-primary/30" />
+                                    Carregando histórico...
+                                </div>
+                            ) : historicoHoje.length === 0 ? (
+                                <div className="p-12 text-center text-muted-foreground text-sm flex flex-col items-center gap-4">
+                                    <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center">
+                                        <History className="h-8 w-8 text-slate-200" />
+                                    </div>
+                                    <span className="italic">Nenhum serviço registrado hoje.</span>
+                                </div>
+                            ) : (
+                                (historicoHoje as any[]).map((item) => (
+                                    <div key={item.id} className="p-5 hover:bg-slate-50/50 transition-all border-l-4 border-l-transparent hover:border-l-primary duration-300">
+                                        <div className="flex justify-between items-start mb-2">
+                                            <div>
+                                                <p className="text-xs font-bold text-slate-900 line-clamp-1">{item.empresas?.nome || "Empresa"}</p>
+                                                <div className="flex items-center gap-2 mt-1">
+                                                    <p className="text-[10px] text-primary font-bold flex items-center gap-1 uppercase bg-primary/5 px-1.5 py-0.5 rounded">
+                                                        <Package className="h-2.5 w-2.5" />
+                                                        {item.tipo_servico || "Serviço"}
+                                                    </p>
+                                                    <span className="text-[9px] text-muted-foreground uppercase">{item.data}</span>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-sm font-black text-slate-900">{formatCurrency(item.total)}</p>
+                                                <Badge
+                                                    variant="secondary"
+                                                    className={cn(
+                                                        "text-[8px] h-4 px-1 uppercase font-bold",
+                                                        item.pipeline_status === 'FECHADO' ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"
+                                                    )}
+                                                >
+                                                    {item.pipeline_status || 'PENDENTE'}
+                                                </Badge>
+                                            </div>
+                                        </div>
+                                        {item.descricao_servico && (
+                                            <p className="text-[10px] text-muted-foreground line-clamp-2 italic leading-relaxed">
+                                                "{item.descricao_servico}"
+                                            </p>
+                                        )}
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
         </OperationalShell>
     );
 };
+
 export default ServicosExtrasLancamento;

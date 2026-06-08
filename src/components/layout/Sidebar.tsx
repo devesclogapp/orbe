@@ -26,6 +26,20 @@ import {
   Wallet,
   Wrench,
   Zap,
+  Plus,
+  FileText,
+  TrendingUp,
+  Package,
+  Building2,
+  Calendar,
+  ArrowUpRight,
+  ArrowDownRight,
+  Receipt,
+  ClipboardList,
+  CheckCircle2,
+  Truck,
+  Table,
+  LucideIcon,
 } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { ComponentType, MouseEvent, useEffect, useMemo, useRef, useState } from "react";
@@ -63,7 +77,7 @@ type PulseKey =
   | "regras_operacionais";
 
 type MenuItem = {
-  icon: ComponentType<{ className?: string; strokeWidth?: number }>;
+  icon: LucideIcon;
   label: string;
   to: string;
   end?: boolean;
@@ -94,9 +108,6 @@ const groups: MenuGroup[] = [
     label: "Entradas / Captura",
     stageKey: "entradas",
     items: [
-      { icon: ClipboardCheck, label: "Operações Recebidas", to: "/operacional/operacoes", module: "operacoes_recebidas", pulseKey: "operacoes_recebidas" },
-      { icon: Clock, label: "Pontos Recebidos", to: "/operacional/pontos", module: "pontos_recebidos", pulseKey: "pontos_recebidos" },
-      { icon: UserCheck, label: "Diaristas Recebidos", to: "/operacional/diaristas", module: "diaristas_recebidos", pulseKey: "diaristas_recebidos" },
       { icon: Wallet, label: "Custos Extras", to: "/producao/custos-extras", module: "central_operacional", pulseKey: "custos_extras" },
       { icon: Wrench, label: "Serviços Extras", to: "/producao/servicos-extras", module: "central_operacional", pulseKey: "servicos_extras" },
     ],
@@ -251,14 +262,44 @@ export const Sidebar = () => {
     setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }));
 
   const filterItems = (items: MenuItem[]) =>
-    items.filter((item) => !item.module || isAdmin || canAccess(item.module));
+    items.filter((item) => {
+      if (!item.module || isAdmin) return true;
+
+      return canAccess(item.module);
+    });
 
   const visibleGroups = useMemo(
-    () =>
-      groups
-        .map((group) => ({ ...group, items: filterItems(group.items) }))
-        .filter((group) => group.items.length > 0),
-    [canAccess, isAdmin],
+    () => {
+      const isEncarregado = user?.user_metadata?.role?.toLowerCase() === "encarregado";
+
+      return groups
+        .map((group) => {
+          let items = filterItems(group.items);
+
+          // Custom logic for "Entradas / Captura"
+          if (group.id === "entradas") {
+            if (isEncarregado) {
+              items = [
+                { icon: Wallet, label: "Custos Extras", to: "/producao/custos-extras", module: "central_operacional", pulseKey: "custos_extras" },
+                { icon: Wrench, label: "Serviços Extras", to: "/producao/servicos-extras", module: "central_operacional", pulseKey: "servicos_extras" },
+                { icon: UserCheck, label: "Diaristas", to: "/producao/diaristas", module: "central_operacional", pulseKey: "diaristas_recebidos" },
+                { icon: Package, label: "Serviços Específicos", to: "/producao/servicos-especificos", module: "central_operacional" },
+              ];
+            } else {
+              items = [
+                { icon: Activity, label: "Operações Recebidas", to: "/operacional/operacoes", module: "operacoes_recebidas", pulseKey: "operacoes_recebidas" },
+                { icon: UserCheck, label: "Diaristas Recebidos", to: "/operacional/diaristas", module: "processamento_rh", pulseKey: "diaristas_recebidos" },
+                { icon: Wrench, label: "Serviços Extras Rec.", to: "/operacional/servicos-extras", module: "central_operacional", pulseKey: "servicos_extras" },
+                { icon: Wallet, label: "Custos Extras Rec.", to: "/operacional/custos-extras", module: "central_operacional", pulseKey: "custos_extras" },
+              ];
+            }
+          }
+
+          return { ...group, items: filterItems(items) };
+        })
+        .filter((group) => group.items.length > 0);
+    },
+    [canAccess, isAdmin, user?.user_metadata?.role],
   );
 
   const userInitials = user?.user_metadata?.full_name

@@ -258,6 +258,8 @@ const LancamentoProducao = () => {
                             onNext={(preset) => {
                                 if (preset.tipo === "diaristas") {
                                     navigate("/producao/diaristas");
+                                } else if (preset.tipo === "transbordo_servico_extra") {
+                                    navigate("/producao/servicos-extras");
                                 } else {
                                     setEtapa(2);
                                 }

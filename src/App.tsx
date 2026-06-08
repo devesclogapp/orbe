@@ -96,6 +96,10 @@ import RhDiaristasPainel from "./pages/Rh/RhDiaristasPainel";
 import AprovacoesRh from "./pages/Rh/AprovacoesRh";
 import RhDiaristasGestao from "./pages/Rh/RhDiaristasGestao";
 
+// Operacional (Inbox)
+import ServicosExtrasRecebidos from "./pages/Operacional/ServicosExtrasRecebidos";
+import CustosExtrasRecebidos from "./pages/Operacional/CustosExtrasRecebidos";
+
 // Onboarding
 import Onboarding from "./pages/Onboarding";
 
@@ -148,6 +152,8 @@ const App = () => (
                             <Route path="/operacional/pontos" element={<AuthGuard><Pontos /></AuthGuard>} />
                             <Route path="/operacional/operacoes" element={<AuthGuard><Operacoes /></AuthGuard>} />
                             <Route path="/operacional/diaristas" element={<AuthGuard><RhDiaristasPainel /></AuthGuard>} />
+                            <Route path="/operacional/servicos-extras" element={<AuthGuard><ServicosExtrasRecebidos /></AuthGuard>} />
+                            <Route path="/operacional/custos-extras" element={<AuthGuard><CustosExtrasRecebidos /></AuthGuard>} />
                             <Route path="/producao" element={<AuthGuard><LancamentoProducao /></AuthGuard>} />
                             <Route path="/producao/diaristas" element={<AuthGuard><DiaristasLancamento /></AuthGuard>} />
                             <Route path="/producao/custos-extras" element={<AuthGuard><CustosExtrasLancamento /></AuthGuard>} />

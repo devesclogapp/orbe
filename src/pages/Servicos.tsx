@@ -44,6 +44,11 @@ const Servicos = () => {
     descricao: "",
     empresa_id: "",
     ativo: true,
+    is_extra_service: false,
+    unidade_cobranca: "op",
+    tipo_calculo: "por_operacao",
+    valor_unitario: 0,
+    ativo_encarregado: true,
   });
 
   const getServicoErrorMessage = (err: any) => {
@@ -63,6 +68,11 @@ const Servicos = () => {
       descricao: "",
       empresa_id: empresaOptions[0]?.id ?? "",
       ativo: true,
+      is_extra_service: false,
+      unidade_cobranca: "op",
+      tipo_calculo: "por_operacao",
+      valor_unitario: 0,
+      ativo_encarregado: true,
     });
     setFormErrors({});
     setEditingId(null);
@@ -154,6 +164,20 @@ const Servicos = () => {
       toast.error("Preencha os campos obrigatórios.");
       return;
     }
+
+    if (form.is_extra_service) {
+      if (!form.unidade_cobranca) {
+        setFormErrors({ unidade_cobranca: "Informe a unidade de cobrança." });
+        toast.error("Preencha os campos obrigatórios.");
+        return;
+      }
+      if (form.valor_unitario === undefined || form.valor_unitario === null) {
+        setFormErrors({ valor_unitario: "Informe o valor unitário." });
+        toast.error("Preencha os campos obrigatórios.");
+        return;
+      }
+    }
+
     setFormErrors({});
 
     if (editingId) {
@@ -167,7 +191,7 @@ const Servicos = () => {
     item.ativo !== false &&
     (selectedEmpresa === "all" || item.empresa_id === selectedEmpresa) &&
     (item.nome?.toLowerCase().includes(searchText.toLowerCase()) ||
-    item.descricao?.toLowerCase().includes(searchText.toLowerCase()))
+      item.descricao?.toLowerCase().includes(searchText.toLowerCase()))
   );
 
   return (
@@ -205,6 +229,10 @@ const Servicos = () => {
             <tr className="text-left">
               <th className="px-4 h-11 font-medium">Nome</th>
               <th className="px-4 h-11 font-medium">Descrição</th>
+              <th className="px-4 h-11 font-medium text-center">Extra?</th>
+              <th className="px-4 h-11 font-medium text-center">Unidade</th>
+              <th className="px-4 h-11 font-medium text-center">Cálculo</th>
+              <th className="px-4 h-11 font-medium text-center">Valor</th>
               <th className="px-4 h-11 font-medium text-center">Status</th>
               <th className="px-4 h-11 font-medium text-center">Ações</th>
             </tr>
@@ -212,13 +240,13 @@ const Servicos = () => {
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                   Carregando...
                 </td>
               </tr>
             ) : filteredList.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                   Nenhum tipo de serviço encontrado
                 </td>
               </tr>
@@ -226,11 +254,42 @@ const Servicos = () => {
               filteredList.map((item: any) => (
                 <tr key={item.id} className="border-t border-muted hover:bg-background">
                   <td className="px-4 h-14 font-medium">{item.nome}</td>
-                  <td className="px-4 text-muted-foreground">{item.descricao || "—"}</td>
+                  <td className="px-4 text-muted-foreground text-xs">{item.descricao || "—"}</td>
                   <td className="px-4 text-center">
-                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                      item.ativo ? "bg-success-soft text-success-strong" : "bg-muted text-muted-foreground"
-                    }`}>
+                    {item.is_extra_service ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700 border border-amber-200">
+                        Sim
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 text-center text-xs text-muted-foreground">
+                    {item.is_extra_service ? (
+                      item.unidade_cobranca === "op" ? "Operação" :
+                        item.unidade_cobranca === "hora" ? "Hora" :
+                          item.unidade_cobranca === "pallet" ? "Pallet" :
+                            item.unidade_cobranca === "unidade" ? "Unidade" :
+                              item.unidade_cobranca === "colaborador" ? "Colaborador" : (item.unidade_cobranca || "—")
+                    ) : "—"}
+                  </td>
+                  <td className="px-4 text-center text-xs text-muted-foreground">
+                    {item.is_extra_service ? (
+                      item.tipo_calculo === "por_operacao" ? "Por Operação" :
+                        item.tipo_calculo === "por_hora" ? "Por Hora" :
+                          item.tipo_calculo === "por_pallet" ? "Por Pallet" :
+                            item.tipo_calculo === "por_quantidade" ? "Por Quantidade" :
+                              item.tipo_calculo === "por_colaborador" ? "Por Colaborador" : (item.tipo_calculo || "—")
+                    ) : "—"}
+                  </td>
+                  <td className="px-4 text-center font-mono text-xs font-semibold">
+                    {item.is_extra_service ? (
+                      new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.valor_unitario || 0)
+                    ) : "—"}
+                  </td>
+                  <td className="px-4 text-center">
+                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${item.ativo ? "bg-success-soft text-success-strong" : "bg-muted text-muted-foreground"
+                      }`}>
                       {item.ativo === true ? "Ativo" : "Inativo"}
                     </span>
                   </td>
@@ -247,6 +306,11 @@ const Servicos = () => {
                             descricao: item.descricao,
                             empresa_id: item.empresa_id,
                             ativo: item.ativo,
+                            is_extra_service: item.is_extra_service ?? false,
+                            unidade_cobranca: item.unidade_cobranca ?? "op",
+                            tipo_calculo: item.tipo_calculo ?? "por_operacao",
+                            valor_unitario: item.valor_unitario ?? 0,
+                            ativo_encarregado: item.ativo_encarregado ?? true,
                           });
                           setOpen(true);
                         }}
@@ -321,22 +385,99 @@ const Servicos = () => {
                 placeholder="Descrição do tipo de serviço"
               />
             </div>
+            <div className="flex items-center gap-2 p-3 bg-muted/30 rounded-lg border border-muted">
+              <input
+                type="checkbox"
+                id="is_extra_service"
+                className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                checked={form.is_extra_service}
+                onChange={(e) => setForm({ ...form, is_extra_service: e.target.checked })}
+              />
+              <Label htmlFor="is_extra_service" className="text-sm font-semibold cursor-pointer">
+                Usar este serviço para lançamentos de Serviço Extra
+              </Label>
+            </div>
+
+            {form.is_extra_service && (
+              <div className="grid gap-4 p-4 border rounded-lg bg-primary/5 border-primary/20 animate-in fade-in slide-in-from-top-2">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="unidade_cobranca" className="text-xs uppercase tracking-wider text-muted-foreground">Unidade de Cobrança</Label>
+                    <select
+                      id="unidade_cobranca"
+                      value={form.unidade_cobranca}
+                      onChange={(e) => setForm({ ...form, unidade_cobranca: e.target.value })}
+                      className="h-9 px-2 rounded-md border border-input bg-background text-sm"
+                    >
+                      <option value="op">Operação</option>
+                      <option value="hora">Hora</option>
+                      <option value="pallet">Pallet</option>
+                      <option value="unidade">Unidade</option>
+                      <option value="colaborador">Colaborador</option>
+                    </select>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="tipo_calculo" className="text-xs uppercase tracking-wider text-muted-foreground">Tipo de Cálculo</Label>
+                    <select
+                      id="tipo_calculo"
+                      value={form.tipo_calculo}
+                      onChange={(e) => setForm({ ...form, tipo_calculo: e.target.value })}
+                      className="h-9 px-2 rounded-md border border-input bg-background text-sm"
+                    >
+                      <option value="por_operacao">Por Operação</option>
+                      <option value="por_hora">Por Hora</option>
+                      <option value="por_pallet">Por Pallet</option>
+                      <option value="por_quantidade">Por Quantidade</option>
+                      <option value="por_colaborador">Por Colaborador</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="valor_unitario" className="text-xs uppercase tracking-wider text-muted-foreground font-bold">Valor Unitário (R$)</Label>
+                  <Input
+                    id="valor_unitario"
+                    type="number"
+                    step="0.01"
+                    value={form.valor_unitario}
+                    onChange={(e) => setForm({ ...form, valor_unitario: Number(e.target.value) })}
+                    placeholder="0,00"
+                    className="h-9 font-mono font-bold text-primary"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="ativo_encarregado"
+                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                    checked={form.ativo_encarregado}
+                    onChange={(e) => setForm({ ...form, ativo_encarregado: e.target.checked })}
+                  />
+                  <Label htmlFor="ativo_encarregado" className="text-xs text-muted-foreground cursor-pointer uppercase tracking-tighter">
+                    Ativo para lançamento do encarregado
+                  </Label>
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"
                 id="ativo"
+                className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
                 checked={form.ativo}
                 onChange={(e) => setForm({ ...form, ativo: e.target.checked })}
               />
-              <label htmlFor="ativo" className="text-sm">Ativo</label>
+              <Label htmlFor="ativo" className="text-sm cursor-pointer">Ativo</Label>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setOpen(false); reset(); }}>
               Cancelar
             </Button>
-            <Button 
-              onClick={submit} 
+            <Button
+              onClick={submit}
               disabled={createMutation.isPending || updateMutation.isPending}
               className={createMutation.isPending || updateMutation.isPending ? "opacity-70 cursor-not-allowed" : ""}
             >

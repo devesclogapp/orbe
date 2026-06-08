@@ -1472,7 +1472,15 @@ const CentralCadastros = () => {
   const [servicoModalOpen, setServicoModalOpen] = useState(false);
   const [servicoFormErrors, setServicoFormErrors] = useState<any>({});
   const [servicoForm, setServicoForm] = useState({
-    nome: "", descricao: "", ativo: true, empresa_id: empresaId || "",
+    nome: "",
+    descricao: "",
+    ativo: true,
+    empresa_id: empresaId || "",
+    is_extra_service: false,
+    unidade_cobranca: "unidade" as "unidade" | "hora" | "peso" | "km" | "outro",
+    tipo_calculo: "fixed" as "fixed" | "manual",
+    valor_unitario: 0,
+    ativo_encarregado: true,
   });
 
   const getServicoErrorMessage = (err: any) => {
@@ -1493,7 +1501,11 @@ const CentralCadastros = () => {
       return;
     }
     setServicoFormErrors({});
-    createServicoMutation.mutate({ ...servicoForm, empresa_id: servicoForm.empresa_id || null });
+    createServicoMutation.mutate({
+      ...servicoForm,
+      empresa_id: servicoForm.empresa_id || null,
+      valor_unitario: Number(servicoForm.valor_unitario) || 0
+    });
   };
 
   const createServicoMutation = useMutation({
@@ -1501,7 +1513,17 @@ const CentralCadastros = () => {
     onSuccess: async () => {
       toast.success("Tipo de serviço cadastrado com sucesso");
       setServicoModalOpen(false);
-      setServicoForm({ nome: "", descricao: "", ativo: true, empresa_id: empresaId || "" });
+      setServicoForm({
+        nome: "",
+        descricao: "",
+        ativo: true,
+        empresa_id: empresaId || "",
+        is_extra_service: false,
+        unidade_cobranca: "unidade",
+        tipo_calculo: "fixed",
+        valor_unitario: 0,
+        ativo_encarregado: true,
+      });
       await new Promise(r => setTimeout(r, 500));
       await queryClient.invalidateQueries({ queryKey: ["tipos_servico_operacional"] });
       const data = await queryClient.fetchQuery({ queryKey: ["tipos_servico_operacional"], queryFn: () => TipoServicoOperacionalService.getAllActive() });
@@ -3147,6 +3169,10 @@ const CentralCadastros = () => {
                         <tr className="text-left">
                           <th className="px-5 h-11 font-medium text-center">Nome</th>
                           <th className="px-3 h-11 font-medium text-center">Descrição</th>
+                          <th className="px-3 h-11 font-medium text-center">Extra?</th>
+                          <th className="px-3 h-11 font-medium text-center">Unidade</th>
+                          <th className="px-3 h-11 font-medium text-center">Cálculo</th>
+                          <th className="px-3 h-11 font-medium text-center">Valor</th>
                           <th className="px-5 h-11 font-medium text-center">Status</th>
                           <th className="px-3 h-11 font-medium text-center">Ações</th>
                         </tr>
@@ -3154,7 +3180,7 @@ const CentralCadastros = () => {
                       <tbody>
                         {tiposServico.length === 0 ? (
                           <tr>
-                            <td colSpan={4} className="px-5 py-8 text-center text-muted-foreground">
+                            <td colSpan={8} className="px-5 py-8 text-center text-muted-foreground">
                               Nenhum tipo de serviço cadastrado
                             </td>
                           </tr>
@@ -3162,7 +3188,32 @@ const CentralCadastros = () => {
                           tiposServico.map((servico) => (
                             <tr key={servico.id} className="border-t border-muted hover:bg-background">
                               <td className="px-5 h-[56px] font-medium text-foreground text-center">{servico.nome}</td>
-                              <td className="px-3 text-muted-foreground text-center">{servico.descricao || "—"}</td>
+                              <td className="px-3 text-muted-foreground text-center text-xs">{servico.descricao || "—"}</td>
+                              <td className="px-3 text-center">
+                                {servico.is_extra_service ? (
+                                  <Badge variant="secondary" className="bg-amber-100 text-amber-700 hover:bg-amber-100 border-amber-200">Sim</Badge>
+                                ) : (
+                                  <span className="text-muted-foreground text-xs">—</span>
+                                )}
+                              </td>
+                              <td className="px-3 text-muted-foreground text-center text-xs">
+                                {servico.is_extra_service ? (
+                                  servico.unidade_cobranca === "unidade" ? "UN" :
+                                    servico.unidade_cobranca === "hora" ? "Hora" :
+                                      servico.unidade_cobranca === "peso" ? "KG" :
+                                        servico.unidade_cobranca === "km" ? "KM" : (servico.unidade_cobranca || "UN")
+                                ) : "—"}
+                              </td>
+                              <td className="px-3 text-muted-foreground text-center text-xs">
+                                {servico.is_extra_service ? (
+                                  servico.tipo_calculo === "fixed" ? "Preço Fixo" : "Manual"
+                                ) : "—"}
+                              </td>
+                              <td className="px-3 text-center font-display font-medium text-xs">
+                                {servico.is_extra_service ? (
+                                  servico.tipo_calculo === "fixed" ? formatCurrencyBRL(servico.valor_unitario) : "Manual"
+                                ) : "—"}
+                              </td>
                               <td className="px-5 text-center">
                                 <Badge className={cn(
                                   "font-semibold",
@@ -4513,6 +4564,76 @@ const CentralCadastros = () => {
               <Label htmlFor="serv_descricao">Descrição</Label>
               <Input id="serv_descricao" value={servicoForm.descricao} onChange={(e) => setServicoForm({ ...servicoForm, descricao: e.target.value })} placeholder="Descrição do tipo de serviço" />
             </div>
+
+            <div className="flex items-center justify-between rounded-md border border-border p-3 mt-2 bg-muted/20">
+              <div className="space-y-0.5">
+                <Label className="text-sm font-medium">Serviço Extra?</Label>
+                <p className="text-xs text-muted-foreground">Disponível para lançamento de Serviços Extras pelo Encarregado.</p>
+              </div>
+              <Switch
+                checked={servicoForm.is_extra_service}
+                onCheckedChange={(v) => setServicoForm({ ...servicoForm, is_extra_service: v })}
+              />
+            </div>
+
+            {servicoForm.is_extra_service && (
+              <div className="space-y-4 border rounded-md p-4 bg-muted/10 animate-in fade-in duration-300">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label>Unidade de Cobrança</Label>
+                    <Select
+                      value={servicoForm.unidade_cobranca}
+                      onValueChange={(v: any) => setServicoForm({ ...servicoForm, unidade_cobranca: v })}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="unidade">Unidade (UN)</SelectItem>
+                        <SelectItem value="hora">Hora (H)</SelectItem>
+                        <SelectItem value="peso">Peso (KG)</SelectItem>
+                        <SelectItem value="km">Quilometragem (KM)</SelectItem>
+                        <SelectItem value="outro">Outro</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Tipo de Cálculo</Label>
+                    <Select
+                      value={servicoForm.tipo_calculo}
+                      onValueChange={(v: any) => setServicoForm({ ...servicoForm, tipo_calculo: v })}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="fixed">Preço Fixo</SelectItem>
+                        <SelectItem value="manual">Informado no Lançamento</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label>Valor Unitário (R$)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    disabled={servicoForm.tipo_calculo === "manual"}
+                    value={servicoForm.valor_unitario}
+                    onChange={(e) => setServicoForm({ ...servicoForm, valor_unitario: Number(e.target.value) })}
+                    placeholder="0,00"
+                  />
+                  {servicoForm.tipo_calculo === "manual" && (
+                    <p className="text-[10px] text-muted-foreground">O encarregado informará o valor no momento do lançamento.</p>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs">Ativo para Encarregado</Label>
+                  <Switch
+                    checked={servicoForm.ativo_encarregado}
+                    onCheckedChange={(v) => setServicoForm({ ...servicoForm, ativo_encarregado: v })}
+                  />
+                </div>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setServicoModalOpen(false)}>Cancelar</Button>
@@ -5097,6 +5218,77 @@ const CentralCadastros = () => {
               <Label htmlFor="edit_serv_descricao">Descrição</Label>
               <Input id="edit_serv_descricao" value={editingServico?.descricao || ""} onChange={(e) => setEditingServico({ ...editingServico, descricao: e.target.value })} />
             </div>
+
+            <div className="flex items-center justify-between rounded-md border border-border p-3 mt-2 bg-muted/20">
+              <div className="space-y-0.5">
+                <Label className="text-sm font-medium">Serviço Extra?</Label>
+                <p className="text-xs text-muted-foreground">Disponível para lançamento de Serviços Extras pelo Encarregado.</p>
+              </div>
+              <Switch
+                checked={editingServico?.is_extra_service || false}
+                onCheckedChange={(v) => setEditingServico({ ...editingServico, is_extra_service: v })}
+              />
+            </div>
+
+            {editingServico?.is_extra_service && (
+              <div className="space-y-4 border rounded-md p-4 bg-muted/10 animate-in fade-in duration-300">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label>Unidade de Cobrança</Label>
+                    <Select
+                      value={editingServico?.unidade_cobranca || "unidade"}
+                      onValueChange={(v: any) => setEditingServico({ ...editingServico, unidade_cobranca: v })}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="unidade">Unidade (UN)</SelectItem>
+                        <SelectItem value="hora">Hora (H)</SelectItem>
+                        <SelectItem value="peso">Peso (KG)</SelectItem>
+                        <SelectItem value="km">Quilometragem (KM)</SelectItem>
+                        <SelectItem value="outro">Outro</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Tipo de Cálculo</Label>
+                    <Select
+                      value={editingServico?.tipo_calculo || "fixed"}
+                      onValueChange={(v: any) => setEditingServico({ ...editingServico, tipo_calculo: v })}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="fixed">Preço Fixo</SelectItem>
+                        <SelectItem value="manual">Informado no Lançamento</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label>Valor Unitário (R$)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    disabled={editingServico?.tipo_calculo === "manual"}
+                    value={editingServico?.valor_unitario || 0}
+                    onChange={(e) => setEditingServico({ ...editingServico, valor_unitario: Number(e.target.value) })}
+                    placeholder="0,00"
+                  />
+                  {editingServico?.tipo_calculo === "manual" && (
+                    <p className="text-[10px] text-muted-foreground">O encarregado informará o valor no momento do lançamento.</p>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs">Ativo para Encarregado</Label>
+                  <Switch
+                    checked={editingServico?.ativo_encarregado ?? true}
+                    onCheckedChange={(v) => setEditingServico({ ...editingServico, ativo_encarregado: v })}
+                  />
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center gap-2">
               <input type="checkbox" id="edit_serv_ativo" checked={editingServico?.ativo ?? true} onChange={(e) => setEditingServico({ ...editingServico, ativo: e.target.checked })} />
               <Label htmlFor="edit_serv_ativo" className="cursor-pointer">Ativo</Label>
@@ -5104,7 +5296,13 @@ const CentralCadastros = () => {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingServico(null)}>Cancelar</Button>
-            <Button onClick={() => updateServicoMutation.mutate({ id: editingServico.id, payload: editingServico })} disabled={updateServicoMutation.isPending}>
+            <Button onClick={() => updateServicoMutation.mutate({
+              id: editingServico.id,
+              payload: {
+                ...editingServico,
+                valor_unitario: Number(editingServico.valor_unitario) || 0
+              }
+            })} disabled={updateServicoMutation.isPending}>
               {updateServicoMutation.isPending ? "Salvando..." : "Salvar"}
             </Button>
           </DialogFooter>

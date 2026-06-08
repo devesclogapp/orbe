@@ -46,6 +46,8 @@ import {
   YAxis,
 } from "recharts";
 
+import { useAuth } from "@/contexts/AuthContext";
+import { useAccessControl } from "@/contexts/AccessControlContext";
 import { AppShell } from "@/components/layout/AppShell";
 import { MetricCard } from "@/components/painel/MetricCard";
 import { Badge } from "@/components/ui/badge";

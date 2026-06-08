@@ -10,7 +10,7 @@ import {
 } from '../cnab/cnab240-posicional';
 import { CnabRemessaArquivoService } from '../cnab/cnabRemessaArquivo.service';
 
-import { BaseService, sanitizePayload, cleanUuid, validateUuidFields, getCurrentTenantId, getTenantQueryFilter, extractReferencedTableFromFkError, operationalClient } from './base.service';
+import { BaseService, sanitizePayload, cleanUuid, validateUuidFields, getCurrentTenantId, getTenantQueryFilter, extractReferencedTableFromFkError, operationalClient, requireAuthenticatedUserId } from './base.service';
 
 
 
@@ -200,11 +200,18 @@ class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extra
       
       if (empresaId) query = query.eq('empresa_id', empresaId);
       if (competencia) {
-        const [year, mo] = competencia.split('-').map(Number);
-        const nextMonth = mo === 12 ? 1 : mo + 1;
-        const nextYear = mo === 12 ? year + 1 : year;
-        const nextMonthStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
-        query = query.gte('data', `${competencia}-01`).lt('data', nextMonthStr);
+        const parts = competencia.split('-');
+        if (parts.length === 2) {
+          // Formato YYYY-MM
+          const [year, mo] = parts.map(Number);
+          const nextMonth = mo === 12 ? 1 : mo + 1;
+          const nextYear = mo === 12 ? year + 1 : year;
+          const nextMonthStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+          query = query.gte('data', `${competencia}-01`).lt('data', nextMonthStr);
+        } else if (parts.length === 3) {
+          // Formato YYYY-MM-DD
+          query = query.eq('data', competencia);
+        }
       }
       
       const { data, error } = await query.order('data', { ascending: false });
