@@ -67,15 +67,38 @@ class CustoExtraOperacionalServiceClass {
   }
 
   async getByDate(date: string) {
-    const { data, error } = await operationalClient
+    const { data: rawData, error } = await operationalClient
       .from('custos_extras_operacionais')
-      .select('*, empresas:empresa_id(nome), responsavel:responsavel_id(full_name), forma_pagamento_ref:forma_pagamento_id(nome)')
+      .select('*, empresas:empresa_id(nome), forma_pagamento_ref:forma_pagamento_id(nome)')
       .eq('data', date)
       .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
-    if (error) throw error;
-    return data;
+    if (error) {
+      console.error("[CustoExtraOperacionalService] Erro em getByDate:", error);
+      throw error;
+    }
+
+    const data = rawData ?? [];
+    
+    // Resolver responsável
+    const responsavelIds = Array.from(new Set(data.map(item => item.responsavel_id).filter(Boolean)));
+    let profilesMap: Record<string, string> = {};
+    if (responsavelIds.length > 0) {
+      try {
+        const { data: profiles } = await supabase.from('profiles').select('id, full_name').in('id', responsavelIds);
+        if (profiles) {
+          profilesMap = profiles.reduce((acc: any, p: any) => ({ ...acc, [p.id]: p.full_name }), {});
+        }
+      } catch (e) {
+        console.warn("Falha ao resolver perfis na operacao por data", e);
+      }
+    }
+
+    return data.map(item => ({
+      ...item,
+      responsavel_nome: item.responsavel_id ? (profilesMap[item.responsavel_id] || item.responsavel_nome || null) : (item.responsavel_nome || null)
+    }));
   }
 
   async getAll(empresaId?: string, tenantId?: string | null) {
@@ -109,7 +132,7 @@ class CustoExtraOperacionalServiceClass {
   async getByCompetencia(competencia: string, empresaId?: string) {
     let query = operationalClient
       .from('custos_extras_operacionais')
-      .select('*, empresas:empresa_id(nome), responsavel:responsavel_id(full_name), forma_pagamento_ref:forma_pagamento_id(nome)');
+      .select('*, empresas:empresa_id(nome), forma_pagamento_ref:forma_pagamento_id(nome)');
 
     if (competencia) {
       const parts = competencia.split('-');
@@ -130,9 +153,32 @@ class CustoExtraOperacionalServiceClass {
 
     if (empresaId) query = query.eq('empresa_id', empresaId);
 
-    const { data, error } = await query;
-    if (error) throw error;
-    return data ?? [];
+    const { data: rawData, error } = await query;
+    if (error) {
+      console.error("[CustoExtraOperacionalService] Erro em getByCompetencia:", error);
+      throw error;
+    }
+    
+    const data = rawData ?? [];
+    
+    // Resolver responsável
+    const responsavelIds = Array.from(new Set(data.map(item => item.responsavel_id).filter(Boolean)));
+    let profilesMap: Record<string, string> = {};
+    if (responsavelIds.length > 0) {
+      try {
+        const { data: profiles } = await supabase.from('profiles').select('id, full_name').in('id', responsavelIds);
+        if (profiles) {
+          profilesMap = profiles.reduce((acc: any, p: any) => ({ ...acc, [p.id]: p.full_name }), {});
+        }
+      } catch (e) {
+        console.warn("Falha ao resolver perfis em getByCompetencia", e);
+      }
+    }
+
+    return data.map(item => ({
+      ...item,
+      responsavel_nome: item.responsavel_id ? (profilesMap[item.responsavel_id] || item.responsavel_nome || null) : (item.responsavel_nome || null)
+    }));
   }
 
   async deleteImported(empresaId?: string | null) {

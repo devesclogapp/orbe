@@ -137,10 +137,16 @@ const CustosExtrasRecebidos = () => {
 
     const { data: empresas = [] } = useQuery({ queryKey: ["empresas-all"], queryFn: () => EmpresaService.getAll() });
 
-    const { data: custosExtras = [], isLoading: isLoadingCustos } = useQuery({
+    const { data: custosExtrasData, isLoading: isLoadingCustos, isError, error } = useQuery({
         queryKey: ["custos-extras", filterEmpresaId, filterMonth, filterYear],
         queryFn: () => CustoExtraOperacionalService.getByCompetencia(`${filterYear}-${filterMonth}`, filterEmpresaId === "all" ? undefined : filterEmpresaId),
     });
+
+    if (isError) {
+        console.error("Erro critico ao buscar Custos Extras:", error);
+    }
+
+    const custosExtras = custosExtrasData || [];
 
     const kpis = useMemo(() => {
         const total = custosExtras.reduce((acc, item) => acc + Number(item.total ?? 0), 0);
@@ -233,6 +239,12 @@ const CustosExtrasRecebidos = () => {
                         {isLoadingCustos ? (
                             <div className="p-20 flex flex-col items-center justify-center text-[#737373] space-y-4">
                                 <Loader2 className="h-8 w-8 animate-spin text-primary" /><p className="text-sm font-medium font-inter">Carregando custos...</p>
+                            </div>
+                        ) : isError ? (
+                            <div className="p-20 flex flex-col items-center justify-center text-rose-500 space-y-4 bg-rose-50/50">
+                                <AlertTriangle className="h-10 w-10 text-rose-500 mb-2" />
+                                <p className="text-base font-semibold font-inter text-rose-600">Falha ao carregar custos extras</p>
+                                <p className="text-sm text-rose-500/80 text-center max-w-md">Não foi possível buscar a listagem. Tente recarregar a página ou contate o suporte se o erro persistir.</p>
                             </div>
                         ) : (
                             <CustosExtrasTableBlock data={custosExtras} />
