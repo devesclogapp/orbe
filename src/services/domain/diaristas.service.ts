@@ -1068,6 +1068,17 @@ class DiaristaCicloServiceClass {
 
     return { cicloId: cicloAberto.id, regra };
   }
+
+  async getLatestActiveWeek(tenantId?: string | null) {
+    const { data, error } = await supabase
+      .from('ciclos_diaristas')
+      .select('id, data_inicio, data_fim')
+      .order('data_inicio', { ascending: false })
+      .limit(1);
+
+    if (error) throw error;
+    return data?.[0] || null;
+  }
 }
 
 export const DiaristaCicloService = new DiaristaCicloServiceClass();

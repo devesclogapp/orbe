@@ -180,6 +180,34 @@ const getStatusBadgeClass = (status?: string | null) => {
   }
 };
 
+const getPipelineStatusConfig = (status?: string | null) => {
+  const s = String(status ?? "RECEBIDO").toUpperCase();
+  switch (s) {
+    case "RECEBIDO":
+    case "PENDENTE":
+    case "EM_ANALISE":
+      return { label: "🟡 Em análise RH", className: "bg-amber-50 text-amber-600 border-amber-100", opacity: "opacity-100" };
+    case "EM_VALIDACAO":
+      return { label: "🟢 Validado RH", className: "bg-cyan-50 text-cyan-600 border-cyan-100", opacity: "opacity-[0.95]" };
+    case "APROVADO_OPERACAO":
+      return { label: "🔵 Financeiro", className: "bg-blue-50 text-blue-600 border-blue-100", opacity: "opacity-[0.90]" };
+    case "ENVIADO_FINANCEIRO":
+      return { label: "🟣 CNAB Gerado", className: "bg-indigo-50 text-indigo-600 border-indigo-100", opacity: "opacity-[0.80]" };
+    case "PAGO":
+      return { label: "💰 Pago", className: "bg-zinc-100 text-zinc-500 border-zinc-200", opacity: "opacity-[0.70]" };
+    case "FINALIZADO":
+    case "CONCLUIDO":
+    case "FECHADO":
+      return { label: "⚫ Concluído", className: "bg-zinc-100 text-zinc-500 border-zinc-200", opacity: "opacity-[0.60]" };
+    case "REPROVADO":
+    case "CANCELADO":
+    case "DEVOLVIDO":
+      return { label: "Devolvido", className: "bg-rose-50 text-rose-600 border-rose-100", opacity: "opacity-100" };
+    default:
+      return { label: status || "Pendente", className: "bg-muted text-muted-foreground", opacity: "opacity-100" };
+  }
+};
+
 const buildEditForm = (item: CustoExtraItem): EditableCostForm => ({
   data: toInputValue(item.data),
   empresa_nome: item.empresas?.nome || item.empresa_nome || "",
@@ -198,6 +226,8 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
   const tableScrollRef = useRef<HTMLDivElement>(null);
   const [filterText, setFilterText] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [pipelineStatusFilter, setPipelineStatusFilter] = useState("all");
+  const [pipelineFilter, setPipelineFilter] = useState<"todos" | "pendentes" | "rh" | "financeiro" | "concluidos">("todos");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
   const [lockedCols, setLockedCols] = useState<Record<string, boolean>>(() => {
@@ -373,8 +403,20 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
           item.categoria_custo.toLowerCase().includes(filterText.toLowerCase());
 
         const categoryMatch = categoryFilter === "all" || item.categoria_custo === categoryFilter;
-        const statusMatch = statusFilter === "all" || String(item.status_pagamento ?? "").toUpperCase() === statusFilter;
-        return searchMatch && categoryMatch && statusMatch;
+        const statusMatch = statusFilter === "all" || String(item.status_pagamento ?? "").toUpperCase().replace(/_/g, " ") === statusFilter.toUpperCase().replace(/_/g, " ");
+        const pipelineStatusMatch = pipelineStatusFilter === "all" || (item.pipeline_status ?? "RECEBIDO") === pipelineStatusFilter;
+
+        const pipelineMatch = pipelineFilter === "todos" || (() => {
+          // Normalizamos para upper case na leitura
+          const s = String(item.pipeline_status || "RECEBIDO").toUpperCase();
+          if (pipelineFilter === "pendentes") return ["RECEBIDO", "PENDENTE", "REPROVADO", "EM_ANALISE", "DEVOLVIDO"].includes(s);
+          if (pipelineFilter === "rh") return ["EM_VALIDACAO"].includes(s);
+          if (pipelineFilter === "financeiro") return ["APROVADO_OPERACAO", "ENVIADO_FINANCEIRO"].includes(s);
+          if (pipelineFilter === "concluidos") return ["FINALIZADO", "PAGO", "CONCLUIDO"].includes(s);
+          return true;
+        })();
+
+        return searchMatch && categoryMatch && statusMatch && pipelineStatusMatch && pipelineMatch;
       })
       .sort((a, b) => {
         if (!sortConfig) return 0;
@@ -398,7 +440,7 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
         if (valA > valB) return sortConfig.direction === "asc" ? 1 : -1;
         return 0;
       });
-  }, [categoryFilter, data, filterText, sortConfig, statusFilter]);
+  }, [categoryFilter, data, filterText, sortConfig, statusFilter, pipelineFilter, pipelineStatusFilter]);
 
   const editableFilteredCount = filteredData.length;
 
@@ -629,17 +671,37 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
             </SelectContent>
           </Select>
 
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <Select value={pipelineStatusFilter} onValueChange={setPipelineStatusFilter}>
             <SelectTrigger className="h-9 w-[180px] shrink-0">
-              <SelectValue placeholder="Status pgto" />
+              <SelectValue placeholder="Status pipeline" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todos os status</SelectItem>
-              {statusOptions.map((option) => (
-                <SelectItem key={option} value={option}>{option}</SelectItem>
-              ))}
+              <SelectItem value="all">Todos os pipelines</SelectItem>
+              <SelectItem value="RECEBIDO">Recebido</SelectItem>
+              <SelectItem value="EM_VALIDACAO">Em Validação</SelectItem>
+              <SelectItem value="APROVADO_OPERACAO">Aprovado Operação</SelectItem>
+              <SelectItem value="ENVIADO_FINANCEIRO">Enviado Financeiro</SelectItem>
+              <SelectItem value="FINALIZADO">Finalizado</SelectItem>
+              <SelectItem value="REPROVADO">Reprovado</SelectItem>
             </SelectContent>
           </Select>
+
+          <div className="flex items-center bg-muted/30 p-1 rounded-lg border border-border">
+            {["todos", "pendentes", "rh", "financeiro", "concluidos"].map((id) => (
+              <button
+                key={id}
+                onClick={() => setPipelineFilter(id as any)}
+                className={cn(
+                  "px-3 py-1.5 text-[11px] font-bold uppercase tracking-tight rounded-md transition-all",
+                  pipelineFilter === id
+                    ? "shadow-sm border scale-[1.02] bg-white text-primary border-border"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                )}
+              >
+                {id.charAt(0).toUpperCase() + id.slice(1)}
+              </button>
+            ))}
+          </div>
 
           <Button
             variant="outline"
@@ -717,7 +779,10 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
               {filteredData.map((item) => (
                 <tr
                   key={item.id}
-                  className="esc-table-row cursor-pointer transition-all border-b border-border last:border-0 hover:bg-muted/50"
+                  className={cn(
+                    "esc-table-row cursor-pointer transition-all border-b border-border last:border-0 hover:bg-muted/50",
+                    getPipelineStatusConfig(item.pipeline_status).opacity
+                  )}
                   onClick={() => setSelectedItem(item)}
                 >
                   {visibleCols.data && <td style={getStickyProps("data", false).style} className={cn(getStickyProps("data", false).className, "text-center text-muted-foreground whitespace-nowrap")}>{formatDate(item.data)}</td>}
@@ -757,22 +822,14 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
                   )}
                   {visibleCols.pipelineStatus && (
                     <td className="px-3 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                      <Badge className={cn(
-                        "border-0 font-medium h-6 px-2 text-[11px]",
-                        item.pipeline_status === "EM_VALIDACAO" ? "bg-amber-100 text-amber-700 hover:bg-amber-100" :
-                          item.pipeline_status === "APROVADO_OPERACAO" ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100" :
-                            item.pipeline_status === "ENVIADO_FINANCEIRO" ? "bg-blue-100 text-blue-700 hover:bg-blue-100" :
-                              item.pipeline_status === "FINALIZADO" ? "bg-emerald-500 text-white hover:bg-emerald-600" :
-                                item.pipeline_status === "REPROVADO" ? "bg-destructive text-white hover:bg-destructive" :
-                                  "bg-muted text-muted-foreground hover:bg-muted"
-                      )}>
-                        {item.pipeline_status === 'RECEBIDO' ? 'Recebido' :
-                          item.pipeline_status === 'EM_VALIDACAO' ? 'Em Validação' :
-                            item.pipeline_status === 'APROVADO_OPERACAO' ? 'Aprovado Op.' :
-                              item.pipeline_status === 'REPROVADO' ? 'Reprovado' :
-                                item.pipeline_status === 'ENVIADO_FINANCEIRO' ? 'Financeiro' :
-                                  item.pipeline_status === 'FINALIZADO' ? 'Finalizado' : 'Pendente'}
-                      </Badge>
+                      {(() => {
+                        const cfg = getPipelineStatusConfig(item.pipeline_status);
+                        return (
+                          <Badge className={cn("border shadow-none font-medium uppercase h-6 px-2 text-[11px]", cfg.className)}>
+                            {cfg.label}
+                          </Badge>
+                        );
+                      })()}
                     </td>
                   )}
                   {visibleCols.responsavel && (

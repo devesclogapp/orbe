@@ -753,7 +753,7 @@ class OperacaoProducaoServiceClass {
         unidades:unidade_id(nome),
         operacao_producao_materiais!operacao_id(*)
       `)
-      .in('status', ['inconsistente', 'com_alerta', 'aguardando_validacao'])
+      .in('status', ['inconsistente', 'com_alerta', 'aguardando_validacao', 'pendente', 'validado_rh', 'aprovado_financeiro', 'concluido'])
       .is('deleted_at', null)
       .order('criado_em', { ascending: false });
 
@@ -982,12 +982,24 @@ class OperacaoProducaoServiceClass {
       query = query.eq('empresa_id', empresaId);
     }
     if (unidadeId) query = query.eq('unidade_id', unidadeId);
-    if (competencia) {
-      const [year, mo] = competencia.split('-').map(Number);
-      const nextMonth = mo === 12 ? 1 : mo + 1;
-      const nextYear = mo === 12 ? year + 1 : year;
-      const nextMonthStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
-      query = query.gte('data_operacao', `${competencia}-01`).lt('data_operacao', nextMonthStr);
+    if (typeof competencia === 'string' && competencia.includes('-')) {
+      const parts = competencia.split('-');
+      const year = Number(parts[0]);
+      const moPart = parts[1];
+      
+      if (!year || isNaN(year)) return [];
+
+      if (moPart === 'all' || !moPart || isNaN(Number(moPart))) {
+        // Range anual: YYYY-01-01 até (YYYY+1)-01-01
+        query = query.gte('data_operacao', `${year}-01-01`).lt('data_operacao', `${year + 1}-01-01`);
+      } else {
+        // Range mensal: YYYY-MM-01 até (YYYY-MM+1)-01
+        const mo = Number(moPart);
+        const nextMonth = mo === 12 ? 1 : mo + 1;
+        const nextYear = mo === 12 ? year + 1 : year;
+        const nextMonthStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+        query = query.gte('data_operacao', `${year}-${String(mo).padStart(2, '0')}-01`).lt('data_operacao', nextMonthStr);
+      }
     }
 
     const { data, error } = await query;
@@ -1093,6 +1105,35 @@ class OperacaoProducaoServiceClass {
     const { data, error } = await query.maybeSingle();
     if (error) throw error;
     return data;
+  }
+
+  async getMonthsWithData(empresaId?: string, tenantId?: string | null) {
+    const currentTenantId = tenantId || await getCurrentTenantId();
+    
+    let query = operationalClient
+      .from('operacoes_producao')
+      .select('data_operacao')
+      .eq('tenant_id', currentTenantId)
+      .is('deleted_at', null)
+      .order('data_operacao', { ascending: false })
+      .limit(1000);
+
+    if (empresaId) {
+      query = query.eq('empresa_id', empresaId);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    const months = new Set<string>();
+    for (const row of data ?? []) {
+      const dataMes = String(row.data_operacao ?? '').slice(0, 7);
+      if (/^\d{4}-\d{2}$/.test(dataMes)) {
+        months.add(dataMes);
+      }
+    }
+
+    return Array.from(months).sort((a, b) => b.localeCompare(a));
   }
 }
 export const OperacaoProducaoService = new OperacaoProducaoServiceClass();

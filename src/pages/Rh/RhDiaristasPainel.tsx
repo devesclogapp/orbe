@@ -34,30 +34,33 @@ const formatDate = (d: string) =>
     format(new Date(d + "T12:00:00"), "dd/MM", { locale: ptBR });
 
 // ─── Mapa de status: cobre todos os valores conhecidos (DB default lowercase + governança uppercase + legado) ───
-const STATUS_DIARISTA_MAP: Record<string, { label: string; cls: string }> = {
-    em_aberto: { label: "Em aberto", cls: "bg-amber-500/15 text-amber-700" },
-    EM_ABERTO: { label: "Em aberto", cls: "bg-amber-500/15 text-amber-700" },
-    AGUARDANDO_VALIDACAO_RH: { label: "⏳ Ag. Validação RH", cls: "bg-blue-500/15 text-blue-800" },
-    VALIDADO_RH: { label: "✅ Validado RH", cls: "bg-indigo-500/15 text-indigo-700" },
-    FECHADO_FINANCEIRO: { label: "💰 Aprovado Financeiro", cls: "bg-emerald-500/15 text-emerald-800" },
-    PAGO: { label: "✔ Pago", cls: "bg-emerald-600/15 text-emerald-800" },
-    cancelado: { label: "Cancelado", cls: "bg-muted text-muted-foreground" },
-    CANCELADO: { label: "Cancelado", cls: "bg-muted text-muted-foreground" },
-    // legado — migrado via migration mas mantido como fallback defensivo
-    fechado_para_pagamento: { label: "⏳ Ag. Validação RH", cls: "bg-blue-500/15 text-blue-800" },
-    fechado: { label: "⏳ Ag. Validação RH", cls: "bg-blue-500/15 text-blue-800" },
+const STATUS_DIARISTA_MAP: Record<string, { label: string; cls: string; opacity: string }> = {
+    em_aberto: { label: "🟡 Em análise RH", cls: "bg-amber-50 text-amber-600 border-amber-100", opacity: "opacity-100" },
+    EM_ABERTO: { label: "🟡 Em análise RH", cls: "bg-amber-50 text-amber-600 border-amber-100", opacity: "opacity-100" },
+    AGUARDANDO_VALIDACAO_RH: { label: "🟡 Em análise RH", cls: "bg-amber-50 text-amber-600 border-amber-100", opacity: "opacity-[0.95]" },
+    VALIDADO_RH: { label: "🟢 Validado RH", cls: "bg-cyan-50 text-cyan-600 border-cyan-100", opacity: "opacity-[0.95]" },
+    FECHADO_FINANCEIRO: { label: "🔵 Financeiro", cls: "bg-emerald-50 text-emerald-600 border-emerald-100", opacity: "opacity-[0.90]" },
+    AGUARDANDO_FINANCEIRO: { label: "🔵 Financeiro", cls: "bg-emerald-50 text-emerald-600 border-emerald-100", opacity: "opacity-[0.90]" },
+    CNAB_GERADO: { label: "🟣 CNAB Gerado", cls: "bg-indigo-50 text-indigo-600 border-indigo-100", opacity: "opacity-[0.80]" },
+    PAGO: { label: "💰 Pago", cls: "bg-blue-50 text-blue-600 border-blue-100", opacity: "opacity-[0.70]" },
+    DEVOLVIDO: { label: "Devolvido", cls: "bg-rose-50 text-rose-600 border-rose-100", opacity: "opacity-100" },
+    cancelado: { label: "Cancelado", cls: "bg-muted text-muted-foreground", opacity: "opacity-100" },
+    CANCELADO: { label: "Cancelado", cls: "bg-muted text-muted-foreground", opacity: "opacity-100" },
+    fechado_para_pagamento: { label: "🟡 Em análise RH", cls: "bg-amber-50 text-amber-600 border-amber-100", opacity: "opacity-100" },
+    fechado: { label: "🟡 Em análise RH", cls: "bg-amber-50 text-amber-600 border-amber-100", opacity: "opacity-100" },
+    CONCLUIDO: { label: "⚫ Concluído", cls: "bg-zinc-100 text-zinc-500 border-zinc-200", opacity: "opacity-[0.60]" },
 };
 
 const StatusDiaristaBadge = ({ status }: { status?: string }) => {
     if (!status) return null;
     const entry = STATUS_DIARISTA_MAP[status];
     return (
-        <span className={cn(
-            "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap",
+        <Badge variant="outline" className={cn(
+            "h-6 px-2 text-[11px] font-medium border shadow-none",
             entry?.cls ?? "bg-muted text-muted-foreground"
         )}>
             {entry?.label ?? status}
-        </span>
+        </Badge>
     );
 };
 
@@ -97,6 +100,28 @@ const RhDiaristasPainel = () => {
     const [openReabertura, setOpenReabertura] = useState(false);
     const [motivoReabertura, setMotivoReabertura] = useState("");
     const [tipoReabertura, setTipoReabertura] = useState<'operacional' | 'administrativa'>('operacional');
+
+    // ─── Intelligent Period Detection ───────────────────────────────────────────
+    useQuery({
+        queryKey: ["latest-active-cycle"],
+        queryFn: async () => {
+            const latest = await DiaristaCicloService.getLatestActiveWeek();
+            if (latest && periodoRapido === "semana_atual") {
+                const now = new Date();
+                const startOfNow = startOfWeek(now, { weekStartsOn: 1 });
+                const currentStartStr = format(startOfNow, "yyyy-MM-dd");
+
+                if (currentStartStr !== latest.data_inicio) {
+                    setInicio(latest.data_inicio);
+                    setFim(latest.data_fim);
+                    setPeriodoRapido("personalizado");
+                }
+            }
+            return latest;
+        },
+        staleTime: Infinity,
+        enabled: periodoRapido === "semana_atual"
+    });
     const [loteParaReabrir, setLoteParaReabrir] = useState<any>(null);
     // ──────────────────────────────────────────────────────────────────
 
@@ -1499,7 +1524,10 @@ const RhDiaristasPainel = () => {
                                             <>
                                                 <tr
                                                     key={g.diarista_id}
-                                                    className="border-t border-muted hover:bg-background cursor-pointer"
+                                                    className={cn(
+                                                        "border-t border-muted hover:bg-background cursor-pointer transition-opacity",
+                                                        STATUS_DIARISTA_MAP[g.status]?.opacity ?? "opacity-100"
+                                                    )}
                                                     onClick={() => setExpandedId(expandedId === g.diarista_id ? null : g.diarista_id)}
                                                 >
                                                     <td className="px-5 h-12 w-8 text-muted-foreground">
@@ -1576,7 +1604,10 @@ const RhDiaristasPainel = () => {
                                         ))
                                     ) : visao === "grade_semanal" ? (
                                         dadosAgrupados.map((g) => (
-                                            <tr key={g.diarista_id} className="border-t border-muted hover:bg-background">
+                                            <tr key={g.diarista_id} className={cn(
+                                                "border-t border-muted hover:bg-background transition-opacity",
+                                                STATUS_DIARISTA_MAP[g.status]?.opacity ?? "opacity-100"
+                                            )}>
                                                 <td className="px-5 h-14">
                                                     <div className="flex flex-col">
                                                         <span className="font-medium text-sm text-foreground truncate max-w-[220px]">{g.nome}</span>
@@ -1626,7 +1657,10 @@ const RhDiaristasPainel = () => {
                                             <>
                                                 <tr
                                                     key={g.data_lancamento}
-                                                    className="border-t border-muted hover:bg-background cursor-pointer"
+                                                    className={cn(
+                                                        "border-t border-muted hover:bg-background cursor-pointer transition-opacity",
+                                                        STATUS_DIARISTA_MAP[g.status]?.opacity ?? "opacity-100"
+                                                    )}
                                                     onClick={() => setExpandedId(expandedId === g.data_lancamento ? null : g.data_lancamento)}
                                                 >
                                                     <td className="px-5 h-12 w-8 text-muted-foreground">

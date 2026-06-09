@@ -91,6 +91,7 @@ export const PontoTableBlock = ({ monthLabel, rows }: PontoTableBlockProps) => {
                 onClick={() => select("colaborador", row.colaborador_id)}
                 className={cn(
                   "esc-table-row cursor-pointer transition-all border-b border-muted/50",
+                  getOperationalStatus(row.status).opacity,
                   row.status === "inconsistente" && "bg-rowAlert border-l-[3px] border-l-primary",
                   isSelected && "bg-primary-soft/40 border-l-[3px] border-l-primary"
                 )}

@@ -166,12 +166,12 @@ const Pontos = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [importModalOpen, setImportModalOpen] = useState(false);
-  const [selectedYear, setSelectedYear] = useState<string>(
-    String(new Date().getFullYear()),
-  );
-  const [selectedMonthNumber, setSelectedMonthNumber] = useState<string>(
-    format(new Date(), "MM"),
-  );
+  const [selectedYear, setSelectedYear] = useState<string>(() => {
+    return localStorage.getItem("orbe_pontos_year") || new Date().getFullYear().toString();
+  });
+  const [selectedMonthNumber, setSelectedMonthNumber] = useState<string>(() => {
+    return localStorage.getItem("orbe_pontos_month") || format(new Date(), "MM");
+  });
   const [selectedEmpresaId, setSelectedEmpresaId] = useState<string>("all");
   const [monthManuallyChanged, setMonthManuallyChanged] = useState(false);
   const [clearModalOpen, setClearModalOpen] = useState(false);
@@ -225,6 +225,9 @@ const Pontos = () => {
 
   useEffect(() => {
     if (monthManuallyChanged) return;
+    const hasYearInStorage = !!localStorage.getItem("orbe_pontos_year");
+    if (hasYearInStorage) return;
+
     const mostRecent = mesesComRegistros[0];
     if (!mostRecent || !/^\d{4}-\d{2}$/.test(mostRecent)) return;
     const [year, month] = mostRecent.split("-");
@@ -232,6 +235,12 @@ const Pontos = () => {
     setSelectedYear(year);
     setSelectedMonthNumber(month);
   }, [mesesComRegistros, monthManuallyChanged, selectedMonthNumber, selectedYear]);
+
+  // Persist user selection
+  useEffect(() => {
+    localStorage.setItem("orbe_pontos_year", selectedYear);
+    localStorage.setItem("orbe_pontos_month", selectedMonthNumber);
+  }, [selectedYear, selectedMonthNumber]);
 
   const { data: rows = [], isLoading: isLoadingRows } = useQuery<any[]>({
     queryKey: ["ponto", selectedMonth, selectedEmpresaId],

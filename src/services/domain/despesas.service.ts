@@ -15,6 +15,26 @@ import { BaseService, sanitizePayload, cleanUuid, validateUuidFields, getCurrent
 
 
 class CustoExtraOperacionalServiceClass {
+  async getMonthsWithData(empresaId?: string, tenantId?: string | null) {
+    let query = operationalClient
+      .from('custos_extras_operacionais')
+      .select('data');
+    
+    if (empresaId && empresaId !== 'all') {
+      query = query.eq('empresa_id', empresaId);
+    }
+    
+    const { data } = await query;
+    const months = new Set<string>();
+    for (const row of data ?? []) {
+      const dataMes = String(row.data ?? '').slice(0, 7);
+      if (/^\d{4}-\d{2}$/.test(dataMes)) {
+        months.add(dataMes);
+      }
+    }
+    return Array.from(months).sort((a, b) => b.localeCompare(a));
+  }
+
   private async getEmpresaIdsFromTenant(tenantId: string | null): Promise<string[] | null> {
     if (!tenantId) return null;
     const { data } = await supabase.from('empresas').select('id').eq('tenant_id', tenantId);
@@ -89,15 +109,22 @@ class CustoExtraOperacionalServiceClass {
   async getByCompetencia(competencia: string, empresaId?: string) {
     let query = operationalClient
       .from('custos_extras_operacionais')
-      .select('*, empresas:empresa_id(nome), responsavel:responsavel_id(full_name), forma_pagamento_ref:forma_pagamento_id(nome)')
-      .is('deleted_at', null);
+      .select('*, empresas:empresa_id(nome), responsavel:responsavel_id(full_name), forma_pagamento_ref:forma_pagamento_id(nome)');
 
     if (competencia) {
-      const [year, mo] = competencia.split('-').map(Number);
-      const nextMonth = mo === 12 ? 1 : mo + 1;
-      const nextYear = mo === 12 ? year + 1 : year;
-      const nextMonthStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
-      query = query.gte('data', `${competencia}-01`).lt('data', nextMonthStr);
+      const parts = competencia.split('-');
+      const year = Number(parts[0]);
+      const moPart = parts[1];
+      
+      if (moPart === 'all' || !moPart) {
+        query = query.gte('data', `${year}-01-01`).lt('data', `${year + 1}-01-01`);
+      } else {
+        const mo = Number(moPart);
+        const nextMonth = mo === 12 ? 1 : mo + 1;
+        const nextYear = mo === 12 ? year + 1 : year;
+        const nextMonthStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+        query = query.gte('data', `${year}-${String(mo).padStart(2, '0')}-01`).lt('data', nextMonthStr);
+      }
     }
     query = query.order('data', { ascending: false });
 
@@ -125,8 +152,19 @@ class CustoExtraOperacionalServiceClass {
   async createMany(items: Record<string, unknown>[]) {
     if (items.length === 0) return [];
     
+    // Injetar tenant_id automaticamente para garantir isolamento
+    let tenantId: string | null = null;
+    try {
+      tenantId = await getCurrentTenantId();
+    } catch {
+      // se não conseguir, usa o que vier no payload
+    }
+
     // Sanitiza todos os itens para converter strings vazias em null
-    const sanitizedItems = items.map(item => sanitizePayload(item) as Record<string, unknown>);
+    const sanitizedItems = items.map(item => {
+      const base = tenantId ? { ...item, tenant_id: tenantId } : item;
+      return sanitizePayload(base) as Record<string, unknown>;
+    });
 
     const { data, error } = await operationalClient
       .from('custos_extras_operacionais')
@@ -189,6 +227,26 @@ export const TaxasImpostosService = new TaxasImpostosServiceClass();
 class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extras_operacionais'> {
   constructor() { super('servicos_extras_operacionais' as any); }
 
+  async getMonthsWithData(empresaId?: string) {
+    let query = operationalClient
+      .from('servicos_extras_operacionais')
+      .select('data');
+    
+    if (empresaId && empresaId !== 'all') {
+      query = query.eq('empresa_id', empresaId);
+    }
+    
+    const { data } = await query;
+    const months = new Set<string>();
+    for (const row of data ?? []) {
+      const dataMes = String(row.data ?? '').slice(0, 7);
+      if (/^\d{4}-\d{2}$/.test(dataMes)) {
+        months.add(dataMes);
+      }
+    }
+    return Array.from(months).sort((a, b) => b.localeCompare(a));
+  }
+
   async getWithEmpresas(empresaId?: string, competencia?: string) {
     try {
       let query = operationalClient
@@ -204,15 +262,18 @@ class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extra
       if (empresaId) query = query.eq('empresa_id', empresaId);
       if (competencia) {
         const parts = competencia.split('-');
-        if (parts.length === 2) {
-          // Formato YYYY-MM
-          const [year, mo] = parts.map(Number);
+        const year = Number(parts[0]);
+        const moPart = parts[1];
+        
+        if (moPart === 'all' || !moPart) {
+          query = query.gte('data', `${year}-01-01`).lt('data', `${year + 1}-01-01`);
+        } else if (parts.length === 2) {
+          const mo = Number(moPart);
           const nextMonth = mo === 12 ? 1 : mo + 1;
           const nextYear = mo === 12 ? year + 1 : year;
           const nextMonthStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
-          query = query.gte('data', `${competencia}-01`).lt('data', nextMonthStr);
+          query = query.gte('data', `${year}-${String(mo).padStart(2, '0')}-01`).lt('data', nextMonthStr);
         } else if (parts.length === 3) {
-          // Formato YYYY-MM-DD
           query = query.eq('data', competencia);
         }
       }
@@ -226,7 +287,20 @@ class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extra
           .select('*');
         
         if (empresaId) simpleQuery = simpleQuery.eq('empresa_id', empresaId);
-        if (competencia) simpleQuery = simpleQuery.like('data', `${competencia}%`);
+        if (competencia) {
+          const parts = competencia.split('-');
+          const year = Number(parts[0]);
+          const moPart = parts[1];
+          if (moPart === 'all' || !moPart) {
+            simpleQuery = simpleQuery.gte('data', `${year}-01-01`).lt('data', `${year + 1}-01-01`);
+          } else {
+            const mo = Number(moPart);
+            const nextMo = mo === 12 ? 1 : mo + 1;
+            const nextYr = mo === 12 ? year + 1 : year;
+            const nextMonthStr = `${nextYr}-${String(nextMo).padStart(2, '0')}-01`;
+            simpleQuery = simpleQuery.gte('data', `${year}-${String(mo).padStart(2, '0')}-01`).lt('data', nextMonthStr);
+          }
+        }
         const { data: simpleData, error: simpleError } = await simpleQuery.order('data', { ascending: false });
         
         if (simpleError) throw simpleError;

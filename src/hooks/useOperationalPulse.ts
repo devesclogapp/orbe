@@ -195,6 +195,26 @@ export const useOperationalPulse = () => {
     enabled: Boolean(tenantId),
     staleTime: 1000 * 60 * 2,
     queryFn: async () => {
+      // Read current dashboard period from localStorage
+      const opYear = localStorage.getItem('orbe_operacoes_year');
+      const opMonth = localStorage.getItem('orbe_operacoes_month');
+      const opMonthNormalized = opMonth === 'all' ? '01' : (opMonth?.padStart(2, '0') || '01');
+      const opCompetencia = opYear ? `${opYear}-${opMonthNormalized}` : null;
+      let nextMonthStr = null;
+      
+      if (opYear) {
+        if (opMonth === 'all') {
+          nextMonthStr = `${Number(opYear) + 1}-01-01`;
+        } else if (opMonth) {
+          const [year, mo] = `${opYear}-${opMonth.padStart(2, '0')}`.split('-').map(Number);
+          const nextMo = mo === 12 ? 1 : mo + 1;
+          const nextYr = mo === 12 ? year + 1 : year;
+          nextMonthStr = `${nextYr}-${String(nextMo).padStart(2, '0')}-01`;
+        }
+      }
+
+      const queryStart = opYear ? (opMonth === 'all' ? `${opYear}-01-01` : `${opYear}-${opMonth.padStart(2, '0')}-01`) : null;
+
       const [
         operacoesPendentes,
         operacoesComAlerta,
@@ -220,16 +240,56 @@ export const useOperationalPulse = () => {
         lotesRhDetalhe,
         ciclosDetalhe,
       ] = await Promise.all([
-        safeCount("operacoes_producao", (q) => q.eq("status", "pendente"), { tenantId }),
-        safeCount("operacoes_producao", (q) => q.in("status", ["bloqueado", "com_alerta", "inconsistente"]), { tenantId }),
-        safeCount("registros_ponto", (q) => q.eq("status_processamento", "PENDENTE_PROCESSAMENTO"), { tenantId }),
-        safeCount("registros_ponto", (q) => q.eq("status_processamento", "INCONSISTENTE"), { tenantId }),
-        safeCount("diaristas_lotes_fechamento", (q) => q.eq("status", "AGUARDANDO_VALIDACAO_RH"), { tenantId }),
-        safeCount("diaristas_lotes_fechamento", (q) => q.eq("status", "AGUARDANDO_FINANCEIRO"), { tenantId }),
-        safeCount("custos_extras_operacionais", (q) => q.eq("status_pagamento", "PENDENTE"), { tenantId }),
-        safeCount("custos_extras_operacionais", (q) => q.eq("status_pagamento", "ATRASADO"), { tenantId }),
-        safeCount("servicos_extras_operacionais", (q) => q.in("pipeline_status", ["PENDENTE", "EM_VALIDACAO"]), { tenantId }),
-        safeCount("servicos_extras_operacionais", (q) => q.in("pipeline_status", ["DEVOLVIDO", "BLOQUEADO"]), { tenantId }),
+        safeCount("operacoes_producao", (q) => {
+          let res = q.or('status.ilike.pendente,status.ilike.pending,status.ilike.aberto,status.ilike.registrado,status.ilike.registered');
+          if (queryStart && nextMonthStr) res = res.gte('data_operacao', queryStart).lt('data_operacao', nextMonthStr);
+          return res;
+        }, { tenantId }),
+        safeCount("operacoes_producao", (q) => {
+          let res = q.or('status.ilike.bloqueado,status.ilike.com_alerta,status.ilike.inconsistente,status.ilike.devolvido,status.ilike.recusado');
+          if (queryStart && nextMonthStr) res = res.gte('data_operacao', queryStart).lt('data_operacao', nextMonthStr);
+          return res;
+        }, { tenantId }),
+        safeCount("registros_ponto", (q) => {
+          let res = q.in("status_processamento", ["PENDENTE_PROCESSAMENTO", "IMPORTADO"]);
+          if (queryStart && nextMonthStr) res = res.gte('data_ponto', queryStart).lt('data_ponto', nextMonthStr);
+          return res;
+        }, { tenantId }),
+        safeCount("registros_ponto", (q) => {
+          let res = q.eq("status_processamento", "INCONSISTENTE");
+          if (queryStart && nextMonthStr) res = res.gte('data_ponto', queryStart).lt('data_ponto', nextMonthStr);
+          return res;
+        }, { tenantId }),
+        safeCount("diaristas_lotes_fechamento", (q) => {
+          let res = q.eq("status", "AGUARDANDO_VALIDACAO_RH");
+          if (queryStart && nextMonthStr) res = res.gte('periodo_inicio', queryStart).lt('periodo_inicio', nextMonthStr);
+          return res;
+        }, { tenantId }),
+        safeCount("diaristas_lotes_fechamento", (q) => {
+          let res = q.eq("status", "AGUARDANDO_FINANCEIRO");
+          if (queryStart && nextMonthStr) res = res.gte('periodo_inicio', queryStart).lt('periodo_inicio', nextMonthStr);
+          return res;
+        }, { tenantId }),
+        safeCount("custos_extras_operacionais", (q) => {
+          let res = q.in("status_pagamento", ["PENDENTE", "A PAGAR", "ATRASADO"]);
+          if (queryStart && nextMonthStr) res = res.gte('data', queryStart).lt('data', nextMonthStr);
+          return res;
+        }, { tenantId }),
+        safeCount("custos_extras_operacionais", (q) => {
+          let res = q.in("status_pagamento", ["ATRASADO"]);
+          if (queryStart && nextMonthStr) res = res.gte('data', queryStart).lt('data', nextMonthStr);
+          return res;
+        }, { tenantId }),
+        safeCount("servicos_extras_operacionais", (q) => {
+          let res = q.in("pipeline_status", ["PENDENTE", "EM_VALIDACAO", "AGUARDANDO_RH"]);
+          if (queryStart && nextMonthStr) res = res.gte('data', queryStart).lt('data', nextMonthStr);
+          return res;
+        }, { tenantId }),
+        safeCount("servicos_extras_operacionais", (q) => {
+          let res = q.in("pipeline_status", ["DEVOLVIDO", "BLOQUEADO"]);
+          if (queryStart && nextMonthStr) res = res.gte('data', queryStart).lt('data', nextMonthStr);
+          return res;
+        }, { tenantId }),
         safeCount("colaboradores", (q) => q.or("status_cadastro.eq.pendente_complemento,cadastro_provisorio.eq.true"), { tenantId }),
         safeCount("registros_ponto", (q) => q.eq("status_processamento", "PENDENTE_PROCESSAMENTO"), { tenantId }),
         safeCount("processamento_rh_inconsistencias", (q) => q.eq("resolvida", false), { tenantId }),

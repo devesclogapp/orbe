@@ -237,6 +237,7 @@ export function normalizeCompetencia(value: string | undefined | null): string |
   if (!value) return null;
   if (value.includes('T')) return value.substring(0, 7);
   if (value.match(/^\d{4}-\d{2}$/)) return value;
+  if (value && value.includes('all')) return value; 
   return value.substring(0, 7);
 }
 
@@ -247,35 +248,64 @@ class DashboardConsolidadoServiceClass {
   ): Promise<OperationalIntegrityKPIs> {
     const canonicalCompetencia = normalizeCompetencia(competencia) || '';
     const consolidadoEm = new Date().toISOString();
+    
+    // Detect if we are looking for a whole year
+    const isAnual = canonicalCompetencia.includes('all');
+    const yearPart = Number(canonicalCompetencia.split('-')[0]);
+    
+    const startRange = isAnual ? `${yearPart}-01-01` : `${canonicalCompetencia}-01`;
+    const nextMonth = isAnual 
+      ? `${yearPart + 1}-01` 
+      : format(addMonths(new Date(`${canonicalCompetencia}-01T12:00:00`), 1), 'yyyy-MM');
+    const endRange = `${nextMonth}-01`;
 
     let qReceitas = supabase
       .from('financeiro_consolidados_cliente')
-      .select('valor_total, status, created_at, updated_at')
-      .eq('competencia', canonicalCompetencia);
+      .select('valor_total, status, created_at, updated_at');
+    
+    if (isAnual) {
+      qReceitas = qReceitas.gte('competencia', `${yearPart}-01`).lt('competencia', `${yearPart + 1}-01`);
+    } else {
+      qReceitas = qReceitas.eq('competencia', canonicalCompetencia);
+    }
     if (empresaId) qReceitas = qReceitas.eq('empresa_id', empresaId);
 
     let qLotesD = supabase
       .from('diaristas_lotes_fechamento')
       .select('valor_total, status, periodo_inicio, created_at, updated_at')
-      .like('periodo_inicio', `${canonicalCompetencia}%`);
+      .gte('periodo_inicio', startRange)
+      .lt('periodo_inicio', endRange);
     if (empresaId) qLotesD = qLotesD.eq('empresa_id', empresaId);
 
     let qLotesRh = supabase
       .from('rh_financeiro_lotes')
-      .select('status, created_at, updated_at, lote_itens:rh_financeiro_lote_itens(valor_calculado)')
-      .eq('competencia', canonicalCompetencia);
+      .select('status, created_at, updated_at, lote_itens:rh_financeiro_lote_itens(valor_calculado)');
+    
+    if (isAnual) {
+      qLotesRh = qLotesRh.gte('competencia', `${yearPart}-01`).lt('competencia', `${yearPart + 1}-01`);
+    } else {
+      qLotesRh = qLotesRh.eq('competencia', canonicalCompetencia);
+    }
     if (empresaId) qLotesRh = qLotesRh.eq('empresa_id', empresaId);
 
     let qCnabLotes = supabase
       .from('lotes_remessa')
-      .select('id, valor_total, status, status_conciliacao, created_at, updated_at')
-      .eq('competencia', canonicalCompetencia);
+      .select('id, valor_total, status, status_conciliacao, created_at, updated_at');
+    
+    if (isAnual) {
+      qCnabLotes = qCnabLotes.gte('competencia', `${yearPart}-01`).lt('competencia', `${yearPart + 1}-01`);
+    } else {
+      qCnabLotes = qCnabLotes.eq('competencia', canonicalCompetencia);
+    }
     if (empresaId) qCnabLotes = qCnabLotes.eq('empresa_id', empresaId);
 
-    const qCnabArquivos = supabase
+    const qCnabArquivosBase = supabase
       .from('cnab_remessas_arquivos')
-      .select('id, lote_id, total_valor, status, competencia, data_geracao, updated_at')
-      .eq('competencia', canonicalCompetencia);
+      .select('id, lote_id, total_valor, status, competencia, data_geracao, updated_at');
+    
+    const qCnabArquivos = isAnual 
+      ? qCnabArquivosBase.gte('competencia', `${yearPart}-01`).lt('competencia', `${yearPart + 1}-01`)
+      : qCnabArquivosBase.eq('competencia', canonicalCompetencia);
 
     const qRetornoItens = supabase
       .from('cnab_retorno_itens')
@@ -288,21 +318,19 @@ class DashboardConsolidadoServiceClass {
         )
       `);
 
-    const nextMonth = format(addMonths(new Date(`${canonicalCompetencia}-01T12:00:00`), 1), 'yyyy-MM');
-
     let qCustos = supabase
       .from('custos_extras_operacionais')
       .select('total, status_pagamento, created_at, updated_at')
-      .gte('data', `${canonicalCompetencia}-01`)
-      .lt('data', `${nextMonth}-01`);
+      .gte('data', startRange)
+      .lt('data', endRange);
     if (empresaId) qCustos = qCustos.eq('empresa_id', empresaId);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let qServicosExtras = (supabase as any)
       .from('servicos_extras_operacionais')
       .select('total, pipeline_status, created_at, updated_at')
-      .gte('data', `${canonicalCompetencia}-01`)
-      .lt('data', `${nextMonth}-01`);
+      .gte('data', startRange)
+      .lt('data', endRange);
     if (empresaId) qServicosExtras = qServicosExtras.eq('empresa_id', empresaId);
 
     const [

@@ -334,29 +334,53 @@ const formatDiagnosticLabel = (value: unknown) => {
 };
 
 const getStatusConfig = (status: string) => {
+  const s = status?.toLowerCase();
 
-  switch (status?.toLowerCase()) {
-    case "registered":
+  switch (s) {
     case "registrado":
     case "aberto":
-      return { label: "Registrado", className: "bg-muted text-muted-foreground" };
-    case "pending":
+    case "registered":
+      return { label: "Registrado", className: "bg-muted text-muted-foreground", opacity: "opacity-100" };
+
     case "pendente":
-      return { label: "Pendente", className: "bg-muted text-muted-foreground" };
-    case "validated":
+    case "pending":
+    case "em_analise":
+      return { label: "🟡 Em análise RH", className: "bg-amber-50 text-amber-600 border-amber-100", opacity: "opacity-100" };
+
+    case "validado_rh":
     case "validado":
-    case "ok":
-    case "processado":
-      return { label: "Validado", className: "bg-success-soft text-success-strong" };
-    case "blocked":
-    case "bloqueado":
+      return { label: "🟢 Validado RH", className: "bg-cyan-50 text-cyan-600 border-cyan-100", opacity: "opacity-[0.95]" };
+
+    case "em_validacao":
+      return { label: "🟡 Em análise RH", className: "bg-amber-50 text-amber-600 border-amber-100", opacity: "opacity-[0.95]" };
+
+    case "enviado_financeiro":
+    case "financeiro":
+    case "aprovado_financeiro":
+    case "aguardando_pagamento":
+      return { label: "🔵 Financeiro", className: "bg-blue-50 text-blue-600 border-blue-100", opacity: "opacity-[0.90]" };
+
+    case "cnab_gerado":
+      return { label: "🟣 CNAB Gerado", className: "bg-indigo-50 text-indigo-600 border-indigo-100", opacity: "opacity-[0.80]" };
+
+    case "pago":
+      return { label: "💰 Pago", className: "bg-zinc-100 text-zinc-500 border-zinc-200", opacity: "opacity-[0.70]" };
+
+    case "concluido":
+    case "finalizado":
+    case "fechado":
+      return { label: "⚫ Concluído", className: "bg-zinc-100 text-zinc-500 border-zinc-200", opacity: "opacity-[0.60]" };
+
+    case "devolvido":
+    case "recusado":
+      return { label: "Devolvido", className: "bg-rose-50 text-rose-600 border-rose-100", opacity: "opacity-100" };
+
     case "inconsistente":
-      return { label: "Bloqueado", className: "bg-destructive-soft text-destructive-strong" };
-    case "imported":
-    case "importado":
-      return { label: "Importado", className: "bg-info-soft text-info-strong" };
+    case "bloqueado":
+      return { label: "Inconsistente", className: "bg-destructive-soft text-destructive-strong", opacity: "opacity-100" };
+
     default:
-      return { label: status || "Desconhecido", className: "bg-muted text-muted-foreground" };
+      return { label: status || "Pendente", className: "bg-muted text-muted-foreground", opacity: "opacity-100" };
   }
 };
 
@@ -509,6 +533,8 @@ export const OperacoesTableBlock = ({
     if (value === null || value === undefined || value === "") return "-";
     return Number(value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   };
+
+  const [pipelineFilter, setPipelineFilter] = useState<"todos" | "pendentes" | "rh" | "financeiro" | "concluidos">("todos");
 
   const [selectedOpDetails, setSelectedOpDetails] = useState<any>(null);
   const [editingItem, setEditingItem] = useState<any>(null);
@@ -986,7 +1012,17 @@ export const OperacoesTableBlock = ({
       (item.formaPagamento && item.formaPagamento.toLowerCase().includes(formaPagamentoFilter.toLowerCase())) ||
       (item.formas_pagamento_operacional?.nome && item.formas_pagamento_operacional.nome.toLowerCase().includes(formaPagamentoFilter.toLowerCase()));
 
-    return searchMatch && statusMatch && modalidadeMatch && formaPagamentoMatch;
+    const pipelineMatch = pipelineFilter === "todos" || (() => {
+      // Normalizamos para lower case na leitura para coincidir com os enums do producao.service
+      const s = String(item.status || "pendente").toLowerCase();
+      if (pipelineFilter === "pendentes") return ["pendente", "aberto", "abreto", "registered", "registrado", "devolvido", "inconsistente", "recusado"].includes(s);
+      if (pipelineFilter === "rh") return ["validado_rh", "em_validacao", "validado"].includes(s);
+      if (pipelineFilter === "financeiro") return ["enviado_financeiro", "aprovado_financeiro", "cnab_gerado", "aguardando_pagamento", "financeiro"].includes(s);
+      if (pipelineFilter === "concluidos") return ["pago", "concluido", "finalizado", "fechado"].includes(s);
+      return true;
+    })();
+
+    return searchMatch && statusMatch && modalidadeMatch && formaPagamentoMatch && pipelineMatch;
   }).sort((a: any, b: any) => {
     if (sortConfig) {
       let valA = a[sortConfig.key] ?? "";
@@ -1056,6 +1092,14 @@ export const OperacoesTableBlock = ({
     setEditingItem(item);
     setEditForm(buildEditableForm(item));
   };
+
+  const PIPELINE_FILTERS = [
+    { id: "todos", label: "Todos", color: "bg-zinc-100 text-zinc-600 border-zinc-200" },
+    { id: "pendentes", label: "Pendentes", color: "bg-amber-100 text-amber-700 border-amber-200" },
+    { id: "rh", label: "RH", color: "bg-cyan-100 text-cyan-700 border-cyan-200" },
+    { id: "financeiro", label: "Financeiro", color: "bg-emerald-100 text-emerald-700 border-emerald-200" },
+    { id: "concluidos", label: "Concluídos", color: "bg-zinc-200 text-zinc-700 border-zinc-300" },
+  ] as const;
 
 
   const closeEditor = () => {
@@ -1725,6 +1769,28 @@ export const OperacoesTableBlock = ({
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center bg-muted/30 p-1 rounded-lg border border-border">
+          {PIPELINE_FILTERS.map((f) => (
+            <button
+              key={f.id}
+              onClick={() => setPipelineFilter(f.id)}
+              className={cn(
+                "px-3 py-1.5 text-[11px] font-bold uppercase tracking-tight rounded-md transition-all",
+                pipelineFilter === f.id
+                  ? cn("shadow-sm border scale-[1.02]", f.color)
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              )}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2">
+      </div>
+
       <div className="relative">
         <button
           onClick={() => scrollBy("left")}
@@ -1916,6 +1982,7 @@ export const OperacoesTableBlock = ({
                           onClick={() => setSelectedOpDetails(item)}
                           className={cn(
                             "esc-table-row cursor-pointer transition-all border-b border-border last:border-0 hover:bg-muted/50",
+                            statusCfg.opacity,
                             item.status === "inconsistente" && "bg-rowAlert border-l-[3px] border-l-primary",
                             isSelected && "bg-primary-soft/40 border-l-[3px] border-l-primary"
                           )}

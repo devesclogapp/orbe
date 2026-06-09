@@ -175,33 +175,44 @@ const getNextStatus = (current: PipelineStatus | null | undefined): PipelineStat
     }
 };
 
-const getPipelineBadgeClass = (status?: PipelineStatus | null) => {
-    switch (status) {
-        case "EM_VALIDACAO":
-            return "bg-amber-100 text-amber-700";
-        case "APROVADO_OPERACAO":
-            return "bg-sky-100 text-sky-700";
-        case "APROVADO_FINANCEIRO":
-            return "bg-blue-100 text-blue-700";
-        case "FATURADO":
-            return "bg-purple-100 text-purple-700";
-        case "CONCLUIDO":
-            return "bg-emerald-500 text-white";
-        case "DEVOLVIDO":
-            return "bg-orange-100 text-orange-700";
-        default:
-            return "bg-muted text-muted-foreground";
-    }
-};
-
 const getStatusBadgeClass = (status?: string | null) => {
     switch (String(status ?? "").toUpperCase()) {
         case "RECEBIDO":
+        case "PAGO":
             return "bg-emerald-100 text-emerald-700";
         case "ATRASADO":
             return "bg-amber-100 text-amber-700";
         default:
             return "bg-muted text-muted-foreground";
+    }
+};
+
+const getPipelineStatusConfig = (status?: string | null) => {
+    const s = String(status ?? "PENDENTE").toUpperCase();
+    switch (s) {
+        case "PENDENTE":
+        case "EM_ANALISE":
+            return { label: "🟡 Em análise RH", className: "bg-amber-50 text-amber-600 border-amber-100", opacity: "opacity-100" };
+        case "EM_VALIDACAO":
+            return { label: "🟢 Validado RH", className: "bg-cyan-50 text-cyan-600 border-cyan-100", opacity: "opacity-[0.95]" };
+        case "APROVADO_OPERACAO":
+            return { label: "🔵 Financeiro", className: "bg-blue-50 text-blue-600 border-blue-100", opacity: "opacity-[0.90]" };
+        case "APROVADO_FINANCEIRO":
+        case "FATURADO":
+            return { label: "🔵 Financeiro", className: "bg-emerald-50 text-emerald-600 border-emerald-100", opacity: "opacity-[0.85]" };
+        case "CNAB_GERADO":
+            return { label: "🟣 CNAB Gerado", className: "bg-indigo-50 text-indigo-600 border-indigo-100", opacity: "opacity-[0.80]" };
+        case "PAGO":
+            return { label: "💰 Pago", className: "bg-emerald-100 text-emerald-700", opacity: "opacity-[0.70]" };
+        case "CONCLUIDO":
+        case "FINALIZADO":
+        case "FECHADO":
+            return { label: "⚫ Concluído", className: "bg-zinc-100 text-zinc-500 border-zinc-200", opacity: "opacity-[0.60]" };
+        case "DEVOLVIDO":
+        case "RECUSADO":
+            return { label: "Devolvido", className: "bg-rose-50 text-rose-600 border-rose-100", opacity: "opacity-100" };
+        default:
+            return { label: status || "Pendente", className: "bg-muted text-muted-foreground", opacity: "opacity-100" };
     }
 };
 
@@ -212,7 +223,8 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
     const tableScrollRef = useRef<HTMLDivElement>(null);
     const [filterText, setFilterText] = useState("");
     const [tipoFilter, setTipoFilter] = useState("all");
-    const [pipelineFilter, setPipelineFilter] = useState("all");
+    const [pipelineStatusFilter, setPipelineStatusFilter] = useState("all");
+    const [pipelineFilter, setPipelineFilter] = useState<"todos" | "pendentes" | "rh" | "financeiro" | "concluidos">("todos");
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
 
     const [editingItem, setEditingItem] = useState<ServicoExtraItem | null>(null);
@@ -368,8 +380,19 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                     (item.cliente ?? "").toLowerCase().includes(search) ||
                     item.tipo_servico.toLowerCase().includes(search);
                 const tipoMatch = tipoFilter === "all" || item.tipo_servico === tipoFilter;
-                const pipelineMatch = pipelineFilter === "all" || (item.pipeline_status ?? "PENDENTE") === pipelineFilter;
-                return searchMatch && tipoMatch && pipelineMatch;
+                const pipelineStatusMatch = pipelineStatusFilter === "all" || (item.pipeline_status ?? "PENDENTE") === pipelineStatusFilter;
+
+                const pipelineMatch = pipelineFilter === "todos" || (() => {
+                    // Normalizamos para upper case na leitura para evitar quebras por variação de caixa no banco
+                    const s = String(item.pipeline_status || "PENDENTE").toUpperCase();
+                    if (pipelineFilter === "pendentes") return ["PENDENTE", "DEVOLVIDO", "EM_ANALISE", "RECUSADO"].includes(s);
+                    if (pipelineFilter === "rh") return ["EM_VALIDACAO"].includes(s);
+                    if (pipelineFilter === "financeiro") return ["APROVADO_OPERACAO", "APROVADO_FINANCEIRO", "FATURADO", "CNAB_GERADO"].includes(s);
+                    if (pipelineFilter === "concluidos") return ["CONCLUIDO", "PAGO", "FINALIZADO"].includes(s);
+                    return true;
+                })();
+
+                return searchMatch && tipoMatch && pipelineStatusMatch && pipelineMatch;
             })
             .sort((a, b) => {
                 if (!sortConfig) return 0;
@@ -380,7 +403,7 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                 if (valA > valB) return sortConfig.direction === "asc" ? 1 : -1;
                 return 0;
             });
-    }, [data, filterText, tipoFilter, pipelineFilter, sortConfig]);
+    }, [data, filterText, tipoFilter, pipelineFilter, sortConfig, pipelineStatusFilter]);
 
     const renderSortHeader = (key: string, label: string) => (
         <DropdownMenu>
@@ -430,7 +453,7 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                     </SelectContent>
                 </Select>
 
-                <Select value={pipelineFilter} onValueChange={setPipelineFilter}>
+                <Select value={pipelineStatusFilter} onValueChange={setPipelineStatusFilter}>
                     <SelectTrigger className="h-9 w-[200px]">
                         <SelectValue placeholder="Status Pipeline" />
                     </SelectTrigger>
@@ -441,6 +464,23 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                         ))}
                     </SelectContent>
                 </Select>
+
+                <div className="flex items-center bg-muted/30 p-1 rounded-lg border border-border">
+                    {["todos", "pendentes", "rh", "financeiro", "concluidos"].map((id) => (
+                        <button
+                            key={id}
+                            onClick={() => setPipelineFilter(id as any)}
+                            className={cn(
+                                "px-3 py-1.5 text-[11px] font-bold uppercase tracking-tight rounded-md transition-all",
+                                pipelineFilter === id
+                                    ? "shadow-sm border scale-[1.02] bg-white text-primary border-border"
+                                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                            )}
+                        >
+                            {id.charAt(0).toUpperCase() + id.slice(1)}
+                        </button>
+                    ))}
+                </div>
             </div>
 
             {/* Table */}
@@ -494,104 +534,110 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                             </tr>
                         </thead>
                         <tbody>
-                            {filteredData.map((item) => (
-                                <tr
-                                    key={item.id}
-                                    className="border-b border-border last:border-0 hover:bg-muted/50 transition-colors"
-                                >
-                                    <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{formatDate(item.data)}</td>
-                                    <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{item.empresas?.nome ?? item.empresa_nome ?? "—"}</td>
-                                    <td className="px-3 py-3 text-center">
-                                        <Badge variant="outline">{item.tipos_servico_operacional?.nome ?? item.tipo_servico}</Badge>
-                                    </td>
-                                    <td className="px-3 py-3 text-center text-foreground max-w-[260px] truncate">{item.descricao_servico}</td>
-                                    <td className="px-3 py-3 text-center text-muted-foreground">{item.quantidade !== null && item.quantidade !== undefined ? Number(item.quantidade).toLocaleString("pt-BR") : "—"}</td>
-                                    <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{item.valor_unitario !== null && item.valor_unitario !== undefined ? currencyFormatter.format(Number(item.valor_unitario)) : "—"}</td>
-                                    <td className="px-3 py-3 text-center font-display font-semibold whitespace-nowrap">{item.total !== null && item.total !== undefined ? currencyFormatter.format(Number(item.total)) : "—"}</td>
-                                    <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap text-xs">
-                                        {item.formas_pagamento_operacional?.nome ?? item.forma_pagamento ?? item.modalidade_financeira?.replace(/_/g, " ") ?? "—"}
-                                    </td>
-                                    <td className="px-3 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                                        <DropdownMenu>
-                                            <DropdownMenuTrigger asChild disabled={updateStatusMutation.isPending}>
-                                                <button type="button" className="inline-flex">
-                                                    <Badge className={cn("border-0 font-medium", getStatusBadgeClass(item.status_pagamento))}>
-                                                        {item.status_pagamento ?? "PENDENTE"}
-                                                    </Badge>
-                                                </button>
-                                            </DropdownMenuTrigger>
-                                            <DropdownMenuContent align="center">
-                                                <DropdownMenuLabel>Status Pagamento</DropdownMenuLabel>
-                                                <DropdownMenuSeparator />
-                                                {STATUS_OPTIONS.map((s) => (
-                                                    <DropdownMenuItem key={s} onClick={() => updateStatusMutation.mutate({ id: item.id, status: s })}>
-                                                        {s}
-                                                    </DropdownMenuItem>
-                                                ))}
-                                            </DropdownMenuContent>
-                                        </DropdownMenu>
-                                    </td>
-                                    <td className="px-3 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                                        <Badge className={cn("border-0 font-medium capitalize h-6 px-2 text-[11px]", getPipelineBadgeClass(item.pipeline_status))}>
-                                            {(item.pipeline_status ?? "PENDENTE").toLowerCase().replace(/_/g, " ")}
-                                        </Badge>
-                                    </td>
-                                    <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap text-xs">
-                                        {item.responsavel_nome ?? "—"}
-                                    </td>
-                                    <td className="px-3 py-3 text-center text-muted-foreground max-w-[200px] truncate italic text-xs">
-                                        {item.observacao || "—"}
-                                    </td>
-                                    <td className="px-5 py-3" onClick={(e) => e.stopPropagation()}>
-                                        <div className="flex items-center justify-center gap-1">
-                                            {item.pipeline_status !== "CONCLUIDO" && canAdvance(item) && (
+                            {filteredData.map((item) => {
+                                const statusCfg = getPipelineStatusConfig(item.pipeline_status);
+                                return (
+                                    <tr
+                                        key={item.id}
+                                        className={cn(
+                                            "border-b border-border last:border-0 hover:bg-muted/50 transition-colors",
+                                            statusCfg.opacity
+                                        )}
+                                    >
+                                        <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{formatDate(item.data)}</td>
+                                        <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{item.empresas?.nome ?? item.empresa_nome ?? "—"}</td>
+                                        <td className="px-3 py-3 text-center">
+                                            <Badge variant="outline">{item.tipos_servico_operacional?.nome ?? item.tipo_servico}</Badge>
+                                        </td>
+                                        <td className="px-3 py-3 text-center text-foreground max-w-[260px] truncate">{item.descricao_servico}</td>
+                                        <td className="px-3 py-3 text-center text-muted-foreground">{item.quantidade !== null && item.quantidade !== undefined ? Number(item.quantidade).toLocaleString("pt-BR") : "—"}</td>
+                                        <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{item.valor_unitario !== null && item.valor_unitario !== undefined ? currencyFormatter.format(Number(item.valor_unitario)) : "—"}</td>
+                                        <td className="px-3 py-3 text-center font-display font-semibold whitespace-nowrap">{item.total !== null && item.total !== undefined ? currencyFormatter.format(Number(item.total)) : "—"}</td>
+                                        <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap text-xs">
+                                            {item.formas_pagamento_operacional?.nome ?? item.forma_pagamento ?? item.modalidade_financeira?.replace(/_/g, " ") ?? "—"}
+                                        </td>
+                                        <td className="px-3 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild disabled={updateStatusMutation.isPending}>
+                                                    <button type="button" className="inline-flex">
+                                                        <Badge className={cn("border-0 font-medium", getStatusBadgeClass(item.status_pagamento))}>
+                                                            {item.status_pagamento ?? "PENDENTE"}
+                                                        </Badge>
+                                                    </button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="center">
+                                                    <DropdownMenuLabel>Status Pagamento</DropdownMenuLabel>
+                                                    <DropdownMenuSeparator />
+                                                    {STATUS_OPTIONS.map((s) => (
+                                                        <DropdownMenuItem key={s} onClick={() => updateStatusMutation.mutate({ id: item.id, status: s })}>
+                                                            {s}
+                                                        </DropdownMenuItem>
+                                                    ))}
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        </td>
+                                        <td className="px-3 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                            <Badge className={cn("border shadow-none font-medium uppercase h-6 px-2 text-[11px]", statusCfg.className)}>
+                                                {statusCfg.label}
+                                            </Badge>
+                                        </td>
+                                        <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap text-xs">
+                                            {item.responsavel_nome ?? "—"}
+                                        </td>
+                                        <td className="px-3 py-3 text-center text-muted-foreground max-w-[200px] truncate italic text-xs">
+                                            {item.observacao || "—"}
+                                        </td>
+                                        <td className="px-5 py-3" onClick={(e) => e.stopPropagation()}>
+                                            <div className="flex items-center justify-center gap-1">
+                                                {item.pipeline_status !== "CONCLUIDO" && canAdvance(item) && (
+                                                    <button
+                                                        className="h-7 w-7 rounded-md hover:bg-emerald-50 flex items-center justify-center text-emerald-600 hover:text-emerald-700"
+                                                        onClick={() => handleAdvance(item)}
+                                                        title="Avançar Pipeline"
+                                                        disabled={updatePipelineMutation.isPending}
+                                                    >
+                                                        {updatePipelineMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
+                                                    </button>
+                                                )}
+                                                {item.pipeline_status && item.pipeline_status !== "PENDENTE" && item.pipeline_status !== "CONCLUIDO" && canDevolve(item) && (
+                                                    <button
+                                                        className="h-7 w-7 rounded-md hover:bg-orange-50 flex items-center justify-center text-orange-600 hover:text-orange-700"
+                                                        onClick={() => handleDevolve(item)}
+                                                        title="Devolver etapa"
+                                                        disabled={updatePipelineMutation.isPending}
+                                                    >
+                                                        <RotateCcw className="h-4 w-4" />
+                                                    </button>
+                                                )}
                                                 <button
-                                                    className="h-7 w-7 rounded-md hover:bg-emerald-50 flex items-center justify-center text-emerald-600 hover:text-emerald-700"
-                                                    onClick={() => handleAdvance(item)}
-                                                    title="Avançar Pipeline"
-                                                    disabled={updatePipelineMutation.isPending}
+                                                    className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
+                                                    onClick={() => {
+                                                        setEditingItem(item);
+                                                        setEditDescricao(item.descricao_servico ?? "");
+                                                        setEditObservacao(item.observacao ?? "");
+                                                    }}
+                                                    title="Editar"
                                                 >
-                                                    {updatePipelineMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
+                                                    <Pencil className="h-4 w-4" />
                                                 </button>
-                                            )}
-                                            {item.pipeline_status && item.pipeline_status !== "PENDENTE" && item.pipeline_status !== "CONCLUIDO" && canDevolve(item) && (
-                                                <button
-                                                    className="h-7 w-7 rounded-md hover:bg-orange-50 flex items-center justify-center text-orange-600 hover:text-orange-700"
-                                                    onClick={() => handleDevolve(item)}
-                                                    title="Devolver etapa"
-                                                    disabled={updatePipelineMutation.isPending}
-                                                >
-                                                    <RotateCcw className="h-4 w-4" />
-                                                </button>
-                                            )}
-                                            <button
-                                                className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
-                                                onClick={() => {
-                                                    setEditingItem(item);
-                                                    setEditDescricao(item.descricao_servico ?? "");
-                                                    setEditObservacao(item.observacao ?? "");
-                                                }}
-                                                title="Editar"
-                                            >
-                                                <Pencil className="h-4 w-4" />
-                                            </button>
-                                            {(isAdmin || item.pipeline_status === "PENDENTE") && (
-                                                <button
-                                                    className="h-7 w-7 rounded-md hover:bg-red-50 flex items-center justify-center text-muted-foreground hover:text-destructive"
-                                                    onClick={() => deleteMutation.mutate(item.id)}
-                                                    title="Remover"
-                                                    disabled={deleteMutation.isPending}
-                                                >
-                                                    <Trash2 className="h-4 w-4" />
-                                                </button>
-                                            )}
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
+                                                {(isAdmin || item.pipeline_status === "PENDENTE") && (
+                                                    <button
+                                                        className="h-7 w-7 rounded-md hover:bg-red-50 flex items-center justify-center text-muted-foreground hover:text-destructive"
+                                                        onClick={() => deleteMutation.mutate(item.id)}
+                                                        title="Remover"
+                                                        disabled={deleteMutation.isPending}
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                             {filteredData.length === 0 && (
                                 <tr>
-                                    <td colSpan={11} className="p-12 text-center text-muted-foreground italic">
+                                    <td colSpan={13} className="p-12 text-center text-muted-foreground italic">
                                         Nenhum serviço extra encontrado para os filtros atuais.
                                     </td>
                                 </tr>

@@ -288,6 +288,7 @@ export const Sidebar = () => {
             } else {
               items = [
                 { icon: Activity, label: "Operações Recebidas", to: "/operacional/operacoes", module: "operacoes_recebidas", pulseKey: "operacoes_recebidas" },
+                { icon: Clock, label: "Pontos Recebidos", to: "/operacional/pontos", module: "pontos_recebidos", pulseKey: "pontos_recebidos" },
                 { icon: UserCheck, label: "Diaristas Recebidos", to: "/operacional/diaristas", module: "processamento_rh", pulseKey: "diaristas_recebidos" },
                 { icon: Wrench, label: "Serviços Extras Rec.", to: "/operacional/servicos-extras", module: "central_operacional", pulseKey: "servicos_extras" },
                 { icon: Wallet, label: "Custos Extras Rec.", to: "/operacional/custos-extras", module: "central_operacional", pulseKey: "custos_extras" },

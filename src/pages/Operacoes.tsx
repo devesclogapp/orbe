@@ -57,6 +57,7 @@ import {
 import { processarOperacao } from "@/utils/financeiro";
 import { useOperationalPipeline } from "@/contexts/OperationalPipelineContext";
 import { buildOperacaoVolumePipeline } from "@/contexts/OperationalPipelineContext";
+import { useTenant } from "@/contexts/TenantContext";
 import { NovaOperacaoDialog } from "@/components/operacoes/NovaOperacaoDialog";
 
 type EmpresaOption = {
@@ -370,13 +371,7 @@ const MONTH_FILTER_OPTIONS = [
   ...MONTH_NAME_OPTIONS,
 ];
 
-const YEAR_OPTIONS = Array.from(
-  new Set(
-    Array.from({ length: 24 }, (_, index) =>
-      String(startOfMonth(addMonths(new Date(), -index)).getFullYear()),
-    ),
-  ),
-).sort((a, b) => Number(b) - Number(a));
+const YEAR_OPTIONS = ["2026", "2025", "2024"];
 
 const topKpiCardClasses: Record<NonNullable<TopKpiCardProps["size"]>, string> = {
   large: "p-5 min-h-[148px]",
@@ -448,15 +443,15 @@ const Operacoes = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { openPipeline } = useOperationalPipeline();
-  const [selectedYear, setSelectedYear] = useState<string>(
-    String(new Date().getFullYear()),
-  );
-  const [selectedMonthNumber, setSelectedMonthNumber] = useState<string>(
-    "all",
-  );
+  const [selectedYear, setSelectedYear] = useState<string>(() => {
+    return localStorage.getItem("orbe_operacoes_year") || new Date().getFullYear().toString();
+  });
+  const [selectedMonthNumber, setSelectedMonthNumber] = useState<string>(() => {
+    return localStorage.getItem("orbe_operacoes_month") || "all";
+  });
   const [novaOpOpen, setNovaOpOpen] = useState(false);
-  const [sheetYear, setSheetYear] = useState<string>(String(new Date().getFullYear()));
-  const [sheetMonthNumber, setSheetMonthNumber] = useState<string>("all");
+  const [sheetYear, setSheetYear] = useState<string>(selectedYear);
+  const [sheetMonthNumber, setSheetMonthNumber] = useState<string>(selectedMonthNumber);
   const [selectedEmpresaId, setSelectedEmpresaId] = useState<string>("all");
   const [selectedModalidade, setSelectedModalidade] = useState<string>("all");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
@@ -478,6 +473,7 @@ const Operacoes = () => {
     if (isAllMonthsSelected) return true;
     return referencia.startsWith(selectedMonth);
   }, [isAllMonthsSelected, selectedMonth, selectedYear]);
+  const currentCompetence = `${selectedYear}-${selectedMonthNumber}`;
   const monthLabelCapitalized = isAllMonthsSelected
     ? `Todos os meses de ${selectedYear}`
     : format(selectedDate, "MMMM/yyyy", { locale: ptBR }).replace(/^\w/, (char) => char.toUpperCase());
@@ -506,10 +502,50 @@ const Operacoes = () => {
     setConfirmClear(false);
   }, [selectedEmpresaId, selectedMonth]);
 
+  const { data: monthsWithData = [], isLoading: isLoadingMonths } = useQuery<string[]>({
+    queryKey: ["operacoes-months-with-data", selectedEmpresaId, tenantId],
+    queryFn: () => OperacaoProducaoService.getMonthsWithData(
+      selectedEmpresaId === "all" ? undefined : selectedEmpresaId,
+      tenantId
+    ),
+    staleTime: 1000 * 60 * 5,
+    enabled: !isTenantLoading && !!tenantId,
+  });
+
+  // Intelligent initial load year selection
+  useEffect(() => {
+    const hasYearInStorage = !!localStorage.getItem("orbe_operacoes_year");
+    if (!hasYearInStorage && monthsWithData.length > 0) {
+      const currentYear = new Date().getFullYear().toString();
+      const yearsWithData = Array.from(new Set(monthsWithData.map(m => m.slice(0, 4))));
+
+      // If current year has no data, pick the most recent one that DOES
+      const hasDataForCurrentYear = yearsWithData.includes(currentYear);
+      if (!hasDataForCurrentYear && yearsWithData.length > 0) {
+        const latestYearWithData = yearsWithData[0]; // Already sorted DESC
+        console.log(`[Operacoes] Current year ${currentYear} empty. Pivoting to ${latestYearWithData}`);
+        setSelectedYear(latestYearWithData);
+        setSheetYear(latestYearWithData);
+      }
+    }
+  }, [monthsWithData]);
+
+  // Persist user selection
+  useEffect(() => {
+    localStorage.setItem("orbe_operacoes_year", selectedYear);
+    localStorage.setItem("orbe_operacoes_month", selectedMonthNumber);
+  }, [selectedYear, selectedMonthNumber]);
+
+  const { tenantId } = useTenant();
+
   const { data: operacoesBase = [], isLoading: isLoadingOperacoesBase } = useQuery<OperacoesBaseItem[]>({
-    queryKey: ["operacoes-base", selectedEmpresaId],
-    queryFn: () => OperacaoService.getAllPainel(selectedEmpresaId === "all" ? undefined : selectedEmpresaId),
-    enabled: !!selectedEmpresaId,
+    queryKey: ["operacoes-base", selectedEmpresaId, tenantId, currentCompetence],
+    queryFn: () => OperacaoService.getAllPainel(
+      selectedEmpresaId === "all" ? undefined : selectedEmpresaId,
+      tenantId,
+      currentCompetence
+    ),
+    enabled: !!tenantId,
   });
 
   const { data: logsImportacao = [], isLoading: isLoadingLogs } = useQuery<ImportLogItem[]>({
@@ -1211,6 +1247,7 @@ const Operacoes = () => {
                   date={dateValue}
                   empresaId={selectedEmpresaId}
                   rowsData={filteredOperations}
+                  competencia={currentCompetence}
                 />
               </TabsContent>
 

@@ -275,12 +275,24 @@ class OperacaoServiceClass extends BaseService<'operacoes'> {
       operacoesQuery = operacoesQuery.in('empresa_id', empresaIds);
     }
 
-    if (competencia) {
-      const [year, mo] = competencia.split('-').map(Number);
-      const nextMonth = mo === 12 ? 1 : mo + 1;
-      const nextYear = mo === 12 ? year + 1 : year;
-      const nextMonthStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
-      operacoesQuery = operacoesQuery.gte('data', `${competencia}-01`).lt('data', nextMonthStr);
+    if (typeof competencia === 'string' && competencia.includes('-')) {
+      const parts = competencia.split('-');
+      const year = Number(parts[0]);
+      const moPart = parts[1];
+
+      if (!year || isNaN(year)) return [];
+
+      if (moPart === 'all' || !moPart || isNaN(Number(moPart))) {
+        // Range anual: YYYY-01-01 até (YYYY+1)-01-01
+        operacoesQuery = operacoesQuery.gte('data', `${year}-01-01`).lt('data', `${year + 1}-01-01`);
+      } else {
+        // Range mensal: YYYY-MM-01 até (YYYY-MM+1)-01
+        const mo = Number(moPart);
+        const nextMonth = mo === 12 ? 1 : mo + 1;
+        const nextYear = mo === 12 ? year + 1 : year;
+        const nextMonthStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+        operacoesQuery = operacoesQuery.gte('data', `${year}-${String(mo).padStart(2, '0')}-01`).lt('data', nextMonthStr);
+      }
     }
 
     const operacoesLegadasRes = await operacoesQuery;
@@ -387,7 +399,7 @@ class OperacaoServiceClass extends BaseService<'operacoes'> {
     const { data, error } = await supabase
       .from('operacoes')
       .select('*, colaboradores(nome, cargo, empresas(nome))')
-      .eq('status', 'inconsistente');
+      .in('status', ['inconsistente', 'com_alerta', 'aguardando_validacao', 'pendente', 'validado_rh', 'aprovado_financeiro', 'concluido']);
     if (error) throw error;
     return data;
   }

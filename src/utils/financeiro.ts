@@ -187,7 +187,7 @@ export function processarOperacao(operacao: any, empresas: any[] = []) {
   const dataVencimento = financeiro.vencimento;
 
   let status_pagamento: StatusPagamento = "PENDENTE";
-  if (statusPagamentoRaw === "RECEBIDO") {
+  if (["RECEBIDO", "PAGO", "CONCLUIDO", "FINALIZADO"].some(s => statusPagamentoRaw === s)) {
     status_pagamento = "RECEBIDO";
   } else if (isAfter(startOfDay(new Date()), startOfDay(dataVencimento))) {
     status_pagamento = "ATRASADO";

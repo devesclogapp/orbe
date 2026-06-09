@@ -95,9 +95,17 @@ const fmtDate = (d?: string) => {
 const situacaoMap = (status?: string): SituacaoItem => {
     if (!status) return "Em análise";
     const s = status.toUpperCase();
-    if (["EM_ABERTO", "PENDENTE", "AGUARDANDO_VALIDACAO_RH", "fechado", "fechado_para_pagamento"].some(k => s === k.toUpperCase())) return "Em análise";
-    if (["APROVADO", "VALIDADO_RH", "VALIDADO", "FECHADO_FINANCEIRO", "PAGO", "PROCESSADO"].some(k => s === k.toUpperCase())) return "Aprovado";
-    if (["DEVOLVIDO", "CANCELADO", "CANCELADO_RH", "RETORNADO"].some(k => s === k.toUpperCase())) return "Devolvido";
+    const emAnalise = ["EM_ABERTO", "PENDENTE", "AGUARDANDO_VALIDACAO_RH", "EM_ANALISE", "DETALHADO", "REGISTRADO"].some(k => s === k.toUpperCase());
+    if (emAnalise) return "Em análise";
+
+    const aprovado = [
+        "APROVADO", "VALIDADO_RH", "VALIDADO", "FECHADO_FINANCEIRO", "PAGO", "PROCESSADO",
+        "CNAB_GERADO", "AGUARDANDO_PAGAMENTO", "CONCLUIDO", "FINALIZADO", "FECHADO"
+    ].some(k => s === k.toUpperCase());
+    if (aprovado) return "Aprovado";
+
+    if (["DEVOLVIDO", "CANCELADO", "CANCELADO_RH", "RETORNADO", "RECUSADO", "REPROVADO"].some(k => s === k.toUpperCase())) return "Devolvido";
+
     return "Em análise";
 };
 

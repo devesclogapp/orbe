@@ -1682,7 +1682,7 @@ const ProcessamentoRH = () => {
                             <td className="px-4 py-3 text-center">
                               <Badge
                                 variant={getOperationalStatus(ponto.status_processamento).variant as any}
-                                className={cn(getOperationalStatus(ponto.status_processamento).bg, getOperationalStatus(ponto.status_processamento).color)}
+                                className={cn(getOperationalStatus(ponto.status_processamento).bg, getOperationalStatus(ponto.status_processamento).color, "shadow-none border-0 h-6 px-2 text-[11px] font-medium")}
                               >
                                 {getOperationalStatus(ponto.status_processamento).label}
                               </Badge>
