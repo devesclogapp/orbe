@@ -940,8 +940,7 @@ class OperacaoProducaoServiceClass {
         formas_pagamento_operacional:forma_pagamento_id(nome),
         unidades:unidade_id(nome),
         empresas:empresa_id(id, nome),
-        operacao_producao_materiais!operacao_id(*),
-        responsavel:criado_por(full_name)
+        operacao_producao_materiais!operacao_id(*)
       `)
       .eq('data_operacao', date)
       .is('deleted_at', null)
@@ -952,7 +951,29 @@ class OperacaoProducaoServiceClass {
 
     const { data, error } = await query;
     if (error) throw error;
-    return data ?? [];
+
+    if (!data || data.length === 0) return [];
+
+    const userIdsToFetch = Array.from(new Set(
+      data.filter((row: any) => row.criado_por && !row.responsavel_nome).map((row: any) => row.criado_por)
+    ));
+
+    const responsaveisMap = new Map<string, string>();
+    if (userIdsToFetch.length > 0) {
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, full_name')
+        .in('user_id', userIdsToFetch);
+        
+      if (profiles) {
+        profiles.forEach((p: any) => responsaveisMap.set(p.user_id, p.full_name));
+      }
+    }
+
+    return data.map((item: any) => ({
+      ...item,
+      responsavel_nome: item.responsavel_nome ?? responsaveisMap.get(item.criado_por) ?? "—"
+    }));
   }
 
   async getAll(empresaId?: string, tenantId?: string | null, unidadeId?: string | null, competencia?: string) {
@@ -971,8 +992,7 @@ class OperacaoProducaoServiceClass {
         formas_pagamento_operacional:forma_pagamento_id(nome),
         unidades:unidade_id(nome),
         empresas:empresa_id(id, nome),
-        operacao_producao_materiais!operacao_id(*),
-        responsavel:criado_por(full_name)
+        operacao_producao_materiais!operacao_id(*)
       `)
       .eq('tenant_id', currentTenantId)
       .is('deleted_at', null)
@@ -1004,7 +1024,29 @@ class OperacaoProducaoServiceClass {
 
     const { data, error } = await query;
     if (error) throw error;
-    return data ?? [];
+
+    if (!data || data.length === 0) return [];
+
+    const userIdsToFetch = Array.from(new Set(
+      data.filter((row: any) => row.criado_por && !row.responsavel_nome).map((row: any) => row.criado_por)
+    ));
+
+    const responsaveisMap = new Map<string, string>();
+    if (userIdsToFetch.length > 0) {
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, full_name')
+        .in('user_id', userIdsToFetch);
+        
+      if (profiles) {
+        profiles.forEach((p: any) => responsaveisMap.set(p.user_id, p.full_name));
+      }
+    }
+
+    return data.map((item: any) => ({
+      ...item,
+      responsavel_nome: item.responsavel_nome ?? responsaveisMap.get(item.criado_por) ?? "—"
+    }));
   }
 
   async delete(id: string) {

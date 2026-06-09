@@ -296,7 +296,10 @@ class OperacaoServiceClass extends BaseService<'operacoes'> {
     }
 
     const operacoesLegadasRes = await operacoesQuery;
-    const operacoesProducao = await OperacaoProducaoService.getAll(empresaId, tenantId, null, competencia).catch(() => []);
+    const operacoesProducao = await OperacaoProducaoService.getAll(empresaId, tenantId, null, competencia).catch((err) => {
+      console.error("[OPERACOES_PRODUCAO] Erro fatal (silenciado) no getAllPainel:", err);
+      return [];
+    });
 
     if (operacoesLegadasRes.error && !this.isIgnorableLegacyOperacoesError(operacoesLegadasRes.error)) {
       throw operacoesLegadasRes.error;
@@ -422,7 +425,10 @@ class OperacaoServiceClass extends BaseService<'operacoes'> {
   async getPainelByDate(date: string, empresaId?: string) {
     const [operacoesLegadas, operacoesProducao] = await Promise.all([
       this.getByDate(date, empresaId),
-      OperacaoProducaoService.getByDate(date, empresaId).catch(() => []),
+      OperacaoProducaoService.getByDate(date, empresaId).catch((err) => {
+        console.error("[OPERACOES_PRODUCAO] Erro fatal (silenciado) no getPainelByDate:", err);
+        return [];
+      }),
     ]);
 
     const legadasNormalizadas = (operacoesLegadas ?? []).map((item: any) => ({

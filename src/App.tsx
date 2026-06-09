@@ -100,6 +100,8 @@ import RhDiaristasGestao from "./pages/Rh/RhDiaristasGestao";
 import ServicosExtrasRecebidos from "./pages/Operacional/ServicosExtrasRecebidos";
 import CustosExtrasRecebidos from "./pages/Operacional/CustosExtrasRecebidos";
 
+import DiagnosticoTenant from "./pages/DiagnosticoTenant";
+
 // Onboarding
 import Onboarding from "./pages/Onboarding";
 
@@ -225,6 +227,7 @@ const App = () => (
 
                             {/* Development Tools */}
                             <Route path="/styleguide" element={<Styleguide />} />
+                            <Route path="/diag-tenant" element={<DiagnosticoTenant />} />
 
                             <Route path="*" element={<NotFound />} />
                           </Routes>

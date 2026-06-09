@@ -442,11 +442,13 @@ const TopKpiCard = ({
 const Operacoes = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { tenantId, loading: isTenantLoading } = useTenant();
   const { openPipeline } = useOperationalPipeline();
-  const [selectedYear, setSelectedYear] = useState<string>(() => {
-    return localStorage.getItem("orbe_operacoes_year") || new Date().getFullYear().toString();
+
+  const [selectedYear, setSelectedYear] = useState(() => {
+    return localStorage.getItem("orbe_operacoes_year") || String(new Date().getFullYear());
   });
-  const [selectedMonthNumber, setSelectedMonthNumber] = useState<string>(() => {
+  const [selectedMonthNumber, setSelectedMonthNumber] = useState(() => {
     return localStorage.getItem("orbe_operacoes_month") || "all";
   });
   const [novaOpOpen, setNovaOpOpen] = useState(false);
@@ -536,7 +538,6 @@ const Operacoes = () => {
     localStorage.setItem("orbe_operacoes_month", selectedMonthNumber);
   }, [selectedYear, selectedMonthNumber]);
 
-  const { tenantId } = useTenant();
 
   const { data: operacoesBase = [], isLoading: isLoadingOperacoesBase } = useQuery<OperacoesBaseItem[]>({
     queryKey: ["operacoes-base", selectedEmpresaId, tenantId, currentCompetence],
