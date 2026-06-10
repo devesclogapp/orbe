@@ -1303,7 +1303,7 @@ const CentralFinanceira = () => {
               </div>
 
               {/* Observação ao aprovar */}
-              {["AGUARDANDO_FINANCEIRO", "EM_ANALISE_FINANCEIRA"].includes(rhLoteDetalhe.status) && (
+              {["VALIDADO_RH", "AGUARDANDO_FINANCEIRO", "EM_ANALISE_FINANCEIRA"].includes(rhLoteDetalhe.status) && (
                 <div className="space-y-1.5">
                   <Label htmlFor="obs-aprov" className="text-sm">Observação ao aprovar (opcional)</Label>
                   <Textarea
@@ -1366,7 +1366,7 @@ const CentralFinanceira = () => {
           <DialogFooter className="flex-wrap gap-2 sm:justify-between pt-4 border-t border-border">
             {/* Esquerda: Devolver */}
             <div className="flex gap-2">
-              {rhLoteDetalhe && ["AGUARDANDO_FINANCEIRO", "EM_ANALISE_FINANCEIRA"].includes(rhLoteDetalhe.status) && (
+              {rhLoteDetalhe && ["VALIDADO_RH", "AGUARDANDO_FINANCEIRO", "EM_ANALISE_FINANCEIRA"].includes(rhLoteDetalhe.status) && (
                 <Button
                   variant="outline"
                   className="text-destructive border-destructive/40 hover:bg-destructive/5"
@@ -1381,13 +1381,13 @@ const CentralFinanceira = () => {
             {/* Direita: Fechar / Iniciar / Aprovar */}
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setRhLoteSelecionado(null)}>Fechar</Button>
-              {rhLoteDetalhe && ["AGUARDANDO_FINANCEIRO", "DEVOLVIDO_RH"].includes(rhLoteDetalhe.status) && (
+              {rhLoteDetalhe && ["VALIDADO_RH", "AGUARDANDO_FINANCEIRO", "DEVOLVIDO_RH"].includes(rhLoteDetalhe.status) && (
                 <Button variant="outline" onClick={() => iniciarAnaliseMutation.mutate(rhLoteDetalhe.id)} disabled={iniciarAnaliseMutation.isPending}>
                   {iniciarAnaliseMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Search className="h-4 w-4 mr-2" />}
                   Iniciar Análise
                 </Button>
               )}
-              {rhLoteDetalhe && ["AGUARDANDO_FINANCEIRO", "EM_ANALISE_FINANCEIRA"].includes(rhLoteDetalhe.status) && (
+              {rhLoteDetalhe && ["VALIDADO_RH", "AGUARDANDO_FINANCEIRO", "EM_ANALISE_FINANCEIRA"].includes(rhLoteDetalhe.status) && (
                 <Button
                   className="bg-success hover:bg-success/90 text-white"
                   onClick={() => aprovarFinanceiroMutation.mutate({ id: rhLoteDetalhe.id, obs: observacaoAprovacao })}
