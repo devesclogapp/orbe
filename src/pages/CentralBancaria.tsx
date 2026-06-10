@@ -45,6 +45,7 @@ import { EmpresaService } from "@/services/domain/cadastros.service";
 import { CNAB240BBWriter } from "@/services/cnab/CNAB240BBWriter";
 import { CNABService, ContaBancariaService, CnabRemessaArquivoService } from "@/services/financial.service";
 import { RHFinanceiroService } from "@/services/rhFinanceiro.service";
+import { LoteFechamentoDiaristaService } from "@/services/domain/diaristas.service";
 import { buildFolhaVariavelPipeline, useOperationalPipeline } from "@/contexts/OperationalPipelineContext";
 
 const REQUIRE_RH_LOTE_FOR_CNAB = String(import.meta.env.VITE_REQUIRE_RH_LOTE_FOR_CNAB || "false").toLowerCase() === "true";
@@ -157,10 +158,34 @@ const CentralBancaria = () => {
     queryKey: ["cnab-remessas-arquivos"],
     queryFn: () => CnabRemessaArquivoService.listarHistorico(),
   });
-  const { data: lotesRh = [], isLoading: loadingLotesRh } = useQuery<any[]>({
+  const { data: rawLotesRh = [], isLoading: loadingRhLotes } = useQuery<any[]>({
     queryKey: ["rh-financeiro-lotes-bancario", competencia, empresaId],
     queryFn: () => RHFinanceiroService.listLotesRecebidos(competencia || undefined, empresaId || undefined),
   });
+
+  const { data: lotesDiaristas = [], isLoading: loadingDiaristas } = useQuery({
+    queryKey: ["lotes-diaristas-financeiro-bancario", empresaId],
+    queryFn: () => (empresaId ? LoteFechamentoDiaristaService.getByEmpresaParaFinanceiro(empresaId) : Promise.resolve([])),
+  });
+
+  const loadingLotesRh = loadingRhLotes || loadingDiaristas;
+
+  const lotesRh = useMemo(() => {
+    const diaristasFormatted = lotesDiaristas
+      .filter((l: any) => l.status === "FECHADO_FINANCEIRO" || l.status === "AGUARDANDO_PAGAMENTO")
+      .map((l: any) => ({
+        ...l,
+        tipo: "DIARISTAS",
+        origem: "OPERACIONAL",
+        status: "AGUARDANDO_PAGAMENTO",
+        competencia: l.periodo_inicio?.slice(0, 7),
+      }))
+      .filter((l: any) => !competencia || l.competencia === competencia);
+
+    return [...rawLotesRh, ...diaristasFormatted].sort((a, b) =>
+      new Date(b.created_at).getTime() - new Date(a.getTime ? a.getTime() : a.created_at ? new Date(a.created_at).getTime() : 0)
+    );
+  }, [rawLotesRh, lotesDiaristas, competencia]);
 
   const lotesRhProntosCnab = useMemo(
     () => (lotesRh || []).filter((lote: any) => lote.status === "AGUARDANDO_PAGAMENTO"),

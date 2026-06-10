@@ -1,0 +1,26 @@
+﻿[
+    {
+        "diarista_id":  "a92aebc9-94f6-4a2b-9736-6ff73d876b33",
+        "nome_colaborador":  "Antônio da Silva Rocha",
+        "cpf_colaborador":  "83621947009",
+        "valor_calculado":  60.00
+    },
+    {
+        "diarista_id":  "a92aebc9-94f6-4a2b-9736-6ff73d876b33",
+        "nome_colaborador":  "Antônio da Silva Rocha",
+        "cpf_colaborador":  "83621947009",
+        "valor_calculado":  120.00
+    },
+    {
+        "diarista_id":  "a92aebc9-94f6-4a2b-9736-6ff73d876b33",
+        "nome_colaborador":  "Antônio da Silva Rocha",
+        "cpf_colaborador":  "83621947009",
+        "valor_calculado":  120.00
+    },
+    {
+        "diarista_id":  "a92aebc9-94f6-4a2b-9736-6ff73d876b33",
+        "nome_colaborador":  "Antônio da Silva Rocha",
+        "cpf_colaborador":  "83621947009",
+        "valor_calculado":  60.00
+    }
+]
