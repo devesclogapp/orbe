@@ -344,6 +344,10 @@ export default function AprovacoesRh() {
                     .update({ status: "VALIDADO_RH", updated_at: new Date().toISOString() })
                     .eq("id", item.raw.lote_fechamento_id);
                 if (error) throw error;
+
+                await supabase.from("lancamentos_diaristas")
+                    .update({ status: "VALIDADO_RH" })
+                    .eq("lote_fechamento_id", item.raw.lote_fechamento_id);
                 return;
             }
             // Pontos
@@ -394,6 +398,10 @@ export default function AprovacoesRh() {
                     .update({ status: "AGUARDANDO_VALIDACAO_RH", updated_at: new Date().toISOString() })
                     .eq("id", item.raw.lote_fechamento_id);
                 if (error) throw error;
+
+                await supabase.from("lancamentos_diaristas")
+                    .update({ status: "AGUARDANDO_VALIDACAO_RH" })
+                    .eq("lote_fechamento_id", item.raw.lote_fechamento_id);
                 return;
             }
             if (item.tipo === "PONTO") {
