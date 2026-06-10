@@ -1,0 +1,37 @@
+{
+  "empresa": {
+    "nome": "DISMELO CASTANHAL"
+  },
+  "lotes": [
+    {
+      "id": "6cb106bd-4a94-41de-bb3c-8590488e09c1",
+      "empresa_id": "fbcbc831-f5c5-470b-894c-7e3ea7df5660",
+      "periodo_inicio": "2026-06-01",
+      "periodo_fim": "2026-06-07",
+      "mes_referencia": "2026-06",
+      "total_registros": 4,
+      "valor_total": 360,
+      "status": "AGUARDANDO_VALIDACAO_RH",
+      "fechado_por": "be2b4915-95dc-40ed-9d2b-61d19b1c8c90",
+      "fechado_por_nome": "dev.esclog@gmail.com",
+      "fechado_em": "2026-06-09T23:53:16.819+00:00",
+      "observacoes": "Fechamento semanal: 01/06 – 07/06/2026",
+      "tenant_id": "09ccafb6-2cf2-4c83-ac3d-a2913947693c",
+      "created_at": "2026-06-09T23:47:14.898098+00:00",
+      "updated_at": "2026-06-09T23:47:15.083137+00:00",
+      "paid_by": null,
+      "paid_by_nome": null,
+      "paid_at": null,
+      "tipo_reabertura": null
+    }
+  ],
+  "lancamentos": {
+    "total": 4,
+    "status_agrupados": {
+      "AGUARDANDO_VALIDACAO_RH": 4
+    },
+    "com_lote_id": 4,
+    "com_ciclo_id": 0,
+    "tenant_sample": "09ccafb6-2cf2-4c83-ac3d-a2913947693c"
+  }
+}

@@ -8,16 +8,6 @@ import {
     ChevronRight,
     Circle,
     Clock,
-import { useCallback, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
-import {
-    ArrowRight,
-    Building2,
-    Calendar,
-    CheckCircle2,
-    ChevronRight,
-    Circle,
-    Clock,
     GitBranch,
     Loader2,
     X,
