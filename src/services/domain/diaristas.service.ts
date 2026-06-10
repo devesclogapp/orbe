@@ -66,9 +66,7 @@ class LancamentoDiaristaServiceClass {
       .from('lancamentos_diaristas')
       .select(`
         *,
-        empresa:empresas(id, nome),
-        responsavel:encarregado_id(full_name),
-        colaborador:diarista_id(nome, cpf, cargo)
+        empresa:empresas(id, nome)
       `)
       .gte('data_lancamento', inicio)
       .lte('data_lancamento', fim);
@@ -97,7 +95,23 @@ class LancamentoDiaristaServiceClass {
     const { data, error } = await query;
     console.log(`[DiaristaService.getByPeriodo] empresa=${empresaId ?? 'TODAS'} periodo=${inicio}→${fim} status=${filtros?.status ?? 'todos'} | resultado=${(data ?? []).length} registros`, error ? `ERRO: ${error.message}` : '');
     if (error) throw error;
-    return data ?? [];
+
+    // ProjectStabilizer: Fallback fetch for profiles due to broken PGRST200 join
+    const finalData = data ?? [];
+    if (finalData.length > 0) {
+      const responsaveisIds = [...new Set(finalData.filter((r: any) => !!r.encarregado_id).map((r: any) => r.encarregado_id))];
+      if (responsaveisIds.length > 0) {
+        const { data: profiles } = await client.from('profiles').select('user_id, full_name').in('user_id', responsaveisIds);
+        finalData.forEach((d: any) => {
+          if (d.encarregado_id) {
+             const prof = profiles?.find((p: any) => p.user_id === d.encarregado_id);
+             d.responsavel = { full_name: prof?.full_name || d.encarregado_nome || 'Encarregado' };
+          }
+        });
+      }
+    }
+
+    return finalData;
   }
 
   async getByData(empresaId: string, data: string) {
@@ -318,9 +332,7 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
       .from('lancamentos_diaristas')
       .select(`
         *,
-        empresa:empresas(id, nome),
-        responsavel:encarregado_id(full_name),
-        colaborador:diarista_id(nome, cpf, cargo)
+        empresa:empresas(id, nome)
       `)
       .in('lote_fechamento_id', loteIds)
       .order('data_lancamento', { ascending: true });
@@ -328,7 +340,23 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
       console.error('[LoteFechamentoDiaristaService.getLancamentosByLoteIds] Erro:', error);
       throw error;
     }
-    return data ?? [];
+
+    // ProjectStabilizer: Fallback fetch for profiles due to broken PGRST200 join
+    const finalData = data ?? [];
+    if (finalData.length > 0) {
+      const responsaveisIds = [...new Set(finalData.filter((r: any) => !!r.encarregado_id).map((r: any) => r.encarregado_id))];
+      if (responsaveisIds.length > 0) {
+        const { data: profiles } = await this.supabase.from('profiles').select('user_id, full_name').in('user_id', responsaveisIds);
+        finalData.forEach((d: any) => {
+          if (d.encarregado_id) {
+             const prof = profiles?.find((p: any) => p.user_id === d.encarregado_id);
+             d.responsavel = { full_name: prof?.full_name || d.encarregado_nome || 'Encarregado' };
+          }
+        });
+      }
+    }
+
+    return finalData;
   }
 
   async getByEmpresaParaFinanceiro(empresaId: string) {
@@ -353,13 +381,28 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
 
     const { data: itens, error: itensError } = await this.supabase
       .from('lancamentos_diaristas')
-      .select('*, responsavel:encarregado_id(full_name), colaborador:diarista_id(nome, cpf, cargo)')
+      .select('*')
       .eq('lote_fechamento_id', loteId)
       .order('nome_colaborador', { ascending: true });
 
     if (itensError) throw itensError;
 
-    const mappedItens = (itens || []).map(it => ({
+    // ProjectStabilizer: Fallback fetch for profiles due to broken PGRST200 join
+    const finalItens = itens ?? [];
+    if (finalItens.length > 0) {
+      const responsaveisIds = [...new Set(finalItens.filter((r: any) => !!r.encarregado_id).map((r: any) => r.encarregado_id))];
+      if (responsaveisIds.length > 0) {
+        const { data: profiles } = await this.supabase.from('profiles').select('user_id, full_name').in('user_id', responsaveisIds);
+        finalItens.forEach((d: any) => {
+          if (d.encarregado_id) {
+             const prof = profiles?.find((p: any) => p.user_id === d.encarregado_id);
+             d.responsavel = { full_name: prof?.full_name || d.encarregado_nome || 'Encarregado' };
+          }
+        });
+      }
+    }
+
+    const mappedItens = finalItens.map(it => ({
       id: it.id,
       tipo_evento: it.tipo_registro === 'ajuste' ? 'AJUSTE' : 'DIARIA',
       nome_colaborador: it.nome_colaborador,

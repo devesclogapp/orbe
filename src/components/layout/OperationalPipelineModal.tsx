@@ -8,6 +8,16 @@ import {
     ChevronRight,
     Circle,
     Clock,
+import { useCallback, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+    ArrowRight,
+    Building2,
+    Calendar,
+    CheckCircle2,
+    ChevronRight,
+    Circle,
+    Clock,
     GitBranch,
     Loader2,
     X,
@@ -17,6 +27,7 @@ import {
 import { PipelineStep, PipelineStepStatus, useOperationalPipeline } from "@/contexts/OperationalPipelineContext";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useTenant } from "@/contexts/TenantContext";
 
 // ─── Step Node ────────────────────────────────────────────────────────────────
 
@@ -182,6 +193,7 @@ const PipelineStepRow = ({
 
 export const OperationalPipelineModal = () => {
     const { isOpen, payload, closePipeline } = useOperationalPipeline();
+    const { role } = useTenant();
     const navigate = useNavigate();
     const overlayRef = useRef<HTMLDivElement>(null);
 
@@ -203,7 +215,15 @@ export const OperationalPipelineModal = () => {
     const context = payload?.context;
     const steps = payload?.steps ?? [];
     const completedStage = payload?.completedStage;
-    const nextAction = payload?.nextAction;
+
+    const isEncarregado = role === "encarregado";
+    const rawNextAction = payload?.nextAction;
+
+    // Oculta a próxima ação para o Encarregado caso a rota de destino não pertença à sua área de competência,
+    // garantindo que ele clique apenas em "Continuar nesta tela" (Close) e evite telas 403 / vazias (ex: /rh/diaristas)
+    const nextAction = rawNextAction && isEncarregado && rawNextAction.route && !rawNextAction.route.startsWith("/producao") && !rawNextAction.route.startsWith("/operacional/dashboard")
+        ? undefined
+        : rawNextAction;
     const hasBlocked = steps.some((step) => step.status === "blocked");
     const hasDevolved = steps.some((step) => step.status === "devolved");
     const hasCanceled = steps.some((step) => step.status === "canceled");
@@ -298,11 +318,11 @@ export const OperationalPipelineModal = () => {
                     {payload?.subtitle ? (
                         <p className="mt-1 text-sm text-muted-foreground">{headerTone.subtitle}</p>
                     ) : (
-                    <p className="mt-1 text-sm text-muted-foreground">
-                        Acompanhe o progresso da competência{" "}
-                        <strong className="text-foreground">{context.competencia}</strong> para{" "}
-                        <strong className="text-foreground">{context.empresa}</strong>.
-                    </p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                            Acompanhe o progresso da competência{" "}
+                            <strong className="text-foreground">{context.competencia}</strong> para{" "}
+                            <strong className="text-foreground">{context.empresa}</strong>.
+                        </p>
                     )}
                 </div>
 
