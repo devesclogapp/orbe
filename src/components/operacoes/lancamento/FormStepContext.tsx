@@ -164,6 +164,18 @@ export function FormStepContext({ form, empresas, unidades, tiposServico, transp
                     <Label>Placa do Veículo (Opcional)</Label>
                     <Input {...register("placa_veiculo")} placeholder="Ex: ABC-1234" />
                 </div>
+
+                {/* Horário Início */}
+                <div className="space-y-2">
+                    <Label>Horário Início (Opcional)</Label>
+                    <Input type="time" {...register("horario_inicio")} />
+                </div>
+
+                {/* Horário Fim */}
+                <div className="space-y-2">
+                    <Label>Horário Fim (Opcional)</Label>
+                    <Input type="time" {...register("horario_fim")} />
+                </div>
             </div>
 
             <div className="space-y-2">

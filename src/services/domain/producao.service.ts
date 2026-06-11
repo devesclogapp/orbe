@@ -689,6 +689,13 @@ class OperacaoProducaoServiceClass {
       ...rest 
     } = payload;
 
+    if (horario_inicio) {
+      rest.entrada_ponto = horario_inicio;
+    }
+    if (horario_fim) {
+      rest.saida_ponto = horario_fim;
+    }
+
     // Campos removidos pois NÃO existem na tabela operacoes_producao.
     // tipo_calculo: o campo correto é tipo_calculo_snapshot
     // *_label e origem: criados na camada de serviço para display
