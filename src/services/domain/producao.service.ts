@@ -815,6 +815,10 @@ class OperacaoProducaoServiceClass {
       had_infraction: boolean;
       infraction_type_id?: string | null;
       infraction_notes?: string | null;
+      entrada_ponto?: string | null;
+      saida_almoco?: string | null;
+      retorno_almoco?: string | null;
+      saida_ponto?: string | null;
     }>,
     materiais?: Array<{
       material_id: string;
@@ -835,6 +839,10 @@ class OperacaoProducaoServiceClass {
           had_infraction: item.had_infraction,
           infraction_type_id: item.infraction_type_id ?? null,
           infraction_notes: item.infraction_notes ?? null,
+          entrada_ponto: item.entrada_ponto ?? null,
+          saida_almoco: item.saida_almoco ?? null,
+          retorno_almoco: item.retorno_almoco ?? null,
+          saida_ponto: item.saida_ponto ?? null,
         }))
         .filter((item) => Boolean(item.collaborator_id));
 
@@ -848,6 +856,10 @@ class OperacaoProducaoServiceClass {
               had_infraction: item.had_infraction,
               infraction_type_id: item.infraction_type_id ?? null,
               infraction_notes: item.infraction_notes ?? null,
+              entrada_ponto: item.entrada_ponto ?? null,
+              saida_almoco: item.saida_almoco ?? null,
+              retorno_almoco: item.retorno_almoco ?? null,
+              saida_ponto: item.saida_ponto ?? null,
             })),
           );
 

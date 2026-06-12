@@ -369,7 +369,7 @@ export default function AprovacoesRh() {
             // Serviços extras
             if (item.tipo === "SERVIÇO EXTRA") {
                 const { error } = await supabase.from("servicos_extras_operacionais" as any)
-                    .update({ status: "aprovado", updated_at: new Date().toISOString() })
+                    .update({ pipeline_status: "APROVADO_OPERACAO", atualizado_em: new Date().toISOString() })
                     .eq("id", item.id);
                 if (error) throw error;
                 return;
@@ -420,7 +420,7 @@ export default function AprovacoesRh() {
             }
             if (item.tipo === "SERVIÇO EXTRA") {
                 const { error } = await supabase.from("servicos_extras_operacionais" as any)
-                    .update({ status: "devolvido", updated_at: new Date().toISOString() })
+                    .update({ pipeline_status: "DEVOLVIDO", atualizado_em: new Date().toISOString() })
                     .eq("id", item.id);
                 if (error) throw error;
                 return;

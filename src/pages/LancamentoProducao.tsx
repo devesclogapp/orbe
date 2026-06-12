@@ -42,6 +42,7 @@ const LancamentoProducao = () => {
     const queryClient = useQueryClient();
     const [etapa, setEtapa] = useState(1);
     const [selectedColaboradores, setSelectedColaboradores] = useState<string[]>([]);
+    const [colaboradorTimings, setColaboradorTimings] = useState<Record<string, { entrada_ponto?: string, saida_almoco?: string, retorno_almoco?: string, saida_ponto?: string }>>({});
     const [selectedMateriais, setSelectedMateriais] = useState<Array<{
         material_id: string;
         nome_snapshot: string;
@@ -171,7 +172,11 @@ const LancamentoProducao = () => {
 
             const colabPayload = selectedColaboradores.map(id => ({
                 collaborator_id: id,
-                had_infraction: false
+                had_infraction: false,
+                entrada_ponto: colaboradorTimings[id]?.entrada_ponto || null,
+                saida_almoco: colaboradorTimings[id]?.saida_almoco || null,
+                retorno_almoco: colaboradorTimings[id]?.retorno_almoco || null,
+                saida_ponto: colaboradorTimings[id]?.saida_ponto || null,
             }));
 
             return OperacaoProducaoService.createWithColaboradores(payload, colabPayload, selectedMateriais);
@@ -184,6 +189,7 @@ const LancamentoProducao = () => {
             setEtapa(1);
             form.reset(DEFAULT_PRODUCTION_VALUES);
             setSelectedColaboradores([]);
+            setColaboradorTimings({});
             setSelectedMateriais([]);
             navigate('/producao');
 
@@ -304,6 +310,8 @@ const LancamentoProducao = () => {
                                 form={form}
                                 colaboradores={colaboradores}
                                 selectedIds={selectedColaboradores}
+                                colaboradorTimings={colaboradorTimings}
+                                setColaboradorTimings={setColaboradorTimings}
                                 onToggleColaborador={handleToggleColaborador}
                             />
                         </div>

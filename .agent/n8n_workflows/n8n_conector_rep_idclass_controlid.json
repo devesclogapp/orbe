@@ -1,0 +1,1595 @@
+{
+  "name": "Conector REP iDClass - Control iD (gerado do Postman)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "# Conector REP iDClass - Control iD\n\nWorkflow gerado a partir da collection Postman `Relógio de Ponto`.\n\n## Antes de executar\n1. Edite o node **Config REP** com o IP/host do relógio. Ex.: `https://192.168.0.129`\n2. Edite login e senha se não forem `admin/admin`.\n3. O equipamento usa HTTPS com certificado autoassinado. Se necessário, ative/ajuste a opção de ignorar SSL nos nodes HTTP.\n4. Execute primeiro: **Manual Trigger → Config REP → Login REP → Checar Sessão**.\n\n## Segurança\nNodes de exclusão, alteração de senha, configuração do REP e alteração do equipamento foram importados **desativados** para evitar execução acidental.\n\n## Como usar\nConecte a saída do **Login REP** ao endpoint que deseja testar, ou copie o endpoint para um workflow operacional.\n\nVariáveis disponíveis no fluxo:\n- `$json.rep_host`\n- `$json.rep_login`\n- `$json.rep_password`\n- `$json.session` após o login",
+        "height": 520,
+        "width": 520,
+        "color": 3
+      },
+      "id": "23c1629f-a8df-466c-b071-71638ef57e55",
+      "name": "LEIA ANTES - Conector REP iDClass",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -900,
+        -450
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "9d534cd5-0bd3-4947-b7f8-7dada0d80ea4",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -900,
+        150
+      ]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "rep_host",
+              "value": "https://192.168.0.129"
+            },
+            {
+              "name": "rep_login",
+              "value": "admin"
+            },
+            {
+              "name": "rep_password",
+              "value": "admin"
+            },
+            {
+              "name": "mode",
+              "value": "671"
+            }
+          ]
+        },
+        "options": {
+          "dotNotation": false
+        }
+      },
+      "id": "5afcdd5a-053e-4ac8-bdcf-704773699d18",
+      "name": "Config REP",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        -680,
+        150
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$json.rep_host}}/login.fcgi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"login\": \"{{$json.rep_login}}\",\n  \"password\": \"{{$json.rep_password}}\"\n}",
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "id": "47d64943-c96a-49e5-b837-cb0a090bdad7",
+      "name": "Login REP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -430,
+        150
+      ],
+      "notes": "Faz login no relógio e retorna `session`.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/session_is_valid.fcgi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"session\": \"{{$json.session}}\"\n}",
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "id": "fb3cf069-b6e9-4d3c-a2c7-f1e4f01b22bc",
+      "name": "Checar Sessão",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -180,
+        150
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/logout.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\"\r\n}"
+      },
+      "id": "009f67a9-5022-4f2b-96ef-b32f21f5fe66",
+      "name": "Sessão - Logout",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -900,
+        650
+      ],
+      "disabled": true,
+      "notes": "Grupo: Gerenciamento de Sessão\nEndpoint Postman: {{host}}/logout.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/change_login.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"login\": \"admin\",\r\n   \"password\": \"admin\",\r\n   \"confirmation\": \"admin\",\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\"\r\n}"
+      },
+      "id": "0c4fd660-8347-4a51-a696-26541c0bf1c8",
+      "name": "Sessão - Alterar Login e/ou Senha",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -540,
+        650
+      ],
+      "disabled": true,
+      "notes": "Grupo: Gerenciamento de Sessão\nEndpoint Postman: {{host}}/change_login.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/edit_company.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"company\":{\r\n      \"address\": \"Rua Waldemar Auto Simas, 28-B\",\r\n      \"cei\": 0,\r\n      \"cpf\": 26045646886,\r\n      \"cpf_cnpj\": 12737747000106,\r\n      \"name\": \"Dani Industries Ltda\",\r\n      \"tipo_doc\": 1\r\n   }\r\n}"
+      },
+      "id": "07d434dd-cfe1-42cc-9625-9bf3b23df198",
+      "name": "Empregador - Cadastrar/Editar Empregador",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -180,
+        650
+      ],
+      "disabled": true,
+      "notes": "Grupo: Gerenciamento de Empregador\nEndpoint Postman: {{host}}/edit_company.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/load_company.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\"\r\n}"
+      },
+      "id": "0839f678-488f-495f-9127-22c9b76d56f6",
+      "name": "Empregador - Listar Empregador",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        180,
+        650
+      ],
+      "notes": "Grupo: Gerenciamento de Empregador\nEndpoint Postman: {{host}}/load_company.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/add_users.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"users\":[\r\n      {\r\n         \"admin\": false,\r\n         \"bars\": \"214783647\",\r\n         \"code\": 933292,\r\n         \"name\": \"Daniel Costa\",\r\n         \"password\": \"12345\",\r\n         \"pis\": 3609304997,\r\n         \"registration\": 885908,\r\n         \"rfid\": 12618400,\r\n         \"templates\": [\r\n            \r\n         ]\r\n      }\r\n   ]\r\n}"
+      },
+      "id": "14b1ecdc-840e-4fbd-961d-9904fe92b5fc",
+      "name": "Usuários - Cadastrar Usuário",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -900,
+        860
+      ],
+      "disabled": true,
+      "notes": "Grupo: Gerenciamento de Usuários\nEndpoint Postman: {{host}}/add_users.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/add_users.fcgi?mode=671",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"users\":[\r\n      {\r\n         \"admin\": false,\r\n         \"bars\": \"214783647\",\r\n         \"code\": 933292,\r\n         \"name\": \"Daniel Costa\",\r\n         \"password\": \"12345\",\r\n         \"cpf\": 3609304997,\r\n         \"registration\": 885908,\r\n         \"rfid\": 12618400,\r\n         \"templates\": [\r\n            \r\n         ]\r\n      }\r\n   ]\r\n}"
+      },
+      "id": "4ac60044-5a53-44bd-a5b5-28e79e2d605b",
+      "name": "Usuários - Cadastrar Usuário (via campo CPF)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -540,
+        860
+      ],
+      "disabled": true,
+      "notes": "Grupo: Gerenciamento de Usuários\nEndpoint Postman: {{host}}/add_users.fcgi?mode=671\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/add_users.fcgi?mode=671",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"do_match\": false,\r\n   \"users\":[\r\n      {\r\n         \"admin\": false,\r\n         \"code\": 933292,\r\n         \"name\": \"Daniel Costa\",\r\n         \"password\": \"12345\",\r\n         \"cpf\": 3609304997,\r\n         \"registration\": 885908,\r\n         \"rfid\": 12618400,\r\n         \"image_timestamp\": 1712930699,\r\n         \"image\": \"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\"\r\n      }\r\n   ]\r\n}"
+      },
+      "id": "ce624929-3934-492c-8ffc-821255ab81c4",
+      "name": "Usuários - [Facial] Cadastrar Usuário",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -180,
+        860
+      ],
+      "disabled": true,
+      "notes": "Grupo: Gerenciamento de Usuários\nEndpoint Postman: {{host}}/add_users.fcgi?mode=671\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/update_users.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"users\":[\r\n      {\r\n         \"admin\": false,\r\n         \"bars\": \"214783647\",\r\n         \"code\": 933292,\r\n         \"name\": \"Daniel Costa\",\r\n         \"password\": \"12345\",\r\n         \"pis\": 3609304997,\r\n         \"new_pis\": 72395512759,\r\n         \"registration\": 885908,\r\n         \"remove_templates\": false,\r\n         \"rfid\": 12618400,\r\n         \"templates\": [\r\n            \r\n         ]\r\n      }\r\n   ]\r\n}"
+      },
+      "id": "36453ecc-19f9-4faa-a029-a8de341e115b",
+      "name": "Usuários - Atualizar Usuário",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        180,
+        860
+      ],
+      "disabled": true,
+      "notes": "Grupo: Gerenciamento de Usuários\nEndpoint Postman: {{host}}/update_users.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/update_users.fcgi?mode=671",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"users\":[\r\n      {\r\n         \"admin\": false,\r\n         \"bars\": \"214783647\",\r\n         \"code\": 933292,\r\n         \"name\": \"Daniel Costa\",\r\n         \"password\": \"12345\",\r\n         \"cpf\": 3609304997,\r\n         \"new_cpf\": 72395512759,\r\n         \"registration\": 885908,\r\n         \"remove_templates\": false,\r\n         \"rfid\": 12618400,\r\n         \"templates\": [\r\n            \r\n         ]\r\n      }\r\n   ]\r\n}"
+      },
+      "id": "b2a679b6-dbe6-4fe8-b1e1-408935ff4d21",
+      "name": "Usuários - Atualizar Usuário (via campo CPF)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -900,
+        1070
+      ],
+      "disabled": true,
+      "notes": "Grupo: Gerenciamento de Usuários\nEndpoint Postman: {{host}}/update_users.fcgi?mode=671\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/update_users.fcgi?mode=671",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"do_match\": false,\r\n   \"users\":[\r\n      {\r\n         \"admin\": false,\r\n         \"code\": 933292,\r\n         \"name\": \"Daniel Costa\",\r\n         \"password\": \"12345\",\r\n         \"cpf\": 3609304997,\r\n         \"new_cpf\": 72395512759,\r\n         \"registration\": 885908,\r\n         \"rfid\": 12618400,\r\n         \"remove_faces\": false,\r\n         \"image_timestamp\": 1712930699,\r\n         \"image\": \"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\"\r\n      }\r\n   ]\r\n}"
+      },
+      "id": "2bc22732-7471-4619-80fd-67ed7aebc499",
+      "name": "Usuários - [Facial] Atualizar Usuário",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -540,
+        1070
+      ],
+      "disabled": true,
+      "notes": "Grupo: Gerenciamento de Usuários\nEndpoint Postman: {{host}}/update_users.fcgi?mode=671\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/load_users.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"limit\": 100,\r\n   \"offset\": 0,\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\"\r\n}"
+      },
+      "id": "119da82c-d5e7-45c3-bcd5-a45b47f5e692",
+      "name": "Usuários - Listar Usuários",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -180,
+        1070
+      ],
+      "notes": "Grupo: Gerenciamento de Usuários\nEndpoint Postman: {{host}}/load_users.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/load_users.fcgi?mode=671",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"limit\": 100,\r\n   \"offset\": 0,\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\"\r\n}"
+      },
+      "id": "03edbe53-11f7-489d-be79-2092d292e241",
+      "name": "Usuários - Listar Usuários (com campo CPF)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        180,
+        1070
+      ],
+      "notes": "Grupo: Gerenciamento de Usuários\nEndpoint Postman: {{host}}/load_users.fcgi?mode=671\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/count_users.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n    \"session\": \"{{$node[\"Login REP\"].json.session}}\"\r\n}"
+      },
+      "id": "5a89d20d-57cb-4475-8f22-da2258d9c7d4",
+      "name": "Usuários - Contador de Usuários",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -900,
+        1280
+      ],
+      "notes": "Grupo: Gerenciamento de Usuários\nEndpoint Postman: {{host}}/count_users.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/export_users_csv.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\"\r\n}"
+      },
+      "id": "cd84331c-5574-4a54-a4a1-50ade55d86de",
+      "name": "Usuários - Exportar Usuários (CSV)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -540,
+        1280
+      ],
+      "notes": "Grupo: Gerenciamento de Usuários\nEndpoint Postman: {{host}}/export_users_csv.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/import_users_csv.fcgi?session={{$node[\"Login REP\"].json.session}}",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "string",
+        "bodyContentType": "raw",
+        "rawBody": "=pis;nome;administrador;matricula;rfid;codigo;senha;barras;digitais\r\n24141660306;Danilo Costa;0;463537;12814198;982368;23456;1036372536;\r\n72395512759;Daniel Costa;0;885908;12618400;0;12345;214783647;"
+      },
+      "id": "58aa4b9b-26bf-444e-b9b3-2b90ccffe952",
+      "name": "Usuários - Importar Usuários (CSV)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -180,
+        1280
+      ],
+      "disabled": true,
+      "notes": "Grupo: Gerenciamento de Usuários\nEndpoint Postman: {{host}}/import_users_csv.fcgi?session={{session}}\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/user_import_image.fcgi?cpf=72395512759&mode=671",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"image\": \"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\"\r\n}"
+      },
+      "id": "154607cd-5db9-4423-8bb1-df31a0daf14e",
+      "name": "Usuários - [Facial] Importar Foto de Usuário",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        180,
+        1280
+      ],
+      "disabled": true,
+      "notes": "Grupo: Gerenciamento de Usuários\nEndpoint Postman: {{host}}/user_import_image.fcgi?cpf=72395512759&mode=671\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/remove_admins.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\"\r\n}"
+      },
+      "id": "a41ea716-1f7b-461c-b63d-b9ef2e4ff57e",
+      "name": "Usuários - Remover Administradores",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -900,
+        1490
+      ],
+      "disabled": true,
+      "notes": "Grupo: Gerenciamento de Usuários\nEndpoint Postman: {{host}}/remove_admins.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/remove_users.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"users\":[\r\n      72395512759\r\n   ],\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\"\r\n}"
+      },
+      "id": "7b4df412-a162-41e3-a172-6209ce620562",
+      "name": "Usuários - Deletar Usuário",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -540,
+        1490
+      ],
+      "disabled": true,
+      "notes": "Grupo: Gerenciamento de Usuários\nEndpoint Postman: {{host}}/remove_users.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/user_set_image.fcgi?do_match=false&cpf=72395512759&image_timestamp=712930658&raw=false&mode=671",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"image\": \"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\"\r\n}"
+      },
+      "id": "5ed8bc96-334d-4ebc-aa67-61b73cab0b03",
+      "name": "Faces - Cadastrar Foto de Usuário",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -180,
+        1490
+      ],
+      "disabled": true,
+      "notes": "Grupo: Gerenciamento de Faces\nEndpoint Postman: {{host}}/user_set_image.fcgi?do_match=false&cpf=72395512759&image_timestamp=712930658&raw=false&mode=671\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/user_get_image.fcgi?mode=671",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"cpf\": 72395512759,\r\n   \"raw\": false\r\n}"
+      },
+      "id": "1d493559-cafe-42d2-b56b-ed99089a6ea9",
+      "name": "Faces - Obter Foto de Usuário",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        180,
+        1490
+      ],
+      "notes": "Grupo: Gerenciamento de Faces\nEndpoint Postman: {{host}}/user_get_image.fcgi?mode=671\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/user_destroy_image.fcgi?mode=671",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"cpf\": 72395512759\r\n}"
+      },
+      "id": "c2c22a60-32bb-4f79-b8b4-31f753808d22",
+      "name": "Faces - Deletar Foto de Usuário",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -900,
+        1700
+      ],
+      "disabled": true,
+      "notes": "Grupo: Gerenciamento de Faces\nEndpoint Postman: {{host}}/user_destroy_image.fcgi?mode=671\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/remote_enroll.fcgi?mode=671",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"cpf\": 72395512759\r\n}"
+      },
+      "id": "9b7fe228-c6f6-4181-98c3-17f48bcaaa75",
+      "name": "Faces - Cadastro Facial Remoto",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -540,
+        1700
+      ],
+      "notes": "Grupo: Gerenciamento de Faces\nEndpoint Postman: {{host}}/remote_enroll.fcgi?mode=671\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/cancel_remote_enroll.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\"\r\n}"
+      },
+      "id": "f7f05379-2d60-4de9-acad-4cd662423e04",
+      "name": "Faces - Cancelar Cadastro Facial Remoto",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -180,
+        1700
+      ],
+      "disabled": true,
+      "notes": "Grupo: Gerenciamento de Faces\nEndpoint Postman: {{host}}/cancel_remote_enroll.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/facial_enroller_state.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\"\r\n}"
+      },
+      "id": "081e09f5-936c-4134-b906-12f801726e02",
+      "name": "Faces - Obter Estado do Cadastro Facial",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        180,
+        1700
+      ],
+      "notes": "Grupo: Gerenciamento de Faces\nEndpoint Postman: {{host}}/facial_enroller_state.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/template_extract.fcgi?session={{$node[\"Login REP\"].json.session}}&width=260&height=320",
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "id": "2b7052d4-7eeb-41f7-9648-92ce638a72c5",
+      "name": "Biometrias - Extrair Template",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -900,
+        1910
+      ],
+      "notes": "Grupo: Gerenciamento de Biometrias\nEndpoint Postman: {{host}}/template_extract.fcgi?session={{session}}&width=260&height=320\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/template_merge.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"user_pis\": 3609304997,\r\n   \"templates\":[\r\n      \"SUNSUzIxAAAE8\",\r\n      \"SUNSUzIxAAAE8\",\r\n      \"SUNSUzIxAAAE8\"\r\n   ],\r\n   \"new_templates\": [],\r\n   \"remove\": true\r\n}"
+      },
+      "id": "6f3654ef-1211-44ca-9b7b-99da48f88cf5",
+      "name": "Biometrias - Combinar Templates",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -540,
+        1910
+      ],
+      "notes": "Grupo: Gerenciamento de Biometrias\nEndpoint Postman: {{host}}/template_merge.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/template_merge.fcgi?mode=671",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"user_cpf\": 3609304997,\r\n   \"templates\":[\r\n      \"SUNSUzIxAAAE8\",\r\n      \"SUNSUzIxAAAE8\",\r\n      \"SUNSUzIxAAAE8\"\r\n   ],\r\n   \"new_templates\": [],\r\n   \"remove\": true\r\n}"
+      },
+      "id": "1ec2d28e-af64-4d46-b185-1e9278684ab9",
+      "name": "Biometrias - Combinar Templates (via campo CPF)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -180,
+        1910
+      ],
+      "notes": "Grupo: Gerenciamento de Biometrias\nEndpoint Postman: {{host}}/template_merge.fcgi?mode=671\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/get_afd.fcgi?mode=671",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\"\r\n}"
+      },
+      "id": "d1525f91-77d6-428b-a155-584ebcc786ae",
+      "name": "AFD - Coletar AFD 671 Completo do REP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        180,
+        1910
+      ],
+      "notes": "Grupo: Obter AFD\nEndpoint Postman: {{host}}/get_afd.fcgi?mode=671\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/get_afd.fcgi?mode=671",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"initial_date\": {\r\n      \"day\": 1,\r\n      \"month\": 2,\r\n      \"year\": 2023\r\n   }\r\n}"
+      },
+      "id": "c2ac0001-a968-4241-9e24-f2ca333d8cc9",
+      "name": "AFD - Coletar AFD 671 por Data do REP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -900,
+        2120
+      ],
+      "notes": "Grupo: Obter AFD\nEndpoint Postman: {{host}}/get_afd.fcgi?mode=671\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/get_afd.fcgi?mode=671",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"initial_nsr\": 15\r\n}"
+      },
+      "id": "b1576fe9-6fde-4120-a2e2-46e5cfa30905",
+      "name": "AFD - Coletar AFD 671 por NSR do REP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -540,
+        2120
+      ],
+      "notes": "Grupo: Obter AFD\nEndpoint Postman: {{host}}/get_afd.fcgi?mode=671\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/get_afd.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\"\r\n}"
+      },
+      "id": "72e4122a-b7ae-4254-bb92-e033fe30d265",
+      "name": "AFD - Coletar AFD Completo do REP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -180,
+        2120
+      ],
+      "notes": "Grupo: Obter AFD\nEndpoint Postman: {{host}}/get_afd.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/get_afd.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"initial_date\": {\r\n      \"day\": 1,\r\n      \"month\": 2,\r\n      \"year\": 2023\r\n   }\r\n}"
+      },
+      "id": "9080ceeb-b20f-40bb-a217-41e4f613f05c",
+      "name": "AFD - Coletar AFD por Data do REP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        180,
+        2120
+      ],
+      "notes": "Grupo: Obter AFD\nEndpoint Postman: {{host}}/get_afd.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/get_afd.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"initial_nsr\": 15\r\n}"
+      },
+      "id": "8fbd4173-5f87-469e-a91b-b01a742dc190",
+      "name": "AFD - Coletar AFD por NSR do REP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -900,
+        2330
+      ],
+      "notes": "Grupo: Obter AFD\nEndpoint Postman: {{host}}/get_afd.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/get_system_network.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\"\r\n}"
+      },
+      "id": "08ee818f-96f0-466d-852d-2d15fd854187",
+      "name": "Configurações - Obter Configurações de Rede do REP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -540,
+        2330
+      ],
+      "notes": "Grupo: Obter Configurações\nEndpoint Postman: {{host}}/get_system_network.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/get_idcloud.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\"\r\n}"
+      },
+      "id": "4c7a23f6-d7cb-4f64-8177-07366208543a",
+      "name": "Configurações - Obter Status do iDCloud no REP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -180,
+        2330
+      ],
+      "notes": "Grupo: Obter Configurações\nEndpoint Postman: {{host}}/get_idcloud.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/get_system_date_time.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\"\r\n}"
+      },
+      "id": "6680f0c5-4d21-4e9e-bb21-6109bb0054b0",
+      "name": "Configurações - Obter Data e Hora do REP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        180,
+        2330
+      ],
+      "notes": "Grupo: Obter Configurações\nEndpoint Postman: {{host}}/get_system_date_time.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/get_system_date_time.fcgi?mode=671",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\"\r\n}"
+      },
+      "id": "6aabd5dd-d5e9-43b0-964c-39c335e6c9b6",
+      "name": "Configurações - Obter Data e Hora do REP (com Fuso Horário)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -900,
+        2540
+      ],
+      "notes": "Grupo: Obter Configurações\nEndpoint Postman: {{host}}/get_system_date_time.fcgi?mode=671\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/get_system_daylight_saving_time.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\"\r\n}"
+      },
+      "id": "ecd1d149-69ad-467c-8914-83bc320d8f91",
+      "name": "Configurações - Obter Horário de Verão do REP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -540,
+        2540
+      ],
+      "notes": "Grupo: Obter Configurações\nEndpoint Postman: {{host}}/get_system_daylight_saving_time.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/get_coil_paper.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\"\r\n}"
+      },
+      "id": "18de909a-1eeb-43a8-a58c-02100f3a5459",
+      "name": "Configurações - Obter Tamanho da Bobina do REP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -180,
+        2540
+      ],
+      "notes": "Grupo: Obter Configurações\nEndpoint Postman: {{host}}/get_coil_paper.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/get_system_configuration.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\"\r\n}"
+      },
+      "id": "3cd269ea-2445-4a66-8fbd-53e7df49848c",
+      "name": "Configurações - Obter Configurações Específicas do REP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        180,
+        2540
+      ],
+      "notes": "Grupo: Obter Configurações\nEndpoint Postman: {{host}}/get_system_configuration.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/get_info.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\"\r\n}"
+      },
+      "id": "3b645928-6e0a-4234-a256-ebca64400743",
+      "name": "Configurações - Obter Informações de Usuários do REP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -900,
+        2750
+      ],
+      "notes": "Grupo: Obter Configurações\nEndpoint Postman: {{host}}/get_info.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/get_system_information.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\"\r\n}"
+      },
+      "id": "c46ca280-eb81-44c9-8532-922aa2314993",
+      "name": "Configurações - Obter Informações do Sistema do REP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -540,
+        2750
+      ],
+      "notes": "Grupo: Obter Configurações\nEndpoint Postman: {{host}}/get_system_information.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/get_public_key.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\"\r\n}"
+      },
+      "id": "faaf5a5f-e3d7-443a-beec-ef5ff4c7aae1",
+      "name": "Configurações - Obter Chave Pública do REP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -180,
+        2750
+      ],
+      "notes": "Grupo: Obter Configurações\nEndpoint Postman: {{host}}/get_public_key.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/get_about.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\"\r\n}"
+      },
+      "id": "86c24851-29ac-4f28-a4dc-1319973d1147",
+      "name": "Configurações - Obter Informações do REP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        180,
+        2750
+      ],
+      "notes": "Grupo: Obter Configurações\nEndpoint Postman: {{host}}/get_about.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/set_system_network.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"ip\": \"192.168.0.145\",\r\n   \"netmask\": \"255.255.255.0\",\r\n   \"gateway\": \"192.168.0.1\",\r\n   \"dns\": \"8.8.8.8\"\r\n}"
+      },
+      "id": "f9cdd271-725c-48e3-88a2-c7edad632e24",
+      "name": "Alt. Configurações - Alterar Configurações de Rede do REP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -900,
+        2960
+      ],
+      "disabled": true,
+      "notes": "Grupo: Alterar Configurações\nEndpoint Postman: {{host}}/set_system_network.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/set_system_network.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"ip\": \"192.168.0.145\",\r\n   \"netmask\": \"255.255.255.0\",\r\n   \"gateway\": \"192.168.0.1\",\r\n   \"dns\": \"8.8.8.8\",\r\n   \"use_dhcp\": false,\r\n   \"port\": 443\r\n}"
+      },
+      "id": "8ee18cb5-d7c4-44c6-9605-a072fe790784",
+      "name": "Alt. Configurações - Alterar Configurações de Rede do REP (com DHCP)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -540,
+        2960
+      ],
+      "disabled": true,
+      "notes": "Grupo: Alterar Configurações\nEndpoint Postman: {{host}}/set_system_network.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/set_idcloud.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"enable\": true\r\n}"
+      },
+      "id": "6fd4a249-9333-49e4-bdac-cce47195c937",
+      "name": "Alt. Configurações - Ativar iDCloud no REP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -180,
+        2960
+      ],
+      "disabled": true,
+      "notes": "Grupo: Alterar Configurações\nEndpoint Postman: {{host}}/set_idcloud.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/set_idcloud.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"enable\": false\r\n}"
+      },
+      "id": "3df7babd-cd54-4760-a843-d54b12e71aa9",
+      "name": "Alt. Configurações - Desativar iDCloud no REP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        180,
+        2960
+      ],
+      "disabled": true,
+      "notes": "Grupo: Alterar Configurações\nEndpoint Postman: {{host}}/set_idcloud.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/set_system_date_time.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"year\": 2023,\r\n   \"month\": 9,\r\n   \"day\": 8,\r\n   \"hour\": 10,\r\n   \"minute\": 47,\r\n   \"second\": 15\r\n}"
+      },
+      "id": "fee00195-de99-4f80-891a-dd12c50e3c3d",
+      "name": "Alt. Configurações - Alterar Data e Hora do REP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -900,
+        3170
+      ],
+      "disabled": true,
+      "notes": "Grupo: Alterar Configurações\nEndpoint Postman: {{host}}/set_system_date_time.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/set_system_date_time.fcgi?mode=671",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"year\": 2023,\r\n   \"month\": 9,\r\n   \"day\": 8,\r\n   \"hour\": 10,\r\n   \"minute\": 47,\r\n   \"second\": 15,\r\n   \"timezone\": \"-0300\"\r\n}"
+      },
+      "id": "99973849-20d4-4348-ac7f-178fd71904f7",
+      "name": "Alt. Configurações - Alterar Data e Hora do REP (com Fuso Horário)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -540,
+        3170
+      ],
+      "disabled": true,
+      "notes": "Grupo: Alterar Configurações\nEndpoint Postman: {{host}}/set_system_date_time.fcgi?mode=671\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/set_system_daylight_saving_time.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\":\"{{$node[\"Login REP\"].json.session}}\",\r\n   \"start_date_time\":{\r\n      \"day\": 1,\r\n      \"month\": 1,\r\n      \"year\": 2023\r\n   },\r\n   \"end_date_time\":{\r\n      \"day\": 2,\r\n      \"month\": 2,\r\n      \"year\": 2023\r\n   }\r\n}"
+      },
+      "id": "ff9affad-06c6-4b2f-bcd4-0ee801e68a51",
+      "name": "Alt. Configurações - Definir Horário de Verão do REP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -180,
+        3170
+      ],
+      "disabled": true,
+      "notes": "Grupo: Alterar Configurações\nEndpoint Postman: {{host}}/set_system_daylight_saving_time.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/set_coil_paper.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"coil_paper\": 200\r\n}"
+      },
+      "id": "6b2c2869-64c8-4be3-8c8f-da3b1cb2828e",
+      "name": "Alt. Configurações - Definir Tamanho da Bobina do REP para 20 m",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        180,
+        3170
+      ],
+      "disabled": true,
+      "notes": "Grupo: Alterar Configurações\nEndpoint Postman: {{host}}/set_coil_paper.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/set_buzzer_beep.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"enabled\": true\r\n}"
+      },
+      "id": "ada4b3a5-ad12-4c4e-8f4a-c1ec79dc587c",
+      "name": "Alt. Configurações - Ativar Beep do REP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -900,
+        3380
+      ],
+      "disabled": true,
+      "notes": "Grupo: Alterar Configurações\nEndpoint Postman: {{host}}/set_buzzer_beep.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/set_buzzer_beep.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"enabled\": false\r\n}"
+      },
+      "id": "0c045e7f-a7e9-45db-ba09-347357faef7c",
+      "name": "Alt. Configurações - Desativar Beep do REP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -540,
+        3380
+      ],
+      "disabled": true,
+      "notes": "Grupo: Alterar Configurações\nEndpoint Postman: {{host}}/set_buzzer_beep.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/set_animation_screen.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"enabled\": true\r\n}"
+      },
+      "id": "7c36599b-51bf-4c4b-853c-a754891e6246",
+      "name": "Alt. Configurações - Ativar Animação do REP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -180,
+        3380
+      ],
+      "disabled": true,
+      "notes": "Grupo: Alterar Configurações\nEndpoint Postman: {{host}}/set_animation_screen.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/set_animation_screen.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"enabled\": false\r\n}"
+      },
+      "id": "202b736e-fea9-4023-a318-4a4617356ca4",
+      "name": "Alt. Configurações - Desativar Animação do REP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        180,
+        3380
+      ],
+      "disabled": true,
+      "notes": "Grupo: Alterar Configurações\nEndpoint Postman: {{host}}/set_animation_screen.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/set_ticket_size.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"economic_receipt_enabled\": false\r\n}"
+      },
+      "id": "511056cf-ea76-40d1-ad08-b1e998f04cb7",
+      "name": "Alt. Configurações - Ativar Tamanho Normal para o Ticket do REP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -900,
+        3590
+      ],
+      "disabled": true,
+      "notes": "Grupo: Alterar Configurações\nEndpoint Postman: {{host}}/set_ticket_size.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/set_ticket_size.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"economic_receipt_enabled\": true\r\n}"
+      },
+      "id": "f1dada15-8b39-4f5b-b2ea-087cfa2a311d",
+      "name": "Alt. Configurações - Ativar Tamanho Curto para o Ticket do REP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -540,
+        3590
+      ],
+      "disabled": true,
+      "notes": "Grupo: Alterar Configurações\nEndpoint Postman: {{host}}/set_ticket_size.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/set_identification_type.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"one_to_one_enabled\": true\r\n}"
+      },
+      "id": "a053ca3a-2302-4ce6-8c7a-ce491cf3fc4e",
+      "name": "Alt. Configurações - Ativar Modo de Identificação 1:1 no REP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -180,
+        3590
+      ],
+      "disabled": true,
+      "notes": "Grupo: Alterar Configurações\nEndpoint Postman: {{host}}/set_identification_type.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/set_identification_type.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"one_to_one_enabled\": false\r\n}"
+      },
+      "id": "8baae892-1842-4f55-b0a0-9f74e9a42327",
+      "name": "Alt. Configurações - Ativar Modo de Identificação 1:N no REP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        180,
+        3590
+      ],
+      "disabled": true,
+      "notes": "Grupo: Alterar Configurações\nEndpoint Postman: {{host}}/set_identification_type.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/get_facial_module_config.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\"\r\n}"
+      },
+      "id": "c358aec0-1512-4e05-9cf8-e68043bf4b40",
+      "name": "Configurações Faciais - Obter Configurações Faciais",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -900,
+        3800
+      ],
+      "notes": "Grupo: Configurações Faciais\nEndpoint Postman: {{host}}/get_facial_module_config.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/set_facial_module_config.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"identification_distance\": 100,\r\n   \"leds_brightness\": 100,\r\n   \"led_activation_ambient_brightness\": 0\r\n}"
+      },
+      "id": "089bd491-558c-44c6-b258-8657fb6426a9",
+      "name": "Configurações Faciais - Alterar Configurações Faciais",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -540,
+        3800
+      ],
+      "disabled": true,
+      "notes": "Grupo: Configurações Faciais\nEndpoint Postman: {{host}}/set_facial_module_config.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/get_about_facial.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\"\r\n}"
+      },
+      "id": "a92bf697-6609-4a96-8018-81db7d88ee1c",
+      "name": "Configurações Faciais - Obter Informações do Módulo Facial",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -180,
+        3800
+      ],
+      "notes": "Grupo: Configurações Faciais\nEndpoint Postman: {{host}}/get_about_facial.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config REP\"].json.rep_host}}/set_facial_limit.fcgi",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\r\n   \"session\": \"{{$node[\"Login REP\"].json.session}}\",\r\n   \"facial_limit\": \"10000\",\r\n   \"password\": \"Entre em contato com a Control iD para obter o upgrade\"\r\n}"
+      },
+      "id": "57d60a10-cca5-46ce-80f2-9c32320b44ad",
+      "name": "Configurações Faciais - Upgrade para 10k Faces",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        180,
+        3800
+      ],
+      "disabled": true,
+      "notes": "Grupo: Configurações Faciais\nEndpoint Postman: {{host}}/set_facial_limit.fcgi\nMétodo: POST\nImportado do arquivo relogio_de_ponto.postman_collection.json.\n\nDESATIVADO por segurança. Revise payload e conecte manualmente antes de executar.",
+      "notesInFlow": true
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config REP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config REP": {
+      "main": [
+        [
+          {
+            "node": "Login REP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Login REP": {
+      "main": [
+        [
+          {
+            "node": "Checar Sessão",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "17c69b09-9c7e-40ba-aac7-7e4d203050e0",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "generatedFrom": "relogio_de_ponto.postman_collection.json"
+  },
+  "tags": []
+}

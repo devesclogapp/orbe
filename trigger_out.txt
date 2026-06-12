@@ -1,0 +1,56 @@
+--- 20260419022956_initial_schema.sql ---
+CREATE POLICY "Acesso total autenticado para registros_ponto" ON registros_ponto FOR ALL TO authenticated USING (true);
+-- 4. FUNÇÕES DE TRIGGER PARA UPDATED_AT
+RETURNS TRIGGER AS $$
+CREATE TRIGGER update_empresas_updated_at BEFORE UPDATE ON empresas FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
+CREATE TRIGGER update_colaboradores_updated_at BEFORE UPDATE ON colaboradores FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
+CREATE TRIGGER update_operacoes_updated_at BEFORE UPDATE ON operacoes FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
+CREATE TRIGGER update_registros_ponto_updated_at BEFORE UPDATE ON registros_ponto FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
+--- 20260420_admin_override_refinement.sql ---
+CREATE OR REPLACE FUNCTION audit.prevent_alteration() RETURNS TRIGGER AS $body$
+CREATE TRIGGER protect_audit_logs
+CREATE TRIGGER protect_audit_overrides
+RETURNS TRIGGER AS $$
+DROP TRIGGER IF EXISTS check_faturas_immutability ON faturas;
+DROP TRIGGER IF EXISTS check_operacoes_immutability ON operacoes;
+DROP TRIGGER IF EXISTS check_ponto_immutability ON registros_ponto;
+DROP TRIGGER IF EXISTS check_financeiro_consolidados_immutability ON financeiro_consolidados_cliente;
+CREATE TRIGGER fatal_admin_override_check BEFORE UPDATE ON faturas FOR EACH ROW EXECUTE FUNCTION validate_admin_override();
+CREATE TRIGGER fatal_admin_override_check BEFORE UPDATE ON operacoes FOR EACH ROW EXECUTE FUNCTION validate_admin_override();
+CREATE TRIGGER fatal_admin_override_check BEFORE UPDATE ON registros_ponto FOR EACH ROW EXECUTE FUNCTION validate_admin_override();
+CREATE TRIGGER fatal_admin_override_check BEFORE UPDATE ON financeiro_consolidados_cliente FOR EACH ROW EXECUTE FUNCTION validate_admin_override();
+--- 20260430230000_rbac_and_audit.sql ---
+CREATE POLICY reg_ponto_read ON registros_ponto FOR SELECT USING (
+CREATE POLICY reg_ponto_write ON registros_ponto FOR INSERT WITH CHECK (
+-- Trigger functions
+CREATE OR REPLACE FUNCTION audit_func(target_table text) RETURNS trigger AS $$
+CREATE TRIGGER trg_operacoes_audit
+CREATE TRIGGER trg_registros_ponto_audit
+AFTER INSERT OR UPDATE OR DELETE ON registros_ponto FOR EACH ROW EXECUTE FUNCTION audit_func('registros_ponto');
+--- 20260508010000_fase9_reset_operacional_controlado.sql ---
+RETURNS TRIGGER AS $$
+DROP TRIGGER IF EXISTS trg_prevent_auditoria_reset_update ON public.auditoria_reset_operacional;
+CREATE TRIGGER trg_prevent_auditoria_reset_update
+--- 20260508040000_fase10_3_triggers_escalation.sql ---
+RETURNS TRIGGER AS $BODY$
+DROP TRIGGER IF EXISTS trg_invalidate_ciclo_ponto ON public.registros_ponto;
+CREATE TRIGGER trg_invalidate_ciclo_ponto
+DROP TRIGGER IF EXISTS trg_invalidate_ciclo_producao ON public.operacoes_producao;
+CREATE TRIGGER trg_invalidate_ciclo_producao
+--- 20260512_auditoria_correcoes_multitenant.sql ---
+-- Trigger para auto-população em futuros INSERTs
+DROP TRIGGER IF EXISTS trg_auto_tenant_contratos ON public.contratos;
+CREATE TRIGGER trg_auto_tenant_contratos
+-- Trigger para auto-população em futuros INSERTs
+DROP TRIGGER IF EXISTS trg_auto_tenant_registros_ponto ON public.registros_ponto;
+RETURNS TRIGGER AS $$
+CREATE TRIGGER trg_auto_tenant_registros_ponto
+DROP TRIGGER IF EXISTS trg_auto_tenant_tipos_servico ON public.tipos_servico_operacional;
+CREATE TRIGGER trg_auto_tenant_tipos_servico
+DROP TRIGGER IF EXISTS trg_auto_tenant_formas_pagamento ON public.formas_pagamento_operacional;
+CREATE TRIGGER trg_auto_tenant_formas_pagamento
+--- 20260523_rh_processamento_acumulativo.sql ---
+DROP TRIGGER IF EXISTS trg_auto_tenant_bh_saldos ON public.banco_horas_saldos;
+CREATE TRIGGER trg_auto_tenant_bh_saldos
+--- 20260526120000_fix_transportadoras_delete_dependencies.sql ---
+RETURNS TRIGGER AS $BODY$

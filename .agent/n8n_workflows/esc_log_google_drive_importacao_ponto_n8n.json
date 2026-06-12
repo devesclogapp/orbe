@@ -1,0 +1,587 @@
+{
+  "name": "ESC LOG - Google Drive para Importacao de Ponto",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger-1",
+      "name": "Manual Trigger - Teste",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -920,
+        -40
+      ]
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "triggerOn": "specificFolder",
+        "folderToWatch": "COLE_AQUI_O_FOLDER_ID_DA_PASTA_ENTRADA",
+        "event": "fileCreated",
+        "options": {}
+      },
+      "id": "google-drive-trigger-1",
+      "name": "Google Drive Trigger - Novo arquivo",
+      "type": "n8n-nodes-base.googleDriveTrigger",
+      "typeVersion": 1,
+      "position": [
+        -920,
+        -240
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "COLE_ID_CREDENCIAL_GOOGLE",
+          "name": "Google Drive ESC LOG"
+        }
+      },
+      "notes": "Monitora a pasta Entrada. Substitua folderToWatch pelo ID da pasta Entrada do cliente/unidade/REP."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "meta-cliente",
+              "name": "cliente_id",
+              "value": "CLIENTE_ID_AQUI",
+              "type": "string"
+            },
+            {
+              "id": "meta-unidade",
+              "name": "unidade_id",
+              "value": "UNIDADE_ID_AQUI",
+              "type": "string"
+            },
+            {
+              "id": "meta-coletor",
+              "name": "coletor_id",
+              "value": "REP_01",
+              "type": "string"
+            },
+            {
+              "id": "meta-origem",
+              "name": "origem",
+              "value": "google_drive",
+              "type": "string"
+            },
+            {
+              "id": "meta-folder-processados",
+              "name": "folder_processados_id",
+              "value": "COLE_AQUI_O_FOLDER_ID_PROCESSADOS",
+              "type": "string"
+            },
+            {
+              "id": "meta-folder-erros",
+              "name": "folder_erros_id",
+              "value": "COLE_AQUI_O_FOLDER_ID_ERROS",
+              "type": "string"
+            },
+            {
+              "id": "meta-api-url",
+              "name": "erp_api_url",
+              "value": "https://SEU_ERP.com/api/importacoes-ponto",
+              "type": "string"
+            },
+            {
+              "id": "meta-api-key",
+              "name": "erp_api_key",
+              "value": "COLE_TOKEN_OU_CHAVE_DO_ERP",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-config-1",
+      "name": "Configurar Cliente/Coletor",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -640,
+        -160
+      ],
+      "notes": "Ajuste cliente_id, unidade_id, coletor_id, URL do ERP e IDs das pastas Processados/Erros."
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": "={{ $json.id || $json.fileId }}",
+        "options": {}
+      },
+      "id": "download-file-1",
+      "name": "Baixar arquivo do Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -380,
+        -160
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "COLE_ID_CREDENCIAL_GOOGLE",
+          "name": "Google Drive ESC LOG"
+        }
+      },
+      "notes": "Baixa o arquivo criado na pasta Entrada."
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst json = item.json || {};\nconst binary = item.binary || {};\n\nconst fileName = json.name || json.fileName || json.originalFilename || json.title || 'arquivo_sem_nome';\nconst ext = fileName.includes('.') ? fileName.split('.').pop().toLowerCase() : '';\n\nconst allowed = ['txt', 'csv', 'afd', 'xlsx', 'xls'];\nconst tipo =\n  ext === 'afd' || fileName.toLowerCase().includes('afd') ? 'AFD' :\n  ext === 'csv' ? 'CSV' :\n  ext === 'txt' ? 'TXT' :\n  ext === 'xlsx' || ext === 'xls' ? 'EXCEL' :\n  'DESCONHECIDO';\n\nreturn [{\n  json: {\n    ...json,\n    fileName,\n    extension: ext,\n    tipo_arquivo: tipo,\n    extensao_valida: allowed.includes(ext) || tipo === 'AFD',\n    data_recebimento: new Date().toISOString()\n  },\n  binary\n}];"
+      },
+      "id": "code-validar-1",
+      "name": "Validar arquivo e tipo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -120,
+        -160
+      ],
+      "notes": "Identifica nome, extensão e tipo do arquivo."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-ext-valida",
+              "leftValue": "={{ $json.extensao_valida }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-extensao-1",
+      "name": "IF - Extensao valida?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        140,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.erp_api_url }}",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.erp_api_key }}"
+            },
+            {
+              "name": "X-Origem",
+              "value": "n8n-google-drive"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formData",
+              "name": "cliente_id",
+              "value": "={{ $json.cliente_id }}"
+            },
+            {
+              "parameterType": "formData",
+              "name": "unidade_id",
+              "value": "={{ $json.unidade_id }}"
+            },
+            {
+              "parameterType": "formData",
+              "name": "coletor_id",
+              "value": "={{ $json.coletor_id }}"
+            },
+            {
+              "parameterType": "formData",
+              "name": "origem",
+              "value": "={{ $json.origem }}"
+            },
+            {
+              "parameterType": "formData",
+              "name": "nome_arquivo",
+              "value": "={{ $json.fileName }}"
+            },
+            {
+              "parameterType": "formData",
+              "name": "tipo_arquivo",
+              "value": "={{ $json.tipo_arquivo }}"
+            },
+            {
+              "parameterType": "formData",
+              "name": "data_recebimento",
+              "value": "={{ $json.data_recebimento }}"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "arquivo",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "http-enviar-erp-1",
+      "name": "Enviar arquivo para ERP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        420,
+        -260
+      ],
+      "notes": "Envia arquivo e metadados ao endpoint de importação do ERP."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-status-ok",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 200,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            },
+            {
+              "id": "cond-status-menor-300",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 300,
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-erp-sucesso-1",
+      "name": "IF - ERP importou?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        680,
+        -260
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "move",
+        "fileId": "={{ $('Google Drive Trigger - Novo arquivo').item.json.id || $('Google Drive Trigger - Novo arquivo').item.json.fileId }}",
+        "folderId": "={{ $('Configurar Cliente/Coletor').item.json.folder_processados_id }}"
+      },
+      "id": "move-processados-1",
+      "name": "Mover para Processados",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        960,
+        -360
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "COLE_ID_CREDENCIAL_GOOGLE",
+          "name": "Google Drive ESC LOG"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "move",
+        "fileId": "={{ $('Google Drive Trigger - Novo arquivo').item.json.id || $('Google Drive Trigger - Novo arquivo').item.json.fileId }}",
+        "folderId": "={{ $('Configurar Cliente/Coletor').item.json.folder_erros_id }}"
+      },
+      "id": "move-erros-1",
+      "name": "Mover para Erros",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        960,
+        -120
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "COLE_ID_CREDENCIAL_GOOGLE",
+          "name": "Google Drive ESC LOG"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "move",
+        "fileId": "={{ $('Google Drive Trigger - Novo arquivo').item.json.id || $('Google Drive Trigger - Novo arquivo').item.json.fileId }}",
+        "folderId": "={{ $('Configurar Cliente/Coletor').item.json.folder_erros_id }}"
+      },
+      "id": "move-extensao-invalida-1",
+      "name": "Mover invalido para Erros",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        420,
+        20
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "COLE_ID_CREDENCIAL_GOOGLE",
+          "name": "Google Drive ESC LOG"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "log-status",
+              "name": "status",
+              "value": "processado",
+              "type": "string"
+            },
+            {
+              "id": "log-msg",
+              "name": "mensagem",
+              "value": "Arquivo enviado ao ERP e movido para Processados.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-log-sucesso-1",
+      "name": "Log Sucesso",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1220,
+        -360
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "log-status-erro",
+              "name": "status",
+              "value": "erro",
+              "type": "string"
+            },
+            {
+              "id": "log-msg-erro",
+              "name": "mensagem",
+              "value": "Arquivo não foi importado pelo ERP ou extensão inválida.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-log-erro-1",
+      "name": "Log Erro",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1220,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## ESC LOG - Importação de Ponto via Google Drive\n\nFluxo:\n1. Cliente salva AFD/CSV/TXT/XLSX na pasta Entrada.\n2. n8n detecta novo arquivo.\n3. Baixa e valida o arquivo.\n4. Envia ao ERP via HTTP multipart.\n5. Move para Processados ou Erros.\n\nAntes de ativar:\n- Configurar credencial Google Drive.\n- Trocar folder IDs das pastas Entrada, Processados e Erros.\n- Trocar endpoint e token do ERP.\n- Testar com arquivo real na pasta Entrada.",
+        "height": 300,
+        "width": 560,
+        "color": 5
+      },
+      "id": "sticky-note-1",
+      "name": "Instrucoes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -930,
+        120
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger - Teste": {
+      "main": [
+        [
+          {
+            "node": "Configurar Cliente/Coletor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive Trigger - Novo arquivo": {
+      "main": [
+        [
+          {
+            "node": "Configurar Cliente/Coletor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configurar Cliente/Coletor": {
+      "main": [
+        [
+          {
+            "node": "Baixar arquivo do Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Baixar arquivo do Drive": {
+      "main": [
+        [
+          {
+            "node": "Validar arquivo e tipo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar arquivo e tipo": {
+      "main": [
+        [
+          {
+            "node": "IF - Extensao valida?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Extensao valida?": {
+      "main": [
+        [
+          {
+            "node": "Enviar arquivo para ERP",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mover invalido para Erros",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar arquivo para ERP": {
+      "main": [
+        [
+          {
+            "node": "IF - ERP importou?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - ERP importou?": {
+      "main": [
+        [
+          {
+            "node": "Mover para Processados",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mover para Erros",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mover para Processados": {
+      "main": [
+        [
+          {
+            "node": "Log Sucesso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mover para Erros": {
+      "main": [
+        [
+          {
+            "node": "Log Erro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mover invalido para Erros": {
+      "main": [
+        [
+          {
+            "node": "Log Erro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2026-05-20T20:19:50.688432Z",
+  "versionId": "760421b4-c8a4-45fc-8cdf-ef9169424938"
+}

@@ -1,0 +1,308 @@
+{
+  "name": "RHiD - Importação Automática de Pontos",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 6 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger - 06h diário",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.rhid.com.br/v2/api.svc/login",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={\n  \"email\": \"{{ $credentials.rhidEmail }}\",\n  \"password\": \"{{ $credentials.rhidPassword }}\",\n  \"domain\": \"{{ $credentials.rhidDomain }}\"\n}",
+        "options": {}
+      },
+      "id": "login-rhid",
+      "name": "Login RHiD",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 300],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "rhid-credentials",
+          "name": "RHiD Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extrai o token e define datas de ontem\nconst loginData = $input.first().json;\nconst token = loginData.accessToken;\n\nif (!token) {\n  throw new Error('Login RHiD falhou - token não retornado: ' + JSON.stringify(loginData));\n}\n\n// Data de ontem no formato YYYY-MM-DD\nconst hoje = new Date();\nconst ontem = new Date(hoje);\nontem.setDate(hoje.getDate() - 1);\n\nconst dataIni = ontem.toISOString().slice(0, 10);\nconst dataFinal = ontem.toISOString().slice(0, 10);\n\nreturn [{\n  json: {\n    token,\n    dataIni,\n    dataFinal,\n    bearerHeader: `Bearer ${token}`\n  }\n}];"
+      },
+      "id": "extrair-token",
+      "name": "Extrair Token e Datas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.rhid.com.br/v2/api.svc/company",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $json.bearerHeader }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "buscar-empresas",
+      "name": "Buscar Empresas RHiD",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combina token com lista de empresas\nconst tokenData = $('Extrair Token e Datas').first().json;\nconst empresasData = $input.first().json;\n\nconst empresas = empresasData.records || [];\n\nif (empresas.length === 0) {\n  throw new Error('Nenhuma empresa retornada pelo RHiD');\n}\n\nconsole.log(`[RHiD] ${empresas.length} empresa(s) encontrada(s)`);\n\n// Retorna uma linha por empresa, com token e datas\nreturn empresas.map(empresa => ({\n  json: {\n    token: tokenData.token,\n    bearerHeader: tokenData.bearerHeader,\n    dataIni: tokenData.dataIni,\n    dataFinal: tokenData.dataFinal,\n    empresa_rhid_id: empresa.id,\n    empresa_rhid_nome: empresa.name,\n    empresa_cnpj: empresa.cnpj\n  }\n}));"
+      },
+      "id": "preparar-loop-empresas",
+      "name": "Preparar Loop por Empresa",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.rhid.com.br/v2/api.svc/person",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $json.bearerHeader }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "start",
+              "value": "0"
+            },
+            {
+              "name": "length",
+              "value": "500"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "buscar-pessoas",
+      "name": "Buscar Pessoas da Empresa",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Para cada pessoa da empresa, monta chamada de apuração\nconst empresaData = $('Preparar Loop por Empresa').first().json;\nconst pessoasData = $input.first().json;\n\nconst pessoas = (pessoasData.records || []).filter(p => \n  p.idCompany === empresaData.empresa_rhid_id || !p.idCompany\n);\n\nconsole.log(`[RHiD] Empresa ${empresaData.empresa_rhid_nome}: ${pessoas.length} pessoa(s)`);\n\nif (pessoas.length === 0) {\n  return [{ json: { skip: true, empresa: empresaData.empresa_rhid_nome } }];\n}\n\nreturn pessoas.map(pessoa => ({\n  json: {\n    token: empresaData.token,\n    bearerHeader: empresaData.bearerHeader,\n    dataIni: empresaData.dataIni,\n    dataFinal: empresaData.dataFinal,\n    empresa_rhid_id: empresaData.empresa_rhid_id,\n    empresa_rhid_nome: empresaData.empresa_rhid_nome,\n    empresa_cnpj: empresaData.empresa_cnpj,\n    pessoa_id: pessoa.id,\n    pessoa_nome: pessoa.name,\n    pessoa_cpf: String(pessoa.cpf || '').replace(/\\D/g, ''),\n    pessoa_matricula: pessoa.registration || null\n  }\n}));"
+      },
+      "id": "preparar-loop-pessoas",
+      "name": "Preparar Loop por Pessoa",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.rhid.com.br/v2/api.svc/apuracao_ponto",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $json.bearerHeader }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "dataIni",
+              "value": "={{ $json.dataIni }}"
+            },
+            {
+              "name": "dataFinal",
+              "value": "={{ $json.dataFinal }}"
+            },
+            {
+              "name": "idPerson",
+              "value": "={{ $json.pessoa_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "buscar-apuracao",
+      "name": "Buscar Apuração de Ponto",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1540, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Transforma dados de apuração do RHiD para formato do ERP Orbe\nconst pessoaData = $('Preparar Loop por Pessoa').first().json;\nconst apuracaoData = $input.first().json;\n\n// Skip se não tem dados\nif (pessoaData.skip) return [];\n\n// A apuração pode retornar array ou objeto\nconst registros = Array.isArray(apuracaoData) \n  ? apuracaoData \n  : (apuracaoData.records || apuracaoData.data || [apuracaoData]).filter(Boolean);\n\nif (registros.length === 0) {\n  console.log(`[RHiD] Sem apuração para ${pessoaData.pessoa_nome} em ${pessoaData.dataIni}`);\n  return [];\n}\n\n// Função para converter tempo decimal ou string para HH:MM:SS\nconst parseTime = (v) => {\n  if (!v && v !== 0) return null;\n  const s = String(v).trim();\n  if (!s) return null;\n  if (/^\\d{1,2}:\\d{2}(:\\d{2})?$/.test(s)) {\n    const p = s.split(':');\n    return `${p[0].padStart(2,'0')}:${p[1]}:${p[2] || '00'}`;\n  }\n  const num = parseFloat(s);\n  if (!isNaN(num) && num >= 0 && num < 1) {\n    const t = Math.round(num * 86400);\n    const h = Math.floor(t / 3600);\n    const m = Math.floor((t % 3600) / 60);\n    const sc = t % 60;\n    return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sc).padStart(2,'0')}`;\n  }\n  return null;\n};\n\nconst parseDate = (v) => {\n  if (!v) return null;\n  const s = String(v).trim();\n  // Formato DD/MM/YYYY\n  const slash = s.match(/^(\\d{1,2})\\/(\\d{1,2})\\/(\\d{2,4})$/);\n  if (slash) {\n    const [,d,m,y] = slash;\n    return `${y.length===2?'20'+y:y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;\n  }\n  // Já é ISO\n  if (/^\\d{4}-\\d{2}-\\d{2}$/.test(s)) return s;\n  return null;\n};\n\nreturn registros.map(reg => ({\n  json: {\n    // Identificação\n    empresa_rhid_nome: pessoaData.empresa_rhid_nome,\n    empresa_cnpj: pessoaData.empresa_cnpj,\n    pessoa_nome: pessoaData.pessoa_nome,\n    pessoa_cpf: pessoaData.pessoa_cpf,\n    pessoa_matricula: pessoaData.pessoa_matricula,\n    // Dados de ponto\n    data: parseDate(reg.date || reg.data || pessoaData.dataIni),\n    entrada: parseTime(reg.firstEntry || reg.entrada || reg.in),\n    saida_almoco: parseTime(reg.firstExit || reg.saida_almoco || reg.lunchOut),\n    retorno_almoco: parseTime(reg.secondEntry || reg.retorno_almoco || reg.lunchIn),\n    saida: parseTime(reg.lastExit || reg.saida || reg.out),\n    horas_trabalhadas: parseTime(reg.workedHours || reg.horas_trabalhadas),\n    hora_extra: parseTime(reg.extraHours || reg.hora_extra),\n    falta: reg.absence || reg.falta || null,\n    atraso: reg.delay || reg.atraso || null,\n    // Status\n    status: 'PENDENTE_PROCESSAMENTO',\n    origem: 'rhid_api',\n    // Raw para debug\n    _raw: reg\n  }\n}));"
+      },
+      "id": "transformar-apuracao",
+      "name": "Transformar Dados de Apuração",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1760, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.data }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "filtrar-com-data",
+      "name": "Filtrar com Data Válida",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1980, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://lifgjtcflzmspilhryap.supabase.co/functions/v1/importar-pontos-google-drive",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $credentials.supabaseAnonKey }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "enviar-erp",
+      "name": "Enviar para ERP Orbe",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2200, 220]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log de sucesso\nconst result = $input.first().json;\nconsole.log('[RHiD→ERP] Sucesso:', JSON.stringify(result));\nreturn $input.all();"
+      },
+      "id": "log-sucesso",
+      "name": "Log Sucesso",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2420, 220]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log de registros sem data (pular silenciosamente)\nconst item = $input.first().json;\nconsole.log('[RHiD] Registro ignorado - sem data:', item.pessoa_nome);\nreturn [];"
+      },
+      "id": "log-ignorado",
+      "name": "Log Ignorado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2200, 420]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger - 06h diário": {
+      "main": [[{ "node": "Login RHiD", "type": "main", "index": 0 }]]
+    },
+    "Login RHiD": {
+      "main": [[{ "node": "Extrair Token e Datas", "type": "main", "index": 0 }]]
+    },
+    "Extrair Token e Datas": {
+      "main": [[{ "node": "Buscar Empresas RHiD", "type": "main", "index": 0 }]]
+    },
+    "Buscar Empresas RHiD": {
+      "main": [[{ "node": "Preparar Loop por Empresa", "type": "main", "index": 0 }]]
+    },
+    "Preparar Loop por Empresa": {
+      "main": [[{ "node": "Buscar Pessoas da Empresa", "type": "main", "index": 0 }]]
+    },
+    "Buscar Pessoas da Empresa": {
+      "main": [[{ "node": "Preparar Loop por Pessoa", "type": "main", "index": 0 }]]
+    },
+    "Preparar Loop por Pessoa": {
+      "main": [[{ "node": "Buscar Apuração de Ponto", "type": "main", "index": 0 }]]
+    },
+    "Buscar Apuração de Ponto": {
+      "main": [[{ "node": "Transformar Dados de Apuração", "type": "main", "index": 0 }]]
+    },
+    "Transformar Dados de Apuração": {
+      "main": [[{ "node": "Filtrar com Data Válida", "type": "main", "index": 0 }]]
+    },
+    "Filtrar com Data Válida": {
+      "main": [
+        [{ "node": "Enviar para ERP Orbe", "type": "main", "index": 0 }],
+        [{ "node": "Log Ignorado", "type": "main", "index": 0 }]
+      ]
+    },
+    "Enviar para ERP Orbe": {
+      "main": [[{ "node": "Log Sucesso", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": ["rhid", "ponto", "automacao"],
+  "pinData": {}
+}

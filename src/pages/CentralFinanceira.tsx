@@ -40,7 +40,7 @@ import {
 } from "@/services/domain/core.service";
 import { ConsolidadoService } from "@/services/domain/producao.service";
 import { EmpresaService } from "@/services/domain/cadastros.service";
-import { CustoExtraOperacionalService } from "@/services/domain/despesas.service";
+import { CustoExtraOperacionalService, ServicosExtrasOperacionaisService } from "@/services/domain/despesas.service";
 import { LoteFechamentoDiaristaService } from "@/services/domain/diaristas.service";
 import { RHFinanceiroService } from "@/services/rhFinanceiro.service";
 import { buildFolhaVariavelPipeline, buildDiaristasPipeline, useOperationalPipeline } from "@/contexts/OperationalPipelineContext";
@@ -214,6 +214,18 @@ const CentralFinanceira = () => {
     queryFn: () => CustoExtraOperacionalService.getByCompetencia(selectedMonth, selectedEmpresaId!),
     enabled: !!selectedEmpresaId,
   });
+
+  const { data: servicosExtras = [], isLoading: loadingServicosExtras } = useQuery<any[]>({
+    queryKey: ["servicos-extras-faturaveis", selectedMonth, selectedEmpresaId],
+    queryFn: () => ServicosExtrasOperacionaisService.getWithEmpresas(selectedEmpresaId!, selectedMonth),
+    enabled: !!selectedEmpresaId,
+  });
+
+  const servicosFaturaveis = useMemo(() => {
+    return servicosExtras.filter((s: any) =>
+      ["APROVADO_OPERACAO", "APROVADO_FINANCEIRO"].includes(String(s.pipeline_status || "").toUpperCase())
+    );
+  }, [servicosExtras]);
 
   const reprocessMutation = useMutation({
     mutationFn: () => AIService.processDay(`${selectedMonth}-01`, selectedEmpresaId!),
@@ -531,6 +543,7 @@ const CentralFinanceira = () => {
                 </TabsTrigger>
                 <TabsTrigger value="faturamento">Aprovações</TabsTrigger>
                 <TabsTrigger value="custos-extras">Custos Extras</TabsTrigger>
+                <TabsTrigger value="servicos-extras">Serviços Extras</TabsTrigger>
                 <TabsTrigger value="fechamento">Fechamento</TabsTrigger>
               </TabsList>
 
@@ -968,6 +981,78 @@ const CentralFinanceira = () => {
                       <CustosExtrasTableBlock data={custosExtras} />
                     )}
                   </div>
+                </section>
+              </TabsContent>
+
+              <TabsContent value="servicos-extras" className="space-y-4">
+                <section className="esc-card p-4 md:p-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <h2 className="text-xl font-display font-semibold text-foreground flex items-center gap-2 border-b-2 border-primary/20 pb-1">
+                        <Wallet className="h-5 w-5 text-primary" />
+                        Serviços Extras Faturáveis
+                      </h2>
+                      <p className="text-sm text-muted-foreground mt-1">Serviços executados, aprovados pelo RH e prontos para faturamento ao cliente.</p>
+                    </div>
+                  </div>
+
+                  {loadingServicosExtras ? (
+                    <div className="py-20 flex justify-center"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
+                  ) : servicosFaturaveis.length === 0 ? (
+                    <div className="py-12 flex flex-col items-center justify-center text-center">
+                      <CheckCircle2 className="h-10 w-10 text-muted-foreground/30 mb-3" />
+                      <p className="text-muted-foreground font-medium">Nenhum serviço extra faturável no período.</p>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-border overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="esc-table-header">
+                            <tr className="text-left text-muted-foreground">
+                              <th className="px-4 py-3 font-medium">Data</th>
+                              <th className="px-4 py-3 font-medium">Empresa</th>
+                              <th className="px-4 py-3 font-medium">Serviço / Descrição</th>
+                              <th className="px-4 py-3 text-right font-medium">Qtd</th>
+                              <th className="px-4 py-3 text-right font-medium">Vlr. Unit</th>
+                              <th className="px-4 py-3 text-right font-medium">Total (R$)</th>
+                              <th className="px-4 py-3 text-center font-medium">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border/50 bg-card">
+                            {servicosFaturaveis.map((item: any) => (
+                              <tr key={item.id} className="hover:bg-muted/30 transition-colors">
+                                <td className="px-4 py-4 font-mono text-xs">{new Date(item.data).toLocaleDateString("pt-BR", { timeZone: 'UTC' })}</td>
+                                <td className="px-4 py-4 font-medium text-foreground">{item.empresas?.nome || "-"}</td>
+                                <td className="px-4 py-4">
+                                  <div className="font-semibold text-foreground">{item.tipo_servico || "Serviço Extra"}</div>
+                                  <div className="text-xs text-muted-foreground mt-0.5">{item.descricao || "-"}</div>
+                                </td>
+                                <td className="px-4 py-4 text-right font-mono">{item.quantidade || 1}</td>
+                                <td className="px-4 py-4 text-right font-mono">
+                                  {Number(item.valor || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                </td>
+                                <td className="px-4 py-4 text-right font-display font-bold text-success-strong">
+                                  {Number(item.total || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                </td>
+                                <td className="px-4 py-4 text-center">
+                                  <Badge className="bg-success-soft text-success-strong uppercase text-[10px]">{item.pipeline_status}</Badge>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot className="bg-muted/30 border-t items border-border font-medium">
+                            <tr>
+                              <td colSpan={5} className="px-4 py-3 text-right text-muted-foreground uppercase text-xs tracking-wider font-bold">Total Receita:</td>
+                              <td className="px-4 py-3 text-right font-display text-lg font-black text-success-strong">
+                                R$ {servicosFaturaveis.reduce((acc: number, cur: any) => acc + Number(cur.total || 0), 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                              </td>
+                              <td></td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    </div>
+                  )}
                 </section>
               </TabsContent>
 

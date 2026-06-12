@@ -1,0 +1,262 @@
+{
+  "name": "RHiD - Exportar Ponto Diário CSV Automático",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "0 6 * * *" }]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule - 06h diário",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.rhid.com.br/v2/api.svc/login",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Accept", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={\n  \"email\": \"esclog.financeiro@gmail.com\",\n  \"password\": \"SUA_SENHA_AQUI\"\n}",
+        "options": {}
+      },
+      "id": "login",
+      "name": "Login RHiD",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extrair token e montar datas\nconst loginData = $input.first().json;\nconst token = loginData.accessToken;\n\nif (!token) throw new Error('Login falhou: ' + JSON.stringify(loginData));\n\n// Data de ontem\nconst hoje = new Date();\nconst ontem = new Date(hoje);\nontem.setDate(hoje.getDate() - 1);\n\n// Formato YYYYMMDD para o RHiD\nconst pad = (n) => String(n).padStart(2, '0');\nconst dataStr = `${ontem.getFullYear()}${pad(ontem.getMonth()+1)}${pad(ontem.getDate())}`;\n\nconsole.log('[RHiD] Token OK. Data:', dataStr);\n\nreturn [{\n  json: {\n    token,\n    bearerHeader: `Bearer ${token}`,\n    dataStr,      // ex: 20260521\n    dataISO: ontem.toISOString().slice(0, 10)  // ex: 2026-05-21\n  }\n}];"
+      },
+      "id": "extrair-token",
+      "name": "Extrair Token e Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.rhid.com.br/v2/report.svc/ponto",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "={{ $json.bearerHeader }}" },
+            { "name": "Content-Type", "value": "application/json;charset=UTF-8" },
+            { "name": "Accept", "value": "application/json, text/plain, */*" },
+            { "name": "X-Cid-Rhid", "value": "60943" },
+            { "name": "Origin", "value": "https://www.rhid.com.br" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={\n  \"agrupamento\": \"person\",\n  \"fim\": \"{{ $json.dataStr }}\",\n  \"formatoHoras\": 1,\n  \"formatoSaida\": \"CSV\",\n  \"ini\": \"{{ $json.dataStr }}\",\n  \"listColumns\": [\"strHorarioContratualSimples\", \"horasTotalNaoExtra\", \"horasTotalNoturno\", \"faltasDiasInteiro\", \"horasFaltaAtraso\", \"minutosAbono\", \"horaExtraPorPercentual\", \"extraDiurna\", \"extraNoturna\", \"saldoBancoAjustadoMaisCredDeb\", \"saldoBancoFinalDia\"],\n  \"listPersonInfo\": [\"Person.name\"],\n  \"pdfCartaoPontoParameters\": {\n    \"listCompanyStr\": [],\n    \"csvZipado\": false,\n    \"zipPdfFiles\": false\n  },\n  \"relatorio\": \"ponto_diario\",\n  \"status\": 1\n}",
+        "options": {}
+      },
+      "id": "gerar-relatorio",
+      "name": "Gerar Relatório Ponto",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extrair GUID do relatório gerado\nconst data = $input.first().json;\nconst tokenData = $('Extrair Token e Data').first().json;\n\nif (!data.guid) throw new Error('GUID não retornado: ' + JSON.stringify(data));\nif (data.error && data.error !== '') throw new Error('Erro ao gerar relatório: ' + data.error);\n\nconsole.log('[RHiD] Relatório gerado. GUID:', data.guid, '| Pessoas:', data.numPeople);\n\nreturn [{\n  json: {\n    guid: data.guid,\n    numPeople: data.numPeople,\n    token: tokenData.token,\n    bearerHeader: tokenData.bearerHeader,\n    dataISO: tokenData.dataISO,\n    dataStr: tokenData.dataStr,\n    tentativas: 0\n  }\n}];"
+      },
+      "id": "extrair-guid",
+      "name": "Extrair GUID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 300]
+    },
+    {
+      "parameters": {
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "id": "aguardar",
+      "name": "Aguardar 5s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1100, 300],
+      "webhookId": "rhid-wait"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://www.rhid.com.br/v2/customerdb/notify.svc/specificGuid/?guid={{ $('Extrair GUID').first().json.guid }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "={{ $('Extrair GUID').first().json.bearerHeader }}" },
+            { "name": "Accept", "value": "application/json, text/plain, */*" },
+            { "name": "X-Cid-Rhid", "value": "60943" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "verificar-status",
+      "name": "Verificar Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1320, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.IsConcluded }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "verificar-concluido",
+      "name": "Relatório Concluído?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1540, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://www.rhid.com.br/v2/customerdb/notify.svc/save_file/?format=CSV&guid={{ $('Extrair GUID').first().json.guid }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "={{ $('Extrair GUID').first().json.bearerHeader }}" },
+            { "name": "Accept", "value": "application/json, text/plain, */*" },
+            { "name": "X-Cid-Rhid", "value": "60943" },
+            { "name": "Content-Length", "value": "0" }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "baixar-csv",
+      "name": "Baixar CSV",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1760, 220]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Processar CSV e preparar para enviar ao ERP Orbe\nconst csvText = $input.first().json;\nconst guidData = $('Extrair GUID').first().json;\n\nconsole.log('[RHiD] CSV baixado. Tamanho:', String(csvText).length, 'chars');\n\n// Converter CSV para array de objetos\nconst lines = String(csvText).split('\\n').filter(l => l.trim());\nif (lines.length < 2) {\n  console.log('[RHiD] CSV vazio ou sem dados');\n  return [];\n}\n\n// Detectar separador (;  ou ,)\nconst sep = lines[0].includes(';') ? ';' : ',';\nconst headers = lines[0].split(sep).map(h => h.trim().replace(/\"/g, ''));\n\nconsole.log('[RHiD] Colunas:', headers.join(', '));\nconsole.log('[RHiD] Registros:', lines.length - 1);\n\nconst records = lines.slice(1).map(line => {\n  const values = line.split(sep).map(v => v.trim().replace(/\"/g, ''));\n  const obj = {};\n  headers.forEach((h, i) => { obj[h] = values[i] ?? ''; });\n  return obj;\n});\n\n// Mapear para formato esperado pela Edge Function do ERP\nconst mapped = records\n  .filter(r => r['Nome'] || r['nome'] || r['NOME'] || r['Person.name'] || Object.values(r)[0])\n  .map(r => {\n    const nome = r['Nome'] || r['nome'] || r['NOME'] || r['Person.name'] || Object.values(r)[0] || '';\n    const data = guidData.dataISO;\n    \n    // Tentar mapear colunas de hora (podem variar por configuração)\n    const getField = (...keys) => {\n      for (const k of keys) {\n        for (const [rk, rv] of Object.entries(r)) {\n          if (rk.toLowerCase().includes(k.toLowerCase()) && rv) return rv;\n        }\n      }\n      return null;\n    };\n    \n    return {\n      pessoa_nome: nome,\n      pessoa_cpf: null,\n      pessoa_matricula: null,\n      empresa_rhid_nome: null,\n      empresa_cnpj: null,\n      data,\n      entrada: getField('entrada', 'inicio', 'in'),\n      saida_almoco: getField('saida_almoco', 'saida alm', 'almoco'),\n      retorno_almoco: getField('retorno', 'retorno alm'),\n      saida: getField('saida', 'fim', 'out'),\n      horas_trabalhadas: getField('horas_trab', 'total hora', 'hr trab'),\n      hora_extra: getField('extra', 'he '),\n      falta: getField('falta'),\n      atraso: getField('atraso'),\n      _raw: r\n    };\n  });\n\nconsole.log('[RHiD] Registros mapeados:', mapped.length);\nreturn mapped.map(m => ({ json: m }));"
+      },
+      "id": "processar-csv",
+      "name": "Processar CSV",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1980, 220]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://lifgjtcflzmspilhryap.supabase.co/functions/v1/importar-pontos-rhid",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Authorization", "value": "=Bearer {{ $('Extrair GUID').first().json.token }}" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ JSON.stringify($input.all().map(i => i.json)) }}",
+        "options": {}
+      },
+      "id": "enviar-erp",
+      "name": "Enviar para ERP Orbe",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2200, 220]
+    },
+    {
+      "parameters": {
+        "jsCode": "const result = $input.first().json;\nconsole.log('[RHiD→ERP] Resultado:', JSON.stringify(result));\nreturn $input.all();"
+      },
+      "id": "log-sucesso",
+      "name": "Log Sucesso",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2420, 220]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Relatório ainda não concluído — loga e deixa o loop continuar\nconst status = $input.first().json;\nconsole.log('[RHiD] Aguardando conclusão... percent:', status.percent, '%');\nreturn $input.all();"
+      },
+      "id": "aguardando",
+      "name": "Ainda Processando",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1760, 420]
+    }
+  ],
+  "connections": {
+    "Schedule - 06h diário": {
+      "main": [[{ "node": "Login RHiD", "type": "main", "index": 0 }]]
+    },
+    "Login RHiD": {
+      "main": [[{ "node": "Extrair Token e Data", "type": "main", "index": 0 }]]
+    },
+    "Extrair Token e Data": {
+      "main": [[{ "node": "Gerar Relatório Ponto", "type": "main", "index": 0 }]]
+    },
+    "Gerar Relatório Ponto": {
+      "main": [[{ "node": "Extrair GUID", "type": "main", "index": 0 }]]
+    },
+    "Extrair GUID": {
+      "main": [[{ "node": "Aguardar 5s", "type": "main", "index": 0 }]]
+    },
+    "Aguardar 5s": {
+      "main": [[{ "node": "Verificar Status", "type": "main", "index": 0 }]]
+    },
+    "Verificar Status": {
+      "main": [[{ "node": "Relatório Concluído?", "type": "main", "index": 0 }]]
+    },
+    "Relatório Concluído?": {
+      "main": [
+        [{ "node": "Baixar CSV", "type": "main", "index": 0 }],
+        [{ "node": "Ainda Processando", "type": "main", "index": 0 }]
+      ]
+    },
+    "Baixar CSV": {
+      "main": [[{ "node": "Processar CSV", "type": "main", "index": 0 }]]
+    },
+    "Processar CSV": {
+      "main": [[{ "node": "Enviar para ERP Orbe", "type": "main", "index": 0 }]]
+    },
+    "Enviar para ERP Orbe": {
+      "main": [[{ "node": "Log Sucesso", "type": "main", "index": 0 }]]
+    },
+    "Ainda Processando": {
+      "main": [[{ "node": "Aguardar 5s", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true
+  },
+  "tags": ["rhid", "ponto", "csv", "automacao"]
+}
