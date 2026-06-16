@@ -22,6 +22,7 @@ const routeMeta: RouteMeta[] = [
   { pattern: "/producao/diaristas", label: "Lançamento de Diaristas", section: "Ambiente Externo", parentPath: "/producao" },
   { pattern: "/producao/custos-extras", label: "Custos Extras", section: "Entradas / Captura", parentPath: "/producao" },
   { pattern: "/producao/servicos-extras", label: "Serviços Extras", section: "Entradas / Captura", parentPath: "/producao" },
+  { pattern: "/operacional/intermitentes", label: "Intermitentes Recebidos", section: "Entradas / Captura" },
   { pattern: "/importacoes", label: "Importações", section: "Entradas / Captura" },
 
   // Processamento / Pipeline

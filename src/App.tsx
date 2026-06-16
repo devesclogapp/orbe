@@ -99,6 +99,7 @@ import RhDiaristasGestao from "./pages/Rh/RhDiaristasGestao";
 // Operacional (Inbox)
 import ServicosExtrasRecebidos from "./pages/Operacional/ServicosExtrasRecebidos";
 import CustosExtrasRecebidos from "./pages/Operacional/CustosExtrasRecebidos";
+import IntermitentesRecebidos from "./pages/Operacional/IntermitentesRecebidos";
 
 import DiagnosticoTenant from "./pages/DiagnosticoTenant";
 
@@ -156,6 +157,7 @@ const App = () => (
                             <Route path="/operacional/diaristas" element={<AuthGuard><RhDiaristasPainel /></AuthGuard>} />
                             <Route path="/operacional/servicos-extras" element={<AuthGuard><ServicosExtrasRecebidos /></AuthGuard>} />
                             <Route path="/operacional/custos-extras" element={<AuthGuard><CustosExtrasRecebidos /></AuthGuard>} />
+                            <Route path="/operacional/intermitentes" element={<AuthGuard><IntermitentesRecebidos /></AuthGuard>} />
                             <Route path="/producao" element={<AuthGuard><LancamentoProducao /></AuthGuard>} />
                             <Route path="/producao/diaristas" element={<AuthGuard><DiaristasLancamento /></AuthGuard>} />
                             <Route path="/producao/custos-extras" element={<AuthGuard><CustosExtrasLancamento /></AuthGuard>} />
