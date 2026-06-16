@@ -27,6 +27,8 @@ serve(async (req) => {
     
     const tenant_id = body.tenant_id || req.headers.get('x-tenant-id');
     const items = Array.isArray(body) ? body : (Array.isArray(body.items) ? body.items : []);
+    const rootOrigem = body.origem || 'tio_digital';
+    const rootArquivoOrigem = body.arquivo_origem || null;
     
     if (!tenant_id) {
        return new Response(JSON.stringify({ error: "Missing tenant_id in payload or headers." }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -74,7 +76,13 @@ serve(async (req) => {
     const inconsistentes = [];
 
     const parseFloatSafe = (val: any) => {
-      if (val === null || val === undefined) return 0;
+      if (val === null || val === undefined || val === '') return 0;
+      if (typeof val === 'string' && val.includes(':')) {
+         const parts = val.split(':');
+         const hours = parseInt(parts[0], 10) || 0;
+         const mins = parseInt(parts[1], 10) || 0;
+         return hours + (mins / 60);
+      }
       const parsed = parseFloat(String(val).replace(',', '.'));
       return isNaN(parsed) ? 0 : parsed;
     };
@@ -85,7 +93,8 @@ serve(async (req) => {
       // Tentativa de lookup CPF -> Matricula -> Nome
       const cleanCpf = item.cpf ? item.cpf.replace(/\D/g, '') : null;
       const cleanMat = item.matricula ? item.matricula.trim() : null;
-      const cleanName = item.colaborador ? item.colaborador.toUpperCase().trim() : null;
+      const rawName = item.colaborador_nome || item.colaborador;
+      const cleanName = rawName ? rawName.toUpperCase().trim() : null;
 
       if (cleanCpf && colabMap.has(`CPF_${cleanCpf}`)) {
          matchedColab = colabMap.get(`CPF_${cleanCpf}`);
@@ -101,7 +110,7 @@ serve(async (req) => {
       const launchBase = {
         tenant_id,
         importacao_id: importacaoId,
-        nome_colaborador: item.colaborador || 'Desconhecido',
+        nome_colaborador: rawName || 'Desconhecido',
         data_referencia: item.data,
         competencia: compVal,
         convocacao: item.convocacao || 'Sem referência',
@@ -113,7 +122,8 @@ serve(async (req) => {
         he_100: parseFloatSafe(item.he_100),
         hora_noturna: parseFloatSafe(item.hora_noturna),
         total: parseFloatSafe(item.total),
-        origem: 'tio_digital',
+        origem: item.origem || rootOrigem,
+        arquivo_origem: item.arquivo_origem || rootArquivoOrigem,
         status_pipeline: 'RECEBIDO'
       };
 

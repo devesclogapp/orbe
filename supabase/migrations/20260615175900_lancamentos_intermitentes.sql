@@ -1,5 +1,7 @@
 -- Migration: Criacao de lancamentos_intermitentes exclusiva para dados do Tio Digital
 
+DROP TABLE IF EXISTS public.lancamentos_intermitentes CASCADE;
+
 CREATE TABLE public.lancamentos_intermitentes (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
