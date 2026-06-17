@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { cn, decimalParaHora } from "@/lib/utils";
 
 type IntermitenteItem = {
     id: string;
@@ -85,19 +85,19 @@ export function IntermitentesTableBlock({ data }: IntermitentesTableBlockProps) 
                                         {item.convocacao || "—"}
                                     </td>
                                     <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap font-display font-medium">
-                                        {item.horas_trabalhadas || "0"}
+                                        {decimalParaHora(item.horas_trabalhadas)}
                                     </td>
                                     <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap font-display font-medium">
-                                        {item.horas_normais || "0"}
+                                        {decimalParaHora(item.horas_normais)}
                                     </td>
                                     <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap font-display font-medium">
-                                        {item.he_50 || "0"}
+                                        {decimalParaHora(item.he_50)}
                                     </td>
                                     <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap font-display font-medium">
-                                        {item.he_100 || "0"}
+                                        {decimalParaHora(item.he_100)}
                                     </td>
                                     <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap font-display font-medium">
-                                        {item.hora_noturna || "0"}
+                                        {decimalParaHora(item.hora_noturna)}
                                     </td>
                                     <td className="px-3 py-3 text-center text-foreground whitespace-nowrap font-display font-semibold">
                                         {item.total !== null && item.total !== undefined

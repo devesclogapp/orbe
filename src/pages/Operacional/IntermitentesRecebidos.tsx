@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
+import { cn, decimalParaHora } from "@/lib/utils";
 import { EmpresaService } from "@/services/base.service";
 import { supabase } from "@/lib/supabase";
 
@@ -176,11 +176,11 @@ const IntermitentesRecebidos = () => {
             totalRegistros,
             totalColaboradores,
             valorApurado,
-            horasTrabalhadas: sumHours("horas_trabalhadas"),
-            horasNormais: sumHours("horas_normais"),
-            he50: sumHours("he_50"),
-            he100: sumHours("he_100"),
-            horaNoturna: sumHours("hora_noturna"),
+            horasTrabalhadas: decimalParaHora(sumHours("horas_trabalhadas")),
+            horasNormais: decimalParaHora(sumHours("horas_normais")),
+            he50: decimalParaHora(sumHours("he_50")),
+            he100: decimalParaHora(sumHours("he_100")),
+            horaNoturna: decimalParaHora(sumHours("hora_noturna")),
         };
     }, [filteredData]);
 
