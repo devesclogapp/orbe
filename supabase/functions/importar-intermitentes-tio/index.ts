@@ -87,11 +87,52 @@ serve(async (req) => {
       return isNaN(parsed) ? 0 : parsed;
     };
 
+    const normalizeDbDate = (d: string) => {
+      if (!d) return '1970-01-01';
+      // DD/MM/YYYY
+      if (/^\d{2}\/\d{2}\/\d{4}/.test(d)) {
+        const [dd, mm, yyyy] = d.split('/');
+        return `${yyyy}-${mm}-${dd}`;
+      }
+      // Pega os primeiros 10 caracteres assumindo YYYY-MM-DD ou recorta T00:00:00Z
+      if (d.length >= 10 && d.includes('-')) {
+         return d.substring(0, 10);
+      }
+      return d;
+    };
+
+    // Buscar registros existentes para fallback/idempotencia
+    const normDates = Array.from(new Set(items.map((i: any) => normalizeDbDate(i.data)).filter(Boolean)));
+    const { data: existingRecords, error: extErr } = await supabase
+      .from('lancamentos_intermitentes')
+      .select('id, colaborador_id, nome_colaborador, data_referencia, convocacao, lote_fechamento_id, status_pipeline')
+      .eq('tenant_id', tenant_id)
+      .in('data_referencia', normDates.length > 0 ? normDates : ['1970-01-01']);
+      
+    if (extErr) console.error("[ERROR] Fetch existing falhou:", extErr);
+
+    const existingMap = new Map();
+    if (existingRecords) {
+      existingRecords.forEach(r => {
+        const keyData = normalizeDbDate(r.data_referencia);
+        const key = r.colaborador_id 
+          ? `COLAB_${r.colaborador_id}_${keyData}_${r.convocacao || 'Sem referência'}`
+          : `NOME_${r.nome_colaborador}_${keyData}_${r.convocacao || 'Sem referência'}`;
+        existingMap.set(key, r);
+      });
+    }
+
+    const toInsert = [];
+    const toUpdate = [];
+    let ignorados = 0;
+    let ignorados_por_lote = 0;
+    const logsInconsistentes = [];
+
     for (const item of items) {
       let matchedColab = null;
 
       // Tentativa de lookup CPF -> Matricula -> Nome
-      const cleanCpf = item.cpf ? item.cpf.replace(/\D/g, '') : null;
+      const cleanCpf = item.cpf ? item.cpf.replace(/\\D/g, '') : null;
       const cleanMat = item.matricula ? item.matricula.trim() : null;
       const rawName = item.colaborador_nome || item.colaborador;
       const cleanName = rawName ? rawName.toUpperCase().trim() : null;
@@ -105,15 +146,19 @@ serve(async (req) => {
       }
 
       // Derivar competencia do formato da data (ex: '2026-06-15' -> '2026-06')
-      const compVal = item.data ? item.data.substring(0, 7) : 'SEM-COMP';
+      const targetDate = normalizeDbDate(item.data);
+      const compVal = targetDate ? targetDate.substring(0, 7) : 'SEM-COMP';
 
+      const baseNome = rawName || 'Desconhecido';
+      const baseConvocacao = item.convocacao || 'Sem referência';
+      
       const launchBase = {
         tenant_id,
         importacao_id: importacaoId,
-        nome_colaborador: rawName || 'Desconhecido',
-        data_referencia: item.data,
+        nome_colaborador: baseNome,
+        data_referencia: targetDate,
         competencia: compVal,
-        convocacao: item.convocacao || 'Sem referência',
+        convocacao: baseConvocacao,
         cargo: item.cargo,
         departamento: item.departamento,
         horas_trabalhadas: parseFloatSafe(item.horas_trabalhadas),
@@ -127,57 +172,78 @@ serve(async (req) => {
         status_pipeline: 'RECEBIDO'
       };
 
+      const recordToProcess = {
+        ...launchBase,
+        colaborador_id: matchedColab ? matchedColab.id : null,
+        empresa_id: matchedColab ? matchedColab.empresa_id : null
+      };
+      
       if (!matchedColab) {
-         inconsistentes.push({
-           ...launchBase,
-           colaborador_id: null,
-           empresa_id: null,
-         });
+          logsInconsistentes.push(recordToProcess);
+      }
+
+      const lookupKey = recordToProcess.colaborador_id 
+          ? `COLAB_${recordToProcess.colaborador_id}_${recordToProcess.data_referencia}_${recordToProcess.convocacao}`
+          : `NOME_${recordToProcess.nome_colaborador}_${recordToProcess.data_referencia}_${recordToProcess.convocacao}`;
+
+      const existing = existingMap.get(lookupKey);
+
+      if (existing) {
+         // Registro já existe. Validar se pode atualizar
+         if (existing.lote_fechamento_id !== null || existing.status_pipeline !== 'RECEBIDO') {
+             ignorados_por_lote++;
+             ignorados++;
+         } else {
+             // Pode atualizar preservando status_pipeline
+             toUpdate.push({
+                ...recordToProcess,
+                id: existing.id, // necessário para o update massivo (upsert por PK)
+                status_pipeline: existing.status_pipeline
+             });
+         }
       } else {
-         validos.push({
-           ...launchBase,
-           colaborador_id: matchedColab.id,
-           empresa_id: matchedColab.empresa_id
+         toInsert.push(recordToProcess);
+      }
+    }
+
+    console.log(`[LOG] Para Inserir: ${toInsert.length} | Para Atualizar: ${toUpdate.length} | Ignorados: ${ignorados}`);
+
+    // Executar Insert
+    if (toInsert.length > 0) {
+      const { error: insertErr } = await supabase
+          .from('lancamentos_intermitentes')
+          .insert(toInsert);
+          
+      if (insertErr) {
+         console.error("[ERROR] Insert falhou:", insertErr);
+         return new Response(JSON.stringify({ error: "DB Error", message: insertErr.message, hint: "Falha ao inserir itens novos." }), { 
+            status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
          });
       }
     }
 
-    console.log(`[LOG] Válidos: ${validos.length} | Inconsistentes (Sem Vínculo): ${inconsistentes.length}`);
-
-    // Separamos as rotinas de Upsert devido ao "onConflict" não lidar bem com colunas NULL na Supabase. 
-    // Como criamos partial indexes (`WHERE colaborador_id IS [NOT] NULL`), a API de upsert do Postgres pode reclamar 
-    // se não usarmos raw sql. Então faremos loop insert com fallback para UPSERT genérico.
-    // Como a instrução era "Apenas importar, persistir e exibir", vamos usar upsert nativo baseando nos dados.
-    
-    // Upsert validos:
-    if (validos.length > 0) {
-      const { error: upsertValidosError } = await supabase
+    // Executar Update
+    if (toUpdate.length > 0) {
+        // Upsert na Supabase quando passamos a PK ('id') e onConflict: 'id', se comporta como um UPDATE em lote seguro
+        const { error: updateErr } = await supabase
           .from('lancamentos_intermitentes')
-          .upsert(validos);
+          .upsert(toUpdate, { onConflict: 'id' });
           
-      if (upsertValidosError) {
-         console.error("[ERROR] Upsert validos falhou:", upsertValidosError);
-      }
-    }
-
-    // Upsert inconsistentes:
-    if (inconsistentes.length > 0) {
-        const { error: upsertIncError } = await supabase
-          .from('lancamentos_intermitentes')
-          .upsert(inconsistentes);
-          
-        if (upsertIncError) {
-           console.error("[ERROR] Upsert inconsistentes falhou:", upsertIncError);
+        if (updateErr) {
+           console.error("[ERROR] Update falhou:", updateErr);
+           return new Response(JSON.stringify({ error: "DB Error", message: updateErr.message, hint: "Falha ao atualizar registros que já existiam." }), { 
+              status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+           });
         }
     }
 
     // Historico update
     if (importacaoId) {
-       const finalStatus = inconsistentes.length > 0 ? 'PROCESSADO_COM_ALERTAS' : 'PROCESSADO';
+       const finalStatus = logsInconsistentes.length > 0 ? 'PROCESSADO_COM_ALERTAS' : 'PROCESSADO';
        await supabase.from('historico_importacoes').update({
             status: finalStatus,
             quantidade_registros: totalRecebidos,
-            logs: inconsistentes 
+            logs: logsInconsistentes.length > 0 ? logsInconsistentes : null 
           })
           .eq('id', importacaoId);
     }
@@ -186,8 +252,11 @@ serve(async (req) => {
        success: true,
        message: "Importação de Intermitentes Tio Digital concluída.",
        recebidos: totalRecebidos,
-       salvos: validos.length + inconsistentes.length,
-       inconsistentes: inconsistentes.length
+       inseridos: toInsert.length,
+       atualizados: toUpdate.length,
+       ignorados: ignorados,
+       ignorados_por_lote: ignorados_por_lote,
+       inconsistentes: logsInconsistentes.length
     }), {
        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });

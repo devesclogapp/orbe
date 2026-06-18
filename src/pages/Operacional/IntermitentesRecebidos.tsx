@@ -14,6 +14,7 @@ import {
     Clock,
     DollarSign,
     Moon,
+    CheckCircle2,
 } from "lucide-react";
 
 import { AppShell } from "@/components/layout/AppShell";
@@ -32,6 +33,10 @@ import { Input } from "@/components/ui/input";
 import { cn, decimalParaHora } from "@/lib/utils";
 import { EmpresaService } from "@/services/base.service";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/contexts/AuthContext";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { IntermitentesLoteService } from "@/services/domain/intermitentes.service";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -108,6 +113,8 @@ const IntermitentesRecebidos = () => {
     const [filterMonth, setFilterMonth] = useState<string>(format(new Date(), "MM"));
     const [filterYear, setFilterYear] = useState<string>(format(new Date(), "yyyy"));
     const [filterText, setFilterText] = useState("");
+    const { user } = useAuth();
+    const queryClient = useQueryClient();
 
     const { data: empresas = [] } = useQuery({ queryKey: ["empresas-all"], queryFn: () => EmpresaService.getAll() });
 
@@ -181,8 +188,32 @@ const IntermitentesRecebidos = () => {
             he50: decimalParaHora(sumHours("he_50")),
             he100: decimalParaHora(sumHours("he_100")),
             horaNoturna: decimalParaHora(sumHours("hora_noturna")),
+            pendentesEnvio: filteredData.filter(d => !d.lote_fechamento_id && d.status_pipeline === 'RECEBIDO').length
         };
     }, [filteredData]);
+
+    const fecharPeriodoMutation = useMutation({
+        mutationFn: async () => {
+            if (!user) throw new Error("Usuário não autenticado.");
+            const startDate = `${filterYear}-${filterMonth}-01`;
+            const endDate = new Date(Number(filterYear), Number(filterMonth), 0).toISOString().split('T')[0];
+
+            return await IntermitentesLoteService.fecharPeriodo({
+                empresaId: filterEmpresaId === "all" ? null : filterEmpresaId,
+                periodoInicio: startDate,
+                periodoFim: endDate,
+                fechadoPor: user.id,
+                observacoes: "Fechamento automático via painel de Intermitentes Recebidos."
+            });
+        },
+        onSuccess: (data) => {
+            toast.success(`Período fechado com sucesso! Lote gerado. ${data.quantidade_registros} registros.`);
+            queryClient.invalidateQueries({ queryKey: ["intermitentes-recebidos"] });
+        },
+        onError: (err: any) => {
+            toast.error("Erro ao fechar período.", { description: err?.message || "" });
+        }
+    });
 
     return (
         <AppShell
@@ -269,6 +300,19 @@ const IntermitentesRecebidos = () => {
                             <History className="h-4 w-4 text-primary" />
                             Listagem de Apuração Tio Digital
                         </h3>
+                        <Button
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 font-bold uppercase tracking-wider text-xs"
+                            size="sm"
+                            disabled={isLoading || kpis.pendentesEnvio === 0 || fecharPeriodoMutation.isPending}
+                            onClick={() => {
+                                if (confirm(`Confirmar o fechamento de ${kpis.pendentesEnvio} lançamentos em aberto neste período? Eles serão enviados para Validação do RH.`)) {
+                                    fecharPeriodoMutation.mutate();
+                                }
+                            }}
+                        >
+                            {fecharPeriodoMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                            Fechar Período Intermitente ({kpis.pendentesEnvio} abertos)
+                        </Button>
                     </div>
                     <div className="p-0">
                         {isLoading ? (

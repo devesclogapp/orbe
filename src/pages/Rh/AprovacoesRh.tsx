@@ -54,13 +54,14 @@ import {
     LancamentoDiaristaService,
     LoteFechamentoDiaristaService
 } from "@/services/domain/diaristas.service";
+import { IntermitentesLoteService } from "@/services/domain/intermitentes.service";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 
 // ────────────────────────────────────────────────────
 // Tipo unificado de item de aprovação
 // ────────────────────────────────────────────────────
-type TipoItem = "PONTO" | "DIARISTA" | "CUSTO EXTRA" | "SERVIÇO EXTRA" | "OPERAÇÃO";
+type TipoItem = "PONTO" | "DIARISTA" | "INTERMITENTE" | "CUSTO EXTRA" | "SERVIÇO EXTRA" | "OPERAÇÃO";
 type SituacaoItem = "Em análise" | "Aprovado" | "Devolvido" | "Pendente";
 
 interface ApprovalItem {
@@ -119,6 +120,7 @@ const SITUACAO_COLORS: Record<SituacaoItem, string> = {
 const TIPO_COLORS: Record<TipoItem, string> = {
     "PONTO": "bg-blue-100 text-blue-700",
     "DIARISTA": "bg-emerald-100 text-emerald-700",
+    "INTERMITENTE": "bg-indigo-100 text-indigo-700",
     "CUSTO EXTRA": "bg-orange-100 text-orange-700",
     "SERVIÇO EXTRA": "bg-purple-100 text-purple-700",
     "OPERAÇÃO": "bg-cyan-100 text-cyan-700",
@@ -184,7 +186,13 @@ export default function AprovacoesRh() {
         queryFn: () => LancamentoDiaristaService.getByPeriodo(empresaFiltro ?? null, inicio, fim),
     });
 
-    const isLoading = loadPontos || loadOp || loadCusto || loadServico || loadDiarista;
+    // Intermitentes
+    const { data: rawIntermitentes = [], isLoading: loadIntermitentes } = useQuery({
+        queryKey: ["aprovacoes-intermitentes", filterEmpresaId],
+        queryFn: () => IntermitentesLoteService.listarLotes(filterEmpresaId !== "all" ? { status: "AGUARDANDO_VALIDACAO_RH" } : undefined), // Can restrict to pending on UI or show all on Historic
+    });
+
+    const isLoading = loadPontos || loadOp || loadCusto || loadServico || loadDiarista || loadIntermitentes;
 
     // ════ NORMALIZAÇÃO ═══════════════════════════════
     const allItems = useMemo<ApprovalItem[]>(() => {
@@ -272,8 +280,25 @@ export default function AprovacoesRh() {
             raw: d,
         }));
 
+        (rawIntermitentes as any[]).forEach(i => result.push({
+            id: i.id,
+            tipo: "INTERMITENTE",
+            referencia: `Lote ${i.id.substring(0, 6)}`,
+            colaborador: `Lote com ${i.quantidade_registros} registros`,
+            descricao: "Fechamento Intermitentes",
+            empresa: i.empresa?.nome || "—",
+            operacao: "Folha Intermitente",
+            valor: Number(i.valor_total) || 0,
+            horas: "-",
+            competencia: i.competencia || competenciaMes,
+            dataRecebimento: fmtDate(i.created_at),
+            situacao: situacaoMap(i.status),
+            rawStatus: i.status,
+            raw: i,
+        }));
+
         return result.sort((a, b) => b.dataRecebimento.localeCompare(a.dataRecebimento));
-    }, [rawPontos, rawOperacoes, rawCustos, rawServicos, rawDiaristas, competenciaMes]);
+    }, [rawPontos, rawOperacoes, rawCustos, rawServicos, rawDiaristas, rawIntermitentes, competenciaMes]);
 
     // ════ FILTROS FRONTEND ═══════════════════════════
     const filtered = useMemo(() => {
@@ -317,6 +342,8 @@ export default function AprovacoesRh() {
         pontosValor: filaItems.filter(i => i.tipo === "PONTO").reduce((s, i) => s + i.valor, 0),
         diaristas: filaItems.filter(i => i.tipo === "DIARISTA").length,
         diaristasValor: filaItems.filter(i => i.tipo === "DIARISTA").reduce((s, i) => s + i.valor, 0),
+        intermitentes: filaItems.filter(i => i.tipo === "INTERMITENTE").length,
+        intermitentesValor: filaItems.filter(i => i.tipo === "INTERMITENTE").reduce((s, i) => s + i.valor, 0),
         custos: filaItems.filter(i => i.tipo === "CUSTO EXTRA").length,
         custosValor: filaItems.filter(i => i.tipo === "CUSTO EXTRA").reduce((s, i) => s + i.valor, 0),
         servicos: filaItems.filter(i => i.tipo === "SERVIÇO EXTRA").length,
@@ -334,6 +361,7 @@ export default function AprovacoesRh() {
         queryClient.invalidateQueries({ queryKey: ["aprovacoes-custos"] });
         queryClient.invalidateQueries({ queryKey: ["aprovacoes-servicos"] });
         queryClient.invalidateQueries({ queryKey: ["aprovacoes-diaristas"] });
+        queryClient.invalidateQueries({ queryKey: ["aprovacoes-intermitentes"] });
     };
 
     const aprovarMutation = useMutation({
@@ -348,6 +376,10 @@ export default function AprovacoesRh() {
                 await supabase.from("lancamentos_diaristas")
                     .update({ status: "VALIDADO_RH" })
                     .eq("lote_fechamento_id", item.raw.lote_fechamento_id);
+                return;
+            }
+            if (item.tipo === "INTERMITENTE") {
+                await IntermitentesLoteService.validarLote(item.id, user?.id || "");
                 return;
             }
             // Pontos
@@ -402,6 +434,10 @@ export default function AprovacoesRh() {
                 await supabase.from("lancamentos_diaristas")
                     .update({ status: "AGUARDANDO_VALIDACAO_RH" })
                     .eq("lote_fechamento_id", item.raw.lote_fechamento_id);
+                return;
+            }
+            if (item.tipo === "INTERMITENTE") {
+                await IntermitentesLoteService.devolverLote(item.id, "Devolvido pelo RH via Painel Global");
                 return;
             }
             if (item.tipo === "PONTO") {
@@ -516,6 +552,7 @@ export default function AprovacoesRh() {
         { id: "all", label: "Fila Geral", icon: Layers, color: "text-primary" },
         { id: "PONTO", label: "Folha de Ponto", icon: Clock, color: "text-blue-500" },
         { id: "DIARISTA", label: "Diaristas", icon: Users, color: "text-emerald-500" },
+        { id: "INTERMITENTE", label: "Intermitentes", icon: Users, color: "text-indigo-500" },
         { id: "CUSTO EXTRA", label: "Custos Extras", icon: DollarSign, color: "text-orange-500" },
         { id: "SERVIÇO EXTRA", label: "Serviços Extras", icon: Activity, color: "text-purple-500" },
         { id: "OPERAÇÃO", label: "Operações", icon: CheckCircle2, color: "text-cyan-500" },
@@ -569,9 +606,10 @@ export default function AprovacoesRh() {
                 </div>
 
                 {/* KPI Grid */}
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
                     <KPICard label="Pontos Pendentes" value={String(kpis.pontos)} subtext={fmt(kpis.pontosValor)} icon={Clock} iconColor="text-blue-600" iconBg="bg-blue-50" loading={loadPontos} />
-                    <KPICard label="Diaristas Pendentes" value={String(kpis.diaristas)} subtext={fmt(kpis.diaristasValor)} icon={Users} iconColor="text-emerald-600" iconBg="bg-emerald-50" loading={loadDiarista} />
+                    <KPICard label="Diaristas" value={String(kpis.diaristas)} subtext={fmt(kpis.diaristasValor)} icon={Users} iconColor="text-emerald-600" iconBg="bg-emerald-50" loading={loadDiarista} />
+                    <KPICard label="Intermitentes" value={String(kpis.intermitentes)} subtext={fmt(kpis.intermitentesValor)} icon={Users} iconColor="text-indigo-600" iconBg="bg-indigo-50" loading={loadIntermitentes} />
                     <KPICard label="Custos Extras" value={String(kpis.custos)} subtext={fmt(kpis.custosValor)} icon={DollarSign} iconColor="text-orange-600" iconBg="bg-orange-50" loading={loadCusto} />
                     <KPICard label="Serviços Extras" value={String(kpis.servicos)} subtext={fmt(kpis.servicosValor)} icon={Activity} iconColor="text-purple-600" iconBg="bg-purple-50" loading={loadServico} />
                     <KPICard label="Devolvidos" value={String(kpis.atrasados)} subtext={fmt(kpis.atrasadosValor)} icon={AlertTriangle} iconColor="text-rose-600" iconBg="bg-rose-50" isAlert />
