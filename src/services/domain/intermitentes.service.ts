@@ -95,7 +95,7 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       .from('lancamentos_intermitentes')
       .update({
         lote_fechamento_id: lote.id,
-        status_pipeline: 'AGUARDANDO_VALIDACAO_RH'
+        status_pipeline: 'EM_ANALISE_RH'
       })
       .in('id', lancamentoIds);
 
@@ -131,11 +131,43 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       .from('lancamentos_intermitentes')
       .select('*')
       .eq('lote_fechamento_id', loteId)
-      .order('colaborador_nome', { ascending: true });
+      .order('nome_colaborador', { ascending: true });
 
     if (itensError) throw itensError;
 
     return { ...lote, itens: itens ?? [] };
+  }
+
+  async getByEmpresaParaFinanceiro(empresaId: string) {
+    const { data, error } = await this.supabase
+      .from('intermitentes_lotes_fechamento')
+      .select('*, empresa:empresas(nome)')
+      .eq('empresa_id', empresaId)
+      .in('status', ['VALIDADO_RH', 'FECHADO_FINANCEIRO', 'AGUARDANDO_PAGAMENTO', 'PAGO', 'cnab_gerado'])
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data ?? [];
+  }
+
+  async aprovarFinanceiro(loteId: string, validadoPor: string) {
+    const { error: loteError } = await this.supabase
+      .from('intermitentes_lotes_fechamento')
+      .update({
+        status: 'FECHADO_FINANCEIRO',
+        validated_by: validadoPor,
+        validated_at: new Date().toISOString()
+      })
+      .eq('id', loteId);
+
+    if (loteError) throw loteError;
+
+    const { error: itemError } = await this.supabase
+      .from('lancamentos_intermitentes')
+      .update({ status_pipeline: 'ENVIADO_FINANCEIRO' }) // Equivalente local, a instrução disse ENVIADO_FINANCEIRO ou equivalente
+      .eq('lote_fechamento_id', loteId);
+
+    if (itemError) throw itemError;
+    return true;
   }
 
   async validarLote(loteId: string, validadoPor: string) {
@@ -152,7 +184,7 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
 
     const { error: itemError } = await this.supabase
       .from('lancamentos_intermitentes')
-      .update({ status_pipeline: 'VALIDADO_RH' }) // Ou APROVADO_RH dependendo do enum
+      .update({ status_pipeline: 'APROVADO_RH' }) // Ou APROVADO_RH dependendo do enum
       .eq('lote_fechamento_id', loteId);
 
     if (itemError) throw itemError;

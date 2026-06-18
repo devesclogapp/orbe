@@ -42,6 +42,7 @@ import { ConsolidadoService } from "@/services/domain/producao.service";
 import { EmpresaService } from "@/services/domain/cadastros.service";
 import { CustoExtraOperacionalService, ServicosExtrasOperacionaisService } from "@/services/domain/despesas.service";
 import { LoteFechamentoDiaristaService } from "@/services/domain/diaristas.service";
+import { IntermitentesLoteService } from "@/services/domain/intermitentes.service";
 import { RHFinanceiroService } from "@/services/rhFinanceiro.service";
 import { buildFolhaVariavelPipeline, buildDiaristasPipeline, useOperationalPipeline } from "@/contexts/OperationalPipelineContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -147,6 +148,12 @@ const CentralFinanceira = () => {
     enabled: !!selectedEmpresaId,
   });
 
+  const { data: lotesIntermitentes = [], isLoading: loadingIntermitentes } = useQuery({
+    queryKey: ["lotes-intermitentes-financeiro", selectedEmpresaId],
+    queryFn: () => IntermitentesLoteService.getByEmpresaParaFinanceiro(selectedEmpresaId!),
+    enabled: !!selectedEmpresaId,
+  });
+
   const lotesRh = useMemo(() => {
     const diaristasFormatted = lotesDiaristas
       .filter((l: any) => l.status === "VALIDADO_RH" || l.status === "FECHADO_FINANCEIRO" || l.status === "AGUARDANDO_PAGAMENTO")
@@ -160,10 +167,25 @@ const CentralFinanceira = () => {
       }))
       .filter((l: any) => !selectedMonth || l.competencia === selectedMonth);
 
-    return [...rawLotesRh, ...diaristasFormatted].sort((a, b) =>
+    const intermitentesFormatted = lotesIntermitentes
+      .filter((l: any) => l.status === "VALIDADO_RH" || l.status === "FECHADO_FINANCEIRO" || l.status === "AGUARDANDO_PAGAMENTO")
+      .map((l: any) => ({
+        ...l,
+        tipo: "INTERMITENTES",
+        origem: "OPERACIONAL",
+        competencia: l.competencia,
+        valor_total: l.valor_total,
+        total_registros: l.quantidade_registros,
+        status: l.status === "VALIDADO_RH" ? "AGUARDANDO_FINANCEIRO" :
+          l.status === "FECHADO_FINANCEIRO" ? "AGUARDANDO_PAGAMENTO" : l.status,
+        raw: l
+      }))
+      .filter((l: any) => !selectedMonth || l.competencia === selectedMonth);
+
+    return [...rawLotesRh, ...diaristasFormatted, ...intermitentesFormatted].sort((a, b) =>
       new Date(b.created_at).getTime() - new Date(a.getTime ? a.getTime() : a.created_at ? new Date(a.created_at).getTime() : 0)
     );
-  }, [rawLotesRh, lotesDiaristas, selectedMonth]);
+  }, [rawLotesRh, lotesDiaristas, lotesIntermitentes, selectedMonth]);
 
   const latestRhSentAt = useMemo(
     () => formatPipelineTimestamp(lotesRh.find((lote: any) => lote.status !== "DEVOLVIDO_RH")?.created_at),
@@ -195,6 +217,9 @@ const CentralFinanceira = () => {
       if (rhLoteSelecionado.tipo === "DIARISTAS") {
         return LoteFechamentoDiaristaService.getLoteDetalhe(rhLoteSelecionado.id);
       }
+      if (rhLoteSelecionado.tipo === "INTERMITENTES") {
+        return IntermitentesLoteService.getLoteDetalhe(rhLoteSelecionado.id);
+      }
       return RHFinanceiroService.getLoteDetalhe(rhLoteSelecionado.id);
     },
     enabled: !!rhLoteSelecionado?.id,
@@ -203,7 +228,7 @@ const CentralFinanceira = () => {
   const { data: logsDoLote = [], isLoading: loadingLogs } = useQuery({
     queryKey: ["rh-lote-historico", rhLoteSelecionado?.id],
     queryFn: () => {
-      if (rhLoteSelecionado?.tipo === "DIARISTAS") return [];
+      if (rhLoteSelecionado?.tipo === "DIARISTAS" || rhLoteSelecionado?.tipo === "INTERMITENTES") return [];
       return RHFinanceiroService.getLogsLote(rhLoteSelecionado!.id);
     },
     enabled: !!rhLoteSelecionado?.id && showLogHistorico,
@@ -315,12 +340,13 @@ const CentralFinanceira = () => {
   const lotesRhProntosBancario = lotesRh.filter((lote: any) => lote.status === "AGUARDANDO_PAGAMENTO");
   const lotesRhValorTotal = lotesRhPendentes.reduce((acc: number, lote: any) => acc + Number(lote.valor_total || 0), 0);
   const lotesRhValorBancario = lotesRhProntosBancario.reduce((acc: number, lote: any) => acc + Number(lote.valor_total || 0), 0);
-  const isLoading = loadingEmps || loadingComp || loadingCons || loadingFechamentos || loadingRhLotes;
+  const isLoading = loadingEmps || loadingComp || loadingCons || loadingFechamentos || loadingRhLotes || loadingIntermitentes;
 
   // helpers status
   const invalidateLotes = () => {
     queryClient.invalidateQueries({ queryKey: ["rh-financeiro-lotes"] });
     queryClient.invalidateQueries({ queryKey: ["lotes-diaristas-financeiro"] });
+    queryClient.invalidateQueries({ queryKey: ["lotes-intermitentes-financeiro"] });
     queryClient.invalidateQueries({ queryKey: ["rh-financeiro-lote-detalhe", rhLoteSelecionado?.id] });
     queryClient.invalidateQueries({ queryKey: ["rh-lote-historico", rhLoteSelecionado?.id] });
     // Invalidações para Diaristas no Central Bancaria (se estiver aberto em outra aba)
@@ -341,6 +367,9 @@ const CentralFinanceira = () => {
       if (rhLoteSelecionado?.tipo === "DIARISTAS") {
         return LoteFechamentoDiaristaService.aprovarFinanceiro(id, user?.id || "", user?.email || "Financeiro", "financeiro");
       }
+      if (rhLoteSelecionado?.tipo === "INTERMITENTES") {
+        return IntermitentesLoteService.aprovarFinanceiro(id, user?.id || "");
+      }
       return RHFinanceiroService.aprovarFinanceiro(id, obs);
     },
     onSuccess: () => {
@@ -357,7 +386,7 @@ const CentralFinanceira = () => {
             currentStep: "central_financeira",
           })
         );
-      } else {
+      } else if (rhLoteSelecionado?.tipo !== "INTERMITENTES") {
         openPipeline(
           buildFolhaVariavelPipeline({
             competencia: selectedMonth,
@@ -382,6 +411,9 @@ const CentralFinanceira = () => {
     mutationFn: ({ id, motivo }: { id: string; motivo: string }) => {
       if (rhLoteSelecionado?.tipo === "DIARISTAS") {
         return LoteFechamentoDiaristaService.reabrirPeriodo(id, user?.id || "", user?.email || "Financeiro", "financeiro", motivo, "administrativa");
+      }
+      if (rhLoteSelecionado?.tipo === "INTERMITENTES") {
+        return IntermitentesLoteService.devolverLote(id, motivo || "Devolvido pelo financeiro");
       }
       return RHFinanceiroService.devolverAoRH(id, motivo);
     },

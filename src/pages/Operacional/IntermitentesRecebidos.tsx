@@ -149,6 +149,20 @@ const IntermitentesRecebidos = () => {
 
     const intermitentes = intermitentesData || [];
 
+    const { data: lotesDevolvidos = [], isLoading: isLoadingDevolvidos } = useQuery({
+        queryKey: ["lotes-intermitentes-devolvidos", filterEmpresaId, filterMonth, filterYear],
+        queryFn: async () => {
+            let res = await IntermitentesLoteService.listarLotes({
+                status: "DEVOLVIDO",
+                competencia: `${filterYear}-${filterMonth}`
+            });
+            if (filterEmpresaId !== "all") {
+                res = res.filter(r => r.empresa_id === filterEmpresaId);
+            }
+            return res;
+        },
+    });
+
     // Filtragem no cliente por texto (busca)
     const filteredData = useMemo(() => {
         return intermitentes.filter(item => {
@@ -212,6 +226,22 @@ const IntermitentesRecebidos = () => {
         },
         onError: (err: any) => {
             toast.error("Erro ao fechar período.", { description: err?.message || "" });
+        }
+    });
+
+    const reabrirLoteMutation = useMutation({
+        mutationFn: async (id: string) => {
+            return await IntermitentesLoteService.reabrirLote(id);
+        },
+        onSuccess: () => {
+            toast.success("Lote reaberto com sucesso. Os registros retornaram para a fila.");
+            queryClient.invalidateQueries({ queryKey: ["intermitentes-recebidos"] });
+            queryClient.invalidateQueries({ queryKey: ["lotes-intermitentes-devolvidos"] });
+            queryClient.invalidateQueries({ queryKey: ["rh-financeiro-lotes"] });
+            queryClient.invalidateQueries({ queryKey: ["lotes-intermitentes-financeiro"] });
+        },
+        onError: (err: any) => {
+            toast.error("Erro ao reabrir lote.", { description: err?.message || "" });
         }
     });
 
@@ -293,6 +323,48 @@ const IntermitentesRecebidos = () => {
                     <TopKpiCard label="H. Noturna" value={kpis.horaNoturna} icon={Moon} iconColor="bg-violet-50 text-violet-600" size="xs" />
                     <TopKpiCard label="Valor" value={formatCurrency(kpis.valorApurado)} icon={DollarSign} iconColor="bg-emerald-50 text-emerald-600" size="xs" />
                 </div>
+
+                {lotesDevolvidos.length > 0 && (
+                    <div className="bg-rose-50 border border-rose-200 rounded-[12px] p-6 shadow-sm space-y-4">
+                        <div className="flex items-center gap-2 text-rose-700">
+                            <AlertTriangle className="h-5 w-5" />
+                            <h3 className="font-manrope font-bold text-sm uppercase tracking-widest">Lotes Devolvidos</h3>
+                        </div>
+                        <div className="grid gap-4">
+                            {lotesDevolvidos.map((lote: any) => (
+                                <div key={lote.id} className="bg-white rounded-lg p-4 border border-rose-100 flex items-center justify-between">
+                                    <div className="space-y-1">
+                                        <div className="text-sm font-semibold text-gray-900 border-l-2 border-rose-500 pl-2">
+                                            {lote.empresa?.nome || "Empresa"} — Competência: {lote.competencia}
+                                        </div>
+                                        <div className="text-xs text-gray-500 pl-2.5">
+                                            {lote.quantidade_registros} registros • Valor Total: {formatCurrency(lote.valor_total)}
+                                        </div>
+                                        <div className="text-xs text-rose-600 font-medium pl-2.5">
+                                            Motivo: {lote.observacoes || "Não informado"}
+                                        </div>
+                                        <div className="text-xs text-gray-400 pl-2.5">
+                                            Devolvido em: {new Date(lote.updated_at).toLocaleString('pt-BR')}
+                                        </div>
+                                    </div>
+                                    <Button
+                                        variant="outline"
+                                        className="border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                                        disabled={reabrirLoteMutation.isPending}
+                                        onClick={() => {
+                                            if (confirm("Deseja realmente reabrir este período? Os registros voltarão para a fila operacional.")) {
+                                                reabrirLoteMutation.mutate(lote.id);
+                                            }
+                                        }}
+                                    >
+                                        <RefreshCw className="h-4 w-4 mr-2" />
+                                        Reabrir Período
+                                    </Button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 <div className="bg-white border border-[#DEDEDE] rounded-[12px] overflow-hidden shadow-sm min-h-[500px]">
                     <div className="p-4 border-b border-[#EBEBEB] bg-[#EBEBEB] flex items-center justify-between">
