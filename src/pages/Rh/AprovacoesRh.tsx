@@ -34,6 +34,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import {
     Select,
     SelectContent,
@@ -905,98 +906,97 @@ function DetailPanel({
     isDevolvendo: boolean;
 }) {
     return (
-        <Card className="w-[360px] shrink-0 flex flex-col border-border/40 shadow-lg shadow-black/5 bg-white overflow-hidden sticky top-24 max-h-[calc(100vh-120px)]">
-            <div className="p-5 border-b border-border/40 bg-slate-50/60 flex items-center justify-between">
-                <h3 className="font-bold text-slate-800 tracking-tight">Detalhes do Item</h3>
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" onClick={onClose}>
-                    <X size={18} />
-                </Button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-5 space-y-5">
-                {/* Type + status */}
-                <div>
-                    <div className="flex items-center justify-between mb-3">
-                        <Badge variant="outline" className={cn("text-[10px] font-black uppercase border-none px-2 py-0.5", TIPO_COLORS[item.tipo])}>
-                            {item.tipo}
-                        </Badge>
-                        <Badge className={cn("border text-[10px] font-bold uppercase", SITUACAO_COLORS[item.situacao])}>
-                            {item.situacao}
-                        </Badge>
-                    </div>
-                    <h2 className="text-xl font-bold text-slate-900 leading-tight mb-2">{item.colaborador}</h2>
-                    <div className="space-y-1">
-                        {[
-                            { label: "Referência", v: item.referencia },
-                            { label: "Empresa", v: item.empresa },
-                            { label: "Operação", v: item.operacao },
-                        ].map(r => (
-                            <p key={r.label} className="text-xs text-muted-foreground font-medium uppercase flex gap-2">
-                                {r.label}: <span className="text-slate-800 normal-case font-medium">{r.v}</span>
-                            </p>
-                        ))}
-                    </div>
+        <Sheet open={true} onOpenChange={(open) => { if (!open) onClose() }}>
+            <SheetContent side="right" className="w-[400px] sm:max-w-md p-0 flex flex-col shadow-2xl bg-white overflow-hidden">
+                <div className="p-5 pr-14 border-b border-border/40 bg-slate-50/60 flex items-center justify-between shadow-sm relative z-10">
+                    <h3 className="font-bold text-slate-800 tracking-tight">Detalhes do Item</h3>
                 </div>
 
-                <Separator className="bg-border/40" />
-
-                {/* Período */}
-                <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-slate-700">
-                        <Calendar size={15} />
-                        <span className="text-xs font-bold uppercase tracking-wide">Período / Competência</span>
+                <div className="flex-1 overflow-y-auto p-5 space-y-5">
+                    {/* Type + status */}
+                    <div>
+                        <div className="flex items-center justify-between mb-3">
+                            <Badge variant="outline" className={cn("text-[10px] font-black uppercase border-none px-2 py-0.5", TIPO_COLORS[item.tipo])}>
+                                {item.tipo}
+                            </Badge>
+                            <Badge className={cn("border text-[10px] font-bold uppercase", SITUACAO_COLORS[item.situacao])}>
+                                {item.situacao}
+                            </Badge>
+                        </div>
+                        <h2 className="text-xl font-bold text-slate-900 leading-tight mb-2">{item.colaborador}</h2>
+                        <div className="space-y-1">
+                            {[
+                                { label: "Referência", v: item.referencia },
+                                { label: "Empresa", v: item.empresa },
+                                { label: "Operação", v: item.operacao },
+                            ].map(r => (
+                                <p key={r.label} className="text-xs text-muted-foreground font-medium uppercase flex gap-2">
+                                    {r.label}: <span className="text-slate-800 normal-case font-medium">{r.v}</span>
+                                </p>
+                            ))}
+                        </div>
                     </div>
-                    <div className="bg-slate-50 border border-border/30 rounded-lg px-4 py-3">
-                        <span className="text-[13px] font-medium text-slate-800">{item.competencia}</span>
+
+                    <Separator className="bg-border/40" />
+
+                    {/* Período */}
+                    <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-slate-700">
+                            <Calendar size={15} />
+                            <span className="text-xs font-bold uppercase tracking-wide">Período / Competência</span>
+                        </div>
+                        <div className="bg-slate-50 border border-border/30 rounded-lg px-4 py-3">
+                            <span className="text-[13px] font-medium text-slate-800">{item.competencia}</span>
+                        </div>
+                    </div>
+
+                    {/* Resumo */}
+                    <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-slate-700">
+                            <Activity size={15} />
+                            <span className="text-xs font-bold uppercase tracking-wide">Resumo</span>
+                        </div>
+                        <div className="space-y-2 bg-slate-50 border border-border/30 rounded-lg px-4 py-3">
+                            {item.horas && <SummaryLine label="Horas / Diárias" value={item.horas} />}
+                            <SummaryLine label="Valor total" value={fmt(item.valor)} isBold />
+                        </div>
+                    </div>
+
+                    {/* Informações */}
+                    <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-slate-700">
+                            <Info size={15} />
+                            <span className="text-xs font-bold uppercase tracking-wide">Informações</span>
+                        </div>
+                        <div className="space-y-2 bg-slate-50 border border-border/30 rounded-lg px-4 py-3">
+                            <SummaryLine label="Recebido em" value={item.dataRecebimento} />
+                            <SummaryLine label="Referência" value={item.referencia} />
+                        </div>
+                    </div>
+
+                    {/* Ações */}
+                    <div className="pt-2 flex flex-col gap-2">
+                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.15em]">Ações</label>
+                        <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-11 gap-2" onClick={onAprovar} disabled={isAprovando || item.situacao === "Aprovado"}>
+                            {isAprovando ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                            Aprovar
+                        </Button>
+                        <Button variant="outline" className="w-full border-orange-200 text-orange-600 hover:bg-orange-50 font-bold h-11 gap-2" onClick={onDevolver} disabled={isDevolvendo || item.situacao === "Devolvido"}>
+                            {isDevolvendo ? <Loader2 size={16} className="animate-spin" /> : <RotateCcw size={16} />}
+                            Devolver
+                        </Button>
+                        <Button variant="outline" className="w-full border-rose-200 text-rose-500 hover:bg-rose-50 font-bold h-11 gap-2" onClick={() => toast.info("Funcionalidade em desenvolvimento.")}>
+                            <AlertTriangle size={16} />
+                            Solicitar Correção
+                        </Button>
+                        <Button variant="ghost" className="w-full text-muted-foreground font-bold h-11 gap-2" onClick={() => toast.info("Abrindo detalhes completos...")}>
+                            <ExternalLink size={16} />
+                            Ver Detalhes Completos
+                        </Button>
                     </div>
                 </div>
-
-                {/* Resumo */}
-                <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-slate-700">
-                        <Activity size={15} />
-                        <span className="text-xs font-bold uppercase tracking-wide">Resumo</span>
-                    </div>
-                    <div className="space-y-2 bg-slate-50 border border-border/30 rounded-lg px-4 py-3">
-                        {item.horas && <SummaryLine label="Horas / Diárias" value={item.horas} />}
-                        <SummaryLine label="Valor total" value={fmt(item.valor)} isBold />
-                    </div>
-                </div>
-
-                {/* Informações */}
-                <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-slate-700">
-                        <Info size={15} />
-                        <span className="text-xs font-bold uppercase tracking-wide">Informações</span>
-                    </div>
-                    <div className="space-y-2 bg-slate-50 border border-border/30 rounded-lg px-4 py-3">
-                        <SummaryLine label="Recebido em" value={item.dataRecebimento} />
-                        <SummaryLine label="Referência" value={item.referencia} />
-                    </div>
-                </div>
-
-                {/* Ações */}
-                <div className="pt-2 flex flex-col gap-2">
-                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.15em]">Ações</label>
-                    <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-11 gap-2" onClick={onAprovar} disabled={isAprovando || item.situacao === "Aprovado"}>
-                        {isAprovando ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-                        Aprovar
-                    </Button>
-                    <Button variant="outline" className="w-full border-orange-200 text-orange-600 hover:bg-orange-50 font-bold h-11 gap-2" onClick={onDevolver} disabled={isDevolvendo || item.situacao === "Devolvido"}>
-                        {isDevolvendo ? <Loader2 size={16} className="animate-spin" /> : <RotateCcw size={16} />}
-                        Devolver
-                    </Button>
-                    <Button variant="outline" className="w-full border-rose-200 text-rose-500 hover:bg-rose-50 font-bold h-11 gap-2" onClick={() => toast.info("Funcionalidade em desenvolvimento.")}>
-                        <AlertTriangle size={16} />
-                        Solicitar Correção
-                    </Button>
-                    <Button variant="ghost" className="w-full text-muted-foreground font-bold h-11 gap-2" onClick={() => toast.info("Abrindo detalhes completos...")}>
-                        <ExternalLink size={16} />
-                        Ver Detalhes Completos
-                    </Button>
-                </div>
-            </div>
-        </Card>
+            </SheetContent>
+        </Sheet>
     );
 }
 
