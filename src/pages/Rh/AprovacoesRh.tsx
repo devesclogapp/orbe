@@ -102,7 +102,8 @@ const situacaoMap = (status?: string): SituacaoItem => {
 
     const aprovado = [
         "APROVADO", "VALIDADO_RH", "VALIDADO", "FECHADO_FINANCEIRO", "PAGO", "PROCESSADO",
-        "CNAB_GERADO", "AGUARDANDO_PAGAMENTO", "CONCLUIDO", "FINALIZADO", "FECHADO"
+        "CNAB_GERADO", "AGUARDANDO_PAGAMENTO", "CONCLUIDO", "FINALIZADO", "FECHADO",
+        "APROVADO_OPERACAO", "EM_VALIDACAO"
     ].some(k => s === k.toUpperCase());
     if (aprovado) return "Aprovado";
 
@@ -243,8 +244,8 @@ export default function AprovacoesRh() {
             valor: c.valor || 0,
             competencia: (c.data_competencia || c.data || "").substring(0, 7) || competenciaMes,
             dataRecebimento: fmtDate(c.created_at || c.data),
-            situacao: situacaoMap(c.status),
-            rawStatus: c.status,
+            situacao: situacaoMap(c.pipeline_status),
+            rawStatus: c.pipeline_status,
             raw: c,
         }));
 
@@ -259,8 +260,8 @@ export default function AprovacoesRh() {
             valor: s.valor || s.total || 0,
             competencia: (s.data || "").substring(0, 7) || competenciaMes,
             dataRecebimento: fmtDate(s.created_at || s.data),
-            situacao: situacaoMap(s.status),
-            rawStatus: s.status,
+            situacao: situacaoMap(s.pipeline_status),
+            rawStatus: s.pipeline_status,
             raw: s,
         }));
 
@@ -394,7 +395,7 @@ export default function AprovacoesRh() {
             // Custos extras
             if (item.tipo === "CUSTO EXTRA") {
                 const { error } = await supabase.from("custos_extras_operacionais" as any)
-                    .update({ status: "aprovado", updated_at: new Date().toISOString() })
+                    .update({ pipeline_status: "EM_VALIDACAO", atualizado_em: new Date().toISOString() })
                     .eq("id", item.id);
                 if (error) throw error;
                 return;
@@ -450,7 +451,7 @@ export default function AprovacoesRh() {
             }
             if (item.tipo === "CUSTO EXTRA") {
                 const { error } = await supabase.from("custos_extras_operacionais" as any)
-                    .update({ status: "devolvido", updated_at: new Date().toISOString() })
+                    .update({ pipeline_status: "REPROVADO", atualizado_em: new Date().toISOString() })
                     .eq("id", item.id);
                 if (error) throw error;
                 return;
