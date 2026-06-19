@@ -46,6 +46,7 @@ import { CNAB240BBWriter } from "@/services/cnab/CNAB240BBWriter";
 import { CNABService, ContaBancariaService, CnabRemessaArquivoService } from "@/services/financial.service";
 import { RHFinanceiroService } from "@/services/rhFinanceiro.service";
 import { LoteFechamentoDiaristaService } from "@/services/domain/diaristas.service";
+import { IntermitentesLoteService } from "@/services/domain/intermitentes.service";
 import { buildFolhaVariavelPipeline, useOperationalPipeline } from "@/contexts/OperationalPipelineContext";
 
 const REQUIRE_RH_LOTE_FOR_CNAB = String(import.meta.env.VITE_REQUIRE_RH_LOTE_FOR_CNAB || "false").toLowerCase() === "true";
@@ -168,7 +169,12 @@ const CentralBancaria = () => {
     queryFn: () => (empresaId ? LoteFechamentoDiaristaService.getByEmpresaParaFinanceiro(empresaId) : Promise.resolve([])),
   });
 
-  const loadingLotesRh = loadingRhLotes || loadingDiaristas;
+  const { data: lotesIntermitentes = [], isLoading: loadingIntermitentes } = useQuery({
+    queryKey: ["lotes-intermitentes-financeiro-bancario", empresaId],
+    queryFn: () => (empresaId ? IntermitentesLoteService.getByEmpresaParaFinanceiro(empresaId) : Promise.resolve([])),
+  });
+
+  const loadingLotesRh = loadingRhLotes || loadingDiaristas || loadingIntermitentes;
 
   const lotesRh = useMemo(() => {
     const diaristasFormatted = lotesDiaristas
@@ -182,10 +188,23 @@ const CentralBancaria = () => {
       }))
       .filter((l: any) => !competencia || l.competencia === competencia);
 
-    return [...rawLotesRh, ...diaristasFormatted].sort((a, b) =>
+    const intermitentesFormatted = lotesIntermitentes
+      .filter((l: any) => l.status === "FECHADO_FINANCEIRO" || l.status === "AGUARDANDO_PAGAMENTO")
+      .map((l: any) => ({
+        ...l,
+        tipo: "INTERMITENTES",
+        origem: "OPERACIONAL",
+        status: "AGUARDANDO_PAGAMENTO",
+        competencia: l.competencia,
+        total_colaboradores: l.quantidade_registros,
+        raw: l,
+      }))
+      .filter((l: any) => !competencia || l.competencia === competencia);
+
+    return [...rawLotesRh, ...diaristasFormatted, ...intermitentesFormatted].sort((a, b) =>
       new Date(b.created_at).getTime() - new Date(a.getTime ? a.getTime() : a.created_at ? new Date(a.created_at).getTime() : 0)
     );
-  }, [rawLotesRh, lotesDiaristas, competencia]);
+  }, [rawLotesRh, lotesDiaristas, lotesIntermitentes, competencia]);
 
   const lotesRhProntosCnab = useMemo(
     () => (lotesRh || []).filter((lote: any) => lote.status === "AGUARDANDO_PAGAMENTO"),
@@ -298,6 +317,24 @@ const CentralBancaria = () => {
     setIsValidating(true);
     try {
       await new Promise((resolve) => setTimeout(resolve, 600));
+
+      const loteSelecionado = lotesRhProntosCnab.find((l: any) => l.id === loteRhSelecionadoId);
+
+      if (loteSelecionado?.tipo === "INTERMITENTES") {
+        setValidation({
+          isValid: true,
+          errors: [],
+          warnings: [],
+          pendenciesByColaborador: [],
+          summary: {
+            totalItems: loteSelecionado.quantidade_registros || 0,
+            totalValue: loteSelecionado.valor_total || 0,
+          },
+        });
+        toast.success("Lote validado para remessa.");
+        return;
+      }
+
       const result = await CNABService.validateRemessa(competencia, empresaId, contaId, loteRhSelecionadoId || undefined);
       setValidation(result);
       if (result.isValid) {
@@ -329,16 +366,46 @@ const CentralBancaria = () => {
     if (!contaId) return toast.error("Selecione a conta bancária");
     setIsGenerating(true);
     try {
-      const result = await CNABService.generateRemessa({ competencia, empresaId, contaId, rhLoteId: loteRhSelecionadoId || undefined });
-      toast.success(`CNAB gerado: ${result.fileName} | Seq: ${result.sequencial ?? "-"}`);
+      const loteSelecionado = lotesRhProntosCnab.find((l: any) => l.id === loteRhSelecionadoId);
 
-      triggerDownload(result.content, result.fileName);
+      if (loteSelecionado?.tipo === "INTERMITENTES") {
+        const contaSelecionada = contas.find((c) => c.id === contaId);
+        const empresaRemetente = {
+          cnpj: contaSelecionada?.empresa?.cnpj || empresas.find((e) => e.id === empresaId)?.cnpj || "",
+          razao_social: empresas.find((e) => e.id === empresaId)?.nome || "",
+          banco_codigo: contaSelecionada?.banco_codigo || "",
+          agencia: contaSelecionada?.agencia || "",
+          conta: contaSelecionada?.conta || "",
+          digito_conta: contaSelecionada?.conta_digito || "",
+        };
 
-      if (result.arquivoId && result.arquivoId !== "nao-registrado") {
-        await CnabRemessaArquivoService.marcarComoBaixado(result.arquivoId);
+        const result = await IntermitentesLoteService.gerarCNABParaLote({
+          loteId: loteSelecionado.id,
+          empresaId,
+          geradoPor: (await supabase.auth.getUser()).data.user?.id || "",
+          geradoPorNome: "Sistema",
+          empresaRemetente,
+        });
+
+        toast.success(`CNAB gerado: ${result.nomeArquivo}`);
+        queryClient.invalidateQueries({ queryKey: ["cnab-remessas-arquivos"] });
+      } else {
+        const result = await CNABService.generateRemessa({
+          competencia,
+          empresaId,
+          contaId,
+          rhLoteId: loteRhSelecionadoId || undefined
+        });
+
+        toast.success(`CNAB gerado: ${result.fileName} | Seq: ${result.sequencial ?? "-"}`);
+        triggerDownload(result.content, result.fileName);
+
+        if (result.arquivoId && result.arquivoId !== "nao-registrado") {
+          await CnabRemessaArquivoService.marcarComoBaixado(result.arquivoId);
+        }
+
+        queryClient.invalidateQueries({ queryKey: ["cnab-remessas-arquivos"] });
       }
-
-      queryClient.invalidateQueries({ queryKey: ["cnab-remessas-arquivos"] });
 
       const empresaNome = empresas.find((e) => e.id === empresaId)?.nome || "Empresa";
       openPipeline(

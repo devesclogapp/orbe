@@ -30,6 +30,7 @@ export interface CnabRemessaArquivo {
   tenant_id: string;
   lote_id: string | null;
   diaristas_lote_id?: string | null;
+  intermitentes_lote_id?: string | null;
   nome_arquivo: string;
   sequencial_arquivo: number;
   hash_arquivo: string;
@@ -54,6 +55,7 @@ export interface CnabRemessaArquivo {
 export interface RegistrarRemessaParams {
   loteId: string | null;
   diaristasLoteId?: string | null;
+  intermitentesLoteId?: string | null;
   nomeArquivo: string;
   conteudoArquivo: string; // texto do arquivo CNAB
   totalRegistros: number;
@@ -205,6 +207,7 @@ export const CnabRemessaArquivoService = {
     const {
       loteId,
       diaristasLoteId,
+      intermitentesLoteId,
       nomeArquivo,
       conteudoArquivo,
       totalRegistros,
@@ -265,6 +268,7 @@ export const CnabRemessaArquivoService = {
       .insert({
         lote_id: loteId,
         diaristas_lote_id: diaristasLoteId ?? null,
+        intermitentes_lote_id: intermitentesLoteId ?? null,
         nome_arquivo: nomeArquivo,
         sequencial_arquivo: sequencial,
         hash_arquivo: hash,
