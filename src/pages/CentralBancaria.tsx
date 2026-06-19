@@ -44,6 +44,7 @@ import { supabase } from "@/lib/supabase";
 import { EmpresaService } from "@/services/domain/cadastros.service";
 import { CNAB240BBWriter } from "@/services/cnab/CNAB240BBWriter";
 import { CNABService, ContaBancariaService, CnabRemessaArquivoService } from "@/services/financial.service";
+import { CnabRetornoService } from "@/services/cnab/cnabRetorno.service";
 import { RHFinanceiroService } from "@/services/rhFinanceiro.service";
 import { LoteFechamentoDiaristaService } from "@/services/domain/diaristas.service";
 import { IntermitentesLoteService } from "@/services/domain/intermitentes.service";
@@ -105,6 +106,29 @@ const CentralBancaria = () => {
 
   const [activeTab, setActiveTab] = useState("remessa");
   const [diaristasMetrics, setDiaristasMetrics] = useState({ totalRemessas: 0, totalTitulos: 0, totalValor: 0, remessasComErro: 0 });
+
+  const [isUploadingRetorno, setIsUploadingRetorno] = useState(false);
+  const [retornoResultado, setRetornoResultado] = useState<any>(null);
+
+  const handleUploadRetorno = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingRetorno(true);
+    setRetornoResultado(null);
+    try {
+      const content = await file.text();
+      const resultado = await CnabRetornoService.processarArquivo(file.name, content, banco);
+      setRetornoResultado(resultado);
+      toast.success(`Retorno processado! ${resultado.resumo.totalProcessado} lido(s).`);
+    } catch (err: any) {
+      console.error("[Retorno] Erro ao importar:", err);
+      toast.error(`Erro ao processar arquivo: ${err.message}`);
+    } finally {
+      setIsUploadingRetorno(false);
+      e.target.value = '';
+    }
+  };
 
   const { data: competencias = [], isLoading: loadingCompetencias } = useQuery<any[]>({
     queryKey: ["financeiro-competencias"],
@@ -980,7 +1004,7 @@ const CentralBancaria = () => {
 
                       <div className="pt-4">
                         <div className="text-xs text-muted-foreground bg-muted/30 p-3 rounded border border-dashed border-border/50">
-                          O parser de retorno ficou explicitamente reservado para a Fase 8.2. Nesta etapa, mantemos apenas o contrato técnico e a preparação de tipagens.
+                          Selecione o modelo adequado do seu banco. A conciliação identificará automaticamente títulos pendentes em RH, Diaristas e Intermitentes e fará a baixa financeira.
                         </div>
                       </div>
                     </div>
@@ -991,12 +1015,66 @@ const CentralBancaria = () => {
                       <Upload className="w-8 h-8" />
                     </div>
                     <div>
-                      <h3 className="text-lg font-semibold">Leitura de retorno em preparação</h3>
-                      <p className="text-sm text-muted-foreground mb-6">
-                        A arquitetura do `CNAB240BBReader` foi criada, mas o upload, parser, baixa financeira e automações seguem bloqueados até a Fase 8.2.
+                      <h3 className="text-lg font-semibold text-foreground">Importar Retorno Bancário</h3>
+                      <p className="text-sm text-muted-foreground mb-6 max-w-md mx-auto">
+                        Selecione o arquivo de retorno (.ret) fornecido pelo banco para processar a conciliação automática e efetuar a baixa financeira.
                       </p>
                     </div>
-                    <Button disabled>Disponível na Fase 8.2</Button>
+
+                    {retornoResultado ? (
+                      <div className="w-full text-left bg-muted/20 p-4 rounded-lg border border-border space-y-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <ShieldCheck className="w-5 h-5 text-success" />
+                          <span className="font-semibold text-sm">Arquivo Processado: {retornoResultado.arquivo.nome_arquivo}</span>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          <div className="bg-background p-3 rounded border border-border">
+                            <p className="text-xs text-muted-foreground text-center">Processados</p>
+                            <p className="text-xl font-bold text-center text-foreground">{retornoResultado.resumo.totalProcessado}</p>
+                          </div>
+                          <div className="bg-success-soft p-3 rounded border border-success/20">
+                            <p className="text-xs text-success-strong text-center">Pagos</p>
+                            <p className="text-xl font-bold text-center text-success-strong">{retornoResultado.resumo.pagos}</p>
+                          </div>
+                          <div className="bg-destructive-soft p-3 rounded border border-destructive/20">
+                            <p className="text-xs text-destructive-strong text-center">Rejeitados</p>
+                            <p className="text-xl font-bold text-center text-destructive-strong">{retornoResultado.resumo.rejeitados}</p>
+                          </div>
+                          <div className="bg-warning-soft p-3 rounded border border-warning/20">
+                            <p className="text-xs text-warning-strong text-center">Divergentes</p>
+                            <p className="text-xl font-bold text-center text-warning-strong">{retornoResultado.resumo.divergentes}</p>
+                          </div>
+                        </div>
+                        <div className="flex justify-center mt-4">
+                          <Button variant="outline" onClick={() => setRetornoResultado(null)}>
+                            Importar outro arquivo
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="relative">
+                        <input
+                          type="file"
+                          accept=".ret,.txt"
+                          onChange={handleUploadRetorno}
+                          disabled={isUploadingRetorno}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+                        />
+                        <Button disabled={isUploadingRetorno} className="min-w-[200px]">
+                          {isUploadingRetorno ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Processando...
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="w-4 h-4 mr-2" />
+                              Selecionar arquivo
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    )}
                   </Card>
                 </div>
               </div>

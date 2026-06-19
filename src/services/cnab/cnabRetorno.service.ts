@@ -6,6 +6,7 @@ import {
 } from './CNAB240BBReader';
 import { CnabRemessaArquivoService, type CnabRemessaHistoricoItem } from './cnabRemessaArquivo.service';
 import { mapearOcorrenciaBB } from './retorno/ocorrenciasBB';
+import { CnabConciliacaoService } from './cnabConciliacao.service';
 
 export type CnabRetornoArquivoStatus = 'processado' | 'processado_com_pendencias' | 'erro';
 export type CnabRetornoItemStatus = 'pago' | 'rejeitado' | 'divergente' | 'pendente' | 'desconhecido';
@@ -42,6 +43,7 @@ export interface CnabRetornoItem {
   remessa_arquivo_id?: string | null;
   lote_id?: string | null;
   diaristas_lote_id?: string | null;
+  intermitentes_lote_id?: string | null;
   fatura_id?: string | null;
   colaborador_id?: string | null;
   nome_favorecido?: string | null;
@@ -228,6 +230,7 @@ export const CnabRetornoService = {
         remessa_arquivo_id: remessaRelacionada?.id ?? null,
         lote_id: remessaRelacionada?.lote_id ?? null,
         diaristas_lote_id: remessaRelacionada?.diaristas_lote_id ?? null,
+        intermitentes_lote_id: remessaRelacionada?.intermitentes_lote_id ?? null,
         fatura_id: match.fatura?.id ?? null,
         colaborador_id: match.fatura?.colaborador_id ?? null,
         nome_favorecido: detalhe.nomeFavorecido || match.fatura?.colaboradores?.nome || null,
@@ -365,6 +368,12 @@ export const CnabRetornoService = {
       // audit never blocks
     }
 
+    try {
+      await CnabConciliacaoService.processarBaixaAutomatica(arquivoData.id);
+    } catch (_error) {
+      console.warn('[Baixa Automática] Falha ao processar conciliação na importação', _error);
+    }
+
     return {
       arquivo: arquivoData as CnabRetornoArquivo,
       itens: (itensData ?? []) as CnabRetornoItem[],
@@ -439,7 +448,7 @@ export const CnabRetornoService = {
         .eq('lote_remessa_id', remessaRelacionada.lote_id);
 
       if (error) throw new Error(`Erro ao carregar faturas do lote relacionado: ${error.message}`);
-      return (data ?? []) as FaturaComColaborador[];
+      return (data ?? []) as unknown as FaturaComColaborador[];
     }
 
     if (remessaRelacionada?.diaristas_lote_id) {
@@ -481,7 +490,52 @@ export const CnabRetornoService = {
         return [];
       }
 
-      return (data ?? []) as FaturaComColaborador[];
+      return (data ?? []) as unknown as FaturaComColaborador[];
+    }
+
+    if (remessaRelacionada?.intermitentes_lote_id) {
+      const { data: loteData, error: loteError } = await supabase
+        .from('intermitentes_lotes_fechamento')
+        .select('empresa_id, competencia')
+        .eq('id', remessaRelacionada.intermitentes_lote_id)
+        .maybeSingle();
+
+      if (loteError || !loteData?.empresa_id || !loteData?.competencia) {
+        return [];
+      }
+
+      const { data: lancamentosData, error: lancamentosError } = await supabase
+        .from('lancamentos_intermitentes')
+        .select('colaborador_id, nome_colaborador, cpf_colaborador, total')
+        .eq('lote_fechamento_id', remessaRelacionada.intermitentes_lote_id);
+
+      if (lancamentosError || !lancamentosData) {
+        return [];
+      }
+
+      const mapValores = new Map<string, any>();
+      
+      for (const l of lancamentosData) {
+        const cpf = String(l.cpf_colaborador || '').replace(/\D/g, '');
+        const key = cpf || String(l.nome_colaborador);
+        if (!mapValores.has(key)) {
+          mapValores.set(key, {
+            id: `INT_${l.colaborador_id || key}`,
+            colaborador_id: l.colaborador_id,
+            valor: 0,
+            nosso_numero: null,
+            competencia: loteData.competencia,
+            colaboradores: {
+              id: l.colaborador_id || key,
+              nome: l.nome_colaborador,
+              cpf: cpf,
+            }
+          });
+        }
+        mapValores.get(key).valor += Number(l.total || 0);
+      }
+
+      return Array.from(mapValores.values()) as FaturaComColaborador[];
     }
 
     const docs = Array.from(
