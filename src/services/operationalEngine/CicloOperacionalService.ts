@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { Competencia } from "../../types/motor.types";
+import { MotorFinanceiro } from "./MotorFinanceiro";
 
 export type StatusCiclo = 'aberto' | 'processando' | 'validacao' | 'fechado' | 'enviado_financeiro';
 export type StatusWorkflowRH = 'pendente' | 'validado_rh' | 'rejeitado_rh';
@@ -325,7 +326,7 @@ export class CicloOperacionalService {
   static async validarFinanceiro(cicloId: string, usuarioId: string, observacao: string = 'Validação financeira concluída'): Promise<CicloOperacional> {
     const { data: ciclo, error: errFetch } = await supabase
       .from('ciclos_operacionais')
-      .select('status, status_rh, total_inconsistencias, status_remessa, tenant_id')
+      .select('status, status_rh, total_inconsistencias, status_remessa, tenant_id, empresa_id, competencia')
       .eq('id', cicloId)
       .single();
     if (errFetch || !ciclo) throw new Error("Ciclo não encontrado");
@@ -355,6 +356,12 @@ export class CicloOperacionalService {
 
     if (error) throw error;
     await this.registrarAuditoria(ciclo.tenant_id, cicloId, usuarioId, 'FINANCEIRO', 'APROVAR', observacao);
+    
+    // Integração com o MotorFinanceiro:
+    if (ciclo.empresa_id && ciclo.competencia && ciclo.tenant_id) {
+       await MotorFinanceiro.processarFechamento(ciclo.competencia, ciclo.empresa_id, ciclo.tenant_id);
+    }
+    
     return data as CicloOperacional;
   }
 

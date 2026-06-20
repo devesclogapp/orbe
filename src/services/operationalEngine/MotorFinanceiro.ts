@@ -10,7 +10,20 @@ export const MotorFinanceiro = {
     try {
       EngineLogger.info(`[MotorFinanceiro] Iniciando Fechamento: ${competencia} | Empresa: ${empresaId}`, { component: 'MotorFinanceiro' });
 
-      // 1. Limpar consolidados existentes para ser idempotente
+      // 1. Validar Idempotência: bloquear se já houver consolidação financeira não-pendente
+      const { data: consolidadosExistentes } = await supabase
+        .from("financeiro_consolidados_cliente")
+        .select("id, status")
+        .eq("competencia", competencia)
+        .eq("empresa_id", empresaId);
+        
+      if (consolidadosExistentes?.some(c => c.status !== "pendente")) {
+         const msg = `Faturamento já aprovado ou finalizado para a competência ${competencia}. O recálculo automático não pode sobrescrever faturamentos finalizados.`;
+         EngineLogger.warn(`[MotorFinanceiro] ${msg}`, { component: "MotorFinanceiro" });
+         throw new Error(msg);
+      }
+
+      // Limpar consolidados *pendentes* existentes para reconstruir (Substituir com Segurança)
       await supabase.from("financeiro_consolidados_cliente").delete().eq("competencia", competencia).eq("empresa_id", empresaId);
       await supabase.from("financeiro_consolidados_colaborador").delete().eq("competencia", competencia).eq("empresa_id", empresaId);
       await supabase.from("faturas").delete().eq("competencia", competencia).eq("empresa_id", empresaId);
@@ -63,15 +76,16 @@ export const MotorFinanceiro = {
 
       for (const op of operacoes) {
         // FATURAMENTO (Cliente/Transportadora)
-        // Usa transportadora_id provisoriamente como cliente neste contexto logístico
-        if (op.transportadora_id) {
-          if (!consolidadosCliente[op.transportadora_id]) {
-            consolidadosCliente[op.transportadora_id] = { total: 0, ops: 0, ids: [] };
+        // Usa transportadora_id provisoriamente como cliente neste contexto logístico, ou a própria empresa caso não haja transportadora
+        const clienteFatId = op.transportadora_id || op.empresa_id;
+        if (clienteFatId) {
+          if (!consolidadosCliente[clienteFatId]) {
+            consolidadosCliente[clienteFatId] = { total: 0, ops: 0, ids: [] };
           }
           const opTotal = Number(op.valor_faturamento_nf || op.valor_descarga || op.valor_total || 0);
-          consolidadosCliente[op.transportadora_id].total += opTotal;
-          consolidadosCliente[op.transportadora_id].ops += 1;
-          consolidadosCliente[op.transportadora_id].ids.push(op.id);
+          consolidadosCliente[clienteFatId].total += opTotal;
+          consolidadosCliente[clienteFatId].ops += 1;
+          consolidadosCliente[clienteFatId].ids.push(op.id);
         }
 
         // PAGAMENTO (Colaborador)
