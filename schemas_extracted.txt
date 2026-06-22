@@ -1,0 +1,74 @@
+==== empresas ====
+
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  nome TEXT NOT NULL,
+  cnpj TEXT UNIQUE NOT NULL,
+  unidade TEXT,
+  cidade TEXT,
+  estado TEXT,
+  status TEXT DEFAULT 'ativa' CHECK (status IN ('ativa', 'inativa')),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+
+
+==== operacoes_producao ====
+
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  empresa_id UUID NOT NULL REFERENCES public.empresas(id) ON DELETE RESTRICT,
+  unidade_id UUID REFERENCES public.unidades(id) ON DELETE SET NULL,
+  data_operacao DATE NOT NULL DEFAULT current_date,
+  tipo_servico_id UUID NOT NULL REFERENCES public.tipos_servico_operacional(id) ON DELETE RESTRICT,
+  colaborador_id UUID NOT NULL REFERENCES public.colaboradores(id) ON DELETE RESTRICT,
+  entrada_ponto TIME,
+  saida_ponto TIME,
+  transportadora_id UUID NOT NULL REFERENCES public.transportadoras_clientes(id) ON DELETE RESTRICT,
+  fornecedor_id UUID NOT NULL REFERENCES public.fornecedores(id) ON DELETE RESTRICT,
+  produto_carga_id UUID REFERENCES public.produtos_carga(id) ON DELETE SET NULL,
+  quantidade NUMERIC(15, 2) NOT NULL CHECK (quantidade > 0),
+  valor_unitario_snapshot NUMERIC(15, 4) NOT NULL CHECK (valor_unitario_snapshot >= 0),
+  tipo_calculo_snapshot TEXT NOT NULL CHECK (tipo_calculo_snapshot IN ('volume', 'fixo', 'colaborador')),
+  valor_total NUMERIC(15, 2) NOT NULL DEFAULT 0 CHECK (valor_total >= 0),
+  forma_pagamento_id UUID REFERENCES public.formas_pagamento_operacional(id) ON DELETE SET NULL,
+  placa TEXT,
+  status TEXT NOT NULL DEFAULT 'pendente'
+    CHECK (status IN ('processado', 'pendente', 'com_alerta', 'aguardando_validacao', 'bloqueado', 'fechado')),
+  avaliacao_json JSONB,
+  criado_por UUID DEFAULT auth.uid(),
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  justificativa_retroativa TEXT,
+  origem_dado TEXT NOT NULL DEFAULT 'manual'
+    CHECK (origem_dado IN ('manual', 'api_ponto', 'importacao', 'ajuste')),
+  CONSTRAINT operacoes_producao_ponto_check
+    CHECK (entrada_ponto IS NULL OR saida_ponto IS NULL OR saida_ponto >= entrada_ponto)
+
+
+==== transportadoras_clientes ====
+
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  empresa_id UUID REFERENCES public.empresas(id) ON DELETE CASCADE,
+  nome TEXT NOT NULL,
+  documento TEXT,
+  tipo_cadastro TEXT NOT NULL DEFAULT 'transportadora_cliente'
+    CHECK (tipo_cadastro IN ('transportadora', 'cliente', 'transportadora_cliente')),
+  ativo BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT transportadoras_clientes_empresa_nome_unique UNIQUE (empresa_id, nome)
+
+
+==== financeiro_consolidados_cliente ====
+
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+    empresa_id UUID NOT NULL REFERENCES public.empresas(id) ON DELETE CASCADE,
+    cliente_id UUID REFERENCES public.clientes(id) ON DELETE SET NULL,
+    competencia VARCHAR(7) NOT NULL,
+    valor_base NUMERIC(15,2) DEFAULT 0,
+    valor_regras NUMERIC(15,2) DEFAULT 0,
+    valor_total NUMERIC(15,2) DEFAULT 0,
+    quantidade_operacoes INTEGER DEFAULT 0,
+    status VARCHAR(50) DEFAULT 'pendente',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+
+

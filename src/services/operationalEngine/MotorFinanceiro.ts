@@ -2,6 +2,31 @@ import { supabase } from "@/lib/supabase";
 import { EngineLogger } from "./Logger";
 
 export const MotorFinanceiro = {
+  ensureClienteEspelho: async (tenant_id: string, source_id: string, is_empresa: boolean): Promise<string> => {
+    const { data: existing } = await supabase.from('clientes').select('id').eq('id', source_id).maybeSingle();
+    if (existing) return existing.id;
+
+    let nome = 'Desconhecido';
+    if (is_empresa) {
+      const { data: emp } = await supabase.from('empresas').select('nome').eq('id', source_id).maybeSingle();
+      if (emp) nome = emp.nome;
+    } else {
+      const { data: transp } = await supabase.from('transportadoras').select('nome').eq('id', source_id).maybeSingle();
+      if (transp) nome = transp.nome;
+      else {
+        const { data: tc } = await supabase.from('transportadoras_clientes').select('nome').eq('id', source_id).maybeSingle();
+        if (tc) nome = tc.nome;
+      }
+    }
+
+    const { data: newClient, error } = await supabase.from('clientes').insert({ id: source_id, tenant_id, nome }).select('id').single();
+    if (error) {
+      const { data: retry } = await supabase.from('clientes').select('id').eq('id', source_id).maybeSingle();
+      if (retry) return retry.id;
+      throw error;
+    }
+    return newClient.id;
+  },
   /**
    * Processa o fechamento financeiro consolidando as operações do ciclo e vinculando valores de faturamento do cliente
    * Cria 'financeiro_consolidados_cliente' e 'faturas' para remessas baseando nas operações_producao
@@ -55,7 +80,7 @@ export const MotorFinanceiro = {
       // 3. Consolidar por Cliente (Transportadora/Cliente da Operação)
       // Como não existe 'cliente_id' explícito na tabela, usaremos "transportadora_id" se ele atuar como cliente. Se houvesse cliente, usaríamos cliente_id.
       // E Consolidado de Colaborador e Diarista
-      const consolidadosCliente: Record<string, { total: number, ops: number, ids: string[] }> = {};
+      const consolidadosCliente: Record<string, { total: number, ops: number, ids: string[], isEmpresa: boolean }> = {};
       const consolidadosColab: Record<string, { total: number, ids: string[] }> = {};
       const colaboradorIds = Array.from(new Set((operacoes || []).map((op: any) => op.colaborador_id).filter(Boolean)));
       const colaboradoresPorId = new Map<string, any>();
@@ -80,7 +105,7 @@ export const MotorFinanceiro = {
         const clienteFatId = op.transportadora_id || op.empresa_id;
         if (clienteFatId) {
           if (!consolidadosCliente[clienteFatId]) {
-            consolidadosCliente[clienteFatId] = { total: 0, ops: 0, ids: [] };
+            consolidadosCliente[clienteFatId] = { total: 0, ops: 0, ids: [], isEmpresa: !op.transportadora_id };
           }
           const opTotal = Number(op.valor_faturamento_nf || op.valor_descarga || op.valor_total || 0);
           consolidadosCliente[clienteFatId].total += opTotal;
@@ -125,11 +150,18 @@ export const MotorFinanceiro = {
       for (const [clientId, data] of Object.entries(consolidadosCliente)) {
         if (data.total <= 0) continue;
 
-        // Insere Consolidado (Tabela antiga/nova dependendo do schema, se cliente_id não houver, ajustaremos para aceitar id)
+        let clienteFinalId = clientId;
+        try {
+          clienteFinalId = await MotorFinanceiro.ensureClienteEspelho(tenantId, clientId, data.isEmpresa);
+        } catch (e: any) {
+          EngineLogger.warn('[MotorFinanceiro] Erro garantindo espelho para ' + clientId + ': ' + e.message, { component: 'MotorFinanceiro' });
+        }
+
+        // Insere Consolidado
         const { error: insErr } = await supabase.from("financeiro_consolidados_cliente").insert({
           tenant_id: tenantId,
           empresa_id: empresaId,
-          cliente_id: clientId, // Usamos o transportadora_id aqui como mapeamento
+          cliente_id: clienteFinalId, // Usamos clienteFinalId amarrado da transportadora espelhada
           competencia: competencia,
           valor_base: data.total,
           valor_total: data.total, // valor_regras adicionaria depois
