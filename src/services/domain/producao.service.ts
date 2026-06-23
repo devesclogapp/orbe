@@ -203,58 +203,77 @@ class PontoServiceClass extends BaseService<'registros_ponto'> {
     const { data: deletedPontos, error: deletePontosError } = await pontosDeleteQuery.select('id');
     if (deletePontosError) throw deletePontosError;
 
+    const { data: todosEventosRestantes, error: eventosRestantesError } = await supabase
+      .from('banco_horas_eventos')
+      .select('quantidade_minutos, data, empresa_id, colaborador_id')
+      .eq('tenant_id', tenantId)
+      .in('colaborador_id', colaboradorIds)
+      .order('data', { ascending: true });
+
+    if (eventosRestantesError) throw eventosRestantesError;
+
+    // Agrupar eventos por colaborador
+    const eventosPorColaborador = new Map<string, any[]>();
+    for (const evento of (todosEventosRestantes || [])) {
+      if (!eventosPorColaborador.has(evento.colaborador_id)) {
+        eventosPorColaborador.set(evento.colaborador_id, []);
+      }
+      eventosPorColaborador.get(evento.colaborador_id)!.push(evento);
+    }
+
+    const saldosParaUpsert = [];
+    const colaboradoresParaDeletarSaldo = [];
+
     for (const colaboradorId of colaboradorIds) {
-      const { data: eventosRestantes, error: eventosRestantesError } = await supabase
-        .from('banco_horas_eventos')
-        .select('quantidade_minutos, data, empresa_id')
-        .eq('tenant_id', tenantId)
-        .eq('colaborador_id', colaboradorId)
-        .order('data', { ascending: true });
+      const eventosRestantes = eventosPorColaborador.get(colaboradorId) || [];
 
-      if (eventosRestantesError) throw eventosRestantesError;
-
-      if (!eventosRestantes || eventosRestantes.length === 0) {
-        const { error: saldoDeleteError } = await supabase
-          .from('banco_horas_saldos')
-          .delete()
-          .eq('tenant_id', tenantId)
-          .eq('colaborador_id', colaboradorId);
-        if (saldoDeleteError) throw saldoDeleteError;
+      if (eventosRestantes.length === 0) {
+        colaboradoresParaDeletarSaldo.push(colaboradorId);
         continue;
       }
 
       const saldoAtualMinutos = eventosRestantes.reduce(
-        (acc, evento) => acc + Number(evento.quantidade_minutos ?? 0),
+        (acc: number, evento: any) => acc + Number(evento.quantidade_minutos ?? 0),
         0,
       );
       const horasPositivasMinutos = eventosRestantes
-        .filter((evento) => Number(evento.quantidade_minutos ?? 0) > 0)
-        .reduce((acc, evento) => acc + Number(evento.quantidade_minutos ?? 0), 0);
+        .filter((evento: any) => Number(evento.quantidade_minutos ?? 0) > 0)
+        .reduce((acc: number, evento: any) => acc + Number(evento.quantidade_minutos ?? 0), 0);
       const horasNegativasMinutos = Math.abs(
         eventosRestantes
-          .filter((evento) => Number(evento.quantidade_minutos ?? 0) < 0)
-          .reduce((acc, evento) => acc + Number(evento.quantidade_minutos ?? 0), 0),
+          .filter((evento: any) => Number(evento.quantidade_minutos ?? 0) < 0)
+          .reduce((acc: number, evento: any) => acc + Number(evento.quantidade_minutos ?? 0), 0),
       );
       const ultimoEvento = eventosRestantes[eventosRestantes.length - 1];
 
+      saldosParaUpsert.push({
+        tenant_id: tenantId,
+        empresa_id: ultimoEvento?.empresa_id ?? null,
+        colaborador_id: colaboradorId,
+        saldo_atual_minutos: saldoAtualMinutos,
+        horas_positivas_minutos: horasPositivasMinutos,
+        horas_negativas_minutos: horasNegativasMinutos,
+        ultima_movimentacao: ultimoEvento?.data
+          ? new Date(`${ultimoEvento.data}T00:00:00`).toISOString()
+          : null,
+        ultima_atualizacao: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+    }
+
+    if (colaboradoresParaDeletarSaldo.length > 0) {
+      const { error: saldoDeleteError } = await supabase
+        .from('banco_horas_saldos')
+        .delete()
+        .eq('tenant_id', tenantId)
+        .in('colaborador_id', colaboradoresParaDeletarSaldo);
+      if (saldoDeleteError) throw saldoDeleteError;
+    }
+
+    if (saldosParaUpsert.length > 0) {
       const { error: saldoUpsertError } = await supabase
         .from('banco_horas_saldos')
-        .upsert(
-          {
-            tenant_id: tenantId,
-            empresa_id: ultimoEvento?.empresa_id ?? null,
-            colaborador_id: colaboradorId,
-            saldo_atual_minutos: saldoAtualMinutos,
-            horas_positivas_minutos: horasPositivasMinutos,
-            horas_negativas_minutos: horasNegativasMinutos,
-            ultima_movimentacao: ultimoEvento?.data
-              ? new Date(`${ultimoEvento.data}T00:00:00`).toISOString()
-              : null,
-            ultima_atualizacao: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'tenant_id,colaborador_id' },
-        );
+        .upsert(saldosParaUpsert, { onConflict: 'tenant_id,colaborador_id' });
       if (saldoUpsertError) throw saldoUpsertError;
     }
 
@@ -945,7 +964,7 @@ class OperacaoProducaoServiceClass {
     return data;
   }
 
-  async getByDate(date: string, empresaId?: string, unidadeId?: string | null) {
+  async getByDate(date: string, empresaId?: string, unidadeId?: string | null, limit: number = 15) {
     let query = operationalClient
       .from('operacoes_producao')
       .select(`
@@ -963,7 +982,8 @@ class OperacaoProducaoServiceClass {
       `)
       .eq('data_operacao', date)
       .is('deleted_at', null)
-      .order('criado_em', { ascending: false });
+      .order('criado_em', { ascending: false })
+      .limit(limit);
 
     if (empresaId) query = query.eq('empresa_id', empresaId);
     if (unidadeId) query = query.eq('unidade_id', unidadeId);

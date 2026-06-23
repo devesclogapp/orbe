@@ -56,6 +56,7 @@ import {
     LoteFechamentoDiaristaService
 } from "@/services/domain/diaristas.service";
 import { IntermitentesLoteService } from "@/services/domain/intermitentes.service";
+import { AprovacoesService } from "@/services/domain/aprovacoes.service";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -76,10 +77,10 @@ interface ApprovalItem {
     valor: number;
     horas?: string;
     competencia: string;
-    dataRecebimento: string;
+    data_recebimento: string;
     situacao: SituacaoItem;
-    rawStatus?: string;
-    raw?: any; // dado original
+    raw_status?: string;
+    raw_lote_id?: string;
 }
 
 // ────────────────────────────────────────────────────
@@ -157,227 +158,88 @@ export default function AprovacoesRh() {
     const { data: empresas = [] } = useQuery({ queryKey: ["empresas"], queryFn: () => EmpresaService.getAll() });
 
     const empresaFiltro = filterEmpresaId === "all" ? undefined : filterEmpresaId;
+    const mappedSituacao: SituacaoItem = activeTab === "fila" ? "Em análise" : (activeTab === "aprovados" ? "Aprovado" : "Devolvido");
 
-    // Pontos
-    const { data: rawPontos = [], isLoading: loadPontos } = useQuery({
-        queryKey: ["aprovacoes-pontos", competenciaMes, filterEmpresaId],
-        queryFn: () => PontoService.getByMonth(competenciaMes, empresaFiltro),
-    });
-
-    // Operações
-    const { data: rawOperacoes = [], isLoading: loadOp } = useQuery({
-        queryKey: ["aprovacoes-operacoes", filterEmpresaId],
-        queryFn: () => OperacaoService.getAllPainel(empresaFiltro),
-    });
-
-    // Custos extras
-    const { data: rawCustos = [], isLoading: loadCusto } = useQuery({
-        queryKey: ["aprovacoes-custos", filterEmpresaId],
-        queryFn: () => CustoExtraOperacionalService.getAll(empresaFiltro),
-    });
-
-    // Serviços extras
-    const { data: rawServicos = [], isLoading: loadServico } = useQuery({
-        queryKey: ["aprovacoes-servicos", filterEmpresaId],
-        queryFn: () => ServicosExtrasOperacionaisService.getWithEmpresas(empresaFiltro),
-    });
-
-    // Diaristas por período
-    const { data: rawDiaristas = [], isLoading: loadDiarista } = useQuery({
-        queryKey: ["aprovacoes-diaristas", inicio, fim, filterEmpresaId],
-        queryFn: () => LancamentoDiaristaService.getByPeriodo(empresaFiltro ?? null, inicio, fim),
-    });
-
-    // Intermitentes
-    const { data: rawIntermitentes = [], isLoading: loadIntermitentes } = useQuery({
-        queryKey: ["aprovacoes-intermitentes", filterEmpresaId],
-        queryFn: () => IntermitentesLoteService.listarLotes(filterEmpresaId !== "all" ? { status: "AGUARDANDO_VALIDACAO_RH" } : undefined), // Can restrict to pending on UI or show all on Historic
-    });
-
-    const isLoading = loadPontos || loadOp || loadCusto || loadServico || loadDiarista || loadIntermitentes;
-
-    // ════ NORMALIZAÇÃO ═══════════════════════════════
-    const allItems = useMemo<ApprovalItem[]>(() => {
-        const result: ApprovalItem[] = [];
-
-        (rawPontos as any[]).forEach(p => result.push({
-            id: p.id,
-            tipo: "PONTO",
-            referencia: `Ponto ${p.id.substring(0, 6)}`,
-            colaborador: p.colaboradores?.nome || "Colaborador",
-            descricao: "Apontamento de horas",
-            empresa: p.colaboradores?.empresas?.nome || "—",
-            operacao: p.colaboradores?.cargo || "—",
-            valor: 0,
-            horas: (p.total_horas_calculadas || p.horas_trabalhadas) ? `${p.total_horas_calculadas || p.horas_trabalhadas}h` : "—",
-            competencia: p.competencia || competenciaMes,
-            dataRecebimento: fmtDate(p.created_at || p.data),
-            situacao: situacaoMap(p.status_processamento || p.status),
-            rawStatus: p.status_processamento || p.status,
-            raw: p,
-        }));
-
-        (rawOperacoes as any[]).forEach(op => result.push({
-            id: op.id,
-            tipo: "OPERAÇÃO",
-            referencia: `Op ${op.id.substring(0, 6)}`,
-            colaborador: op.empresa?.nome || op.colaboradores?.nome || "—",
-            descricao: op.tipo_servico_label || op.tipo_servico || "Operação",
-            empresa: op.empresa?.nome || "—",
-            operacao: op.tipo_servico_label || op.tipo_servico || "—",
-            valor: op.valor_total_label || op.valor_total || 0,
-            competencia: (op.data_referencia || op.data_operacao || "").substring(0, 7) || competenciaMes,
-            dataRecebimento: fmtDate(op.criado_em_label || op.created_at || op.data),
-            situacao: situacaoMap(op.status),
-            rawStatus: op.status,
-            raw: op,
-        }));
-
-        (rawCustos as any[]).forEach(c => result.push({
-            id: c.id,
-            tipo: "CUSTO EXTRA",
-            referencia: `CE ${c.id.substring(0, 6)}`,
-            colaborador: c.descricao || "Custo Extra",
-            descricao: c.tipo_custo || "Custo operacional",
-            empresa: c.empresas?.nome || c.empresa?.nome || "—",
-            operacao: c.categoria || "—",
-            valor: c.valor || 0,
-            competencia: (c.data_competencia || c.data || "").substring(0, 7) || competenciaMes,
-            dataRecebimento: fmtDate(c.created_at || c.data),
-            situacao: situacaoMap(c.pipeline_status),
-            rawStatus: c.pipeline_status,
-            raw: c,
-        }));
-
-        (rawServicos as any[]).forEach(s => result.push({
-            id: s.id,
-            tipo: "SERVIÇO EXTRA",
-            referencia: `SE ${s.id.substring(0, 6)}`,
-            colaborador: s.descricao || "Serviço Extra",
-            descricao: s.tipo_servico || "Serviço extraordinário",
-            empresa: s.empresas?.nome || "—",
-            operacao: s.tipo_servico || "—",
-            valor: s.valor || s.total || 0,
-            competencia: (s.data || "").substring(0, 7) || competenciaMes,
-            dataRecebimento: fmtDate(s.created_at || s.data),
-            situacao: situacaoMap(s.pipeline_status),
-            rawStatus: s.pipeline_status,
-            raw: s,
-        }));
-
-        (rawDiaristas as any[]).forEach(d => result.push({
-            id: d.id,
-            tipo: "DIARISTA",
-            referencia: d.lote_fechamento_id ? `Lote ${d.lote_fechamento_id.substring(0, 6)}` : `Diária ${d.id.substring(0, 6)}`,
-            colaborador: d.colaborador?.nome || d.nome_colaborador || "Diarista",
-            descricao: "Lançamento de diária",
-            empresa: d.empresa?.nome || "—",
-            operacao: d.colaborador?.cargo || d.funcao_colaborador || "—",
-            valor: d.valor_calculado || 0,
-            horas: d.quantidade_diaria ? `${d.quantidade_diaria} diária(s)` : undefined,
-            competencia: (d.data_lancamento || "").substring(0, 7) || competenciaMes,
-            dataRecebimento: fmtDate(d.created_at || d.data_lancamento),
-            situacao: situacaoMap(d.status),
-            rawStatus: d.status,
-            raw: d,
-        }));
-
-        (rawIntermitentes as any[]).forEach(i => result.push({
-            id: i.id,
-            tipo: "INTERMITENTE",
-            referencia: `Lote ${i.id.substring(0, 6)}`,
-            colaborador: `Lote com ${i.quantidade_registros} registros`,
-            descricao: "Fechamento Intermitentes",
-            empresa: i.empresa?.nome || "—",
-            operacao: "Folha Intermitente",
-            valor: Number(i.valor_total) || 0,
-            horas: "-",
-            competencia: i.competencia || competenciaMes,
-            dataRecebimento: fmtDate(i.created_at),
-            situacao: situacaoMap(i.status),
-            rawStatus: i.status,
-            raw: i,
-        }));
-
-        return result.sort((a, b) => b.dataRecebimento.localeCompare(a.dataRecebimento));
-    }, [rawPontos, rawOperacoes, rawCustos, rawServicos, rawDiaristas, rawIntermitentes, competenciaMes]);
-
-    // ════ FILTROS FRONTEND ═══════════════════════════
-    const filtered = useMemo(() => {
-        let items = allItems;
-
-        if (filterType !== "all") items = items.filter(i => i.tipo === filterType);
-        if (filterEmpresaId !== "all") items = items.filter(i => i.empresa === (empresas as any[]).find(e => e.id === filterEmpresaId)?.nome);
-        if (searchTerm) {
-            const q = searchTerm.toLowerCase();
-            items = items.filter(i =>
-                i.colaborador.toLowerCase().includes(q) ||
-                i.referencia.toLowerCase().includes(q) ||
-                i.empresa.toLowerCase().includes(q) ||
-                i.operacao.toLowerCase().includes(q)
-            );
+    const { data: results, isLoading: loadData } = useQuery({
+        queryKey: ["aprovacoes-rh", currentPage, itemsPerPage, filterType, filterEmpresaId, searchTerm, activeTab, inicio, fim],
+        queryFn: async () => {
+            if (activeTab === "historico") {
+                // historico fetches all without situacao filter
+                return AprovacoesService.getAprovacoesRh({
+                    page: currentPage,
+                    itemsPerPage,
+                    tipo: filterType,
+                    empresaId: filterEmpresaId,
+                    searchTerm,
+                    situacao: undefined as any,
+                    inicioCompetencia: inicio,
+                    fimCompetencia: fim
+                });
+            }
+            return AprovacoesService.getAprovacoesRh({
+                page: currentPage,
+                itemsPerPage,
+                tipo: filterType,
+                empresaId: filterEmpresaId,
+                searchTerm,
+                situacao: mappedSituacao,
+                inicioCompetencia: inicio,
+                fimCompetencia: fim
+            });
         }
-        return items;
-    }, [allItems, filterType, filterEmpresaId, searchTerm, empresas]);
+    });
 
-    const filaItems = useMemo(() => filtered.filter(i => i.situacao === "Em análise"), [filtered]);
-    const aprovadosItems = useMemo(() => filtered.filter(i => i.situacao === "Aprovado"), [filtered]);
-    const devolvidosItems = useMemo(() => filtered.filter(i => i.situacao === "Devolvido"), [filtered]);
+    const { data: kpisData, isLoading: loadKpis } = useQuery({
+        queryKey: ["aprovacoes-kpis", filterType, filterEmpresaId, inicio, fim],
+        queryFn: () => AprovacoesService.getKpis({
+            tipo: filterType,
+            empresaId: filterEmpresaId,
+            inicioCompetencia: inicio,
+            fimCompetencia: fim
+        })
+    });
 
-    const currentTabItems = useMemo(() => {
-        if (activeTab === "fila") return filaItems;
-        if (activeTab === "aprovados") return aprovadosItems;
-        if (activeTab === "devolvidos") return devolvidosItems;
-        return filtered;
-    }, [activeTab, filaItems, aprovadosItems, devolvidosItems, filtered]);
+    const isLoading = loadData || loadKpis;
 
-    // ── Paginação ────────────────────────────────────
-    const totalPages = Math.ceil(currentTabItems.length / itemsPerPage);
-    const paginatedItems = useMemo(() => {
-        const start = (currentPage - 1) * itemsPerPage;
-        return currentTabItems.slice(start, start + itemsPerPage);
-    }, [currentTabItems, currentPage, itemsPerPage]);
+    const currentTabItems = (results?.data || []) as unknown as ApprovalItem[];
+    const totalPages = Math.ceil((results?.count || 0) / itemsPerPage);
+    const paginatedItems = currentTabItems;
 
-    // ── KPIs ──────────────────────────────────────────
-    const kpis = useMemo(() => ({
-        pontos: filaItems.filter(i => i.tipo === "PONTO").length,
-        pontosValor: filaItems.filter(i => i.tipo === "PONTO").reduce((s, i) => s + i.valor, 0),
-        diaristas: filaItems.filter(i => i.tipo === "DIARISTA").length,
-        diaristasValor: filaItems.filter(i => i.tipo === "DIARISTA").reduce((s, i) => s + i.valor, 0),
-        intermitentes: filaItems.filter(i => i.tipo === "INTERMITENTE").length,
-        intermitentesValor: filaItems.filter(i => i.tipo === "INTERMITENTE").reduce((s, i) => s + i.valor, 0),
-        custos: filaItems.filter(i => i.tipo === "CUSTO EXTRA").length,
-        custosValor: filaItems.filter(i => i.tipo === "CUSTO EXTRA").reduce((s, i) => s + i.valor, 0),
-        servicos: filaItems.filter(i => i.tipo === "SERVIÇO EXTRA").length,
-        servicosValor: filaItems.filter(i => i.tipo === "SERVIÇO EXTRA").reduce((s, i) => s + i.valor, 0),
-        atrasados: filtered.filter(i => i.situacao === "Devolvido").length,
-        atrasadosValor: filtered.filter(i => i.situacao === "Devolvido").reduce((s, i) => s + i.valor, 0),
-    }), [filaItems, filtered]);
+    const kpis = {
+        pontos: kpisData?.pontos || 0,
+        pontosValor: undefined,
+        diaristas: kpisData?.diaristas || 0,
+        diaristasValor: undefined,
+        intermitentes: kpisData?.intermitentes || 0,
+        intermitentesValor: undefined,
+        custos: kpisData?.custos || 0,
+        custosValor: undefined,
+        servicos: kpisData?.servicos || 0,
+        servicosValor: undefined,
+        atrasados: kpisData?.devolvidos || 0,
+        atrasadosValor: undefined,
+    };
 
     // ────────────────────────────────────────────────────
     // Mutações de aprovação/devolução
     // ────────────────────────────────────────────────────
     const invalidate = () => {
-        queryClient.invalidateQueries({ queryKey: ["aprovacoes-pontos"] });
-        queryClient.invalidateQueries({ queryKey: ["aprovacoes-operacoes"] });
-        queryClient.invalidateQueries({ queryKey: ["aprovacoes-custos"] });
-        queryClient.invalidateQueries({ queryKey: ["aprovacoes-servicos"] });
-        queryClient.invalidateQueries({ queryKey: ["aprovacoes-diaristas"] });
-        queryClient.invalidateQueries({ queryKey: ["aprovacoes-intermitentes"] });
+        queryClient.invalidateQueries({ queryKey: ["aprovacoes-rh"] });
+        queryClient.invalidateQueries({ queryKey: ["aprovacoes-kpis"] });
     };
 
     const aprovarMutation = useMutation({
         mutationFn: async (item: ApprovalItem) => {
             // Diaristas: valida via LoteFechamento
-            if (item.tipo === "DIARISTA" && item.raw?.lote_fechamento_id) {
+            if (item.tipo === "DIARISTA" && item.raw_lote_id) {
                 const { error } = await supabase.from("diaristas_lotes_fechamento" as any)
                     .update({ status: "VALIDADO_RH", updated_at: new Date().toISOString() })
-                    .eq("id", item.raw.lote_fechamento_id);
+                    .eq("id", item.raw_lote_id);
                 if (error) throw error;
 
                 await supabase.from("lancamentos_diaristas")
                     .update({ status: "VALIDADO_RH" })
-                    .eq("lote_fechamento_id", item.raw.lote_fechamento_id);
+                    .eq("lote_fechamento_id", item.raw_lote_id);
                 return;
             }
             if (item.tipo === "INTERMITENTE") {
@@ -427,15 +289,15 @@ export default function AprovacoesRh() {
 
     const devolverMutation = useMutation({
         mutationFn: async (item: ApprovalItem) => {
-            if (item.tipo === "DIARISTA" && item.raw?.lote_fechamento_id) {
+            if (item.tipo === "DIARISTA" && item.raw_lote_id) {
                 const { error } = await supabase.from("diaristas_lotes_fechamento" as any)
                     .update({ status: "AGUARDANDO_VALIDACAO_RH", updated_at: new Date().toISOString() })
-                    .eq("id", item.raw.lote_fechamento_id);
+                    .eq("id", item.raw_lote_id);
                 if (error) throw error;
 
                 await supabase.from("lancamentos_diaristas")
                     .update({ status: "AGUARDANDO_VALIDACAO_RH" })
-                    .eq("lote_fechamento_id", item.raw.lote_fechamento_id);
+                    .eq("lote_fechamento_id", item.raw_lote_id);
                 return;
             }
             if (item.tipo === "INTERMITENTE") {
@@ -535,9 +397,9 @@ export default function AprovacoesRh() {
                 Colaborador: i.colaborador,
                 Empresa: i.empresa,
                 Operação: i.operacao,
-                "Valor (R$)": i.valor?.toFixed(2),
+                "Valor (R$)": i.valor,
                 Competência: i.competencia,
-                "Data Recebimento": i.dataRecebimento,
+                "Data Recebimento": fmtDate(i.data_recebimento),
                 Situação: i.situacao,
             }));
             const ws = utils.json_to_sheet(rows);
