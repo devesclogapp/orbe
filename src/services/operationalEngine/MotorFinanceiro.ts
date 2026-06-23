@@ -52,11 +52,9 @@ export const MotorFinanceiro = {
          throw new Error(msg);
       }
 
-      // Limpar consolidados *pendentes* existentes para reconstruir (Substituir com Segurança)
-      await supabase.from("financeiro_consolidados_cliente").delete().eq("competencia", competencia).eq("empresa_id", empresaId);
-      await supabase.from("financeiro_consolidados_colaborador").delete().eq("competencia", competencia).eq("empresa_id", empresaId);
-      await supabase.from("faturas").delete().eq("competencia", competencia).eq("empresa_id", empresaId);
-
+      // NOTA SPRINT 1: As exclusões globais não são seguras (Race Conditions).
+      // Os novos UNIQUE CONSTRAINTS na tabela em conjunto com o .upsert() 
+      // lidarão com recálculos concorrentes limpamente sem brecha de duplicação.
       // 2. Buscar Dados Operacionais do Mês/Ciclo
       const [year, month] = competencia.split("-");
       const nextMonth = Number(month) === 12 ? 1 : Number(month) + 1;
@@ -68,7 +66,7 @@ export const MotorFinanceiro = {
         .select(`
           id, valor_total, valor_faturamento_nf, quantidade, 
           tipo_calculo_snapshot, custo_com_iss, valor_descarga, 
-          colaborador_id, transportadora_id, status_pagamento
+          colaborador_id, transportadora_id, status_pagamento, empresa_id
         `)
         .eq('empresa_id', empresaId)
         .eq('tenant_id', tenantId)
@@ -175,8 +173,8 @@ export const MotorFinanceiro = {
           continue; // Interromper cliente
         }
 
-        // Insere Consolidado
-        const { error: insErr } = await supabase.from("financeiro_consolidados_cliente").insert({
+        // Insere Consolidado (Idempotente)
+        const { error: insErr } = await supabase.from("financeiro_consolidados_cliente").upsert({
           tenant_id: tenantId,
           empresa_id: empresaId,
           cliente_id: clienteFinalId, // Usamos clienteFinalId amarrado da transportadora espelhada
@@ -185,19 +183,19 @@ export const MotorFinanceiro = {
           valor_total: data.total, // valor_regras adicionaria depois
           quantidade_operacoes: data.ops,
           status: 'pendente'
-        });
+        }, { onConflict: 'tenant_id, empresa_id, cliente_id, competencia' });
 
         if (insErr) EngineLogger.warn(`[MotorFinanceiro] Erro ao consolidar cliente ${clientId}: ${insErr.message}`, { component: 'MotorFinanceiro' });
 
-        // Gera Fatura de Recebimento
-        await supabase.from("faturas").insert({
+        // Gera Fatura de Recebimento (Idempotente)
+        await supabase.from("faturas").upsert({
           tenant_id: tenantId,
           empresa_id: empresaId,
           cliente_id: clientId,
           competencia: competenciaDate,
           valor: data.total,
           status: 'pendente'
-        });
+        }, { onConflict: 'tenant_id, empresa_id, cliente_id, competencia' });
 
         // 5. Salvar na tabela de rastreio financeiro_calculos_memoria (Apenas pro primeiro op por ex, numa aplicacao inteira salvaria p/ todos)
         await supabase.from("financeiro_calculos_memoria").insert({
@@ -221,24 +219,24 @@ export const MotorFinanceiro = {
 
         const competenciaDate = competencia.length === 7 ? `${competencia}-01` : competencia;
 
-        await supabase.from("financeiro_consolidados_colaborador").insert({
+        await supabase.from("financeiro_consolidados_colaborador").upsert({
           tenant_id: tenantId,
           empresa_id: empresaId,
           colaborador_id: colabId,
           competencia: competenciaDate,
           valor_total: data.total,
           status: 'pendente'
-        });
+        }, { onConflict: 'tenant_id, empresa_id, colaborador_id, competencia' });
 
         // Para diaristas pagamentos também podem gerar faturas a pagar
-        await supabase.from("faturas").insert({
+        await supabase.from("faturas").upsert({
           tenant_id: tenantId,
           empresa_id: empresaId,
           colaborador_id: colabId,
           competencia: competenciaDate,
           valor: data.total,
           status: 'pendente' 
-        });
+        }, { onConflict: 'tenant_id, empresa_id, colaborador_id, competencia' });
       }
 
       EngineLogger.info(`[MotorFinanceiro] Fechamento concluído: ${competencia}`, { component: 'MotorFinanceiro' });
