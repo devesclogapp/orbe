@@ -154,6 +154,19 @@ export const MotorFinanceiro = {
       for (const [clientId, data] of Object.entries(consolidadosCliente)) {
         if (data.total <= 0) continue;
 
+        const competenciaDate = competencia.length === 7 ? `${competencia}-01` : competencia;
+
+        // 4.1 Garantir Competência Financeira
+        const { error: rpcError } = await supabase.rpc("ensure_competencia_financeira", {
+          p_empresa_id: empresaId,
+          p_competencia: competenciaDate
+        });
+
+        if (rpcError) {
+          EngineLogger.error(`[MotorFinanceiro] Erro ao garantir competência financeira para ${empresaId}: ${rpcError.message}`, { component: 'MotorFinanceiro' });
+          throw new Error(`Falha ao garantir competência financeira: ${rpcError.message}`);
+        }
+
         let clienteFinalId = clientId;
         try {
           clienteFinalId = await MotorFinanceiro.ensureClienteEspelho(tenantId, clientId, data.isEmpresa);
@@ -167,7 +180,7 @@ export const MotorFinanceiro = {
           tenant_id: tenantId,
           empresa_id: empresaId,
           cliente_id: clienteFinalId, // Usamos clienteFinalId amarrado da transportadora espelhada
-          competencia: competencia,
+          competencia: competenciaDate,
           valor_base: data.total,
           valor_total: data.total, // valor_regras adicionaria depois
           quantidade_operacoes: data.ops,
@@ -181,7 +194,7 @@ export const MotorFinanceiro = {
           tenant_id: tenantId,
           empresa_id: empresaId,
           cliente_id: clientId,
-          competencia: competencia,
+          competencia: competenciaDate,
           valor: data.total,
           status: 'pendente'
         });
@@ -191,7 +204,7 @@ export const MotorFinanceiro = {
           tenant_id: tenantId,
           empresa_id: empresaId,
           cliente_id: clientId,
-          competencia: competencia,
+          competencia: competenciaDate,
           tipo_calculo: 'FATURAMENTO',
           valor_final: data.total,
           memoria_detalhada: {
@@ -206,11 +219,13 @@ export const MotorFinanceiro = {
       for (const [colabId, data] of Object.entries(consolidadosColab)) {
         if (data.total <= 0) continue;
 
+        const competenciaDate = competencia.length === 7 ? `${competencia}-01` : competencia;
+
         await supabase.from("financeiro_consolidados_colaborador").insert({
           tenant_id: tenantId,
           empresa_id: empresaId,
           colaborador_id: colabId,
-          competencia: competencia,
+          competencia: competenciaDate,
           valor_total: data.total,
           status: 'pendente'
         });
@@ -220,7 +235,7 @@ export const MotorFinanceiro = {
           tenant_id: tenantId,
           empresa_id: empresaId,
           colaborador_id: colabId,
-          competencia: competencia,
+          competencia: competenciaDate,
           valor: data.total,
           status: 'pendente' 
         });

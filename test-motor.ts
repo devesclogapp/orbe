@@ -1,0 +1,1 @@
+import { MotorFinanceiro } from './src/services/operationalEngine/MotorFinanceiro'; async function test() { const result = await MotorFinanceiro.processarFechamento('2026-06-01', 'fbcbc831-f5c5-470b-894c-7e3ea7df5660', '09ccafb6-2cf2-4c83-ac3d-a2913947693c'); console.log('RESULTADO:', result); } test().catch(console.error);
