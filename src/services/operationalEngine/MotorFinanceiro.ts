@@ -19,13 +19,17 @@ export const MotorFinanceiro = {
       }
     }
 
-    const { data: newClient, error } = await supabase.from('clientes').insert({ id: source_id, tenant_id, nome }).select('id').single();
+    const { data: newClientId, error } = await supabase.rpc("ensure_cliente_espelho", {
+      p_id: source_id,
+      p_nome: nome
+    });
+    
     if (error) {
-      const { data: retry } = await supabase.from('clientes').select('id').eq('id', source_id).maybeSingle();
-      if (retry) return retry.id;
-      throw error;
+      EngineLogger.error(`[MotorFinanceiro] Erro RPC ao espelhar cliente ${source_id}: ${error.message}`, { component: 'MotorFinanceiro' });
+      throw new Error(`RPC ensure_cliente_espelho falhou: ${error.message}`);
     }
-    return newClient.id;
+    
+    return newClientId || source_id;
   },
   /**
    * Processa o fechamento financeiro consolidando as operações do ciclo e vinculando valores de faturamento do cliente
@@ -155,6 +159,7 @@ export const MotorFinanceiro = {
           clienteFinalId = await MotorFinanceiro.ensureClienteEspelho(tenantId, clientId, data.isEmpresa);
         } catch (e: any) {
           EngineLogger.warn('[MotorFinanceiro] Erro garantindo espelho para ' + clientId + ': ' + e.message, { component: 'MotorFinanceiro' });
+          continue; // Interromper cliente
         }
 
         // Insere Consolidado
