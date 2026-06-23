@@ -41,7 +41,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       console.log("[TenantContext] Buscando profile para:", user.id);
-      
+
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("tenant_id, role")
@@ -49,7 +49,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         .single();
 
       console.log("[TenantContext] Resultado profile:", { profile, profileError });
-      
+
       if (profileError || !profile?.tenant_id) {
         console.warn("[TenantContext] Usuário sem tenant, continuando renderização.");
         setTenant(null);
@@ -59,8 +59,9 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return;
       }
 
-      console.log("[TenantContext] Role definido:", profile.role);
-      setRole(profile.role ?? null);
+      const normalizedRole = profile.role ? String(profile.role).trim().toLowerCase() : null;
+      console.log("[TenantContext] Role definido:", normalizedRole);
+      setRole(normalizedRole);
 
       const { data: tenantData, error: tenantError } = await supabase
         .from("tenants")
@@ -112,7 +113,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     tenantId: tenant?.id ?? null,
     loading,
     role,
-    isAdmin: role === "admin",
+    isAdmin: role === "admin" || role === "super_admin",
     setTenant,
     refetchTenant: fetchTenant,
   }), [tenant, loading, role]);

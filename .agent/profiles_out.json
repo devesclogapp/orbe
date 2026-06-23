@@ -1,0 +1,34 @@
+[
+  {
+    "email": "suport.orbitalabs@gmail.com",
+    "profile": {
+      "id": "d2e85cc9-b708-4051-8650-49788304e86b",
+      "user_id": "41cab92a-4046-4e0a-8cf4-f3ff8210eeed",
+      "tenant_id": "09ccafb6-2cf2-4c83-ac3d-a2913947693c",
+      "full_name": "Orbita Labs",
+      "role": "encarregado",
+      "created_at": "2026-05-05T14:05:17.566454+00:00",
+      "onboarding_completed": true,
+      "onboarding_step": "resultados",
+      "onboarding_completed_steps": [
+        "colaboradores",
+        "cadastro_base",
+        "regras"
+      ]
+    }
+  },
+  {
+    "email": "dev.esclog@gmail.com",
+    "profile": {
+      "id": "50a27c10-3e80-4157-96db-4cd4443198a8",
+      "user_id": "be2b4915-95dc-40ed-9d2b-61d19b1c8c90",
+      "tenant_id": "09ccafb6-2cf2-4c83-ac3d-a2913947693c",
+      "full_name": "Reis Costa",
+      "role": "encarregado",
+      "created_at": "2026-05-06T02:07:58.894064+00:00",
+      "onboarding_completed": false,
+      "onboarding_step": "cadastro_base",
+      "onboarding_completed_steps": []
+    }
+  }
+]
