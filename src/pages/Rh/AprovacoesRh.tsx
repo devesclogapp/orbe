@@ -202,6 +202,7 @@ export default function AprovacoesRh() {
     const isLoading = loadData || loadKpis;
 
     const currentTabItems = (results?.data || []) as unknown as ApprovalItem[];
+    const allItems = currentTabItems;
     const totalPages = Math.ceil((results?.count || 0) / itemsPerPage);
     const paginatedItems = currentTabItems;
 
@@ -273,7 +274,7 @@ export default function AprovacoesRh() {
             // Operações por Volume
             if (item.tipo === "OPERAÇÃO") {
                 const { error } = await supabase.from("operacoes_producao")
-                    .update({ status: "validado_rh", atualizado_em: new Date().toISOString() })
+                    .update({ status: "VALIDADO_RH", atualizado_em: new Date().toISOString() })
                     .eq("id", item.id);
                 if (error) throw error;
                 return;
@@ -328,7 +329,7 @@ export default function AprovacoesRh() {
             // Operações por Volume
             if (item.tipo === "OPERAÇÃO") {
                 const { error } = await supabase.from("operacoes_producao")
-                    .update({ status: "pendente", atualizado_em: new Date().toISOString() })
+                    .update({ status: "PENDENTE", atualizado_em: new Date().toISOString() })
                     .eq("id", item.id);
                 if (error) throw error;
                 return;
@@ -471,11 +472,11 @@ export default function AprovacoesRh() {
 
                 {/* KPI Grid */}
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
-                    <KPICard label="Pontos Pendentes" value={String(kpis.pontos)} subtext={fmt(kpis.pontosValor)} icon={Clock} iconColor="text-blue-600" iconBg="bg-blue-50" loading={loadPontos} />
-                    <KPICard label="Diaristas" value={String(kpis.diaristas)} subtext={fmt(kpis.diaristasValor)} icon={Users} iconColor="text-emerald-600" iconBg="bg-emerald-50" loading={loadDiarista} />
-                    <KPICard label="Intermitentes" value={String(kpis.intermitentes)} subtext={fmt(kpis.intermitentesValor)} icon={Users} iconColor="text-indigo-600" iconBg="bg-indigo-50" loading={loadIntermitentes} />
-                    <KPICard label="Custos Extras" value={String(kpis.custos)} subtext={fmt(kpis.custosValor)} icon={DollarSign} iconColor="text-orange-600" iconBg="bg-orange-50" loading={loadCusto} />
-                    <KPICard label="Serviços Extras" value={String(kpis.servicos)} subtext={fmt(kpis.servicosValor)} icon={Activity} iconColor="text-purple-600" iconBg="bg-purple-50" loading={loadServico} />
+                    <KPICard label="Pontos Pendentes" value={String(kpis.pontos)} subtext={fmt(kpis.pontosValor)} icon={Clock} iconColor="text-blue-600" iconBg="bg-blue-50" loading={isLoading} />
+                    <KPICard label="Diaristas" value={String(kpis.diaristas)} subtext={fmt(kpis.diaristasValor)} icon={Users} iconColor="text-emerald-600" iconBg="bg-emerald-50" loading={isLoading} />
+                    <KPICard label="Intermitentes" value={String(kpis.intermitentes)} subtext={fmt(kpis.intermitentesValor)} icon={Users} iconColor="text-indigo-600" iconBg="bg-indigo-50" loading={isLoading} />
+                    <KPICard label="Custos Extras" value={String(kpis.custos)} subtext={fmt(kpis.custosValor)} icon={DollarSign} iconColor="text-orange-600" iconBg="bg-orange-50" loading={isLoading} />
+                    <KPICard label="Serviços Extras" value={String(kpis.servicos)} subtext={fmt(kpis.servicosValor)} icon={Activity} iconColor="text-purple-600" iconBg="bg-purple-50" loading={isLoading} />
                     <KPICard label="Devolvidos" value={String(kpis.atrasados)} subtext={fmt(kpis.atrasadosValor)} icon={AlertTriangle} iconColor="text-rose-600" iconBg="bg-rose-50" isAlert />
                     <KPICard label="Atualização" value={format(new Date(), "HH:mm", { locale: ptBR })} subtext={format(new Date(), "dd/MM/yyyy", { locale: ptBR })} icon={CalendarDays} iconColor="text-slate-600" iconBg="bg-slate-50" />
                 </div>
