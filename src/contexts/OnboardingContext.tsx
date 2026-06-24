@@ -152,7 +152,7 @@ interface OnboardingContextType {
 const OnboardingContext = createContext<OnboardingContextType | undefined>(undefined);
 
 export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { tenantId } = useTenant();
+  const { tenantId, role } = useTenant();
   const { user } = useAuth();
   const [currentStep, setCurrentStep] = useState<OnboardingStep>("cadastro_base");
   const [completedSteps, setCompletedSteps] = useState<OnboardingStep[]>([]);
@@ -186,9 +186,29 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   });
 
   const fetchDataStatus = useCallback(async () => {
-    console.log("[OnboardingContext] fetchDataStatus called, tenantId:", tenantId);
+    console.log("[OnboardingContext] fetchDataStatus called, tenantId:", tenantId, "role:", role);
     if (!tenantId) {
       console.log("[OnboardingContext] No tenantId, skipping");
+      return;
+    }
+
+    if (role && role !== "admin" && role !== "super_admin") {
+      console.log("[OnboardingContext] Skipping full data check for non-admin user");
+      setDataStatus(prev => ({
+        ...prev,
+        hasEmpresa: true,
+        hasTransportadora: true,
+        hasSupplier: true,
+        hasClt: true,
+        hasOperational: true,
+        hasDiarista: true,
+        hasRule: true,
+        hasDiaristaRule: true,
+        hasPagamento: true,
+        hasTaxa: true,
+        hasProduct: true,
+        hasOperation: true,
+      }));
       return;
     }
 
@@ -312,17 +332,22 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     } catch (error) {
       console.error("[OnboardingContext] Erro ao buscar status:", error);
     }
-  }, [tenantId]);
+  }, [tenantId, role]);
 
   useEffect(() => {
-    if (tenantId && user) {
+    if (tenantId && user && role) {
       fetchDataStatus();
       checkOnboardingStatus();
     }
-  }, [tenantId, user, fetchDataStatus]);
+  }, [tenantId, user, role, fetchDataStatus]);
 
   const checkOnboardingStatus = async () => {
     if (!user) return;
+
+    if (role && role !== "admin" && role !== "super_admin") {
+      setIsActive(false);
+      return;
+    }
 
     try {
       const { data: profile, error } = await supabase
