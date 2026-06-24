@@ -538,15 +538,15 @@ export default function AprovacoesRh() {
                             <div className="flex flex-col md:flex-row items-center justify-between border-b border-border/40 mb-0 bg-white/60 backdrop-blur-sm rounded-t-xl px-4 gap-4 py-2 md:py-0">
                                 <TabsList className="bg-transparent h-14 p-0 gap-6">
                                     {[
-                                        { value: "fila", label: "Fila de Aprovação", icon: Activity, count: filaItems.length, color: "data-[state=active]:border-orange-500 data-[state=active]:text-orange-600" },
-                                        { value: "aprovados", label: "Aprovados", icon: CheckCircle2, count: aprovadosItems.length, color: "data-[state=active]:border-emerald-500 data-[state=active]:text-emerald-700" },
-                                        { value: "devolvidos", label: "Devolvidos", icon: RotateCcw, count: devolvidosItems.length, color: "data-[state=active]:border-rose-500 data-[state=active]:text-rose-600" },
-                                        { value: "historico", label: "Histórico", icon: History, count: filtered.length, color: "data-[state=active]:border-primary" },
+                                        { value: "fila", label: "Fila de Aprovação", icon: Activity, count: activeTab === "fila" ? results?.count : undefined, color: "data-[state=active]:border-orange-500 data-[state=active]:text-orange-600" },
+                                        { value: "aprovados", label: "Aprovados", icon: CheckCircle2, count: activeTab === "aprovados" ? results?.count : undefined, color: "data-[state=active]:border-emerald-500 data-[state=active]:text-emerald-700" },
+                                        { value: "devolvidos", label: "Devolvidos", icon: RotateCcw, count: activeTab === "devolvidos" ? results?.count : undefined, color: "data-[state=active]:border-rose-500 data-[state=active]:text-rose-600" },
+                                        { value: "historico", label: "Histórico", icon: History, count: activeTab === "historico" ? results?.count : undefined, color: "data-[state=active]:border-primary" },
                                     ].map(tab => (
                                         <TabsTrigger key={tab.value} value={tab.value} className={cn("bg-transparent border-b-2 border-transparent data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none text-[11px] uppercase tracking-wider font-bold px-0 h-14 gap-2 transition-all opacity-70 data-[state=active]:opacity-100", tab.color)}>
                                             <tab.icon size={14} />
                                             {tab.label}
-                                            <span className="ml-1 text-[9px] bg-muted/60 rounded-full px-1.5 py-0.5 font-bold">{tab.count}</span>
+                                            {tab.count !== undefined && <span className="ml-1 text-[9px] bg-muted/60 rounded-full px-1.5 py-0.5 font-bold">{tab.count}</span>}
                                         </TabsTrigger>
                                     ))}
                                 </TabsList>
