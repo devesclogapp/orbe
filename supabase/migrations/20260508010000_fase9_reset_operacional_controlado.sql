@@ -139,6 +139,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
 
+DROP FUNCTION IF EXISTS public.get_reset_mode_metadata(TEXT);
+
 CREATE OR REPLACE FUNCTION public.get_reset_mode_metadata(p_mode TEXT)
 RETURNS TABLE (
   mode_key TEXT,
@@ -397,8 +399,8 @@ BEGIN
           'table_name', 'financeiro_competencias',
           'delete_priority', 340,
           'descricao', 'Competencias financeiras transitórias',
-          'count_sql', 'SELECT COUNT(*) FROM public.financeiro_competencias WHERE tenant_id = $1',
-          'delete_sql', 'DELETE FROM public.financeiro_competencias WHERE tenant_id = $1'
+          'count_sql', 'SELECT COUNT(*) FROM public.financeiro_competencias WHERE empresa_id IN (SELECT id FROM public.empresas WHERE tenant_id = $1)',
+          'delete_sql', 'DELETE FROM public.financeiro_competencias WHERE empresa_id IN (SELECT id FROM public.empresas WHERE tenant_id = $1)'
         ),
         jsonb_build_object(
           'table_name', 'cnab_sequencial_controle',

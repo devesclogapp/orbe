@@ -301,8 +301,7 @@ class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extra
           *, 
           empresas(nome),
           formas_pagamento_operacional(nome),
-          tipos_servico_operacional(nome),
-          responsavel:criado_por(full_name)
+          tipos_servico_operacional(nome)
         `);
       
       if (empresaId) query = query.eq('empresa_id', empresaId);
@@ -352,7 +351,26 @@ class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extra
         if (simpleError) throw simpleError;
         return simpleData ?? [];
       }
-      return data ?? [];
+        const resultData = data ?? [];
+        
+        // Resolver responsável
+        const responsavelIds = Array.from(new Set(resultData.map(item => item.criado_por).filter(Boolean)));
+        let profilesMap: Record<string, string> = {};
+        if (responsavelIds.length > 0) {
+          try {
+            const { data: profiles } = await supabase.from('profiles').select('id, full_name').in('id', responsavelIds);
+            if (profiles) {
+              profilesMap = profiles.reduce((acc: any, p: any) => ({ ...acc, [p.id]: p.full_name }), {});
+            }
+          } catch (e) {
+            console.warn("Falha ao resolver perfis em getWithEmpresas", e);
+          }
+        }
+
+        return resultData.map(item => ({
+          ...item,
+          responsavel_nome: item.criado_por ? (profilesMap[item.criado_por] || null) : null
+        }));
     } catch (e) {
       console.error('Erro crítico em ServicosExtrasOperacionaisService:', e);
       return [];

@@ -195,6 +195,22 @@ BEGIN
           'delete_sql', 'DELETE FROM public.diaristas_lotes_fechamento WHERE tenant_id = $1'
         ),
         jsonb_build_object(
+          'table_name', 'lancamentos_intermitentes',
+          'category_key', 'operacional',
+          'delete_priority', 135,
+          'descricao', 'Lancamentos diarios de intermitentes',
+          'count_sql', 'SELECT COUNT(*) FROM public.lancamentos_intermitentes WHERE tenant_id = $1',
+          'delete_sql', 'DELETE FROM public.lancamentos_intermitentes WHERE tenant_id = $1'
+        ),
+        jsonb_build_object(
+          'table_name', 'intermitentes_lotes_fechamento',
+          'category_key', 'operacional',
+          'delete_priority', 138,
+          'descricao', 'Lotes de fechamento de intermitentes',
+          'count_sql', 'SELECT COUNT(*) FROM public.intermitentes_lotes_fechamento WHERE tenant_id = $1',
+          'delete_sql', 'DELETE FROM public.intermitentes_lotes_fechamento WHERE tenant_id = $1'
+        ),
+        jsonb_build_object(
           'table_name', 'operacoes',
           'category_key', 'operacional',
           'delete_priority', 140,
@@ -209,6 +225,14 @@ BEGIN
           'descricao', 'Custos extras operacionais',
           'count_sql', 'SELECT COUNT(*) FROM public.custos_extras_operacionais WHERE tenant_id = $1',
           'delete_sql', 'DELETE FROM public.custos_extras_operacionais WHERE tenant_id = $1'
+        ),
+        jsonb_build_object(
+          'table_name', 'servicos_extras_operacionais',
+          'category_key', 'operacional',
+          'delete_priority', 155,
+          'descricao', 'Servicos extras operacionais',
+          'count_sql', 'SELECT COUNT(*) FROM public.servicos_extras_operacionais WHERE tenant_id = $1',
+          'delete_sql', 'DELETE FROM public.servicos_extras_operacionais WHERE tenant_id = $1'
         ),
         jsonb_build_object(
           'table_name', 'registros_ponto',
@@ -330,8 +354,8 @@ BEGIN
           'category_key', 'financeiro',
           'delete_priority', 340,
           'descricao', 'Competencias financeiras transitorias',
-          'count_sql', 'SELECT COUNT(*) FROM public.financeiro_competencias WHERE tenant_id = $1',
-          'delete_sql', 'DELETE FROM public.financeiro_competencias WHERE tenant_id = $1'
+          'count_sql', 'SELECT COUNT(*) FROM public.financeiro_competencias WHERE empresa_id IN (SELECT id FROM public.empresas WHERE tenant_id = $1)',
+          'delete_sql', 'DELETE FROM public.financeiro_competencias WHERE empresa_id IN (SELECT id FROM public.empresas WHERE tenant_id = $1)'
         ),
         jsonb_build_object(
           'table_name', 'cnab_sequencial_controle',
@@ -394,8 +418,8 @@ BEGIN
             'category_key', 'cadastros',
             'delete_priority', 410,
             'descricao', 'Regras operacionais por fornecedor e servico',
-            'count_sql', 'SELECT COUNT(*) FROM public.fornecedor_valores_servico WHERE tenant_id = $1',
-            'delete_sql', 'DELETE FROM public.fornecedor_valores_servico WHERE tenant_id = $1'
+            'count_sql', 'SELECT COUNT(*) FROM public.fornecedor_valores_servico fvs WHERE fvs.tenant_id = $1 OR fvs.empresa_id IN (SELECT id FROM public.empresas WHERE tenant_id = $1) OR fvs.unidade_id IN (SELECT id FROM public.unidades WHERE tenant_id = $1) OR fvs.fornecedor_id IN (SELECT id FROM public.fornecedores WHERE tenant_id = $1) OR fvs.transportadora_id IN (SELECT id FROM public.transportadoras_clientes WHERE tenant_id = $1) OR fvs.produto_carga_id IN (SELECT id FROM public.produtos_carga WHERE tenant_id = $1) OR fvs.tipo_servico_id IN (SELECT id FROM public.tipos_servico_operacional WHERE tenant_id = $1) OR fvs.tipo_regra_id IN (SELECT id FROM public.tipos_regra_operacional WHERE tenant_id = $1) OR fvs.forma_pagamento_id IN (SELECT id FROM public.formas_pagamento_operacional WHERE tenant_id = $1)',
+            'delete_sql', 'DELETE FROM public.fornecedor_valores_servico fvs WHERE fvs.tenant_id = $1 OR fvs.empresa_id IN (SELECT id FROM public.empresas WHERE tenant_id = $1) OR fvs.unidade_id IN (SELECT id FROM public.unidades WHERE tenant_id = $1) OR fvs.fornecedor_id IN (SELECT id FROM public.fornecedores WHERE tenant_id = $1) OR fvs.transportadora_id IN (SELECT id FROM public.transportadoras_clientes WHERE tenant_id = $1) OR fvs.produto_carga_id IN (SELECT id FROM public.produtos_carga WHERE tenant_id = $1) OR fvs.tipo_servico_id IN (SELECT id FROM public.tipos_servico_operacional WHERE tenant_id = $1) OR fvs.tipo_regra_id IN (SELECT id FROM public.tipos_regra_operacional WHERE tenant_id = $1) OR fvs.forma_pagamento_id IN (SELECT id FROM public.formas_pagamento_operacional WHERE tenant_id = $1)'
           ),
           jsonb_build_object(
             'table_name', 'regras_dados',

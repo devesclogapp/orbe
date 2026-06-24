@@ -146,8 +146,8 @@ BEGIN
           'category_key', 'financeiro',
           'delete_priority', 210,
           'descricao', 'Conciliacoes financeiras',
-          'count_sql', 'SELECT COUNT(*) FROM public.financeiro_conciliacoes WHERE tenant_id = $1',
-          'delete_sql', 'DELETE FROM public.financeiro_conciliacoes WHERE tenant_id = $1'
+          'count_sql', 'SELECT COUNT(*) FROM public.financeiro_competencias WHERE empresa_id IN (SELECT id FROM public.empresas WHERE tenant_id = $1)',
+          'delete_sql', 'DELETE FROM public.financeiro_competencias WHERE empresa_id IN (SELECT id FROM public.empresas WHERE tenant_id = $1)'
         ),
         jsonb_build_object(
           'table_name', 'cnab_retorno_itens',
