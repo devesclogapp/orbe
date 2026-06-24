@@ -295,10 +295,10 @@ export const useOperationalPulse = () => {
         safeCount("processamento_rh_inconsistencias", (q) => q.eq("resolvida", false), { tenantId }),
         safeCount("ciclos_operacionais", (q) => q.eq("status", "fechado").eq("status_rh", "pendente"), { tenantId }),
         safeCount("financeiro_consolidados_cliente", (q) => q.neq("status", "aprovado"), { tenantId, skipTenant: true }),
-        safeCount("ciclos_operacionais", (q) => q.or("status_financeiro.eq.validado_financeiro,status_remessa.eq.nao_gerada,status_remessa.eq.pronta"), { tenantId }),
+        safeCount("ciclos_operacionais", (q) => q.eq("status_financeiro", "validado_financeiro").in("status_remessa", ["nao_gerada", "pronta"]), { tenantId }),
         safeCount("rh_financeiro_lotes", (q) => q.eq("status", "AGUARDANDO_FINANCEIRO"), { tenantId, skipTenant: true }),
-        safeCount("ciclos_operacionais", (q) => q.in("status_automacao", ["bloqueado_automacao", "inconsistencias_detectadas"]), { tenantId }),
-        safeCount("ciclos_operacionais", (q) => q.eq("status_automacao", "aguardando_validacao"), { tenantId }),
+        safeCount("ciclos_operacionais", (q) => q.neq("status", "fechado").in("status_automacao", ["bloqueado_automacao", "inconsistencias_detectadas"]), { tenantId }),
+        safeCount("ciclos_operacionais", (q) => q.neq("status", "fechado").eq("status_automacao", "aguardando_validacao"), { tenantId }),
         safeSelect(
           "registros_ponto",
           "id,nome_colaborador,matricula_colaborador,status_processamento,minutos_atraso,minutos_extra",
