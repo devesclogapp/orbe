@@ -35,6 +35,7 @@ import {
     ServicosExtrasOperacionaisService,
 } from "@/services/base.service";
 import { ServicosExtrasTableBlock } from "@/components/operacoes/ServicosExtrasTableBlock";
+import { NovoServicoExtraDialog } from "@/components/operacoes/NovoServicoExtraDialog";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -121,6 +122,7 @@ const ServicosExtrasRecebidos = () => {
     const [filterEmpresaId, setFilterEmpresaId] = useState<string>("all");
     const [filterMonth, setFilterMonth] = useState<string>(format(new Date(), "MM"));
     const [filterYear, setFilterYear] = useState<string>(format(new Date(), "yyyy"));
+    const [isNovoServicoModalOpen, setIsNovoServicoModalOpen] = useState(false);
 
     // ─── Queries ─────────────────────────────────────────────────────────────
 
@@ -192,7 +194,7 @@ const ServicosExtrasRecebidos = () => {
 
                             <Button
                                 className="bg-primary hover:bg-[#E54300] text-white font-manrope font-semibold h-9 px-4 rounded-[6px]"
-                                onClick={() => navigate("/producao/servicos-extras")}
+                                onClick={() => setIsNovoServicoModalOpen(true)}
                             >
                                 <Plus className="h-4 w-4 mr-2 text-white" />
                                 Novo Lançamento
@@ -225,7 +227,12 @@ const ServicosExtrasRecebidos = () => {
                     </div>
                 </div>
             </section>
-        </AppShell>
+
+            <NovoServicoExtraDialog
+                open={isNovoServicoModalOpen}
+                onOpenChange={setIsNovoServicoModalOpen}
+            />
+        </AppShell >
     );
 };
 
