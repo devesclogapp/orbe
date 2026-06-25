@@ -59,19 +59,27 @@ serve(async (req) => {
        const empId = item.empresa_id;
        const empCnpj = item.empresa_cnpj || item.cnpj;
        const numCnpj = empCnpj ? String(empCnpj).replace(/\D/g, '') : null;
-       const empNome = item.empresa_nome || item.empresa || item.razao_social || item.nome_empresa;
-       const unidade = item.unidade;
-       const dep = item.departamento;
+       const empNomeExplicito = item.empresa_nome || item.empresa || item.razao_social || item.nome_empresa;
 
-       const nomeBase = empNome || unidade || dep || 'Empresa Tio Digital';
-       const mapKey = empId || numCnpj || nomeBase.toUpperCase().trim();
+       const nomeBase = empNomeExplicito || item.departamento || item.unidade || 'Empresa Tio Digital';
+       const mapKey = empId || numCnpj || String(nomeBase).toUpperCase().trim();
+
+       let origemDetalhe: string | undefined = undefined;
+       if (!empNomeExplicito) {
+          if (item.departamento) {
+             origemDetalhe = `Empresa provisória criada via departamento Tio Digital: ${item.departamento}`;
+          } else if (item.unidade) {
+             origemDetalhe = `Empresa provisória criada via unidade Tio Digital: ${item.unidade}`;
+          }
+       }
 
        if (!empresasUnicas.has(mapKey)) {
           empresasUnicas.set(mapKey, {
              id: empId,
              cnpj: numCnpj,
              nome: nomeBase,
-             dbId: null
+             dbId: null,
+             origemDetalhe
           });
        }
        item._empresaMapKey = mapKey;
@@ -103,12 +111,13 @@ serve(async (req) => {
     // --- ETAPA 3: CRIAÇÃO AUTOMÁTICA DE EMPRESAS ---
     for (const emp of empresasUnicas.values()) {
        if (!emp.dbId) {
-          const insertPayload = {
+          const insertPayload: any = {
              tenant_id: tenant_id,
              nome: emp.nome,
              status: 'ATIVA'
           };
           if (emp.cnpj) insertPayload.cnpj = emp.cnpj;
+          if (emp.origemDetalhe) insertPayload.origem_detalhe = emp.origemDetalhe;
           
           let { data: inEmp, error: inErr } = await supabase
              .from('empresas')

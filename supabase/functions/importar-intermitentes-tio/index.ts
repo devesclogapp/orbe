@@ -72,6 +72,16 @@ serve(async (req) => {
        });
     }
 
+    const { data: dbEmpresas } = await supabase.from('empresas').select('id, nome, cnpj').eq('tenant_id', tenant_id);
+    const empresaMap = new Map();
+    if (dbEmpresas) {
+      dbEmpresas.forEach(e => {
+        if (e.id) empresaMap.set(`ID_${e.id}`, e.id);
+        if (e.cnpj) empresaMap.set(`CNPJ_${e.cnpj.replace(/\D/g, '')}`, e.id);
+        if (e.nome) empresaMap.set(`NOM_${e.nome.toUpperCase().trim()}`, e.id);
+      });
+    }
+
     const validos = [];
     const inconsistentes = [];
 
@@ -89,20 +99,27 @@ serve(async (req) => {
 
     const normalizeDbDate = (d: string) => {
       if (!d) return '1970-01-01';
+      
+      // Se vier um range (ex: 24/06/2026 - 24/06/2026), pegamos apenas a primeira data
+      let dateString = String(d).trim();
+      if (dateString.includes(' - ')) {
+         dateString = dateString.split(' - ')[0].trim();
+      }
+
       // DD/MM/YYYY
-      if (/^\d{2}\/\d{2}\/\d{4}/.test(d)) {
-        const [dd, mm, yyyy] = d.split('/');
+      if (/^\d{2}\/\d{2}\/\d{4}/.test(dateString)) {
+        const [dd, mm, yyyy] = dateString.split('/');
         return `${yyyy}-${mm}-${dd}`;
       }
       // Pega os primeiros 10 caracteres assumindo YYYY-MM-DD ou recorta T00:00:00Z
-      if (d.length >= 10 && d.includes('-')) {
-         return d.substring(0, 10);
+      if (dateString.length >= 10 && dateString.includes('-')) {
+         return dateString.substring(0, 10);
       }
-      return d;
+      return dateString;
     };
 
     // Buscar registros existentes para fallback/idempotencia
-    const normDates = Array.from(new Set(items.map((i: any) => normalizeDbDate(i.data)).filter(Boolean)));
+    const normDates = Array.from(new Set(items.map((i: any) => normalizeDbDate(i.data_periodo || i.data || i.data_referencia || i.DATA)).filter(Boolean)));
     const { data: existingRecords, error: extErr } = await supabase
       .from('lancamentos_intermitentes')
       .select('id, colaborador_id, nome_colaborador, data_referencia, convocacao, lote_fechamento_id, status_pipeline')
@@ -128,14 +145,26 @@ serve(async (req) => {
     let ignorados_por_lote = 0;
     const logsInconsistentes = [];
 
-    for (const item of items) {
+    for (const rawItem of items) {
+      // Normalização de chaves flexível (lidar com Data, DATA, cpf, CPF, etc.)
+      const item: any = {};
+      for (const k in rawItem) {
+         if (Object.prototype.hasOwnProperty.call(rawItem, k)) {
+            item[k.toLowerCase()] = rawItem[k];
+         }
+      }
+      
       let matchedColab = null;
 
       // Tentativa de lookup CPF -> Matricula -> Nome
-      const cleanCpf = item.cpf ? item.cpf.replace(/\\D/g, '') : null;
-      const cleanMat = item.matricula ? item.matricula.trim() : null;
-      const rawName = item.colaborador_nome || item.colaborador;
-      const cleanName = rawName ? rawName.toUpperCase().trim() : null;
+      const cpfItem = item.cpf || rawItem.CPF || rawItem.Cpf;
+      const cleanCpf = cpfItem ? String(cpfItem).replace(/\D/g, '') : null;
+      
+      const matItem = item.matricula || rawItem.Matricula || rawItem.MATRICULA;
+      const cleanMat = matItem ? String(matItem).trim() : null;
+      
+      const rawName = item.colaborador_nome || item.colaborador || rawItem.Colaborador || rawItem.colaborador;
+      const cleanName = rawName ? String(rawName).toUpperCase().trim() : null;
 
       if (cleanCpf && colabMap.has(`CPF_${cleanCpf}`)) {
          matchedColab = colabMap.get(`CPF_${cleanCpf}`);
@@ -146,11 +175,18 @@ serve(async (req) => {
       }
 
       // Derivar competencia do formato da data (ex: '2026-06-15' -> '2026-06')
-      const targetDate = normalizeDbDate(item.data);
-      const compVal = targetDate ? targetDate.substring(0, 7) : 'SEM-COMP';
+      const targetDate = normalizeDbDate(item.data_periodo || item.data || rawItem.Data || rawItem.DATA || rawItem.data_referencia);
+      const compVal = targetDate && targetDate !== '1970-01-01' ? targetDate.substring(0, 7) : 'SEM-COMP';
 
       const baseNome = rawName || 'Desconhecido';
-      const baseConvocacao = item.convocacao || 'Sem referência';
+      const baseConvocacao = item.convocacao || rawItem.Convocacao || 'Sem referência';
+      
+      // Resolução de empresa fallback (Departamento)
+      let fallbackEmpresaId = null;
+      const depName = item.departamento || rawItem.Departamento || item.unidade || rawItem.Unidade;
+      if (depName) {
+         fallbackEmpresaId = empresaMap.get(`NOM_${String(depName).toUpperCase().trim()}`);
+      }
       
       const launchBase = {
         tenant_id,
@@ -159,23 +195,25 @@ serve(async (req) => {
         data_referencia: targetDate,
         competencia: compVal,
         convocacao: baseConvocacao,
-        cargo: item.cargo,
-        departamento: item.departamento,
-        horas_trabalhadas: parseFloatSafe(item.horas_trabalhadas),
-        horas_normais: parseFloatSafe(item.horas_normais),
-        he_50: parseFloatSafe(item.he_50),
-        he_100: parseFloatSafe(item.he_100),
-        hora_noturna: parseFloatSafe(item.hora_noturna),
-        total: parseFloatSafe(item.total),
+        cargo: item.cargo || rawItem.Cargo,
+        departamento: depName,
+        horas_trabalhadas: parseFloatSafe(item.horas_trabalhadas || rawItem['H. Trabalhadas'] || rawItem.horas_trabalhada || 0),
+        horas_normais: parseFloatSafe(item.horas_normais || rawItem['H. Normais'] || rawItem.horas_normal || 0),
+        he_50: parseFloatSafe(item.he_50 || rawItem['HE 50%'] || rawItem.he50 || 0),
+        he_100: parseFloatSafe(item.he_100 || rawItem['HE 100%'] || rawItem.he100 || 0),
+        hora_noturna: parseFloatSafe(item.hora_noturna || rawItem['H. Noturna'] || rawItem.adicional_noturno || 0),
+        total: parseFloatSafe(item.total || rawItem.Total || rawItem.valor_total || 0),
         origem: item.origem || rootOrigem,
         arquivo_origem: item.arquivo_origem || rootArquivoOrigem,
         status_pipeline: 'RECEBIDO'
       };
 
+      const finalEmpresaId = matchedColab?.empresa_id || fallbackEmpresaId || null;
+
       const recordToProcess = {
         ...launchBase,
         colaborador_id: matchedColab ? matchedColab.id : null,
-        empresa_id: matchedColab ? matchedColab.empresa_id : null
+        empresa_id: finalEmpresaId
       };
       
       if (!matchedColab) {
