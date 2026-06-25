@@ -89,59 +89,68 @@ serve(async (req) => {
     let empresas_vinculadas = 0;
     let colaboradores_sem_empresa = 0;
 
-    const { data: dbEmpresas, error: errEmp } = await supabase
-      .from('empresas')
-      .select('id, nome, cnpj')
-      .eq('tenant_id', tenant_id);
-
-    if (!errEmp && dbEmpresas) {
-      for (const emp of empresasUnicas.values()) {
-         let matched = null;
-         if (emp.id) matched = dbEmpresas.find(e => e.id === emp.id);
-         if (!matched && emp.cnpj) matched = dbEmpresas.find(e => (e.cnpj || '').replace(/\D/g, '') === emp.cnpj);
-         if (!matched && emp.nome) matched = dbEmpresas.find(e => e.nome.toUpperCase().trim() === emp.nome.toUpperCase().trim());
-         
-         if (matched) {
-            emp.dbId = matched.id;
-            empresas_vinculadas++;
-         }
-      }
-    }
-
-    // --- ETAPA 3: CRIAÇÃO AUTOMÁTICA DE EMPRESAS ---
+    // --- ETAPA 2 E 3 UNIFICADAS: RESOLUÇÃO E CRIAÇÃO ATÔMICA (ANTI-RACE-CONDITION) ---
     for (const emp of empresasUnicas.values()) {
-       if (!emp.dbId) {
-          const insertPayload: any = {
-             tenant_id: tenant_id,
-             nome: emp.nome,
-             status: 'ATIVA'
-          };
-          if (emp.cnpj) insertPayload.cnpj = emp.cnpj;
-          if (emp.origemDetalhe) insertPayload.origem_detalhe = emp.origemDetalhe;
-          
-          let { data: inEmp, error: inErr } = await supabase
-             .from('empresas')
-             .insert({ ...insertPayload, origem: 'tio_digital', origem_cadastro: 'integracao_tio', cadastro_provisorio: true })
-             .select('id').single();
-             
-          if (inErr) {
-             let { data: inR2, error: err2 } = await supabase
-                .from('empresas')
-                .insert({ ...insertPayload, origem: 'tio_digital' })
-                .select('id').single();
-             inEmp = inR2;
-             if (err2) {
-                 const { data: inR3 } = await supabase.from('empresas').insert({ tenant_id, nome: emp.nome }).select('id').single();
-                 inEmp = inR3;
-             }
-          }
-          
-          if (inEmp) {
-             emp.dbId = inEmp.id;
-             empresas_criadas++;
-             empresas_vinculadas++;
-          }
-       }
+        // Tentamos usar a Função RPC segura primeiro
+        const { data: empId, error: rpcErr } = await supabase.rpc('ensure_empresa_provisoria', {
+            p_tenant_id: tenant_id,
+            p_nome: emp.nome,
+            p_cnpj: emp.cnpj || null,
+            p_origem_detalhe: emp.origemDetalhe || null,
+            p_origem: 'tio_digital',
+            p_origem_cadastro: 'integracao_tio'
+        });
+
+        if (rpcErr) {
+            console.error(`[WARNING] RPC ensure_empresa_provisoria falhou para ${emp.nome}. Fallback ativado. Erro:`, rpcErr);
+            // Fallback de contingência caso a função SQL ainda não tenha sido rodada no banco
+            const { data: chkData, error: chkErr } = await supabase
+              .from('empresas')
+              .select('id')
+              .eq('tenant_id', tenant_id)
+              .ilike('nome', `%${emp.nome.trim()}%`)
+              .limit(1)
+              .maybeSingle();
+
+            if (chkErr) {
+               console.error("[CRITICAL] Falha no fallback ao buscar empresa:", chkErr);
+               // Interromper no lugar de gerar duplicatas cegas (Falha Silenciosa fixada)
+               throw new Error(`Falha crística de banco ao buscar empresa ${emp.nome}: ${chkErr.message}`);
+            }
+
+            if (chkData?.id) {
+               emp.dbId = chkData.id;
+               empresas_vinculadas++;
+            } else {
+               // Inserção fallback (Sujeito a race-condition se houver muitos)
+               const { data: inEmp, error: inErr } = await supabase
+                 .from('empresas')
+                 .insert({
+                     tenant_id: tenant_id,
+                     nome: emp.nome,
+                     status: 'ATIVA',
+                     cnpj: emp.cnpj,
+                     origem_detalhe: emp.origemDetalhe,
+                     origem: 'tio_digital',
+                     origem_cadastro: 'integracao_tio',
+                     cadastro_provisorio: true
+                 })
+                 .select('id').single();
+
+               if (inEmp) {
+                  emp.dbId = inEmp.id;
+                  empresas_criadas++;
+                  empresas_vinculadas++;
+               } else {
+                  throw new Error(`Falha ao inserir empresa fallback: ${inErr?.message}`);
+               }
+            }
+        } else if (empId) {
+            emp.dbId = empId;
+            empresas_vinculadas++;
+            // Nota: não temos como saber se foi recem-criada no RPC (a menos que a gnt retorne um TYPE RECORD no SQL), 
+            // mas o importante é a integridade.
+        }
     }
 
     // --- ETAPA 4: VINCULAR EMPRESA AO COLABORADOR ---

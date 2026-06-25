@@ -1,0 +1,32 @@
+﻿node.exe : WARN: config 
+section [inbucket] is 
+deprecated. Please use 
+[local_smtp] instead.
+No linha:1 caractere:1
++ & "C:\Program 
+Files\nodejs/node.exe" 
+"C:\Program 
+Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo        
+      : NotSpecified: (W  
+  ARN: config se..._smt   
+ p] instead.:String) [    
+], RemoteException
+    + FullyQualifiedError 
+   Id : NativeCommandErr  
+  or
+ 
+WARNING: Docker is not 
+running
+Uploading asset 
+(get-dupe-empresas): supab
+ase/functions/get-dupe-emp
+resas/deno.json
+Uploading asset 
+(get-dupe-empresas): supab
+ase/functions/get-dupe-emp
+resas/index.ts
+{"_tag":"Error","error":{"code":"UnknownError","message":"unexpected deploy status 403: {\"message\":\"Your account does not have the necessary privileges to access this endpoint. For more details, refer to our documentation https://supabase.com/docs/guides/platform/access-control\"}"}}
