@@ -65,7 +65,7 @@ const Transportadoras = () => {
       telefone: "",
       email: "",
       endereco: "",
-      empresa_id: empresaOptions[0]?.id ?? "",
+      empresa_id: "",
       ativo: true,
     });
     setFormErrors({});
@@ -391,7 +391,7 @@ const Transportadoras = () => {
             </div>
             <div className="grid gap-2">
               <Label htmlFor="transportadora_empresa">
-                Empresa <span className="text-destructive">*</span>
+                Empresa <span className="text-xs text-muted-foreground">(opcional)</span>
               </Label>
               <select
                 id="transportadora_empresa"
@@ -399,7 +399,7 @@ const Transportadoras = () => {
                 onChange={(e) => updateField("empresa_id", e.target.value)}
                 className="h-10 px-3 rounded-md border border-input bg-background text-sm w-full"
               >
-                <option value="" disabled>Selecione uma empresa</option>
+                <option value="">Nenhuma empresa</option>
                 {empresaOptions.map((emp: any) => (
                   <option key={emp.id} value={emp.id}>{emp.nome}</option>
                 ))}
