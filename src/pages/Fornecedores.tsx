@@ -371,7 +371,7 @@ const Fornecedores = () => {
             </div>
             <div className="grid gap-2">
               <Label htmlFor="fornecedor_documento">
-                CNPJ / CPF <span className="text-xs text-muted-foreground">(opcional)</span>
+                CNPJ / CPF <span className="text-destructive" aria-hidden="true">*</span>
               </Label>
               <Input
                 id="fornecedor_documento"
@@ -386,7 +386,9 @@ const Fornecedores = () => {
               {formErrors.documento ? <p className="mt-1 text-sm text-destructive" role="alert">{formErrors.documento}</p> : null}
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="fornecedor_telefone">Telefone</Label>
+              <Label htmlFor="fornecedor_telefone">
+                Telefone <span className="text-destructive" aria-hidden="true">*</span>
+              </Label>
               <Input
                 id="fornecedor_telefone"
                 value={form.telefone}
@@ -400,7 +402,9 @@ const Fornecedores = () => {
               {formErrors.telefone ? <p className="mt-1 text-sm text-destructive" role="alert">{formErrors.telefone}</p> : null}
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="fornecedor_email">Email</Label>
+              <Label htmlFor="fornecedor_email">
+                Email <span className="text-destructive" aria-hidden="true">*</span>
+              </Label>
               <Input
                 id="fornecedor_email"
                 type="email"

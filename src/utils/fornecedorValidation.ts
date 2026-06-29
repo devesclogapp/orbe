@@ -11,11 +11,37 @@ export interface FornecedorFormValues {
 
 export type FornecedorValidationErrors = Partial<Record<keyof FornecedorFormValues, string>>;
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export function validateFornecedorPayload(payload: FornecedorFormValues): FornecedorValidationErrors {
   const errors: FornecedorValidationErrors = {};
 
   if (!payload.nome?.trim()) {
     errors.nome = "Informe o nome do fornecedor.";
+  }
+
+  if (!payload.documento?.trim()) {
+    errors.documento = "Informe o CNPJ ou CPF.";
+  } else {
+    const digits = payload.documento.replace(/\D/g, "");
+    if (!(digits.length === 11 || digits.length === 14)) {
+      errors.documento = "Informe um CPF ou CNPJ válido.";
+    }
+  }
+
+  if (!payload.email?.trim()) {
+    errors.email = "Informe o e-mail do fornecedor.";
+  } else if (!EMAIL_REGEX.test(payload.email.trim())) {
+    errors.email = "Informe um e-mail válido.";
+  }
+
+  if (!payload.telefone?.trim()) {
+    errors.telefone = "Informe o telefone do fornecedor.";
+  } else {
+    const digits = payload.telefone.replace(/\D/g, "");
+    if (digits.length < 10 || digits.length > 11) {
+      errors.telefone = "Informe um telefone válido.";
+    }
   }
 
   return errors;
