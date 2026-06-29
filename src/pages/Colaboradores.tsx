@@ -148,6 +148,28 @@ const Colaboradores = () => {
   };
   const normalizePhone = (value: string) => value.replace(/\D/g, "");
 
+  const toCurrencyString = (num: number | string | null | undefined): string => {
+    if (num == null || num === "") return "";
+    const numeric = typeof num === "string" ? Number(num) : num;
+    if (isNaN(numeric)) return "";
+    return numeric.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const formatCurrencyInput = (value: string) => {
+    const digits = value.replace(/\D/g, "");
+    if (!digits) return "";
+    const number = Number(digits) / 100;
+    return number.toLocaleString("pt-BR", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  };
+
+  const parseCurrency = (value: string): number => {
+    if (!value) return 0;
+    return Number(value.replace(/\./g, "").replace(",", "."));
+  };
+
   const formatPhoneForDisplay = (value: string) => {
     const digits = normalizePhone(value).slice(0, 11);
     if (digits.length === 0) return "";
@@ -221,12 +243,12 @@ const Colaboradores = () => {
       modelo_calculo: c.modelo_calculo || "Mensal",
       tipo_contrato: c.tipo_contrato || "Hora",
       tipo_colaborador: c.tipo_colaborador || "CLT",
-      valor_base: String(c.valor_base || 0),
-      salario_base: c.salario_base != null ? String(c.salario_base) : "",
-      valor_hora: c.valor_hora != null ? String(c.valor_hora) : "",
-      valor_diaria: c.valor_diaria != null ? String(c.valor_diaria) : "",
+      valor_base: toCurrencyString(c.valor_base || 0),
+      salario_base: c.salario_base != null ? toCurrencyString(c.salario_base) : "",
+      valor_hora: c.valor_hora != null ? toCurrencyString(c.valor_hora) : "",
+      valor_diaria: c.valor_diaria != null ? toCurrencyString(c.valor_diaria) : "",
       carga_referencia: c.carga_referencia != null ? String(c.carga_referencia) : "220",
-      estimativa_mensal: c.estimativa_mensal != null ? String(c.estimativa_mensal) : "",
+      estimativa_mensal: c.estimativa_mensal != null ? toCurrencyString(c.estimativa_mensal) : "",
       regra_operacional: c.regra_operacional || "",
       flag_faturamento: c.flag_faturamento ?? true,
       permitir_lancamento_operacional: c.permitir_lancamento_operacional ?? false,
@@ -391,10 +413,10 @@ const Colaboradores = () => {
     const cpfNormalized = form.cpf.replace(/\D/g, "");
     const pisNormalized = form.pis ? form.pis.replace(/\D/g, "") : null;
     const telefoneNormalized = normalizePhone(form.telefone);
-    const valorBaseNumerico = Number(form.valor_base) || 0;
-    const salarioBaseNumerico = Number(form.salario_base) || 0;
-    const valorHoraNumerico = Number(form.valor_hora) || 0;
-    const valorDiariaNumerico = Number(form.valor_diaria) || 0;
+    const valorBaseNumerico = parseCurrency(form.valor_base);
+    const salarioBaseNumerico = parseCurrency(form.salario_base);
+    const valorHoraNumerico = parseCurrency(form.valor_hora);
+    const valorDiariaNumerico = parseCurrency(form.valor_diaria);
 
     const tipoColaborador =
       form.regime_trabalho === "CLT" ? "CLT" :
@@ -592,7 +614,7 @@ const Colaboradores = () => {
                       </span>
                     </td>
                     <td className="px-3 text-right font-display font-medium">
-                      R$ {(c.valor_base || 0).toFixed(2).replace(".", ",")}
+                      R$ {(c.valor_base || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
                     <td className="px-3 text-center text-muted-foreground">{c.flag_faturamento ? "Sim" : "Não"}</td>
                     <td className="px-3 text-center">
@@ -660,7 +682,7 @@ const Colaboradores = () => {
                   <div className="mt-6 pt-4 border-t border-border flex items-center justify-between">
                     <div className="text-xs">
                       <div className="text-muted-foreground uppercase text-[9px] font-bold tracking-tight">Valor Base</div>
-                      <div className="font-bold text-foreground">R$ {(c.valor_base || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                      <div className="font-bold text-foreground">R$ {(c.valor_base || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                     </div>
                     <div className="flex gap-1 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-all">
                       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(c)}>
@@ -777,7 +799,7 @@ const Colaboradores = () => {
                       <>
                         <div className="space-y-1.5">
                           <Label htmlFor="valor">Valor da diária (R$) <span className="text-destructive">*</span></Label>
-                          <Input id="valor" type="number" value={form.valor_diaria} onChange={(e) => setForm({ ...form, valor_diaria: e.target.value, valor_base: e.target.value })} />
+                          <Input id="valor" type="text" value={form.valor_diaria} onChange={(e) => setForm({ ...form, valor_diaria: formatCurrencyInput(e.target.value), valor_base: formatCurrencyInput(e.target.value) })} />
                         </div>
                         <div className="space-y-1.5">
                           <Label htmlFor="cargo">Função operacional <span className="text-destructive">*</span></Label>
@@ -795,7 +817,7 @@ const Colaboradores = () => {
                       <>
                         <div className="space-y-1.5">
                           <Label htmlFor="salario_base">Salário base (R$) <span className="text-destructive">*</span></Label>
-                          <Input id="salario_base" type="number" value={form.salario_base} onChange={(e) => setForm({ ...form, salario_base: e.target.value, valor_base: e.target.value })} />
+                          <Input id="salario_base" type="text" value={form.salario_base} onChange={(e) => setForm({ ...form, salario_base: formatCurrencyInput(e.target.value), valor_base: formatCurrencyInput(e.target.value) })} />
                         </div>
                         <div className="space-y-1.5">
                           <Label htmlFor="matricula">Matrícula <span className="text-destructive">*</span></Label>
@@ -828,7 +850,7 @@ const Colaboradores = () => {
                       <>
                         <div className="space-y-1.5">
                           <Label htmlFor="valor_hora">Valor hora (R$) <span className="text-destructive">*</span></Label>
-                          <Input id="valor_hora" type="number" value={form.valor_hora} onChange={(e) => setForm({ ...form, valor_hora: e.target.value, valor_base: e.target.value })} />
+                          <Input id="valor_hora" type="text" value={form.valor_hora} onChange={(e) => setForm({ ...form, valor_hora: formatCurrencyInput(e.target.value), valor_base: formatCurrencyInput(e.target.value) })} />
                         </div>
                         <div className="space-y-1.5">
                           <Label htmlFor="carga_referencia">Carga referência (h/mês) <span className="text-destructive">*</span></Label>
@@ -836,7 +858,7 @@ const Colaboradores = () => {
                         </div>
                         <div className="space-y-1.5">
                           <Label htmlFor="estimativa_mensal">Estimativa mensal (R$)</Label>
-                          <Input id="estimativa_mensal" type="number" value={form.estimativa_mensal} onChange={(e) => setForm({ ...form, estimativa_mensal: e.target.value })} />
+                          <Input id="estimativa_mensal" type="text" value={form.estimativa_mensal} onChange={(e) => setForm({ ...form, estimativa_mensal: formatCurrencyInput(e.target.value) })} />
                         </div>
                         <div className="space-y-1.5">
                           <Label htmlFor="cargo">Cargo <span className="text-destructive">*</span></Label>
@@ -873,7 +895,7 @@ const Colaboradores = () => {
                         </div>
                         <div className="space-y-1.5">
                           <Label htmlFor="valor">Valor da operação (R$) <span className="text-destructive">*</span></Label>
-                          <Input id="valor" type="number" value={form.valor_base} onChange={(e) => setForm({ ...form, valor_base: e.target.value })} />
+                          <Input id="valor" type="text" value={form.valor_base} onChange={(e) => setForm({ ...form, valor_base: formatCurrencyInput(e.target.value) })} />
                         </div>
                         <div className="space-y-1.5">
                           <Label htmlFor="regra_operacional">Regra operacional (opcional)</Label>
@@ -1040,7 +1062,7 @@ const Colaboradores = () => {
                   <>
                     <div className="space-y-1.5">
                       <Label htmlFor="valor">Valor da diária (R$) <span className="text-destructive">*</span></Label>
-                      <Input id="valor" type="number" value={form.valor_diaria} onChange={(e) => setForm({ ...form, valor_diaria: e.target.value, valor_base: e.target.value })} />
+                      <Input id="valor" type="text" value={form.valor_diaria} onChange={(e) => setForm({ ...form, valor_diaria: formatCurrencyInput(e.target.value), valor_base: formatCurrencyInput(e.target.value) })} />
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="cargo">Função operacional <span className="text-destructive">*</span></Label>
@@ -1058,7 +1080,7 @@ const Colaboradores = () => {
                   <>
                     <div className="space-y-1.5">
                       <Label htmlFor="salario_base">Salário base (R$) <span className="text-destructive">*</span></Label>
-                      <Input id="salario_base" type="number" value={form.salario_base} onChange={(e) => setForm({ ...form, salario_base: e.target.value, valor_base: e.target.value })} />
+                      <Input id="salario_base" type="text" value={form.salario_base} onChange={(e) => setForm({ ...form, salario_base: formatCurrencyInput(e.target.value), valor_base: formatCurrencyInput(e.target.value) })} />
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="matricula">Matrícula <span className="text-destructive">*</span></Label>
@@ -1091,7 +1113,7 @@ const Colaboradores = () => {
                   <>
                     <div className="space-y-1.5">
                       <Label htmlFor="valor_hora">Valor hora (R$) <span className="text-destructive">*</span></Label>
-                      <Input id="valor_hora" type="number" value={form.valor_hora} onChange={(e) => setForm({ ...form, valor_hora: e.target.value, valor_base: e.target.value })} />
+                      <Input id="valor_hora" type="text" value={form.valor_hora} onChange={(e) => setForm({ ...form, valor_hora: formatCurrencyInput(e.target.value), valor_base: formatCurrencyInput(e.target.value) })} />
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="carga_referencia">Carga referência (h/mês) <span className="text-destructive">*</span></Label>
@@ -1099,7 +1121,7 @@ const Colaboradores = () => {
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="estimativa_mensal">Estimativa mensal (R$)</Label>
-                      <Input id="estimativa_mensal" type="number" value={form.estimativa_mensal} onChange={(e) => setForm({ ...form, estimativa_mensal: e.target.value })} />
+                      <Input id="estimativa_mensal" type="text" value={form.estimativa_mensal} onChange={(e) => setForm({ ...form, estimativa_mensal: formatCurrencyInput(e.target.value) })} />
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="cargo">Cargo <span className="text-destructive">*</span></Label>
@@ -1136,7 +1158,7 @@ const Colaboradores = () => {
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="valor">Valor da operação (R$) <span className="text-destructive">*</span></Label>
-                      <Input id="valor" type="number" value={form.valor_base} onChange={(e) => setForm({ ...form, valor_base: e.target.value })} />
+                      <Input id="valor" type="text" value={form.valor_base} onChange={(e) => setForm({ ...form, valor_base: formatCurrencyInput(e.target.value) })} />
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="regra_operacional">Regra operacional (opcional)</Label>
