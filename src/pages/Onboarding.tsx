@@ -131,7 +131,7 @@ function getStepChecklist(stepId: string, dataStatus: any): StepChecklistItem[] 
         {
           id: "servicos_especificos",
           label: "Configurar períodos operacionais (turnos)",
-          isComplete: true, // Opcional, consideramos sempre true para liberar mas exibimos o link para incentivar
+          isComplete: dataStatus.hasPeriodos,
           link: `/cadastros/regras-operacionais?tab=especificos&onboarding_return=true`,
           linkLabel: "Acessar",
         },

@@ -12,7 +12,7 @@ interface AuthGuardProps {
 export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
     const { session, loading } = useAuth();
     const { role, canAccess, isBlocked, loading: accessLoading } = useAccessControl();
-    const { isActive: isOnboardingActive, isOnboardingComplete, isSystemReady } = useOnboarding();
+    const { isActive: isOnboardingActive, isOnboardingComplete, isSystemReady, isDataLoaded } = useOnboarding();
     const location = useLocation();
     const hasResolvedRoute = useRef(false);
 
@@ -22,7 +22,7 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
         }
     }, [loading, accessLoading]);
 
-    const shouldBlockScreen = !hasResolvedRoute.current && (loading || accessLoading);
+    const shouldBlockScreen = (!hasResolvedRoute.current && (loading || accessLoading)) || (!isDataLoaded && session != null);
 
     if (shouldBlockScreen) {
         return (

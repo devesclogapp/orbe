@@ -24,6 +24,7 @@ export interface OnboardingStepInfo {
     hasPagamento?: boolean;
     hasTaxa?: boolean;
     hasProduct: boolean;
+    hasPeriodos: boolean;
     hasOperation: boolean;
   };
 }
@@ -40,6 +41,7 @@ export const ONBOARDING_STEPS: OnboardingStepInfo[] = [
       hasCollaborator: false,
       hasRule: false,
       hasProduct: false,
+      hasPeriodos: false,
       hasOperation: false,
     },
   },
@@ -54,6 +56,7 @@ export const ONBOARDING_STEPS: OnboardingStepInfo[] = [
       hasCollaborator: true,
       hasRule: false,
       hasProduct: false,
+      hasPeriodos: false,
       hasOperation: false,
     },
   },
@@ -71,6 +74,7 @@ export const ONBOARDING_STEPS: OnboardingStepInfo[] = [
       hasPagamento: true,
       hasTaxa: true,
       hasProduct: true,
+      hasPeriodos: true,
       hasOperation: false,
     },
   },
@@ -85,6 +89,7 @@ export const ONBOARDING_STEPS: OnboardingStepInfo[] = [
       hasCollaborator: false,
       hasRule: true,
       hasProduct: true,
+      hasPeriodos: true,
       hasOperation: true,
     },
   },
@@ -99,6 +104,7 @@ export const ONBOARDING_STEPS: OnboardingStepInfo[] = [
       hasCollaborator: false,
       hasRule: true,
       hasProduct: true,
+      hasPeriodos: true,
       hasOperation: true,
     },
   },
@@ -116,6 +122,7 @@ interface OnboardingDataStatus {
   hasPagamento: boolean;
   hasTaxa: boolean;
   hasProduct: boolean;
+  hasPeriodos: boolean;
   hasOperation: boolean;
   hasEmpresa: boolean;
   hasTransportadora: boolean;
@@ -129,6 +136,7 @@ interface OnboardingDataStatus {
   totalDiaristas: number;
   totalPontoImportado: number;
   totalRegras: number;
+  totalPeriodos: number;
   totalOperacoes: number;
 }
 
@@ -140,6 +148,7 @@ interface OnboardingContextType {
   canAdvance: boolean;
   isSystemReady: boolean;
   isOnboardingComplete: boolean;
+  isDataLoaded: boolean;
   progressPercentage: number;
   setStep: (step: OnboardingStep) => void;
   completeStep: (step: OnboardingStep) => void;
@@ -157,6 +166,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [currentStep, setCurrentStep] = useState<OnboardingStep>("cadastro_base");
   const [completedSteps, setCompletedSteps] = useState<OnboardingStep[]>([]);
   const [isActive, setIsActive] = useState(false);
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [dataStatus, setDataStatus] = useState<OnboardingDataStatus>({
     hasClient: false,
     hasSupplier: false,
@@ -169,6 +179,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     hasPagamento: false,
     hasTaxa: false,
     hasProduct: false,
+    hasPeriodos: false,
     hasOperation: false,
     hasEmpresa: false,
     hasTransportadora: false,
@@ -182,6 +193,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     totalDiaristas: 0,
     totalPontoImportado: 0,
     totalRegras: 0,
+    totalPeriodos: 0,
     totalOperacoes: 0,
   });
 
@@ -207,8 +219,10 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         hasPagamento: true,
         hasTaxa: true,
         hasProduct: true,
+        hasPeriodos: true,
         hasOperation: true,
       }));
+      setIsDataLoaded(true);
       return;
     }
 
@@ -226,19 +240,20 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         supabase.from("regras_marcacao_diaristas").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("ativo", true),
         supabase.from("regras_dados").select("id, regras_modulos!inner(slug)").eq("tenant_id", tenantId).in("regras_modulos.slug", ["taxas_impostos", "taxas-impostos"]),
         supabase.from("produtos_carga").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("ativo", true),
+        supabase.from("servicos_especificos_regras").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("ativo", true),
         supabase.from("formas_pagamento_operacional").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("ativo", true)
       ];
 
       const results = await Promise.all(promises);
 
-      const tables = ["empresas", "transportadoras_clientes", "fornecedores", "colaboradores", "fornecedor_valores_servico", "operacoes_producao", "regras_marcacao_diaristas", "regras_dados", "produtos_carga", "formas_pagamento_operacional"];
+      const tables = ["empresas", "transportadoras_clientes", "fornecedores", "colaboradores", "fornecedor_valores_servico", "operacoes_producao", "regras_marcacao_diaristas", "regras_dados", "produtos_carga", "servicos_especificos_regras", "formas_pagamento_operacional"];
       results.forEach((res, idx) => {
         if (res.error) {
           console.error(`[OnboardingContext] Error fetching ${tables[idx]}:`, res.error);
         }
       });
 
-      const [empresasRes, transportadorasRes, fornecedoresRes, colaboradoresRes, regrasRes, operacoesRes, diaristasRes, modulosRes, produtosRes, formasPagamentoRes] = results;
+      const [empresasRes, transportadorasRes, fornecedoresRes, colaboradoresRes, regrasRes, operacoesRes, diaristasRes, modulosRes, produtosRes, periodosRes, formasPagamentoRes] = results;
 
       const hasEmpresa = (empresasRes.count ?? 0) > 0;
       const hasTransportadora = (transportadorasRes.count ?? 0) > 0;
@@ -247,6 +262,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const hasOperation = (operacoesRes.count ?? 0) > 0;
       const hasDiaristaRule = (diaristasRes.count ?? 0) > 0;
       const hasProduct = (produtosRes?.count ?? 0) > 0;
+      const hasPeriodos = (periodosRes?.count ?? 0) > 0;
       const hasPagamento = (formasPagamentoRes.count ?? 0) > 0;
 
       // Processamento granular de colaboradores
@@ -299,6 +315,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         hasDiarista,
         hasRule,
         hasProduct,
+        hasPeriodos,
         hasOperation
       });
 
@@ -314,6 +331,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         hasPagamento,
         hasTaxa,
         hasProduct,
+        hasPeriodos,
         hasOperation,
         hasEmpresa,
         hasTransportadora,
@@ -327,8 +345,10 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         totalDiaristas: diaristaColabs.length,
         totalPontoImportado: pontoImportadoColabs.length,
         totalRegras: regrasRes.count ?? 0,
+        totalPeriodos: periodosRes?.count ?? 0,
         totalOperacoes: operacoesRes.count ?? 0,
       });
+      setIsDataLoaded(true);
     } catch (error) {
       console.error("[OnboardingContext] Erro ao buscar status:", error);
     }
@@ -407,6 +427,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       hasSupplier: false,
       hasCollaborator: false,
       hasProduct: false,
+      hasPeriodos: false,
       hasRule: false,
       hasOperation: false,
     };
@@ -421,7 +442,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       case "colaboradores":
         return dataStatus.hasClt && dataStatus.hasOperational && dataStatus.hasDiarista;
       case "regras":
-        return dataStatus.hasProduct && dataStatus.hasRule && dataStatus.hasDiaristaRule && dataStatus.hasPagamento && dataStatus.hasTaxa;
+        return dataStatus.hasProduct && dataStatus.hasRule && dataStatus.hasDiaristaRule && dataStatus.hasPagamento && dataStatus.hasTaxa && dataStatus.hasPeriodos;
       case "primeira_operacao":
         return dataStatus.hasOperation;
       case "resultados":
@@ -438,7 +459,8 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       dataStatus.hasSupplier &&
       dataStatus.hasOperational &&
       dataStatus.hasRule &&
-      dataStatus.hasProduct
+      dataStatus.hasProduct &&
+      dataStatus.hasPeriodos
     );
   }, [dataStatus]);
 
@@ -455,6 +477,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       dataStatus.hasPagamento &&
       dataStatus.hasTaxa &&
       dataStatus.hasProduct &&
+      dataStatus.hasPeriodos &&
       dataStatus.hasOperation
     );
   }, [dataStatus]);
@@ -472,6 +495,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       dataStatus.hasPagamento,
       dataStatus.hasTaxa,
       dataStatus.hasProduct,
+      dataStatus.hasPeriodos,
       dataStatus.hasOperation
     ];
 
@@ -545,6 +569,13 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   }, [user, isOnboardingComplete]);
 
+  useEffect(() => {
+    if (isDataLoaded && (role === "admin" || role === "super_admin") && !isSystemReady && !isActive) {
+      console.log("[OnboardingContext] Forcing onboarding active because system is not ready (base data missing)");
+      setIsActive(true);
+    }
+  }, [isDataLoaded, role, isSystemReady, isActive]);
+
   const value = useMemo(() => ({
     currentStep,
     completedSteps,
@@ -553,6 +584,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     canAdvance,
     isSystemReady,
     isOnboardingComplete,
+    isDataLoaded,
     progressPercentage,
     setStep,
     completeStep,
@@ -560,7 +592,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     finishOnboarding,
     skipOnboarding,
     refetchStatus: fetchDataStatus,
-  }), [currentStep, completedSteps, isActive, dataStatus, canAdvance, isOnboardingComplete, progressPercentage, setStep, completeStep, startOnboarding, finishOnboarding, skipOnboarding, fetchDataStatus]);
+  }), [currentStep, completedSteps, isActive, dataStatus, canAdvance, isSystemReady, isOnboardingComplete, isDataLoaded, progressPercentage, setStep, completeStep, startOnboarding, finishOnboarding, skipOnboarding, fetchDataStatus]);
 
   return (
     <OnboardingContext.Provider value={value}>
