@@ -5,11 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 
 export default function Reprocessamentos() {
-    const mockLogs = [
-        { id: 1, tipo: "Banco de Horas", competencia: "2024-05", data: "2024-05-28 10:30", status: "concluido", usuario: "Admin" },
-        { id: 2, tipo: "Fechamento", competencia: "2024-04", data: "2024-05-27 14:15", status: "erro", usuario: "Financeiro" },
-        { id: 3, tipo: "Diaristas", competencia: "2024-05", data: "2024-05-26 09:00", status: "concluido", usuario: "RH" },
-    ];
+    const mockLogs: any[] = [];
 
     return (
         <AppShell
@@ -25,7 +21,7 @@ export default function Reprocessamentos() {
                             </div>
                             <div>
                                 <p className="text-sm text-muted-foreground">Total Reprocessado</p>
-                                <p className="text-2xl font-bold">124</p>
+                                <p className="text-2xl font-bold">0</p>
                             </div>
                         </div>
                     </Card>
@@ -36,7 +32,7 @@ export default function Reprocessamentos() {
                             </div>
                             <div>
                                 <p className="text-sm text-muted-foreground">Sucesso</p>
-                                <p className="text-2xl font-bold">121</p>
+                                <p className="text-2xl font-bold">0</p>
                             </div>
                         </div>
                     </Card>
@@ -47,7 +43,7 @@ export default function Reprocessamentos() {
                             </div>
                             <div>
                                 <p className="text-sm text-muted-foreground">Falhas</p>
-                                <p className="text-2xl font-bold">3</p>
+                                <p className="text-2xl font-bold">0</p>
                             </div>
                         </div>
                     </Card>
@@ -86,6 +82,13 @@ export default function Reprocessamentos() {
                                     <TableCell>{log.usuario}</TableCell>
                                 </TableRow>
                             ))}
+                            {mockLogs.length === 0 && (
+                                <TableRow>
+                                    <TableCell colSpan={5} className="h-24 text-center text-muted-foreground italic">
+                                        Nenhum histórico de tarefas de reprocessamento em massa.
+                                    </TableCell>
+                                </TableRow>
+                            )}
                         </TableBody>
                     </Table>
                 </Card>

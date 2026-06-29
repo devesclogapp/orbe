@@ -297,8 +297,8 @@ export const useOperationalPulse = () => {
         safeCount("financeiro_consolidados_cliente", (q) => q.neq("status", "aprovado"), { tenantId, skipTenant: true }),
         safeCount("ciclos_operacionais", (q) => q.eq("status_financeiro", "validado_financeiro").in("status_remessa", ["nao_gerada", "pronta"]), { tenantId }),
         safeCount("rh_financeiro_lotes", (q) => q.eq("status", "AGUARDANDO_FINANCEIRO"), { tenantId, skipTenant: true }),
-        safeCount("ciclos_operacionais", (q) => q.neq("status", "fechado").in("status_automacao", ["bloqueado_automacao", "inconsistencias_detectadas"]), { tenantId }),
-        safeCount("ciclos_operacionais", (q) => q.neq("status", "fechado").eq("status_automacao", "aguardando_validacao"), { tenantId }),
+        safeCount("ciclos_operacionais", (q) => q.neq("status", "fechado").in("status_automacao", ["bloqueado_automacao", "inconsistencias_detectadas"]).gt("total_registros", 0), { tenantId }),
+        safeCount("ciclos_operacionais", (q) => q.neq("status", "fechado").eq("status_automacao", "aguardando_validacao").gt("total_registros", 0), { tenantId }),
         safeSelect(
           "registros_ponto",
           "id,nome_colaborador,matricula_colaborador,status_processamento,minutos_atraso,minutos_extra",
@@ -322,6 +322,7 @@ export const useOperationalPulse = () => {
           "id,competencia,semana_operacional,status_rh,status_financeiro,status_remessa,total_inconsistencias",
           (q) =>
             q
+              .gt("total_registros", 0)
               .or("status_rh.eq.pendente,status_financeiro.eq.pendente,status_remessa.eq.nao_gerada,status_remessa.eq.pronta")
               .order("updated_at", { ascending: false })
               .limit(6),

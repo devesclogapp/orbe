@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tenant-id',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
@@ -20,24 +20,82 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // 1. Receber payload
-    const payload = await req.json();
-    console.log("[LOG] Payload recebido:", JSON.stringify({ items: Array.isArray(payload) ? payload.length : 1 }));
-    
-    // 2. Validar payload
-    if (!Array.isArray(payload) || payload.length === 0) {
-      console.log("[LOG] Payload vazio ou não é array.");
-      return new Response(JSON.stringify({ error: "Payload vazio ou inválido." }), { 
+    const bodyStr = await req.text();
+    if (!bodyStr) {
+      return new Response(JSON.stringify({ error: "Empty body" }), { 
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       });
     }
 
-    const totalRecebidos = payload.length;
-    console.log(`[LOG] Total recebidos: ${totalRecebidos}`);
+    const payload = JSON.parse(bodyStr);
+    
+    // Suportar payload format: { tenant_id: 'uuid', items: [...] } 
+    // ou apenas o array [{...}] e o tenant no header (x-tenant-id)
+    let explicitTenantId = req.headers.get('x-tenant-id') || payload.tenant_id || null;
+    const items = Array.isArray(payload) ? payload : (Array.isArray(payload.items) ? payload.items : []);
+
+    console.log("[LOG] Payload recebido. Itens:", items.length, "Explicit Tenant ID:", explicitTenantId);
+
+    if (items.length === 0) {
+      return new Response(JSON.stringify({ error: "Payload vazio ou sem items." }), { 
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
+    }
+
+    // --- TENTAR INFERIR TENANT SE NÃO VEIO NA REQUISIÇÃO (Self-Healing) ---
+    // Isso é útil pois as integrações antigas (via n8n / API direta) enviavam o array cru 
+    // sem conhecimento de multitenancy.
+    if (!explicitTenantId) {
+      for (const item of items) {
+         if (item.pessoa_matricula) {
+            const { data: col } = await supabase.from('colaboradores')
+               .select('tenant_id')
+               .eq('matricula', item.pessoa_matricula)
+               .not('tenant_id', 'is', null)
+               .limit(1).maybeSingle();
+            if (col?.tenant_id) {
+               explicitTenantId = col.tenant_id;
+               break;
+            }
+         }
+      }
+      
+      // Se ainda não encontrou, podemos tentar pelo CNPJ da empresa, se houver
+      if (!explicitTenantId) {
+         for (const item of items) {
+             const cnpj = item.empresa_cnpj || item.cnpj;
+             if (cnpj) {
+                const numCnpj = String(cnpj).replace(/\D/g, '');
+                const { data: emp } = await supabase.from('empresas')
+                  .select('tenant_id')
+                  .eq('cnpj', numCnpj)
+                  .not('tenant_id', 'is', null)
+                  .limit(1).maybeSingle();
+                if (emp?.tenant_id) {
+                   explicitTenantId = emp.tenant_id;
+                   break;
+                }
+             }
+         }
+      }
+    }
+
+    const finalTenantId = explicitTenantId;
+    if (!finalTenantId) {
+       console.error("[CRITICAL] Impossível processar. tenant_id não fornecido no header/payload e impossível deduzir pelos dados.");
+       return new Response(JSON.stringify({ error: "Missing tenant_id. Provide in headers as x-tenant-id or inside payload ({ tenant_id, items: [] })" }), { 
+         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+       });
+    }
+
+    const totalRecebidos = items.length;
+    console.log(`[LOG] Total recebidos: ${totalRecebidos} | Tenant ID final resolvido: ${finalTenantId}`);
 
     // Criar histórico marcando como VALIDANDO
     const { data: historico, error: histError } = await supabase
       .from('historico_importacoes')
       .insert({
+        tenant_id: finalTenantId,
         origem: 'rhid_api',
         quantidade_registros: totalRecebidos,
         status: 'VALIDANDO'
@@ -45,136 +103,173 @@ serve(async (req) => {
       .select('id')
       .single();
 
-    if (histError) {
-      console.error("[ERROR] Falha ao criar hitórico inicial:", histError);
-    }
+    if (histError) console.error("[ERROR] Falha ao criar hitórico inicial:", histError);
     const importacaoId = historico?.id;
 
-    // Buscar todos os colaboradores para mapeamento rápido em RAM (para evitar 1 query por row)
-    // Isso imita um lookup lookup map nativo para não estourar tempo.
-    const { data: dbColabs } = await supabase.from('colaboradores').select('id, nome, matricula, empresa_id');
+    // Buscar colaboradores existentes para esse tenant para mapeamento
+    const { data: dbColabs } = await supabase
+       .from('colaboradores')
+       .select('id, nome, matricula, empresa_id')
+       .eq('tenant_id', finalTenantId);
+       
     const colabMap = new Map();
     if (dbColabs) {
        dbColabs.forEach(c => {
-         // mapeia por matrícula se tiver, senao por nome maiusculo
-         if (c.matricula) colabMap.set(`MAT_${c.matricula}`, c);
+         if (c.matricula) colabMap.set(`MAT_${String(c.matricula).trim()}`, c);
          if (c.nome) colabMap.set(`NOME_${c.nome.toUpperCase().trim()}`, c);
        });
     }
 
-    const validos = [];
-    const inconsistentes = [];
+    // Dicionário de empresas únicas para tentar resolver caso a api envie os dados.
+    const uniqueEmpresasMap = new Map();
+    
+    // --- PASSO 1: DETECTAR COLABORADORES FALTANTES E EFETUAR A CRIAÇÃO DE PRÉ-CADASTRO ---
+    console.log("[LOG] Validando se existem colaboradores faltantes na base para efetuar o Self-Healing");
+    const colaboradoresParaCriarMap = new Map(); // deduplicar no JSON
 
-    // 3. Montar registros válidos/inconsistentes
-    for (const item of payload) {
+    for (const item of items) {
+       if (!item.pessoa_nome) continue; // Nome é o mínimo vital
+       
+       let matched = null;
+       const matQuery = item.pessoa_matricula ? `MAT_${String(item.pessoa_matricula).trim()}` : null;
+       const nameQuery = item.pessoa_nome ? `NOME_${String(item.pessoa_nome).toUpperCase().trim()}` : null;
+
+       if (matQuery && colabMap.has(matQuery)) {
+          matched = colabMap.get(matQuery);
+       } else if (nameQuery && colabMap.has(nameQuery)) {
+          matched = colabMap.get(nameQuery);
+       }
+
+       if (!matched && !colaboradoresParaCriarMap.has(matQuery || nameQuery)) {
+          // Não existe no banco e ainda não colocamos na lista de criação
+          const cmpName = item.empresa_nome || item.empresa;
+          const cmpId = cmpName && uniqueEmpresasMap.has(`NOME_${cmpName.toUpperCase().trim()}`) 
+              ? uniqueEmpresasMap.get(`NOME_${cmpName.toUpperCase().trim()}`).id 
+              : null;
+              
+          colaboradoresParaCriarMap.set(matQuery || nameQuery, {
+             tenant_id: finalTenantId,
+             empresa_id: cmpId || null, 
+             nome: item.pessoa_nome.trim(),
+             matricula: item.pessoa_matricula ? String(item.pessoa_matricula).trim() : null,
+             tipo_colaborador: 'clt',
+             regime_trabalho: 'CLT',
+             modelo_calculo: 'CLT_MENSAL',
+             tipo_contrato: 'mensal',
+             status: 'pendente',
+             status_cadastro: 'pendente_complemento',
+             origem: 'ponto',
+             origem_cadastro: 'ponto_importado',
+             origem_detalhe: 'Sincronização automática via Ponto (Self-healing)',
+             cadastro_provisorio: true,
+             permitir_lancamento_operacional: false
+          });
+       }
+    }
+
+    let cltsCriados = 0;
+    const colsToInsert = Array.from(colaboradoresParaCriarMap.values());
+    if (colsToInsert.length > 0) {
+       console.log(`[LOG] Realizando inserção em lote de ${colsToInsert.length} pré-cadastros desconhecidos...`);
+       // Usando bulk insert com select
+       const { data: newCols, error: errNewCols } = await supabase
+         .from('colaboradores')
+         .insert(colsToInsert)
+         .select('id, nome, matricula, empresa_id');
+         
+       if (errNewCols) {
+          console.error("[CRITICAL] Falha ao criar pré-cadastros de CLTs:", errNewCols);
+       } else if (newCols) {
+          cltsCriados = newCols.length;
+          // Alimentamos de volta nosso MAPA para os pontos as acharem no proximo laço
+          newCols.forEach(c => {
+             if (c.matricula) colabMap.set(`MAT_${String(c.matricula).trim()}`, c);
+             if (c.nome) colabMap.set(`NOME_${c.nome.toUpperCase().trim()}`, c);
+          });
+       }
+    }
+
+    const registrosParaSalvar = [];
+
+    // --- PASSO 2: MONTAR OS REGISTROS DE PONTO (AGORA TOTALMENTE VINCULADOS) ---
+    for (const item of items) {
       let matchedColab = null;
+      const matQuery = item.pessoa_matricula ? `MAT_${String(item.pessoa_matricula).trim()}` : null;
+      const nameQuery = item.pessoa_nome ? `NOME_${String(item.pessoa_nome).toUpperCase().trim()}` : null;
 
-      if (item.pessoa_matricula && colabMap.has(`MAT_${item.pessoa_matricula}`)) {
-         matchedColab = colabMap.get(`MAT_${item.pessoa_matricula}`);
-      } else if (item.pessoa_nome && colabMap.has(`NOME_${item.pessoa_nome.toUpperCase().trim()}`)) {
-         matchedColab = colabMap.get(`NOME_${item.pessoa_nome.toUpperCase().trim()}`);
-      }
+      if (matQuery && colabMap.has(matQuery)) matchedColab = colabMap.get(matQuery);
+      else if (nameQuery && colabMap.has(nameQuery)) matchedColab = colabMap.get(nameQuery);
 
       const pointBase = {
+        tenant_id: finalTenantId, // Importante: Prevenindo data-leak e mantendo padronização
         importacao_id: importacaoId,
         data: item.data,
+        competencia: item.data ? item.data.slice(0, 7) : null,
         entrada: item.entrada,
         saida_almoco: item.saida_almoco,
         retorno_almoco: item.retorno_almoco,
         saida: item.saida,
-        origem: 'rhid_api',
-        status: 'pendente' // status base do ponto inicial
+        origem: 'importacao', // Alterado padrao de string p/ melhor compatibilidade
+        status: matchedColab ? 'pendente' : 'inconsistente',
+        status_processamento: 'pendente',
+        nome_colaborador: item.pessoa_nome,
+        matricula_colaborador: item.pessoa_matricula,
+        empresa_nome: item.empresa_nome || item.empresa || null,
+        colaborador_id: matchedColab ? matchedColab.id : null,
+        inconsistencias: matchedColab ? null : "Colaborador falhou ao ser inserido na base automática."
       };
 
-      if (!matchedColab) {
-         // Inconsistente (sem vínculo de colaborador local)
-         inconsistentes.push({
-           ...pointBase,
-           colaborador_id: null,
-           status: 'inconsistente',
-           inconsistencias: "Colaborador não encontrado no sistema: " + item.pessoa_nome
-         });
-      } else {
-         validos.push({
-           ...pointBase,
-           colaborador_id: matchedColab.id
-         });
-      }
+      registrosParaSalvar.push(pointBase);
     }
 
-    console.log(`[LOG] Total válidos: ${validos.length}`);
-    console.log(`[LOG] Total inconsistentes: ${inconsistentes.length}`);
+    console.log(`[LOG] Pontos Prontos: ${registrosParaSalvar.length} (Inconsistentes inevitáveis: ${registrosParaSalvar.filter(r => !r.colaborador_id).length})`);
 
-    // Prepara junção para salvar na mesma tabela (que acumula validos e inconstantes orfãos)
-    const registrosParaSalvar = [...validos, ...inconsistentes];
-
-    // 4 e 5. Persistir registros_ponto e inconsistências
+    // --- PASSO 3: PERSISTIR UPSERT (Deixamos os conflitos pro banco gerenciar) ---
     if (registrosParaSalvar.length > 0) {
       console.log(`[LOG] Início upsert registros_ponto (${registrosParaSalvar.length} registros)`);
       
-      // OBS: Causa confirmada em relatórios passados = não há UNIQUE Index na DB.
-      // Efetuar bulk upsert sem unique index explode em table scan.
-      // Executaremos o upsert da maneira padronizada que existia, delegando a responsabilidade de estabilidade à DB (que terá o index criado).
       const { error: upsertError } = await supabase
           .from('registros_ponto')
-          .upsert(registrosParaSalvar, { onConflict: 'data,colaborador_id' });
+          .upsert(registrosParaSalvar, { onConflict: 'tenant_id,data,colaborador_id' }); // Razoável assumir unicidade diária p/ pessoa
 
       if (upsertError) {
-        // Se este upsert falhar, aqui loga-se "Erro upsert válidos: canceling statement due to statement timeout" (se demorar demais).
-        console.error("[ERROR] Erro upsert válidos: ", upsertError.message);
+        console.error("[ERROR] Erro upsert de registros_ponto: ", upsertError.message);
         throw upsertError;
       }
-      
       console.log("[LOG] Fim upsert registros_ponto");
     }
 
-    // --- CORTADO: Processamento pesado (Return Fast) ---
-    // [REMOVIDO] await supabase.rpc('processamento_rh_diario');
-    // [REMOVIDO] await recalcularBancoHoras();
-    // [REMOVIDO] fetch(webhook_consolidacao_BI);
-    // --------------------------------------------------
-
-    // 6. Atualizar historico_importacoes
+    // 4. Atualizar historico_importacoes
     if (importacaoId) {
        console.log("[LOG] Início update histórico");
-       const finalStatus = inconsistentes.length > 0 ? 'PROCESSADO_COM_ALERTAS' : 'PROCESSADO';
+       const inconsistentesC = registrosParaSalvar.filter(r => !r.colaborador_id).length;
+       const finalStatus = inconsistentesC > 0 ? 'PROCESSADO_COM_ALERTAS' : 'PROCESSADO';
        
-       const { error: histUpdateError } = await supabase
-          .from('historico_importacoes')
+       await supabase.from('historico_importacoes')
           .update({
             status: finalStatus,
-            quantidade_registros: totalRecebidos, // ou validos.length
-            logs: inconsistentes // salva rastro na prop json
+            quantidade_registros: totalRecebidos,
+            logs: { mensagem: "Sucesso", clts_recem_criados: cltsCriados, inconsistencias_restantes: inconsistentesC }
           })
           .eq('id', importacaoId);
-
-       if (histUpdateError) {
-         console.error("[ERROR] Falha ao atualizar histórico:", histUpdateError);
-       } else {
-         console.log(`[LOG] Fim update histórico (${finalStatus})`);
-       }
     }
 
-    // 7. Retornar HTTP 200 OK imediatamente
     console.log("[LOG] Resposta enviada ao N8N com Sucesso.");
     return new Response(JSON.stringify({
        success: true,
        message: "Importação concluída.",
        recebidos: totalRecebidos,
        salvos: registrosParaSalvar.length,
-       inconsistentes: inconsistentes.length
+       clts_autocriados: cltsCriados
     }), {
        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
 
   } catch (err: any) {
     console.error("[CRITICAL] Falha geral na Edge Function:", err.message);
-    
-    // Tentativa de update de histórico para ERRO em caso de throw (fire & forget)
-    // Não usar await aqui para garantir que o catch não exploda de timeout tb
-    
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
   }
 })
+
