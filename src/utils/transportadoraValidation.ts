@@ -44,18 +44,24 @@ export function validateTransportadoraPayload(
     errors.nome = "Informe o nome da transportadora.";
   }
 
-  if (payload.documento) {
+  if (!payload.documento) {
+    errors.documento = "Informe o CNPJ ou CPF.";
+  } else {
     const digits = payload.documento.replace(/\D/g, "");
     if (!(digits.length === 11 || digits.length === 14)) {
       errors.documento = "Informe um CPF ou CNPJ válido.";
     }
   }
 
-  if (payload.email && !EMAIL_REGEX.test(payload.email)) {
+  if (!payload.email) {
+    errors.email = "Informe o e-mail da transportadora.";
+  } else if (!EMAIL_REGEX.test(payload.email)) {
     errors.email = "Informe um e-mail válido.";
   }
 
-  if (payload.telefone) {
+  if (!payload.telefone) {
+    errors.telefone = "Informe o telefone da transportadora.";
+  } else {
     const digits = payload.telefone.replace(/\D/g, "");
     if (digits.length < 10 || digits.length > 11) {
       errors.telefone = "Informe um telefone válido.";

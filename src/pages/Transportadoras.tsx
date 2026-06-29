@@ -344,7 +344,7 @@ const Transportadoras = () => {
             </div>
             <div className="grid gap-2">
               <Label htmlFor="transportadora_documento">
-                CNPJ / CPF <span className="text-xs text-muted-foreground">(opcional)</span>
+                CNPJ / CPF <span className="text-destructive" aria-hidden="true">*</span>
               </Label>
               <Input
                 id="transportadora_documento"
@@ -357,7 +357,9 @@ const Transportadoras = () => {
               {formErrors.documento ? <p className="text-sm text-destructive" role="alert">{formErrors.documento}</p> : null}
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="transportadora_telefone">Telefone</Label>
+              <Label htmlFor="transportadora_telefone">
+                Telefone <span className="text-destructive" aria-hidden="true">*</span>
+              </Label>
               <Input
                 id="transportadora_telefone"
                 value={form.telefone}
@@ -369,7 +371,9 @@ const Transportadoras = () => {
               {formErrors.telefone ? <p className="text-sm text-destructive" role="alert">{formErrors.telefone}</p> : null}
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="transportadora_email">Email</Label>
+              <Label htmlFor="transportadora_email">
+                Email <span className="text-destructive" aria-hidden="true">*</span>
+              </Label>
               <Input
                 id="transportadora_email"
                 type="email"
