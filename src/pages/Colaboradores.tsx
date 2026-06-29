@@ -707,7 +707,7 @@ const Colaboradores = () => {
                   <div className="grid grid-cols-2 gap-4 py-2">
                     <div className="col-span-2 space-y-1.5">
                       <Label htmlFor="nome">Nome completo <span className="text-destructive">*</span></Label>
-                      <Input id="nome" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
+                      <Input id="nome" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value, ...(form.syncNomeBancario ? { nome_completo: e.target.value } : {}) })} />
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="cpf">CPF <span className="text-destructive">*</span></Label>
@@ -896,18 +896,28 @@ const Colaboradores = () => {
                     <div className="col-span-2 space-y-3">
                       <div className="flex items-center justify-between">
                         <Label htmlFor="nome_completo">Nome completo (como conta) <span className="text-destructive">*</span></Label>
-                        <div className="flex items-center gap-2">
-                          <Switch
-                            id="sync-name"
-                            checked={form.syncNomeBancario}
-                            onCheckedChange={(v) => {
-                              const updates: any = { syncNomeBancario: v };
-                              if (v) updates.nome_completo = form.nome;
-                              setForm({ ...form, ...updates });
-                            }}
-                          />
-                          <Label htmlFor="sync-name" className="text-xs font-normal cursor-pointer text-muted-foreground">Mesmo nome do colaborador</Label>
-                        </div>
+                        {form.syncNomeBancario ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+                            onClick={() => setForm({ ...form, syncNomeBancario: false })}
+                            type="button"
+                          >
+                            <Pencil className="h-3 w-3 mr-1" />
+                            Editar nome da conta
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+                            onClick={() => setForm({ ...form, syncNomeBancario: true, nome_completo: form.nome })}
+                            type="button"
+                          >
+                            Usar mesmo nome
+                          </Button>
+                        )}
                       </div>
                       <Input
                         id="nome_completo"
