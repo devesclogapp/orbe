@@ -12,10 +12,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Plus } from "lucide-react";
-import { TransportadoraClienteService, FornecedorService, ProdutoCargaService } from "@/services/base.service";
+import { TransportadoraClienteService, FornecedorService, ProdutoCargaService, TipoServicoOperacionalService } from "@/services/base.service";
 import { toast } from "sonner";
 
-type QuickRegisterType = "transportadora" | "fornecedor" | "produto";
+type QuickRegisterType = "transportadora" | "fornecedor" | "produto" | "servico";
 
 interface QuickRegisterDialogProps {
     open: boolean;
@@ -33,7 +33,8 @@ export function QuickRegisterDialog({ open, onOpenChange, type, empresaId, forne
     const titleMap = {
         transportadora: "Nova Transportadora (Rápido)",
         fornecedor: "Novo Fornecedor (Rápido)",
-        produto: "Novo Produto / Carga (Rápido)"
+        produto: "Novo Produto / Carga (Rápido)",
+        servico: "Novo Serviço (Rápido)"
     };
 
     const mutation = useMutation({
@@ -49,6 +50,8 @@ export function QuickRegisterDialog({ open, onOpenChange, type, empresaId, forne
                 return TransportadoraClienteService.create({ ...basePayload, empresa_id: empresaId });
             } else if (type === "fornecedor") {
                 return FornecedorService.create({ ...basePayload, empresa_id: empresaId });
+            } else if (type === "servico") {
+                return TipoServicoOperacionalService.create({ nome: nome.trim(), ativo: true });
             } else {
                 // Products need a supplier
                 return ProdutoCargaService.create({
@@ -64,8 +67,14 @@ export function QuickRegisterDialog({ open, onOpenChange, type, empresaId, forne
             // Update queries
             const queryKey = type === "produto"
                 ? ["produtos", fornecedorId]
-                : [type + "s", empresaId];
+                : type === "servico"
+                    ? ["tipos_servico_operacional"]
+                    : [type + "s", empresaId];
 
+            queryClient.setQueryData(queryKey, (old: any) => {
+                if (!old) return [data];
+                return [data, ...old];
+            });
             queryClient.invalidateQueries({ queryKey });
 
             onSuccess(data.id, data.nome);
@@ -81,13 +90,17 @@ export function QuickRegisterDialog({ open, onOpenChange, type, empresaId, forne
                 <DialogHeader>
                     <DialogTitle>{titleMap[type]}</DialogTitle>
                     <DialogDescription>
-                        Criação rápida para continuidade operacional. Este registro ficará **inativo** até ser aprovado pelo Admin.
+                        {type === "servico"
+                            ? "Criação rápida para novo serviço básico. Pode ser editado posteriormente com todas as propriedades."
+                            : "Criação rápida para continuidade operacional. Este registro ficará **inativo** até ser aprovado pelo Admin."}
                     </DialogDescription>
                 </DialogHeader>
 
                 <div className="space-y-4 py-4">
                     <div className="space-y-2">
-                        <Label>Nome / Razão Social</Label>
+                        <Label>
+                            {type === "servico" ? "Nome do serviço" : "Nome / Razão Social"}
+                        </Label>
                         <Input
                             autoFocus
                             placeholder="Digite o nome..."

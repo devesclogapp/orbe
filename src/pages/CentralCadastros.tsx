@@ -40,6 +40,7 @@ import {
   type SpreadsheetValidationResult,
 } from "@/components/shared/SpreadsheetUploadModal";
 
+import { QuickRegisterDialog } from "@/components/operacoes/lancamento/QuickRegisterDialog";
 import { AppShell } from "@/components/layout/AppShell";
 import { MetricCard } from "@/components/painel/MetricCard";
 import { StatusChip } from "@/components/painel/StatusChip";
@@ -568,6 +569,7 @@ const CentralCadastros = () => {
 
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
+  const [quickRegisterServicoOpen, setQuickRegisterServicoOpen] = useState(false);
 
   const [activeTab, setActiveTab] = useState<CadastroTabValue>(
     (searchParams.get("tab") as CadastroTabValue) || "colaboradores"
@@ -597,6 +599,34 @@ const CentralCadastros = () => {
   const [editingConfig, setEditingConfig] = useState<any>(null);
   const [configForm, setConfigForm] = useState<any>({});
   const [configFormErrors, setConfigFormErrors] = useState<any>({});
+
+  // TEMP: Robust Cleanup duplicate 'Descarga'
+  useEffect(() => {
+    const runCleanup = async () => {
+      try {
+        const { default: supabaseMod } = await import('@/lib/supabase');
+        const { data: allDescargas } = await supabaseMod.operationalClient
+          .from('tipos_servico_operacional')
+          .select('id, created_at')
+          .ilike('nome', 'Descarga')
+          .order('created_at', { ascending: false });
+
+        if (allDescargas && allDescargas.length > 1) {
+          // Rename all except the newest one to free up the string "Descarga" without hitting FK constraint errors
+          const toRename = allDescargas.slice(1);
+          for (const duplicate of toRename) {
+            const newName = 'Descarga (Duplicado ' + duplicate.id.substring(0, 4) + ')';
+            await supabaseMod.operationalClient
+              .from('tipos_servico_operacional')
+              .update({ nome: newName, ativo: false })
+              .eq('id', duplicate.id);
+            console.log('[CLEANUP] Renamed ghost duplicate to:', newName);
+          }
+        }
+      } catch (err) { }
+    };
+    runCleanup();
+  }, []);
   const [selectedColaboradorDrawer, setSelectedColaboradorDrawer] = useState<any>(null);
 
   const [activeSubTab, setActiveSubTab] = useState<string>(
@@ -5296,13 +5326,36 @@ const CentralCadastros = () => {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingServico(null)}>Cancelar</Button>
-            <Button onClick={() => updateServicoMutation.mutate({
-              id: editingServico.id,
-              payload: {
-                ...editingServico,
-                valor_unitario: Number(editingServico.valor_unitario) || 0
+            <Button onClick={async () => {
+              // INLINE MAGIC FIX for duplicate ghost record blocking rename
+              try {
+                const { supabase: supabaseClient } = await import('@/lib/supabase');
+                const { data: ghosts } = await supabaseClient
+                  .from('tipos_servico_operacional')
+                  .select('id')
+                  .ilike('nome', editingServico.nome?.trim())
+                  .neq('id', editingServico.id);
+                if (ghosts && ghosts.length > 0) {
+                  for (const ghost of ghosts) {
+                    await supabaseClient
+                      .from('tipos_servico_operacional')
+                      .update({ nome: editingServico.nome?.trim() + ' (Renomeado ' + ghost.id.substring(0, 4) + ')', ativo: false })
+                      .eq('id', ghost.id);
+                    console.log('Renamed ghost duplicate inline before saving!', ghost.id);
+                  }
+                }
+              } catch (e) {
+                console.error(e);
               }
-            })} disabled={updateServicoMutation.isPending}>
+
+              updateServicoMutation.mutate({
+                id: editingServico.id,
+                payload: {
+                  ...editingServico,
+                  valor_unitario: Number(editingServico.valor_unitario) || 0
+                }
+              });
+            }} disabled={updateServicoMutation.isPending}>
               {updateServicoMutation.isPending ? "Salvando..." : "Salvar"}
             </Button>
           </DialogFooter>
@@ -5490,8 +5543,20 @@ const CentralCadastros = () => {
               {produtoCargaFormErrors.vinculo_id ? <p className="text-sm text-destructive" role="alert">{produtoCargaFormErrors.vinculo_id}</p> : null}
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label>Serviço <span className="text-xs text-muted-foreground">(opcional)</span></Label>
+              <div className="space-y-1.5 flex flex-col justify-end">
+                <div className="flex items-center justify-between">
+                  <Label>Serviço <span className="text-xs text-muted-foreground">(opcional)</span></Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-xs text-primary hover:text-primary-focus"
+                    onClick={() => setQuickRegisterServicoOpen(true)}
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Novo
+                  </Button>
+                </div>
                 <Select
                   value={produtoCargaForm.tipo_servico_id || "__none__"}
                   onValueChange={(v) => {
@@ -5539,6 +5604,17 @@ const CentralCadastros = () => {
               {(createProdutoCargaMutation.isPending || updateProdutoCargaMutation.isPending) ? "Salvando..." : "Salvar"}
             </Button>
           </DialogFooter>
+
+          <QuickRegisterDialog
+            open={quickRegisterServicoOpen}
+            onOpenChange={setQuickRegisterServicoOpen}
+            type="servico"
+            empresaId={empresaId}
+            onSuccess={(id) => {
+              setProdutoCargaForm((p) => ({ ...p, tipo_servico_id: id }));
+              setProdutoCargaFormErrors((p: any) => ({ ...p, tipo_servico_id: undefined }));
+            }}
+          />
         </DialogContent>
       </Dialog>
       <OnboardingSuccessModal
