@@ -1941,6 +1941,10 @@ const RegrasOperacionais = () => {
 
       toast.success("Cadastro rápido concluído.");
       closeQuickCreate();
+
+      if (isOnboardingReturn) {
+        handleOnboardingReturn();
+      }
     },
     onError: (error: any) => {
       const message = String(error?.message ?? "");

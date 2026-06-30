@@ -1495,6 +1495,10 @@ const CentralCadastros = () => {
       await queryClient.invalidateQueries({ queryKey: ["fornecedores"] });
       const data = await queryClient.fetchQuery({ queryKey: ["fornecedores"], queryFn: () => FornecedorService.getByEmpresa() });
       queryClient.setQueryData(["fornecedores"], data);
+
+      if (isOnboardingReturn) {
+        handleOnboardingReturn();
+      }
     },
     onError: (err: any) => toast.error("Erro ao cadastrar", { description: err.message }),
   });
@@ -1558,6 +1562,10 @@ const CentralCadastros = () => {
       await queryClient.invalidateQueries({ queryKey: ["tipos_servico_operacional"] });
       const data = await queryClient.fetchQuery({ queryKey: ["tipos_servico_operacional"], queryFn: () => TipoServicoOperacionalService.getAllActive() });
       queryClient.setQueryData(["tipos_servico_operacional"], data);
+
+      if (isOnboardingReturn) {
+        handleOnboardingReturn();
+      }
     },
     onError: (err: any) => toast.error(getServicoErrorMessage(err)),
   });
