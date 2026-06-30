@@ -1122,14 +1122,14 @@ const Operacoes = () => {
         ) : (
           <>
             <div className="space-y-4">
-              <div className="esc-card p-1 w-fit bg-muted/50 rounded-lg">
-                <Tabs value={selectedModalidade} onValueChange={setSelectedModalidade} className="w-fit">
-                  <TabsList className="bg-transparent h-9 p-0 space-x-1">
-                    <TabsTrigger value="all" className="rounded-md px-4 data-[state=active]:bg-card data-[state=active]:shadow-sm">Todos</TabsTrigger>
-                    <TabsTrigger value="CAIXA_IMEDIATO" className="rounded-md px-4 data-[state=active]:bg-card data-[state=active]:shadow-sm">Caixa Real</TabsTrigger>
-                    <TabsTrigger value="DUPLICATA_FORNECEDOR" className="rounded-md px-4 data-[state=active]:bg-card data-[state=active]:shadow-sm">Duplicatas</TabsTrigger>
-                    <TabsTrigger value="FECHAMENTO_MENSAL_EMPRESA" className="rounded-md px-4 data-[state=active]:bg-card data-[state=active]:shadow-sm">Faturamento Mensal</TabsTrigger>
-                    <TabsTrigger value="TRANSBORDO_30D" className="rounded-md px-4 data-[state=active]:bg-card data-[state=active]:shadow-sm">Transbordo</TabsTrigger>
+              <div className="esc-card p-1.5 w-fit overflow-x-auto max-w-full bg-muted/50 rounded-lg">
+                <Tabs value={selectedModalidade} onValueChange={setSelectedModalidade} className="w-auto min-w-max">
+                  <TabsList className="flex-nowrap bg-transparent h-9 p-0 gap-2">
+                    <TabsTrigger value="all" className="flex-none rounded-md px-4 data-[state=active]:bg-card data-[state=active]:shadow-sm">Todos</TabsTrigger>
+                    <TabsTrigger value="CAIXA_IMEDIATO" className="flex-none rounded-md px-4 data-[state=active]:bg-card data-[state=active]:shadow-sm">Caixa Real</TabsTrigger>
+                    <TabsTrigger value="DUPLICATA_FORNECEDOR" className="flex-none rounded-md px-4 data-[state=active]:bg-card data-[state=active]:shadow-sm">Duplicatas</TabsTrigger>
+                    <TabsTrigger value="FECHAMENTO_MENSAL_EMPRESA" className="flex-none rounded-md px-4 data-[state=active]:bg-card data-[state=active]:shadow-sm">Faturamento Mensal</TabsTrigger>
+                    <TabsTrigger value="TRANSBORDO_30D" className="flex-none rounded-md px-4 data-[state=active]:bg-card data-[state=active]:shadow-sm">Transbordo</TabsTrigger>
                   </TabsList>
                 </Tabs>
               </div>
@@ -1170,80 +1170,13 @@ const Operacoes = () => {
                 />
               </div>
 
-              <div className="esc-card p-4 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-display font-medium text-sm text-muted-foreground uppercase tracking-wider">Por Modalidade</h3>
-                  <div className="text-xs text-muted-foreground">Distribuição financeira dos itens filtrados</div>
-                </div>
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="p-3 bg-muted/20 rounded-lg">
-                    <div className="text-[11px] text-muted-foreground uppercase font-semibold">Caixa Imediato</div>
-                    <div className="text-lg font-bold text-foreground">{formatCurrency(operacoesKpis.modalidadeCounts.CAIXA_IMEDIATO)}</div>
-                  </div>
-                  <div className="p-3 bg-muted/20 rounded-lg">
-                    <div className="text-[11px] text-muted-foreground uppercase font-semibold">Duplicatas</div>
-                    <div className="text-lg font-bold text-foreground">{formatCurrency(operacoesKpis.modalidadeCounts.DUPLICATA_FORNECEDOR)}</div>
-                  </div>
-                  <div className="p-3 bg-muted/20 rounded-lg">
-                    <div className="text-[11px] text-muted-foreground uppercase font-semibold">Faturamento Mensal</div>
-                    <div className="text-lg font-bold text-foreground">{formatCurrency(operacoesKpis.modalidadeCounts.FECHAMENTO_MENSAL_EMPRESA)}</div>
-                  </div>
-                  <div className="p-3 bg-muted/20 rounded-lg">
-                    <div className="text-[11px] text-muted-foreground uppercase font-semibold">Transbordo</div>
-                    <div className="text-lg font-bold text-foreground">{formatCurrency(operacoesKpis.modalidadeCounts.TRANSBORDO_30D)}</div>
-                  </div>
-                </div>
-              </div>
 
-              <div className="esc-card p-4 space-y-3">
-                <h3 className="font-display font-medium text-sm text-muted-foreground uppercase tracking-wider">Médias e Desempenho</h3>
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                  <TopKpiCard
-                    label="Operações"
-                    value={formatInteger(operacoesKpis.operacoesCount)}
-                    size="xs"
-                    variant="muted"
-                    icon={Package2}
-                  />
-                  <TopKpiCard
-                    label="Ticket Médio"
-                    value={formatCurrency(operacoesKpis.ticketMedio)}
-                    size="xs"
-                    variant="muted"
-                    icon={Calculator}
-                  />
-                  <TopKpiCard
-                    label="Produtividade"
-                    value={formatDecimal(operacoesKpis.produtividade)}
-                    helper="Volumes/Colab"
-                    size="xs"
-                    variant="muted"
-                    icon={TrendingUp}
-                  />
-                  <TopKpiCard
-                    label="Valor por Volume"
-                    value={formatCurrency(operacoesKpis.valorPorVolume)}
-                    size="xs"
-                    variant="muted"
-                    icon={CircleDollarSign}
-                  />
-                </div>
-              </div>
+
             </div>
 
             <Tabs defaultValue="base" className="space-y-4">
               <TabsContent value="base" className="space-y-5">
-                <div className="flex items-center justify-between gap-3 mb-4">
-                  <div>
-                    <h2 className="font-display font-semibold text-foreground">Base Diária de Operações</h2>
-                    <p className="text-sm text-muted-foreground">
-                      Registros operacionais detalhados conforme filtros aplicados acima.
-                    </p>
-                  </div>
-                  <Badge className="bg-info-soft text-info-strong">
-                    Fluxo operacional ativo nesta tela
-                  </Badge>
-                </div>
+
                 <OperacoesTableBlock
                   date={dateValue}
                   empresaId={selectedEmpresaId}

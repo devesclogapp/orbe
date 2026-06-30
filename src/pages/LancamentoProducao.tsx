@@ -168,6 +168,8 @@ const LancamentoProducao = () => {
                 colaborador_id: selectedColaboradores[0] || null,
                 regra_id: formData.regra_periodo_id || null, // Para serviços específicos
                 codigo_operacional: selectedPeriodo ? `${selectedPeriodo.codigo}C${formData.quantidade_colaboradores}` : null,
+                horario_inicio: horario_inicio || null,
+                horario_fim: horario_fim || null,
             };
 
             const colabPayload = selectedColaboradores.map(id => ({
