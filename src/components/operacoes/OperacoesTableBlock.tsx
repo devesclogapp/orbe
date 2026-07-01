@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { supabase } from "@/lib/supabase";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -337,31 +338,31 @@ const getStatusConfig = (status: string) => {
   const s = status?.toLowerCase();
 
   switch (s) {
+    case "recebido":
     case "registrado":
     case "aberto":
     case "registered":
       return { label: "Registrado", className: "bg-muted text-muted-foreground", opacity: "opacity-100" };
 
+    case "em_validacao":
     case "pendente":
     case "pending":
     case "em_analise":
-      return { label: "🟡 Em análise RH", className: "bg-amber-50 text-amber-600 border-amber-100", opacity: "opacity-100" };
+      return { label: "Em Validação", className: "bg-amber-50 text-amber-600 border-amber-100", opacity: "opacity-100" };
 
-    case "validado_rh":
-    case "validado":
-      return { label: "🟢 Validado RH", className: "bg-cyan-50 text-cyan-600 border-cyan-100", opacity: "opacity-[0.95]" };
+    case "aguardando_faturamento":
+      return { label: "Aguardando Faturamento", className: "bg-cyan-50 text-cyan-600 border-cyan-100", opacity: "opacity-[0.95]" };
 
-    case "em_validacao":
-      return { label: "🟡 Em análise RH", className: "bg-amber-50 text-amber-600 border-amber-100", opacity: "opacity-[0.95]" };
-
+    case "faturado":
     case "enviado_financeiro":
     case "financeiro":
     case "aprovado_financeiro":
     case "aguardando_pagamento":
-      return { label: "🔵 Financeiro", className: "bg-blue-50 text-blue-600 border-blue-100", opacity: "opacity-[0.90]" };
+      return { label: "Faturado", className: "bg-blue-50 text-blue-600 border-blue-100", opacity: "opacity-[0.90]" };
 
+    case "recebido_financeiro":
     case "cnab_gerado":
-      return { label: "🟣 CNAB Gerado", className: "bg-indigo-50 text-indigo-600 border-indigo-100", opacity: "opacity-[0.80]" };
+      return { label: "Recebido Financeiro", className: "bg-indigo-50 text-indigo-600 border-indigo-100", opacity: "opacity-[0.80]" };
 
     case "pago":
       return { label: "💰 Pago", className: "bg-zinc-100 text-zinc-500 border-zinc-200", opacity: "opacity-[0.70]" };
@@ -371,9 +372,10 @@ const getStatusConfig = (status: string) => {
     case "fechado":
       return { label: "⚫ Concluído", className: "bg-zinc-100 text-zinc-500 border-zinc-200", opacity: "opacity-[0.60]" };
 
+    case "em_restricao":
     case "devolvido":
     case "recusado":
-      return { label: "Devolvido", className: "bg-rose-50 text-rose-600 border-rose-100", opacity: "opacity-100" };
+      return { label: "Em Restrição", className: "bg-rose-50 text-rose-600 border-rose-100", opacity: "opacity-100" };
 
     case "inconsistente":
     case "bloqueado":
@@ -1015,10 +1017,10 @@ export const OperacoesTableBlock = ({
     const pipelineMatch = pipelineFilter === "todos" || (() => {
       // Normalizamos para lower case na leitura para coincidir com os enums do producao.service
       const s = String(item.status || "pendente").toLowerCase();
-      if (pipelineFilter === "pendentes") return ["pendente", "aberto", "abreto", "registered", "registrado", "devolvido", "inconsistente", "recusado"].includes(s);
+      if (pipelineFilter === "pendentes") return ["pendente", "aberto", "abreto", "registered", "registrado", "devolvido", "inconsistente", "recusado", "recebido", "em_restricao"].includes(s);
       if (pipelineFilter === "rh") return ["validado_rh", "em_validacao", "validado"].includes(s);
-      if (pipelineFilter === "financeiro") return ["enviado_financeiro", "aprovado_financeiro", "cnab_gerado", "aguardando_pagamento", "financeiro"].includes(s);
-      if (pipelineFilter === "concluidos") return ["pago", "concluido", "finalizado", "fechado"].includes(s);
+      if (pipelineFilter === "financeiro") return ["enviado_financeiro", "aprovado_financeiro", "cnab_gerado", "aguardando_pagamento", "financeiro", "aguardando_faturamento", "faturado"].includes(s);
+      if (pipelineFilter === "concluidos") return ["pago", "concluido", "finalizado", "fechado", "recebido_financeiro"].includes(s);
       return true;
     })();
 
@@ -1154,13 +1156,58 @@ export const OperacoesTableBlock = ({
     setJustificationModalOpen(true);
   };
 
-  const handleAprovar = (item: any) => {
-    if (updateMutation.isPending) return;
-    updateMutation.mutate(
+  const changeStatusMutation = useMutation({
+    mutationFn: async ({ id, payload }: { id: string; payload: any }) => {
+      return OperacaoProducaoService.update(id, payload);
+    },
+    onSuccess: () => {
+      setSelectedOpDetails(null);
+      queryClient.invalidateQueries({ queryKey: ["operacoes"] });
+      queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
+      queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+      queryClient.invalidateQueries({ queryKey: ["operacoes-pipeline"] });
+      queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
+      queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
+    },
+    onError: (error: unknown) => {
+      console.error("[DEBUG] Erro ao atualizar status:", error);
+      const message = error instanceof Error
+        ? error.message
+        : typeof error === "object"
+          ? JSON.stringify(error)
+          : "Não foi possível atualizar o status.";
+      toast.error("Falha ao atualizar operação.", { description: message });
+    },
+  });
+
+  const handleAprovar = async (item: any) => {
+    if (changeStatusMutation.isPending) return;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    const currentAuthUser = user?.email || user?.id || "Sistema";
+    const historicoAtual = item.avaliacao_json?.historico_faturamento || [];
+    const newLog = {
+      acao: "APROVAR_FATURAMENTO",
+      usuario: currentAuthUser,
+      data: new Date().toISOString().split("T")[0],
+      hora: new Date().toISOString().split("T")[1].substring(0, 5),
+      status_anterior: item.status || "pendente",
+      status_novo: "AGUARDANDO_FATURAMENTO"
+    };
+
+    const nextAvaliacao = {
+      ...(item.avaliacao_json || {}),
+      historico_faturamento: [...historicoAtual, newLog]
+    };
+
+    changeStatusMutation.mutate(
       {
         id: item.id,
-        payload: { status: "aprovado" }
-      } as any,
+        payload: {
+          status: "AGUARDANDO_FATURAMENTO",
+          avaliacao_json: nextAvaliacao
+        }
+      },
       {
         onSuccess: () => {
           setSelectedOpDetails(null);
@@ -1177,12 +1224,36 @@ export const OperacoesTableBlock = ({
   };
 
   const handleDevolver = (item: any) => {
-    openJustification("devolucao", (justification: string) => {
-      updateMutation.mutate(
+    openJustification("devolucao", async (justification: string) => {
+      if (changeStatusMutation.isPending) return;
+
+      const { data: { user } } = await supabase.auth.getUser();
+      const currentAuthUser = user?.email || user?.id || "Sistema";
+      const historicoAtual = item.avaliacao_json?.historico_faturamento || [];
+      const newLog = {
+        acao: "DEVOLVER_RESTRICAO",
+        usuario: currentAuthUser,
+        data: new Date().toISOString().split("T")[0],
+        hora: new Date().toISOString().split("T")[1].substring(0, 5),
+        status_anterior: item.status || "pendente",
+        status_novo: "EM_RESTRICAO",
+        justificativa: justification
+      };
+
+      const nextAvaliacao = {
+        ...(item.avaliacao_json || {}),
+        historico_faturamento: [...historicoAtual, newLog]
+      };
+
+      changeStatusMutation.mutate(
         {
           id: item.id,
-          payload: { status: "recusado", justificativa: justification }
-        } as any,
+          payload: {
+            status: "EM_RESTRICAO",
+            justificativa_retroativa: justification,
+            avaliacao_json: nextAvaliacao
+          }
+        },
         {
           onSuccess: () => {
             setSelectedOpDetails(null);
@@ -1191,9 +1262,6 @@ export const OperacoesTableBlock = ({
       );
     });
   };
-
-
-
 
   const editableFilteredCount = filteredData.filter((item: any) => isEditableOperation(item)).length;
 
@@ -2614,13 +2682,14 @@ export const OperacoesTableBlock = ({
 
               <div className="pt-4 border-t border-border flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setSelectedOpDetails(null)}>Fechar</Button>
-                {selectedOpDetails.status !== "aprovado" && selectedOpDetails.status !== "fechado" && (
-                  <Button variant="outline" className="border-warning text-warning hover:bg-warning-soft hover:text-warning-strong" onClick={() => handleDevolver(selectedOpDetails)}>
+                {!["AGUARDANDO_FATURAMENTO", "FATURADO", "RECEBIDO_FINANCEIRO", "CONCLUIDO", "APROVADO", "FECHADO"].includes(selectedOpDetails.status?.toUpperCase() || "") && (
+                  <Button variant="outline" className="border-warning text-warning hover:bg-warning-soft hover:text-warning-strong" onClick={() => handleDevolver(selectedOpDetails)} disabled={changeStatusMutation.isPending}>
                     Devolver com Restrição
                   </Button>
                 )}
-                {selectedOpDetails.status !== "aprovado" && selectedOpDetails.status !== "fechado" && (
-                  <Button onClick={() => handleAprovar(selectedOpDetails)} className="bg-brand text-white border-0 hover:bg-brand/90 focus:ring-brand">
+                {!["AGUARDANDO_FATURAMENTO", "FATURADO", "RECEBIDO_FINANCEIRO", "CONCLUIDO", "APROVADO", "FECHADO"].includes(selectedOpDetails.status?.toUpperCase() || "") && (
+                  <Button onClick={() => handleAprovar(selectedOpDetails)} className="bg-brand text-white border-0 hover:bg-brand/90 focus:ring-brand" disabled={changeStatusMutation.isPending}>
+                    {changeStatusMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                     Aprovar para Faturamento
                   </Button>
                 )}

@@ -779,7 +779,7 @@ class OperacaoProducaoServiceClass {
         unidades:unidade_id(nome),
         operacao_producao_materiais!operacao_id(*)
       `)
-      .in('status', ['inconsistente', 'com_alerta', 'aguardando_validacao', 'pendente', 'validado_rh', 'aprovado_financeiro', 'concluido'])
+      .in('status', ['RECEBIDO', 'EM_VALIDACAO', 'EM_RESTRICAO', 'AGUARDANDO_FATURAMENTO', 'FATURADO', 'RECEBIDO_FINANCEIRO', 'CONCLUIDO'])
       .is('deleted_at', null)
       .order('criado_em', { ascending: false });
 

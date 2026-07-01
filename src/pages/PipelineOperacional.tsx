@@ -127,12 +127,13 @@ export default function PipelineOperacional() {
 
         (operacoes || []).forEach((op: any) => {
             let stageId = "recebido";
-            if (op.status === "concluido") stageId = "concluido";
-            else if (op.status === "remetido") stageId = "remetido";
-            else if (op.status === "pronto_cnab") stageId = "pronto-cnab";
-            else if (op.status === "aprovado_financeiro") stageId = "financeiro";
-            else if (op.status === "aprovado_rh" || op.status === "fechado") stageId = "aprovado-rh";
-            else if (op.status === "em_analise") stageId = "analise-rh";
+            const s = op.status?.toUpperCase() || "";
+            if (s === "CONCLUIDO") stageId = "concluido";
+            else if (s === "RECEBIDO_FINANCEIRO") stageId = "remetido";
+            else if (s === "FATURADO") stageId = "pronto-cnab";
+            else if (s === "AGUARDANDO_FATURAMENTO") stageId = "financeiro";
+            else if (s === "EM_VALIDACAO" || s === "EM_RESTRICAO") stageId = "analise-rh"; // Use este visual apenas como genérico para análise
+            else if (s === "RECEBIDO") stageId = "recebido";
 
             const createdDate = new Date(op.created_at || op.data_operacao || Date.now());
 

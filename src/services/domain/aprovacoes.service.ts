@@ -66,6 +66,12 @@ export class AprovacoesService {
         return q;
     }
 
+    const baseQueryWithTipo = () => {
+        let q = baseQuery();
+        if (tipo && tipo !== 'all') q = q.eq('tipo', tipo);
+        return q;
+    }
+
     const [
         pontosReq,
         diaristasReq,
@@ -73,7 +79,10 @@ export class AprovacoesService {
         custosReq,
         servicosReq,
         devolvidosReq,
-        totaisValorReq // Para o total de valores, precisariamos do select('valor').
+        totaisValorReq,
+        filaTotalReq,
+        aprovadosTotalReq,
+        devolvidosTabTotalReq
     ] = await Promise.all([
         baseQuery().eq('situacao', 'Em análise').eq('tipo', 'PONTO'),
         baseQuery().eq('situacao', 'Em análise').eq('tipo', 'DIARISTA'),
@@ -81,12 +90,11 @@ export class AprovacoesService {
         baseQuery().eq('situacao', 'Em análise').eq('tipo', 'CUSTO EXTRA'),
         baseQuery().eq('situacao', 'Em análise').eq('tipo', 'SERVIÇO EXTRA'),
         baseQuery().eq('situacao', 'Devolvido'),
-        // para a soma de valores dos devolvidos e pendentes:
-        baseQuery().select('valor').eq('situacao', 'Devolvido'), // this fetch values to sum
+        baseQuery().select('valor').eq('situacao', 'Devolvido'),
+        baseQueryWithTipo().eq('situacao', 'Em análise'),
+        baseQueryWithTipo().eq('situacao', 'Aprovado'),
+        baseQueryWithTipo().eq('situacao', 'Devolvido'),
     ]);
-
-    // O frontend só precisa da soma aproximada se quisermos, mas como pode haver muitos devolvidos,
-    // fazer select('valor') é aceitável, mas idéal é RPC.
     
     return {
         pontos: pontosReq.count || 0,
@@ -95,6 +103,9 @@ export class AprovacoesService {
         custos: custosReq.count || 0,
         servicos: servicosReq.count || 0,
         devolvidos: devolvidosReq.count || 0,
+        filaTotal: filaTotalReq.count || 0,
+        aprovadosTotal: aprovadosTotalReq.count || 0,
+        devolvidosTabTotal: devolvidosTabTotalReq.count || 0,
     };
   }
 }

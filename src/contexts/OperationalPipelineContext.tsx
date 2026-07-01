@@ -941,7 +941,7 @@ export const buildOperacaoVolumePipeline = (params: {
             case "financeiro":
             case "faturamento":
             case "recebimento":
-                return "/financeiro";
+                return "/operacional/dashboard";
             default:
                 return undefined;
         }

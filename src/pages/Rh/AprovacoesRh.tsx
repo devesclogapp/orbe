@@ -274,7 +274,7 @@ export default function AprovacoesRh() {
             // Operações por Volume
             if (item.tipo === "OPERAÇÃO") {
                 const { error } = await supabase.from("operacoes_producao")
-                    .update({ status: "VALIDADO_RH", atualizado_em: new Date().toISOString() })
+                    .update({ status_rh: "VALIDADO_RH", atualizado_em: new Date().toISOString() })
                     .eq("id", item.id);
                 if (error) throw error;
                 return;
@@ -329,7 +329,7 @@ export default function AprovacoesRh() {
             // Operações por Volume
             if (item.tipo === "OPERAÇÃO") {
                 const { error } = await supabase.from("operacoes_producao")
-                    .update({ status: "PENDENTE", atualizado_em: new Date().toISOString() })
+                    .update({ status_rh: "PENDENTE_RH", atualizado_em: new Date().toISOString() })
                     .eq("id", item.id);
                 if (error) throw error;
                 return;
@@ -538,9 +538,9 @@ export default function AprovacoesRh() {
                             <div className="flex flex-col md:flex-row items-center justify-between border-b border-border/40 mb-0 bg-white/60 backdrop-blur-sm rounded-t-xl px-4 gap-4 py-2 md:py-0">
                                 <TabsList className="bg-transparent h-14 p-0 gap-6">
                                     {[
-                                        { value: "fila", label: "Fila de Aprovação", icon: Activity, count: activeTab === "fila" ? results?.count : undefined, color: "data-[state=active]:border-orange-500 data-[state=active]:text-orange-600" },
-                                        { value: "aprovados", label: "Aprovados", icon: CheckCircle2, count: activeTab === "aprovados" ? results?.count : undefined, color: "data-[state=active]:border-emerald-500 data-[state=active]:text-emerald-700" },
-                                        { value: "devolvidos", label: "Devolvidos", icon: RotateCcw, count: activeTab === "devolvidos" ? results?.count : undefined, color: "data-[state=active]:border-rose-500 data-[state=active]:text-rose-600" },
+                                        { value: "fila", label: "Fila de Aprovação", icon: Activity, count: kpisData?.filaTotal, color: "data-[state=active]:border-orange-500 data-[state=active]:text-orange-600" },
+                                        { value: "aprovados", label: "Aprovados", icon: CheckCircle2, count: kpisData?.aprovadosTotal, color: "data-[state=active]:border-emerald-500 data-[state=active]:text-emerald-700" },
+                                        { value: "devolvidos", label: "Devolvidos", icon: RotateCcw, count: kpisData?.devolvidosTabTotal, color: "data-[state=active]:border-rose-500 data-[state=active]:text-rose-600" },
                                         { value: "historico", label: "Histórico", icon: History, count: activeTab === "historico" ? results?.count : undefined, color: "data-[state=active]:border-primary" },
                                     ].map(tab => (
                                         <TabsTrigger key={tab.value} value={tab.value} className={cn("bg-transparent border-b-2 border-transparent data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none text-[11px] uppercase tracking-wider font-bold px-0 h-14 gap-2 transition-all opacity-70 data-[state=active]:opacity-100", tab.color)}>
@@ -552,14 +552,18 @@ export default function AprovacoesRh() {
                                 </TabsList>
 
                                 <div className="flex items-center gap-2 pb-2 md:pb-0">
-                                    <Button size="sm" className="h-9 bg-emerald-600 hover:bg-emerald-700 text-white gap-2 px-4 shadow-sm font-bold text-xs" disabled={selectedItems.length === 0 || aprovarMutation.isPending} onClick={handleBulkAprovar}>
-                                        {aprovarMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                                        Validar Selecionados
-                                    </Button>
-                                    <Button variant="outline" size="sm" className="h-9 border-orange-200 text-orange-600 hover:bg-orange-50 gap-2 px-4 font-bold text-xs" disabled={selectedItems.length === 0 || devolverMutation.isPending} onClick={handleBulkDevolver}>
-                                        {devolverMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
-                                        Devolver
-                                    </Button>
+                                    {activeTab === "fila" && (
+                                        <>
+                                            <Button size="sm" className="h-9 bg-emerald-600 hover:bg-emerald-700 text-white gap-2 px-4 shadow-sm font-bold text-xs" disabled={selectedItems.length === 0 || aprovarMutation.isPending} onClick={handleBulkAprovar}>
+                                                {aprovarMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                                                Validar Selecionados
+                                            </Button>
+                                            <Button variant="outline" size="sm" className="h-9 border-orange-200 text-orange-600 hover:bg-orange-50 gap-2 px-4 font-bold text-xs" disabled={selectedItems.length === 0 || devolverMutation.isPending} onClick={handleBulkDevolver}>
+                                                {devolverMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+                                                Devolver
+                                            </Button>
+                                        </>
+                                    )}
                                     <Button variant="outline" size="sm" className="h-9 gap-2 px-4 font-bold text-xs border-border/60" onClick={handleExport}>
                                         <Download size={14} className="text-muted-foreground" />
                                         Excel
