@@ -576,16 +576,16 @@ export const OperacoesTableBlock = ({
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
   const [lockedCols, setLockedCols] = useState<Record<string, boolean>>(() => {
     try {
-      const saved = localStorage.getItem("orbe_lockedCols_operacoes_v1");
+      const saved = localStorage.getItem("orbe_lockedCols_operacoes_v2");
       if (saved) return JSON.parse(saved);
     } catch { }
-    return { expander: true, data: true, idPlanilha: true, operacao: true };
+    return { expander: true, data: true, idPlanilha: true, operacao: true, modalidadeFinanceira: true };
   });
 
   const toggleLock = (colKey: string) => {
     setLockedCols((prev) => {
       const next = { ...prev, [colKey]: !prev[colKey] };
-      localStorage.setItem("orbe_lockedCols_operacoes_v1", JSON.stringify(next));
+      localStorage.setItem("orbe_lockedCols_operacoes_v2", JSON.stringify(next));
       return next;
     });
   };
@@ -1730,11 +1730,10 @@ export const OperacoesTableBlock = ({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todas as Modalidades</SelectItem>
-              {regrasFinanceiras.map((regra: any) => (
-                <SelectItem key={regra.modalidade_financeira} value={regra.modalidade_financeira}>
-                  {regra.nome}
-                </SelectItem>
-              ))}
+              <SelectItem value="CAIXA_IMEDIATO">Caixa Imediato</SelectItem>
+              <SelectItem value="DUPLICATA_FORNECEDOR">Duplicata</SelectItem>
+              <SelectItem value="FECHAMENTO_MENSAL_EMPRESA">Fechamento Mensal</SelectItem>
+              <SelectItem value="TRANSBORDO_30D">Transbordo 30d</SelectItem>
             </SelectContent>
           </Select>
 
@@ -1877,7 +1876,7 @@ export const OperacoesTableBlock = ({
 
         <div ref={tableScrollRef} className="max-h-[70vh] overflow-auto rounded-xl border border-border pb-[1px] bg-background">
           {(() => {
-            const getStickyProps = (colKey: "data" | "idPlanilha" | "operacao", isHeader = false) => {
+            const getStickyProps = (colKey: "data" | "idPlanilha" | "operacao" | "modalidadeFinanceira", isHeader = false) => {
               const baseThClass = "px-3 font-semibold py-2.5 bg-muted/95 backdrop-blur-sm";
               const lockedThClass = "px-3 font-semibold py-2.5 bg-zinc-200/95 dark:bg-zinc-800/95 backdrop-blur-sm";
               const baseTdClass = "px-3 text-center text-muted-foreground whitespace-nowrap bg-background";
@@ -1885,14 +1884,15 @@ export const OperacoesTableBlock = ({
                 expander: "w-10 px-0",
                 data: isHeader ? "" : "font-mono text-xs",
                 idPlanilha: "",
-                operacao: isHeader ? "px-5" : "font-medium text-foreground px-5 py-3"
+                operacao: isHeader ? "px-5" : "font-medium text-foreground px-5 py-3",
+                modalidadeFinanceira: "",
               };
 
               if (!lockedCols[colKey]) {
                 return { className: cn(isHeader ? baseThClass : baseTdClass, typeClasses[colKey]) };
               }
 
-              const widths = { expander: 45, data: 120, idPlanilha: 80, operacao: 280 };
+              const widths = { expander: 45, data: 120, idPlanilha: 80, operacao: 280, modalidadeFinanceira: 155 };
               let left = 0;
               if (colKey === "data") {
                 if (visibleCols.expander !== false && lockedCols.expander) left += widths.expander;
@@ -1906,12 +1906,19 @@ export const OperacoesTableBlock = ({
                 if (visibleCols.data && lockedCols.data) left += widths.data;
                 if (visibleCols.idPlanilha && lockedCols.idPlanilha) left += widths.idPlanilha;
               }
+              if (colKey === "modalidadeFinanceira") {
+                if (visibleCols.expander !== false && lockedCols.expander) left += widths.expander;
+                if (visibleCols.data && lockedCols.data) left += widths.data;
+                if (visibleCols.idPlanilha && lockedCols.idPlanilha) left += widths.idPlanilha;
+                if (visibleCols.operacao && lockedCols.operacao) left += widths.operacao;
+              }
 
               const activeSticky = [];
               if (visibleCols.expander !== false && lockedCols.expander) activeSticky.push("expander");
               if (visibleCols.data && lockedCols.data) activeSticky.push("data");
               if (visibleCols.idPlanilha && lockedCols.idPlanilha) activeSticky.push("idPlanilha");
               if (visibleCols.operacao && lockedCols.operacao) activeSticky.push("operacao");
+              if (visibleCols.modalidadeFinanceira && lockedCols.modalidadeFinanceira) activeSticky.push("modalidadeFinanceira");
               const isLast = activeSticky[activeSticky.length - 1] === colKey;
 
               return {
@@ -1933,7 +1940,7 @@ export const OperacoesTableBlock = ({
             };
 
             const renderInteractiveHeader = (colKey: string, label: React.ReactNode, Icon?: any) => {
-              const isLockable = ["data", "idPlanilha", "operacao"].includes(colKey);
+              const isLockable = ["data", "idPlanilha", "operacao", "modalidadeFinanceira"].includes(colKey);
               const isLocked = lockedCols[colKey];
 
               return (
@@ -1984,6 +1991,7 @@ export const OperacoesTableBlock = ({
                     {visibleCols.data && <th style={getStickyProps("data", true).style} className={getStickyProps("data", true).className}>{renderInteractiveHeader("data", "DATA", CalendarDays)}</th>}
                     {visibleCols.idPlanilha && <th style={getStickyProps("idPlanilha", true).style} className={getStickyProps("idPlanilha", true).className}>{renderInteractiveHeader("idPlanilha", "ID")}</th>}
                     {visibleCols.operacao && <th style={getStickyProps("operacao", true).style} className={getStickyProps("operacao", true).className}>{renderInteractiveHeader("operacao", "OPERAÇÃO/VOLUME", Package)}</th>}
+                    {visibleCols.modalidadeFinanceira && <th style={getStickyProps("modalidadeFinanceira", true).style} className={getStickyProps("modalidadeFinanceira", true).className}>{renderInteractiveHeader("modalidadeFinanceira", "MODALIDADE")}</th>}
                     {visibleCols.empresaPlanilha && <th className="px-3 py-2.5 font-semibold text-center">EMPRESA</th>}
                     {visibleCols.unidade && <th className="px-3 py-2.5 font-semibold text-center">UNIDADE / LOCAL</th>}
                     {visibleCols.transportadora && <th className="px-3 py-2.5 font-semibold text-left">{renderInteractiveHeader("transportadora", "TRANSPORTADORA", Truck)}</th>}
@@ -2004,7 +2012,6 @@ export const OperacoesTableBlock = ({
                     {visibleCols.valorIss && renderHeaderCell("valorIss", "VALOR ISS", "px-3 py-2.5 font-semibold text-center")}
                     {visibleCols.valDia && renderHeaderCell("conferido_final", <span className="inline-flex items-center justify-center gap-1.5 w-full"><BadgeDollarSign className="h-3.5 w-3.5 text-muted-foreground" />TOTAL DIA</span>, "px-3 py-2.5 font-semibold text-center")}
 
-                    {visibleCols.modalidadeFinanceira && <th className="px-3 py-2.5 font-semibold text-center">MODALIDADE</th>}
                     {visibleCols.dataVencimento && <th className="px-3 py-2.5 font-semibold text-center">VENCIMENTO</th>}
                     {visibleCols.statusPagamento && <th className="px-3 py-2.5 font-semibold text-center">STATUS PGTO</th>}
                     {visibleCols.encarregado && <th className="px-3 py-2.5 font-semibold text-center">ENCARREGADO</th>}
@@ -2065,6 +2072,19 @@ export const OperacoesTableBlock = ({
                           {visibleCols.operacao && <td style={getStickyProps("operacao", false).style} className={cn(getStickyProps("operacao", false).className, "px-5 py-3 text-center font-medium whitespace-nowrap text-foreground")}>
                             {operacaoNome}
                           </td>}
+                          {visibleCols.modalidadeFinanceira && (
+                            <td style={getStickyProps("modalidadeFinanceira", false).style} className={cn(getStickyProps("modalidadeFinanceira", false).className, "px-3 text-center whitespace-nowrap")}>
+                              {item.modalidadeFinanceira ? (
+                                <Badge variant="outline" className={cn(
+                                  "font-medium border-0 text-xs",
+                                  item.modalidadeFinanceira === "CAIXA_IMEDIATO" && "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
+                                  item.modalidadeFinanceira === "TRANSBORDO_30D" && "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300",
+                                )}>
+                                  {getModalidadeLabel(item.modalidadeFinanceira)}
+                                </Badge>
+                              ) : <span className="text-muted-foreground">-</span>}
+                            </td>
+                          )}
                           {visibleCols.empresaPlanilha && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{String(empresaPlanilha)}</td>}
                           {visibleCols.unidade && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{item.unidades?.nome || "-"}</td>}
                           {visibleCols.fornecedor && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{fornecedor}</td>}
@@ -2084,20 +2104,6 @@ export const OperacoesTableBlock = ({
                           {visibleCols.materiais && <td className="px-3 py-3 text-center whitespace-nowrap"><span className="text-blue-600 font-medium">{materiais !== "R$ 0,00" ? materiais : "-"}</span></td>}
                           {visibleCols.valorIss && <td className="px-3 text-center text-muted-foreground whitespace-nowrap">{valorIss}</td>}
                           {visibleCols.valDia && <td className="px-3 py-3 text-center whitespace-nowrap"><span className="font-display font-bold text-foreground">{valDia}</span></td>}
-                          {visibleCols.modalidadeFinanceira && (
-                            <td className="px-3 text-center whitespace-nowrap">
-                              {item.modalidadeFinanceira ? (
-                                <Badge variant="outline" className={cn(
-                                  "font-medium border-0 text-xs",
-                                  item.modalidadeFinanceira === "CAIXA_IMEDIATO" && "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
-                                  item.modalidadeFinanceira === "TRANSBORDO_30D" && "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300",
-                                )}>
-
-                                  {getModalidadeLabel(item.modalidadeFinanceira)}
-                                </Badge>
-                              ) : <span className="text-muted-foreground">-</span>}
-                            </td>
-                          )}
                           {visibleCols.dataVencimento && (
                             <td className="px-3 text-center text-muted-foreground whitespace-nowrap font-mono text-xs">
                               {item.dataVencimento
@@ -2555,94 +2561,94 @@ export const OperacoesTableBlock = ({
           </SheetHeader>
 
           {selectedOpDetails && (
-            <div className="mt-6 space-y-6">
-              <div className="space-y-1">
+            <div className="mt-4 space-y-4">
+              <div className="space-y-0.5">
                 <p className="text-sm font-medium text-foreground">Fornecedor / Operação</p>
                 <p className="text-sm text-muted-foreground">{selectedOpDetails.fornecedores?.nome || selectedOpDetails.produto_label || "Sem fornecedor"}</p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
+                <div className="space-y-0.5">
                   <p className="text-sm font-medium text-foreground">Empresa</p>
                   <p className="text-sm text-muted-foreground truncate" title={String(getDisplayEmpresa(selectedOpDetails, empresas))}>
                     {String(getDisplayEmpresa(selectedOpDetails, empresas))}
                   </p>
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   <p className="text-sm font-medium text-foreground">Unidade / Local</p>
                   <p className="text-sm text-muted-foreground">{selectedOpDetails.unidades?.nome || "-"}</p>
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   <p className="text-sm font-medium text-foreground">Data da operação</p>
                   <p className="text-sm text-muted-foreground font-mono">
                     {selectedOpDetails.data_operacao ? new Date(selectedOpDetails.data_operacao + "T00:00:00").toLocaleDateString("pt-BR") : "-"}
                   </p>
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   <p className="text-sm font-medium text-foreground">Status</p>
                   <Badge variant="outline" className={cn("font-medium border-0 text-xs px-2 py-0", getStatusConfig(selectedOpDetails.status || "pendente").className)}>
                     {getStatusConfig(selectedOpDetails.status || "pendente").label}
                   </Badge>
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   <p className="text-sm font-medium text-foreground">Serviço</p>
                   <p className="text-sm text-muted-foreground">{selectedOpDetails.tipos_servico_operacional?.nome || selectedOpDetails.tipo_servico_label || "Sem servico"}</p>
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   <p className="text-sm font-medium text-foreground">Volume</p>
                   <p className="text-sm text-muted-foreground font-semibold">{selectedOpDetails.quantidade ?? 0}</p>
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   <p className="text-sm font-medium text-foreground">Qtd. colaboradores</p>
                   <p className="text-sm text-muted-foreground">{selectedOpDetails.quantidade_colaboradores ?? 1} col.</p>
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   <p className="text-sm font-medium text-foreground">Placa</p>
                   <p className="text-sm text-muted-foreground font-mono">{selectedOpDetails.placa || "-"}</p>
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   <p className="text-sm font-medium text-foreground">Entrada</p>
                   <p className="text-sm text-muted-foreground font-mono">{(selectedOpDetails.entrada_ponto || "").substring(0, 5) || "-"}</p>
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   <p className="text-sm font-medium text-foreground">Saída</p>
                   <p className="text-sm text-muted-foreground font-mono">{(selectedOpDetails.saida_ponto || "").substring(0, 5) || "-"}</p>
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   <p className="text-sm font-medium text-foreground">Transportadora</p>
                   <p className="text-sm text-muted-foreground truncate" title={selectedOpDetails.transportadoras_clientes?.nome || selectedOpDetails.transportadora_label || "-"}>
                     {selectedOpDetails.transportadoras_clientes?.nome || selectedOpDetails.transportadora_label || "-"}
                   </p>
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   <p className="text-sm font-medium text-foreground">NF numero</p>
                   <p className="text-sm text-muted-foreground">{selectedOpDetails.nf_numero || "-"}</p>
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   <p className="text-sm font-medium text-foreground">CTRC</p>
                   <p className="text-sm text-muted-foreground">{selectedOpDetails.ctrc || "-"}</p>
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   <p className="text-sm font-medium text-foreground">Encarregado</p>
                   <p className="text-sm text-muted-foreground">{selectedOpDetails.responsavel_nome || "-"}</p>
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   <p className="text-sm font-medium text-foreground">Forma de pagamento</p>
                   <p className="text-sm text-muted-foreground">{String(getDisplayFormaPagamento(selectedOpDetails))}</p>
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   <p className="text-sm font-medium text-foreground">Modalidade</p>
                   <p className="text-sm text-muted-foreground">
                     {selectedOpDetails.modalidadeFinanceira ? getModalidadeLabel(selectedOpDetails.modalidadeFinanceira) : "-"}
                   </p>
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   <p className="text-sm font-medium text-foreground">Vencimento</p>
                   <p className="text-sm text-muted-foreground font-mono">
                     {selectedOpDetails.dataVencimento ? new Date(selectedOpDetails.dataVencimento + "T12:00:00Z").toLocaleDateString("pt-BR") : "-"}
                   </p>
                 </div>
-                <div className="space-y-1 col-span-2">
+                <div className="space-y-0.5 col-span-2">
                   <p className="text-sm font-medium text-foreground">Observação</p>
                   <p className="text-sm text-muted-foreground italic bg-muted/20 p-2 rounded border border-dashed border-border">
                     {String(getDisplayObservacao(selectedOpDetails)) || "-"}
@@ -2652,7 +2658,7 @@ export const OperacoesTableBlock = ({
 
               <div className="space-y-1">
                 <p className="text-sm font-medium text-foreground">Valores principais</p>
-                <div className="grid grid-cols-2 gap-4 border border-border rounded-lg p-3 bg-muted/30">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2 border border-border rounded-lg p-3 bg-muted/30">
                   <div>
                     <p className="text-xs text-muted-foreground">Valor Unitário</p>
                     <p className="text-sm font-medium text-foreground">

@@ -61,7 +61,8 @@ export const LancamentoRapidoDialog = ({ open, onOpenChange }: LancamentoRapidoD
             const operacao = {
                 tipo_servico_id: tipoServico,
                 data_operacao: new Date().toISOString().split('T')[0],
-                status: "pendente",
+                status: "RECEBIDO",
+                status_pagamento: "PENDENTE",
                 responsavel_id: user?.id,
                 quantidade_colaboradores: colaboradores.length,
             };

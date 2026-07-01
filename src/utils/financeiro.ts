@@ -61,6 +61,8 @@ export function classificarFinanceiroSync(operacao: any, empresa: any = {}): { m
 
   if (meio_pagamento.includes("BOLETO")) {
     modalidade = "DUPLICATA_FORNECEDOR";
+  } else if (meio_pagamento.includes("MENSAL") || meio_pagamento.includes("FATURAMENTO")) {
+    modalidade = "FECHAMENTO_MENSAL_EMPRESA";
   } else if (empresa.tem_fechamento_mensal === true && ["DEPOSITO", "PIX", "TRANSFERENCIA"].some(m => meio_pagamento.includes(m))) {
     modalidade = "FECHAMENTO_MENSAL_EMPRESA";
   } else if (["DEPOSITO", "PIX", "TRANSFERENCIA"].some(mod => meio_pagamento.includes(mod))) {
