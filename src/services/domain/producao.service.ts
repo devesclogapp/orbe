@@ -961,6 +961,7 @@ class OperacaoProducaoServiceClass {
       .single();
 
     if (error) throw error;
+
     return data;
   }
 

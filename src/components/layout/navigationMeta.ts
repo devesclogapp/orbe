@@ -50,6 +50,7 @@ const routeMeta: RouteMeta[] = [
 
   // Financeiro
   { pattern: "/financeiro", label: "Central Financeira", section: "Financeiro" },
+  { pattern: "/financeiro/receitas", label: "Receitas (Contas a Receber)", section: "Financeiro", parentPath: "/financeiro" },
   { pattern: "/financeiro/legado", label: "Financeiro (legado)", section: "Financeiro", parentPath: "/financeiro" },
   { pattern: "/financeiro/regras", label: "Regras de Cálculo", section: "Financeiro", parentPath: "/financeiro" },
   { pattern: "/financeiro/faturamento", label: "Faturamento por Cliente", section: "Financeiro", parentPath: "/financeiro" },

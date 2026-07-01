@@ -1,0 +1,5 @@
+{
+  "migrationsErr": "Could not find the table 'public.supabase_migrations.schema_migrations' in the schema cache",
+  "migrations": null,
+  "ops": []
+}
