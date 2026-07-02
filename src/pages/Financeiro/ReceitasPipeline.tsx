@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
     Building2, Calendar, FileText, Search, Filter, RefreshCw, AlertTriangle,
     Wallet, TrendingUp, DollarSign, ArrowRight, Layers, Receipt, Zap, CheckCircle2,
-    Clock, Package, AlertCircle
+    Clock, Package, AlertCircle, CreditCard, FileSpreadsheet, Lock, Plus
 } from "lucide-react";
 
 import { AppShell } from "@/components/layout/AppShell";
@@ -13,21 +13,37 @@ import { EmpresaService } from "@/services/domain/cadastros.service";
 import { ReceitasService } from "@/services/receitas/receitas.service";
 import { useTenant } from "@/contexts/TenantContext";
 import { cn } from "@/lib/utils";
+import { ModalReceitaOperacional } from "./components/ModalReceitaOperacional";
+import { useToast } from "@/components/ui/use-toast";
 
-const KANBAN_STAGES = [
-    { id: "pendente", label: "Não Faturado", color: "bg-gray-100 text-gray-500 border-gray-200", icon: Clock },
-    { id: "aguardando_faturamento", label: "Aguardando", color: "bg-blue-50 text-blue-600 border-blue-200", icon: Wallet },
-    { id: "faturado", label: "Faturado / Cobrado", color: "bg-orange-50 text-orange-600 border-orange-200", icon: Receipt },
-    { id: "pago", label: "Recebido (Pago)", color: "bg-emerald-50 text-emerald-600 border-emerald-200", icon: CheckCircle2 },
-];
+// Definição dos estágios por Modalidade
+const KANBAN_CONFIGS = {
+    'CAIXA_IMEDIATO': [
+        { id: "pendente", label: "Recebimento a Confirmar", color: "bg-gray-100 text-gray-500 border-gray-200", icon: Clock },
+        { id: "pago", label: "Pago (Conciliado)", color: "bg-emerald-50 text-emerald-600 border-emerald-200", icon: CheckCircle2 },
+    ],
+    'DUPLICATA': [
+        { id: "pendente", label: "Pronto para Cobrança", color: "bg-blue-50 text-blue-600 border-blue-200", icon: Wallet },
+        { id: "faturado", label: "Cobrança Enviada", color: "bg-orange-50 text-orange-600 border-orange-200", icon: Receipt },
+        { id: "pago", label: "Recebido (Pago)", color: "bg-emerald-50 text-emerald-600 border-emerald-200", icon: CheckCircle2 },
+    ],
+    'FATURAMENTO_MENSAL': [
+        { id: "aguardando_faturamento", label: "Competência Aberta", color: "bg-gray-100 text-gray-500 border-gray-200", icon: Clock },
+        { id: "pendente", label: "Pronto para Cobrança", color: "bg-blue-50 text-blue-600 border-blue-200", icon: Wallet },
+        { id: "faturado", label: "Cobrança Enviada", color: "bg-orange-50 text-orange-600 border-orange-200", icon: Receipt },
+        { id: "pago", label: "Recebido (Pago)", color: "bg-emerald-50 text-emerald-600 border-emerald-200", icon: CheckCircle2 },
+    ]
+};
 
 export default function ReceitasPipeline() {
     const queryClient = useQueryClient();
     const { tenantId, loading: isTenantLoading } = useTenant();
+    const { toast } = useToast();
 
     const [filterEmpresaId, setFilterEmpresaId] = useState<string>("all");
-    const [filterCompetencia, setFilterCompetencia] = useState(new Date().toISOString().substring(0, 7));
     const [searchTerm, setSearchTerm] = useState("");
+    const [activeTab, setActiveTab] = useState<'CAIXA_IMEDIATO' | 'DUPLICATA' | 'FATURAMENTO_MENSAL'>('DUPLICATA');
+    const [selectedReceita, setSelectedReceita] = useState<any>(null);
 
     const { data: empresas = [], isLoading: isEmpresasLoading } = useQuery({
         queryKey: ["empresas"],
@@ -46,27 +62,64 @@ export default function ReceitasPipeline() {
         queryClient.invalidateQueries({ queryKey: ["receitas-pipeline"] });
     };
 
+    const handleNovaReceita = () => {
+        toast({ title: "Aviso", description: "Criação avulsa de receitas será disponibilizada em breve.", variant: "default" });
+    }
+
     const filteredReceitas = useMemo(() => {
         return receitas.filter((r: any) => {
             const matchSearch = !searchTerm || String(r.empresas?.nome || "").toLowerCase().includes(searchTerm.toLowerCase());
-            return matchSearch;
+            const matchModalidade = r.modalidade === activeTab;
+            return matchSearch && matchModalidade;
         });
-    }, [receitas, searchTerm]);
+    }, [receitas, searchTerm, activeTab]);
 
-    // Aggregate columns
+    const kpis = useMemo(() => {
+        let count = 0;
+        let total = 0;
+        let recebido = 0;
+        let aberto = 0;
+        let vencidas = 0;
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        receitas.forEach((r: any) => {
+            count++;
+            const valor = Number(r.valor_total || 0);
+            total += valor;
+            if (r.status === 'pago') {
+                recebido += valor;
+            } else {
+                aberto += valor;
+                if (r.vencimento) {
+                    const [ano, mes, dia] = r.vencimento.split('-');
+                    const vDate = new Date(Number(ano), Number(mes) - 1, Number(dia));
+                    if (vDate.getTime() < today.getTime()) {
+                        vencidas += valor;
+                    }
+                }
+            }
+        });
+
+        return { count, total, recebido, aberto, vencidas };
+    }, [receitas]);
+
+    const currentKanbanStages = KANBAN_CONFIGS[activeTab];
     const kanbanColumns = useMemo(() => {
-        const cols: Record<string, any[]> = {
-            "pendente": [],
-            "aguardando_faturamento": [],
-            "faturado": [],
-            "pago": []
-        };
+        const cols: Record<string, any[]> = {};
+        currentKanbanStages.forEach(col => cols[col.id] = []);
+
         filteredReceitas.forEach((r: any) => {
-            const st = r.status || "pendente";
-            if (cols[st]) cols[st].push(r);
+            const st = r.status || currentKanbanStages[0].id;
+            if (cols[st]) {
+                cols[st].push(r);
+            } else if (cols[currentKanbanStages[0].id]) {
+                cols[currentKanbanStages[0].id].push(r);
+            }
         });
         return cols;
-    }, [filteredReceitas]);
+    }, [filteredReceitas, currentKanbanStages]);
 
     const cardsByCols = (stageId: string) => kanbanColumns[stageId] || [];
 
@@ -74,6 +127,18 @@ export default function ReceitasPipeline() {
         <AppShell
             title="Receitas e Contas a Receber"
             subtitle="Funil Financeiro Operacional"
+            actions={
+                <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={handleRefresh} className="h-9">
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        Atualizar
+                    </Button>
+                    <Button variant="default" size="sm" onClick={handleNovaReceita} className="bg-primary hover:bg-primary/90 h-9">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Nova Receita
+                    </Button>
+                </div>
+            }
         >
             {isGlobalLoading ? (
                 <div className="flex flex-col items-center justify-center py-32 space-y-4">
@@ -82,8 +147,61 @@ export default function ReceitasPipeline() {
                 </div>
             ) : (
                 <div className="space-y-6 max-w-[1700px] mx-auto pb-12 px-4 md:px-6">
-                    <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 py-4 border-y border-border/60">
+
+                    {/* KPI Headers */}
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col">
+                            <span className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-1">Receitas</span>
+                            <span className="text-2xl font-black text-gray-800">{kpis.count}</span>
+                        </div>
+                        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col">
+                            <span className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-1">Valor Total</span>
+                            <span className="text-2xl font-black text-blue-600">R$ {kpis.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col">
+                            <span className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-1">Recebido</span>
+                            <span className="text-2xl font-black text-emerald-600">R$ {kpis.recebido.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col">
+                            <span className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-1">Em Aberto</span>
+                            <span className="text-2xl font-black text-orange-500">R$ {kpis.aberto.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                        <div className="bg-white p-4 rounded-xl border border-transparent shadow-sm flex flex-col bg-red-50 relative overflow-hidden">
+                            <div className="absolute top-0 right-0 p-2"><AlertCircle className="h-4 w-4 text-red-300" /></div>
+                            <span className="text-red-700 text-xs font-bold uppercase tracking-wider mb-1">Vencidas</span>
+                            <span className="text-2xl font-black text-red-600">R$ {kpis.vencidas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 py-3 border-y border-border/60">
                         <div className="flex flex-wrap items-center gap-3">
+                            <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg">
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setActiveTab('CAIXA_IMEDIATO')}
+                                    className={cn("h-9 px-4 gap-2 text-sm font-medium", activeTab === 'CAIXA_IMEDIATO' ? 'bg-white shadow-sm text-gray-900 border border-gray-200' : 'text-gray-500 hover:text-gray-700')}
+                                >
+                                    <Zap className="h-4 w-4" /> Caixa Imediato
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setActiveTab('DUPLICATA')}
+                                    className={cn("h-9 px-4 gap-2 text-sm font-medium", activeTab === 'DUPLICATA' ? 'bg-white shadow-sm text-gray-900 border border-gray-200' : 'text-gray-500 hover:text-gray-700')}
+                                >
+                                    <FileText className="h-4 w-4" /> Duplicata
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setActiveTab('FATURAMENTO_MENSAL')}
+                                    className={cn("h-9 px-4 gap-2 text-sm font-medium", activeTab === 'FATURAMENTO_MENSAL' ? 'bg-white shadow-sm text-gray-900 border border-gray-200' : 'text-gray-500 hover:text-gray-700')}
+                                >
+                                    <Calendar className="h-4 w-4" /> Faturamento Mensal
+                                </Button>
+                            </div>
+
                             <select
                                 value={filterEmpresaId}
                                 onChange={(e) => setFilterEmpresaId(e.target.value)}
@@ -105,20 +223,10 @@ export default function ReceitasPipeline() {
                                 />
                             </div>
                         </div>
-
-                        <Button
-                            variant="default"
-                            size="sm"
-                            className="bg-[#FD4C00] hover:bg-[#E54300] h-10 gap-2 font-semibold px-6 shadow-sm rounded-lg"
-                            onClick={handleRefresh}
-                        >
-                            <RefreshCw className="h-4 w-4" />
-                            Atualizar
-                        </Button>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 items-start">
-                        {KANBAN_STAGES.map((col) => {
+                    <div className={cn("grid gap-6 items-start", currentKanbanStages.length <= 2 ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-2' : currentKanbanStages.length === 3 ? 'grid-cols-1 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-1 md:grid-cols-2 xl:grid-cols-4')}>
+                        {currentKanbanStages.map((col) => {
                             const items = cardsByCols(col.id);
                             const totalMoney = items.reduce((acc, curr) => acc + (Number(curr.valor_total) || 0), 0);
 
@@ -147,27 +255,82 @@ export default function ReceitasPipeline() {
                                                 Nenhum registro.
                                             </div>
                                         ) : (
-                                            items.map((r: any) => (
-                                                <div key={r.id} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow group relative">
-                                                    <div className={cn("absolute left-0 top-0 bottom-0 w-1.5 rounded-l-xl", col.color.split(' ')[0], col.color.split(' ')[2])} />
-                                                    <div className="pl-2">
-                                                        <p className="text-xs font-bold text-gray-400 mb-1">
-                                                            {new Date(r.created_at).toLocaleDateString("pt-BR")}
-                                                        </p>
-                                                        <p className="font-semibold text-gray-700 leading-tight mb-2 truncate" title={r.empresas?.nome}>
-                                                            {r.empresas?.nome || "Empresa não vinculada"}
-                                                        </p>
-                                                        <div className="flex items-center justify-between">
-                                                            <span className={cn("px-2 py-0.5 rounded text-[10px] uppercase font-bold", r.modalidade === 'CAIXA_IMEDIATO' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700')}>
-                                                                {r.modalidade?.replace('_', ' ')}
-                                                            </span>
-                                                            <span className="font-bold text-gray-900 text-sm">
-                                                                R$ {Number(r.valor_total).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                                            </span>
+                                            items.map((r: any) => {
+                                                const today = new Date();
+                                                today.setHours(0, 0, 0, 0);
+                                                let isVencido = false;
+                                                let isVenceHoje = false;
+                                                let isVenceBreve = false;
+
+                                                if (r.vencimento && r.status !== 'pago') {
+                                                    const [ano, mes, dia] = r.vencimento.split('-');
+                                                    const vDate = new Date(Number(ano), Number(mes) - 1, Number(dia));
+                                                    const diffDays = Math.ceil((vDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+                                                    if (diffDays < 0) isVencido = true;
+                                                    else if (diffDays === 0) isVenceHoje = true;
+                                                    else if (diffDays <= 3) isVenceBreve = true;
+                                                }
+
+                                                let indicatorColor = 'bg-gray-300';
+                                                if (r.status === 'pago') indicatorColor = 'bg-emerald-500';
+                                                else if (isVencido) indicatorColor = 'bg-red-500';
+                                                else if (isVenceHoje) indicatorColor = 'bg-amber-400';
+                                                else if (isVenceBreve) indicatorColor = 'bg-orange-500';
+
+                                                const itemOps = r.receitas_operacionais_itens?.[0]?.operacoes_producao;
+                                                const servicoNome = itemOps?.servicos?.nome || 'Operação Avulsa (Múltiplas)';
+                                                const produtoNome = itemOps?.produtos?.nome;
+                                                const compStr = r.competencia ? `${r.competencia.slice(5, 7)}/${r.competencia.slice(0, 4)}` : 'N/A';
+                                                const vencStr = r.vencimento ? new Date(r.vencimento).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : 'À vista';
+
+                                                return (
+                                                    <div
+                                                        key={r.id}
+                                                        onClick={() => setSelectedReceita(r)}
+                                                        className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm hover:border-gray-300 hover:shadow-md transition-all group relative cursor-pointer"
+                                                    >
+                                                        <div className={cn("absolute left-0 top-0 bottom-0 w-1.5 rounded-l-xl", indicatorColor)} title={
+                                                            r.status === 'pago' ? "Pago" : isVencido ? "Vencido" : isVenceHoje ? "Vence hoje" : isVenceBreve ? "Vence em breve" : "No prazo"
+                                                        } />
+                                                        <div className="pl-2 flex flex-col gap-2">
+                                                            <div>
+                                                                <p className="font-bold text-gray-800 leading-tight truncate text-sm" title={r.empresas?.nome}>
+                                                                    {r.empresas?.nome || "Empresa não vinculada"}
+                                                                </p>
+                                                            </div>
+
+                                                            <div className="flex flex-col text-sm text-gray-600 bg-gray-50 border border-gray-100 p-2 rounded-lg">
+                                                                <p className="font-semibold text-gray-800">{servicoNome.toUpperCase()}</p>
+                                                                {produtoNome && <p className="text-xs text-gray-500 mt-0.5">{produtoNome}</p>}
+                                                            </div>
+
+                                                            <div className="grid grid-cols-2 text-xs text-gray-500 gap-y-1">
+                                                                <div>
+                                                                    <span className="font-semibold block text-gray-400">Competência</span>
+                                                                    <span>{compStr}</span>
+                                                                </div>
+                                                                <div>
+                                                                    <span className="font-semibold block text-gray-400">Vencimento</span>
+                                                                    <span className={cn("font-medium", isVencido ? "text-red-600" : isVenceHoje ? "text-amber-600" : "")}>{vencStr}</span>
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="flex items-center justify-between mt-1 pt-3 border-t border-gray-100">
+                                                                <span className={cn("px-2 py-0.5 rounded text-[10px] uppercase font-bold",
+                                                                    r.modalidade === 'CAIXA_IMEDIATO' ? 'bg-purple-100 text-purple-700' :
+                                                                        r.modalidade === 'DUPLICATA' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
+                                                                )}>
+                                                                    {r.modalidade === 'FATURAMENTO_MENSAL' ? 'MENSAL' : r.modalidade?.replace('_', ' ')}
+                                                                </span>
+                                                                <span className="font-black text-gray-800 text-[15px]">
+                                                                    R$ {Number(r.valor_total).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                                </span>
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                </div>
-                                            ))
+                                                )
+                                            })
                                         )}
                                     </div>
                                 </div>
@@ -175,6 +338,14 @@ export default function ReceitasPipeline() {
                         })}
                     </div>
 
+                    {selectedReceita && (
+                        <ModalReceitaOperacional
+                            isOpen={!!selectedReceita}
+                            receita={selectedReceita}
+                            onClose={() => setSelectedReceita(null)}
+                            onSuccess={handleRefresh}
+                        />
+                    )}
                 </div>
             )}
         </AppShell>

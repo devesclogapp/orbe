@@ -14,8 +14,10 @@ class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
         *,
         empresas:empresa_id(nome),
         receitas_operacionais_itens(
-          id, valor_item,
-          operacoes_producao(id, data_operacao, quantidade)
+          operacoes_producao(
+            servicos:servico_id (nome),
+            produtos:produto_id (nome)
+          )
         )
       `)
       .eq('tenant_id', tenantId);
@@ -25,8 +27,6 @@ class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
     }
     
     if (competencia) {
-      // Como não tem campo data obrigatório para gerar competência via insert hoje,
-      // usaremos created_at via GTE LTE ou similar. Por hora vamos trazer até 500 ultmos ou tratar por data de vencimento.
       query = query.order('created_at', { ascending: false }).limit(500); 
     } else {
       query = query.order('created_at', { ascending: false }).limit(500); 
@@ -39,6 +39,91 @@ class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
     }
 
     return data;
+  }
+
+  async getReceitaDetalhes(receitaId: string) {
+    // Faz a query pesada sob demanda (lazy load)
+    const { data, error } = await supabase
+      .from('receitas_operacionais')
+      .select(`
+        *,
+        empresas:empresa_id(nome),
+        receitas_operacionais_itens(
+          id, valor_item,
+          operacoes_producao(
+            id, data_operacao, quantidade, status, horario_inicio, horario_fim, observacao,
+            produtos:produto_id (nome),
+            servicos:servico_id (nome),
+            fornecedores:fornecedor_id (nome_fantasia, razao_social),
+            transportadoras:transportadora_id (nome_fantasia, razao_social),
+            formas_pagamento_operacional:forma_pagamento_id (nome)
+          )
+        )
+      `)
+      .eq('id', receitaId)
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  async getHistorico(receitaId: string) {
+    const { data, error } = await supabase
+        .from('receitas_operacionais_historico')
+        .select('*')
+        .eq('receita_id', receitaId)
+        .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data;
+  }
+
+  async logEvent(tenantId: string, receitaId: string, acao: string, detalhesText: string, detalhesJson?: any) {
+    const { data, error } = await supabase
+      .from('receitas_operacionais_historico')
+      .insert({
+         tenant_id: tenantId,
+         receita_id: receitaId,
+         acao: acao,
+         descricao: detalhesText, // Assumindo que a view ou log frontend interprete isso, passaremos como detalhes no json tbm pra ser seguro
+         detalhes: { texto: detalhesText, ...detalhesJson }
+      });
+    
+    if (error) throw error;
+    return data;
+  }
+
+  async updateStatus(tenantId: string, receitaId: string, newStatus: string) {
+      const { data: atual, error: errBusca } = await supabase
+        .from('receitas_operacionais')
+        .select('status')
+        .eq('id', receitaId)
+        .single();
+      
+      if (errBusca) throw errBusca;
+
+      if (atual?.status === newStatus) return atual;
+
+      const { data: updated, error: errUpdate } = await supabase
+        .from('receitas_operacionais')
+        .update({ status: newStatus })
+        .eq('id', receitaId)
+        .select()
+        .single();
+      
+      if (errUpdate) throw errUpdate;
+
+      await supabase
+        .from('receitas_operacionais_historico')
+        .insert({
+           tenant_id: tenantId,
+           receita_id: receitaId,
+           status_anterior: atual?.status,
+           status_novo: newStatus,
+           acao: 'Alteração de Status via Painel',
+        });
+      
+      return updated;
   }
 }
 
