@@ -17,7 +17,7 @@ interface NovaOperacaoDialogProps {
 export const NovaOperacaoDialog = ({ open, onOpenChange, initialData }: NovaOperacaoDialogProps) => {
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto bg-slate-50/50 p-2 sm:p-6">
+            <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto bg-background p-2 sm:p-6">
                 <DialogHeader className="mb-2 px-2">
                     <DialogTitle>{initialData ? "Editar Lançamento Operacional" : "Nova Operação por Volume"}</DialogTitle>
                     <DialogDescription>

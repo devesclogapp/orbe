@@ -9,6 +9,7 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Form } from "@/components/ui/form";
 import { useAuth } from "@/contexts/AuthContext";
 import { OperacaoProducaoService } from "@/services/domain/producao.service";
 import {
@@ -249,124 +250,125 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
     };
 
     return (
-        <div className="w-full flex-1 flex flex-col h-full bg-white/50">
-            <div className="flex items-center justify-between px-2 mb-6">
-                <div className="flex items-center gap-4">
-                    {mode === 'encarregado' && onCancel && etapa === 1 && (
-                        <Button variant="ghost" size="icon" onClick={onCancel}>
-                            <ChevronLeft className="h-5 w-5" />
-                        </Button>
+        <div className="w-full flex-1 flex flex-col h-full bg-background rounded-b-lg">
+            <Form {...form}>
+                <form
+                    onSubmit={form.handleSubmit((data) => mutation.mutate(data))}
+                    className="space-y-6 flex-1"
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
+                            e.preventDefault();
+                        }
+                    }}
+                >
+                    <div className="flex items-center justify-between px-2 mb-6">
+                        <div className="flex items-center gap-4">
+                            {mode === 'encarregado' && onCancel && etapa === 1 && (
+                                <Button variant="ghost" size="icon" onClick={onCancel}>
+                                    <ChevronLeft className="h-5 w-5" />
+                                </Button>
+                            )}
+                            {(etapa > 1 || (mode === 'admin' && initialData)) && (
+                                <Button variant="ghost" size="icon" onClick={() => setEtapa(prev => (prev > 1 ? prev - 1 : prev))}>
+                                    <ChevronLeft className="h-5 w-5" />
+                                </Button>
+                            )}
+                            <div>
+                                <h1 className="text-xl font-bold tracking-tight">Passo {etapa} de 4</h1>
+                                <p className="text-xs text-muted-foreground uppercase tracking-widest font-semibold flex items-center gap-2">
+                                    {etapa === 1 ? "Opções" : etapa === 2 ? "Contexto Operacional" : etapa === 3 ? "Detalhamento e Valores" : "Equipe / Colaboradores"}
+                                </p>
+                            </div>
+                        </div>
+                        <div className="hidden md:block w-32 md:w-48">
+                            <Progress value={(etapa / 4) * 100} className="h-2" />
+                        </div>
+                    </div>
+                    {etapa === 1 && (
+                        <FormStepSelector
+                            form={form}
+                            onNext={(preset) => {
+                                // Se for Admin nós não roteamos.
+                                // Mas `diaristas`, `custos-extras` não estariam acessíveis aqui se não rotear.
+                                // Para o Admin manter no mesmo modal, nós apenas pulamos a etapa. O fluxo original manda pra páginas soltas. 
+                                setEtapa(2);
+                            }}
+                        />
                     )}
-                    {(etapa > 1 || (mode === 'admin' && initialData)) && (
-                        <Button variant="ghost" size="icon" onClick={() => setEtapa(prev => (prev > 1 ? prev - 1 : prev))}>
-                            <ChevronLeft className="h-5 w-5" />
-                        </Button>
+
+                    {etapa === 2 && (
+                        <div className="esc-card p-4 sm:p-6 shadow-sm border border-slate-100 rounded-xl bg-white">
+                            <FormStepContext
+                                form={form}
+                                empresas={empresas}
+                                unidades={unidades}
+                                tiposServico={tiposServico}
+                                transportadoras={transportadoras}
+                                fornecedores={fornecedores}
+                            />
+                        </div>
                     )}
-                    <div>
-                        <h1 className="text-xl font-bold tracking-tight">Passo {etapa} de 4</h1>
-                        <p className="text-xs text-muted-foreground uppercase tracking-widest font-semibold flex items-center gap-2">
-                            {etapa === 1 ? "Opções" : etapa === 2 ? "Contexto Operacional" : etapa === 3 ? "Detalhamento e Valores" : "Equipe / Colaboradores"}
-                        </p>
-                    </div>
-                </div>
-                <div className="hidden md:block w-32 md:w-48">
-                    <Progress value={(etapa / 4) * 100} className="h-2" />
-                </div>
-            </div>
 
-            <form
-                onSubmit={form.handleSubmit((data) => mutation.mutate(data))}
-                className="space-y-6 flex-1"
-                onKeyDown={(e) => {
-                    if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
-                        e.preventDefault();
-                    }
-                }}
-            >
-                {etapa === 1 && (
-                    <FormStepSelector
-                        form={form}
-                        onNext={(preset) => {
-                            // Se for Admin nós não roteamos.
-                            // Mas `diaristas`, `custos-extras` não estariam acessíveis aqui se não rotear.
-                            // Para o Admin manter no mesmo modal, nós apenas pulamos a etapa. O fluxo original manda pra páginas soltas. 
-                            setEtapa(2);
-                        }}
-                    />
-                )}
+                    {etapa === 3 && (
+                        <div className="esc-card p-4 sm:p-6 shadow-sm border border-slate-100 rounded-xl bg-white">
+                            <FormStepSummary
+                                form={form}
+                                produtos={produtos}
+                                formasPagamento={formasPagamento}
+                                loadingPreco={loadingPreco}
+                                regrasPeriodo={regrasPeriodo}
+                                selectedPeriodo={selectedPeriodo}
+                                materiaisDisponiveis={materiaisDisponiveis}
+                                selectedMateriais={selectedMateriais}
+                                setSelectedMateriais={setSelectedMateriais}
+                            />
+                        </div>
+                    )}
 
-                {etapa === 2 && (
-                    <div className="esc-card p-4 sm:p-6 shadow-sm border border-slate-100 rounded-xl bg-white">
-                        <FormStepContext
-                            form={form}
-                            empresas={empresas}
-                            unidades={unidades}
-                            tiposServico={tiposServico}
-                            transportadoras={transportadoras}
-                            fornecedores={fornecedores}
-                        />
-                    </div>
-                )}
+                    {etapa === 4 && (
+                        <div className="esc-card p-4 sm:p-6 shadow-sm border border-slate-100 rounded-xl bg-white min-h-[300px]">
+                            <FormStepTeam
+                                form={form}
+                                colaboradores={colaboradores}
+                                selectedIds={selectedColaboradores}
+                                colaboradorTimings={colaboradorTimings}
+                                setColaboradorTimings={setColaboradorTimings}
+                                onToggleColaborador={handleToggleColaborador}
+                            />
+                        </div>
+                    )}
 
-                {etapa === 3 && (
-                    <div className="esc-card p-4 sm:p-6 shadow-sm border border-slate-100 rounded-xl bg-white">
-                        <FormStepSummary
-                            form={form}
-                            produtos={produtos}
-                            formasPagamento={formasPagamento}
-                            loadingPreco={loadingPreco}
-                            regrasPeriodo={regrasPeriodo}
-                            selectedPeriodo={selectedPeriodo}
-                            materiaisDisponiveis={materiaisDisponiveis}
-                            selectedMateriais={selectedMateriais}
-                            setSelectedMateriais={setSelectedMateriais}
-                        />
-                    </div>
-                )}
-
-                {etapa === 4 && (
-                    <div className="esc-card p-4 sm:p-6 shadow-sm border border-slate-100 rounded-xl bg-white min-h-[300px]">
-                        <FormStepTeam
-                            form={form}
-                            colaboradores={colaboradores}
-                            selectedIds={selectedColaboradores}
-                            colaboradorTimings={colaboradorTimings}
-                            setColaboradorTimings={setColaboradorTimings}
-                            onToggleColaborador={handleToggleColaborador}
-                        />
-                    </div>
-                )}
-
-                {etapa > 1 && (
-                    <div className={
-                        mode === 'encarregado'
-                            ? "fixed bottom-0 left-0 right-0 bg-white border-t p-4 flex justify-between gap-4 z-50 lg:left-64"
-                            : "mt-6 pt-4 border-t flex justify-between gap-4"
-                    }>
-                        <Button type="button" variant="outline" className="flex-1" onClick={() => {
-                            if (etapa > 1) setEtapa(prev => prev - 1);
-                            else if (onCancel) onCancel();
-                        }}>
-                            <ChevronLeft className="h-4 w-4 mr-2" /> Voltar
-                        </Button>
-
-                        {etapa < 4 ? (
-                            <Button type="button" className="flex-1" onClick={handleNext}>
-                                Próximo <ChevronRight className="h-4 w-4 ml-2" />
+                    {etapa > 1 && (
+                        <div className={
+                            mode === 'encarregado'
+                                ? "fixed bottom-0 left-0 right-0 bg-white border-t p-4 flex justify-between gap-4 z-50 lg:left-64"
+                                : "mt-6 pt-4 border-t flex justify-between gap-4"
+                        }>
+                            <Button type="button" variant="outline" className="flex-1" onClick={() => {
+                                if (etapa > 1) setEtapa(prev => prev - 1);
+                                else if (onCancel) onCancel();
+                            }}>
+                                <ChevronLeft className="h-4 w-4 mr-2" /> Voltar
                             </Button>
-                        ) : (
-                            <Button
-                                type="submit"
-                                className="flex-1 bg-primary"
-                                disabled={mutation.isPending || selectedColaboradores.length === 0}
-                            >
-                                {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-                                {initialData ? "Salvar Alterações" : "Finalizar Lançamento"}
-                            </Button>
-                        )}
-                    </div>
-                )}
-            </form>
+
+                            {etapa < 4 ? (
+                                <Button type="button" className="flex-1" onClick={handleNext}>
+                                    Próximo <ChevronRight className="h-4 w-4 ml-2" />
+                                </Button>
+                            ) : (
+                                <Button
+                                    type="submit"
+                                    className="flex-1 bg-primary"
+                                    disabled={mutation.isPending || selectedColaboradores.length === 0}
+                                >
+                                    {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+                                    {initialData ? "Salvar Alterações" : "Finalizar Lançamento"}
+                                </Button>
+                            )}
+                        </div>
+                    )}
+                </form>
+            </Form>
         </div>
     );
 }
