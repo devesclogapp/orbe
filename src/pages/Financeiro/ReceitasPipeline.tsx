@@ -16,22 +16,21 @@ import { cn } from "@/lib/utils";
 import { ModalReceitaOperacional } from "./components/ModalReceitaOperacional";
 import { useToast } from "@/components/ui/use-toast";
 
-// Definição dos estágios por Modalidade
 const KANBAN_CONFIGS = {
     'CAIXA_IMEDIATO': [
-        { id: "pendente", label: "Recebimento a Confirmar", color: "bg-gray-100 text-gray-500 border-gray-200", icon: Clock },
-        { id: "pago", label: "Pago (Conciliado)", color: "bg-emerald-50 text-emerald-600 border-emerald-200", icon: CheckCircle2 },
+        { id: "pendente_recebimento", label: "Recebimento a Confirmar", color: "bg-gray-100 text-gray-500 border-gray-200", icon: Clock },
+        { id: "recebido", label: "Recebido", color: "bg-emerald-50 text-emerald-600 border-emerald-200", icon: CheckCircle2 },
     ],
     'DUPLICATA': [
-        { id: "pendente", label: "Pronto para Cobrança", color: "bg-blue-50 text-blue-600 border-blue-200", icon: Wallet },
-        { id: "faturado", label: "Cobrança Enviada", color: "bg-orange-50 text-orange-600 border-orange-200", icon: Receipt },
-        { id: "pago", label: "Recebido (Pago)", color: "bg-emerald-50 text-emerald-600 border-emerald-200", icon: CheckCircle2 },
+        { id: "pendente_cobranca", label: "Pronto para Cobrança", color: "bg-blue-50 text-blue-600 border-blue-200", icon: Wallet },
+        { id: "cobranca_enviada", label: "Cobrança Enviada", color: "bg-orange-50 text-orange-600 border-orange-200", icon: Receipt },
+        { id: "recebido", label: "Recebido", color: "bg-emerald-50 text-emerald-600 border-emerald-200", icon: CheckCircle2 },
     ],
     'FATURAMENTO_MENSAL': [
-        { id: "aguardando_faturamento", label: "Competência Aberta", color: "bg-gray-100 text-gray-500 border-gray-200", icon: Clock },
-        { id: "pendente", label: "Pronto para Cobrança", color: "bg-blue-50 text-blue-600 border-blue-200", icon: Wallet },
-        { id: "faturado", label: "Cobrança Enviada", color: "bg-orange-50 text-orange-600 border-orange-200", icon: Receipt },
-        { id: "pago", label: "Recebido (Pago)", color: "bg-emerald-50 text-emerald-600 border-emerald-200", icon: CheckCircle2 },
+        { id: "aguardando_fechamento", label: "Competência Aberta", color: "bg-gray-100 text-gray-500 border-gray-200", icon: Clock },
+        { id: "pendente_cobranca", label: "Pronto para Cobrança", color: "bg-blue-50 text-blue-600 border-blue-200", icon: Wallet },
+        { id: "cobranca_enviada", label: "Cobrança Enviada", color: "bg-orange-50 text-orange-600 border-orange-200", icon: Receipt },
+        { id: "recebido", label: "Recebido", color: "bg-emerald-50 text-emerald-600 border-emerald-200", icon: CheckCircle2 },
     ]
 };
 
@@ -50,7 +49,7 @@ export default function ReceitasPipeline() {
         queryFn: () => EmpresaService.getAll(),
     });
 
-    const { data: receitas = [], isLoading: isReceitasLoading } = useQuery({
+    const { data: receitas = [], isLoading: isReceitasLoading, error: errorReceitas } = useQuery({
         queryKey: ["receitas-pipeline", tenantId, filterEmpresaId],
         queryFn: () => ReceitasService.getPipelinePainel(tenantId!, filterEmpresaId === "all" ? undefined : filterEmpresaId, undefined),
         enabled: !!tenantId,
@@ -88,7 +87,7 @@ export default function ReceitasPipeline() {
             count++;
             const valor = Number(r.valor_total || 0);
             total += valor;
-            if (r.status === 'pago') {
+            if (r.status === 'recebido') {
                 recebido += valor;
             } else {
                 aberto += valor;
@@ -147,6 +146,13 @@ export default function ReceitasPipeline() {
                 </div>
             ) : (
                 <div className="space-y-6 max-w-[1700px] mx-auto pb-12 px-4 md:px-6">
+
+                    {errorReceitas && (
+                        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+                            <strong className="font-bold">Erro do Supabase: </strong>
+                            <span className="block sm:inline">{errorReceitas instanceof Error ? errorReceitas.message : JSON.stringify(errorReceitas)}</span>
+                        </div>
+                    )}
 
                     {/* KPI Headers */}
                     <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -262,7 +268,7 @@ export default function ReceitasPipeline() {
                                                 let isVenceHoje = false;
                                                 let isVenceBreve = false;
 
-                                                if (r.vencimento && r.status !== 'pago') {
+                                                if (r.vencimento && r.status !== 'recebido') {
                                                     const [ano, mes, dia] = r.vencimento.split('-');
                                                     const vDate = new Date(Number(ano), Number(mes) - 1, Number(dia));
                                                     const diffDays = Math.ceil((vDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
@@ -273,17 +279,33 @@ export default function ReceitasPipeline() {
                                                 }
 
                                                 let indicatorColor = 'bg-gray-300';
-                                                if (r.status === 'pago') indicatorColor = 'bg-emerald-500';
+                                                if (r.status === 'recebido') indicatorColor = 'bg-emerald-500';
                                                 else if (isVencido) indicatorColor = 'bg-red-500';
                                                 else if (isVenceHoje) indicatorColor = 'bg-amber-400';
                                                 else if (isVenceBreve) indicatorColor = 'bg-orange-500';
 
-                                                const itemOps = r.receitas_operacionais_itens?.[0]?.operacoes_producao;
-                                                const servicoNome = itemOps?.servicos?.nome || 'Operação Avulsa (Múltiplas)';
-                                                const produtoNome = itemOps?.produtos?.nome;
-                                                const compStr = r.competencia ? `${r.competencia.slice(5, 7)}/${r.competencia.slice(0, 4)}` : 'N/A';
-                                                const vencStr = r.vencimento ? new Date(r.vencimento).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : 'À vista';
+                                                const itens = r.receitas_operacionais_itens || [];
+                                                const itemCount = itens.length;
+                                                const itemOps = itens[0]?.operacoes_producao;
 
+                                                let servicoNome = itemCount > 1
+                                                    ? `Operação Consolidada (${itemCount} lançamentos)`
+                                                    : (itemOps?.servicos?.nome || 'Operação Avulsa');
+
+                                                const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+                                                let compStr = "Sem Competência";
+                                                if (r.competencia) {
+                                                    const ano = r.competencia.slice(0, 4);
+                                                    const mes = r.competencia.slice(5, 7);
+                                                    compStr = `${meses[parseInt(mes) - 1] || mes}/${ano}`;
+                                                }
+
+                                                let vencStr = "Não definido";
+                                                if (r.modalidade === 'CAIXA_IMEDIATO') {
+                                                    vencStr = "Recebimento imediato";
+                                                } else if (r.vencimento) {
+                                                    vencStr = new Date(r.vencimento).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+                                                }
                                                 return (
                                                     <div
                                                         key={r.id}
@@ -291,7 +313,7 @@ export default function ReceitasPipeline() {
                                                         className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm hover:border-gray-300 hover:shadow-md transition-all group relative cursor-pointer"
                                                     >
                                                         <div className={cn("absolute left-0 top-0 bottom-0 w-1.5 rounded-l-xl", indicatorColor)} title={
-                                                            r.status === 'pago' ? "Pago" : isVencido ? "Vencido" : isVenceHoje ? "Vence hoje" : isVenceBreve ? "Vence em breve" : "No prazo"
+                                                            r.status === 'recebido' ? "Recebido" : isVencido ? "Vencido" : isVenceHoje ? "Vence hoje" : isVenceBreve ? "Vence em breve" : "No prazo"
                                                         } />
                                                         <div className="pl-2 flex flex-col gap-2">
                                                             <div>
@@ -302,7 +324,6 @@ export default function ReceitasPipeline() {
 
                                                             <div className="flex flex-col text-sm text-gray-600 bg-gray-50 border border-gray-100 p-2 rounded-lg">
                                                                 <p className="font-semibold text-gray-800">{servicoNome.toUpperCase()}</p>
-                                                                {produtoNome && <p className="text-xs text-gray-500 mt-0.5">{produtoNome}</p>}
                                                             </div>
 
                                                             <div className="grid grid-cols-2 text-xs text-gray-500 gap-y-1">

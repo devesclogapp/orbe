@@ -25,7 +25,7 @@ import {
   Users,
   Wallet,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/layout/AppShell";
@@ -444,12 +444,13 @@ const Operacoes = () => {
   const queryClient = useQueryClient();
   const { tenantId, loading: isTenantLoading } = useTenant();
   const { openPipeline } = useOperationalPipeline();
+  const [searchParams] = useSearchParams();
 
   const [selectedYear, setSelectedYear] = useState(() => {
     return localStorage.getItem("orbe_operacoes_year") || String(new Date().getFullYear());
   });
   const [selectedMonthNumber, setSelectedMonthNumber] = useState(() => {
-    return localStorage.getItem("orbe_operacoes_month") || "all";
+    return searchParams.get("search") ? "all" : (localStorage.getItem("orbe_operacoes_month") || "all");
   });
   const [novaOpOpen, setNovaOpOpen] = useState(false);
   const [sheetYear, setSheetYear] = useState<string>(selectedYear);
@@ -458,7 +459,7 @@ const Operacoes = () => {
   const [selectedModalidade, setSelectedModalidade] = useState<string>("all");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
   const [selectedMeioPagamento, setSelectedMeioPagamento] = useState<string>("all");
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState(searchParams.get("search") || "");
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
 
@@ -596,6 +597,7 @@ const Operacoes = () => {
 
         const search = searchTerm.toLowerCase();
         const matchesSearch = !search ||
+          String(item.id ?? "").toLowerCase().includes(search) ||
           String(item.transportadora_id ?? "").toLowerCase().includes(search) ||
           String(item.tipo_servico_id ?? "").toLowerCase().includes(search) ||
           String(item.placa ?? "").toLowerCase().includes(search) ||

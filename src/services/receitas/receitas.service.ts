@@ -14,9 +14,11 @@ class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
         *,
         empresas:empresa_id(nome),
         receitas_operacionais_itens(
+          id,
+          valor_item,
           operacoes_producao(
-            servicos:servico_id (nome),
-            produtos:produto_id (nome)
+            id,
+            servicos:tipos_servico_operacional(nome)
           )
         )
       `)
@@ -47,16 +49,16 @@ class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
       .from('receitas_operacionais')
       .select(`
         *,
-        empresas:empresa_id(nome),
+        empresas(nome),
         receitas_operacionais_itens(
           id, valor_item,
           operacoes_producao(
-            id, data_operacao, quantidade, status, horario_inicio, horario_fim, observacao,
-            produtos:produto_id (nome),
-            servicos:servico_id (nome),
-            fornecedores:fornecedor_id (nome_fantasia, razao_social),
-            transportadoras:transportadora_id (nome_fantasia, razao_social),
-            formas_pagamento_operacional:forma_pagamento_id (nome)
+            *,
+            produtos:produtos_carga (*),
+            servicos:tipos_servico_operacional (*),
+            fornecedores (*),
+            transportadoras:transportadoras_clientes (*),
+            formas_pagamento_operacional (*)
           )
         )
       `)
@@ -78,16 +80,25 @@ class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
     return data;
   }
 
-  async logEvent(tenantId: string, receitaId: string, acao: string, detalhesText: string, detalhesJson?: any) {
+  async logEvent(tenantId: string, receitaId: string, acao: string, detalhesText: string, detalhesJson?: any, statusAnterior?: string, statusNovo?: string) {
+    const { data: authData } = await supabase.auth.getUser();
+    const userId = authData?.user?.id;
+    const userEmail = authData?.user?.email || 'Sistema';
+
+    const payload: any = {
+      tenant_id: tenantId,
+      receita_id: receitaId,
+      acao: acao,
+      usuario_id: userId,
+      detalhes: { texto: detalhesText, usuario_email: userEmail, ...detalhesJson }
+    };
+
+    if (statusAnterior) payload.status_anterior = statusAnterior;
+    if (statusNovo) payload.status_novo = statusNovo;
+
     const { data, error } = await supabase
       .from('receitas_operacionais_historico')
-      .insert({
-         tenant_id: tenantId,
-         receita_id: receitaId,
-         acao: acao,
-         descricao: detalhesText, // Assumindo que a view ou log frontend interprete isso, passaremos como detalhes no json tbm pra ser seguro
-         detalhes: { texto: detalhesText, ...detalhesJson }
-      });
+      .insert(payload);
     
     if (error) throw error;
     return data;
@@ -113,6 +124,10 @@ class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
       
       if (errUpdate) throw errUpdate;
 
+      const { data: authData } = await supabase.auth.getUser();
+      const userId = authData?.user?.id;
+      const userEmail = authData?.user?.email || 'Sistema';
+
       await supabase
         .from('receitas_operacionais_historico')
         .insert({
@@ -120,7 +135,9 @@ class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
            receita_id: receitaId,
            status_anterior: atual?.status,
            status_novo: newStatus,
-           acao: 'Alteração de Status via Painel',
+           acao: 'Alteração da Situação Financeira',
+           usuario_id: userId,
+           detalhes: { texto: 'A situação financeira da receita foi atualizada.', usuario_email: userEmail }
         });
       
       return updated;
