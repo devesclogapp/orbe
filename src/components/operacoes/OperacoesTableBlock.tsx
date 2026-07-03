@@ -83,6 +83,8 @@ type OperacoesTableBlockProps = {
   filterByDate?: boolean;
   respectCompanyFilter?: boolean;
   rowsData?: any[];
+  competencia?: string;
+  onEditRequest?: (item: any) => void;
 };
 
 const isEditableOperation = (item: any) =>
@@ -523,6 +525,8 @@ export const OperacoesTableBlock = ({
   filterByDate = true,
   respectCompanyFilter = true,
   rowsData,
+  competencia,
+  onEditRequest
 }: OperacoesTableBlockProps) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -2162,13 +2166,17 @@ export const OperacoesTableBlock = ({
                                   className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
                                   onClick={(e) => {
                                     e.stopPropagation();
+                                    if (onEditRequest) {
+                                      onEditRequest(item);
+                                      return;
+                                    }
                                     if (isEditableOperation(item)) {
                                       openEditor(item);
                                       return;
                                     }
                                     navigate(`/producao?id=${item.id}`);
                                   }}
-                                  title={isEditableOperation(item) ? "Editar nesta tela" : "Abrir lançamento"}
+                                  title="Editar Lançamento"
                                 >
                                   <Pencil className="h-3.5 w-3.5" />
                                 </button>

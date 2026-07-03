@@ -453,6 +453,7 @@ const Operacoes = () => {
     return searchParams.get("search") ? "all" : (localStorage.getItem("orbe_operacoes_month") || "all");
   });
   const [novaOpOpen, setNovaOpOpen] = useState(false);
+  const [editOpData, setEditOpData] = useState<any>(null);
   const [sheetYear, setSheetYear] = useState<string>(selectedYear);
   const [sheetMonthNumber, setSheetMonthNumber] = useState<string>(selectedMonthNumber);
   const [selectedEmpresaId, setSelectedEmpresaId] = useState<string>("all");
@@ -1085,7 +1086,7 @@ const Operacoes = () => {
 
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button variant="outline" className="h-9 px-3 shrink-0 bg-brand text-white border-0 hover:bg-brand/90 hover:text-white" onClick={() => setNovaOpOpen(true)}>
+                    <Button variant="outline" className="h-9 px-3 shrink-0 bg-brand text-white border-0 hover:bg-brand/90 hover:text-white" onClick={() => { setEditOpData(null); setNovaOpOpen(true); }}>
                       + Lançamento Operacional
                     </Button>
                   </TooltipTrigger>
@@ -1184,6 +1185,10 @@ const Operacoes = () => {
                   empresaId={selectedEmpresaId}
                   rowsData={filteredOperations}
                   competencia={currentCompetence}
+                  onEditRequest={(item) => {
+                    setEditOpData(item);
+                    setNovaOpOpen(true);
+                  }}
                 />
               </TabsContent>
 
@@ -1295,7 +1300,16 @@ const Operacoes = () => {
         description="O sistema lerá a coluna DATA de cada linha automaticamente. Cada linha será importada na sua própria data. Linhas sem DATA válida serão ignoradas. A coluna COL será gravada como quantidade de colaboradores."
         onUpload={handleImportOperacoes}
       />
-      <NovaOperacaoDialog open={novaOpOpen} onOpenChange={setNovaOpOpen} />
+      <NovaOperacaoDialog
+        open={novaOpOpen}
+        onOpenChange={(open) => {
+          setNovaOpOpen(open);
+          if (!open) {
+            setTimeout(() => setEditOpData(null), 200); // Limpa o form apos animacao fechar
+          }
+        }}
+        initialData={editOpData}
+      />
     </AppShell>
   );
 };
