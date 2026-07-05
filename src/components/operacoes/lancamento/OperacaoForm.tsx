@@ -43,18 +43,44 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
     const queryClient = useQueryClient();
     const [etapa, setEtapa] = useState(1);
 
+    const [selectedColaboradores, setSelectedColaboradores] = useState<string[]>([]);
+    const [colaboradorTimings, setColaboradorTimings] = useState<Record<string, { entrada_ponto?: string, saida_almoco?: string, retorno_almoco?: string, saida_ponto?: string }>>({});
+
     // Quick initialize from initialData if editing
     useEffect(() => {
         if (initialData && initialData.id) {
             setEtapa(2); // Pula a escolha do tipo se for edição
-            if (initialData.colaborador_id) {
+
+            // Popula os colaboradores vinculados a esta operação da nova relação: production_entry_collaborators
+            if (initialData.production_entry_collaborators && Array.isArray(initialData.production_entry_collaborators)) {
+                const colabs = initialData.production_entry_collaborators.map((c: any) => c.colaboradores?.id || c.collaborator_id);
+                setSelectedColaboradores(Array.from(new Set(colabs.filter(Boolean))));
+
+                const timings: Record<string, any> = {};
+                initialData.production_entry_collaborators.forEach((c: any) => {
+                    const id = c.colaboradores?.id || c.collaborator_id;
+                    if (id) {
+                        timings[id] = {
+                            entrada_ponto: c.entrada_ponto,
+                            saida_almoco: c.saida_almoco,
+                            retorno_almoco: c.retorno_almoco,
+                            saida_ponto: c.saida_ponto
+                        };
+                    }
+                });
+                setColaboradorTimings(timings);
+            } else if (initialData.colaborador_id) {
+                // Fallback legado
                 setSelectedColaboradores([initialData.colaborador_id]);
+            }
+
+            // Popula os materiais se houver
+            if (initialData.operacao_producao_materiais && Array.isArray(initialData.operacao_producao_materiais)) {
+                setSelectedMateriais(initialData.operacao_producao_materiais);
             }
         }
     }, [initialData]);
 
-    const [selectedColaboradores, setSelectedColaboradores] = useState<string[]>([]);
-    const [colaboradorTimings, setColaboradorTimings] = useState<Record<string, { entrada_ponto?: string, saida_almoco?: string, retorno_almoco?: string, saida_ponto?: string }>>({});
     const [selectedMateriais, setSelectedMateriais] = useState<Array<{
         material_id: string;
         nome_snapshot: string;
@@ -65,9 +91,13 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
     }>>([]);
     const empresaId = user?.user_metadata?.empresa_id || "";
 
+    const cleanInitialData = initialData
+        ? Object.fromEntries(Object.entries(initialData).filter(([_, v]) => v !== null))
+        : {};
+
     const { form, loadingPreco, regrasPeriodo, selectedPeriodo } = useProductionForm({
         empresaId,
-        defaultValues: initialData || DEFAULT_PRODUCTION_VALUES,
+        defaultValues: initialData ? { ...DEFAULT_PRODUCTION_VALUES, ...cleanInitialData } : DEFAULT_PRODUCTION_VALUES,
     });
 
     const currentEmpresaId = form.watch("empresa_id") || empresaId;
@@ -171,6 +201,9 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                 valor_total: (valor_total_liquido || (formData.quantidade * (valor_unitario || 0))) + selectedMateriais.reduce((acc, m) => acc + m.valor_total, 0),
                 valor_descarga: formData.quantidade * (valor_unitario || 0),
                 tipo_calculo_snapshot: "volume",
+                nf_numero: formData.nf_emite
+                    ? (!rest.nf_numero || rest.nf_numero === "NÃO" || rest.nf_numero === "NAO" ? "SIM" : rest.nf_numero)
+                    : "NÃO",
                 status: initialData?.id ? undefined : "RECEBIDO",
                 status_pagamento: initialData?.id ? undefined : "PENDENTE",
                 origem_dado: "manual",
@@ -178,14 +211,39 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                 colaborador_id: selectedColaboradores[0] || null,
                 regra_id: regra_periodo_id || null,
                 codigo_operacional: selectedPeriodo ? `${selectedPeriodo.codigo}C${quantidade_colaboradores}` : null,
+                quantidade_colaboradores: quantidade_colaboradores,
                 horario_inicio: horario_inicio || null,
                 horario_fim: horario_fim || null,
             };
 
-            // Clean undefineds to avoid overrides of current DB values if updating
-            Object.keys(payload).forEach(key => payload[key] === undefined && delete payload[key]);
+            // Clean undefineds, strictly sanitize against known columns to avoid 400 Bad Request
+            // AND remove any nested relational objects that might have come from `initialData`
+            const uuidColumns = [
+                'empresa_id', 'unidade_id', 'tipo_servico_id', 'transportadora_id',
+                'fornecedor_id', 'produto_carga_id', 'forma_pagamento_id',
+                'colaborador_id', 'regra_id', 'tenant_id'
+            ];
+            Object.keys(payload).forEach(key => {
+                if (payload[key] === undefined) {
+                    delete payload[key];
+                } else if (payload[key] === "" && uuidColumns.includes(key)) {
+                    payload[key] = null;
+                } else if (payload[key] !== null && typeof payload[key] === 'object' && !Array.isArray(payload[key])) {
+                    // Remove relational objects like `empresas`, `colaboradores`, etc. that are not arrays or primitive types
+                    // We also want to skip Date objects but Supabase results don't have them as Date objects yet.
+                    // Just in case, check if it's a generic plain object
+                    if (Object.prototype.toString.call(payload[key]) === '[object Object]') {
+                        delete payload[key];
+                    }
+                }
+            });
 
-            const colabPayload = selectedColaboradores.map(id => ({
+            const uniqueSelectedColabs = Array.from(new Set(selectedColaboradores)).filter(Boolean);
+
+            console.log("==========================================");
+            console.log("[DEBUG] Payload Final para Update: ", JSON.stringify(payload, null, 2));
+            console.log("==========================================");
+            const colabPayload = uniqueSelectedColabs.map(id => ({
                 collaborator_id: id,
                 had_infraction: false,
                 entrada_ponto: colaboradorTimings[id]?.entrada_ponto || null,
@@ -196,7 +254,7 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
 
             if (initialData?.id) {
                 // Modo de Edição
-                await OperacaoProducaoService.update(initialData.id, payload);
+                await OperacaoProducaoService.updateWithColaboradores(initialData.id, payload, colabPayload, selectedMateriais);
                 // Auditoria da ação de edição administrativa:
                 // Pode disparar outro service de log futuramente.
                 return { isEdit: true };
@@ -210,6 +268,8 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
             queryClient.invalidateQueries({ queryKey: ["producao_recente"] });
             queryClient.invalidateQueries({ queryKey: ["operacoes"] });
             queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
+            queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+            queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
 
             if (data?.isEdit && onSuccess) {
                 onSuccess();
@@ -224,6 +284,14 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
         },
         onError: (err: any) => toast.error("Erro ao salvar: " + err.message)
     });
+
+    const onError = (errors: any) => {
+        console.error("Form validation errors:", errors);
+        const errorFields = Object.keys(errors).join(', ');
+        toast.error("Erro de validação. Verifique os campos: " + errorFields, {
+            description: "Um ou mais campos obrigatórios estão ausentes ou inválidos."
+        });
+    };
 
     const handleNext = async () => {
         let fieldsToValidate: any[] = [];
@@ -253,23 +321,20 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
         <div className="w-full flex-1 flex flex-col h-full bg-background rounded-b-lg">
             <Form {...form}>
                 <form
-                    onSubmit={form.handleSubmit((data) => mutation.mutate(data))}
-                    className="space-y-6 flex-1"
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
-                            e.preventDefault();
-                        }
+                    onSubmit={(e) => {
+                        e.preventDefault();
                     }}
+                    className="space-y-6 flex-1"
                 >
                     <div className="flex items-center justify-between px-2 mb-6">
                         <div className="flex items-center gap-4">
                             {mode === 'encarregado' && onCancel && etapa === 1 && (
-                                <Button variant="ghost" size="icon" onClick={onCancel}>
+                                <Button type="button" variant="ghost" size="icon" onClick={onCancel}>
                                     <ChevronLeft className="h-5 w-5" />
                                 </Button>
                             )}
                             {(etapa > 1 || (mode === 'admin' && initialData)) && (
-                                <Button variant="ghost" size="icon" onClick={() => setEtapa(prev => (prev > 1 ? prev - 1 : prev))}>
+                                <Button type="button" variant="ghost" size="icon" onClick={() => setEtapa(prev => (prev > 1 ? prev - 1 : prev))}>
                                     <ChevronLeft className="h-5 w-5" />
                                 </Button>
                             )}
@@ -357,7 +422,8 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                                 </Button>
                             ) : (
                                 <Button
-                                    type="submit"
+                                    type="button"
+                                    onClick={form.handleSubmit((data) => mutation.mutate(data), onError)}
                                     className="flex-1 bg-primary"
                                     disabled={mutation.isPending || selectedColaboradores.length === 0}
                                 >

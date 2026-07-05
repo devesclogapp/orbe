@@ -231,8 +231,16 @@ class OperacaoServiceClass extends BaseService<'operacoes'> {
     const legadasFiltradas = legadasNormalizadas.filter((item) => !dedupKeysProducao.has(this.buildPainelDedupKey(item)));
 
     return [...producaoNormalizada, ...legadasFiltradas].sort((a: any, b: any) => {
-      const aTime = new Date(a.criado_em_label ?? `${a.data_referencia}T${a.horario_inicio_label ?? '00:00:00'}`).getTime();
-      const bTime = new Date(b.criado_em_label ?? `${b.data_referencia}T${b.horario_inicio_label ?? '00:00:00'}`).getTime();
+      // Sort primarily by data_referencia DESC
+      const dateA = a.data_referencia || '1970-01-01';
+      const dateB = b.data_referencia || '1970-01-01';
+      if (dateA !== dateB) {
+        return dateB.localeCompare(dateA); // newest dates first
+      }
+      
+      // Tie-break by creation time DESC
+      const aTime = new Date(a.criado_em_label ?? `${dateA}T${a.horario_inicio_label ?? '00:00:00'}`).getTime();
+      const bTime = new Date(b.criado_em_label ?? `${dateB}T${b.horario_inicio_label ?? '00:00:00'}`).getTime();
       return bTime - aTime;
     });
   }
@@ -354,7 +362,7 @@ class OperacaoServiceClass extends BaseService<'operacoes'> {
       quantidade_filme: item.quantidade_filme != null ? Number(item.quantidade_filme) : null,
       valor_total_filme: item.valor_total_filme != null ? Number(item.valor_total_filme) : null,
       valor_faturamento_nf: item.valor_faturamento_nf != null ? Number(item.valor_faturamento_nf) : null,
-      criado_em_label: item.criado_em ?? null,
+      criado_em_label: item.created_at ?? item.criado_em ?? null,
       // ─── Campos normalizados para exibição consistente ───
       forma_pagamento_label: item.formas_pagamento_operacional?.nome ?? item.forma_pagamento_snapshot ?? null,
       forma_pagamento_snapshot: item.forma_pagamento_snapshot ?? item.formas_pagamento_operacional?.nome ?? null,
@@ -477,7 +485,7 @@ class OperacaoServiceClass extends BaseService<'operacoes'> {
       quantidade_filme: item.quantidade_filme != null ? Number(item.quantidade_filme) : null,
       valor_total_filme: item.valor_total_filme != null ? Number(item.valor_total_filme) : null,
       valor_faturamento_nf: item.valor_faturamento_nf != null ? Number(item.valor_faturamento_nf) : null,
-      criado_em_label: item.criado_em ?? null,
+      criado_em_label: item.created_at ?? item.criado_em ?? null,
     }));
 
     return this.mergePainelOperacoes(producaoNormalizada, legadasNormalizadas);

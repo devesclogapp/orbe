@@ -940,6 +940,113 @@ class OperacaoProducaoServiceClass {
     return true;
   }
 
+  async updateWithColaboradores(
+    id: string,
+    payload: Record<string, any>,
+    colaboradores: Array<{
+      collaborator_id: string;
+      colaborador_id?: string;
+      had_infraction: boolean;
+      infraction_type_id?: string | null;
+      infraction_notes?: string | null;
+      entrada_ponto?: string | null;
+      saida_almoco?: string | null;
+      retorno_almoco?: string | null;
+      saida_ponto?: string | null;
+    }>,
+    materiais?: Array<{
+      material_id: string;
+      nome_snapshot: string;
+      unidade_snapshot: string;
+      valor_unitario_snapshot: number;
+      quantidade: number;
+      valor_total: number;
+    }>,
+  ) {
+    const registro = await this.update(id, payload);
+
+    // 1. Vincular Colaboradores
+    if (colaboradores) {
+      // Remove vínculos antigos
+      const { error: delError } = await operationalClient
+        .from('production_entry_collaborators')
+        .delete()
+        .eq('production_entry_id', id);
+        
+      if (delError) throw delError;
+
+      // Garantir unicidade dos colaboradores pelo ID
+      const uniqueColaboradores = [];
+      const seenIds = new Set();
+
+      for (const item of colaboradores) {
+          const colabId = item.collaborator_id ?? item.colaborador_id ?? null;
+          if (colabId && !seenIds.has(colabId)) {
+              seenIds.add(colabId);
+              uniqueColaboradores.push({
+                  collaborator_id: colabId,
+                  had_infraction: item.had_infraction,
+                  infraction_type_id: item.infraction_type_id ?? null,
+                  infraction_notes: item.infraction_notes ?? null,
+                  entrada_ponto: item.entrada_ponto ?? null,
+                  saida_almoco: item.saida_almoco ?? null,
+                  retorno_almoco: item.retorno_almoco ?? null,
+                  saida_ponto: item.saida_ponto ?? null,
+              });
+          }
+      }
+
+      if (uniqueColaboradores.length > 0) {
+        const { error } = await operationalClient
+          .from('production_entry_collaborators')
+          .insert(
+            uniqueColaboradores.map((item) => ({
+              production_entry_id: id,
+              collaborator_id: item.collaborator_id,
+              had_infraction: item.had_infraction,
+              infraction_type_id: item.infraction_type_id ?? null,
+              infraction_notes: item.infraction_notes ?? null,
+              entrada_ponto: item.entrada_ponto ?? null,
+              saida_almoco: item.saida_almoco ?? null,
+              retorno_almoco: item.retorno_almoco ?? null,
+              saida_ponto: item.saida_ponto ?? null,
+            })),
+          );
+
+        if (error) throw error;
+      }
+    }
+
+    // 2. Vincular Materiais
+    if (materiais) {
+      await operationalClient
+        .from('operacao_producao_materiais')
+        .delete()
+        .eq('operacao_id', id);
+
+      if (materiais.length > 0) {
+        const { error: matError } = await operationalClient
+          .from('operacao_producao_materiais')
+          .insert(
+            materiais.map((m) => ({
+              operacao_id: id,
+              material_id: m.material_id,
+              nome_snapshot: m.nome_snapshot,
+              unidade_snapshot: m.unidade_snapshot,
+              valor_unitario_snapshot: m.valor_unitario_snapshot,
+              quantidade: m.quantidade,
+              valor_total: m.valor_total,
+            })),
+          );
+
+        if (matError) throw matError;
+      }
+    }
+
+    return this.getByDate(registro.data_operacao, registro.empresa_id, registro.unidade_id)
+      .then((items) => items.find((item: any) => item.id === registro.id) ?? registro);
+  }
+
   async update(id: string, payload: Record<string, any>) {
     const safePayload = this.sanitizeOperacaoPayload(payload);
     const { data, error } = await operationalClient

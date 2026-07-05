@@ -1046,20 +1046,20 @@ export const OperacoesTableBlock = ({
       return 0;
     }
 
-    // 1. Data de operação (Crescente)
+    // 1. Data de operação (Decrescente)
     const dateA = a.data_operacao || "";
     const dateB = b.data_operacao || "";
-    if (dateA !== dateB) return dateA.localeCompare(dateB);
+    if (dateA !== dateB) return dateB.localeCompare(dateA);
 
-    // 2. Horario inicio (Crescente)
-    const timeA = (a.horario_inicio_label || a.entrada_ponto || "99:99").substring(0, 5);
-    const timeB = (b.horario_inicio_label || b.entrada_ponto || "99:99").substring(0, 5);
-    if (timeA !== timeB) return timeA.localeCompare(timeB);
+    // 2. Horario inicio (Decrescente)
+    const timeA = (a.horario_inicio_label || a.entrada_ponto || "00:00").substring(0, 5);
+    const timeB = (b.horario_inicio_label || b.entrada_ponto || "00:00").substring(0, 5);
+    if (timeA !== timeB) return timeB.localeCompare(timeA);
 
-    // 3. Fallback estavel por ID para ancoragem quando todos empatam
-    const creatA = a.created_at || a.id || "";
-    const creatB = b.created_at || b.id || "";
-    return String(creatA).localeCompare(String(creatB));
+    // 3. Fallback estavel por ID para ancoragem quando todos empatam (Decrescente)
+    const creatA = a.created_at || a.criado_em || a.id || "";
+    const creatB = b.created_at || b.criado_em || b.id || "";
+    return String(creatB).localeCompare(String(creatA));
   });
 
   const toggleCol = (col: keyof typeof visibleCols) => {
@@ -2695,7 +2695,6 @@ export const OperacoesTableBlock = ({
               </div>
 
               <div className="pt-4 border-t border-border flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setSelectedOpDetails(null)}>Fechar</Button>
                 {!["AGUARDANDO_FATURAMENTO", "FATURADO", "RECEBIDO_FINANCEIRO", "CONCLUIDO", "APROVADO", "FECHADO"].includes(selectedOpDetails.status?.toUpperCase() || "") && (
                   <Button variant="outline" className="border-warning text-warning hover:bg-warning-soft hover:text-warning-strong" onClick={() => handleDevolver(selectedOpDetails)} disabled={changeStatusMutation.isPending}>
                     Devolver com Restrição

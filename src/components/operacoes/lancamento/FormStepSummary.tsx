@@ -196,6 +196,7 @@ export function FormStepSummary({
                                                             <p className="text-[11px] font-black text-primary">{formatCurrency(mat.valor_total)}</p>
                                                         </div>
                                                         <Button
+                                                            type="button"
                                                             variant="ghost"
                                                             size="icon"
                                                             className="h-8 w-8 text-destructive hover:bg-red-50 rounded-full shrink-0"

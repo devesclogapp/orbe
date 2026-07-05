@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import {
     Dialog,
     DialogContent,
@@ -14,7 +15,37 @@ interface NovaOperacaoDialogProps {
     initialData?: any;
 }
 
+const normalizeInitialData = (data: any) => {
+    if (!data) return data;
+
+    // Safety get for nested context json values if they exist
+    const getContext = (key: string) => {
+        const contextoImportacao = data?.avaliacao_json?.contexto_importacao;
+        return contextoImportacao ? contextoImportacao[key] : null;
+    };
+
+    return {
+        ...data,
+        tipo_servico: data.tipo_servico_id || data.tipo_servico,
+        transportadora: data.transportadora_id || data.transportadora,
+        fornecedor: data.fornecedor_id || data.fornecedor,
+        produto: data.produto_carga_id || data.produto,
+        forma_pagamento: data.forma_pagamento_id || data.forma_pagamento,
+        data: data.data_operacao || data.data,
+        modalidade_financeira: data.modalidade_financeira || data.modalidadeFinanceira || getContext("modalidade_financeira_override"),
+        observacao: data.observacao || getContext("observacao"),
+        placa_veiculo: data.placa || data.placa_veiculo,
+        horario_inicio: data.horario_inicio_label || data.entrada_ponto || data.horario_inicio,
+        horario_fim: data.horario_fim_label || data.saida_ponto || data.horario_fim,
+        quantidade: data.quantidade_label !== undefined ? data.quantidade_label : data.quantidade,
+        valor_unitario: data.valor_unitario_snapshot !== undefined ? data.valor_unitario_snapshot : data.valor_unitario,
+        nf_emite: data.nf_numero ? (String(data.nf_numero).toUpperCase() === 'SIM' || String(data.nf_numero).toUpperCase() === 'S' || (String(data.nf_numero).toUpperCase() !== 'NÃO' && String(data.nf_numero).toUpperCase() !== 'NAO' && String(data.nf_numero).trim() !== '')) : false,
+    };
+};
+
 export const NovaOperacaoDialog = ({ open, onOpenChange, initialData }: NovaOperacaoDialogProps) => {
+    const normalizedData = useMemo(() => normalizeInitialData(initialData), [initialData]);
+
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto bg-background p-2 sm:p-6">
@@ -35,7 +66,7 @@ export const NovaOperacaoDialog = ({ open, onOpenChange, initialData }: NovaOper
                     {open && (
                         <OperacaoForm
                             mode="admin"
-                            initialData={initialData}
+                            initialData={normalizedData}
                             onSuccess={() => onOpenChange(false)}
                             onCancel={() => onOpenChange(false)}
                         />
