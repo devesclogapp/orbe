@@ -937,11 +937,11 @@ export const buildOperacaoVolumePipeline = (params: {
         switch (id) {
             case "lancamento":
             case "validacao":
-                return "/operacional/dashboard";
+                return "/operacional/operacoes";
             case "financeiro":
             case "faturamento":
             case "recebimento":
-                return "/operacional/dashboard";
+                return "/financeiro/receitas";
             default:
                 return undefined;
         }
