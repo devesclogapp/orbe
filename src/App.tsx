@@ -62,6 +62,7 @@ import HistoricoRemessas from "./pages/Financeiro/HistoricoRemessas";
 import RetornoBancario from "./pages/Financeiro/RetornoBancario";
 import ReceitasPipeline from "./pages/Financeiro/ReceitasPipeline";
 import RelatorioDRE from "./pages/Financeiro/RelatorioDRE";
+import Inadimplencia from "./pages/Financeiro/Inadimplencia";
 import ClientDashboard from "./pages/Cliente/ClientDashboard";
 import ClientReports from "./pages/Cliente/ClientReports";
 import ClientApprovals from "./pages/Cliente/ClientApprovals";
@@ -186,6 +187,8 @@ const App = () => (
                             {/* Financeiro V3 */}
                             <Route path="/financeiro" element={<AuthGuard><CentralFinanceira /></AuthGuard>} />
                             <Route path="/financeiro/receitas" element={<AuthGuard><ReceitasPipeline /></AuthGuard>} />
+                            <Route path="/financeiro/dre" element={<AuthGuard><RelatorioDRE /></AuthGuard>} />
+                            <Route path="/financeiro/inadimplencia" element={<AuthGuard><Inadimplencia /></AuthGuard>} />
                             <Route path="/financeiro/legado" element={<AuthGuard><FinanceiroGeral /></AuthGuard>} />
                             <Route path="/bancario" element={<AuthGuard><CentralBancaria /></AuthGuard>} />
                             <Route path="/financeiro/regras" element={<AuthGuard><RegrasCalculo /></AuthGuard>} />
