@@ -1,5 +1,5 @@
 export type ModalidadeReceita = 'CAIXA_IMEDIATO' | 'DUPLICATA' | 'FATURAMENTO_MENSAL';
-export type StatusReceita = 'pendente' | 'aguardando_faturamento' | 'faturado' | 'pago' | 'cancelado';
+export type StatusReceita = 'pendente' | 'aguardando_faturamento' | 'faturado' | 'pago' | 'recebido' | 'conciliado' | 'cancelado';
 
 export interface ReceitaOperacional {
   id: string;

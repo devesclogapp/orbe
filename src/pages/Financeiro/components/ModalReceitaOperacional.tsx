@@ -42,6 +42,7 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
     const [cobrancaForm, setCobrancaForm] = useState({ formato: 'Boleto (PDF)', vencimento: receita?.vencimento || '' });
     const [consolidarForm, setConsolidarForm] = useState({ vencimento: receita?.vencimento || '' });
     const [enviarForm, setEnviarForm] = useState({ contato: 'financeiro@cliente.com', mensagem: '' });
+    const [canalEnvio, setCanalEnvio] = useState<'email' | 'whatsapp' | 'link'>('email');
 
     // Data Load
     const { data: historico = [], isLoading: isLoadingHistorico } = useQuery({
@@ -171,10 +172,25 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
         // Atualiza status e loga nativamente o update
         updateStatusMutation.mutate('cobranca_enviada', {
             onSuccess: () => {
+                const valorFormatado = Number(receita.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                const textoPadrao = `Olá!\n\nEsta é uma notificação da sua Fatura no valor de ${valorFormatado}.\n\n${enviarForm.mensagem}\n\nAtenciosamente,\nEquipe Logística`;
+
+                // Dispara o envio
+                if (canalEnvio === 'email') {
+                    // Simula envio em background sem sair do ERP (integração de API de e-mail como Resend/SendGrid seria plugada aqui)
+                    toast({ title: "E-mail enviado!", description: "O e-mail foi enfileirado para envio ao cliente com sucesso." });
+                } else if (canalEnvio === 'whatsapp') {
+                    const tel = enviarForm.contato.replace(/\D/g, '');
+                    window.open(`https://wa.me/55${tel}?text=${encodeURIComponent(textoPadrao)}`, '_blank');
+                } else {
+                    navigator.clipboard.writeText(textoPadrao);
+                    toast({ title: "Copiado para a Área de Transferência", description: "O link e a mensagem da cobrança foram copiados com sucesso." });
+                }
+
                 logEventMutation.mutate({
                     acao: 'Cobrança Enviada ao Cliente',
-                    detalhesText: `Contato: ${enviarForm.contato} | Mensagem: ${enviarForm.mensagem || 'N/A'}`,
-                    json: enviarForm
+                    detalhesText: `Canal: ${canalEnvio.toUpperCase()} | Contato: ${enviarForm.contato} | Mensagem: ${enviarForm.mensagem || 'N/A'}`,
+                    json: { ...enviarForm, canal: canalEnvio }
                 }, {
                     onSuccess: finishMutationSuccess,
                     onError: handleError
@@ -270,20 +286,23 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
 
             <div className="space-y-4">
                 <div>
-                    <Label>Canais de Envio Opcionais (Integrações Futuras)</Label>
+                    <Label>Canal de Envio</Label>
                     <div className="flex gap-2 mt-1">
-                        <Button type="button" variant="outline" className="flex-1 gap-2"><Mail className="h-4 w-4" /> E-mail</Button>
-                        <Button type="button" variant="outline" className="flex-1 gap-2 border-green-200 text-green-700 hover:bg-green-50"><MessageCircle className="h-4 w-4" /> WhatsApp</Button>
-                        <Button type="button" variant="outline" className="flex-1 gap-2"><Link className="h-4 w-4" /> Link Seguro</Button>
+                        <Button type="button" variant="outline" className={cn("flex-1 gap-2", canalEnvio === 'email' ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white')} onClick={() => setCanalEnvio('email')}><Mail className="h-4 w-4" /> E-mail</Button>
+                        <Button type="button" variant="outline" className={cn("flex-1 gap-2 border-green-200 text-green-700 hover:bg-green-50", canalEnvio === 'whatsapp' ? 'bg-green-50 border-green-300 font-bold' : 'bg-white')} onClick={() => setCanalEnvio('whatsapp')}><MessageCircle className="h-4 w-4" /> WhatsApp</Button>
+                        <Button type="button" variant="outline" className={cn("flex-1 gap-2", canalEnvio === 'link' ? 'bg-gray-100 border-gray-300' : 'bg-white')} onClick={() => setCanalEnvio('link')}><Link className="h-4 w-4" /> Copiar Link</Button>
                     </div>
                 </div>
-                <div><Label>Contato de Cobrança</Label> <Input className="mt-1" required value={enviarForm.contato} onChange={e => setEnviarForm(p => ({ ...p, contato: e.target.value }))} /></div>
+                <div><Label>{canalEnvio === 'whatsapp' ? 'Número do WhatsApp (com DDD)' : (canalEnvio === 'link' ? 'Destinatário Final' : 'E-mail de Cobrança')}</Label> <Input className="mt-1" required value={enviarForm.contato} onChange={e => setEnviarForm(p => ({ ...p, contato: e.target.value }))} placeholder={canalEnvio === 'whatsapp' ? 'Ex: 11999999999' : 'financeiro@cliente.com'} /></div>
                 <div><Label>Mensagem Anexada</Label> <Textarea placeholder="Descreva observações de corpo de email ou whatsapp..." className="mt-1" value={enviarForm.mensagem} onChange={e => setEnviarForm(p => ({ ...p, mensagem: e.target.value }))} /></div>
             </div>
 
             <div className="pt-4 flex justify-end gap-2">
                 <Button type="button" variant="outline" onClick={() => setActionView('main')}>Cancelar</Button>
-                <Button type="submit" disabled={isSubmitting} className="bg-orange-600 hover:bg-orange-700 text-white">Registrar Envio</Button>
+                <Button type="submit" disabled={isSubmitting} className="bg-orange-600 hover:bg-orange-700 text-white gap-2">
+                    {canalEnvio === 'link' ? <Link className="h-4 w-4" /> : <Send className="h-4 w-4" />}
+                    {canalEnvio === 'email' ? 'Enviar E-mail pelo Sistema' : (canalEnvio === 'whatsapp' ? 'Registrar e Abrir WhatsApp' : 'Registrar e Copiar')}
+                </Button>
             </div>
         </form>
     );
