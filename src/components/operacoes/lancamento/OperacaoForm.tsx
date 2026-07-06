@@ -30,6 +30,7 @@ import { FormStepContext } from "@/components/operacoes/lancamento/FormStepConte
 import { FormStepSummary } from "@/components/operacoes/lancamento/FormStepSummary";
 import { FormStepTeam } from "@/components/operacoes/lancamento/FormStepTeam";
 import { DEFAULT_PRODUCTION_VALUES } from "@/components/operacoes/lancamento/schema";
+import { useOperationalPipeline, buildOperacaoVolumePipeline } from "@/contexts/OperationalPipelineContext";
 
 export interface OperacaoFormProps {
     mode: "admin" | "encarregado";
@@ -41,6 +42,7 @@ export interface OperacaoFormProps {
 export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: OperacaoFormProps) => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
+    const { openPipeline } = useOperationalPipeline();
     const [etapa, setEtapa] = useState(1);
 
     const [selectedColaboradores, setSelectedColaboradores] = useState<string[]>([]);
@@ -274,6 +276,21 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
             queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
             queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
             queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
+
+            // Trigger the operational progress modal natively if it's a new launch (Volume)
+            if (!data?.isEdit && (form.getValues().tipo_lancamento === 'volume' || !form.getValues().tipo_lancamento)) {
+                const currentEmpresa = empresas.find(e => e.id === (form.getValues().empresa_id || empresaId));
+                const dataForm = form.getValues().data_operacao || form.getValues().data || new Date().toISOString();
+                const dataDate = new Date(dataForm);
+                const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+                const compStr = `${meses[dataDate.getMonth()]} / ${dataDate.getFullYear()}`;
+
+                openPipeline(buildOperacaoVolumePipeline({
+                    competencia: compStr,
+                    empresa: currentEmpresa?.nome || "Operacional",
+                    currentStep: mode === "admin" ? "validacao" : "lancamento"
+                }));
+            }
 
             if (data?.isEdit && onSuccess) {
                 onSuccess();

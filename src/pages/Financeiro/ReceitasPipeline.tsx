@@ -83,11 +83,12 @@ export default function ReceitasPipeline() {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        receitas.forEach((r: any) => {
+        // REFINAMENTO: O dashboard deve ser aderente ao Funil atualmente ativo (filtered)
+        filteredReceitas.forEach((r: any) => {
             count++;
             const valor = Number(r.valor_total || 0);
             total += valor;
-            if (r.status === 'recebido') {
+            if (r.status === 'recebido' || r.status === 'pago' || r.status === 'conciliado') {
                 recebido += valor;
             } else {
                 aberto += valor;
@@ -102,7 +103,7 @@ export default function ReceitasPipeline() {
         });
 
         return { count, total, recebido, aberto, vencidas };
-    }, [receitas]);
+    }, [filteredReceitas]);
 
     const currentKanbanStages = KANBAN_CONFIGS[activeTab];
     const kanbanColumns = useMemo(() => {
@@ -110,7 +111,12 @@ export default function ReceitasPipeline() {
         currentKanbanStages.forEach(col => cols[col.id] = []);
 
         filteredReceitas.forEach((r: any) => {
-            const st = r.status || currentKanbanStages[0].id;
+            let st = r.status || currentKanbanStages[0].id;
+            // Normalizar os status de liquidação final para caírem na coluna de recebido
+            if (st === 'pago' || st === 'conciliado' || st === 'fechado') {
+                st = 'recebido';
+            }
+
             if (cols[st]) {
                 cols[st].push(r);
             } else if (cols[currentKanbanStages[0].id]) {
@@ -279,7 +285,7 @@ export default function ReceitasPipeline() {
                                                 }
 
                                                 let indicatorColor = 'bg-gray-300';
-                                                if (r.status === 'recebido') indicatorColor = 'bg-emerald-500';
+                                                if (r.status === 'recebido' || r.status === 'pago' || r.status === 'conciliado') indicatorColor = 'bg-emerald-500';
                                                 else if (isVencido) indicatorColor = 'bg-red-500';
                                                 else if (isVenceHoje) indicatorColor = 'bg-amber-400';
                                                 else if (isVenceBreve) indicatorColor = 'bg-orange-500';
@@ -290,22 +296,27 @@ export default function ReceitasPipeline() {
 
                                                 let servicoNome = itemCount > 1
                                                     ? `Operação Consolidada (${itemCount} lançamentos)`
-                                                    : (itemOps?.servicos?.nome || 'Operação Avulsa');
+                                                    : (itemOps?.servicos?.nome || itemOps?.servicos?.descricao || 'Operação Avulsa / Consolidada');
 
                                                 const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-                                                let compStr = "Sem Competência";
+                                                let compStr = "N/A";
                                                 if (r.competencia) {
                                                     const ano = r.competencia.slice(0, 4);
                                                     const mes = r.competencia.slice(5, 7);
                                                     compStr = `${meses[parseInt(mes) - 1] || mes}/${ano}`;
+                                                } else if (itemOps?.data_operacao) { // Fallback para data_operacao caso a base não preencha competencia na origem
+                                                    const dt = new Date(itemOps.data_operacao);
+                                                    const dtUTC = new Date(dt.getTime() + dt.getTimezoneOffset() * 60000);
+                                                    compStr = `${meses[dtUTC.getMonth()]} / ${dtUTC.getFullYear()}`;
                                                 }
 
                                                 let vencStr = "Não definido";
                                                 if (r.modalidade === 'CAIXA_IMEDIATO') {
                                                     vencStr = "Recebimento imediato";
                                                 } else if (r.vencimento) {
-                                                    vencStr = new Date(r.vencimento).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+                                                    vencStr = new Date(r.vencimento + 'T12:00:00Z').toLocaleDateString('pt-BR');
                                                 }
+
                                                 return (
                                                     <div
                                                         key={r.id}
@@ -313,7 +324,7 @@ export default function ReceitasPipeline() {
                                                         className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm hover:border-gray-300 hover:shadow-md transition-all group relative cursor-pointer"
                                                     >
                                                         <div className={cn("absolute left-0 top-0 bottom-0 w-1.5 rounded-l-xl", indicatorColor)} title={
-                                                            r.status === 'recebido' ? "Recebido" : isVencido ? "Vencido" : isVenceHoje ? "Vence hoje" : isVenceBreve ? "Vence em breve" : "No prazo"
+                                                            (r.status === 'recebido' || r.status === 'pago' || r.status === 'conciliado') ? "Recebido" : isVencido ? "Vencido" : isVenceHoje ? "Vence hoje" : isVenceBreve ? "Vence em breve" : "No prazo"
                                                         } />
                                                         <div className="pl-2 flex flex-col gap-2">
                                                             <div>
@@ -322,8 +333,28 @@ export default function ReceitasPipeline() {
                                                                 </p>
                                                             </div>
 
-                                                            <div className="flex flex-col text-sm text-gray-600 bg-gray-50 border border-gray-100 p-2 rounded-lg">
-                                                                <p className="font-semibold text-gray-800">{servicoNome.toUpperCase()}</p>
+                                                            <div className="flex flex-col text-sm text-gray-600 bg-gray-50 border border-gray-100 p-2.5 rounded-lg space-y-2">
+                                                                <p className="font-semibold text-gray-800 tracking-wide text-xs truncate" title={servicoNome.toUpperCase()}>{servicoNome.toUpperCase()}</p>
+
+                                                                {/* Detalhes operacionais injetados defensivamente */}
+                                                                {itemOps && itemCount === 1 && (
+                                                                    <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 text-[10px] text-gray-500 border-t border-gray-200/50 pt-2">
+                                                                        <div>
+                                                                            <span className="font-bold text-gray-400 block uppercase">Quantidade</span>
+                                                                            <span className="font-medium text-gray-900">{itemOps.quantidade || 1}</span>
+                                                                        </div>
+                                                                        <div>
+                                                                            <span className="font-bold text-gray-400 block uppercase">Placa</span>
+                                                                            <span className="font-medium text-gray-900 truncate block">{itemOps.placa || '-'}</span>
+                                                                        </div>
+                                                                        {itemOps.produtos?.nome && (
+                                                                            <div className="col-span-2">
+                                                                                <span className="font-bold text-gray-400 block uppercase">Produto</span>
+                                                                                <span className="font-medium text-gray-900 truncate block">{itemOps.produtos.nome}</span>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                )}
                                                             </div>
 
                                                             <div className="grid grid-cols-2 text-xs text-gray-500 gap-y-1">

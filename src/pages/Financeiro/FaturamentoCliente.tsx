@@ -10,6 +10,9 @@ import { EmpresaService } from "@/services/base.service";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { generateFaturaLotePDF } from "@/utils/pdfFaturamento";
+import { OperacaoProducaoService } from "@/services/domain/producao.service";
+import { supabase } from "@/lib/supabase";
 
 const FaturamentoCliente = () => {
     const navigate = useNavigate();
@@ -78,6 +81,39 @@ const FaturamentoCliente = () => {
     const handlePrint = () => {
         window.print();
     };
+
+    const handleGerarPdfFatura = async (c: any) => {
+        try {
+            toast.loading(`Gerando Fatura para ${c.clientes?.nome}...`, { id: 'pdf-gen' });
+
+            const { data: operacoes, error } = await supabase
+                .from('operacoes_producao')
+                .select(`
+                    *,
+                    tipos_servico_operacional(nome),
+                    produtos_carga(nome),
+                    unidades(nome)
+                `)
+                .eq('empresa_id', c.empresa_id)
+                .eq('competencia', c.competencia)
+                .is('deleted_at', null)
+                .order('criado_em', { ascending: true });
+
+            if (error) {
+                console.error("Erro na query de operacoes_producao:", error);
+                throw error;
+            }
+
+            const operacoesDetalhe = operacoes || [];
+
+            await generateFaturaLotePDF(c, operacoesDetalhe);
+            toast.success("Fatura PDF gerada com sucesso!", { id: 'pdf-gen' });
+        } catch (error) {
+            console.error(error);
+            toast.error("Erro ao gerar fatura", { id: 'pdf-gen' });
+        }
+    };
+
 
     return (
         <AppShell title="Faturamento por Cliente" subtitle="Detalhamento e memória de cálculo por competência">
@@ -155,15 +191,26 @@ const FaturamentoCliente = () => {
                                                 {c.status}
                                             </Badge>
                                         </td>
-                                        <td className="px-5 text-right">
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className="h-8 text-primary hover:text-primary-strong"
-                                                onClick={() => navigate(`/financeiro/faturamento/${c.id}`)}
-                                            >
-                                                <ExternalLink className="h-4 w-4 mr-1" /> Memória
-                                            </Button>
+                                        <td className="px-5 text-right w-[200px]">
+                                            <div className="flex items-center justify-end gap-1">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-8 text-primary hover:text-primary-strong px-2"
+                                                    onClick={() => navigate(`/financeiro/faturamento/${c.id}`)}
+                                                >
+                                                    <ExternalLink className="h-4 w-4 mr-1.5" /> Memória
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-8 text-gray-500 hover:text-gray-900 border border-transparent hover:border-gray-200 px-2"
+                                                    onClick={(e) => { e.stopPropagation(); handleGerarPdfFatura(c); }}
+                                                    title="Baixar Fatura Mensal (PDF)"
+                                                >
+                                                    <Printer className="h-4 w-4" />
+                                                </Button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}

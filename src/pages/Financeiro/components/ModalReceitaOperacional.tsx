@@ -504,34 +504,38 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                                     <h4 className="text-sm font-bold text-gray-800 flex items-center gap-2">
                                         <Receipt className="h-4 w-4 text-gray-500" /> Resumo Financeiro
                                     </h4>
-                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 bg-white p-5 rounded-xl border shadow-sm">
-                                        <div className="space-y-1">
-                                            <p className="text-xs font-semibold text-gray-400 tracking-wide uppercase">Situação Financeira</p>
+                                    <div className="flex flex-wrap items-start gap-4 md:gap-5 bg-white p-5 rounded-xl border shadow-sm">
+                                        <div className="space-y-1.5 flex-[1_1_auto] min-w-max">
+                                            <p className="text-[10px] font-bold text-gray-400 tracking-wider uppercase leading-tight">Situação Financeira</p>
                                             {receita.status === 'recebido' || receita.status === 'pago' || receita.status === 'conciliado' ? (
-                                                <div className="inline-flex bg-emerald-100 text-emerald-800 text-xs font-bold px-2 py-1 rounded gap-1"><CheckCircle className="h-3.5 w-3.5" /> RECEBIDO</div>
+                                                <div className="inline-flex bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded gap-1 whitespace-nowrap items-center min-h-[22px]">
+                                                    <CheckCircle className="h-3 w-3" /> RECEBIDO
+                                                </div>
                                             ) : (
-                                                <div className="inline-flex bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded">
+                                                <div className="inline-flex bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded whitespace-nowrap items-center min-h-[22px]">
                                                     {receita.status?.replace('_', ' ').toUpperCase()}
                                                 </div>
                                             )}
                                         </div>
-                                        <div className="space-y-1">
-                                            <p className="text-xs font-semibold text-gray-400 tracking-wide uppercase">Modalidade</p>
-                                            <div className="inline-flex bg-gray-100 text-gray-800 text-xs font-bold px-2 py-1 rounded">
+                                        <div className="space-y-1.5 flex-[1_1_auto] min-w-max">
+                                            <p className="text-[10px] font-bold text-gray-400 tracking-wider uppercase leading-tight">Modalidade</p>
+                                            <div className="inline-flex bg-gray-100 text-gray-800 text-[10px] font-bold px-2 py-0.5 rounded whitespace-nowrap items-center min-h-[22px] uppercase">
                                                 {receita.modalidade?.replace('_', ' ')}
                                             </div>
                                         </div>
-                                        <div className="space-y-1">
-                                            <p className="text-xs font-semibold text-gray-400 tracking-wide uppercase">Competência</p>
-                                            <p className="font-medium text-gray-800 text-sm mt-1">{compStr}</p>
+                                        <div className="space-y-1.5 flex-[1_1_auto] min-w-max">
+                                            <p className="text-[10px] font-bold text-gray-400 tracking-wider uppercase leading-tight">Competência</p>
+                                            <p className="font-semibold text-gray-800 text-[15px] pt-0.5">{compStr}</p>
                                         </div>
-                                        <div className="space-y-1">
-                                            <p className="text-xs font-semibold text-gray-400 tracking-wide uppercase">Vencimento (Previsão)</p>
-                                            <p className="font-medium text-gray-800 text-sm mt-1">{receita.vencimento ? new Date(receita.vencimento + 'T12:00:00Z').toLocaleDateString('pt-BR') : 'Imediato'}</p>
+                                        <div className="space-y-1.5 flex-[1_1_auto] min-w-max">
+                                            <p className="text-[10px] font-bold text-gray-400 tracking-wider uppercase leading-tight">Venc. <span className="opacity-70">(Prev)</span></p>
+                                            <p className="font-semibold text-gray-800 text-[15px] whitespace-nowrap pt-0.5">
+                                                {receita.vencimento ? new Date(receita.vencimento + 'T12:00:00Z').toLocaleDateString('pt-BR') : 'Imediato'}
+                                            </p>
                                         </div>
-                                        <div className="space-y-1 md:text-right">
-                                            <p className="text-xs font-semibold text-gray-400 tracking-wide uppercase">Valor Total</p>
-                                            <p className="font-bold text-blue-700 text-base mt-0.5">{valorStr}</p>
+                                        <div className="space-y-1.5 flex-[1_1_auto] min-w-max md:text-right">
+                                            <p className="text-[10px] font-bold text-gray-400 tracking-wider uppercase leading-tight">Valor Total</p>
+                                            <p className="font-black text-blue-700 text-[17px] whitespace-nowrap pt-0.5">{valorStr}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -591,14 +595,21 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                                                                         </div>
                                                                         <div>
                                                                             <span className="text-gray-400 text-xs block">V. Unitário</span>
-                                                                            <span className="font-medium text-gray-700">R$ {Number(Number(op.valor_unitario || 0) === 0 && Number(op.quantidade || 0) > 0 && Number(op.valor_total || 0) > 0 ? (Number(op.valor_total) / Number(op.quantidade)) : (op.valor_unitario || 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                                                            <span className="font-medium text-gray-700">R$ {Number(op.valor_unitario_snapshot ?? op.valor_unitario_label ?? op.valor_unitario ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                                                                         </div>
-                                                                        <div><span className="text-gray-400 text-xs block">Materiais</span> <span className="font-medium text-gray-700">R$ {Number(op.valor_materiais || op.custo_materiais || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>
-                                                                        <div><span className="text-gray-400 text-xs block">V. ISS</span> <span className="font-medium text-gray-700">R$ {Number(op.valor_iss || op.iss || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>
+                                                                        <div><span className="text-gray-400 text-xs block">Materiais</span> <span className="font-medium text-gray-700">R$ {Number(op.valor_total_materiais ?? op.valor_materiais ?? op.custo_materiais ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>
+                                                                        <div><span className="text-gray-400 text-xs block">V. ISS</span> <span className="font-medium text-gray-700">R$ {Number(op.custo_com_iss ?? op.valor_iss ?? op.iss ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>
                                                                         <div><span className="text-gray-400 text-xs block">Forma Pgto</span> <span className="font-medium text-gray-700 truncate block">{op.formas_pagamento_operacional?.nome || op.formas_pagamento_operacional?.descricao || '-'}</span></div>
+
+                                                                        {/* Campos Operacionais do Encarregado */}
+                                                                        <div><span className="text-gray-400 text-xs block">Placa</span> <span className="font-medium text-gray-700">{op.placa || '-'}</span></div>
+                                                                        <div><span className="text-gray-400 text-xs block">Nº Nota Fiscal</span> <span className="font-medium text-gray-700">{op.nf_numero || (op.possui_nf ? 'SIM (Sem Nº)' : 'NÃO')}</span></div>
+                                                                        <div><span className="text-gray-400 text-xs block">Horário (In / Out)</span> <span className="font-medium text-gray-700">{op.entrada_ponto ? `${op.entrada_ponto.substring(0, 5)} até ${op.saida_ponto?.substring(0, 5) || '?'}` : '-'}</span></div>
+                                                                        <div><span className="text-gray-400 text-xs block">Qtd Colabs (Prod.)</span> <span className="font-medium text-gray-700">{op.quantidade_colaboradores || 0}</span></div>
+
                                                                         <div className="col-span-2 border-t pt-2 md:border-none md:pt-0">
                                                                             <span className="text-gray-400 text-[11px] font-semibold uppercase block">Valor Total Origem</span>
-                                                                            <span className="font-bold text-blue-700 text-lg">R$ {Number(op.valor_total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                                                            <span className="font-bold text-blue-700 text-lg">R$ {Number(op.total_final ?? op.valor_total ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                                                                         </div>
                                                                     </div>
                                                                 </div>
@@ -608,7 +619,7 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                                                                     <h5 className="text-xs font-bold text-gray-800 uppercase tracking-widest border-b pb-2 mb-3">Responsáveis</h5>
                                                                     <div className="grid grid-cols-2 gap-4">
                                                                         <div><span className="text-gray-400 text-xs block">Empresa Faturada</span> <span className="font-medium text-gray-700 truncate block">{receita.empresas?.nome || '-'}</span></div>
-                                                                        <div><span className="text-gray-400 text-xs block">Encarregado</span> <span className="font-medium text-gray-700 truncate tracking-wide">{op.encarregado?.nome || op.encarregado_id?.substring(0, 8) || '-'}</span></div>
+                                                                        <div><span className="text-gray-400 text-xs block">Encarregado</span> <span className="font-medium text-gray-700 truncate tracking-wide">{op.responsavel_nome || op.encarregado?.nome || op.encarregado_id?.substring(0, 8) || '-'}</span></div>
                                                                         <div><span className="text-gray-400 text-xs block">Fornecedor (Mão de Obra)</span> <span className="font-medium text-gray-700 truncate block">{op.fornecedores?.nome_fantasia || op.fornecedores?.razao_social || op.fornecedores?.nome || '-'}</span></div>
                                                                         <div><span className="text-gray-400 text-xs block">Transportadora Cliente</span> <span className="font-medium text-gray-700 truncate block">{op.transportadoras?.nome_fantasia || op.transportadoras?.razao_social || op.transportadoras?.nome || '-'}</span></div>
                                                                     </div>

@@ -2664,6 +2664,9 @@ export const OperacoesTableBlock = ({
               </div>
 
               <div className="pt-4 border-t border-border flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setSelectedOpDetails(null)}>
+                  Fechar
+                </Button>
 
                 {!["AGUARDANDO_FATURAMENTO", "FATURADO", "RECEBIDO_FINANCEIRO", "CONCLUIDO", "APROVADO", "FECHADO"].includes(selectedOpDetails.status?.toUpperCase() || "") && (
                   <Button onClick={() => handleAprovar(selectedOpDetails)} className="bg-brand text-white border-0 hover:bg-brand/90 focus:ring-brand" disabled={changeStatusMutation.isPending}>
