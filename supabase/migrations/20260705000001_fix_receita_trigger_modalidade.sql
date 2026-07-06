@@ -11,6 +11,7 @@ DECLARE
     v_forma_pgto_nome TEXT;
     v_forma_pgto_modalidade TEXT;
     v_modalidade TEXT := 'DUPLICATA';
+    v_status TEXT := 'pendente_cobranca';
     v_existente BOOLEAN;
 BEGIN
     -- Só prossegue se o status for atualizado para alguma etapa de faturamento/recebimento
@@ -44,6 +45,15 @@ BEGIN
                 END IF;
             END IF;
 
+            -- Definir o status inicial de acordo com a modalidade para satisfazer check_constraint financeira
+            IF v_modalidade = 'CAIXA_IMEDIATO' THEN
+                v_status := 'pendente_recebimento';
+            ELSIF v_modalidade = 'FATURAMENTO_MENSAL' THEN
+                v_status := 'aguardando_fechamento';
+            ELSE
+                v_status := 'pendente_cobranca';
+            END IF;
+
             -- 1. Inserir a 'Receita Raiz'
             INSERT INTO public.receitas_operacionais (
                 tenant_id,
@@ -58,7 +68,7 @@ BEGIN
                 NEW.unidade_id,
                 v_modalidade,
                 NEW.valor_total,
-                'pendente'
+                v_status
             ) RETURNING id INTO v_receita_id;
 
             -- 2. Inserir o 'Item da Receita' (vínculo real com a operação)

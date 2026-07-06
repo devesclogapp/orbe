@@ -37,7 +37,7 @@ export interface GovernancaTransicoesDiarias {
   aprovouRh: number;
   aprovouFinanceiro: number;
   preparouCnab: number;
-  devolveuRh: number;
+  edicoesAuditadas: number;
 }
 
 class GovernanceServiceClass {
@@ -125,8 +125,27 @@ class GovernanceServiceClass {
         aprovouRh: 0,
         aprovouFinanceiro: 0,
         preparouCnab: 0,
-        devolveuRh: 0,
+        edicoesAuditadas: 0,
       };
+    }
+
+    let countEdicoes = 0;
+    try {
+      let queryEdicoes: any = supabase
+        .from("vw_audit_timeline_operacional")
+        .select("log_id", { count: 'exact', head: true })
+        .gte("data_hora", start.toISOString())
+        .lte("data_hora", end.toISOString())
+        .eq("acao", "UPDATE");
+
+      if (effectiveTenantId) {
+        queryEdicoes = queryEdicoes.eq("tenant_id", effectiveTenantId);
+      }
+      
+      const resEdicoes = await queryEdicoes;
+      countEdicoes = resEdicoes.count || 0;
+    } catch (e) {
+      console.error("Erro ao contar edições operacionais:", e);
     }
 
     const rows = data || [];
@@ -134,7 +153,7 @@ class GovernanceServiceClass {
       aprovouRh: rows.filter((r: any) => r.acao === "APROVOU_RH").length,
       aprovouFinanceiro: rows.filter((r: any) => r.acao === "APROVOU_FINANCEIRO").length,
       preparouCnab: rows.filter((r: any) => r.acao === "PREPAROU_CNAB").length,
-      devolveuRh: rows.filter((r: any) => r.acao === "DEVOLVEU").length,
+      edicoesAuditadas: countEdicoes,
     };
   }
 

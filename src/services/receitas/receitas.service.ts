@@ -142,6 +142,19 @@ class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
       
       return updated;
   }
+
+  async updateReceita(tenantId: string, receitaId: string, payload: Partial<ReceitaOperacional>) {
+    const { data, error } = await supabase
+      .from('receitas_operacionais')
+      .update(payload)
+      .eq('id', receitaId)
+      .eq('tenant_id', tenantId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
 }
 
 export const ReceitasService = new ReceitasServiceClass();

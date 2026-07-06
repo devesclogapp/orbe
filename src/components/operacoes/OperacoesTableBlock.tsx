@@ -74,7 +74,7 @@ import {
   MateriaisOperacionaisService
 } from "@/services/base.service";
 import { classificarFinanceiroSync, processarOperacao, calcularValoresOperacao, getModalidadeLabel, ModalidadeFinanceira, StatusPagamento } from "@/utils/financeiro";
-import { JustificationModal } from "@/components/modals/JustificationModal";
+
 import { useOperationalPipeline, buildOperacaoVolumePipeline } from "@/contexts/OperationalPipelineContext";
 
 type OperacoesTableBlockProps = {
@@ -374,10 +374,9 @@ const getStatusConfig = (status: string) => {
     case "fechado":
       return { label: "⚫ Concluído", className: "bg-zinc-100 text-zinc-500 border-zinc-200", opacity: "opacity-[0.60]" };
 
-    case "em_restricao":
     case "devolvido":
     case "recusado":
-      return { label: "Em Restrição", className: "bg-rose-50 text-rose-600 border-rose-100", opacity: "opacity-100" };
+      return { label: "Recusado / Devolvido", className: "bg-rose-50 text-rose-600 border-rose-100", opacity: "opacity-100" };
 
     case "inconsistente":
     case "bloqueado":
@@ -562,9 +561,7 @@ export const OperacoesTableBlock = ({
   const tableScrollRef = useRef<HTMLDivElement>(null);
 
   const { openPipeline } = useOperationalPipeline();
-  const [justificationModalOpen, setJustificationModalOpen] = useState(false);
-  const [pendingAction, setPendingAction] = useState<((justification: string) => void) | null>(null);
-  const [justificationType, setJustificationType] = useState<"override" | "devolucao">("override");
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const toggleRowExpansion = (e: React.MouseEvent, id: string) => {
@@ -1021,7 +1018,7 @@ export const OperacoesTableBlock = ({
     const pipelineMatch = pipelineFilter === "todos" || (() => {
       // Normalizamos para lower case na leitura para coincidir com os enums do producao.service
       const s = String(item.status || "pendente").toLowerCase();
-      if (pipelineFilter === "pendentes") return ["pendente", "aberto", "abreto", "registered", "registrado", "devolvido", "inconsistente", "recusado", "recebido", "em_restricao"].includes(s);
+      if (pipelineFilter === "pendentes") return ["pendente", "aberto", "abreto", "registered", "registrado", "devolvido", "inconsistente", "recusado", "recebido"].includes(s);
       if (pipelineFilter === "rh") return ["validado_rh", "em_validacao", "validado"].includes(s);
       if (pipelineFilter === "financeiro") return ["enviado_financeiro", "aprovado_financeiro", "cnab_gerado", "aguardando_pagamento", "financeiro", "aguardando_faturamento", "faturado"].includes(s);
       if (pipelineFilter === "concluidos") return ["pago", "concluido", "finalizado", "fechado", "recebido_financeiro"].includes(s);
@@ -1215,6 +1212,16 @@ export const OperacoesTableBlock = ({
       {
         onSuccess: () => {
           setSelectedOpDetails(null);
+
+          toast.success("Operação aprovada e faturada", {
+            description: "Receita Operacional criada com sucesso. Próxima etapa: Recebimento Financeiro.",
+            action: {
+              label: "Ir para Contas a Receber",
+              onClick: () => navigate("/financeiro/receitas", { state: { highlight: item.id } })
+            },
+            duration: 8000
+          });
+
           const compMatch = item.data_operacao ? item.data_operacao.match(/^(\d{4})-(\d{2})/) : null;
           const comp = compMatch ? `${compMatch[1]}-${compMatch[2]}` : date.substring(0, 7);
           openPipeline(buildOperacaoVolumePipeline({
@@ -1227,45 +1234,7 @@ export const OperacoesTableBlock = ({
     );
   };
 
-  const handleDevolver = (item: any) => {
-    openJustification("devolucao", async (justification: string) => {
-      if (changeStatusMutation.isPending) return;
 
-      const { data: { user } } = await supabase.auth.getUser();
-      const currentAuthUser = user?.email || user?.id || "Sistema";
-      const historicoAtual = item.avaliacao_json?.historico_faturamento || [];
-      const newLog = {
-        acao: "DEVOLVER_RESTRICAO",
-        usuario: currentAuthUser,
-        data: new Date().toISOString().split("T")[0],
-        hora: new Date().toISOString().split("T")[1].substring(0, 5),
-        status_anterior: item.status || "pendente",
-        status_novo: "EM_RESTRICAO",
-        justificativa: justification
-      };
-
-      const nextAvaliacao = {
-        ...(item.avaliacao_json || {}),
-        historico_faturamento: [...historicoAtual, newLog]
-      };
-
-      changeStatusMutation.mutate(
-        {
-          id: item.id,
-          payload: {
-            status: "EM_RESTRICAO",
-            justificativa_retroativa: justification,
-            avaliacao_json: nextAvaliacao
-          }
-        },
-        {
-          onSuccess: () => {
-            setSelectedOpDetails(null);
-          }
-        }
-      );
-    });
-  };
 
   const editableFilteredCount = filteredData.filter((item: any) => isEditableOperation(item)).length;
 
@@ -2695,11 +2664,7 @@ export const OperacoesTableBlock = ({
               </div>
 
               <div className="pt-4 border-t border-border flex justify-end gap-2">
-                {!["AGUARDANDO_FATURAMENTO", "FATURADO", "RECEBIDO_FINANCEIRO", "CONCLUIDO", "APROVADO", "FECHADO"].includes(selectedOpDetails.status?.toUpperCase() || "") && (
-                  <Button variant="outline" className="border-warning text-warning hover:bg-warning-soft hover:text-warning-strong" onClick={() => handleDevolver(selectedOpDetails)} disabled={changeStatusMutation.isPending}>
-                    Devolver com Restrição
-                  </Button>
-                )}
+
                 {!["AGUARDANDO_FATURAMENTO", "FATURADO", "RECEBIDO_FINANCEIRO", "CONCLUIDO", "APROVADO", "FECHADO"].includes(selectedOpDetails.status?.toUpperCase() || "") && (
                   <Button onClick={() => handleAprovar(selectedOpDetails)} className="bg-brand text-white border-0 hover:bg-brand/90 focus:ring-brand" disabled={changeStatusMutation.isPending}>
                     {changeStatusMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
@@ -2928,16 +2893,7 @@ export const OperacoesTableBlock = ({
         </SheetContent>
       </Sheet>
 
-      <JustificationModal
-        isOpen={justificationModalOpen}
-        onClose={() => setJustificationModalOpen(false)}
-        onConfirm={(justification) => {
-          pendingAction?.(justification);
-          setJustificationModalOpen(false);
-        }}
-        title={justificationType === "devolucao" ? "Motivo da Devolução" : "Justificativa de Alteração (Override)"}
-        description={justificationType === "devolucao" ? "Forneça o motivo pelo qual esta operação está sendo devolvida." : undefined}
-      />
+
     </div >
   );
 };

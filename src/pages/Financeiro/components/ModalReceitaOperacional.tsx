@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -29,6 +30,7 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
     const { toast } = useToast();
     const { tenantId } = useTenant();
     const queryClient = useQueryClient();
+    const navigate = useNavigate();
 
     // UI States
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -36,6 +38,9 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
 
     // Forms
     const [pixForm, setPixForm] = useState({ data: new Date().toISOString().split('T')[0], banco: '', observacao: '' });
+    const [cobrancaForm, setCobrancaForm] = useState({ formato: 'Boleto (PDF)', vencimento: receita?.vencimento || '' });
+    const [consolidarForm, setConsolidarForm] = useState({ vencimento: receita?.vencimento || '' });
+    const [enviarForm, setEnviarForm] = useState({ contato: 'financeiro@cliente.com', mensagem: '' });
 
     // Data Load
     const { data: historico = [], isLoading: isLoadingHistorico } = useQuery({
@@ -53,17 +58,14 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
     // Mutations
     const updateStatusMutation = useMutation({
         mutationFn: (newStatus: string) => ReceitasService.updateStatus(tenantId!, receita.id, newStatus),
-        onSuccess: () => finishMutationSuccess()
+    });
+
+    const updateReceitaMutation = useMutation({
+        mutationFn: (payload: any) => ReceitasService.updateReceita(tenantId!, receita.id, payload),
     });
 
     const logEventMutation = useMutation({
         mutationFn: ({ acao, detalhesText, json }: any) => ReceitasService.logEvent(tenantId!, receita.id, acao, detalhesText, json),
-        onSuccess: () => {
-            // For PIX confirm flow, we chain the updateStatus manually if coming from handleConfirmPix
-            if (actionView !== 'confirmar_pix') {
-                finishMutationSuccess();
-            }
-        }
     });
 
     const finishMutationSuccess = () => {
@@ -73,6 +75,7 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
         setIsSubmitting(false);
         setActionView('main');
         onSuccess();
+        onClose();
     }
 
     const handleError = (err: any) => {
@@ -108,7 +111,10 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
     // --- Action Handlers --- 
     const handleConfirmRecebimento = () => {
         setIsSubmitting(true);
-        updateStatusMutation.mutate('recebido', { onError: handleError });
+        updateStatusMutation.mutate('recebido', {
+            onSuccess: finishMutationSuccess,
+            onError: handleError
+        });
     };
 
     const handleConfirmPix = (e: React.FormEvent) => {
@@ -121,7 +127,10 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
             json: pixForm
         }, {
             onSuccess: () => {
-                updateStatusMutation.mutate('recebido', { onError: handleError });
+                updateStatusMutation.mutate('recebido', {
+                    onSuccess: finishMutationSuccess,
+                    onError: handleError
+                });
             },
             onError: handleError
         });
@@ -130,30 +139,63 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
     const handleConfirmGerarCobranca = (e: React.FormEvent) => {
         e.preventDefault();
         setIsSubmitting(true);
-        // De acordo com as regras: "Cobrança Gerada" não vai alterar status da tabela se inflar o DB for evitado. Vai logar.
-        logEventMutation.mutate({
-            acao: 'Cobrança Gerada',
-            detalhesText: 'Documentos de cobrança (PDF/Boleto) gerados.',
-            json: { tipo: 'Documento' }
-        }, { onError: handleError });
+
+        // Let's resolve the next status. If it's aguardando_fechamento for a duplicata (legacy bug or just generated), we move it to pendente_cobranca.
+        let proximoStatus = receita.status;
+        if (receita.modalidade === 'DUPLICATA' && receita.status === 'aguardando_fechamento') {
+            proximoStatus = 'pendente_cobranca';
+        }
+
+        updateReceitaMutation.mutate({ vencimento: cobrancaForm.vencimento, status: proximoStatus }, {
+            onSuccess: () => {
+                logEventMutation.mutate({
+                    acao: 'Cobrança Gerada',
+                    detalhesText: `Documentos gerados em formato: ${cobrancaForm.formato}. Vencimento: ${cobrancaForm.vencimento ? new Date(cobrancaForm.vencimento + 'T12:00:00Z').toLocaleDateString('pt-BR') : 'Imediato'}.`,
+                    json: { tipo: 'Documento', formato: cobrancaForm.formato, vencimento: cobrancaForm.vencimento }
+                }, {
+                    onSuccess: finishMutationSuccess,
+                    onError: handleError
+                });
+            },
+            onError: handleError
+        });
     };
 
     const handleConfirmEnviarCobranca = (e: React.FormEvent) => {
         e.preventDefault();
         setIsSubmitting(true);
         // Atualiza status e loga nativamente o update
-        updateStatusMutation.mutate('cobranca_enviada', { onError: handleError });
+        updateStatusMutation.mutate('cobranca_enviada', {
+            onSuccess: () => {
+                logEventMutation.mutate({
+                    acao: 'Cobrança Enviada ao Cliente',
+                    detalhesText: `Contato: ${enviarForm.contato} | Mensagem: ${enviarForm.mensagem || 'N/A'}`,
+                    json: enviarForm
+                }, {
+                    onSuccess: finishMutationSuccess,
+                    onError: handleError
+                });
+            },
+            onError: handleError
+        });
     };
 
     const handleConfirmConsolidar = (e: React.FormEvent) => {
         e.preventDefault();
         setIsSubmitting(true);
-        // Apenas para fat mensal, loga competencia fechada ou altera status.
-        logEventMutation.mutate({
-            acao: 'Competência Fechada',
-            detalhesText: 'Competência consolidada. Pronta para Geração de Cobrança.',
-            json: { acao_interna: true }
-        }, { onError: handleError });
+        updateReceitaMutation.mutate({ vencimento: consolidarForm.vencimento, status: 'pendente_cobranca' }, {
+            onSuccess: () => {
+                logEventMutation.mutate({
+                    acao: 'Competência Fechada',
+                    detalhesText: `Competência consolidada. Pronta para Geração de Cobrança. Vencimento Padrão: ${consolidarForm.vencimento ? new Date(consolidarForm.vencimento + 'T12:00:00Z').toLocaleDateString('pt-BR') : 'Imediato'}.`,
+                    json: { acao_interna: true, vencimento: consolidarForm.vencimento }
+                }, {
+                    onSuccess: finishMutationSuccess,
+                    onError: handleError
+                });
+            },
+            onError: handleError
+        });
     }
 
     // --- Sub-Views (Forms embutidos) ---
@@ -192,12 +234,12 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                 <div>
                     <Label>Formato do Documento</Label>
                     <div className="flex gap-2 mt-1">
-                        <Button type="button" variant="outline" className="flex-1 bg-white">Boleto (PDF)</Button>
-                        <Button type="button" variant="outline" className="flex-1 bg-white">Nota Fiscal</Button>
-                        <Button type="button" variant="outline" className="flex-1 bg-white">Link Pix</Button>
+                        <Button type="button" variant="outline" className={cn("flex-1", cobrancaForm.formato === 'Boleto (PDF)' ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-white")} onClick={() => setCobrancaForm(p => ({ ...p, formato: 'Boleto (PDF)' }))}>Boleto (PDF)</Button>
+                        <Button type="button" variant="outline" className={cn("flex-1", cobrancaForm.formato === 'Nota Fiscal' ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-white")} onClick={() => setCobrancaForm(p => ({ ...p, formato: 'Nota Fiscal' }))}>Nota Fiscal</Button>
+                        <Button type="button" variant="outline" className={cn("flex-1", cobrancaForm.formato === 'Link Pix' ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-white")} onClick={() => setCobrancaForm(p => ({ ...p, formato: 'Link Pix' }))}>Link Pix</Button>
                     </div>
                 </div>
-                <div><Label>Vencimento Programado</Label> <Input type="date" className="mt-1" /></div>
+                <div><Label>Vencimento Programado</Label> <Input type="date" className="mt-1" required value={cobrancaForm.vencimento} onChange={e => setCobrancaForm(p => ({ ...p, vencimento: e.target.value }))} /></div>
                 <div><Label>Anexos de Suporte</Label>
                     <div className="border border-dashed p-4 rounded-md mt-1 text-center text-gray-500 bg-gray-50/50 cursor-pointer hover:bg-gray-50">
                         <Paperclip className="h-4 w-4 mx-auto mb-2" />
@@ -231,8 +273,8 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                         <Button type="button" variant="outline" className="flex-1 gap-2"><Link className="h-4 w-4" /> Link Seguro</Button>
                     </div>
                 </div>
-                <div><Label>Contato de Cobrança</Label> <Input defaultValue="financeiro@cliente.com" className="mt-1" /></div>
-                <div><Label>Mensagem Anexada</Label> <Textarea placeholder="Descreva observações de corpo de email ou whatsapp..." className="mt-1" /></div>
+                <div><Label>Contato de Cobrança</Label> <Input className="mt-1" required value={enviarForm.contato} onChange={e => setEnviarForm(p => ({ ...p, contato: e.target.value }))} /></div>
+                <div><Label>Mensagem Anexada</Label> <Textarea placeholder="Descreva observações de corpo de email ou whatsapp..." className="mt-1" value={enviarForm.mensagem} onChange={e => setEnviarForm(p => ({ ...p, mensagem: e.target.value }))} /></div>
             </div>
 
             <div className="pt-4 flex justify-end gap-2">
@@ -258,7 +300,7 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
             <div className="space-y-3">
                 <div className="flex justify-between font-medium border-b pb-1 text-sm"><span className="text-gray-500">Valor Total Consolidado</span><span className="text-gray-900">R$ {Number(detalhesReceita?.valor_total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>
                 <div><Label>Ciclo de Competência</Label> <Input defaultValue={detalhesReceita?.competencia || ""} className="mt-1 bg-gray-50" readOnly /></div>
-                <div><Label>Aplicar Vencimento Padrão</Label> <Input type="date" className="mt-1" /></div>
+                <div><Label>Aplicar Vencimento Padrão</Label> <Input type="date" className="mt-1" required value={consolidarForm.vencimento} onChange={e => setConsolidarForm(p => ({ ...p, vencimento: e.target.value }))} /></div>
             </div>
             <div className="pt-4 flex justify-end gap-2">
                 <Button type="button" variant="outline" onClick={() => setActionView('main')}>Cancelar</Button>
@@ -295,6 +337,16 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                             ) : (
                                 <p><span className="font-semibold text-emerald-700">Data de Atualização:</span> {new Date(receita.updated_at || new Date()).toLocaleString('pt-BR')}</p>
                             )}
+                        </div>
+                        <div className="mt-4 border-t border-emerald-200/50 pt-3 flex gap-2">
+                            {itemOps?.id && (
+                                <Button size="sm" variant="outline" className="text-emerald-800 border-emerald-300 hover:bg-emerald-200" onClick={() => { onClose(); navigate("/operacional/operacoes", { state: { highlight: itemOps.id } }); }}>
+                                    Visualizar Operação Original
+                                </Button>
+                            )}
+                            <Button size="sm" variant="outline" className="text-gray-600 border-gray-200 hover:bg-gray-100" onClick={onClose}>
+                                Voltar ao Kanban
+                            </Button>
                         </div>
                     </div>
                 </div>
@@ -377,15 +429,23 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                         {/* Pipeline de Receita e Última Atualização */}
                         <div className="flex flex-col md:flex-row md:items-center justify-between border-t border-gray-100 pt-3 mt-1 gap-2">
                             <div className="flex items-center space-x-2 text-[11px] font-bold text-gray-400">
-                                <span className={cn("flex items-center gap-1", itemOps ? "text-emerald-600" : "")}><CheckCircle className="h-3.5 w-3.5" /> Operação</span>
+                                <span className={cn("flex items-center gap-1", itemOps ? "text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded" : "")}><CheckCircle className="h-3.5 w-3.5" /> Operação</span>
                                 <span>↓</span>
-                                <span className={cn("flex items-center gap-1", receita ? "text-emerald-600" : "")}><CheckCircle className="h-3.5 w-3.5" /> Receita</span>
+                                <span className={cn("flex items-center gap-1", receita ? "text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded" : "")}><CheckCircle className="h-3.5 w-3.5" /> Receita</span>
+                                {receita.modalidade !== 'CAIXA_IMEDIATO' && (
+                                    <>
+                                        <span>↓</span>
+                                        <span className={cn("flex items-center gap-1", (receita.status === 'cobranca_enviada' || receita.status === 'recebido' || receita.status === 'pago' || receita.status === 'conciliado') ? "text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded" : (receita.status === 'pendente_cobranca' ? "text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded" : ""))}><CheckCircle className="h-3.5 w-3.5" /> Cobrança</span>
+                                    </>
+                                )}
                                 <span>↓</span>
-                                <span className={cn("flex items-center gap-1", (receita.status === 'cobranca_enviada' || receita.status === 'recebido' || receita.status === 'pago' || receita.status === 'conciliado') ? "text-emerald-600" : "")}><CheckCircle className="h-3.5 w-3.5" /> Cobrança</span>
-                                <span>↓</span>
-                                <span className={cn("flex items-center gap-1", (receita.status === 'recebido' || receita.status === 'pago' || receita.status === 'conciliado') ? "text-emerald-600" : "")}><CheckCircle className="h-3.5 w-3.5" /> Recebimento</span>
-                                <span>↓</span>
-                                <span className={cn("flex items-center gap-1", (receita.status === 'recebido' || receita.status === 'pago' || receita.status === 'conciliado') ? "text-emerald-600" : "")}><CheckCircle className="h-3.5 w-3.5" /> Conciliação</span>
+                                <span className={cn("flex items-center gap-1", (receita.status === 'recebido' || receita.status === 'pago' || receita.status === 'conciliado') ? "text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded" : ((receita.status === 'pendente_recebimento' || receita.status === 'aguardando_fechamento') ? "text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded animate-pulse" : ""))}><CheckCircle className="h-3.5 w-3.5" /> Recebimento</span>
+                                {receita.modalidade !== 'CAIXA_IMEDIATO' && (
+                                    <>
+                                        <span>↓</span>
+                                        <span className={cn("flex items-center gap-1", (receita.status === 'recebido' || receita.status === 'pago' || receita.status === 'conciliado') ? "text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded" : "")}><CheckCircle className="h-3.5 w-3.5" /> Conciliação</span>
+                                    </>
+                                )}
                             </div>
 
                             <div className="text-[11px] text-gray-500 bg-gray-50 px-2 py-1 rounded border border-gray-100 flex items-center gap-2">
@@ -444,7 +504,7 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                                         </div>
                                         <div className="space-y-1">
                                             <p className="text-xs font-semibold text-gray-400 tracking-wide uppercase">Vencimento (Previsão)</p>
-                                            <p className="font-medium text-gray-800 text-sm mt-1">{receita.data_vencimento ? new Date(receita.data_vencimento).toLocaleDateString('pt-BR') : 'Imediato'}</p>
+                                            <p className="font-medium text-gray-800 text-sm mt-1">{receita.vencimento ? new Date(receita.vencimento + 'T12:00:00Z').toLocaleDateString('pt-BR') : 'Imediato'}</p>
                                         </div>
                                         <div className="space-y-1 md:text-right">
                                             <p className="text-xs font-semibold text-gray-400 tracking-wide uppercase">Valor Total</p>
@@ -487,7 +547,7 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                                                                     <h5 className="text-xs font-bold text-gray-800 uppercase tracking-widest border-b pb-2 mb-3">Origem da Receita</h5>
                                                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                                                         <div><span className="text-gray-400 text-xs block">Origem</span> <span className="font-medium text-gray-700 block">Operação por Volume</span></div>
-                                                                        <div><span className="text-gray-400 text-xs block">Nº Operação</span> <a href={`/operacional/operacoes?search=${op.id}`} target="_blank" rel="noreferrer" className="font-bold text-blue-600 hover:underline truncate tracking-wide block">{op.id?.substring(0, 8) || '-'}</a></div>
+                                                                        <div><span className="text-gray-400 text-xs block">Nº Operação</span> <button type="button" onClick={() => { onClose(); navigate("/operacional/operacoes", { state: { highlight: op.id } }); }} className="font-bold text-blue-600 hover:underline truncate tracking-wide block cursor-pointer">{op.id?.substring(0, 8) || '-'}</button></div>
                                                                         <div><span className="text-gray-400 text-xs block">Data Op.</span> <span className="font-medium text-gray-700">{op.data_operacao ? new Date(op.data_operacao).toLocaleDateString('pt-BR') : 'N/A'}</span></div>
                                                                         <div>
                                                                             <span className="text-gray-400 text-xs block mb-0.5">Status Operacional</span>
@@ -538,9 +598,9 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                                                                         </div>
                                                                     ) : <div className="flex-1"></div>}
 
-                                                                    <Button variant="outline" size="sm" className="h-8 gap-2 text-xs bg-white shrink-0" onClick={() => window.open(`/operacional/operacoes?search=${op.id}`, '_blank')}>
+                                                                    <Button type="button" variant="outline" size="sm" className="h-8 gap-2 text-xs bg-white shrink-0 shadow-sm border-blue-200 text-blue-700 hover:bg-blue-50" onClick={() => { onClose(); navigate("/operacional/operacoes", { state: { highlight: op.id } }); }}>
                                                                         <Layers className="h-3.5 w-3.5" />
-                                                                        Link da Operação
+                                                                        Ir para Operação Original
                                                                     </Button>
                                                                 </div>
                                                             </div>

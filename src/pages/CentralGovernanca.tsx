@@ -14,6 +14,7 @@ import {
   XCircle,
   Download
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { MetricCard } from "@/components/painel/MetricCard";
@@ -178,7 +179,7 @@ const CentralGovernanca = () => {
               <div className="mb-3">
                 <h3 className="font-display font-semibold text-foreground">Transições Diárias do Fluxo</h3>
                 <p className="text-xs text-muted-foreground">
-                  Contadores de hoje para aprovação RH, aprovação financeira, preparo CNAB e devoluções ao RH.
+                  Contadores de hoje para aprovação RH, aprovação financeira, preparo CNAB e edições auditadas na operação.
                 </p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -198,9 +199,9 @@ const CentralGovernanca = () => {
                   icon={FileText}
                 />
                 <MetricCard
-                  label="Devolveu ao RH"
-                  value={loadingTransicoesDia ? "..." : String(transicoesDia?.devolveuRh || 0)}
-                  icon={XCircle}
+                  label="Edições Auditadas"
+                  value={loadingTransicoesDia ? "..." : String(transicoesDia?.edicoesAuditadas || 0)}
+                  icon={History}
                 />
               </div>
             </section>
@@ -283,7 +284,13 @@ const CentralGovernanca = () => {
                           </span>
                         </td>
                         <td className="px-3 py-3 align-top max-w-[250px]">
-                          <div className="font-medium text-foreground">{item.acao}</div>
+                          <div className="font-medium text-foreground">
+                            {item.acao === 'UPDATE' ? 'Edição Operacional' :
+                              item.acao === 'INSERT' ? 'Novo Registro' :
+                                item.acao === 'DELETE' ? 'Exclusão' :
+                                  item.acao === 'DEVOLVER_RESTRICAO' ? 'Correção Requerida' :
+                                    item.acao}
+                          </div>
                           {item.observacao && (
                             <div className="text-xs text-muted-foreground mt-1 truncate" title={item.observacao}>
                               {item.observacao}

@@ -46,6 +46,10 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
     const [selectedColaboradores, setSelectedColaboradores] = useState<string[]>([]);
     const [colaboradorTimings, setColaboradorTimings] = useState<Record<string, { entrada_ponto?: string, saida_almoco?: string, retorno_almoco?: string, saida_ponto?: string }>>({});
 
+    const [selecionouSemAlteracao, setSelecionouSemAlteracao] = useState(false);
+    const [justificativa, setJustificativa] = useState("");
+    const [justificativaError, setJustificativaError] = useState("");
+
     // Quick initialize from initialData if editing
     useEffect(() => {
         if (initialData && initialData.id) {
@@ -403,6 +407,27 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                         </div>
                     )}
 
+                    {etapa === 4 && initialData && (
+                        <div className="esc-card p-4 sm:p-6 shadow-sm border border-slate-100 rounded-xl bg-white mt-4">
+                            <h3 className="font-semibold text-foreground mb-3 text-sm">Justificativa da Edição</h3>
+                            <div className="space-y-2">
+                                <label className="text-xs text-muted-foreground block">
+                                    Descreva o motivo desta alteração (ex: "Correção de transporte", "Ajuste na data"). Este registro ficará salvo na auditoria geral.
+                                </label>
+                                <textarea
+                                    className={`flex min-h-[80px] w-full rounded-md border bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${justificativaError ? 'border-destructive' : 'border-input'}`}
+                                    placeholder="Digite a justificativa da alteração..."
+                                    value={justificativa}
+                                    onChange={(e) => {
+                                        setJustificativa(e.target.value);
+                                        if (e.target.value.trim().length > 0) setJustificativaError("");
+                                    }}
+                                />
+                                {justificativaError && <p className="text-[0.8rem] font-medium text-destructive">{justificativaError}</p>}
+                            </div>
+                        </div>
+                    )}
+
                     {etapa > 1 && (
                         <div className={
                             mode === 'encarregado'
@@ -423,9 +448,64 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                             ) : (
                                 <Button
                                     type="button"
-                                    onClick={form.handleSubmit((data) => mutation.mutate(data), onError)}
+                                    onClick={() => {
+                                        // Checker manual antes de chamar handleSubmit
+                                        if (initialData) {
+                                            const hasMainDirty = Object.keys(form.formState.dirtyFields).length > 0;
+
+                                            const initColabs = (initialData.production_entry_collaborators || []).map((c: any) => c.colaboradores?.id || c.collaborator_id).filter(Boolean);
+                                            const hasColabChanged = JSON.stringify(initColabs.sort()) !== JSON.stringify([...selectedColaboradores].sort());
+
+                                            // Timings simplificado
+                                            const initTimings: Record<string, any> = {};
+                                            (initialData.production_entry_collaborators || []).forEach((c: any) => {
+                                                const id = c.colaboradores?.id || c.collaborator_id;
+                                                if (id) {
+                                                    initTimings[id] = {
+                                                        entrada_ponto: c.entrada_ponto || undefined,
+                                                        saida_almoco: c.saida_almoco || undefined,
+                                                        retorno_almoco: c.retorno_almoco || undefined,
+                                                        saida_ponto: c.saida_ponto || undefined
+                                                    };
+                                                }
+                                            });
+                                            const curTimings = Object.fromEntries(
+                                                Object.entries(colaboradorTimings).map(([k, v]) => [k, {
+                                                    entrada_ponto: v.entrada_ponto || undefined,
+                                                    saida_almoco: v.saida_almoco || undefined,
+                                                    retorno_almoco: v.retorno_almoco || undefined,
+                                                    saida_ponto: v.saida_ponto || undefined
+                                                }])
+                                            );
+                                            const hasTimingsChanged = JSON.stringify(initTimings) !== JSON.stringify(curTimings);
+
+                                            // Materiais
+                                            const initMateriais = (initialData.operacao_producao_materiais || []).map((m: any) => ({
+                                                material_id: m.material_id, quantidade: m.quantidade, valor_total: m.valor_total
+                                            }));
+                                            const curMateriais = selectedMateriais.map(m => ({
+                                                material_id: m.material_id, quantidade: m.quantidade, valor_total: m.valor_total
+                                            }));
+                                            const hasMateriaisChanged = JSON.stringify(initMateriais) !== JSON.stringify(curMateriais);
+
+                                            const isChanged = hasMainDirty || hasColabChanged || hasTimingsChanged || hasMateriaisChanged;
+
+                                            if (!isChanged) {
+                                                toast.info("Nenhuma alteração identificada. Não foi necessário salvar.");
+                                                if (onCancel) onCancel();
+                                                return;
+                                            }
+
+                                            if (justificativa.trim().length === 0) {
+                                                setJustificativaError("Justificativa é obrigatória para salvar as edições.");
+                                                toast.warning("Forneça uma justificativa para as alterações.");
+                                                return;
+                                            }
+                                        }
+                                        form.handleSubmit((data) => mutation.mutate({ ...data, justificativa_retroativa: justificativa.trim() }), onError)();
+                                    }}
                                     className="flex-1 bg-primary"
-                                    disabled={mutation.isPending || selectedColaboradores.length === 0}
+                                    disabled={mutation.isPending || (selectedColaboradores.length === 0 && !initialData)}
                                 >
                                     {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
                                     {initialData ? "Salvar Alterações" : "Finalizar Lançamento"}

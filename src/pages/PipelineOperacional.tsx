@@ -132,7 +132,7 @@ export default function PipelineOperacional() {
             else if (s === "RECEBIDO_FINANCEIRO") stageId = "remetido";
             else if (s === "FATURADO") stageId = "pronto-cnab";
             else if (s === "AGUARDANDO_FATURAMENTO") stageId = "financeiro";
-            else if (s === "EM_VALIDACAO" || s === "EM_RESTRICAO") stageId = "analise-rh"; // Use este visual apenas como genérico para análise
+            else if (s === "EM_VALIDACAO") stageId = "analise-rh"; // Use este visual apenas como genérico para análise
             else if (s === "RECEBIDO") stageId = "recebido";
 
             const createdDate = new Date(op.created_at || op.data_operacao || Date.now());
