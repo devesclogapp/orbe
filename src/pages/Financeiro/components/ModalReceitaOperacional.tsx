@@ -17,6 +17,7 @@ import {
     Zap, Layers, FileSpreadsheet
 } from "lucide-react";
 import { ReceitasService } from "@/services/receitas/receitas.service";
+import { generateCobrancaPDF } from "@/utils/pdfCobranca";
 import { cn } from "@/lib/utils";
 
 interface ModalReceitaOperacionalProps {
@@ -148,6 +149,9 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
 
         updateReceitaMutation.mutate({ vencimento: cobrancaForm.vencimento, status: proximoStatus }, {
             onSuccess: () => {
+                // Dispara o download do arquivo imediatamente
+                generateCobrancaPDF(receita, detalhesReceita, cobrancaForm.formato, cobrancaForm.vencimento);
+
                 logEventMutation.mutate({
                     acao: 'Cobrança Gerada',
                     detalhesText: `Documentos gerados em formato: ${cobrancaForm.formato}. Vencimento: ${cobrancaForm.vencimento ? new Date(cobrancaForm.vencimento + 'T12:00:00Z').toLocaleDateString('pt-BR') : 'Imediato'}.`,
@@ -624,12 +628,38 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                     </TabsContent>
 
                     <TabsContent value="documentos" className="flex-1 overflow-y-auto p-6 m-0 focus-visible:ring-0 bg-gray-50">
-                        <div className="bg-white p-8 rounded-xl border border-dashed text-center flex flex-col items-center justify-center">
-                            <FileSpreadsheet className="h-10 w-10 text-gray-300 mb-3" />
-                            <h4 className="font-bold text-gray-700">Central de Documentos</h4>
-                            <p className="text-gray-500 text-sm mt-1 max-w-sm mb-4">Boletos, Notas Fiscais e Memórias de Cálculo vinculados a este recebimento ficarão salvos aqui.</p>
-                            <Button variant="outline"><Paperclip className="w-4 h-4 mr-2" /> Anexar Documento</Button>
-                        </div>
+                        {historico.filter((h: any) => h.acao === 'Cobrança Gerada').length > 0 ? (
+                            <div className="space-y-4">
+                                <h4 className="font-bold text-gray-800 flex items-center gap-2 mb-3">
+                                    <FileSpreadsheet className="h-5 w-5 text-blue-500" /> Documentos Faturados
+                                </h4>
+                                {historico.filter((h: any) => h.acao === 'Cobrança Gerada').map((h: any) => (
+                                    <div key={h.id} className="bg-white p-4 rounded-xl border shadow-sm flex items-center justify-between hover:border-blue-200 transition-colors">
+                                        <div className="flex items-center gap-4">
+                                            <div className="bg-blue-50 p-3 rounded-lg text-blue-600">
+                                                <Receipt className="h-6 w-6" />
+                                            </div>
+                                            <div>
+                                                <h5 className="font-bold text-gray-800 text-sm">{h.detalhes?.formato || 'Documento PDF'} <span className="text-gray-400 font-normal text-xs ml-2">#{h.id.substring(0, 8).toUpperCase()}</span></h5>
+                                                <p className="text-xs text-gray-500 mt-0.5">Gerado em: {new Date(h.created_at).toLocaleString('pt-BR')} por {h.detalhes?.usuario_email || 'Sistema'}</p>
+                                                {h.detalhes?.vencimento && <p className="text-xs text-gray-600 font-medium mt-1">Vencimento registrado: {new Date(h.detalhes.vencimento + 'T12:00:00Z').toLocaleDateString('pt-BR')}</p>}
+                                            </div>
+                                        </div>
+                                        <Button variant="outline" size="sm" className="gap-2 border-blue-200 text-blue-700 hover:bg-blue-50" onClick={() => generateCobrancaPDF(receita, detalhesReceita, h.detalhes?.formato || 'Fatura (2ª Via)', h.detalhes?.vencimento || receita.vencimento)}>
+                                            <Paperclip className="h-3.5 w-3.5" />
+                                            Baixar 2ª Via
+                                        </Button>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="bg-white p-8 rounded-xl border border-dashed text-center flex flex-col items-center justify-center">
+                                <FileSpreadsheet className="h-10 w-10 text-gray-300 mb-3" />
+                                <h4 className="font-bold text-gray-700">Central de Documentos</h4>
+                                <p className="text-gray-500 text-sm mt-1 max-w-sm mb-4">Boletos, Notas Fiscais e Memórias de Cálculo vinculados a este recebimento ficarão salvos aqui.</p>
+                                <Button variant="outline"><Paperclip className="w-4 h-4 mr-2" /> Anexar Documento</Button>
+                            </div>
+                        )}
                     </TabsContent>
 
                     <TabsContent value="historico" className="flex-1 overflow-y-auto p-6 m-0 bg-white">
