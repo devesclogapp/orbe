@@ -140,6 +140,7 @@ const groups: MenuGroup[] = [
     items: [
       { icon: Wallet, label: "Central Financeira", to: "/financeiro", end: true, module: "central_financeira", pulseKey: "central_financeira" },
       { icon: Receipt, label: "Contas a Receber", to: "/financeiro/receitas", module: "central_financeira" },
+      { icon: TrendingUp, label: "Resultado Operacional", to: "/financeiro/dre", module: "central_financeira" },
       { icon: Banknote, label: "Bancário / Remessas", to: "/bancario", module: "pagamentos_remessas", pulseKey: "pagamentos_remessas" },
       { icon: ArrowRightLeft, label: "Conciliação", to: "/financeiro/retorno", module: "pagamentos_remessas" },
       { icon: CreditCard, label: "Contas Bancárias", to: "/financeiro/contas-bancarias", module: "pagamentos_remessas" },

@@ -260,13 +260,13 @@ class DashboardConsolidadoServiceClass {
     const endRange = `${nextMonth}-01`;
 
     let qReceitas = supabase
-      .from('financeiro_consolidados_cliente')
-      .select('valor_total, status, created_at, updated_at');
-    
+      .from('receitas_operacionais')
+      .select('valor_total, status, created_at, updated_at, competencia');
+      
     if (isAnual) {
-      qReceitas = qReceitas.gte('competencia', `${yearPart}-01`).lt('competencia', `${yearPart + 1}-01`);
+      qReceitas = qReceitas.gte('created_at', `${yearPart}-01-01`).lt('created_at', `${yearPart + 1}-01-01`);
     } else {
-      qReceitas = qReceitas.eq('competencia', canonicalCompetencia);
+      qReceitas = qReceitas.gte('created_at', startRange).lt('created_at', endRange);
     }
     if (empresaId) qReceitas = qReceitas.eq('empresa_id', empresaId);
 
@@ -290,7 +290,7 @@ class DashboardConsolidadoServiceClass {
 
     let qCnabLotes = supabase
       .from('lotes_remessa')
-      .select('id, valor_total, status, status_conciliacao, created_at, updated_at');
+      .select('id, valor_total, status, status_conciliacao, created_at');
     
     if (isAnual) {
       qCnabLotes = qCnabLotes.gte('competencia', `${yearPart}-01`).lt('competencia', `${yearPart + 1}-01`);
@@ -320,7 +320,7 @@ class DashboardConsolidadoServiceClass {
 
     let qCustos = supabase
       .from('custos_extras_operacionais')
-      .select('total, status_pagamento, created_at, updated_at')
+      .select('total, status_pagamento, criado_em, atualizado_em')
       .gte('data', startRange)
       .lt('data', endRange);
     if (empresaId) qCustos = qCustos.eq('empresa_id', empresaId);
@@ -328,7 +328,7 @@ class DashboardConsolidadoServiceClass {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let qServicosExtras = (supabase as any)
       .from('servicos_extras_operacionais')
-      .select('total, pipeline_status, created_at, updated_at')
+      .select('total, pipeline_status, criado_em, atualizado_em')
       .gte('data', startRange)
       .lt('data', endRange);
     if (empresaId) qServicosExtras = qServicosExtras.eq('empresa_id', empresaId);
@@ -361,7 +361,6 @@ class DashboardConsolidadoServiceClass {
     const cnabArquivosData = safeData(resCnabArquivos);
     const retornoItensData = safeData(resRetornoItens as any);
     const custosData = safeData(resCustos);
-    // servicosExtrasData now comes from the dedicated table — no avaliacao_json filter needed
     const servicosExtrasData = safeData(resServicosExtras as any);
 
     const diaristaFlow = emptyFluxAccumulator();
@@ -373,8 +372,11 @@ class DashboardConsolidadoServiceClass {
     const receitasUpdatedAt: string[] = [];
 
     receitasData.forEach((item: any) => {
-      faturamentoTotal = addAmount(faturamentoTotal, item.valor_total);
-      if (['RECEBIDO', 'PAGO', 'pago'].includes(String(item.status))) {
+      const stat = String(item.status || '').toLowerCase();
+      if (stat !== 'cancelado') {
+        faturamentoTotal = addAmount(faturamentoTotal, item.valor_total);
+      }
+      if (['recebido', 'pago', 'conciliado'].includes(stat)) {
         caixaRecebido = addAmount(caixaRecebido, item.valor_total);
       }
       receitasUpdatedAt.push(
@@ -466,7 +468,7 @@ class DashboardConsolidadoServiceClass {
       if (statusPagamento === 'PENDENTE') custosPendentes += 1;
       if (statusPagamento === 'ATRASADO') custosAtrasados += 1;
       custosUpdatedAt.push(
-        String(item.updated_at || item.created_at || consolidadoEm),
+        String(item.atualizado_em || item.criado_em || consolidadoEm),
       );
       flowsPresentes.push('operacional');
     });
@@ -480,7 +482,7 @@ class DashboardConsolidadoServiceClass {
       if (['PENDENTE', 'EM_VALIDACAO'].includes(pipelineStatus)) servicosPendentes += 1;
       if (['DEVOLVIDO'].includes(pipelineStatus)) servicosComAlerta += 1;
       servicosExtrasUpdatedAt.push(
-        String(item.updated_at || item.created_at || consolidadoEm),
+        String(item.atualizado_em || item.criado_em || consolidadoEm),
       );
       if ((Number(item.total) || 0) > 0) flowsPresentes.push('operacional');
     });
