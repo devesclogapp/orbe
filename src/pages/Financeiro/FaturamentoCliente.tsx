@@ -117,7 +117,7 @@ const FaturamentoCliente = () => {
 
     return (
         <AppShell title="Faturamento por Cliente" subtitle="Detalhamento e memória de cálculo por competência">
-            <div className="space-y-4">
+            <div className="mx-auto max-w-[1700px] w-full space-y-4">
                 <div className="flex items-center justify-between gap-4 flex-wrap">
                     <div className="relative w-full max-w-sm">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />

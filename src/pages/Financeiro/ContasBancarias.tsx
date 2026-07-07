@@ -405,8 +405,8 @@ const ContasBancarias = () => {
     }, []);
 
     return (
-        <AppShell title="Contas Bancárias" subtitle="Cadastro e gestão de contas bancárias empresariais para operações CNAB">
-            <div className="max-w-[1400px] mx-auto space-y-6 animate-in fade-in duration-500">
+        <AppShell title="Contas Bancárias" subtitle="Gerenciamento de contas e carteiras de cobrança">
+            <div className="max-w-[1700px] w-full mx-auto space-y-6 animate-in fade-in duration-500">
 
                 {/* KPIs */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

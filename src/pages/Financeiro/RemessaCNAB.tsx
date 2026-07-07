@@ -127,8 +127,8 @@ const RemessaCNAB = () => {
     }, [competencias]);
 
     return (
-        <AppShell title="Geração de Remessa CNAB">
-            <div className="max-w-[1200px] mx-auto space-y-6 animate-in fade-in duration-500">
+        <AppShell title="Bancário e Remessas CNAB" subtitle="Geração de boletos e envio para o banco">
+            <div className="max-w-[1700px] w-full mx-auto space-y-6 animate-in fade-in duration-500">
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                     {/* Painel de Configurações */}
                     <Card className="lg:col-span-5 p-8 space-y-6 shadow-sm border-border bg-card/50 backdrop-blur-sm">

@@ -10,12 +10,11 @@ interface FormStepTeamProps {
     form: UseFormReturn<ProductionFormValues>;
     colaboradores: any[];
     selectedIds: string[];
-    colaboradorTimings?: Record<string, { entrada_ponto?: string, saida_almoco?: string, retorno_almoco?: string, saida_ponto?: string }>;
-    setColaboradorTimings?: React.Dispatch<React.SetStateAction<Record<string, { entrada_ponto?: string, saida_almoco?: string, retorno_almoco?: string, saida_ponto?: string }>>>;
+
     onToggleColaborador: (id: string) => void;
 }
 
-export function FormStepTeam({ form, colaboradores, selectedIds, colaboradorTimings = {}, setColaboradorTimings, onToggleColaborador }: FormStepTeamProps) {
+export function FormStepTeam({ form, colaboradores, selectedIds, onToggleColaborador }: FormStepTeamProps) {
     const { watch } = form;
     const qtdInformada = Number(watch("quantidade_colaboradores") || 1);
     const qtdSelecionada = selectedIds.length;
@@ -80,58 +79,7 @@ export function FormStepTeam({ form, colaboradores, selectedIds, colaboradorTimi
                             </div>
                         </div>
 
-                        {selectedIds.includes(colab.id) && setColaboradorTimings && (
-                            <div className="w-full mt-3 grid grid-cols-2 md:grid-cols-4 gap-2 pt-3 border-t" onClick={(e) => e.stopPropagation()}>
-                                <div className="space-y-1">
-                                    <Label className="text-[10px]">Entrada</Label>
-                                    <input
-                                        type="time"
-                                        className="flex h-8 w-full rounded-md border border-input bg-transparent px-3 py-1 text-xs shadow-sm"
-                                        value={colaboradorTimings[colab.id]?.entrada_ponto || ""}
-                                        onChange={(e) => setColaboradorTimings(prev => ({
-                                            ...prev,
-                                            [colab.id]: { ...prev[colab.id], entrada_ponto: e.target.value }
-                                        }))}
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <Label className="text-[10px]">Saída Almoço</Label>
-                                    <input
-                                        type="time"
-                                        className="flex h-8 w-full rounded-md border border-input bg-transparent px-3 py-1 text-xs shadow-sm"
-                                        value={colaboradorTimings[colab.id]?.saida_almoco || ""}
-                                        onChange={(e) => setColaboradorTimings(prev => ({
-                                            ...prev,
-                                            [colab.id]: { ...prev[colab.id], saida_almoco: e.target.value }
-                                        }))}
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <Label className="text-[10px]">Retorno Almoço</Label>
-                                    <input
-                                        type="time"
-                                        className="flex h-8 w-full rounded-md border border-input bg-transparent px-3 py-1 text-xs shadow-sm"
-                                        value={colaboradorTimings[colab.id]?.retorno_almoco || ""}
-                                        onChange={(e) => setColaboradorTimings(prev => ({
-                                            ...prev,
-                                            [colab.id]: { ...prev[colab.id], retorno_almoco: e.target.value }
-                                        }))}
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <Label className="text-[10px]">Saída Final</Label>
-                                    <input
-                                        type="time"
-                                        className="flex h-8 w-full rounded-md border border-input bg-transparent px-3 py-1 text-xs shadow-sm"
-                                        value={colaboradorTimings[colab.id]?.saida_ponto || ""}
-                                        onChange={(e) => setColaboradorTimings(prev => ({
-                                            ...prev,
-                                            [colab.id]: { ...prev[colab.id], saida_ponto: e.target.value }
-                                        }))}
-                                    />
-                                </div>
-                            </div>
-                        )}
+
                     </div>
                 ))}
             </div>

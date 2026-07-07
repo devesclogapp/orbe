@@ -46,11 +46,11 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
     const [etapa, setEtapa] = useState(1);
 
     const [selectedColaboradores, setSelectedColaboradores] = useState<string[]>([]);
-    const [colaboradorTimings, setColaboradorTimings] = useState<Record<string, { entrada_ponto?: string, saida_almoco?: string, retorno_almoco?: string, saida_ponto?: string }>>({});
 
     const [selecionouSemAlteracao, setSelecionouSemAlteracao] = useState(false);
     const [justificativa, setJustificativa] = useState("");
     const [justificativaError, setJustificativaError] = useState("");
+    const [concurrencyError, setConcurrencyError] = useState(false);
 
     // Quick initialize from initialData if editing
     useEffect(() => {
@@ -61,20 +61,6 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
             if (initialData.production_entry_collaborators && Array.isArray(initialData.production_entry_collaborators)) {
                 const colabs = initialData.production_entry_collaborators.map((c: any) => c.colaboradores?.id || c.collaborator_id);
                 setSelectedColaboradores(Array.from(new Set(colabs.filter(Boolean))));
-
-                const timings: Record<string, any> = {};
-                initialData.production_entry_collaborators.forEach((c: any) => {
-                    const id = c.colaboradores?.id || c.collaborator_id;
-                    if (id) {
-                        timings[id] = {
-                            entrada_ponto: c.entrada_ponto,
-                            saida_almoco: c.saida_almoco,
-                            retorno_almoco: c.retorno_almoco,
-                            saida_ponto: c.saida_ponto
-                        };
-                    }
-                });
-                setColaboradorTimings(timings);
             } else if (initialData.colaborador_id) {
                 // Fallback legado
                 setSelectedColaboradores([initialData.colaborador_id]);
@@ -151,16 +137,15 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
         return allColaboradores.filter(c => {
             const tipo = String(c.tipo_colaborador || '').toUpperCase();
 
-            // Regra base: Encarregados nunca lançam CLT manualmente via tela de encarregado.
-            // Para admin, relaxamos se for edição ou explicitamente admin, se necessário futuramente.
-            if (tipo === 'CLT' && mode === 'encarregado') return false;
-
             if (currentTipoLancamento === 'diaristas') {
                 return tipo === 'DIARISTA';
             }
-            return tipo !== 'DIARISTA';
+
+            // Para operações por volume e demais serviços operacionais,
+            // apenas colaboradores INTERMITENTES podem ser lançados.
+            return tipo === 'INTERMITENTE';
         });
-    }, [allColaboradores, currentTipoLancamento, mode]);
+    }, [allColaboradores, currentTipoLancamento]);
 
     const mutation = useMutation({
         mutationFn: async (formData: any) => {
@@ -212,6 +197,7 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                     : "NÃO",
                 status: initialData?.id ? undefined : "RECEBIDO",
                 status_pagamento: initialData?.id ? undefined : "PENDENTE",
+                updated_at_frontend: initialData?.updated_at,
                 origem_dado: "manual",
                 responsavel_nome: user?.user_metadata?.full_name || (mode === "admin" ? "Admin" : "Encarregado"),
                 colaborador_id: selectedColaboradores[0] || null,
@@ -252,10 +238,10 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
             const colabPayload = uniqueSelectedColabs.map(id => ({
                 collaborator_id: id,
                 had_infraction: false,
-                entrada_ponto: colaboradorTimings[id]?.entrada_ponto || null,
-                saida_almoco: colaboradorTimings[id]?.saida_almoco || null,
-                retorno_almoco: colaboradorTimings[id]?.retorno_almoco || null,
-                saida_ponto: colaboradorTimings[id]?.saida_ponto || null,
+                entrada_ponto: null,
+                saida_almoco: null,
+                retorno_almoco: null,
+                saida_ponto: null,
             }));
 
             if (initialData?.id) {
@@ -298,12 +284,17 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                 setEtapa(1);
                 form.reset(DEFAULT_PRODUCTION_VALUES);
                 setSelectedColaboradores([]);
-                setColaboradorTimings({});
                 setSelectedMateriais([]);
                 if (onSuccess) onSuccess();
             }
         },
-        onError: (err: any) => toast.error("Erro ao salvar: " + err.message)
+        onError: (err: any) => {
+            if (err.message === 'CONCURRENCY_CONFLICT') {
+                setConcurrencyError(true);
+            } else {
+                toast.error("Erro ao salvar: " + err.message);
+            }
+        }
     });
 
     const onError = (errors: any) => {
@@ -417,8 +408,6 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                                 form={form}
                                 colaboradores={colaboradores}
                                 selectedIds={selectedColaboradores}
-                                colaboradorTimings={colaboradorTimings}
-                                setColaboradorTimings={setColaboradorTimings}
                                 onToggleColaborador={handleToggleColaborador}
                             />
                         </div>
@@ -445,7 +434,25 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                         </div>
                     )}
 
-                    {etapa > 1 && (
+                    {etapa > 1 && concurrencyError ? (
+                        <div className="mt-6 pt-4 border-t border-destructive flex flex-col sm:flex-row justify-between gap-4 p-4 bg-destructive/10 rounded-lg">
+                            <div className="flex-1">
+                                <h4 className="font-semibold text-destructive mb-1 font-sans">Conflito de Concorrência Detectado</h4>
+                                <p className="text-sm text-foreground/80 leading-snug">Esta operação foi alterada por outro usuário enquanto você realizava a edição. Atualize os dados antes de salvar novamente.</p>
+                            </div>
+                            <div className="flex gap-2 min-w-max items-end">
+                                <Button type="button" variant="outline" onClick={() => onCancel && onCancel()}>Cancelar</Button>
+                                <Button type="button" variant="destructive" onClick={() => {
+                                    queryClient.invalidateQueries({ queryKey: ["producao_recente"] });
+                                    queryClient.invalidateQueries({ queryKey: ["operacoes"] });
+                                    queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
+                                    queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+                                    if (onCancel) onCancel();
+                                    toast.info("A tabela foi atualizada com os novos dados.");
+                                }}>Atualizar Dados</Button>
+                            </div>
+                        </div>
+                    ) : etapa > 1 && (
                         <div className={
                             mode === 'encarregado'
                                 ? "fixed bottom-0 left-0 right-0 bg-white border-t p-4 flex justify-between gap-4 z-50 lg:left-64"
@@ -473,29 +480,6 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                                             const initColabs = (initialData.production_entry_collaborators || []).map((c: any) => c.colaboradores?.id || c.collaborator_id).filter(Boolean);
                                             const hasColabChanged = JSON.stringify(initColabs.sort()) !== JSON.stringify([...selectedColaboradores].sort());
 
-                                            // Timings simplificado
-                                            const initTimings: Record<string, any> = {};
-                                            (initialData.production_entry_collaborators || []).forEach((c: any) => {
-                                                const id = c.colaboradores?.id || c.collaborator_id;
-                                                if (id) {
-                                                    initTimings[id] = {
-                                                        entrada_ponto: c.entrada_ponto || undefined,
-                                                        saida_almoco: c.saida_almoco || undefined,
-                                                        retorno_almoco: c.retorno_almoco || undefined,
-                                                        saida_ponto: c.saida_ponto || undefined
-                                                    };
-                                                }
-                                            });
-                                            const curTimings = Object.fromEntries(
-                                                Object.entries(colaboradorTimings).map(([k, v]) => [k, {
-                                                    entrada_ponto: v.entrada_ponto || undefined,
-                                                    saida_almoco: v.saida_almoco || undefined,
-                                                    retorno_almoco: v.retorno_almoco || undefined,
-                                                    saida_ponto: v.saida_ponto || undefined
-                                                }])
-                                            );
-                                            const hasTimingsChanged = JSON.stringify(initTimings) !== JSON.stringify(curTimings);
-
                                             // Materiais
                                             const initMateriais = (initialData.operacao_producao_materiais || []).map((m: any) => ({
                                                 material_id: m.material_id, quantidade: m.quantidade, valor_total: m.valor_total
@@ -505,7 +489,7 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                                             }));
                                             const hasMateriaisChanged = JSON.stringify(initMateriais) !== JSON.stringify(curMateriais);
 
-                                            const isChanged = hasMainDirty || hasColabChanged || hasTimingsChanged || hasMateriaisChanged;
+                                            const isChanged = hasMainDirty || hasColabChanged || hasMateriaisChanged;
 
                                             if (!isChanged) {
                                                 toast.info("Nenhuma alteração identificada. Não foi necessário salvar.");

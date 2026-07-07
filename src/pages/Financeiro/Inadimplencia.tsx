@@ -47,7 +47,7 @@ export default function Inadimplencia() {
 
     return (
         <AppShell title="Inadimplência" subtitle="Gestão de Recebíveis em Atraso (Aging List)">
-            <div className="space-y-6">
+            <div className="mx-auto max-w-[1700px] w-full space-y-6">
                 <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                     <div>
                         <h1 className="text-2xl font-bold tracking-tight text-gray-900 flex items-center">

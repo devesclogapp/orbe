@@ -1048,11 +1048,21 @@ class OperacaoProducaoServiceClass {
   }
 
   async update(id: string, payload: Record<string, any>) {
+    const updatedAtFrontend = payload.updated_at_frontend;
+    delete payload.updated_at_frontend; // não persistir essa chave errada
+
     const safePayload = this.sanitizeOperacaoPayload(payload);
-    const { data, error } = await operationalClient
+    
+    let query = operationalClient
       .from('operacoes_producao')
       .update(safePayload)
-      .eq('id', id)
+      .eq('id', id);
+
+    if (updatedAtFrontend) {
+      query = query.eq('updated_at', updatedAtFrontend);
+    }
+
+    const { data, error } = await query
       .select(`
         *,
         colaboradores:colaborador_id(nome, cargo),
@@ -1067,7 +1077,12 @@ class OperacaoProducaoServiceClass {
       `)
       .single();
 
-    if (error) throw error;
+    if (error) {
+      if (error.code === 'PGRST116' && updatedAtFrontend) {
+        throw new Error('CONCURRENCY_CONFLICT');
+      }
+      throw error;
+    }
 
     return data;
   }
