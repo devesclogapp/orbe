@@ -87,8 +87,18 @@ type OperacoesTableBlockProps = {
   onEditRequest?: (item: any) => void;
 };
 
-const isEditableOperation = (item: any) =>
-  item?.origem === "operacoes_producao" && item?.status !== "fechado";
+const isOperationalEditable = (item: any) => {
+  if (item?.origem !== "operacoes_producao") return false;
+  const s = String(item?.status || "pendente").toLowerCase();
+  // Operational edits are ONLY allowed before moving to financial pipeline
+  const allowedStatuses = ["pendente", "aberto", "registered", "registrado", "devolvido", "inconsistente", "recusado", "recebido", "em_validacao", "validado_rh"];
+  return allowedStatuses.includes(s);
+};
+
+const isFinancialEditable = (item: any) => {
+  if (item?.origem !== "operacoes_producao") return false;
+  return item?.status !== "fechado";
+};
 
 const buildEditableForm = (item: any): EditableOperationForm => {
   return {
@@ -719,7 +729,7 @@ export const OperacoesTableBlock = ({
 
   const bulkUpdateMutation = useMutation({
     mutationFn: async () => {
-      const editableRows = filteredData.filter(isEditableOperation);
+      const editableRows = filteredData.filter(isOperationalEditable);
       const rowsToUpdate = editableRows.filter((item: any) => {
         if (!bulkOnlyEmpty) return true;
         const currentValue = buildEditableForm(item)[bulkField];
@@ -818,8 +828,8 @@ export const OperacoesTableBlock = ({
 
   const updateStatusPagamentoMutation = useMutation({
     mutationFn: async ({ item, statusPagamento }: { item: any; statusPagamento: StatusPagamento }) => {
-      if (!isEditableOperation(item)) {
-        throw new Error("Somente operações editáveis podem ter o status de pagamento alterado.");
+      if (!isFinancialEditable(item)) {
+        throw new Error("Somente operações com financeiro aberto podem ter o status de pagamento alterado.");
       }
 
       const today = new Date().toISOString().split("T")[0];
@@ -887,7 +897,7 @@ export const OperacoesTableBlock = ({
 
       if (selectedOperationalRule.ativo !== true) throw new Error("A regra operacional escolhida está inativa.");
 
-      const editableRows = filteredData.filter(isEditableOperation);
+      const editableRows = filteredData.filter(isOperationalEditable);
       if (editableRows.length === 0) {
         throw new Error("Nenhuma linha filtrada disponível para aplicar regra.");
       }
@@ -941,7 +951,7 @@ export const OperacoesTableBlock = ({
   const clearRuleColumnMutation = useMutation({
     mutationFn: async () => {
       const columnConfig = RULE_COLUMN_CONFIG[selectedRuleColumn];
-      const editableRows = filteredData.filter(isEditableOperation);
+      const editableRows = filteredData.filter(isOperationalEditable);
 
       if (editableRows.length === 0) {
         throw new Error("Nenhuma linha filtrada disponível para limpar a coluna.");
@@ -1236,7 +1246,7 @@ export const OperacoesTableBlock = ({
 
 
 
-  const editableFilteredCount = filteredData.filter((item: any) => isEditableOperation(item)).length;
+  const editableFilteredCount = filteredData.filter((item: any) => isOperationalEditable(item)).length;
 
   const openBulkEditForField = (field: BulkEditableField) => {
     setBulkField(field);
@@ -1390,7 +1400,7 @@ export const OperacoesTableBlock = ({
   };
 
   const openInlineEdit = (item: any, field: InlineEditableField) => {
-    if (!isEditableOperation(item)) return;
+    if (!isOperationalEditable(item)) return;
     setActiveInlineCell({ rowId: item.id, field });
     setInlineValue(buildEditableForm(item)[field] ?? "");
   };
@@ -1562,7 +1572,7 @@ export const OperacoesTableBlock = ({
 
     return (
       <td
-        className={cn(className, isEditableOperation(item) && "cursor-text hover:bg-muted/40")}
+        className={cn(className, isOperationalEditable(item) && "cursor-text hover:bg-muted/40")}
         onClick={(event) => {
           event.stopPropagation();
           openInlineEdit(item, field);
@@ -2088,16 +2098,16 @@ export const OperacoesTableBlock = ({
                             <td className="px-3 text-center whitespace-nowrap">
                               {item.statusPagamento ? (
                                 <DropdownMenu>
-                                  <DropdownMenuTrigger asChild disabled={!isEditableOperation(item) || updateStatusPagamentoMutation.isPending}>
+                                  <DropdownMenuTrigger asChild disabled={!isFinancialEditable(item) || updateStatusPagamentoMutation.isPending}>
                                     <button
                                       type="button"
                                       className="inline-flex"
                                       onClick={(e) => e.stopPropagation()}
-                                      title={isEditableOperation(item) ? "Alterar status de pagamento" : "Status de pagamento"}
+                                      title={isFinancialEditable(item) ? "Alterar status de pagamento" : "Status de pagamento"}
                                     >
                                       <Badge variant="outline" className={cn(
                                         "font-medium border-0 text-xs",
-                                        isEditableOperation(item) && "cursor-pointer hover:opacity-85",
+                                        isFinancialEditable(item) && "cursor-pointer hover:opacity-85",
                                         item.statusPagamento === "RECEBIDO" && "bg-success-soft text-success-strong",
                                         item.statusPagamento === "PENDENTE" && "bg-muted text-muted-foreground",
                                         item.statusPagamento === "ATRASADO" && "bg-destructive-soft text-destructive-strong",
@@ -2135,19 +2145,19 @@ export const OperacoesTableBlock = ({
                                   className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    if (onEditRequest) {
-                                      onEditRequest(item);
-                                      return;
-                                    }
-                                    if (isEditableOperation(item)) {
-                                      openEditor(item);
+                                    if (isOperationalEditable(item)) {
+                                      if (onEditRequest) {
+                                        onEditRequest(item);
+                                      } else {
+                                        openEditor(item);
+                                      }
                                       return;
                                     }
                                     navigate(`/producao?id=${item.id}`);
                                   }}
-                                  title="Editar Lançamento"
+                                  title={isOperationalEditable(item) ? "Editar Lançamento" : "Ver Detalhes (Operação Fechada)"}
                                 >
-                                  <Pencil className="h-3.5 w-3.5" />
+                                  {isOperationalEditable(item) ? <Pencil className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
                                 </button>
                                 {item.origem === "operacoes_producao" && (
                                   <button
@@ -2161,7 +2171,7 @@ export const OperacoesTableBlock = ({
                                     <ExternalLink className="h-3.5 w-3.5" />
                                   </button>
                                 )}
-                                {isEditableOperation(item) && (
+                                {isFinancialEditable(item) && (
                                   <DropdownMenu>
                                     <DropdownMenuTrigger asChild disabled={updateStatusPagamentoMutation.isPending}>
                                       <button
@@ -2191,12 +2201,16 @@ export const OperacoesTableBlock = ({
                                   className="h-7 w-7 rounded-md hover:bg-destructive-soft flex items-center justify-center text-muted-foreground hover:text-destructive disabled:opacity-50"
                                   onClick={(e) => {
                                     e.stopPropagation();
+                                    if (!isOperationalEditable(item)) {
+                                      toast.warning("Operação bloqueada", { description: "Não é possível excluir uma operação que já avançou no pipeline financeiro." });
+                                      return;
+                                    }
                                     if (confirm("Tem certeza que deseja excluir esta operação?")) {
                                       deleteMutation.mutate(item.id);
                                     }
                                   }}
-                                  disabled={deleteMutation.isPending}
-                                  title="Excluir operação"
+                                  disabled={deleteMutation.isPending || !isOperationalEditable(item)}
+                                  title={isOperationalEditable(item) ? "Excluir operação" : "Exclusão bloqueada (Operação Fechada)"}
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </button>
