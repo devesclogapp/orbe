@@ -1,5 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "react-router-dom";
 import {
     Building2, Calendar, FileText, Search, Filter, RefreshCw, AlertTriangle,
     Wallet, TrendingUp, DollarSign, ArrowRight, Layers, Receipt, Zap, CheckCircle2,
@@ -18,18 +19,18 @@ import { useToast } from "@/components/ui/use-toast";
 
 const KANBAN_CONFIGS = {
     'CAIXA_IMEDIATO': [
-        { id: "pendente_recebimento", label: "Recebimento a Confirmar", color: "bg-gray-100 text-gray-500 border-gray-200", icon: Clock },
+        { id: "pendente_recebimento", label: "Em aberto", color: "bg-gray-100 text-gray-500 border-gray-200", icon: Clock },
         { id: "recebido", label: "Recebido", color: "bg-emerald-50 text-emerald-600 border-emerald-200", icon: CheckCircle2 },
     ],
     'DUPLICATA': [
-        { id: "pendente_cobranca", label: "Pronto para Cobrança", color: "bg-blue-50 text-blue-600 border-blue-200", icon: Wallet },
-        { id: "cobranca_enviada", label: "Cobrança Enviada", color: "bg-orange-50 text-orange-600 border-orange-200", icon: Receipt },
+        { id: "pendente_cobranca", label: "Cobrança gerada", color: "bg-blue-50 text-blue-600 border-blue-200", icon: Wallet },
+        { id: "cobranca_enviada", label: "Cobrança enviada", color: "bg-orange-50 text-orange-600 border-orange-200", icon: Receipt },
         { id: "recebido", label: "Recebido", color: "bg-emerald-50 text-emerald-600 border-emerald-200", icon: CheckCircle2 },
     ],
     'FATURAMENTO_MENSAL': [
-        { id: "aguardando_fechamento", label: "Competência Aberta", color: "bg-gray-100 text-gray-500 border-gray-200", icon: Clock },
-        { id: "pendente_cobranca", label: "Pronto para Cobrança", color: "bg-blue-50 text-blue-600 border-blue-200", icon: Wallet },
-        { id: "cobranca_enviada", label: "Cobrança Enviada", color: "bg-orange-50 text-orange-600 border-orange-200", icon: Receipt },
+        { id: "aguardando_fechamento", label: "Em aberto", color: "bg-gray-100 text-gray-500 border-gray-200", icon: Clock },
+        { id: "pendente_cobranca", label: "Cobrança gerada", color: "bg-blue-50 text-blue-600 border-blue-200", icon: Wallet },
+        { id: "cobranca_enviada", label: "Cobrança enviada", color: "bg-orange-50 text-orange-600 border-orange-200", icon: Receipt },
         { id: "recebido", label: "Recebido", color: "bg-emerald-50 text-emerald-600 border-emerald-200", icon: CheckCircle2 },
     ]
 };
@@ -41,7 +42,10 @@ export default function ReceitasPipeline() {
 
     const [filterEmpresaId, setFilterEmpresaId] = useState<string>("all");
     const [searchTerm, setSearchTerm] = useState("");
-    const [activeTab, setActiveTab] = useState<'CAIXA_IMEDIATO' | 'DUPLICATA' | 'FATURAMENTO_MENSAL'>('DUPLICATA');
+    const location = useLocation();
+    const [activeTab, setActiveTab] = useState<'CAIXA_IMEDIATO' | 'DUPLICATA' | 'FATURAMENTO_MENSAL'>(
+        location.state?.activeTab || 'DUPLICATA'
+    );
     const [selectedReceita, setSelectedReceita] = useState<any>(null);
 
     const { data: empresas = [], isLoading: isEmpresasLoading } = useQuery({
@@ -60,6 +64,12 @@ export default function ReceitasPipeline() {
     const handleRefresh = () => {
         queryClient.invalidateQueries({ queryKey: ["receitas-pipeline"] });
     };
+
+    useEffect(() => {
+        if (location.state?.activeTab) {
+            setActiveTab(location.state.activeTab as any);
+        }
+    }, [location.state]);
 
     const handleNovaReceita = () => {
         toast({ title: "Aviso", description: "Criação avulsa de receitas será disponibilizada em breve.", variant: "default" });

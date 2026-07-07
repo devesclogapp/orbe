@@ -236,6 +236,10 @@ const Dashboard = () => {
     navigate(`/operacional/operacoes?${buildFilters(filters)}`);
   };
 
+  const navigateToReceitas = (state: Record<string, any> = {}) => {
+    navigate('/financeiro/receitas', { state });
+  };
+
   const handleKpiClick = (filterType: string) => {
     if (activeFilter === filterType) {
       setActiveFilter(null);
@@ -698,7 +702,7 @@ const Dashboard = () => {
                   icon={Wallet}
                   chartData={serieDiaria.map(d => ({ value: d.receita }))}
                   chartColor={COLORS.receita}
-                  onClick={() => navigateToOperacoes({ categoria_servico: "SERVICO_VOLUME" })}
+                  onClick={() => navigateToReceitas()}
                 />
                 <MetricCard
                   label="Custos Totais"
@@ -722,19 +726,19 @@ const Dashboard = () => {
                   label="Caixa Recebido"
                   value={formatCurrency(dashboardKpis.caixaRecebido)}
                   size="small"
-                  onClick={() => navigateToOperacoes({ entra_caixa_imediato: "true" })}
+                  onClick={() => navigateToReceitas({ activeTab: 'CAIXA_IMEDIATO' })}
                 />
                 <MetricCard
                   label="A Receber"
                   value={formatCurrency(dashboardKpis.aReceber)}
                   size="small"
-                  onClick={() => navigateToOperacoes({ gera_conta_receber: "true" })}
+                  onClick={() => navigateToReceitas()}
                 />
                 <MetricCard
                   label="Atrasado"
                   value={formatCurrency(dashboardKpis.atrasado)}
                   size="small"
-                  onClick={() => navigateToOperacoes({ vencimento_atrasado: "true" })}
+                  onClick={() => navigateToReceitas()}
                 />
                 <MetricCard
                   label="Volume Total"

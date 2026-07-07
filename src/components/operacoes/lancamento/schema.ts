@@ -51,7 +51,10 @@ export type ProductionFormValues = z.infer<typeof productionSchema>;
 
 export const DEFAULT_PRODUCTION_VALUES: Partial<ProductionFormValues> = {
   tipo_lancamento: "operacao_padrao",
-  data: new Date().toISOString().split('T')[0],
+  data: (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  })(),
   quantidade: 0,
   quantidade_colaboradores: 1,
   nf_emite: false,

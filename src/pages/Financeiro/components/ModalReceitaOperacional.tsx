@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import { useTenant } from "@/contexts/TenantContext";
 import {
     CheckCircle, FileText, Send, Clock, Receipt, Calculator,
@@ -71,7 +72,15 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
     });
 
     const finishMutationSuccess = () => {
-        toast({ title: "Operação registrada com sucesso!" });
+        toast({
+            title: "Operação registrada com sucesso!",
+            description: "O pipeline financeiro foi atualizado.",
+            action: (
+                <ToastAction altText="Ir para Dashboard" onClick={() => navigate('/dashboard')} className="bg-primary text-white hover:bg-primary/90 hover:text-white border-transparent">
+                    Ver Dashboard
+                </ToastAction>
+            )
+        });
         queryClient.invalidateQueries({ queryKey: ["receitas-pipeline"] });
         queryClient.invalidateQueries({ queryKey: ["receita-historico"] });
         setIsSubmitting(false);

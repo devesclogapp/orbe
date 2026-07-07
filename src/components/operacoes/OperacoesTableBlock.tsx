@@ -1191,40 +1191,46 @@ export const OperacoesTableBlock = ({
     },
   });
 
+  const aprovarOpMutation = useMutation({
+    mutationFn: async ({ id, updated_at }: { id: string; updated_at?: string }) => {
+      return OperacaoProducaoService.aprovar(id, updated_at);
+    },
+    onSuccess: () => {
+      setSelectedOpDetails(null);
+      queryClient.invalidateQueries({ queryKey: ["operacoes"] });
+      queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
+      queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+      queryClient.invalidateQueries({ queryKey: ["operacoes-pipeline"] });
+      queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
+      queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
+    },
+    onError: (error: unknown) => {
+      console.error("[DEBUG] Erro ao aprovar operação:", error);
+      const message = error instanceof Error ? error.message : "Erro desconhecido";
+      if (message.includes("CONCURRENCY_CONFLICT")) {
+        toast.error("Conflito de Concorrência", { description: "Esta operação foi modificada por outro usuário. Recarregue a página." });
+      } else if (message.includes("ESTADO_FECHADO")) {
+        toast.error("Operação Imutável", { description: "Esta operação já encontra-se processada ou faturada." });
+      } else {
+        toast.error("Falha ao aprovar operação.", { description: message });
+      }
+    }
+  });
+
   const handleAprovar = async (item: any) => {
-    if (changeStatusMutation.isPending) return;
+    if (aprovarOpMutation.isPending) return;
 
-    const { data: { user } } = await supabase.auth.getUser();
-    const currentAuthUser = user?.email || user?.id || "Sistema";
-    const historicoAtual = item.avaliacao_json?.historico_faturamento || [];
-    const newLog = {
-      acao: "APROVAR_FATURAMENTO",
-      usuario: currentAuthUser,
-      data: new Date().toISOString().split("T")[0],
-      hora: new Date().toISOString().split("T")[1].substring(0, 5),
-      status_anterior: item.status || "pendente",
-      status_novo: "AGUARDANDO_FATURAMENTO"
-    };
-
-    const nextAvaliacao = {
-      ...(item.avaliacao_json || {}),
-      historico_faturamento: [...historicoAtual, newLog]
-    };
-
-    changeStatusMutation.mutate(
+    aprovarOpMutation.mutate(
       {
         id: item.id,
-        payload: {
-          status: "AGUARDANDO_FATURAMENTO",
-          avaliacao_json: nextAvaliacao
-        }
+        updated_at: item.updated_at
       },
       {
         onSuccess: () => {
           setSelectedOpDetails(null);
 
           toast.success("Operação aprovada e faturada", {
-            description: "Receita Operacional criada com sucesso. Próxima etapa: Recebimento Financeiro.",
+            description: "Receita Operacional submetida com sucesso. Próxima etapa: Recebimento Financeiro.",
             action: {
               label: "Ir para Contas a Receber",
               onClick: () => navigate("/financeiro/receitas", { state: { highlight: item.id } })
@@ -2683,9 +2689,9 @@ export const OperacoesTableBlock = ({
                 </Button>
 
                 {!["AGUARDANDO_FATURAMENTO", "FATURADO", "RECEBIDO_FINANCEIRO", "CONCLUIDO", "APROVADO", "FECHADO"].includes(selectedOpDetails.status?.toUpperCase() || "") && (
-                  <Button onClick={() => handleAprovar(selectedOpDetails)} className="bg-brand text-white border-0 hover:bg-brand/90 focus:ring-brand" disabled={changeStatusMutation.isPending}>
-                    {changeStatusMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                    Aprovar para Faturamento
+                  <Button onClick={() => handleAprovar(selectedOpDetails)} className="bg-brand text-white border-0 hover:bg-brand/90 focus:ring-brand" disabled={aprovarOpMutation.isPending}>
+                    {aprovarOpMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    Aprovar e Faturarmento
                   </Button>
                 )}
               </div>

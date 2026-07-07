@@ -1049,20 +1049,28 @@ class OperacaoProducaoServiceClass {
 
   async update(id: string, payload: Record<string, any>) {
     const updatedAtFrontend = payload.updated_at_frontend;
-    delete payload.updated_at_frontend; // não persistir essa chave errada
+    delete payload.updated_at_frontend;
 
     const safePayload = this.sanitizeOperacaoPayload(payload);
     
-    let query = operationalClient
-      .from('operacoes_producao')
-      .update(safePayload)
-      .eq('id', id);
+    const { data: updateRes, error } = await operationalClient.rpc('rpc_operacao_editar_segura', {
+      p_operacao_id: id,
+      p_updated_at_frontend: updatedAtFrontend || null,
+      p_payload: safePayload
+    });
 
-    if (updatedAtFrontend) {
-      query = query.eq('updated_at', updatedAtFrontend);
+    if (error) {
+      if (error.message.includes('CONCURRENCY_CONFLICT') || error.code === 'PGRST116') {
+        throw new Error('CONCURRENCY_CONFLICT');
+      }
+      if (error.message.includes('ESTADO_FECHADO')) {
+        throw new Error('ESTADO_FECHADO');
+      }
+      throw error;
     }
 
-    const { data, error } = await query
+    const { data, error: fetchError } = await operationalClient
+      .from('operacoes_producao')
       .select(`
         *,
         colaboradores:colaborador_id(nome, cargo),
@@ -1075,16 +1083,29 @@ class OperacaoProducaoServiceClass {
         unidades:unidade_id(nome),
         empresas:empresa_id(id, nome)
       `)
+      .eq('id', id)
       .single();
 
+    if (fetchError) throw fetchError;
+    return data;
+  }
+
+  async aprovar(id: string, updatedAtFrontend?: string) {
+    const { data: result, error } = await operationalClient.rpc('rpc_operacao_validar_aprovar', {
+      p_operacao_id: id,
+      p_updated_at_frontend: updatedAtFrontend || null,
+    });
+
     if (error) {
-      if (error.code === 'PGRST116' && updatedAtFrontend) {
+      if (error.message.includes('CONCURRENCY_CONFLICT')) {
         throw new Error('CONCURRENCY_CONFLICT');
+      }
+      if (error.message.includes('ESTADO_FECHADO')) {
+        throw new Error('ESTADO_FECHADO');
       }
       throw error;
     }
-
-    return data;
+    return result;
   }
 
   async getByDate(date: string, empresaId?: string, unidadeId?: string | null, limit: number = 15) {
@@ -1211,13 +1232,21 @@ class OperacaoProducaoServiceClass {
     }));
   }
 
-  async delete(id: string) {
-    const { error } = await operationalClient
-      .from('operacoes_producao')
-      .delete()
-      .eq('id', id);
+  async delete(id: string, updatedAtFrontend?: string) {
+    const { error } = await operationalClient.rpc('rpc_operacao_excluir_segura', {
+      p_operacao_id: id,
+      p_updated_at_frontend: updatedAtFrontend || null,
+    });
 
-    if (error) throw error;
+    if (error) {
+      if (error.message.includes('CONCURRENCY_CONFLICT')) {
+        throw new Error('CONCURRENCY_CONFLICT');
+      }
+      if (error.message.includes('ESTADO_FECHADO')) {
+        throw new Error('ESTADO_FECHADO');
+      }
+      throw error;
+    }
     return true;
   }
 

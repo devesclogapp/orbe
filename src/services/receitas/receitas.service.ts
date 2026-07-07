@@ -81,69 +81,71 @@ class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
   }
 
   async logEvent(tenantId: string, receitaId: string, acao: string, detalhesText: string, detalhesJson?: any, statusAnterior?: string, statusNovo?: string) {
-    const { data: authData } = await supabase.auth.getUser();
-    const userId = authData?.user?.id;
-    const userEmail = authData?.user?.email || 'Sistema';
-
-    const payload: any = {
-      tenant_id: tenantId,
-      receita_id: receitaId,
-      acao: acao,
-      usuario_id: userId,
-      detalhes: { texto: detalhesText, usuario_email: userEmail, ...detalhesJson }
-    };
-
-    if (statusAnterior) payload.status_anterior = statusAnterior;
-    if (statusNovo) payload.status_novo = statusNovo;
-
-    const { data, error } = await supabase
-      .from('receitas_operacionais_historico')
-      .insert(payload);
-    
-    if (error) throw error;
-    return data;
+    // [DEPRECATION NOTICE]: Por conta do Etapa 04 - Auditoria Atômica (Domain Hardening), 
+    // todas as triggers críticas e eventos nascem das próprias funções RPC.
+    // Ignoramos eventlogs arbitrários oriundos do client React.
+    console.warn("[SECURITY] logEvent is deprecated. Financial transitions generate logs entirely on DB via RPCs. Call suppressed: ", acao);
+    return { success: true, bypassed: true };
   }
 
   async updateStatus(tenantId: string, receitaId: string, newStatus: string) {
-      const { data: atual, error: errBusca } = await supabase
+      let rpcName = '';
+      let rpcParams: any = { p_receita_id: receitaId };
+
+      switch(newStatus) {
+        case 'cobranca_gerada':
+        case 'pendente_cobranca': // Kanban usa essa chave local 
+          rpcName = 'rpc_receita_gerar_cobranca';
+          break;
+        case 'cobranca_enviada':
+          rpcName = 'rpc_receita_registrar_envio';
+          break;
+        case 'recebido':
+          rpcName = 'rpc_receita_confirmar_recebimento';
+          // p_data_recebimento omisso usa = CURRENT_DATE interno.
+          break;
+        case 'cancelado':
+          rpcName = 'rpc_receita_cancelar_ou_estornar';
+          rpcParams['p_motivo'] = 'Cancelamento/Estorno via dor do módulo Dashboard.';
+          break;
+        default:
+          throw new Error('ESTADO_NAO_AUTORIZADO: Transição financeira bloqueada por Domain Hardening. O Status (' + newStatus + ') não atende os trâmites do Banco de Dados.');
+      }
+
+      const { data: responseData, error: errUpdate } = await supabase.rpc(rpcName, rpcParams);
+      
+      if (errUpdate) {
+         if (errUpdate.message.includes('Idempotente')) {
+            console.log(`[Domain] Idempotência ativada em ${rpcName}: `, errUpdate.message);
+         } else {
+            throw errUpdate;
+         }
+      }
+
+      // Re-busca o dataset final apenas para devolver no padrão anterior (compatibility mode)
+      const { data: updated } = await supabase
         .from('receitas_operacionais')
-        .select('status')
+        .select('*')
         .eq('id', receitaId)
         .single();
-      
-      if (errBusca) throw errBusca;
 
-      if (atual?.status === newStatus) return atual;
-
-      const { data: updated, error: errUpdate } = await supabase
-        .from('receitas_operacionais')
-        .update({ status: newStatus })
-        .eq('id', receitaId)
-        .select()
-        .single();
-      
-      if (errUpdate) throw errUpdate;
-
-      const { data: authData } = await supabase.auth.getUser();
-      const userId = authData?.user?.id;
-      const userEmail = authData?.user?.email || 'Sistema';
-
-      await supabase
-        .from('receitas_operacionais_historico')
-        .insert({
-           tenant_id: tenantId,
-           receita_id: receitaId,
-           status_anterior: atual?.status,
-           status_novo: newStatus,
-           acao: 'Alteração da Situação Financeira',
-           usuario_id: userId,
-           detalhes: { texto: 'A situação financeira da receita foi atualizada.', usuario_email: userEmail }
-        });
-      
       return updated;
   }
 
   async updateReceita(tenantId: string, receitaId: string, payload: Partial<ReceitaOperacional>) {
+    // Domain Hardening (Etapa 07: Segurança Financeira)
+    // Omitimos tentativas de editar campos críticos e matemáticos pelo Frontend.
+    delete payload.valor_total;
+    delete payload.status;
+    delete payload.modalidade;
+    delete payload.tenant_id;
+    delete payload.empresa_id;
+
+    if (Object.keys(payload).length === 0) {
+       console.log('Update de receita dropado. Nenhum campo seguro para modificação presente.');
+       return { id: receitaId };
+    }
+
     const { data, error } = await supabase
       .from('receitas_operacionais')
       .update(payload)
