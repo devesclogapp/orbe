@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useQuery } from "@tanstack/react-query";
@@ -123,6 +123,16 @@ const ServicosExtrasRecebidos = () => {
     const [filterMonth, setFilterMonth] = useState<string>(format(new Date(), "MM"));
     const [filterYear, setFilterYear] = useState<string>(format(new Date(), "yyyy"));
     const [isNovoServicoModalOpen, setIsNovoServicoModalOpen] = useState(false);
+    const [serviceToEdit, setServiceToEdit] = useState<any>(null);
+
+    useEffect(() => {
+        const handleOpenEdit = (e: any) => {
+            setServiceToEdit(e.detail);
+            setIsNovoServicoModalOpen(true);
+        };
+        window.addEventListener("open-edit-servico-extra", handleOpenEdit);
+        return () => window.removeEventListener("open-edit-servico-extra", handleOpenEdit);
+    }, []);
 
     // ─── Queries ─────────────────────────────────────────────────────────────
 
@@ -230,7 +240,11 @@ const ServicosExtrasRecebidos = () => {
 
             <NovoServicoExtraDialog
                 open={isNovoServicoModalOpen}
-                onOpenChange={setIsNovoServicoModalOpen}
+                onOpenChange={(open) => {
+                    setIsNovoServicoModalOpen(open);
+                    if (!open) setServiceToEdit(null);
+                }}
+                initialData={serviceToEdit}
             />
         </AppShell >
     );

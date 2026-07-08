@@ -102,7 +102,7 @@ const INITIAL_FORM: ServicosExtrasFormState = {
     empresa_id: "",
     tipo_servico_id: "",
     descricao: "",
-    quantidade: "1",
+    quantidade: "",
     quantidade_colaboradores: "",
     regra_periodo_id: "",
     valor_unitario: "",
@@ -195,7 +195,7 @@ const ServicosExtrasLancamento = () => {
     );
 
     const multiplicadorPeriodo = Number(periodSelecionado?.peso_multiplicador || 1);
-    const quantidade = parseNumeric(form.quantidade);
+    const quantidade = parseNumeric(form.quantidade || "1");
     const valorUnitarioBase = parseNumeric(form.valor_unitario);
     const valorUnitarioEfetivo = valorUnitarioBase * multiplicadorPeriodo;
     const valorTotalServico = quantidade * valorUnitarioEfetivo;
@@ -370,7 +370,7 @@ const ServicosExtrasLancamento = () => {
                                         <Label className="text-xs font-bold uppercase">
                                             Quantidade {form.unidade_cobranca_snapshot && <span className="text-muted-foreground font-normal">({form.unidade_cobranca_snapshot})</span>} <span className="text-destructive">*</span>
                                         </Label>
-                                        <Input type="number" step="0.01" value={form.quantidade} onChange={(e) => setField("quantidade", e.target.value)} className={cn(errors.quantidade && "border-destructive")} />
+                                        <Input type="number" step="0.01" placeholder="1" value={form.quantidade} onChange={(e) => setField("quantidade", e.target.value)} className={cn(errors.quantidade && "border-destructive")} />
                                     </div>
                                     <div className="space-y-2">
                                         <Label className="text-xs font-bold uppercase">Período Operacional</Label>

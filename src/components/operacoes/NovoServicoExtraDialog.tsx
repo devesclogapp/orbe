@@ -38,6 +38,7 @@ import { Badge } from "@/components/ui/badge";
 interface NovoServicoExtraDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
+    initialData?: any;
 }
 
 type FormaCobranca = "CAIXA_IMEDIATO" | "DEPOSITO_IMEDIATO";
@@ -68,7 +69,7 @@ const INITIAL_FORM: ServicosExtrasFormState = {
     empresa_id: "",
     tipo_servico_id: "",
     descricao: "",
-    quantidade: "1",
+    quantidade: "",
     quantidade_colaboradores: "",
     regra_periodo_id: "",
     valor_unitario: "",
@@ -87,7 +88,7 @@ const INITIAL_FORM: ServicosExtrasFormState = {
 const currencyFormatter = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const formatCurrency = (value: number) => currencyFormatter.format(Number.isFinite(value) ? value : 0);
 
-export const NovoServicoExtraDialog = ({ open, onOpenChange }: NovoServicoExtraDialogProps) => {
+export const NovoServicoExtraDialog = ({ open, onOpenChange, initialData }: NovoServicoExtraDialogProps) => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
 
@@ -152,7 +153,29 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange }: NovoServicoExtraD
             setErrors({});
             return;
         }
-    }, [open]);
+        if (initialData) {
+            setForm({
+                data: initialData.data || format(new Date(), "yyyy-MM-dd"),
+                empresa_id: initialData.empresa_id || "",
+                tipo_servico_id: initialData.tipo_servico_id || "",
+                descricao: initialData.descricao_servico || initialData.descricao || "",
+                quantidade: initialData.quantidade !== null && initialData.quantidade !== undefined ? String(initialData.quantidade) : "1",
+                quantidade_colaboradores: initialData.quantidade_colaboradores ? String(initialData.quantidade_colaboradores) : "",
+                regra_periodo_id: initialData.regra_id || "",
+                valor_unitario: initialData.valor_unitario !== null ? String(initialData.valor_unitario) : "",
+                forma_cobranca: (initialData.modalidade_financeira as FormaCobranca) || "DEPOSITO_IMEDIATO",
+                forma_pagamento_id: initialData.forma_pagamento_id || "",
+                nf_emite: initialData.emite_nf || false,
+                nf_numero: initialData.nf_numero || "",
+                responsavel_nome: initialData.responsavel_nome || "",
+                observacao: initialData.observacao || "",
+                tipo_calculo_snapshot: initialData.tipo_calculo_snapshot || "por_operacao",
+                unidade_cobranca_snapshot: initialData.unidade_cobranca_snapshot || "op",
+                valor_unitario_snapshot: initialData.valor_unitario_snapshot || 0,
+                iss_percentual: initialData.iss_percentual ? String(Number(initialData.iss_percentual) * 100) : "0",
+            });
+        }
+    }, [open, initialData]);
 
     useEffect(() => {
         if (form.responsavel_nome) return;
@@ -174,7 +197,7 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange }: NovoServicoExtraD
     );
 
     const multiplicadorPeriodo = Number(periodSelecionado?.peso_multiplicador || 1);
-    const quantidade = parseNumeric(form.quantidade);
+    const quantidade = parseNumeric(form.quantidade || "1");
     const valorUnitarioBase = parseNumeric(form.valor_unitario);
     const valorUnitarioEfetivo = valorUnitarioBase * multiplicadorPeriodo;
     const valorTotalServico = quantidade * valorUnitarioEfetivo;
@@ -263,11 +286,15 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange }: NovoServicoExtraD
                 // Status direto como PENDENTE para aparecer na lista do RH/Admin, se aplicável
             };
 
+            if (initialData) {
+                return ServicosExtrasOperacionaisService.update(initialData.id, payload as any);
+            }
             return ServicosExtrasOperacionaisService.create(payload);
         },
         onSuccess: () => {
-            toast.success("Serviço extra registrado com sucesso!");
+            toast.success(initialData ? "Serviço extra atualizado com sucesso!" : "Serviço extra registrado com sucesso!");
             queryClient.invalidateQueries({ queryKey: ["servicos_extras_historico"] });
+            queryClient.invalidateQueries({ queryKey: ["servicos-extras"] });
             queryClient.invalidateQueries({ queryKey: ["servicos_extras_hoje"] });
             onOpenChange(false);
         },
@@ -278,9 +305,9 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange }: NovoServicoExtraD
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                    <DialogTitle>Novo Lançamento de Serviço Extra</DialogTitle>
+                    <DialogTitle>{initialData ? "Editar Serviço Extra" : "Novo Lançamento de Serviço Extra"}</DialogTitle>
                     <DialogDescription>
-                        Registro administrativo de serviços extraordinários.
+                        {initialData ? "Atualize as informações do serviço extra. Alguns campos podem estar bloqueados dependendo do estágio financeiro." : "Registro administrativo de serviços extraordinários."}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -340,7 +367,7 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange }: NovoServicoExtraD
                                 <Label>
                                     Quantidade {form.unidade_cobranca_snapshot && <span className="text-muted-foreground font-normal">({form.unidade_cobranca_snapshot})</span>} <span className="text-red-500">*</span>
                                 </Label>
-                                <Input type="number" step="0.01" value={form.quantidade} onChange={(e) => setField("quantidade", e.target.value)} className={cn(errors.quantidade && "border-destructive")} />
+                                <Input type="number" step="0.01" placeholder="1" value={form.quantidade} onChange={(e) => setField("quantidade", e.target.value)} className={cn(errors.quantidade && "border-destructive")} />
                             </div>
                             <div className="space-y-2">
                                 <Label>Período Operacional</Label>
@@ -439,7 +466,7 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange }: NovoServicoExtraD
                         disabled={salvarMutation.isPending}
                     >
                         {salvarMutation.isPending && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
-                        Lançar Serviço Extra
+                        {initialData ? "Salvar Alterações" : "Lançar Serviço Extra"}
                     </Button>
                 </DialogFooter>
             </DialogContent>

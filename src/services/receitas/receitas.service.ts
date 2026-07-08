@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import { BaseService, cleanUuid, getCurrentTenantId } from '../domain/base.service';
+import { BaseService, cleanUuid, getCurrentTenantId, operationalClient, sanitizePayload, requireAuthenticatedUserId } from '../domain/base.service';
 import type { ReceitaOperacional, ReceitaOperacionalItem, ModalidadeReceita } from '@/types/receitas.types';
 
 class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
@@ -160,3 +160,159 @@ class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
 }
 
 export const ReceitasService = new ReceitasServiceClass();
+
+class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extras_operacionais'> {
+  constructor() { super('servicos_extras_operacionais' as any); }
+
+  async getMonthsWithData(empresaId?: string) {
+    let query = operationalClient
+      .from('servicos_extras_operacionais')
+      .select('data');
+    
+    if (empresaId && empresaId !== 'all') {
+      query = query.eq('empresa_id', empresaId);
+    }
+    
+    const { data } = await query;
+    const months = new Set<string>();
+    for (const row of data ?? []) {
+      const dataMes = String(row.data ?? '').slice(0, 7);
+      if (/^\d{4}-\d{2}$/.test(dataMes)) {
+        months.add(dataMes);
+      }
+    }
+    return Array.from(months).sort((a, b) => b.localeCompare(a));
+  }
+
+  async update(id: string, payload: Record<string, any>) {
+    const { data, error } = await operationalClient
+      .from('servicos_extras_operacionais')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  }
+
+  async delete(id: string) {
+    const { error } = await operationalClient
+      .from('servicos_extras_operacionais')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
+    return true;
+  }
+
+  async getWithEmpresas(empresaId?: string, competencia?: string) {
+    try {
+      let query = operationalClient
+        .from('servicos_extras_operacionais' as any)
+        .select(`
+          *, 
+          empresas(nome),
+          formas_pagamento_operacional(nome),
+          tipos_servico_operacional(nome)
+        `);
+      
+      if (empresaId) query = query.eq('empresa_id', empresaId);
+      if (competencia) {
+        const parts = competencia.split('-');
+        const year = Number(parts[0]);
+        const moPart = parts[1];
+        
+        if (moPart === 'all' || !moPart) {
+          query = query.gte('data', `${year}-01-01`).lt('data', `${year + 1}-01-01`);
+        } else if (parts.length === 2) {
+          const mo = Number(moPart);
+          const nextMonth = mo === 12 ? 1 : mo + 1;
+          const nextYear = mo === 12 ? year + 1 : year;
+          const nextMonthStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+          query = query.gte('data', `${year}-${String(mo).padStart(2, '0')}-01`).lt('data', nextMonthStr);
+        } else if (parts.length === 3) {
+          query = query.eq('data', competencia);
+        }
+      }
+      
+      const { data, error } = await query.order('data', { ascending: false });
+      
+      if (error) {
+        console.warn('Falha ao buscar serviços extras com empresas, tentando simplificado:', error);
+        let simpleQuery = operationalClient
+          .from('servicos_extras_operacionais' as any)
+          .select('*');
+        
+        if (empresaId) simpleQuery = simpleQuery.eq('empresa_id', empresaId);
+        if (competencia) {
+          const parts = competencia.split('-');
+          const year = Number(parts[0]);
+          const moPart = parts[1];
+          if (moPart === 'all' || !moPart) {
+            simpleQuery = simpleQuery.gte('data', `${year}-01-01`).lt('data', `${year + 1}-01-01`);
+          } else {
+            const mo = Number(moPart);
+            const nextMo = mo === 12 ? 1 : mo + 1;
+            const nextYr = mo === 12 ? year + 1 : year;
+            const nextMonthStr = `${nextYr}-${String(nextMo).padStart(2, '0')}-01`;
+            simpleQuery = simpleQuery.gte('data', `${year}-${String(mo).padStart(2, '0')}-01`).lt('data', nextMonthStr);
+          }
+        }
+        const { data: simpleData, error: simpleError } = await simpleQuery.order('data', { ascending: false });
+        
+        if (simpleError) throw simpleError;
+        return simpleData ?? [];
+      }
+        const resultData = data ?? [];
+        
+        // Resolver responsável
+        const responsavelIds = Array.from(new Set(resultData.map((item: any) => item.criado_por).filter(Boolean)));
+        let profilesMap: Record<string, string> = {};
+        if (responsavelIds.length > 0) {
+          try {
+            const { data: profiles } = await supabase.from('profiles').select('id, full_name').in('id', responsavelIds);
+            if (profiles) {
+              profilesMap = profiles.reduce((acc: any, p: any) => ({ ...acc, [p.id]: p.full_name }), {});
+            }
+          } catch (e) {
+            console.warn("Falha ao resolver perfis em getWithEmpresas", e);
+          }
+        }
+
+        return resultData.map((item: any) => ({
+          ...item,
+          responsavel_nome: item.criado_por ? (profilesMap[item.criado_por] || null) : null
+        }));
+    } catch (e) {
+      console.error('Erro crítico em ServicosExtrasOperacionaisService:', e);
+      return [];
+    }
+  }
+
+  async create(payload: Record<string, any>) {
+    const tenantId = await getCurrentTenantId();
+    const userId = await requireAuthenticatedUserId();
+    
+    // Garantir que campos obrigatórios de pipeline e total estejam presentes
+    const payloadClean = sanitizePayload({
+      ...payload,
+      tenant_id: tenantId,
+      criado_por: userId,
+      pipeline_status: 'PENDENTE',
+      status_pagamento: 'PENDENTE',
+      atualizado_em: new Date().toISOString()
+    }) as any;
+
+    const { data, error } = await operationalClient
+      .from('servicos_extras_operacionais')
+      .insert(payloadClean)
+      .select(`
+        *,
+        empresas(nome)
+      `)
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+}
+export const ServicosExtrasOperacionaisService = new ServicosExtrasOperacionaisServiceClass();

@@ -8,7 +8,7 @@ serve(async (req) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS, GET',
   }
 
   if (req.method === 'OPTIONS') {
@@ -53,11 +53,16 @@ serve(async (req) => {
       .in('colaborador_id', colabIds)
 
     // 3. Buscar operações do dia
-    const { data: operacoes } = await supabase
-      .from('operacoes')
+    const { data: operacoes, error: errorOp } = await supabase
+      .from('operacoes_producao')
       .select('*')
       .eq('data', data_processamento)
-      .in('responsavel_id', colabIds)
+      .in('empresa_id', [empresa_id]) // Filtra pela empresa (poderia filtrar por responsável, mas a empresa engloba todas)
+    
+    if (errorOp) {
+      console.error("[process-day] Erro ao buscar operacoes_producao:", errorOp)
+      throw new Error(`Falha ao buscar operações: ${errorOp.message}`)
+    }
 
     // 4. Lógica de "IA" (Simulada)
     // Identificar inconsistências: colaborador com operações mas sem entrada de ponto
@@ -67,10 +72,13 @@ serve(async (req) => {
     const colabsComPonto = new Set(pontos?.map(p => p.colaborador_id))
     
     operacoes?.forEach(op => {
-      valor_total += Number(op.quantidade) * Number(op.valor_unitario || 0)
-      if (!colabsComPonto.has(op.responsavel_id)) {
-        inconsistenciasContagem++
-        // Opcional: Marcar operação como inconsistente
+      valor_total += Number(op.total || 0) // Usa o campo total já calculado na operacao, caso exista
+      if (op.colaboradores && Array.isArray(op.colaboradores)) {
+        op.colaboradores.forEach((colab: any) => {
+          if (!colabsComPonto.has(colab.id)) {
+            inconsistenciasContagem++
+          }
+        })
       }
     })
 
@@ -97,9 +105,9 @@ serve(async (req) => {
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
     )
   } catch (error: any) {
-    console.error(error)
+    console.error("[process-day] Catch Error:", error)
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: error?.message || "Erro desconhecido", detail: error }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
     )
   }

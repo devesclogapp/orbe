@@ -158,9 +158,12 @@ const pipelineStatusToStepId = (status: PipelineStatus | null | undefined): Serv
 };
 
 // Next status transition
-const getNextStatus = (current: PipelineStatus | null | undefined): PipelineStatus | null => {
+const getNextStatus = (current: PipelineStatus | string | null | undefined): PipelineStatus | null => {
     switch (current ?? "PENDENTE") {
         case "PENDENTE":
+        case "DEVOLVIDO":
+        case "RECUSADO":
+        case "EM_ANALISE":
             return "EM_VALIDACAO";
         case "EM_VALIDACAO":
             return "APROVADO_OPERACAO";
@@ -249,8 +252,9 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
         if (isAdmin) return true;
         const s = item.pipeline_status ?? "PENDENTE";
         if (s === "PENDENTE" && (role === "encarregado" || role === "gestor")) return true;
+        if ((s === "DEVOLVIDO" || s === "RECUSADO" || s === "EM_ANALISE") && (role === "encarregado" || role === "gestor")) return true;
         if (s === "EM_VALIDACAO" && role === "gestor") return true;
-        if (s === "APROVADO_OPERACAO" && (role === "gestor" || role === "admin")) return true;
+        if (s === "APROVADO_OPERACAO" && (role === "gestor" || role === "admin" || role === "financeiro")) return true;
         if ((s === "APROVADO_FINANCEIRO" || s === "FATURADO") && role === "financeiro") return true;
         return false;
     };
@@ -275,6 +279,8 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
             }),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["servicos-extras"] });
+            queryClient.invalidateQueries({ queryKey: ["servicos_extras_historico"] });
+            queryClient.invalidateQueries({ queryKey: ["servicos_extras_hoje"] });
             queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
             queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
             toast.success("Pipeline atualizado com sucesso.");
@@ -287,6 +293,8 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
             ServicosExtrasOperacionaisService.update(id, { status_pagamento: status as any }),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["servicos-extras"] });
+            queryClient.invalidateQueries({ queryKey: ["servicos_extras_historico"] });
+            queryClient.invalidateQueries({ queryKey: ["servicos_extras_hoje"] });
             queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
             queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
             toast.success("Status de pagamento atualizado.");
@@ -311,6 +319,8 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
         mutationFn: (id: string) => ServicosExtrasOperacionaisService.delete(id),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["servicos-extras"] });
+            queryClient.invalidateQueries({ queryKey: ["servicos_extras_historico"] });
+            queryClient.invalidateQueries({ queryKey: ["servicos_extras_hoje"] });
             queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
             queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
             toast.success("Serviço extra removido.");
@@ -612,9 +622,9 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                                                 <button
                                                     className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
                                                     onClick={() => {
-                                                        setEditingItem(item);
-                                                        setEditDescricao(item.descricao_servico ?? "");
-                                                        setEditObservacao(item.observacao ?? "");
+                                                        // Dispatch custom event passing the item, so NovoServicoExtraDialog can intercept and open in edit mode
+                                                        const event = new CustomEvent('open-edit-servico-extra', { detail: item });
+                                                        window.dispatchEvent(event);
                                                     }}
                                                     title="Editar"
                                                 >
@@ -647,49 +657,7 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                 </div>
             </div>
 
-            {/* Edit Sheet */}
-            <Sheet open={!!editingItem} onOpenChange={(open) => !open && setEditingItem(null)}>
-                <SheetContent side="right" className="w-[420px]">
-                    <SheetHeader>
-                        <SheetTitle>Editar Serviço Extra</SheetTitle>
-                        <SheetDescription>Edite a descrição e observação do registro.</SheetDescription>
-                    </SheetHeader>
-                    <div className="mt-6 space-y-4">
-                        <div className="space-y-1.5">
-                            <Label>Descrição</Label>
-                            <Textarea
-                                rows={4}
-                                value={editDescricao}
-                                onChange={(e) => setEditDescricao(e.target.value)}
-                                placeholder="Descrição do serviço..."
-                            />
-                        </div>
-                        <div className="space-y-1.5">
-                            <Label>Observação</Label>
-                            <Textarea
-                                rows={3}
-                                value={editObservacao}
-                                onChange={(e) => setEditObservacao(e.target.value)}
-                                placeholder="Observações adicionais..."
-                            />
-                        </div>
-                        <Button
-                            className="w-full"
-                            disabled={updateDetailsMutation.isPending}
-                            onClick={() => {
-                                if (!editingItem) return;
-                                updateDetailsMutation.mutate({
-                                    id: editingItem.id,
-                                    descricao_servico: editDescricao,
-                                    observacao: editObservacao,
-                                });
-                            }}
-                        >
-                            {updateDetailsMutation.isPending ? "Salvando..." : "Salvar alterações"}
-                        </Button>
-                    </div>
-                </SheetContent>
-            </Sheet>
+            {/* Edit Sheet removido, substituído por edição completa no Dialog principal */}
 
             {/* Justification Modal */}
             <JustificationModal

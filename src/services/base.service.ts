@@ -17,3 +17,4 @@ export * from './domain/producao.service';
 export * from './domain/diaristas.service';
 export * from './domain/despesas.service';
 export * from './domain/servicos_especificos.service';
+export * from './receitas/receitas.service';

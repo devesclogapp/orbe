@@ -23,7 +23,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 
 import { EmpresaService } from "@/services/domain/cadastros.service";
 import { OperacaoService } from "@/services/domain/core.service";
-import { CustoExtraOperacionalService, ServicosExtrasOperacionaisService } from "@/services/domain/despesas.service";
+import { CustoExtraOperacionalService } from "@/services/domain/despesas.service";
+import { ServicosExtrasOperacionaisService } from "@/services/receitas/receitas.service";
 import { PontoService } from "@/services/domain/producao.service";
 import { LoteFechamentoDiaristaService } from "@/services/domain/diaristas.service";
 import { cn } from "@/lib/utils";

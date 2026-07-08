@@ -40,7 +40,8 @@ import {
 } from "@/services/domain/core.service";
 import { ConsolidadoService } from "@/services/domain/producao.service";
 import { EmpresaService } from "@/services/domain/cadastros.service";
-import { CustoExtraOperacionalService, ServicosExtrasOperacionaisService } from "@/services/domain/despesas.service";
+import { CustoExtraOperacionalService } from "@/services/domain/despesas.service";
+import { ServicosExtrasOperacionaisService } from "@/services/receitas/receitas.service";
 import { LoteFechamentoDiaristaService } from "@/services/domain/diaristas.service";
 import { IntermitentesLoteService } from "@/services/domain/intermitentes.service";
 import { RHFinanceiroService } from "@/services/rhFinanceiro.service";
