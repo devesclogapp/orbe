@@ -270,11 +270,8 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
   });
 
   const updatePipelineMutation = useMutation({
-    mutationFn: async ({ id, status, justification }: { id: string; status: string; justification?: string }) => {
-      return CustoExtraOperacionalService.update(id, {
-        pipeline_status: status as any,
-        ...(justification ? { justificativa_devolucao: justification } : {})
-      });
+    mutationFn: async ({ id, acao, updatedAt, justification }: { id: string; acao: string; updatedAt: string; justification?: string }) => {
+      return CustoExtraOperacionalService.transicionar(id, acao, updatedAt, justification);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
@@ -283,33 +280,38 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
       queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
       toast.success("Status do pipeline atualizado");
     },
-    onError: (error) => {
+    onError: (error: any) => {
       console.error("Erro ao atualizar pipeline:", error);
-      toast.error("Erro ao atualizar status do pipeline");
+      toast.error(error?.message || "Erro ao atualizar status do pipeline");
     },
   });
 
   const handleAdvancePipeline = (item: CustoExtraItem) => {
     const current = item.pipeline_status || 'PENDENTE';
-    let next: CustoExtraItem['pipeline_status'] = 'RECEBIDO';
+    let acao = '';
     let stepId: CustoExtraStepId = 'lancamento';
 
-    if (current === 'RECEBIDO') {
-      next = 'EM_VALIDACAO';
+    if (current === 'RECEBIDO' || current === 'PENDENTE') {
+      acao = 'avancar_validacao';
       stepId = 'validacao_operacional';
     } else if (current === 'EM_VALIDACAO') {
-      next = 'APROVADO_OPERACAO';
+      acao = 'aprovar';
       stepId = 'financeiro';
     } else if (current === 'APROVADO_OPERACAO') {
-      next = 'ENVIADO_FINANCEIRO';
+      acao = 'enviar_financeiro';
       stepId = 'centro_custo';
     } else if (current === 'ENVIADO_FINANCEIRO') {
-      next = 'FINALIZADO';
+      acao = 'finalizar_pagamento';
       stepId = 'concluido';
     }
 
-    if (next !== 'RECEBIDO') {
-      updatePipelineMutation.mutate({ id: item.id, status: next });
+    if (acao !== '') {
+      updatePipelineMutation.mutate({
+        id: item.id,
+        acao,
+        // @ts-ignore (atualizado_em comes from the backend payload even if not fully typed in CustoExtraItem frontend schema)
+        updatedAt: item.atualizado_em || new Date().toISOString()
+      });
 
       const competencia = item.data ? format(new Date(item.data), "yyyy-MM") : format(new Date(), "yyyy-MM");
 
@@ -321,11 +323,12 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
     }
   };
 
-  const handleDevolvePipeline = (id: string) => {
+  const handleDevolvePipeline = (item: CustoExtraItem) => {
     setJustificationModal({
       open: true,
-      itemId: id,
-      targetStatus: 'RECEBIDO',
+      itemId: item.id,
+      // @ts-ignore
+      targetStatus: item.atualizado_em || new Date().toISOString(),
     });
   };
 
@@ -333,7 +336,8 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
     if (justificationModal.itemId && justificationModal.targetStatus) {
       updatePipelineMutation.mutate({
         id: justificationModal.itemId,
-        status: justificationModal.targetStatus,
+        acao: 'devolver',
+        updatedAt: justificationModal.targetStatus, // Estamos usando o targetStatus para carregar o updated_at no state do modal temporalmente
         justification
       });
       setJustificationModal({ open: false, itemId: null, targetStatus: null });

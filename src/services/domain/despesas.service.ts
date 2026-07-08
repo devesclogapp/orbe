@@ -18,7 +18,8 @@ class CustoExtraOperacionalServiceClass {
   async getMonthsWithData(empresaId?: string, tenantId?: string | null) {
     let query = operationalClient
       .from('custos_extras_operacionais')
-      .select('data');
+      .select('data')
+      .is('deleted_at', null);
     
     if (empresaId && empresaId !== 'all') {
       query = query.eq('empresa_id', empresaId);
@@ -59,11 +60,31 @@ class CustoExtraOperacionalServiceClass {
   async delete(id: string) {
     const { error } = await operationalClient
       .from('custos_extras_operacionais')
-      .delete()
+      .update({ deleted_at: new Date().toISOString() })
       .eq('id', id);
 
     if (error) throw error;
     return true;
+  }
+
+  async transicionar(id: string, acao: string, updatedAt: string, justificativa?: string) {
+    const { data: responseData, error: errUpdate } = await supabase.rpc('rpc_custo_extra_transicionar', {
+      p_id: id,
+      p_acao: acao,
+      p_updated_at: updatedAt,
+      p_justificativa: justificativa || null
+    });
+    
+    if (errUpdate) {
+       if (errUpdate.message.includes('Idempotente') || errUpdate.message.includes('CONCORRENCIA') || errUpdate.message.includes('ESTADO_INVALIDO')) {
+          console.warn(`[Domain Hardening] Exceção estruturada na RPC: `, errUpdate.message);
+          throw new Error(errUpdate.message);
+       } else {
+          throw errUpdate;
+       }
+    }
+
+    return responseData;
   }
 
   async getByDate(date: string) {
@@ -115,6 +136,7 @@ class CustoExtraOperacionalServiceClass {
         *,
         empresas:empresa_id(nome)
       `)
+      .is('deleted_at', null)
       .order('data', { ascending: false })
       .order('criado_em', { ascending: false });
 
@@ -149,7 +171,7 @@ class CustoExtraOperacionalServiceClass {
         query = query.gte('data', `${year}-${String(mo).padStart(2, '0')}-01`).lt('data', nextMonthStr);
       }
     }
-    query = query.order('data', { ascending: false });
+    query = query.is('deleted_at', null).order('data', { ascending: false });
 
     if (empresaId) query = query.eq('empresa_id', empresaId);
 
@@ -184,9 +206,10 @@ class CustoExtraOperacionalServiceClass {
   async deleteImported(empresaId?: string | null) {
     let query = operationalClient
       .from('custos_extras_operacionais')
-      .delete()
+      .update({ deleted_at: new Date().toISOString() })
       .select('id')
-      .eq('origem_dado', 'importacao');
+      .eq('origem_dado', 'importacao')
+      .is('deleted_at', null);
 
     if (empresaId) query = query.eq('empresa_id', empresaId);
 
