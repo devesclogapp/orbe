@@ -4,7 +4,7 @@ import { BaseService } from './domain/base.service';
 import { BankAccountService } from './bankAccount.service';
 import { CnabBBValidatorService } from './cnabBBValidator.service';
 import { CnabRetornoService } from './cnab/cnabRetorno.service';
-import { CNAB240BBWriter } from './cnab/CNAB240BBWriter';
+import { CNABWriterFactory } from './cnab/CNABWriterFactory';
 import { CnabRemessaArquivoService } from './cnab/cnabRemessaArquivo.service';
 
 export { CnabRemessaArquivoService };
@@ -202,7 +202,16 @@ export const CNABService = {
 
     let result;
     try {
-      result = await CNAB240BBWriter.generateCNAB240({
+      // Find the target bank code (banco_codigo) if needed or let the factory use default '001'.
+      let bancoCodigo = '001';
+      if (contaId) {
+        const { data: contaDados } = await supabase.from('contas_bancarias_empresa').select('banco_codigo').eq('id', contaId).maybeSingle();
+        if (contaDados?.banco_codigo) bancoCodigo = String(contaDados.banco_codigo);
+      }
+
+      const writer = CNABWriterFactory.create(bancoCodigo);
+
+      result = await writer.generateCNAB240({
         loteId: lote.id,
         competencia,
         contaBancariaId: contaId,

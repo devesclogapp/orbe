@@ -327,7 +327,7 @@ const RetornoBancario = () => {
               <Card className="space-y-6 p-6 xl:col-span-1">
                 <div className="space-y-4">
                   <h3 className="flex items-center gap-2 text-sm font-semibold uppercase text-muted-foreground">
-                    <Banknote className="h-4 w-4" /> Processar retorno
+                    <Banknote className="h-4 w-4" /> Passo 4 de 5 – Aguardar o Banco
                   </h3>
 
                   <div className="space-y-2">
@@ -355,8 +355,7 @@ const RetornoBancario = () => {
 
                   <div className="space-y-3 rounded-2xl border border-dashed border-border/70 bg-muted/20 p-4">
                     <p className="text-xs text-muted-foreground">
-                      O parser valida o CNAB240, interpreta ocorrências do BB, cruza com remessas internas e mantém a baixa
-                      definitiva bloqueada até aprovação humana.
+                      Após enviar a remessa ao banco, aguarde o processamento. Quando o banco disponibilizar o arquivo de retorno (.RET), importe-o aqui para que o ORBE confirme automaticamente quais pagamentos foram realizados e quais apresentaram divergências.
                     </p>
 
                     <Button variant="outline" className="w-full" onClick={() => fileInputRef.current?.click()}>

@@ -7,108 +7,20 @@ import { TrailerArquivo } from './segmentos/TrailerArquivo';
 import { SegmentoB } from './segmentos/SegmentoB';
 import { CnabRemessaArquivoService } from './cnabRemessaArquivo.service';
 
-export interface CNAB240Result {
-  content: string;
-  fileName: string;
-  totalLinhas: number;
-  totalValor: number;
-  sequencial: number;
-  hash: string;
-  arquivoId: string;
-  inconsistencias?: string[];
-}
-
-export interface CNAB240GenerateOptions {
-  loteId: string;
-  competencia?: string;
-  contaBancariaId?: string;
-  rhLoteId?: string;
-  modo?: 'homologacao' | 'producao';
-  salvarConteudo?: boolean;
-}
+import { ICNAB240Writer, CNAB240GenerateOptions, CNAB240Result } from './types';
+import { CNABBase } from './CNABBase';
 
 async function fetchLoteData(loteId: string, contaBancariaId?: string, rhLoteId?: string) {
-  let conta: Record<string, any> | null = null;
-
-  if (contaBancariaId) {
-    const { data, error } = await supabase
-      .from('contas_bancarias_empresa')
-      .select(`
-        *,
-        empresas:empresa_id (
-          id,
-          nome,
-          cidade,
-          estado
-        )
-      `)
-      .eq('id', contaBancariaId)
-      .maybeSingle();
-
-    if (error) {
-      throw new Error(`Erro ao buscar conta bancária: ${error.message}`);
-    }
-
-    conta = data;
-  }
-
-  let faturas: any[] = [];
-  
-  if (rhLoteId) {
-    // Banking data lives directly on colaboradores — no separate dados_bancarios table
-    const { data: itensRh, error } = await supabase
-      .from('rh_financeiro_lote_itens')
-      .select(`
-        id, valor_calculado,
-        colaboradores (
-          id, nome, cpf,
-          banco_codigo, agencia, agencia_digito, conta, digito_conta, tipo_conta
-        )
-      `)
-      .eq('lote_id', rhLoteId);
-      
-    if (error) throw new Error(`Erro ao buscar itens do RH: ${error.message}`);
-    
-    faturas = (itensRh || []).map(item => ({
-      id: item.id,
-      valor: item.valor_calculado || 0,
-      colaboradores: item.colaboradores
-    }));
-  } else {
-    const { data: faturasDb, error } = await supabase
-      .from('faturas')
-      .select(`
-        id, valor, competencia,
-        colaboradores (
-          id, nome, cpf,
-          banco_codigo, agencia, agencia_digito, conta, digito_conta, tipo_conta
-        )
-      `)
-      .eq('lote_remessa_id', loteId)
-      .neq('status', 'pago');
-
-    if (error) throw new Error(`Erro ao buscar faturas do lote: ${error.message}`);
-    faturas = faturasDb || [];
-  }
-
-  // Busca do valor total que originou o lote para auditoria rigorosa (Prevenção contra fraude/divergência)
-  let valorEsperadoLote = 0;
-  if (rhLoteId) {
-     const { data: rhLot } = await supabase.from('rh_financeiro_lotes').select('valor_total').eq('id', rhLoteId).maybeSingle();
-     if(rhLot) valorEsperadoLote = Number(rhLot.valor_total || 0);
-  } else {
-     const { data: lf } = await supabase.from('lotes_remessa').select('valor_total').eq('id', loteId).maybeSingle();
-     if(lf) valorEsperadoLote = Number(lf.valor_total || 0);
-  }
-
-  return { conta, faturas, valorEsperadoLote: Number(valorEsperadoLote.toFixed(2)) };
+  return CNABBase.fetchLoteData(loteId, contaBancariaId, rhLoteId);
 }
 
-export class CNAB240BBWriter {
-  static async generateCNAB240(options: CNAB240GenerateOptions): Promise<CNAB240Result>;
-  static async generateCNAB240(loteId: string): Promise<CNAB240Result>;
 
-  static async generateCNAB240(
+
+export class CNAB240BBWriter implements ICNAB240Writer {
+  async generateCNAB240(options: CNAB240GenerateOptions): Promise<CNAB240Result>;
+  async generateCNAB240(loteId: string): Promise<CNAB240Result>;
+
+  async generateCNAB240(
     optionsOrLoteId: CNAB240GenerateOptions | string
   ): Promise<CNAB240Result> {
     const opts: CNAB240GenerateOptions =
