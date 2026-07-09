@@ -9,6 +9,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Plus, RefreshCw, Loader2, Pencil, Trash2, LayoutGrid, List, User, Briefcase, Building2, FileText, DollarSign, Receipt, CheckCircle2, MoreHorizontal, AlertTriangle } from "lucide-react";
 import { ColaboradorService, EmpresaService } from "@/services/base.service";
+import { getColaboradorCompletudeDetailed } from "@/services/domain/core.service";
+import { EntityCompletenessPanel } from "@/components/ui/EntityCompletenessPanel";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogContent,
@@ -61,8 +64,13 @@ const getColaboradorStatusMeta = (colaborador: any) => {
     return { status: "pendente" as const, label: "Pendente" };
   }
 
+  const details = getColaboradorCompletudeDetailed(colaborador);
+  if (details.geral.percentual === 100) {
+    return { status: "dados_completos" as const, label: "Dados completos" };
+  }
+
   return {
-    status: (colaborador.status || "ok") as "ok" | "inconsistente" | "ajustado" | "pendente" | "incompleto" | "positivo" | "critico",
+    status: (colaborador.status || "ok") as "ok" | "inconsistente" | "ajustado" | "pendente" | "incompleto" | "positivo" | "critico" | "dados_completos",
     label: undefined,
   };
 };
@@ -181,9 +189,9 @@ const Colaboradores = () => {
 
   const validatePhone = (value: string) => {
     const digits = normalizePhone(value);
-    if (!digits) return "Telefone é obrigatório.";
-    if (digits.length < 10) return "Telefone inválido.";
-    if (!/^\d{10,11}$/.test(digits)) return "Telefone inválido.";
+    if (!digits) return null;
+    if (digits.length > 0 && digits.length < 10) return "Telefone inválido.";
+    if (digits.length > 0 && !/^\d{10,11}$/.test(digits)) return "Telefone inválido.";
     return null;
   };
 
@@ -306,6 +314,7 @@ const Colaboradores = () => {
       toast.error(phoneError, { icon: null });
       return false;
     }
+    // Verificamos PIS sem bloquear o save (deixa pendente depois)
     if (!form.empresa_id && !empresaOptions[0]?.id) {
       toast.error("Empresa é obrigatória.", { icon: null });
       return false;
@@ -327,10 +336,8 @@ const Colaboradores = () => {
       return false;
     }
 
-    if (!form.cargo.trim()) {
-      toast.error("Cargo/Função é obrigatório.", { icon: null });
-      return false;
-    }
+    // Cargo removido do block estrito para permitir salvar parcialmente,
+    // mas o PIS/Cargo faltante fará o serviço de backend manter como 'pendente'
 
     if (!form.matricula.trim() && form.regime_trabalho === "CLT") {
       toast.error("Matrícula é obrigatória para CLT.", { icon: null });
@@ -405,10 +412,6 @@ const Colaboradores = () => {
       toast.error("Selecione uma empresa");
       return;
     }
-    if (!form.cargo.trim()) {
-      toast.error("Preencha o cargo/função");
-      return;
-    }
 
     const cpfNormalized = form.cpf.replace(/\D/g, "");
     const pisNormalized = form.pis ? form.pis.replace(/\D/g, "") : null;
@@ -461,6 +464,8 @@ const Colaboradores = () => {
       pis: pisNormalized || null,
     });
   };
+
+  const formCompletudeDetailed = getColaboradorCompletudeDetailed(form);
 
   return (
     <AppShell title="Colaboradores" subtitle="Cadastro e configuração de equipe">
@@ -579,7 +584,7 @@ const Colaboradores = () => {
                   <th className="px-3 h-11 font-medium text-center"><span className="inline-flex items-center gap-1.5"><FileText className="h-3.5 w-3.5 text-muted-foreground" />Tipo</span></th>
                   <th className="px-3 h-11 font-medium text-right"><span className="inline-flex items-center gap-1.5"><DollarSign className="h-3.5 w-3.5 text-muted-foreground" />Valor base</span></th>
                   <th className="px-3 h-11 font-medium text-center"><span className="inline-flex items-center gap-1.5"><Receipt className="h-3.5 w-3.5 text-muted-foreground" />Faturamento</span></th>
-                  <th className="px-3 h-11 font-medium text-center">Origem</th>
+                  <th className="px-3 h-11 font-medium text-center">Governança</th>
                   <th className="px-5 h-11 font-medium text-center"><span className="inline-flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" />Status</span></th>
                   <th className="px-5 h-11 font-medium text-right"></th>
                 </tr>
@@ -618,9 +623,63 @@ const Colaboradores = () => {
                     </td>
                     <td className="px-3 text-center text-muted-foreground">{c.flag_faturamento ? "Sim" : "Não"}</td>
                     <td className="px-3 text-center">
-                      <Badge className={cn("font-semibold", getColaboradorOrigemMeta(c).className)}>
-                        {getColaboradorOrigemMeta(c).label}
-                      </Badge>
+                      <TooltipProvider delayDuration={150}>
+                        <div className="flex items-center justify-center gap-1.5">
+                          {/* Operacional */}
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className={cn("flex h-6 w-8 items-center justify-center rounded-md border text-[10px] font-semibold cursor-help", getColaboradorCompletudeDetailed(c).operacional.completo ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-rose-50 border-rose-200 text-rose-700")}>OPER</div>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p className="text-xs font-semibold mb-1">Operacional: {getColaboradorCompletudeDetailed(c).operacional.completo ? "Apto" : "Pendente"}</p>
+                              {!getColaboradorCompletudeDetailed(c).operacional.completo && getColaboradorCompletudeDetailed(c).operacional.pendencias.length > 0 && (
+                                <div className="text-[10px] text-muted-foreground">
+                                  <p className="font-semibold mb-0.5">Pendências:</p>
+                                  <ul className="space-y-0.5 ml-1">
+                                    {getColaboradorCompletudeDetailed(c).operacional.pendencias.map((p: string) => <li key={p}>• {p}</li>)}
+                                  </ul>
+                                </div>
+                              )}
+                            </TooltipContent>
+                          </Tooltip>
+
+                          {/* RH */}
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className={cn("flex h-6 w-8 items-center justify-center rounded-md border text-[10px] font-semibold cursor-help", getColaboradorCompletudeDetailed(c).rh.completo ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-rose-50 border-rose-200 text-rose-700")}>RH</div>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p className="text-xs font-semibold mb-1">RH: {getColaboradorCompletudeDetailed(c).rh.completo ? "Apto" : "Pendente"}</p>
+                              {!getColaboradorCompletudeDetailed(c).rh.completo && getColaboradorCompletudeDetailed(c).rh.pendencias.length > 0 && (
+                                <div className="text-[10px] text-muted-foreground">
+                                  <p className="font-semibold mb-0.5">Pendências:</p>
+                                  <ul className="space-y-0.5 ml-1">
+                                    {getColaboradorCompletudeDetailed(c).rh.pendencias.map((p: string) => <li key={p}>• {p}</li>)}
+                                  </ul>
+                                </div>
+                              )}
+                            </TooltipContent>
+                          </Tooltip>
+
+                          {/* Financeiro */}
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className={cn("flex h-6 w-8 items-center justify-center rounded-md border text-[10px] font-semibold cursor-help", getColaboradorCompletudeDetailed(c).financeiro.completo ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-amber-50 border-amber-200 text-amber-700")}>FIN</div>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p className="text-xs font-semibold mb-1">Financeiro: {getColaboradorCompletudeDetailed(c).financeiro.completo ? "Apto" : "Pendente"}</p>
+                              {!getColaboradorCompletudeDetailed(c).financeiro.completo && getColaboradorCompletudeDetailed(c).financeiro.pendencias.length > 0 && (
+                                <div className="text-[10px] text-muted-foreground">
+                                  <p className="font-semibold mb-0.5">Pendências:</p>
+                                  <ul className="space-y-0.5 ml-1">
+                                    {getColaboradorCompletudeDetailed(c).financeiro.pendencias.map((p: string) => <li key={p}>• {p}</li>)}
+                                  </ul>
+                                </div>
+                              )}
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                      </TooltipProvider>
                     </td>
                     <td className="px-5 text-center">
                       <StatusChip
@@ -722,6 +781,9 @@ const Colaboradores = () => {
             )}
           </DialogHeader>
 
+          {/* Resumo de Completude do Cadastro */}
+          <EntityCompletenessPanel data={formCompletudeDetailed} />
+
           <div className="overflow-y-auto max-h-[60vh]">
             {!editingId ? (
               <>
@@ -740,7 +802,7 @@ const Colaboradores = () => {
                       <Input id="pis" placeholder="000.00000.00-0" value={form.pis} onChange={(e) => setForm({ ...form, pis: e.target.value })} />
                     </div>
                     <div className="col-span-2 space-y-1.5">
-                      <Label htmlFor="telefone">Telefone <span className="text-destructive">*</span></Label>
+                      <Label htmlFor="telefone">Telefone</Label>
                       <Input id="telefone" value={form.telefone} onChange={(e) => handlePhoneChange(e.target.value)} />
                     </div>
                     <div className="col-span-2 space-y-1.5">

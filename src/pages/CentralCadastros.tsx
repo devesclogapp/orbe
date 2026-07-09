@@ -50,6 +50,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ConfigTable } from "@/components/ui/ConfigTable";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -58,12 +59,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { EntityCompletenessPanel } from "@/components/ui/EntityCompletenessPanel";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { DialogDescription } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import {
   ColaboradorService,
@@ -82,6 +84,7 @@ import {
   UnidadeOperacionalService,
 } from "@/services/base.service";
 import { MateriaisOperacionaisService } from "@/services/domain/cadastros.service";
+import { getColaboradorCompletudeDetailed } from "@/services/domain/core.service";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   normalizeTransportadoraPayload,
@@ -229,9 +232,8 @@ function getColaboradorStatusMeta(colaborador: any) {
     return { status: "pendente" as const, label: "Pendente" };
   }
 
-  // Check if all data is complete (100% completude)
-  const completude = getColaboradorCompletude(colaborador);
-  if (completude === 100) {
+  const details = getColaboradorCompletudeDetailed(colaborador);
+  if (details.geral.percentual === 100) {
     return { status: "dados_completos" as const, label: "Dados completos" };
   }
 
@@ -259,17 +261,7 @@ function getColaboradorPendenciasBancarias(colaborador: any) {
   if (!colaborador || colaborador.tipo_colaborador === "DIARISTA") {
     return [];
   }
-
-  const pendencias: string[] = [];
-  if (!String(colaborador.nome_completo ?? "").trim()) pendencias.push("nome bancário");
-  if (!String(colaborador.banco_codigo ?? "").trim()) pendencias.push("banco");
-  if (!String(colaborador.agencia ?? "").trim()) pendencias.push("agência");
-  if (!String(colaborador.agencia_digito ?? "").trim()) pendencias.push("dígito da agência");
-  if (!String(colaborador.conta ?? "").trim()) pendencias.push("conta");
-  if (!String(colaborador.conta_digito ?? colaborador.digito_conta ?? "").trim()) pendencias.push("dígito da conta");
-  if (!String(colaborador.tipo_conta ?? "").trim()) pendencias.push("tipo de conta");
-
-  return pendencias;
+  return getColaboradorCompletudeDetailed(colaborador).financeiro.pendencias;
 }
 
 type OperacionalPriority = "critico" | "atencao" | "ok";
@@ -341,52 +333,26 @@ function getColaboradorContractLabel(colaborador: any) {
   return modelo || contrato || "N/D";
 }
 
-function getColaboradorCompletude(colaborador: any) {
-  const cpfClean = String(colaborador?.cpf ?? "").replace(/\D/g, "");
-  const telClean = String(colaborador?.telefone ?? "").replace(/\D/g, "");
-  const pisClean = String(colaborador?.pis ?? "").replace(/\D/g, "");
-
-  const checks = [
-    Boolean(String(colaborador?.nome ?? "").trim()),
-    cpfClean.length === 11,
-    telClean.length >= 10,
-    Boolean(colaborador?.empresa_id),
-    Boolean(String(colaborador?.tipo_colaborador ?? "").trim()),
-    Boolean(String(colaborador?.cargo ?? "").trim()),
-    Boolean(String(colaborador?.modelo_calculo ?? colaborador?.tipo_contrato ?? "").trim()),
-    getColaboradorBankValidation(colaborador).isValid,
-  ];
-
-  if (colaborador?.regime_trabalho === "CLT" || colaborador?.tipo_colaborador === "CLT") {
-    checks.push(pisClean.length === 11);
-  }
-
-  const total = checks.length;
-  const done = checks.filter(Boolean).length;
-  return Math.round((done / total) * 100);
-}
-
 function getColaboradorOperationalMeta(colaborador: any): {
   priority: OperacionalPriority;
   bloqueiaRh: boolean;
   bloqueiaFinanceiro: boolean;
   bloqueios: string[];
 } {
-  const cadastroPendente = colaborador?.status_cadastro === "pendente_complemento" || Boolean(colaborador?.cadastro_provisorio);
-  const semBanco = !getColaboradorBankValidation(colaborador).isValid;
-  const semContrato = hasContratoPendente(colaborador);
-  const semPix = hasPixPendente(colaborador);
-  const semTelefone = !String(colaborador?.telefone ?? "").trim();
+  const details = getColaboradorCompletudeDetailed(colaborador);
 
-  const bloqueiaRh = semContrato;
-  const bloqueiaFinanceiro = semBanco || semContrato;
+  const bloqueiaRh = !details.rh.completo;
+  const bloqueiaFinanceiro = !details.financeiro.completo || bloqueiaRh;
 
   const bloqueios: string[] = [];
   if (bloqueiaRh) bloqueios.push("RH");
   if (bloqueiaFinanceiro) bloqueios.push("Financeiro");
 
-  const critico = semBanco || semContrato;
-  const atencao = !critico && (semPix || semTelefone || cadastroPendente);
+  // Crítico abrange qualquer fator de bloqueio primário 
+  const critico = bloqueiaRh || (!details.financeiro.completo);
+  // Atenção foca nas outras incompletides não travantes (ex: pix)
+  const semPix = hasPixPendente(colaborador);
+  const atencao = !critico && (semPix || details.geral.percentual < 100);
 
   return {
     priority: critico ? "critico" : atencao ? "atencao" : "ok",
@@ -593,7 +559,14 @@ const CentralCadastros = () => {
     }
   }, [activeTab, setSearchParams, searchParams]);
 
+  type KpiFilterType = "todos" | "aptos" | "pendencias_rh" | "pendencias_fin";
+  type KpiSortType = "default" | "completude_asc";
+
+  const [kpiFilter, setKpiFilter] = useState<KpiFilterType>("todos");
+  const [kpiSort, setKpiSort] = useState<KpiSortType>("default");
+
   const [operacionalFilters, setOperacionalFilters] = useState<OperacionalQuickFilter[]>([]);
+  const [collaboratorSearchTerm, setCollaboratorSearchTerm] = useState("");
   const [contractFilter, setContractFilter] = useState("todos");
   const [configType, setConfigType] = useState<"operacao" | "produto" | "dia">("operacao");
   const [editingConfig, setEditingConfig] = useState<any>(null);
@@ -750,6 +723,11 @@ const CentralCadastros = () => {
   const editingColaboradorBankBadgeUi = useMemo(
     () => getBankBadgeUi(editingColaboradorBankValidation, editingColaborador),
     [editingColaboradorBankValidation, editingColaborador],
+  );
+
+  const editingColaboradorCompletudeDetailed = useMemo(
+    () => getColaboradorCompletudeDetailed(editingColaborador || {}),
+    [editingColaborador],
   );
 
   const handleEditPhoneChangeCC = (raw: string) => {
@@ -1202,10 +1180,7 @@ const CentralCadastros = () => {
       toast.error("Status é obrigatório.", { icon: null });
       return false;
     }
-    if (!colaboradorForm.cargo.trim()) {
-      toast.error("Cargo/Função é obrigatório.", { icon: null });
-      return false;
-    }
+    // Cargo não bloqueia o salvamento (vira pendente)
     if (!colaboradorForm.regime_trabalho) {
       toast.error("Regime de trabalho é obrigatório.", { icon: null });
       return false;
@@ -2397,9 +2372,11 @@ const CentralCadastros = () => {
   const colaboradoresOperacionais = useMemo(() => (
     colaboradores.map((colaborador) => {
       const operational = getColaboradorOperationalMeta(colaborador);
+      const detailed = getColaboradorCompletudeDetailed(colaborador);
       return {
         ...colaborador,
-        completude: getColaboradorCompletude(colaborador),
+        completudeDetailed: detailed,
+        completude: detailed.geral.percentual,
         ...operational,
       };
     })
@@ -2417,6 +2394,16 @@ const CentralCadastros = () => {
 
   const colaboradoresFiltrados = useMemo(() => {
     return colaboradoresOperacionais.filter((colaborador) => {
+      // 1. Text Search filtering
+      const searchTerm = collaboratorSearchTerm.trim().toLowerCase();
+      const matchesSearch = searchTerm === "" ||
+        colaborador.nome.toLowerCase().includes(searchTerm) ||
+        (colaborador.matricula || "").toLowerCase().includes(searchTerm) ||
+        (colaborador.cpf || "").replace(/\D/g, "").includes(searchTerm);
+
+      if (!matchesSearch) return false;
+
+      // 2. Priority/Status Quick Filtering
       const matchesQuickFilters = operacionalFilters.every((filter) => {
         if (filter === "apenas_pendentes") return colaborador.status_cadastro === "pendente_complemento" || Boolean(colaborador.cadastro_provisorio);
         if (filter === "bloqueiam_aprovacao") return colaborador.bloqueiaRh;
@@ -2428,23 +2415,59 @@ const CentralCadastros = () => {
       });
 
       if (!matchesQuickFilters) return false;
-      if (contractFilter === "todos") return true;
 
+      // 3. Contract Type Filtering
+      if (contractFilter === "todos") return true;
       return getColaboradorContractLabel(colaborador) === contractFilter;
     });
-  }, [colaboradoresOperacionais, operacionalFilters, contractFilter]);
+  }, [colaboradoresOperacionais, operacionalFilters, contractFilter, collaboratorSearchTerm]);
 
   const operacionalResumo = useMemo(() => {
     const total = colaboradoresFiltrados.length;
+    const operacionaisAptos = colaboradoresFiltrados.filter(item => item.completudeDetailed?.operacional.completo).length;
+    const pendenciasRh = colaboradoresFiltrados.filter(item => !item.completudeDetailed?.rh.completo).length;
+    const pendenciasFinanceiro = colaboradoresFiltrados.filter(item => !item.completudeDetailed?.financeiro.completo).length;
+
+    // Legacy mapping required for other uses below
     const aguardandoComplemento = colaboradoresFiltrados.filter((item) => item.status_cadastro === "pendente_complemento" || Boolean(item.cadastro_provisorio)).length;
     const bloqueiamRh = colaboradoresFiltrados.filter((item) => item.bloqueiaRh).length;
     const bloqueiamFinanceiro = colaboradoresFiltrados.filter((item) => item.bloqueiaFinanceiro).length;
+
     const completudeMedia = total > 0
       ? Math.round(colaboradoresFiltrados.reduce((acc, item) => acc + item.completude, 0) / total)
       : 0;
 
-    return { aguardandoComplemento, bloqueiamRh, bloqueiamFinanceiro, completudeMedia };
+    return {
+      total,
+      operacionaisAptos,
+      pendenciasRh,
+      pendenciasFinanceiro,
+      aguardandoComplemento,
+      bloqueiamRh,
+      bloqueiamFinanceiro,
+      completudeMedia
+    };
   }, [colaboradoresFiltrados]);
+
+  const colaboradoresGrid = useMemo(() => {
+    let list = colaboradoresFiltrados.filter(c => {
+      const details = getColaboradorCompletudeDetailed(c);
+      if (kpiFilter === "aptos" && !details.operacional.completo) return false;
+      if (kpiFilter === "pendencias_rh" && details.rh.completo) return false;
+      if (kpiFilter === "pendencias_fin" && details.financeiro.completo) return false;
+      return true;
+    });
+
+    if (kpiSort === "completude_asc") {
+      list = [...list].sort((a, b) => {
+        const da = getColaboradorCompletudeDetailed(a);
+        const db = getColaboradorCompletudeDetailed(b);
+        return da.geral.percentual - db.geral.percentual;
+      });
+    }
+
+    return list;
+  }, [colaboradoresFiltrados, kpiFilter, kpiSort]);
 
   const cadastrosPipelineEmpresa = useMemo(() => {
     if (empresaId) {
@@ -2574,20 +2597,45 @@ const CentralCadastros = () => {
                     </div>
                   </div>
                   <div className="px-5 py-4 border-b border-border space-y-4">
-                    <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
-                      <div className="grid gap-4 md:grid-cols-3">
-                        <div>
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Colaboradores pendentes</p>
-                          <p className="text-2xl font-display font-semibold text-foreground">{operacionalResumo.aguardandoComplemento}</p>
-                          <p className="text-xs text-muted-foreground">aguardando complemento</p>
+                    <div className="bg-muted/30 border border-border/50 rounded-xl p-4 mb-4">
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                        <div
+                          className={cn("cursor-pointer rounded-lg p-2 transition-colors hover:bg-muted/50 border border-transparent", kpiFilter === "todos" && "bg-muted/50 border-input")}
+                          onClick={() => { setKpiFilter("todos"); setKpiSort("default"); }}
+                        >
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Fila operacional</p>
+                          <p className="text-2xl font-display font-semibold text-foreground">{colaboradoresFiltrados.length}</p>
+                          <p className="text-xs text-muted-foreground">Colaboradores ativos</p>
                         </div>
-                        <div>
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Bloqueios</p>
-                          <p className="text-sm text-foreground">{operacionalResumo.bloqueiamRh} bloqueiam RH</p>
-                          <p className="text-sm text-foreground">{operacionalResumo.bloqueiamFinanceiro} bloqueiam financeiro</p>
+                        <div
+                          className={cn("cursor-pointer rounded-lg p-2 transition-colors hover:bg-muted/50 border border-transparent", kpiFilter === "aptos" && "bg-emerald-50/50 border-emerald-100")}
+                          onClick={() => setKpiFilter("aptos")}
+                        >
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Aptos para Operação</p>
+                          <p className="text-2xl font-display font-semibold text-emerald-600">{operacionalResumo.operacionaisAptos}</p>
+                          <p className="text-xs text-muted-foreground">Validados operacionalmente</p>
                         </div>
-                        <div>
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Completude cadastral</p>
+                        <div
+                          className={cn("cursor-pointer rounded-lg p-2 transition-colors hover:bg-muted/50 border border-transparent", kpiFilter === "pendencias_rh" && "bg-rose-50/50 border-rose-100")}
+                          onClick={() => setKpiFilter("pendencias_rh")}
+                        >
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Pendências RH</p>
+                          <p className="text-2xl font-display font-semibold text-rose-600">{operacionalResumo.pendenciasRh}</p>
+                          <p className="text-xs text-muted-foreground">Gargalo Folha</p>
+                        </div>
+                        <div
+                          className={cn("cursor-pointer rounded-lg p-2 transition-colors hover:bg-muted/50 border border-transparent", kpiFilter === "pendencias_fin" && "bg-amber-50/50 border-amber-100")}
+                          onClick={() => setKpiFilter("pendencias_fin")}
+                        >
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Pendências Financeiro</p>
+                          <p className="text-2xl font-display font-semibold text-amber-600">{operacionalResumo.pendenciasFinanceiro}</p>
+                          <p className="text-xs text-muted-foreground">Gargalo Bancário/CNAB</p>
+                        </div>
+                        <div
+                          className={cn("cursor-pointer rounded-lg p-2 transition-colors hover:bg-muted/50 border border-transparent", kpiSort === "completude_asc" && "bg-primary/5 border-primary/20")}
+                          onClick={() => setKpiSort(prev => prev === "completude_asc" ? "default" : "completude_asc")}
+                        >
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Qualidade da Base</p>
                           <p className="text-2xl font-display font-semibold text-foreground">{operacionalResumo.completudeMedia}%</p>
                           <div className="mt-2 h-2 rounded-full bg-muted">
                             <div className="h-2 rounded-full bg-primary transition-all" style={{ width: `${operacionalResumo.completudeMedia}%` }} />
@@ -2595,8 +2643,19 @@ const CentralCadastros = () => {
                         </div>
                       </div>
                     </div>
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                      <div className="space-y-1.5 lg:min-w-[260px]">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-end">
+                      <div className="space-y-1.5 md:w-[280px]">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          Buscar Colaborador
+                        </p>
+                        <Input
+                          placeholder="Nome, CPF ou Matrícula..."
+                          value={collaboratorSearchTerm}
+                          onChange={(e) => setCollaboratorSearchTerm(e.target.value)}
+                          className="w-full bg-background"
+                        />
+                      </div>
+                      <div className="space-y-1.5 md:w-[220px]">
                         <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                           Filtro operacional
                         </p>
@@ -2604,7 +2663,7 @@ const CentralCadastros = () => {
                           value={operacionalFilters[0] ?? "todos"}
                           onValueChange={(value) => setOperacionalFilters(value === "todos" ? [] : [value as OperacionalQuickFilter])}
                         >
-                          <SelectTrigger className="w-full bg-background lg:w-[260px]">
+                          <SelectTrigger className="w-full bg-background">
                             <SelectValue placeholder="Todos os filtros" />
                           </SelectTrigger>
                           <SelectContent>
@@ -2618,12 +2677,12 @@ const CentralCadastros = () => {
                           </SelectContent>
                         </Select>
                       </div>
-                      <div className="space-y-1.5 lg:min-w-[220px] lg:ml-auto">
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground text-left lg:text-right">
+                      <div className="space-y-1.5 md:w-[220px]">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                           Tipo de contrato
                         </p>
                         <Select value={contractFilter} onValueChange={setContractFilter}>
-                          <SelectTrigger className="w-full bg-background lg:w-[220px]">
+                          <SelectTrigger className="w-full bg-background">
                             <SelectValue placeholder="Todos" />
                           </SelectTrigger>
                           <SelectContent>
@@ -2645,19 +2704,18 @@ const CentralCadastros = () => {
                           <th className="px-3 h-11 font-medium text-center">Empresa</th>
                           <th className="px-3 h-11 font-medium text-center">Tipo</th>
                           <th className="px-3 h-11 font-medium text-center">Contrato</th>
-                          <th className="px-3 h-11 font-medium text-center">Completude</th>
-                          <th className="px-3 h-11 font-medium text-center">Bloqueios</th>
+                          <th className="px-3 h-11 font-medium text-center">Governança</th>
                           <th className="px-5 h-11 font-medium text-center">Status</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {colaboradoresFiltrados.length === 0 ? (
+                        {colaboradoresGrid.length === 0 ? (
                           <tr>
-                            <td colSpan={8} className="px-5 py-8 text-center text-muted-foreground">
+                            <td colSpan={7} className="px-5 py-8 text-center text-muted-foreground">
                               Nenhum colaborador encontrado com os filtros operacionais atuais.
                             </td>
                           </tr>
-                        ) : colaboradoresFiltrados.map((colaborador) => (
+                        ) : colaboradoresGrid.map((colaborador) => (
                           <tr
                             key={colaborador.id}
                             className="border-t border-border/50 hover:bg-muted/30 transition-colors cursor-pointer group"
@@ -2685,22 +2743,64 @@ const CentralCadastros = () => {
                             <td className="px-3 text-muted-foreground text-center">{colaborador.empresas?.nome || "—"}</td>
                             <td className="px-3 text-center font-medium">{getColaboradorTypeLabel(colaborador)}</td>
                             <td className="px-3 text-center font-medium">{getColaboradorContractLabel(colaborador)}</td>
-                            <td className="px-3 text-center font-display font-medium">{colaborador.completude}%</td>
                             <td className="px-3 text-center">
-                              <div className="flex flex-wrap items-center justify-center gap-1">
-                                {colaborador.bloqueios.length > 0 ? (
-                                  colaborador.bloqueios.map(b => (
-                                    <Badge key={b} variant="outline" className={cn(
-                                      "text-[10px] uppercase font-semibold h-5 px-1.5",
-                                      b === "RH" ? "bg-purple-50 text-purple-700 border-purple-200" : "bg-blue-50 text-blue-700 border-blue-200"
-                                    )}>
-                                      {b}
-                                    </Badge>
-                                  ))
-                                ) : (
-                                  <span className="text-muted-foreground text-xs">—</span>
-                                )}
-                              </div>
+                              <TooltipProvider delayDuration={150}>
+                                <div className="flex items-center justify-center gap-1.5">
+                                  {/* Operacional */}
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div className={cn("flex h-6 w-8 items-center justify-center rounded-md border text-[10px] font-semibold cursor-help", colaborador.completudeDetailed?.operacional.completo ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-rose-50 border-rose-200 text-rose-700")}>OPER</div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p className="text-xs font-semibold mb-1">Operacional: {colaborador.completudeDetailed?.operacional.completo ? "Apto" : "Pendente"}</p>
+                                      {!colaborador.completudeDetailed?.operacional.completo && colaborador.completudeDetailed?.operacional.pendencias.length > 0 && (
+                                        <div className="text-[10px] text-muted-foreground">
+                                          <p className="font-semibold mb-0.5">Pendências:</p>
+                                          <ul className="space-y-0.5 ml-1">
+                                            {colaborador.completudeDetailed.operacional.pendencias.map(p => <li key={p}>• {p}</li>)}
+                                          </ul>
+                                        </div>
+                                      )}
+                                    </TooltipContent>
+                                  </Tooltip>
+
+                                  {/* RH */}
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div className={cn("flex h-6 w-8 items-center justify-center rounded-md border text-[10px] font-semibold cursor-help", colaborador.completudeDetailed?.rh.completo ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-rose-50 border-rose-200 text-rose-700")}>RH</div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p className="text-xs font-semibold mb-1">RH: {colaborador.completudeDetailed?.rh.completo ? "Apto" : "Pendente"}</p>
+                                      {!colaborador.completudeDetailed?.rh.completo && colaborador.completudeDetailed?.rh.pendencias.length > 0 && (
+                                        <div className="text-[10px] text-muted-foreground">
+                                          <p className="font-semibold mb-0.5">Pendências:</p>
+                                          <ul className="space-y-0.5 ml-1">
+                                            {colaborador.completudeDetailed.rh.pendencias.map(p => <li key={p}>• {p}</li>)}
+                                          </ul>
+                                        </div>
+                                      )}
+                                    </TooltipContent>
+                                  </Tooltip>
+
+                                  {/* Financeiro */}
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div className={cn("flex h-6 w-8 items-center justify-center rounded-md border text-[10px] font-semibold cursor-help", colaborador.completudeDetailed?.financeiro.completo ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-amber-50 border-amber-200 text-amber-700")}>FIN</div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p className="text-xs font-semibold mb-1">Financeiro: {colaborador.completudeDetailed?.financeiro.completo ? "Apto" : "Pendente"}</p>
+                                      {!colaborador.completudeDetailed?.financeiro.completo && colaborador.completudeDetailed?.financeiro.pendencias.length > 0 && (
+                                        <div className="text-[10px] text-muted-foreground">
+                                          <p className="font-semibold mb-0.5">Pendências:</p>
+                                          <ul className="space-y-0.5 ml-1">
+                                            {colaborador.completudeDetailed.financeiro.pendencias.map(p => <li key={p}>• {p}</li>)}
+                                          </ul>
+                                        </div>
+                                      )}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </div>
+                              </TooltipProvider>
                             </td>
                             <td className="px-5 text-center">
                               {(() => {
@@ -4839,6 +4939,11 @@ const CentralCadastros = () => {
             </div>
           )}
 
+          {/* NOVO: Resumo de Completude */}
+          {editingColaborador && (
+            <EntityCompletenessPanel data={editingColaboradorCompletudeDetailed} />
+          )}
+
           <div className="overflow-y-auto max-h-[60vh]">
             <div className="grid grid-cols-2 gap-4 py-2">
               <div className="col-span-2 space-y-1.5">
@@ -4854,7 +4959,7 @@ const CentralCadastros = () => {
                 <Input id="edit_colab_pis" placeholder="000.00000.00-0" value={editingColaborador?.pis || ""} onChange={(e) => setEditingColaborador({ ...editingColaborador, pis: e.target.value })} />
               </div>
               <div className="col-span-2 space-y-1.5">
-                <Label htmlFor="edit_colab_telefone">Telefone <span className="text-destructive">*</span></Label>
+                <Label htmlFor="edit_colab_telefone">Telefone</Label>
                 <Input id="edit_colab_telefone" value={editingColaborador?.telefone || ""} onChange={(e) => handleEditPhoneChangeCC(e.target.value)} />
               </div>
               <div className="col-span-2 space-y-1.5">
@@ -5634,7 +5739,7 @@ const CentralCadastros = () => {
           setSearchParams(newParams, { replace: true });
         }}
       />
-    </AppShell>
+    </AppShell >
   );
 };
 

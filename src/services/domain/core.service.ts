@@ -30,39 +30,118 @@ function normalizeCpfDigits(value?: string | null) {
   return String(value ?? '').replace(/\D/g, '').trim();
 }
 
+export interface ColaboradorCompletudeDetailed {
+  operacional: {
+    completo: boolean;
+    pendencias: string[];
+  };
+  rh: {
+    completo: boolean;
+    pendencias: string[];
+  };
+  financeiro: {
+    completo: boolean;
+    pendencias: string[];
+  };
+  geral: {
+    percentual: number;
+    pendencias: string[];
+  };
+}
+
+export function getColaboradorCompletudeDetailed(payload: Record<string, any>): ColaboradorCompletudeDetailed {
+  const isCLT = inferRegimeTrabalho(payload.tipo_colaborador) === 'CLT' || String(payload.regime_trabalho).toUpperCase() === 'CLT';
+  
+  const nome = String(payload.nome ?? '').trim();
+  const cpf = normalizeCpfDigits(payload.cpf);
+  const matricula = String(payload.matricula ?? payload.rhid_person_id ?? '').trim();
+  const empresaId = cleanUuid(payload.empresa_id);
+  const tipoColab = String(payload.tipo_colaborador ?? '').trim();
+  const cargo = String(payload.cargo ?? '').trim();
+  const pis = String(payload.pis ?? '').replace(/\D/g, '').trim();
+  const tipoContrato = String(payload.tipo_contrato ?? payload.modelo_calculo ?? '').trim();
+  
+  // Operacional Checks
+  const pendenciasOperacionais: string[] = [];
+  if (!nome) pendenciasOperacionais.push("Nome");
+  if (!cpf || cpf.length !== 11) pendenciasOperacionais.push("CPF");
+  if (!matricula) pendenciasOperacionais.push("Matrícula/ID");
+  if (!empresaId) pendenciasOperacionais.push("Empresa vinculada");
+  if (!tipoColab) pendenciasOperacionais.push("Tipo de colaborador");
+  const operacionalCompleto = pendenciasOperacionais.length === 0;
+
+  // RH Checks
+  const pendenciasRh: string[] = [];
+  if (!cargo) pendenciasRh.push("Cargo/Função");
+  if (isCLT && pis.length !== 11) pendenciasRh.push("PIS");
+  if (!tipoContrato) pendenciasRh.push("Modelo de cálculo/contrato");
+  if (!empresaId) pendenciasRh.push("Empresa vinculada");
+  if (!matricula) pendenciasRh.push("Matrícula/ID");
+  
+  const valorBase = Number(payload.salario_base ?? payload.valor_hora ?? payload.valor_diaria ?? payload.valor_base ?? 0);
+  if (valorBase <= 0) pendenciasRh.push("Valor base aplicável (salário/hora/diária)");
+  const rhCompleto = pendenciasRh.length === 0;
+
+  // Financeiro Checks
+  const pendenciasFinanceiras: string[] = [];
+  const nomeBancario = String(payload.nome_completo ?? '').trim();
+  const bancoCodigo = String(payload.banco_codigo ?? '').trim();
+  const agencia = String(payload.agencia ?? '').trim();
+  const conta = String(payload.conta ?? '').trim();
+  const tipoConta = String(payload.tipo_conta ?? '').trim();
+
+  if (!nomeBancario) pendenciasFinanceiras.push("Titular (nome na conta)");
+  if (!bancoCodigo) pendenciasFinanceiras.push("Código do banco");
+  if (!agencia) pendenciasFinanceiras.push("Agência");
+  if (!conta) pendenciasFinanceiras.push("Conta");
+  if (!tipoConta) pendenciasFinanceiras.push("Tipo de conta");
+  
+  const financeiroCompleto = pendenciasFinanceiras.length === 0;
+  
+  // Informative (such as Telefone)
+  const pendenciasGerais: string[] = [];
+  const telClean = String(payload.telefone ?? "").replace(/\D/g, "");
+  if (telClean.length < 10) pendenciasGerais.push("Telefone de contato");
+
+  const totalItems = [
+    nome, cpf.length === 11, matricula, empresaId, tipoColab,
+    cargo, !isCLT || pis.length === 11, tipoContrato, valorBase > 0,
+    nomeBancario, bancoCodigo, agencia, conta, tipoConta, telClean.length >= 10
+  ];
+  
+  const doneItems = totalItems.filter(Boolean).length;
+  const percentual = Math.round((doneItems / totalItems.length) * 100);
+
+  return {
+    operacional: {
+      completo: operacionalCompleto,
+      pendencias: pendenciasOperacionais
+    },
+    rh: {
+      completo: rhCompleto,
+      pendencias: pendenciasRh
+    },
+    financeiro: {
+      completo: financeiroCompleto,
+      pendencias: pendenciasFinanceiras
+    },
+    geral: {
+      percentual,
+      pendencias: [...new Set([...pendenciasOperacionais, ...pendenciasRh, ...pendenciasFinanceiras, ...pendenciasGerais])]
+    }
+  };
+}
+
 function hasDadosBancariosMinimosColaborador(payload: Record<string, any>) {
   const tipoColaborador = String(payload.tipo_colaborador ?? '').trim().toUpperCase();
   if (tipoColaborador === 'DIARISTA') {
     return true;
   }
-
-  const nomeBancario = String(payload.nome_completo ?? '').trim();
-  const bancoCodigo = String(payload.banco_codigo ?? '').trim();
-  const agencia = String(payload.agencia ?? '').trim();
-  const agenciaDigito = String(payload.agencia_digito ?? '').trim();
-  const conta = String(payload.conta ?? '').trim();
-  const contaDigito = String(payload.conta_digito ?? payload.digito_conta ?? '').trim();
-  const tipoConta = String(payload.tipo_conta ?? '').trim();
-
-  return Boolean(
-    nomeBancario &&
-    bancoCodigo &&
-    agencia &&
-    agenciaDigito &&
-    conta &&
-    contaDigito &&
-    tipoConta
-  );
+  return getColaboradorCompletudeDetailed(payload).financeiro.completo;
 }
 
 export function hasComplementoMinimoColaborador(payload: Record<string, any>) {
-  const cpf = normalizeCpfDigits(payload.cpf);
-  const telefone = String(payload.telefone ?? '').replace(/\D/g, '').trim();
-  const matricula = String(payload.matricula ?? '').trim();
-  const empresaId = cleanUuid(payload.empresa_id);
-  const cargo = String(payload.cargo ?? '').trim();
-
-  return Boolean(cpf && telefone && matricula && empresaId && cargo) && hasDadosBancariosMinimosColaborador(payload);
+  return getColaboradorCompletudeDetailed(payload).rh.completo;
 }
 
 export function inferRegimeTrabalho(tipoColaborador?: string | null): string {
