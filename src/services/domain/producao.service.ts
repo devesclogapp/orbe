@@ -40,7 +40,7 @@ class PontoServiceClass extends BaseService<'registros_ponto'> {
   async getByDate(date: string, empresaId?: string) {
     let query = supabase
       .from('registros_ponto')
-      .select('*, colaboradores(nome, cargo, empresas(nome))')
+      .select('*, colaboradores(nome, cargo, empresas(nome)), empresas(nome)')
       .eq('data', date);
 
     if (empresaId) {
@@ -60,7 +60,7 @@ class PontoServiceClass extends BaseService<'registros_ponto'> {
 
     let query = supabase
       .from('registros_ponto')
-      .select('*, colaboradores(nome, cargo, matricula, cpf, empresas(nome))')
+      .select('*, colaboradores(nome, cargo, matricula, cpf, empresas(nome)), empresas(nome)')
       .or(`competencia.eq.${month},and(data.gte.${month}-01,data.lt.${nextMonthStr})`)
       .order('data', { ascending: false });
 

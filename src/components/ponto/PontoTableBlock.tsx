@@ -25,6 +25,37 @@ const calculateWorkedHours = (row: any): string => {
   }
 };
 
+const calculateExtraAndFalta = (row: any): { extra: string, falta: string } => {
+  if (!row.entrada || !row.saida) return { extra: "-", falta: "-" };
+  try {
+    const entrada = row.entrada.includes(":") ? row.entrada.slice(0, 5).split(":") : ["0", "0"];
+    const saida = row.saida.includes(":") ? row.saida.slice(0, 5).split(":") : ["0", "0"];
+    const entradaMin = parseInt(entrada[0]) * 60 + parseInt(entrada[1]);
+    const saidaMin = parseInt(saida[0]) * 60 + parseInt(saida[1]);
+    const almoco = (row.saida_almoco && row.retorno_almoco) ?
+      (parseInt(row.retorno_almoco.slice(0, 5).split(":")[0]) * 60 + parseInt(row.retorno_almoco.slice(0, 5).split(":")[1])) -
+      (parseInt(row.saida_almoco.slice(0, 5).split(":")[0]) * 60 + parseInt(row.saida_almoco.slice(0, 5).split(":")[1])) : 0;
+
+    const diff = saidaMin - entradaMin - almoco;
+    const CARGA_MIN = 480; // 8h
+
+    let extra = "-";
+    let falta = "-";
+
+    if (diff > CARGA_MIN) {
+      const minEx = diff - CARGA_MIN;
+      extra = `${Math.floor(minEx / 60)}h${(minEx % 60).toString().padStart(2, '0')}`;
+    } else if (diff > 0 && diff < CARGA_MIN) {
+      const minFal = CARGA_MIN - diff;
+      falta = `${Math.floor(minFal / 60)}h${(minFal % 60).toString().padStart(2, '0')}`;
+    }
+
+    return { extra, falta };
+  } catch {
+    return { extra: "-", falta: "-" };
+  }
+};
+
 const formatDate = (dateStr: string | null) => {
   if (!dateStr) return "-";
   try {
@@ -85,6 +116,7 @@ export const PontoTableBlock = ({ monthLabel, rows }: PontoTableBlockProps) => {
         <tbody>
           {rows.map((row: any) => {
             const isSelected = kind === "colaborador" && selectedId === row.colaborador_id;
+            const extraEFalta = (row.entrada && row.saida && !row.hora_extra && !row.falta) ? calculateExtraAndFalta(row) : { extra: row.hora_extra || "-", falta: row.falta || "-" };
             return (
               <tr
                 key={row.id}
@@ -117,15 +149,15 @@ export const PontoTableBlock = ({ monthLabel, rows }: PontoTableBlockProps) => {
                 <td className="px-2 py-2 text-center font-display font-medium">
                   {row.horas_trabalhadas || (row.entrada && row.saida ? calculateWorkedHours(row) : "-")}
                 </td>
-                <td className="px-2 py-2 text-center text-muted-foreground">{row.hora_extra || "-"}</td>
+                <td className="px-2 py-2 text-center text-muted-foreground">{extraEFalta.extra}</td>
                 <td className="px-2 py-2 text-center">
                   <span className={cn(
                     "text-[10px] px-1.5 py-0.5 rounded",
-                    row.falta?.toLowerCase().includes("sim") || row.falta?.toLowerCase().includes("true")
+                    extraEFalta.falta !== "-" || row.falta?.toLowerCase().includes("sim") || row.falta?.toLowerCase().includes("true")
                       ? "bg-destructive-soft text-destructive"
                       : "text-muted-foreground"
                   )}>
-                    {row.falta || "-"}
+                    {extraEFalta.falta}
                   </span>
                 </td>
                 <td className="px-2 py-2 text-center text-muted-foreground">{row.atraso || "-"}</td>

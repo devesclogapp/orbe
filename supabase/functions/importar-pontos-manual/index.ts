@@ -311,7 +311,7 @@ serve(async (req) => {
 
       pointRecords.push({
         tenant_id: tenantId,
-        importacao_id: historico.id,
+        lote_id: historico.id,
         colaborador_id: collab?.id ?? null,
         empresa_id: targetEmpresaId,
         data: dataStr,
@@ -340,7 +340,7 @@ serve(async (req) => {
 
     // 8. Inserir registros em lote
     if (pointRecords.length > 0) {
-      const { error: insertError } = await supabase.from('registros_ponto').insert(pointRecords)
+      const { error: insertError } = await supabase.from('registros_ponto').upsert(pointRecords, { onConflict: 'colaborador_id,data' })
       if (insertError) {
         console.error('[importar-pontos-manual] Erro ao inserir registros:', insertError)
         // Atualizar histórico com erro

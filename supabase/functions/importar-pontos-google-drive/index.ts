@@ -334,7 +334,7 @@ serve(async (req) => {
 
       pointRecords.push({
         tenant_id: tenantId,
-        importacao_id: historico.id,
+        lote_id: historico.id,
         execution_id: execution_id,
         colaborador_id: collab?.id,
         empresa_id: targetEmpresaId,
@@ -364,7 +364,7 @@ serve(async (req) => {
 
     // 6. Bulk Insert Points
     if (pointRecords.length > 0) {
-      const { error: insertError } = await supabase.from('registros_ponto').insert(pointRecords)
+      const { error: insertError } = await supabase.from('registros_ponto').upsert(pointRecords, { onConflict: 'colaborador_id,data' })
       if (insertError) throw insertError
     }
 

@@ -189,7 +189,7 @@ serve(async (req) => {
        }
     }
 
-    const registrosParaSalvar = [];
+    const registrosMap = new Map();
 
     // --- PASSO 2: MONTAR OS REGISTROS DE PONTO (AGORA TOTALMENTE VINCULADOS) ---
     for (const item of items) {
@@ -202,7 +202,7 @@ serve(async (req) => {
 
       const pointBase = {
         tenant_id: finalTenantId, // Importante: Prevenindo data-leak e mantendo padronização
-        importacao_id: importacaoId,
+        lote_id: importacaoId,
         data: item.data,
         competencia: item.data ? item.data.slice(0, 7) : null,
         entrada: item.entrada,
@@ -216,11 +216,35 @@ serve(async (req) => {
         matricula_colaborador: item.pessoa_matricula,
         empresa_nome: item.empresa_nome || item.empresa || null,
         colaborador_id: matchedColab ? matchedColab.id : null,
+        horas_trabalhadas: item.horas_trabalhadas || item.horas || null,
+        hora_extra: item.hora_extra || item.extras || null,
+        falta: item.falta || null,
+        atraso: item.atraso || null,
+        observacoes: item.observacoes || item.obs || null,
         inconsistencias: matchedColab ? null : "Colaborador falhou ao ser inserido na base automática."
       };
 
-      registrosParaSalvar.push(pointBase);
+      // Garantir deduplicação no mesmo lote para evitar "ON CONFLICT DO UPDATE command cannot affect row a second time"
+      const uniqueKey = `${pointBase.tenant_id}_${pointBase.data}_${pointBase.colaborador_id || pointBase.matricula_colaborador || pointBase.nome_colaborador}`;
+      
+      const existingRecord = registrosMap.get(uniqueKey);
+      let mergedPoint = pointBase;
+      if (existingRecord) {
+         // Mesclar marcações caso a API mande a mesma data quebrada em multiplas entradas do JSON
+         mergedPoint = {
+             ...existingRecord,
+             ...pointBase,
+             entrada: pointBase.entrada || existingRecord.entrada,
+             saida_almoco: pointBase.saida_almoco || existingRecord.saida_almoco,
+             retorno_almoco: pointBase.retorno_almoco || existingRecord.retorno_almoco,
+             saida: pointBase.saida || existingRecord.saida
+         };
+      }
+      
+      registrosMap.set(uniqueKey, mergedPoint);
     }
+
+    const registrosParaSalvar = Array.from(registrosMap.values());
 
     console.log(`[LOG] Pontos Prontos: ${registrosParaSalvar.length} (Inconsistentes inevitáveis: ${registrosParaSalvar.filter(r => !r.colaborador_id).length})`);
 
@@ -230,7 +254,7 @@ serve(async (req) => {
       
       const { error: upsertError } = await supabase
           .from('registros_ponto')
-          .upsert(registrosParaSalvar, { onConflict: 'tenant_id,data,colaborador_id' }); // Razoável assumir unicidade diária p/ pessoa
+          .upsert(registrosParaSalvar, { onConflict: 'colaborador_id,data' }); // Razoável assumir unicidade diária p/ pessoa
 
       if (upsertError) {
         console.error("[ERROR] Erro upsert de registros_ponto: ", upsertError.message);
