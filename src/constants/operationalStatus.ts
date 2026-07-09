@@ -13,7 +13,8 @@ export type OperationalStatus =
   | 'ERRO'
   | 'CANCELADO'
   | 'REPROCESSANDO'
-  | 'REPROCESSADO';
+  | 'REPROCESSADO'
+  | 'PENDENTE';
 
 interface StatusConfig {
   label: string;
@@ -26,6 +27,14 @@ interface StatusConfig {
 }
 
 export const OPERATIONAL_STATUS_CONFIG: Record<OperationalStatus, StatusConfig> = {
+  PENDENTE: {
+    label: 'pendente',
+    description: 'Aguardando processamento ou ação.',
+    color: 'text-slate-500 font-medium',
+    bg: 'bg-orange-50',
+    variant: 'secondary',
+    opacity: 'opacity-100'
+  },
   RECEBIDO: {
     label: '🟡 Em análise RH',
     description: 'Arquivo ou registro recebido, aguardando início da validação.',

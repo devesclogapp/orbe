@@ -1,6 +1,8 @@
 import { useSelection } from "@/contexts/SelectionContext";
 import { cn } from "@/lib/utils";
 
+import { Link } from "react-router-dom";
+import { ExternalLink } from "lucide-react";
 import { StatusChip } from "../painel/StatusChip";
 import { getOperationalStatus } from "@/constants/operationalStatus";
 import { Badge } from "../ui/badge";
@@ -99,11 +101,11 @@ export const PontoTableBlock = ({ monthLabel, rows }: PontoTableBlockProps) => {
         <thead className="esc-table-header">
           <tr className="text-center font-display text-[11px]">
             <th className="px-2 py-2 font-semibold">Data</th>
-            <th className="px-2 py-2 font-semibold">Empresa</th>
-            <th className="px-2 py-2 font-semibold text-left">Colaborador</th>
             <th className="px-2 py-2 font-semibold">Matrícula</th>
+            <th className="px-2 py-2 font-semibold">Empresa</th>
+            <th className="px-2 py-2 font-semibold text-center">Colaborador</th>
             <th className="px-2 py-2 font-semibold">CPF</th>
-            <th className="px-2 py-2 font-semibold text-left">Cargo</th>
+            <th className="px-2 py-2 font-semibold text-center">Cargo</th>
             <th className="px-2 py-2 font-semibold">Entrada</th>
             <th className="px-2 py-2 font-semibold">S. Almoço</th>
             <th className="px-2 py-2 font-semibold">Retorno</th>
@@ -114,9 +116,8 @@ export const PontoTableBlock = ({ monthLabel, rows }: PontoTableBlockProps) => {
             <th className="px-2 py-2 font-semibold">Atraso</th>
             <th className="px-2 py-2 font-semibold">Status</th>
             <th className="px-2 py-2 font-semibold">Proc. RH</th>
-            <th className="px-2 py-2 font-semibold">Comp.</th>
             <th className="px-2 py-2 font-semibold">Origem</th>
-            <th className="px-2 py-2 font-semibold text-left">Obs</th>
+            <th className="px-2 py-2 font-semibold text-center">Obs</th>
           </tr>
         </thead>
         <tbody>
@@ -135,32 +136,60 @@ export const PontoTableBlock = ({ monthLabel, rows }: PontoTableBlockProps) => {
                 )}
               >
                 <td className="px-2 py-2 text-center text-foreground whitespace-nowrap">{formatDate(row.data)}</td>
-                <td className="px-2 py-2 text-center text-muted-foreground max-w-[100px] truncate">{getRelationField(row.empresas, 'nome') || row.empresa_nome || "-"}</td>
-                <td className="px-2 py-2 text-left text-foreground font-medium max-w-[140px] truncate">
-                  {getRelationField(row.colaboradores, 'nome') || row.nome_colaborador || "-"}
-                </td>
                 <td className="px-2 py-2 text-center text-muted-foreground font-mono text-[10px]">
                   {row.matricula_colaborador || getRelationField(row.colaboradores, 'matricula') || "-"}
+                </td>
+                <td className="px-2 py-2 text-center text-muted-foreground min-w-[140px] whitespace-normal leading-tight">{getRelationField(row.empresas, 'nome') || row.empresa_nome || "-"}</td>
+                <td className="px-2 py-2 text-center text-foreground font-medium min-w-[200px] whitespace-normal leading-tight">
+                  <div className="flex items-start justify-center gap-1.5 group/colab">
+                    <span className="mt-0.5">{getRelationField(row.colaboradores, 'nome') || row.nome_colaborador || "-"}</span>
+                    {(row.colaborador_id || getRelationField(row.colaboradores, 'cpf') || row.cpf_colaborador || row.matricula_colaborador) && (
+                      <Link
+                        to={`/colaboradores?search=${(row.cpf_colaborador || getRelationField(row.colaboradores, 'cpf') || row.matricula_colaborador || "").replace(/\D/g, '')}`}
+                        className="opacity-0 group-hover/colab:opacity-100 transition-opacity text-muted-foreground hover:text-primary mt-0.5 shrink-0"
+                        title="Ir para cadastro do colaborador"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                      </Link>
+                    )}
+                  </div>
                 </td>
                 <td className="px-2 py-2 text-center text-muted-foreground font-mono text-[10px]">
                   {row.cpf_colaborador || getRelationField(row.colaboradores, 'cpf') || "-"}
                 </td>
-                <td className="px-2 py-2 text-left text-muted-foreground max-w-[100px] truncate">
+                <td className="px-2 py-2 text-center text-muted-foreground max-w-[100px] truncate">
                   {getRelationField(row.colaboradores, 'cargo') || row.cargo_colaborador || "-"}
                 </td>
                 <td className="px-2 py-2 text-center text-foreground font-mono">{row.entrada ? row.entrada.slice(0, 5) : "-"}</td>
                 <td className="px-2 py-2 text-center text-muted-foreground font-mono">{row.saida_almoco ? row.saida_almoco.slice(0, 5) : "-"}</td>
                 <td className="px-2 py-2 text-center text-muted-foreground font-mono">{row.retorno_almoco ? row.retorno_almoco.slice(0, 5) : "-"}</td>
                 <td className="px-2 py-2 text-center text-foreground font-mono">{row.saida ? row.saida.slice(0, 5) : "-"}</td>
-                <td className="px-2 py-2 text-center font-display font-medium">
-                  {row.horas_trabalhadas || (row.entrada && row.saida ? calculateWorkedHours(row) : "-")}
-                </td>
-                <td className="px-2 py-2 text-center text-muted-foreground">{extraEFalta.extra}</td>
                 <td className="px-2 py-2 text-center">
                   <span className={cn(
-                    "text-[10px] px-1.5 py-0.5 rounded",
-                    extraEFalta.falta !== "-" || row.falta?.toLowerCase().includes("sim") || row.falta?.toLowerCase().includes("true")
-                      ? "bg-destructive-soft text-destructive"
+                    "text-[10px] px-1.5 py-0.5 rounded font-mono",
+                    (row.horas_trabalhadas || (row.entrada && row.saida ? calculateWorkedHours(row) : "-")) !== "-"
+                      ? "bg-slate-100 text-slate-700 font-medium"
+                      : "text-muted-foreground"
+                  )}>
+                    {row.horas_trabalhadas || (row.entrada && row.saida ? calculateWorkedHours(row) : "-")}
+                  </span>
+                </td>
+                <td className="px-2 py-2 text-center">
+                  <span className={cn(
+                    "text-[10px] px-1.5 py-0.5 rounded font-mono",
+                    extraEFalta.extra !== "-"
+                      ? "bg-sky-100 text-slate-700 font-medium"
+                      : "text-muted-foreground"
+                  )}>
+                    {extraEFalta.extra}
+                  </span>
+                </td>
+                <td className="px-2 py-2 text-center">
+                  <span className={cn(
+                    "text-[10px] px-1.5 py-0.5 rounded font-mono",
+                    extraEFalta.falta !== "-" || String(row.falta || "").toLowerCase().includes("sim") || String(row.falta || "").toLowerCase().includes("true")
+                      ? "bg-red-100 text-slate-700 font-medium"
                       : "text-muted-foreground"
                   )}>
                     {extraEFalta.falta}
@@ -183,13 +212,10 @@ export const PontoTableBlock = ({ monthLabel, rows }: PontoTableBlockProps) => {
                     {getOperationalStatus(row.status_processamento).label}
                   </Badge>
                 </td>
-                <td className="px-2 py-2 text-center font-mono text-[10px] text-muted-foreground">
-                  {row.competencia || String(row.data || "").slice(0, 7) || "-"}
-                </td>
                 <td className="px-2 py-2 text-center text-muted-foreground">
                   {row.origem || "importacao"}
                 </td>
-                <td className="px-2 py-2 text-left text-muted-foreground max-w-[80px] truncate" title={row.observacoes || ""}>
+                <td className="px-2 py-2 text-center text-muted-foreground max-w-[80px] truncate" title={row.observacoes || ""}>
                   {row.observacoes || "-"}
                 </td>
               </tr>
@@ -197,7 +223,7 @@ export const PontoTableBlock = ({ monthLabel, rows }: PontoTableBlockProps) => {
           })}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={19} className="p-12 text-center text-muted-foreground italic">Nenhum registro encontrado para {monthLabel}.</td>
+              <td colSpan={18} className="p-12 text-center text-muted-foreground italic">Nenhum registro encontrado para {monthLabel}.</td>
             </tr>
           )}
         </tbody>

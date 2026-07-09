@@ -122,10 +122,12 @@ export const ImportacoesTimeline: React.FC<ImportacoesTimelineProps> = ({ empres
         }
     });
 
-    const filtered = importacoes.filter((i: any) =>
-        i.nome_arquivo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        i.empresas?.nome?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filtered = importacoes.filter((i: any) => {
+        if (!searchTerm) return true;
+        const term = searchTerm.toLowerCase();
+        return (i.nome_arquivo || "").toLowerCase().includes(term) ||
+            (i.empresas?.nome || "").toLowerCase().includes(term);
+    });
 
     const toggleSelectAll = () => {
         if (selectedIds.length === filtered.length && filtered.length > 0) {
