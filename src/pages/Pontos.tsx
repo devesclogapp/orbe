@@ -9,6 +9,7 @@ import {
   Clock,
   FileUp,
   Loader2,
+  Search,
   Trash2,
   Upload,
   Users,
@@ -38,7 +39,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import {
   ColaboradorService,
@@ -172,8 +176,10 @@ const Pontos = () => {
   const [selectedMonthNumber, setSelectedMonthNumber] = useState<string>(() => {
     return localStorage.getItem("orbe_pontos_month") || format(new Date(), "MM");
   });
+  const [selectedDayDate, setSelectedDayDate] = useState<Date | undefined>(undefined);
   const [selectedEmpresaId, setSelectedEmpresaId] = useState<string>("all");
   const [monthManuallyChanged, setMonthManuallyChanged] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
   const [clearModalOpen, setClearModalOpen] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [lastImportSummary, setLastImportSummary] = useState<{
@@ -187,6 +193,7 @@ const Pontos = () => {
     () => new Date(`${selectedMonth}-01T12:00:00`),
     [selectedMonth],
   );
+
   const monthLabel = format(selectedDate, "MMMM/yyyy", { locale: ptBR });
   const monthLabelCapitalized =
     monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1);
@@ -242,7 +249,7 @@ const Pontos = () => {
     localStorage.setItem("orbe_pontos_month", selectedMonthNumber);
   }, [selectedYear, selectedMonthNumber]);
 
-  const { data: rows = [], isLoading: isLoadingRows } = useQuery<any[]>({
+  const { data: rawRows = [], isLoading: isLoadingRows } = useQuery<any[]>({
     queryKey: ["ponto", selectedMonth, selectedEmpresaId],
     queryFn: () =>
       PontoService.getByMonth(
@@ -251,6 +258,38 @@ const Pontos = () => {
       ),
     enabled: !!selectedEmpresaId,
   });
+
+  const rows = useMemo(() => {
+    if (!searchTerm && !selectedDayDate) return rawRows;
+    const lower = normalizeText(searchTerm || "");
+    return rawRows.filter((row) => {
+      // Day filter
+      if (selectedDayDate && row.data) {
+        const rowDateStr = row.data; // "YYYY-MM-DD" vindo do banco
+        const selectedDateStr = format(selectedDayDate, "yyyy-MM-dd");
+        if (rowDateStr !== selectedDateStr) return false;
+      }
+
+      const getRelField = (rel: any, field: string) => {
+        if (!rel) return null;
+        const obj = Array.isArray(rel) ? rel[0] : rel;
+        return obj?.[field] || null;
+      };
+
+      if (searchTerm) {
+        const colabName = normalizeText(getRelField(row.colaboradores, 'nome') || row.nome_colaborador || "");
+        const empresaName = normalizeText(getRelField(row.empresas, 'nome') || row.empresa_nome || "");
+        const matricula = normalizeText(String(row.matricula_colaborador || getRelField(row.colaboradores, 'matricula') || ""));
+        const cpf = normalizeText(String(row.cpf_colaborador || getRelField(row.colaboradores, 'cpf') || ""));
+
+        if (!colabName.includes(lower) && !empresaName.includes(lower) && !matricula.includes(lower) && !cpf.includes(lower)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [rawRows, searchTerm, selectedDayDate]);
 
   const colaboradoresUnicos = useMemo(
     () => new Set(rows.map((row) => row.colaborador_id).filter(Boolean)).size,
@@ -629,57 +668,42 @@ const Pontos = () => {
 
   return (
     <AppShell
-      title="Pontos"
+      title="Pontos CLT's"
       subtitle={`Base mensal de jornadas coletadas · ${monthLabelCapitalized}`}
     >
       <div className="space-y-6">
         <section className="esc-card p-4 md:p-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap items-center gap-2">
-              <Select
-                value={selectedYear}
-                onValueChange={(value) => {
-                  setMonthManuallyChanged(true);
-                  setSelectedYear(value);
-                }}
-              >
-                <SelectTrigger className="w-[120px] h-10 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium">
-                  <div className="flex items-center gap-2">
-                    <CalendarIcon className="h-4 w-4 text-primary" />
-                    <SelectValue placeholder="Ano" />
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  {YEAR_OPTIONS.map((year) => (
-                    <SelectItem key={year} value={year}>
-                      {year}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select
-                value={selectedMonthNumber}
-                onValueChange={(value) => {
-                  setMonthManuallyChanged(true);
-                  setSelectedMonthNumber(value);
-                }}
-              >
-                <SelectTrigger className="w-[180px] h-10 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium">
-                  <div className="flex items-center gap-2">
-                    <CalendarIcon className="h-4 w-4 text-primary" />
-                    <SelectValue placeholder="Mês" />
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  {MONTH_NAME_OPTIONS.map((month) => (
-                    <SelectItem key={month.value} value={month.value}>
-                      {month.label}
-                      {mesesComRegistros.includes(`${selectedYear}-${month.value}`) ? " ●" : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-[180px] h-10 justify-start text-left font-display font-medium border-border hover:bg-secondary",
+                      !selectedDayDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
+                    {selectedDayDate ? format(selectedDayDate, "dd/MM/yyyy") : <span className="capitalize">{monthLabel}</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={selectedDayDate}
+                    onSelect={setSelectedDayDate}
+                    initialFocus
+                    locale={ptBR}
+                    month={selectedDate}
+                    onMonthChange={(date) => {
+                      setSelectedYear(format(date, "yyyy"));
+                      setSelectedMonthNumber(format(date, "MM"));
+                      setMonthManuallyChanged(true);
+                    }}
+                  />
+                </PopoverContent>
+              </Popover>
 
               <Select value={selectedEmpresaId} onValueChange={setSelectedEmpresaId}>
                 <SelectTrigger className="w-[280px] h-10 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium">
@@ -720,14 +744,6 @@ const Pontos = () => {
               <Button variant="outline" size="sm" onClick={() => setClearModalOpen(true)}>
                 <Trash2 className="mr-2 h-4 w-4" />
                 Limpar Importação
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => navigate("/operacional/dashboard")}>
-                <Clock className="mr-2 h-4 w-4" />
-                Ver dashboard
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => navigate("/operacional/operacoes")}>
-                <FileUp className="mr-2 h-4 w-4" />
-                Ir para operações
               </Button>
             </div>
           </div>
@@ -790,11 +806,22 @@ const Pontos = () => {
                     Registros coletados nas empresas e disponibilizados como fonte operacional para o dashboard.
                   </p>
                 </div>
-                <Badge className="bg-muted text-muted-foreground">
-                  {ultimaSincronizacao
-                    ? `Última sincronização ${new Date(ultimaSincronizacao).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
-                    : "Sem sincronização"}
-                </Badge>
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar colaborador, empresa, CPF..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-[280px] pl-9"
+                    />
+                  </div>
+                  <Badge className="bg-muted text-muted-foreground">
+                    {ultimaSincronizacao
+                      ? `Última sincronização ${new Date(ultimaSincronizacao).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+                      : "Sem sincronização"}
+                  </Badge>
+                </div>
               </div>
 
               <div className="max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">

@@ -15,7 +15,7 @@ const routeMeta: RouteMeta[] = [
   { pattern: "/", label: "Dashboard", section: "Dashboard" },
 
   // Entradas / Captura
-  { pattern: "/operacional/pontos", label: "Pontos Recebidos", section: "Entradas / Captura" },
+  { pattern: "/operacional/pontos", label: "Pontos CLT's Recebidos", section: "Entradas / Captura" },
   { pattern: "/operacional/operacoes", label: "Operações Recebidas", section: "Entradas / Captura" },
   { pattern: "/operacional/diaristas", label: "Diaristas Recebidos", section: "Entradas / Captura" },
   { pattern: "/producao", label: "Lançamentos Operacionais", section: "Entradas / Captura" },

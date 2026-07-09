@@ -75,6 +75,12 @@ const formatDate = (dateStr: string | null) => {
   }
 };
 
+const getRelationField = (relation: any, field: string) => {
+  if (!relation) return null;
+  const obj = Array.isArray(relation) ? relation[0] : relation;
+  return obj?.[field] || null;
+};
+
 type PontoTableBlockProps = {
   month: string;
   monthLabel: string;
@@ -129,18 +135,18 @@ export const PontoTableBlock = ({ monthLabel, rows }: PontoTableBlockProps) => {
                 )}
               >
                 <td className="px-2 py-2 text-center text-foreground whitespace-nowrap">{formatDate(row.data)}</td>
-                <td className="px-2 py-2 text-center text-muted-foreground max-w-[100px] truncate">{row.empresas?.nome || row.empresa_nome || "-"}</td>
+                <td className="px-2 py-2 text-center text-muted-foreground max-w-[100px] truncate">{getRelationField(row.empresas, 'nome') || row.empresa_nome || "-"}</td>
                 <td className="px-2 py-2 text-left text-foreground font-medium max-w-[140px] truncate">
-                  {row.colaboradores?.nome || row.nome_colaborador || "-"}
+                  {getRelationField(row.colaboradores, 'nome') || row.nome_colaborador || "-"}
                 </td>
                 <td className="px-2 py-2 text-center text-muted-foreground font-mono text-[10px]">
-                  {row.matricula_colaborador || row.colaboradores?.matricula || "-"}
+                  {row.matricula_colaborador || getRelationField(row.colaboradores, 'matricula') || "-"}
                 </td>
                 <td className="px-2 py-2 text-center text-muted-foreground font-mono text-[10px]">
-                  {row.cpf_colaborador || "-"}
+                  {row.cpf_colaborador || getRelationField(row.colaboradores, 'cpf') || "-"}
                 </td>
                 <td className="px-2 py-2 text-left text-muted-foreground max-w-[100px] truncate">
-                  {row.colaboradores?.cargo || row.cargo_colaborador || "-"}
+                  {getRelationField(row.colaboradores, 'cargo') || row.cargo_colaborador || "-"}
                 </td>
                 <td className="px-2 py-2 text-center text-foreground font-mono">{row.entrada ? row.entrada.slice(0, 5) : "-"}</td>
                 <td className="px-2 py-2 text-center text-muted-foreground font-mono">{row.saida_almoco ? row.saida_almoco.slice(0, 5) : "-"}</td>
