@@ -93,12 +93,17 @@ export const CnabConciliacaoService = {
         const colabIds = itensPagos.map(i => i.colaborador_id).filter(Boolean);
 
         if (colabIds.length > 0) {
-          await supabase.from('lancamentos_intermitentes')
+          const { error: errLancamentos } = await supabase.from('lancamentos_intermitentes')
             .update({ status_pipeline: 'PAGO' })
             .eq('lote_fechamento_id', loteId)
             .in('colaborador_id', colabIds);
-          
-          itensPagos.forEach(i => itensConciliados.push(i.id));
+
+          if (errLancamentos) {
+            console.error(`[Baixa Financeira] Falha ao atualizar lancamentos_intermitentes para lote ${loteId}:`, errLancamentos.message);
+            // Não bloqueia os outros lotes, mas registra explicitamente
+          } else {
+            itensPagos.forEach(i => itensConciliados.push(i.id));
+          }
         }
 
         const temDivergencia = itens.some(i => i.status === 'divergente' || i.status === 'rejeitado' || i.status === 'pendente' || i.status === 'desconhecido');
@@ -106,11 +111,16 @@ export const CnabConciliacaoService = {
         const todasPagas = (lancamentosLote || []).every(f => f.status_pipeline === 'PAGO' || f.status_pipeline === 'pago');
 
         if (!temDivergencia && todasPagas) {
-           await supabase.from('intermitentes_lotes_fechamento')
-             .update({ status: 'PAGO' })
-             .eq('id', loteId);
+          const { error: errLote } = await supabase.from('intermitentes_lotes_fechamento')
+            .update({ status: 'PAGO' })
+            .eq('id', loteId);
+
+          if (errLote) {
+            console.error(`[Baixa Financeira] Falha ao atualizar lote de intermitentes ${loteId} para PAGO:`, errLote.message);
+          }
         }
       }
+
 
       // 3. Atualizar status de retorno `cnab_retorno_itens`
       if (itensConciliados.length > 0) {

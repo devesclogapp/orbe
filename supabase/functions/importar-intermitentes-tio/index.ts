@@ -197,6 +197,9 @@ serve(async (req) => {
         convocacao: baseConvocacao,
         cargo: item.cargo || rawItem.Cargo,
         departamento: depName,
+        cpf_colaborador: matchedColab?.cpf
+          ? String(matchedColab.cpf).replace(/\D/g, '')
+          : (cleanCpf || null),
         horas_trabalhadas: parseFloatSafe(item.horas_trabalhadas || rawItem['H. Trabalhadas'] || rawItem.horas_trabalhada || 0),
         horas_normais: parseFloatSafe(item.horas_normais || rawItem['H. Normais'] || rawItem.horas_normal || 0),
         he_50: parseFloatSafe(item.he_50 || rawItem['HE 50%'] || rawItem.he50 || 0),
@@ -207,6 +210,7 @@ serve(async (req) => {
         arquivo_origem: item.arquivo_origem || rootArquivoOrigem,
         status_pipeline: 'RECEBIDO'
       };
+
 
       const finalEmpresaId = matchedColab?.empresa_id || fallbackEmpresaId || null;
 
