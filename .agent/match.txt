@@ -1,0 +1,35 @@
+---2400---
+
+2395:   const colaboradoresFiltrados = useMemo(() => {
+2396:     return colaboradoresOperacionais.filter((colaborador) => {
+2397:       // 1. Text Search filtering
+2398:       const searchTerm = collaboratorSearchTerm.trim().toLowerCase();
+2399:       const matchesSearch = searchTerm === "" ||
+2400:         colaborador.nome.toLowerCase().includes(searchTerm) ||
+2401:         (colaborador.matricula || "").toLowerCase().includes(searchTerm) ||
+2402:         (colaborador.cpf || "").replace(/\D/g, "").includes(searchTerm);
+2403: 
+2404:       if (!matchesSearch) return false;
+2405: 
+2406:       // 2. Priority/Status Quick Filtering
+2407:       const matchesQuickFilters = operacionalFilters.every((filter) => {
+2408:         if (filter === "apenas_pendentes") return colaborador.status_cadastro === "pendente_complemento" || Boolean(colaborador.cadastro_provisorio);
+2409:         if (filter === "bloqueiam_aprovacao") return colaborador.bloqueiaRh;
+
+---2738---
+
+2733:                               >
+2734:                                 {colaborador.priority === "critico" ? "Crítico" : colaborador.priority === "atencao" ? "Atenção" : "OK"}
+2735:                               </Badge>
+2736:                             </td>
+2737:                             <td className="px-5 h-[56px] text-left">
+2738:                               <div className="font-semibold text-foreground">{colaborador.nome}</div>
+2739:                               <div className="text-[11px] text-muted-foreground/70 uppercase font-mono tracking-wide">
+2740:                                 Mat. {colaborador.matricula || "S/N"}
+2741:                               </div>
+2742:                             </td>
+2743:                             <td className="px-3 text-muted-foreground text-center">{colaborador.empresas?.nome || "—"}</td>
+2744:                             <td className="px-3 text-center font-medium">{getColaboradorTypeLabel(colaborador)}</td>
+2745:                             <td className="px-3 text-center font-medium">{getColaboradorContractLabel(colaborador)}</td>
+2746:                             <td className="px-3 text-center">
+2747:                               <TooltipProvider delayDuration={150}>

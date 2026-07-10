@@ -2735,7 +2735,14 @@ const CentralCadastros = () => {
                               </Badge>
                             </td>
                             <td className="px-5 h-[56px] text-left">
-                              <div className="font-semibold text-foreground">{colaborador.nome}</div>
+                              <div className="font-semibold text-foreground flex items-center justify-start gap-2">
+                                {colaborador.nome}
+                                {colaborador.is_teste && colaborador.cenario_homologacao && (
+                                  <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-200 border-purple-200 text-[10px] px-1.5 py-0.5" variant="outline">
+                                    [HML] {colaborador.cenario_homologacao}
+                                  </Badge>
+                                )}
+                              </div>
                               <div className="text-[11px] text-muted-foreground/70 uppercase font-mono tracking-wide">
                                 Mat. {colaborador.matricula || "S/N"}
                               </div>

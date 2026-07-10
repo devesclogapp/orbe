@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import * as XLSX from "https://esm.sh/xlsx"
+import { crypto } from "https://deno.land/std@0.168.0/crypto/mod.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -8,7 +9,13 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+async function sha256Hex(message: string): Promise<string> {
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map(b => b.toString(16).padStart(2, "0"))
+    .join("");
+}
 
 const normalizeText = (value: string) =>
   value
@@ -88,25 +95,13 @@ const getImportRowValue = (row: Record<string, unknown>, ...columns: string[]) =
   return String(entry?.[1] ?? "").trim();
 };
 
-const generatePlaceholderCnpj = (): string => {
-  const ts = Date.now().toString().slice(-6);
-  const rand = String(Math.floor(Math.random() * 1000)).padStart(3, "0");
-  return `00000${ts}${rand}`;
-};
-
-// ─── Handler ─────────────────────────────────────────────────────────────────
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    // 1. Parse multipart/form-data
     const contentType = req.headers.get('content-type') || ''
     if (!contentType.includes('multipart/form-data')) {
-      return new Response(
-        JSON.stringify({ success: false, message: 'Content-Type deve ser multipart/form-data' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-      )
+      return new Response(JSON.stringify({ success: false, message: 'Content-Type deve ser multipart/form-data' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 })
     }
 
     const formData = await req.formData()
@@ -115,109 +110,110 @@ serve(async (req) => {
     const nome_arquivo = (formData.get('nome_arquivo') as string) || file?.name || 'importacao_manual.xlsx'
 
     if (!file) {
-      return new Response(
-        JSON.stringify({ success: false, message: 'Campo "arquivo" é obrigatório.' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-      )
+      return new Response(JSON.stringify({ success: false, message: 'Campo "arquivo" é obrigatório.' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 })
     }
 
-    // 2. Supabase client com service role (para bypass de RLS)
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
-
-    // 3. Resolver tenant a partir do JWT do usuário
+    const supabase = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '')
+    
     let tenantId: string | null = null
     const authHeader = req.headers.get('Authorization')
     if (authHeader) {
       const { data: { user } } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''))
       if (user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('tenant_id')
-          .eq('user_id', user.id)
-          .single()
+        const { data: profile } = await supabase.from('profiles').select('tenant_id').eq('user_id', user.id).single()
         tenantId = profile?.tenant_id ?? null
       }
     }
 
-    // Fallback: resolver tenant via empresa_id
     if (!tenantId && empresa_id) {
-      const { data: emp } = await supabase
-        .from('empresas')
-        .select('tenant_id')
-        .eq('id', empresa_id)
-        .single()
+      const { data: emp } = await supabase.from('empresas').select('tenant_id').eq('id', empresa_id).single()
       tenantId = emp?.tenant_id ?? null
     }
 
     if (!tenantId) {
-      return new Response(
-        JSON.stringify({ success: false, message: 'Tenant não identificado. Por favor, faça login novamente.' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
-      )
+      return new Response(JSON.stringify({ success: false, message: 'Tenant não identificado.' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 })
     }
 
-    // 4. Registrar histórico de importação
-    const { data: historico, error: histError } = await supabase
-      .from('historico_importacoes')
-      .insert({
-        tenant_id: tenantId,
-        empresa_id: empresa_id || null,
-        origem: 'manual',
-        nome_arquivo,
-        tipo_arquivo: file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        status: 'VALIDANDO',
-        quantidade_registros: 0,
-      })
-      .select()
-      .single()
-
-    if (histError) {
-      console.error('[importar-pontos-manual] Erro ao registrar histórico:', histError)
-      throw histError
-    }
-
-    // 5. Parsear arquivo Excel/CSV
+    // 5. Parsear arquivo
     const arrayBuffer = await file.arrayBuffer()
     let workbook: any
     try {
       workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array' })
-    } catch (err) {
+    } catch {
       const text = new TextDecoder().decode(arrayBuffer).trim()
       const base64Regex = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/
-      workbook = base64Regex.test(text)
-        ? XLSX.read(text, { type: 'base64' })
-        : XLSX.read(text, { type: 'string' })
+      workbook = base64Regex.test(text) ? XLSX.read(text, { type: 'base64' }) : XLSX.read(text, { type: 'string' })
     }
 
     const sheetName = workbook.SheetNames[0]
     const worksheet = workbook.Sheets[sheetName]
-    const jsonRows = (XLSX.utils.sheet_to_json(worksheet, { defval: "", raw: false }) as Record<string, any>[])
-      .filter(row => Object.values(row).some(v => String(v ?? "").trim() !== ""))
+    const jsonRows = (XLSX.utils.sheet_to_json(worksheet, { defval: "", raw: false }) as Record<string, any>[]).filter(row => Object.values(row).some(v => String(v ?? "").trim() !== ""));
+    const schemaVersion = 1;
 
-    // 6. Carregar dados de resolução (empresas e colaboradores do tenant)
-    const [{ data: empresasList }, { data: colaboradoresList }] = await Promise.all([
-      supabase.from('empresas').select('id, nome, tenant_id').eq('tenant_id', tenantId),
-      supabase.from('colaboradores').select('id, empresa_id, nome, cpf, matricula, cargo').eq('tenant_id', tenantId),
-    ])
+    // Criar histórico
+    const { data: historico, error: histError } = await supabase.from('historico_importacoes').insert({
+        tenant_id: tenantId,
+        empresa_id: empresa_id || null,
+        origem: 'manual',
+        workflow: 'importar-pontos-manual',
+        nome_arquivo,
+        tipo_arquivo: file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        status: 'VALIDANDO',
+        quantidade_recebida: jsonRows.length,
+      }).select().single();
 
-    const empresaCache = new Map<string, any>(
-      (empresasList || []).map(e => [normalizeCompanyText(e.nome), e])
-    )
-    const colabCache = new Map<string, any>()
-    ;(colaboradoresList || []).forEach(c => {
-      if (c.cpf) colabCache.set(`cpf:${String(c.cpf).replace(/\D/g, '')}`, c)
-      if (c.matricula && c.empresa_id) colabCache.set(`mat:${c.matricula}:${c.empresa_id}`, c)
-      if (c.nome && c.empresa_id) colabCache.set(`nome:${normalizeText(c.nome)}:${c.empresa_id}`, c)
-    })
+    if (histError) throw histError;
+    const importacaoId = historico.id;
 
-    const pointRecords: any[] = []
-    let novosColabs = 0
-    let novasEmpresas = 0
+    // Dicionarios de Cache
+    const cpfs = new Set<string>();
+    const matriculas = new Set<string>();
+    const nomes = new Set<string>();
+    
+    for (const row of jsonRows) {
+        const cpf = getImportRowValue(row, "CPF", "DOCUMENTO");
+        const matricula = getImportRowValue(row, "MATRICULA", "MATRÍCULA", "CODIGO", "CÓDIGO");
+        const nome = getImportRowValue(row, "COLABORADOR", "NOME", "FUNCIONÁRIO", "FUNCIONARIO", "TRABALHADOR");
+        
+        if (cpf) cpfs.add(String(cpf).replace(/\D/g, ''));
+        if (matricula) matriculas.add(String(matricula).trim());
+        if (nome) nomes.add(normalizeText(nome));
+    }
 
-    // 7. Processar linhas da planilha
+    let colabQuery = supabase.from('colaboradores').select('id, nome, matricula, cpf, empresa_id').eq('tenant_id', tenantId);
+    let colabFilter = [];
+    if (cpfs.size > 0) colabFilter.push(`cpf.in.(${Array.from(cpfs).join(',')})`);
+    if (matriculas.size > 0) colabFilter.push(`matricula.in.(${Array.from(matriculas).join(',')})`);
+    if (nomes.size > 0) colabFilter.push(`nome.in.(${Array.from(nomes).map(n => '"' + n + '"').join(',')})`);
+    if (colabFilter.length > 0) colabQuery = colabQuery.or(colabFilter.join(','));
+
+    const [{ data: dbColabs }, { data: dbEmpresas }] = await Promise.all([
+      colabQuery,
+      supabase.from('empresas').select('id, nome').eq('tenant_id', tenantId),
+    ]);
+
+    const colabMap = new Map();
+    if (dbColabs) {
+       dbColabs.forEach(c => {
+         if (c.cpf) colabMap.set(`CPF_${String(c.cpf).replace(/\D/g, '')}`, c);
+         if (c.matricula) colabMap.set(`MAT_${String(c.matricula).trim()}`, c);
+         if (c.nome) colabMap.set(`NOME_${normalizeText(c.nome)}`, c);
+       });
+    }
+
+    const uniqueEmpresasMap = new Map();
+    if (dbEmpresas) {
+      dbEmpresas.forEach(e => {
+        if (e.nome) uniqueEmpresasMap.set(normalizeCompanyText(e.nome), e);
+      });
+    }
+
+    const registrosMap = new Map();
+    let novosColabs = 0;
+    let novasEmpresas = 0;
+    let quantidadeIgnorada = 0;
+    let quantidadeInconsistente = 0;
+
     for (const row of jsonRows) {
       const empresaNome = getImportRowValue(row, "EMPRESA", "EMPRESAS", "RAZÃO SOCIAL", "RAZAO SOCIAL", "CLIENTE", "NOME DA EMPRESA")
       const colaboradorNome = getImportRowValue(row, "COLABORADOR", "NOME", "FUNCIONÁRIO", "FUNCIONARIO", "TRABALHADOR", "NOME DO COLABORADOR", "NOME DO FUNCIONÁRIO")
@@ -226,161 +222,190 @@ serve(async (req) => {
       const cargo = getImportRowValue(row, "CARGO", "FUNÇÃO", "FUNCAO", "CARGO DO COLABORADOR")
       const dataStr = parseIsoDateLike(getImportRowValue(row, "DATA", "DATA DO PONTO", "DATA DE REGISTRO"))
 
-      // Pular linha se não tiver colaborador ou data
-      if (!colaboradorNome || !dataStr) continue
+      if (!colaboradorNome || !dataStr) {
+          quantidadeIgnorada++;
+          continue;
+      }
 
-      // Resolver empresa
-      let targetEmpresaId = (empresa_id && empresa_id !== '') ? empresa_id : null
-      if (!targetEmpresaId && empresaNome) {
-        const normName = normalizeCompanyText(empresaNome)
-        let emp = empresaCache.get(normName)
-        if (!emp) {
-          // Tentar correspondência parcial
-          emp = (empresasList || []).find(e => {
-            const n = normalizeCompanyText(e.nome)
-            return n.includes(normName) || normName.includes(n)
-          })
-        }
-        if (!emp) {
-          // Criar empresa provisória
-          const { data: newEmp, error: errNewEmp } = await supabase.from('empresas').insert({
-            tenant_id: tenantId,
-            nome: empresaNome,
-            cnpj: generatePlaceholderCnpj(),
-            status: 'ativa',
-            origem: 'ponto',
-            cadastro_provisorio: true,
-            unidade: 'Não informado',
-            cidade: 'Não informado',
-          }).select().single()
-          if (!errNewEmp) {
-            emp = newEmp
-            empresaCache.set(normName, emp)
-            novasEmpresas++
+      const normCmpName = normalizeCompanyText(empresaNome || "Empresa Desconhecida API");
+      let matchedEmpresaId = empresa_id || null;
+
+      if (!matchedEmpresaId && empresaNome) {
+         if (uniqueEmpresasMap.has(normCmpName)) {
+             matchedEmpresaId = uniqueEmpresasMap.get(normCmpName).id;
+         } else {
+             const ts = Date.now().toString().slice(-6);
+             const rand = String(Math.floor(Math.random() * 1000)).padStart(3, "0");
+             
+             const { data: newEmp } = await supabase.from('empresas')
+                .insert({
+                  tenant_id: tenantId,
+                  nome: empresaNome,
+                  origem: 'manual',
+                  cnpj: `00000${ts}${rand}`,
+                  status: 'ativa',
+                  cadastro_provisorio: true,
+                  unidade: 'Não informado',
+                  cidade: 'Não informado',
+                })
+                .select('id').single();
+                
+             if (newEmp) {
+               matchedEmpresaId = newEmp.id;
+               uniqueEmpresasMap.set(normCmpName, { id: newEmp.id });
+               novasEmpresas++;
+             }
+         }
+      }
+
+      const rawCpf = cpf ? String(cpf).replace(/\D/g, '') : null;
+      const matQuery = matricula ? `MAT_${String(matricula).trim()}` : null;
+      const cpfQuery = rawCpf ? `CPF_${rawCpf}` : null;
+      const nomeQuery = colaboradorNome ? `NOME_${normalizeText(colaboradorNome)}` : null;
+
+      let matchedColab = null;
+      let matchedBy = null;
+
+      if (cpfQuery && colabMap.has(cpfQuery)) { matchedColab = colabMap.get(cpfQuery); matchedBy = 'cpf'; }
+      else if (matQuery && colabMap.has(matQuery)) { matchedColab = colabMap.get(matQuery); matchedBy = 'matricula'; }
+      else if (nomeQuery && colabMap.has(nomeQuery)) { matchedColab = colabMap.get(nomeQuery); matchedBy = 'nome'; }
+
+      if (!matchedColab) {
+          const possuiIdentificadorForte = (cpfQuery || matQuery);
+          if (possuiIdentificadorForte) {
+              const { data: newCol } = await supabase.from('colaboradores').insert({
+                  tenant_id: tenantId,
+                  empresa_id: matchedEmpresaId || null, 
+                  nome: colaboradorNome.trim(),
+                  cpf: rawCpf,
+                  matricula: matricula ? String(matricula).trim() : null,
+                  cargo: cargo || null,
+                  tipo_colaborador: 'clt',
+                  regime_trabalho: 'CLT',
+                  modelo_calculo: 'CLT_MENSAL',
+                  tipo_contrato: 'mensal',
+                  status: 'pendente',
+                  status_cadastro: 'pendente_complemento',
+                  origem: 'manual',
+                  origem_cadastro: 'ponto_importado',
+                  origem_detalhe: `Self-healing manual schema_version=${schemaVersion}`,
+                  cadastro_provisorio: true,
+              }).select('id, nome, matricula, cpf, empresa_id').single();
+
+              if (newCol) {
+                  matchedColab = newCol;
+                  matchedBy = 'self_healing';
+                  novosColabs++;
+                  if (cpfQuery) colabMap.set(cpfQuery, newCol);
+                  if (matQuery) colabMap.set(matQuery, newCol);
+                  if (nomeQuery) colabMap.set(nomeQuery, newCol);
+              }
+          } else {
+             quantidadeInconsistente++;
           }
-        }
-        targetEmpresaId = emp?.id ?? null
       }
 
-      // Resolver colaborador
-      const cpfNorm = cpf ? String(cpf).replace(/\D/g, '') : null
-      const nomeNorm = normalizeText(colaboradorNome)
-      const lookupKeys = [
-        cpfNorm ? `cpf:${cpfNorm}` : null,
-        matricula && targetEmpresaId ? `mat:${matricula}:${targetEmpresaId}` : null,
-        nomeNorm && targetEmpresaId ? `nome:${nomeNorm}:${targetEmpresaId}` : null,
-      ].filter(Boolean)
+      const idenForte = rawCpf || (matricula ? String(matricula).trim() : normalizeText(colaboradorNome));
+      const hashStr = `${tenantId}_${matchedEmpresaId ?? 'null'}_manual_${idenForte}_${dataStr}`;
+      const chaveImportacao = await sha256Hex(hashStr);
 
-      let collab = lookupKeys.map(k => colabCache.get(k!)).find(Boolean)
-
-      if (!collab) {
-        // Criar pré-cadastro
-        const { data: newCollab, error: errNewCollab } = await supabase.from('colaboradores').insert({
-          tenant_id: tenantId,
-          empresa_id: targetEmpresaId,
-          nome: colaboradorNome,
-          cpf: cpfNorm,
-          matricula: matricula || null,
-          cargo: cargo || null,
-          tipo_contrato: 'mensal',
-          modelo_calculo: 'CLT_MENSAL',
-          regime_trabalho: 'CLT',
-          tipo_colaborador: 'clt',
-          status: 'pendente',
-          status_cadastro: 'pendente_complemento',
-          origem: 'ponto',
-          origem_cadastro: 'ponto_importado',
-          cadastro_provisorio: true,
-        }).select().single()
-
-        if (!errNewCollab) {
-          collab = newCollab
-          novosColabs++
-          if (cpfNorm) colabCache.set(`cpf:${cpfNorm}`, collab)
-          if (matricula && targetEmpresaId) colabCache.set(`mat:${matricula}:${targetEmpresaId}`, collab)
-          if (nomeNorm && targetEmpresaId) colabCache.set(`nome:${nomeNorm}:${targetEmpresaId}`, collab)
-        }
-      }
-
-      // Montar registro de ponto
       const entrada = parseTimeLike(getImportRowValue(row, "ENTRADA", "INICIO", "INÍCIO", "HORA DE ENTRADA"))
       const saidaAlmoco = parseTimeLike(getImportRowValue(row, "SAIDA ALMOCO", "SAÍDA ALMOÇO", "SAIDA INTERVALO"))
       const retornoAlmoco = parseTimeLike(getImportRowValue(row, "RETORNO ALMOCO", "RETORNO ALMOÇO", "RETORNO INTERVALO"))
       const saida = parseTimeLike(getImportRowValue(row, "SAIDA", "FIM", "SAÍDA", "HORA DE SAÍDA"))
-      const status = normalizeStatus(getImportRowValue(row, "STATUS", "SITUAÇÃO", "SITUACAO"))
+      const rowStatus = normalizeStatus(getImportRowValue(row, "STATUS", "SITUAÇÃO", "SITUACAO"))
 
-      pointRecords.push({
+      const pointBase = {
         tenant_id: tenantId,
-        lote_id: historico.id,
-        colaborador_id: collab?.id ?? null,
-        empresa_id: targetEmpresaId,
+        importacao_id: importacaoId,
+        chave_importacao: chaveImportacao,
+        colaborador_id: matchedColab?.id ?? null,
+        empresa_id: matchedEmpresaId,
         data: dataStr,
         competencia: dataStr.slice(0, 7),
         entrada,
         saida_almoco: saidaAlmoco,
         retorno_almoco: retornoAlmoco,
         saida,
-        status,
+        status: matchedColab ? rowStatus : 'inconsistente',
         status_processamento: 'pendente',
-        // Campos brutos para auditoria
         nome_colaborador: colaboradorNome,
         empresa_nome: empresaNome || null,
         matricula_colaborador: matricula || null,
-        cpf_colaborador: cpf || null,
+        cpf_colaborador: rawCpf,
         cargo_colaborador: cargo || null,
         horas_trabalhadas: getImportRowValue(row, "HORAS TRABALHADAS", "HORAS TRAB", "HR TRABALHADAS") || null,
         hora_extra: getImportRowValue(row, "HORA EXTRA", "HORAS EXTRAS", "HE") || null,
         falta: getImportRowValue(row, "FALTA", "FALTAS") || null,
         atraso: getImportRowValue(row, "ATRASO", "ATRASOS", "ATRASO MINUTOS") || null,
-        observacoes: getImportRowValue(row, "OBSERVACOES", "OBSERVAÇÕES", "OBS", "OBSERVAÇÃO") || null,
-        // Origem sempre 'importacao' para compatibilidade com deleteImported
-        origem: 'importacao',
-      })
+        observacoes: getImportRowValue(row, "OBSERVACOES", "OBSERVAÇÕES", "OBS") || JSON.stringify({ matched_by: matchedBy, schema: schemaVersion }),
+        origem: 'manual', // mantém manual
+        inconsistencias: matchedColab ? null : "Registro recusou Self-Healing por falta de identificador forte (CPF/Matrícula)."
+      };
+
+      const existingRecord = registrosMap.get(chaveImportacao);
+      let mergedPoint = pointBase;
+      if (existingRecord) {
+           mergedPoint = {
+               ...existingRecord,
+               ...pointBase,
+               entrada: pointBase.entrada || existingRecord.entrada,
+               saida_almoco: pointBase.saida_almoco || existingRecord.saida_almoco,
+               retorno_almoco: pointBase.retorno_almoco || existingRecord.retorno_almoco,
+               saida: pointBase.saida || existingRecord.saida
+           };
+      }
+      registrosMap.set(chaveImportacao, mergedPoint);
     }
 
-    // 8. Inserir registros em lote
-    if (pointRecords.length > 0) {
-      const { error: insertError } = await supabase.from('registros_ponto').upsert(pointRecords, { onConflict: 'colaborador_id,data' })
+    const registrosParaSalvar = Array.from(registrosMap.values());
+    let inseridos_ou_atualizados = 0;
+
+    if (registrosParaSalvar.length > 0) {
+      const { error: insertError } = await supabase.from('registros_ponto').upsert(registrosParaSalvar, { onConflict: 'tenant_id,chave_importacao' })
       if (insertError) {
-        console.error('[importar-pontos-manual] Erro ao inserir registros:', insertError)
-        // Atualizar histórico com erro
-        await supabase.from('historico_importacoes').update({
-          status: 'ERRO',
-          erro_processamento: insertError.message,
-        }).eq('id', historico.id)
+        await supabase.from('historico_importacoes').update({ status: 'ERRO', erro_processamento: insertError.message }).eq('id', importacaoId)
         throw insertError
       }
+      inseridos_ou_atualizados = registrosParaSalvar.length;
     }
 
-    // 9. Atualizar histórico com sucesso
+    const finalStatus = quantidadeInconsistente > 0 ? 'INCONSISTENTE' : 'PROCESSADO';
     await supabase.from('historico_importacoes').update({
-      status: 'PROCESSADO',
-      quantidade_registros: pointRecords.length,
+      status: finalStatus,
+      quantidade_importada: inseridos_ou_atualizados,
+      quantidade_inconsistencias: quantidadeInconsistente,
+      quantidade_ignorada: quantidadeIgnorada,
       processado_em: new Date().toISOString(),
-    }).eq('id', historico.id)
+      finalizado_em: new Date().toISOString(),
+      logs: { 
+         mensagem: "Importação Manual concluída.", 
+         clts_autocriados: novosColabs, 
+         empresas_criadas: novasEmpresas,
+         esquema_utilizado: schemaVersion
+      }
+    }).eq('id', importacaoId)
 
     return new Response(
       JSON.stringify({
         success: true,
-        importacao_id: historico.id,
-        quantidade_registros: pointRecords.length,
-        novos_colaboradores: novosColabs,
-        novas_empresas: novasEmpresas,
-        status: 'PROCESSADO',
-        message: `${pointRecords.length} registros importados com sucesso`,
+        importacao_id: importacaoId,
+        resumo: {
+          recebidos: jsonRows.length,
+          importados_vazados: inseridos_ou_atualizados,
+          ignorados: quantidadeIgnorada,
+          inconsistentes: quantidadeInconsistente,
+          clts_criados: novosColabs,
+          empresas_criadas: novasEmpresas,
+          schema: schemaVersion
+        },
+        message: `${inseridos_ou_atualizados} registros importados com sucesso`,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )
 
   } catch (error: any) {
-    console.error('[importar-pontos-manual] Erro fatal:', error)
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: 'INTERNAL_SERVER_ERROR',
-        message: error?.message ?? 'Erro interno na importação.',
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-    )
+    console.error('[importar-pontos-manual] Erro:', error)
+    return new Response(JSON.stringify({ success: false, message: error?.message }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 })
   }
 })

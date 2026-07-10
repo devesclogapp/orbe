@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from "react
 
 type Theme = "light" | "dark";
 type DefaultTab = "ponto" | "operacoes";
+type Environment = "PRODUCAO" | "HOMOLOGACAO" | "TODOS";
 
 interface PreferencesContextValue {
   theme: Theme;
@@ -9,12 +10,15 @@ interface PreferencesContextValue {
   toggleTheme: () => void;
   defaultTab: DefaultTab;
   setDefaultTab: (t: DefaultTab) => void;
+  environment: Environment;
+  setEnvironment: (e: Environment) => void;
 }
 
 const PreferencesContext = createContext<PreferencesContextValue | undefined>(undefined);
 
 const THEME_KEY = "esc-log-theme";
 const TAB_KEY = "esc-log-default-tab";
+const ENV_KEY = "esc-log-environment";
 
 export const PreferencesProvider = ({ children }: { children: ReactNode }) => {
   const [theme, setThemeState] = useState<Theme>(() => {
@@ -24,6 +28,10 @@ export const PreferencesProvider = ({ children }: { children: ReactNode }) => {
   const [defaultTab, setDefaultTabState] = useState<DefaultTab>(() => {
     if (typeof window === "undefined") return "ponto";
     return (localStorage.getItem(TAB_KEY) as DefaultTab) || "ponto";
+  });
+  const [environment, setEnvironmentState] = useState<Environment>(() => {
+    if (typeof window === "undefined") return "PRODUCAO";
+    return (localStorage.getItem(ENV_KEY) as Environment) || "PRODUCAO";
   });
 
   useEffect(() => {
@@ -37,6 +45,10 @@ export const PreferencesProvider = ({ children }: { children: ReactNode }) => {
     localStorage.setItem(TAB_KEY, defaultTab);
   }, [defaultTab]);
 
+  useEffect(() => {
+    localStorage.setItem(ENV_KEY, environment);
+  }, [environment]);
+
   return (
     <PreferencesContext.Provider
       value={{
@@ -45,6 +57,8 @@ export const PreferencesProvider = ({ children }: { children: ReactNode }) => {
         toggleTheme: () => setThemeState((t) => (t === "light" ? "dark" : "light")),
         defaultTab,
         setDefaultTab: setDefaultTabState,
+        environment,
+        setEnvironment: setEnvironmentState,
       }}
     >
       {children}

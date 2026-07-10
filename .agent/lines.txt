@@ -1,0 +1,200 @@
+        },
+      },
+      fornecedores: {
+        label: "Fornecedores",
+        description: "Envie uma planilha compatível com o modelo da aba Fornecedores.",
+        expectedColumns: ["NOME", "CNPJ/CPF", "TELEFONE", "EMAIL", "ENDERECO", "STATUS"],
+        downloadUrl: modeloImportacaoAtivo?.drive_url,
+        templateFileName: "modelo_fornecedores.xlsx",
+        validateData: (rows) =>
+          buildResult(rows, (row, index) => {
+            const nome = getRowValue(row, "NOME");
+            if (!nome) return { error: `Linha ${index + 2}: informe o campo NOME.` };
+            const ativo = parseBooleanLike(getRowValue(row, "STATUS"), true);
+            const payload = {
+              nome,
+              documento: getRowValue(row, "CNPJ/CPF") || null,
+              telefone: getRowValue(row, "TELEFONE") || null,
+              email: getRowValue(row, "EMAIL") || null,
+              endereco: getRowValue(row, "ENDERECO", "ENDEREÃ‡O") || null,
+              empresa_id: empresaId || null,
+              ativo,
+            };
+            return {
+              payload,
+              preview: { NOME: nome, DOCUMENTO: payload.documento || "—", STATUS: ativo ? "Ativo" : "Inativo" },
+            };
+          }),
+        onUpload: async (rows) => {
+          for (const row of rows) await FornecedorService.create(row);
+          await queryClient.invalidateQueries({ queryKey: ["fornecedores"] });
+        },
+      },
+      servicos: {
+        label: "Serviços",
+        description: "Envie uma planilha compatível com o modelo da aba Serviços.",
+        downloadUrl: modeloImportacaoAtivo?.drive_url,
+        expectedColumns: ["NOME", "DESCRICAO", "STATUS"],
+        templateFileName: "modelo_servicos.xlsx",
+        validateData: (rows) =>
+          buildResult(rows, (row, index) => {
+            const nome = getRowValue(row, "NOME");
+            if (!nome) return { error: `Linha ${index + 2}: informe o campo NOME.` };
+            const ativo = parseBooleanLike(getRowValue(row, "STATUS"), true);
+            const payload = {
+              nome,
+              descricao: getRowValue(row, "DESCRICAO", "DESCRIÇÃO") || null,
+              ativo,
+              empresa_id: empresaId || null,
+            };
+            return {
+              payload,
+              preview: { NOME: nome, DESCRICAO: payload.descricao || "-", STATUS: ativo ? "Ativo" : "Inativo" },
+            };
+          }),
+        onUpload: async (rows) => {
+          for (const row of rows) await TipoServicoOperacionalService.create(row);
+          await queryClient.invalidateQueries({ queryKey: ["tipos_servico_operacional"] });
+        },
+      },
+      parametros: {
+        label: "Parâmetros Operacionais",
+        description: "Envie uma planilha compatível com o modelo da aba Parâmetros Operacionais.",
+        unsupportedMessage: "Modelo de importação de parâmetros operacionais ainda não configurado.",
+      },
+      materiais: {
+        label: "Materiais",
+        description: "Envie uma planilha compatível com o modelo da aba Materiais.",
+        unsupportedMessage: "Modelo de importação de materiais ainda não configurado.",
+      },
+    };
+
+    return configs[activeTab] || {
+      label: "Cadastro",
+      description: "Envie uma planilha compatível.",
+      unsupportedMessage: "Modelo de importação não configurado para esta aba.",
+    };
+  }, [activeTab, empresas, empresaId, importacaoModelos, queryClient]);
+
+  const itemToDeleteLabel =
+    itemToDelete?.nome ||
+    (deleteModalType === "transportadora"
+      ? "Esta transportadora"
+      : deleteModalType === "fornecedor"
+        ? "Este fornecedor"
+        : deleteModalType === "servico"
+          ? "Este serviço"
+          : "Este registro");
+
+  const handleContextualImport = async (rows: Record<string, any>[]) => {
+    if (!activeImportConfig?.onUpload) return;
+    await activeImportConfig.onUpload(rows);
+    toast.success(`${rows.length} registros importados com sucesso em ${activeImportConfig.label}.`);
+  };
+
+  const loading =
+    loadingEmpresas ||
+    loadingColaboradores ||
+    loadingColetores ||
+    loadingTransportadoras ||
+    loadingFornecedores ||
+    loadingTiposServico ||
+    loadingOps ||
+    loadingProdutos ||
+    loadingTiposDia;
+
+  const colaboradoresFaturaveis = useMemo(
+    () => colaboradores.filter((colaborador) => colaborador.flag_faturamento).length,
+    [colaboradores]
+  );
+
+  const coletoresOnline = useMemo(
+    () => coletores.filter((coletor) => coletor.status === "online").length,
+    [coletores]
+  );
+
+  const toggleOperacionalFilter = (filter: OperacionalQuickFilter) => {
+    setOperacionalFilters((prev) => (
+      prev.includes(filter) ? [] : [filter]
+    ));
+  };
+
+  const colaboradoresOperacionais = useMemo(() => (
+    colaboradores.map((colaborador) => {
+      const operational = getColaboradorOperationalMeta(colaborador);
+      const detailed = getColaboradorCompletudeDetailed(colaborador);
+      return {
+        ...colaborador,
+        completudeDetailed: detailed,
+        completude: detailed.geral.percentual,
+        ...operational,
+      };
+    })
+  ), [colaboradores]);
+
+  const contractFilterOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        colaboradoresOperacionais
+          .map((colaborador) => getColaboradorContractLabel(colaborador))
+          .filter((value) => value !== "N/D")
+      )
+    ).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [colaboradoresOperacionais]);
+
+  const colaboradoresFiltrados = useMemo(() => {
+    return colaboradoresOperacionais.filter((colaborador) => {
+      // 1. Text Search filtering
+      const searchTerm = collaboratorSearchTerm.trim().toLowerCase();
+      const matchesSearch = searchTerm === "" ||
+        colaborador.nome.toLowerCase().includes(searchTerm) ||
+        (colaborador.matricula || "").toLowerCase().includes(searchTerm) ||
+        (colaborador.cpf || "").replace(/\D/g, "").includes(searchTerm);
+
+      if (!matchesSearch) return false;
+
+      // 2. Priority/Status Quick Filtering
+      const matchesQuickFilters = operacionalFilters.every((filter) => {
+        if (filter === "apenas_pendentes") return colaborador.status_cadastro === "pendente_complemento" || Boolean(colaborador.cadastro_provisorio);
+        if (filter === "bloqueiam_aprovacao") return colaborador.bloqueiaRh;
+        if (filter === "sem_banco") return !getColaboradorBankValidation(colaborador).isValid;
+        if (filter === "sem_contrato") return hasContratoPendente(colaborador);
+        if (filter === "sem_pix") return hasPixPendente(colaborador);
+        if (filter === "criticos") return colaborador.priority === "critico";
+        return true;
+      });
+
+      if (!matchesQuickFilters) return false;
+
+      // 3. Contract Type Filtering
+      if (contractFilter === "todos") return true;
+      return getColaboradorContractLabel(colaborador) === contractFilter;
+    });
+  }, [colaboradoresOperacionais, operacionalFilters, contractFilter, collaboratorSearchTerm]);
+
+  const operacionalResumo = useMemo(() => {
+    const total = colaboradoresFiltrados.length;
+    const operacionaisAptos = colaboradoresFiltrados.filter(item => item.completudeDetailed?.operacional.completo).length;
+    const pendenciasRh = colaboradoresFiltrados.filter(item => !item.completudeDetailed?.rh.completo).length;
+    const pendenciasFinanceiro = colaboradoresFiltrados.filter(item => !item.completudeDetailed?.financeiro.completo).length;
+
+    // Legacy mapping required for other uses below
+    const aguardandoComplemento = colaboradoresFiltrados.filter((item) => item.status_cadastro === "pendente_complemento" || Boolean(item.cadastro_provisorio)).length;
+    const bloqueiamRh = colaboradoresFiltrados.filter((item) => item.bloqueiaRh).length;
+    const bloqueiamFinanceiro = colaboradoresFiltrados.filter((item) => item.bloqueiaFinanceiro).length;
+
+    const completudeMedia = total > 0
+      ? Math.round(colaboradoresFiltrados.reduce((acc, item) => acc + item.completude, 0) / total)
+      : 0;
+
+    return {
+      total,
+      operacionaisAptos,
+      pendenciasRh,
+      pendenciasFinanceiro,
+      aguardandoComplemento,
+      bloqueiamRh,
+      bloqueiamFinanceiro,
+      completudeMedia
+    };
+  }, [colaboradoresFiltrados]);

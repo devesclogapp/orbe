@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Activity, ArrowLeft, Bell, ChevronRight, Compass, CornerUpLeft, GitBranch, Moon, Search, Sun } from "lucide-react";
+import { Activity, ArrowLeft, Bell, ChevronRight, Compass, CornerUpLeft, Database, GitBranch, Moon, Search, Sun } from "lucide-react";
 
 import { usePreferences } from "@/contexts/PreferencesContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -8,6 +8,7 @@ import { PipelineTrigger, useOperationalPipeline } from "@/contexts/OperationalP
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 import { CommandMenu } from "./CommandMenu";
@@ -22,7 +23,7 @@ type TopbarProps = {
 };
 
 export const Topbar = ({ title, subtitle, badge, backPath, pipelineTrigger }: TopbarProps) => {
-  const { theme, toggleTheme } = usePreferences();
+  const { theme, toggleTheme, environment, setEnvironment } = usePreferences();
   const { user } = useAuth();
   const { openPipeline } = useOperationalPipeline();
   const navigate = useNavigate();
@@ -122,6 +123,22 @@ export const Topbar = ({ title, subtitle, badge, backPath, pipelineTrigger }: To
           <CommandMenu open={open} setOpen={setOpen} />
 
           <div className="flex items-center gap-1 bg-muted/20 p-1 rounded-lg">
+            <div className="hidden md:flex items-center mr-1">
+              <Select value={environment || "PRODUCAO"} onValueChange={(val: any) => { setEnvironment(val); window.location.reload(); }}>
+                <SelectTrigger className={cn("h-7 px-2 border-0 shadow-none text-[10px] font-bold focus:ring-0", environment === 'HOMOLOGACAO' ? "bg-amber-100 text-amber-800" : "bg-transparent text-muted-foreground hover:bg-background")}>
+                  <div className="flex items-center gap-1">
+                    {environment === 'HOMOLOGACAO' ? <Activity className="h-3 w-3" /> : <Database className="h-3 w-3" />}
+                    <SelectValue />
+                  </div>
+                </SelectTrigger>
+                <SelectContent align="end">
+                  <SelectItem value="PRODUCAO">Base de Produção</SelectItem>
+                  <SelectItem value="HOMOLOGACAO">Homologação (Testes)</SelectItem>
+                  <SelectItem value="TODOS">Todos os Registros</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             <Button
               variant="ghost"
               size="icon"

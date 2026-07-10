@@ -98,7 +98,7 @@ export default function PipelineOperacional() {
         },
     });
 
-    const { data: custos = [], isLoading: isCustosLoading, isError: isCustosError } = useQuery({
+    const { data: custos = [], isLoading: isCustosLoading, isError: isCustosError, error: custosError } = useQuery({
         queryKey: ["custos-pipeline", filterEmpresaId, filterCompetencia],
         queryFn: () => CustoExtraOperacionalService.getByCompetencia(
             filterCompetencia,
@@ -120,6 +120,7 @@ export default function PipelineOperacional() {
     });
 
     const isAnyError = isOpError || isDiaError || isCustosError || isPontosError || isServicosError;
+    const errorDetails = custosError ? String(custosError) : "Erro de sincronização genérico";
     const isGlobalLoading = (isEmpresasLoading || isOpLoading || isDiaLoading || isCustosLoading || isPontosLoading || isServicosLoading) && !isAnyError;
 
     const unifiedItems = useMemo(() => {
@@ -414,6 +415,7 @@ export default function PipelineOperacional() {
                         <AlertTriangle className="h-8 w-8" />
                     </div>
                     <h2 className="text-xl font-bold text-foreground">Falha ao sincronizar dados</h2>
+                    <p className="text-red-500 font-mono text-xs max-w-xl text-center bg-red-50 p-4 border border-red-200 rounded">{errorDetails}</p>
                     <Button variant="outline" onClick={() => window.location.reload()} className="mt-4 gap-2">
                         <RefreshCw className="h-4 w-4" />
                         Tentar Novamente

@@ -639,6 +639,17 @@ const loadPontosPendentes = async ({
     .order("data", { ascending: true })
     .order("created_at", { ascending: true });
 
+  if (typeof window !== 'undefined') {
+    const env = localStorage.getItem("esc-log-environment") || "PRODUCAO";
+    if (env === "HOMOLOGACAO") {
+      query = query.eq('is_teste', true);
+    } else if (env === "PRODUCAO") {
+      query = query.or('is_teste.is.null,is_teste.eq.false');
+    }
+  } else {
+    query = query.or('is_teste.is.null,is_teste.eq.false');
+  }
+
   if (empresaId) {
     query = query.eq("empresa_id", empresaId);
   }

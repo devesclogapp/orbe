@@ -45,21 +45,37 @@ class EmpresaServiceClass extends BaseService<'empresas'> {
   // RLS garante isolamento por tenant_id automaticamente.
   // Não precisamos passar tenantId como parâmetro — o Supabase filtra pela session.
   async getAll() {
-    // Uso da exportação dinâmica 'supabase' (Proxy) que resolve para o client correto
-    const { data, error } = await (supabase as any)
-      .from('empresas')
-      .select('*')
-      .order('nome', { ascending: true });
+    const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
+    const isHomologacao = env === 'HOMOLOGACAO';
+    const isTodos = env === 'TODOS';
+
+    let query = (supabase as any).from('empresas').select('*');
+    
+    if (isHomologacao) {
+      query = query.eq('is_teste', true);
+    } else if (!isTodos) {
+      query = query.or('is_teste.eq.false,is_teste.is.null');
+    }
+
+    const { data, error } = await query.order('nome', { ascending: true });
     if (error) throw error;
     return data ?? [];
   }
 
   async getWithCounts() {
-    // Uso da exportação dinâmica 'supabase' (Proxy) que resolve para o client correto
-    const { data: empresas, error } = await (supabase as any)
-      .from('empresas')
-      .select('*')
-      .order('nome', { ascending: true });
+    const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
+    const isHomologacao = env === 'HOMOLOGACAO';
+    const isTodos = env === 'TODOS';
+
+    let query = (supabase as any).from('empresas').select('*');
+    
+    if (isHomologacao) {
+      query = query.eq('is_teste', true);
+    } else if (!isTodos) {
+      query = query.or('is_teste.eq.false,is_teste.is.null');
+    }
+
+    const { data: empresas, error } = await query.order('nome', { ascending: true });
 
     if (error) throw error;
 
@@ -350,6 +366,17 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
       .select('*')
       .order('created_at', { ascending: false });
 
+    if (typeof window !== 'undefined') {
+      const env = localStorage.getItem("esc-log-environment") || "PRODUCAO";
+      if (env === "HOMOLOGACAO") {
+        query = query.eq('is_teste', true);
+      } else if (env === "PRODUCAO") {
+        query = query.or('is_teste.is.null,is_teste.eq.false');
+      }
+    } else {
+      query = query.or('is_teste.is.null,is_teste.eq.false');
+    }
+
     if (empresaId) {
       query = query.eq('empresa_id', empresaId);
     }
@@ -379,6 +406,17 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
       .from('colaboradores')
       .select('*')
       .order('nome', { ascending: true });
+
+    if (typeof window !== 'undefined') {
+      const env = localStorage.getItem("esc-log-environment") || "PRODUCAO";
+      if (env === "HOMOLOGACAO") {
+        query = query.eq('is_teste', true);
+      } else if (env === "PRODUCAO") {
+        query = query.or('is_teste.is.null,is_teste.eq.false');
+      }
+    } else {
+      query = query.or('is_teste.is.null,is_teste.eq.false');
+    }
 
     if (shouldFilterByEmpresa) {
       query = query.eq('empresa_id', empresaId);
@@ -417,13 +455,26 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
   }
 
   async getEligibleForOperacaoVolume(empresaId: string) {
-    const { data: colaboradores, error } = await supabase
+    let query = supabase
       .from('colaboradores')
       .select('*')
       .eq('empresa_id', empresaId)
       .eq('status', 'ativo')
       .is('deleted_at', null)
       .order('nome', { ascending: true });
+
+    if (typeof window !== 'undefined') {
+      const env = localStorage.getItem("esc-log-environment") || "PRODUCAO";
+      if (env === "HOMOLOGACAO") {
+        query = query.eq('is_teste', true);
+      } else if (env === "PRODUCAO") {
+        query = query.or('is_teste.is.null,is_teste.eq.false');
+      }
+    } else {
+      query = query.or('is_teste.is.null,is_teste.eq.false');
+    }
+
+    const { data: colaboradores, error } = await query;
 
     if (error) throw error;
 

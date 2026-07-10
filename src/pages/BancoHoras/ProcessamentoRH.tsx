@@ -426,12 +426,21 @@ const ProcessamentoRH = () => {
     queryKey: ["rh_meses_com_registros", tenantId],
     queryFn: async () => {
       if (!tenantId) return [];
-      const { data, error } = await supabase
+      let query = supabase
         .from("registros_ponto")
         .select("data")
         .eq("tenant_id", tenantId)
         .order("data", { ascending: false })
         .limit(500);
+
+      const env = localStorage.getItem("esc-log-environment") || "PRODUCAO";
+      if (env === "HOMOLOGACAO") {
+        query = query.eq('is_teste', true);
+      } else if (env === "PRODUCAO") {
+        query = query.or('is_teste.is.null,is_teste.eq.false');
+      }
+
+      const { data, error } = await query;
       if (error) return [];
       const meses = new Set<string>();
       for (const row of data ?? []) {
@@ -469,6 +478,13 @@ const ProcessamentoRH = () => {
         .lte("data", endDate)
         .order("data", { ascending: true })
         .order("created_at", { ascending: true });
+
+      const env = localStorage.getItem("esc-log-environment") || "PRODUCAO";
+      if (env === "HOMOLOGACAO") {
+        query = query.eq('is_teste', true);
+      } else if (env === "PRODUCAO") {
+        query = query.or('is_teste.is.null,is_teste.eq.false');
+      }
 
       if (selectedEmpresa !== "all") {
         query = query.eq("empresa_id", selectedEmpresa);
