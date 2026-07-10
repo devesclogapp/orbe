@@ -570,9 +570,9 @@ const calculateCompensation = (params: {
     saldoBase = -jornadaMinutes;
     minutosDebito = jornadaMinutes;
   } else if (saldoBase > toleranciaExtra) {
-    minutosExtra = Math.min(saldoBase - toleranciaExtra, limiteDiarioBanco);
-  } else if (saldoBase < 0) {
-    minutosDebito = Math.abs(saldoBase) > toleranciaAtraso ? Math.abs(saldoBase) - toleranciaAtraso : 0;
+    minutosExtra = Math.min(saldoBase, limiteDiarioBanco);
+  } else if (saldoBase < -toleranciaAtraso) {
+    minutosDebito = Math.abs(saldoBase);
   }
 
   const saldoDia = minutosExtra - minutosDebito;
