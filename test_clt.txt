@@ -1,0 +1,9 @@
+◇ injected env (2) from .env.local // tip: ⌁ auth for agents [www.vestauth.com]
+=== INICIANDO HOMOLOGAÇÃO E2E OPERACIONAL CLT (DADOS REAIS) ===
+❌ ERRO BUSCANDO REGISTROS RECEBIDOS: {
+  code: '42703',
+  details: null,
+  hint: null,
+  message: 'column colaboradores_1.tipo does not exist'
+}
+Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), file src\win\async.c, line 76
