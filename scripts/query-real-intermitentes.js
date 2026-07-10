@@ -14,13 +14,14 @@ async function run() {
     // 1. Check newly imported Collaborators
     const { data: cols, error: errCol } = await supabase.from('colaboradores')
         .select('*')
-        .eq('tipo', 'INTERMITENTE')
         .order('created_at', { ascending: false });
 
     if (errCol) console.error("Error cols:", errCol);
 
-    const cpfs = cols?.map(c => c.cpf).filter(c => c);
-    const duplicatesCpf = cpfs?.filter((e, i, a) => a.indexOf(e) !== i);
+    const intermitentes = cols?.filter(c => c.modelo_contratacao === 'INTERMITENTE' || c.tipo === 'INTERMITENTE' || c.cargo?.toLowerCase().includes('intermitente')) || [];
+
+    const cpfs = intermitentes.map(c => c.cpf).filter(c => c);
+    const duplicatesCpf = cpfs.filter((e, i, a) => a.indexOf(e) !== i);
 
     // 2. Check lancamentos
     const { data: lancamentos, error: errLanc } = await supabase.from('lancamentos_intermitentes')
