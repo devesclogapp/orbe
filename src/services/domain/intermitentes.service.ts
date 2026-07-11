@@ -146,6 +146,34 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
     return { ...lote, itens: itens ?? [] };
   }
 
+  async getResumoLoteIntermitente(loteId: string) {
+    const data = await this.getLoteDetalhe(loteId);
+    if (!data) return null;
+
+    // Calcular montantes exatos dos itens agrupados para validar auditorialmente 
+    // se os inserts correspondem perfeitamente à âncora do Lote pai.
+    const uniqueColabs = new Set(data.itens.map(i => i.colaborador_id || i.nome_colaborador));
+    const realTotalHoras = data.itens.reduce((acc, curr) => acc + Number(curr.horas_trabalhadas || 0), 0);
+    const realTotalValor = data.itens.reduce((acc, curr) => acc + Number(curr.total || 0), 0);
+    const itensOrfaosOuVazados = data.itens.filter(i => i.status_pipeline !== 'EM_ANALISE_RH' && i.status_pipeline !== 'RECEBIDO').length;
+
+    return {
+      loteId: data.id,
+      status: data.status,
+      tenantId: data.tenant_id,
+      periodoInicio: data.periodo_inicio,
+      periodoFim: data.periodo_fim,
+      quantidadeRegistros: data.itens.length, // Lançamentos que desceram com o Lote de fechamento
+      quantidadeColaboradores: uniqueColabs.size,
+      totalHoras: Number(realTotalHoras.toFixed(2)),
+      valorTotal: Number(realTotalValor.toFixed(2)),
+      criadoPor: data.created_by,
+      criadoEm: data.created_at,
+      lotePayloadMatches: data.itens.length === data.quantidade_registros,
+      loteInconsistencies: itensOrfaosOuVazados
+    };
+  }
+
   async getByEmpresaParaFinanceiro(empresaId: string) {
     const { data, error } = await this.supabase
       .from('intermitentes_lotes_fechamento')

@@ -764,7 +764,7 @@ function ItensTable({
 }
 
 function DetailPanel({
-    item, onClose, onAprovar, onDevolver, isAprovando, isDevolvendo,
+    item, onClose, onAprovar, onDevolver, isAprovando, isDevolvendo
 }: {
     item: ApprovalItem;
     onClose: () => void;

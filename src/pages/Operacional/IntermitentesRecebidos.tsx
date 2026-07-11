@@ -28,6 +28,15 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+    DialogFooter,
+} from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { cn, decimalParaHora } from "@/lib/utils";
@@ -113,6 +122,8 @@ const IntermitentesRecebidos = () => {
     const [filterMonth, setFilterMonth] = useState<string>(format(new Date(), "MM"));
     const [filterYear, setFilterYear] = useState<string>(format(new Date(), "yyyy"));
     const [filterText, setFilterText] = useState("");
+    const [loteFechado, setLoteFechado] = useState<any>(null);
+    const [activeTab, setActiveTab] = useState("pendentes");
     const { user } = useAuth();
     const queryClient = useQueryClient();
 
@@ -163,9 +174,14 @@ const IntermitentesRecebidos = () => {
         },
     });
 
-    // Filtragem no cliente por texto (busca)
+    // Filtragem no cliente por abas e busca
     const filteredData = useMemo(() => {
         return intermitentes.filter(item => {
+            // Aba logic
+            if (activeTab === "pendentes" && item.status_pipeline !== 'RECEBIDO') return false;
+            if (activeTab === "historico" && item.status_pipeline === 'RECEBIDO') return false;
+
+            // Busca logic
             if (!filterText) return true;
             const search = filterText.toLowerCase();
             const colabName = (item.colaboradores?.nome || item.nome_colaborador || "").toLowerCase();
@@ -175,7 +191,7 @@ const IntermitentesRecebidos = () => {
 
             return colabName.includes(search) || empName.includes(search) || cargo.includes(search) || provoc.includes(search);
         });
-    }, [intermitentes, filterText]);
+    }, [intermitentes, filterText, activeTab]);
 
     const kpis = useMemo(() => {
         const totalRegistros = filteredData.length;
@@ -221,8 +237,9 @@ const IntermitentesRecebidos = () => {
             });
         },
         onSuccess: (data) => {
-            toast.success(`Período fechado com sucesso! Lote gerado. ${data.quantidade_registros} registros.`);
+            setLoteFechado(data);
             queryClient.invalidateQueries({ queryKey: ["intermitentes-recebidos"] });
+            setActiveTab("historico");
         },
         onError: (err: any) => {
             toast.error("Erro ao fechar período.", { description: err?.message || "" });
@@ -367,42 +384,108 @@ const IntermitentesRecebidos = () => {
                 )}
 
                 <div className="bg-white border border-[#DEDEDE] rounded-[12px] overflow-hidden shadow-sm min-h-[500px]">
-                    <div className="p-4 border-b border-[#EBEBEB] bg-[#EBEBEB] flex items-center justify-between">
-                        <h3 className="font-manrope font-bold text-sm text-[#4D4D4D] uppercase tracking-widest flex items-center gap-2">
-                            <History className="h-4 w-4 text-primary" />
-                            Listagem de Apuração Tio Digital
-                        </h3>
-                        <Button
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 font-bold uppercase tracking-wider text-xs"
-                            size="sm"
-                            disabled={isLoading || kpis.pendentesEnvio === 0 || fecharPeriodoMutation.isPending}
-                            onClick={() => {
-                                if (confirm(`Confirmar o fechamento de ${kpis.pendentesEnvio} lançamentos em aberto neste período? Eles serão enviados para Validação do RH.`)) {
-                                    fecharPeriodoMutation.mutate();
-                                }
-                            }}
-                        >
-                            {fecharPeriodoMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                            Fechar Período Intermitente ({kpis.pendentesEnvio} abertos)
-                        </Button>
-                    </div>
-                    <div className="p-0">
-                        {isLoading ? (
-                            <div className="p-20 flex flex-col items-center justify-center text-[#737373] space-y-4">
-                                <Loader2 className="h-8 w-8 animate-spin text-primary" /><p className="text-sm font-medium font-inter">Carregando dados dos intermitentes...</p>
+                    <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                        <div className="p-4 border-b border-[#EBEBEB] bg-[#EBEBEB] flex flex-wrap items-center justify-between gap-4">
+                            <div className="flex flex-wrap items-center gap-4">
+                                <h3 className="font-manrope font-bold text-[11px] leading-tight text-[#4D4D4D] uppercase tracking-wider flex items-center gap-2">
+                                    <div className="flex items-center justify-center bg-white/70 p-1.5 rounded-md shrink-0">
+                                        <History className="h-4 w-4 text-primary" />
+                                    </div>
+                                    <span className="max-w-[130px]">Listagem de Apuração Tio Digital</span>
+                                </h3>
+                                <TabsList className="bg-white/60">
+                                    <TabsTrigger value="pendentes" className="text-xs uppercase font-bold tracking-wider data-[state=active]:bg-white">
+                                        Pendentes
+                                    </TabsTrigger>
+                                    <TabsTrigger value="historico" className="text-xs uppercase font-bold tracking-wider data-[state=active]:bg-white">
+                                        Histórico (Fechados)
+                                    </TabsTrigger>
+                                </TabsList>
                             </div>
-                        ) : isError ? (
-                            <div className="p-20 flex flex-col items-center justify-center text-rose-500 space-y-4 bg-rose-50/50">
-                                <AlertTriangle className="h-10 w-10 text-rose-500 mb-2" />
-                                <p className="text-base font-semibold font-inter text-rose-600">Falha ao carregar registros</p>
-                                <p className="text-sm text-rose-500/80 text-center max-w-md">Não foi possível buscar a listagem do Tio Digital. Tente recarregar a página ou contate o suporte.</p>
-                            </div>
-                        ) : (
-                            <IntermitentesTableBlock data={filteredData} />
-                        )}
-                    </div>
+                            <Button
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 font-bold uppercase tracking-wider text-xs"
+                                size="sm"
+                                disabled={isLoading || kpis.pendentesEnvio === 0 || fecharPeriodoMutation.isPending}
+                                onClick={() => {
+                                    if (confirm(`Confirmar o fechamento de ${kpis.pendentesEnvio} lançamentos em aberto neste período? Eles serão enviados para Validação do RH.`)) {
+                                        fecharPeriodoMutation.mutate();
+                                    }
+                                }}
+                            >
+                                {fecharPeriodoMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                                Fechar Período Intermitente ({kpis.pendentesEnvio} abertos)
+                            </Button>
+                        </div>
+                        <div className="p-0">
+                            {isLoading ? (
+                                <div className="p-20 flex flex-col items-center justify-center text-[#737373] space-y-4">
+                                    <Loader2 className="h-8 w-8 animate-spin text-primary" /><p className="text-sm font-medium font-inter">Carregando dados dos intermitentes...</p>
+                                </div>
+                            ) : isError ? (
+                                <div className="p-20 flex flex-col items-center justify-center text-rose-500 space-y-4 bg-rose-50/50">
+                                    <AlertTriangle className="h-10 w-10 text-rose-500 mb-2" />
+                                    <p className="text-base font-semibold font-inter text-rose-600">Falha ao carregar registros</p>
+                                    <p className="text-sm text-rose-500/80 text-center max-w-md">Não foi possível buscar a listagem do Tio Digital. Tente recarregar a página ou contate o suporte.</p>
+                                </div>
+                            ) : (
+                                <IntermitentesTableBlock data={filteredData} />
+                            )}
+                        </div>
+                    </Tabs>
                 </div>
             </section>
+
+            {/* Modal de Sucesso */}
+            <Dialog open={!!loteFechado} onOpenChange={(open) => !open && setLoteFechado(null)}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-emerald-600">
+                            <CheckCircle2 className="h-5 w-5" />
+                            Período fechado com sucesso
+                        </DialogTitle>
+                        <DialogDescription>
+                            Os registros foram agrupados no lote abaixo e encaminhados para a Validação RH.
+                        </DialogDescription>
+                    </DialogHeader>
+                    {loteFechado && (
+                        <div className="bg-muted/50 p-4 rounded-lg space-y-3 text-sm">
+                            <div className="flex justify-between border-b border-border/50 pb-2">
+                                <span className="text-muted-foreground">Lote:</span>
+                                <span className="font-semibold font-mono text-primary">INT-{loteFechado.competencia}-{loteFechado.id?.substring(0, 4).toUpperCase()}</span>
+                            </div>
+                            <div className="flex justify-between border-b border-border/50 pb-2">
+                                <span className="text-muted-foreground">Registros:</span>
+                                <span className="font-semibold">{loteFechado.quantidade_registros}</span>
+                            </div>
+                            <div className="flex justify-between border-b border-border/50 pb-2">
+                                <span className="text-muted-foreground">Valor Total:</span>
+                                <span className="font-semibold text-emerald-600">{formatCurrency(loteFechado.valor_total)}</span>
+                            </div>
+                            <div className="flex justify-between border-b border-border/50 pb-2">
+                                <span className="text-muted-foreground">Status Atual:</span>
+                                <span className="font-semibold text-amber-600">Aguardando validação RH</span>
+                            </div>
+                            <div className="flex justify-between border-b border-border/50 pb-2">
+                                <span className="text-muted-foreground">Data do Fechamento:</span>
+                                <span className="font-semibold">
+                                    {loteFechado.created_at ? new Date(loteFechado.created_at).toLocaleString("pt-BR") : new Date().toLocaleString("pt-BR")}
+                                </span>
+                            </div>
+                            <div className="flex justify-between pb-1">
+                                <span className="text-muted-foreground">Responsável:</span>
+                                <span className="font-semibold max-w-[150px] truncate" title={(user as any)?.nome || user?.email || "Usuário"}>
+                                    {(user as any)?.nome || user?.email || "Usuário"}
+                                </span>
+                            </div>
+                        </div>
+                    )}
+                    <DialogFooter>
+                        <Button onClick={() => setLoteFechado(null)} className="w-full">
+                            Entendi
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </AppShell>
     );
 };
