@@ -48,13 +48,13 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
     periodoFim: string;
     fechadoPor: string;
     observacoes?: string;
-  }) {
+  }): Promise<IntermitenteLoteFechamento[]> {
     const tenantId = await getCurrentTenantId();
 
     // Buscar lançamentos abertos
     let query = supabase
       .from('lancamentos_intermitentes')
-      .select('id, total')
+      .select('id, total, empresa_id')
       .eq('status_pipeline', 'RECEBIDO')
       .is('lote_fechamento_id', null)
       .gte('data_referencia', params.periodoInicio)
@@ -71,45 +71,62 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       throw new Error('Nenhum lançamento pendente encontrado para o período/filtro informado.');
     }
 
-    const quantidade_registros = lancamentos.length;
-    const valor_total = lancamentos.reduce((acc, curr) => acc + (Number(curr.total) || 0), 0);
+    const lotesGerados: IntermitenteLoteFechamento[] = [];
+    
+    // Agrupar lançamentos por empresa_id
+    const groups = new Map<string, typeof lancamentos>();
+    for (const lancamento of lancamentos) {
+       if (!lancamento.empresa_id) {
+          throw new Error('Inconsistência identificada: Não é possível fechar o período pois existem lançamentos sem empresa vinculada (empresa_id ausente ou null). Por favor, corrija o cadastro ou reimporte os dados.');
+       }
+       const id = lancamento.empresa_id;
+       if (!groups.has(id)) groups.set(id, []);
+       groups.get(id)!.push(lancamento);
+    }
+    
     const competencia = params.periodoInicio.substring(0, 7); // yyyy-MM
+    
+    // Criar um lote para cada empresa
+    for (const [empresaId, groupLancamentos] of groups) {
+      const quantidade_registros = groupLancamentos.length;
+      const valor_total = groupLancamentos.reduce((acc, curr) => acc + (Number(curr.total) || 0), 0);
 
-    // Criar o Lote
-    const { data: lote, error: loteError } = await this.supabase
-      .from('intermitentes_lotes_fechamento')
-      .insert({
-        tenant_id: tenantId,
-        empresa_id: params.empresaId ?? null,
-        competencia,
-        periodo_inicio: params.periodoInicio,
-        periodo_fim: params.periodoFim,
-        quantidade_registros,
-        valor_total,
-        status: 'AGUARDANDO_VALIDACAO_RH',
-        observacoes: params.observacoes,
-        created_by: params.fechadoPor,
-      })
-      .select()
-      .single();
+      // Criar o Lote
+      const { data: lote, error: loteError } = await this.supabase
+        .from('intermitentes_lotes_fechamento')
+        .insert({
+          tenant_id: tenantId,
+          empresa_id: empresaId,
+          competencia,
+          periodo_inicio: params.periodoInicio,
+          periodo_fim: params.periodoFim,
+          quantidade_registros,
+          valor_total,
+          status: 'AGUARDANDO_VALIDACAO_RH',
+          observacoes: params.observacoes,
+          created_by: params.fechadoPor,
+        })
+        .select()
+        .single();
 
-    if (loteError) throw loteError;
+      if (loteError) throw loteError;
 
-    const lancamentoIds = lancamentos.map(l => l.id);
+      const lancamentoIds = groupLancamentos.map(l => l.id);
 
-    // TODO: Num cenário de altíssima volumetria seria ideal uma RPC transaction (como nos diaristas). 
-    // Como estamos na Fase 1, o update massivo usando IN serve perfeitamente.
-    const { error: updateError } = await this.supabase
-      .from('lancamentos_intermitentes')
-      .update({
-        lote_fechamento_id: lote.id,
-        status_pipeline: 'EM_ANALISE_RH'
-      })
-      .in('id', lancamentoIds);
+      const { error: updateError } = await this.supabase
+        .from('lancamentos_intermitentes')
+        .update({
+          lote_fechamento_id: lote.id,
+          status_pipeline: 'EM_ANALISE_RH'
+        })
+        .in('id', lancamentoIds);
 
-    if (updateError) throw updateError;
+      if (updateError) throw updateError;
+      
+      lotesGerados.push(lote as IntermitenteLoteFechamento);
+    }
 
-    return lote as IntermitenteLoteFechamento;
+    return lotesGerados;
   }
 
   async listarLotes(filtros?: { status?: string, competencia?: string }) {

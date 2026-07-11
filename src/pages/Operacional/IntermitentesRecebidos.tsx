@@ -122,7 +122,7 @@ const IntermitentesRecebidos = () => {
     const [filterMonth, setFilterMonth] = useState<string>(format(new Date(), "MM"));
     const [filterYear, setFilterYear] = useState<string>(format(new Date(), "yyyy"));
     const [filterText, setFilterText] = useState("");
-    const [loteFechado, setLoteFechado] = useState<any>(null);
+    const [lotesFechados, setLotesFechados] = useState<any[] | null>(null);
     const [activeTab, setActiveTab] = useState("pendentes");
     const { user } = useAuth();
     const queryClient = useQueryClient();
@@ -237,7 +237,7 @@ const IntermitentesRecebidos = () => {
             });
         },
         onSuccess: (data) => {
-            setLoteFechado(data);
+            setLotesFechados(data);
             queryClient.invalidateQueries({ queryKey: ["intermitentes-recebidos"] });
             setActiveTab("historico");
         },
@@ -436,51 +436,43 @@ const IntermitentesRecebidos = () => {
             </section>
 
             {/* Modal de Sucesso */}
-            <Dialog open={!!loteFechado} onOpenChange={(open) => !open && setLoteFechado(null)}>
-                <DialogContent className="sm:max-w-md">
+            <Dialog open={!!lotesFechados} onOpenChange={(open) => !open && setLotesFechados(null)}>
+                <DialogContent className="sm:max-w-md max-h-[80vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2 text-emerald-600">
                             <CheckCircle2 className="h-5 w-5" />
-                            Período fechado com sucesso
+                            {lotesFechados && lotesFechados.length > 1 ? "Períodos fechados com sucesso" : "Período fechado com sucesso"}
                         </DialogTitle>
                         <DialogDescription>
-                            Os registros foram agrupados no lote abaixo e encaminhados para a Validação RH.
+                            Os registros foram agrupados nas filiais abaixo e encaminhados para a Validação RH.
                         </DialogDescription>
                     </DialogHeader>
-                    {loteFechado && (
-                        <div className="bg-muted/50 p-4 rounded-lg space-y-3 text-sm">
-                            <div className="flex justify-between border-b border-border/50 pb-2">
-                                <span className="text-muted-foreground">Lote:</span>
-                                <span className="font-semibold font-mono text-primary">INT-{loteFechado.competencia}-{loteFechado.id?.substring(0, 4).toUpperCase()}</span>
-                            </div>
-                            <div className="flex justify-between border-b border-border/50 pb-2">
-                                <span className="text-muted-foreground">Registros:</span>
-                                <span className="font-semibold">{loteFechado.quantidade_registros}</span>
-                            </div>
-                            <div className="flex justify-between border-b border-border/50 pb-2">
-                                <span className="text-muted-foreground">Valor Total:</span>
-                                <span className="font-semibold text-emerald-600">{formatCurrency(loteFechado.valor_total)}</span>
-                            </div>
-                            <div className="flex justify-between border-b border-border/50 pb-2">
-                                <span className="text-muted-foreground">Status Atual:</span>
-                                <span className="font-semibold text-amber-600">Aguardando validação RH</span>
-                            </div>
-                            <div className="flex justify-between border-b border-border/50 pb-2">
-                                <span className="text-muted-foreground">Data do Fechamento:</span>
-                                <span className="font-semibold">
-                                    {loteFechado.created_at ? new Date(loteFechado.created_at).toLocaleString("pt-BR") : new Date().toLocaleString("pt-BR")}
-                                </span>
-                            </div>
-                            <div className="flex justify-between pb-1">
-                                <span className="text-muted-foreground">Responsável:</span>
-                                <span className="font-semibold max-w-[150px] truncate" title={(user as any)?.nome || user?.email || "Usuário"}>
-                                    {(user as any)?.nome || user?.email || "Usuário"}
-                                </span>
-                            </div>
+                    {lotesFechados && lotesFechados.length > 0 && (
+                        <div className="space-y-4 my-2">
+                            {lotesFechados.map((loteFechado, i) => (
+                                <div key={loteFechado.id || i} className="bg-muted/50 p-4 rounded-lg space-y-3 text-sm">
+                                    <div className="flex justify-between border-b border-border/50 pb-2">
+                                        <span className="text-muted-foreground">Lote:</span>
+                                        <span className="font-semibold font-mono text-primary">INT-{loteFechado.competencia}-{loteFechado.id?.substring(0, 4).toUpperCase()}</span>
+                                    </div>
+                                    <div className="flex justify-between border-b border-border/50 pb-2">
+                                        <span className="text-muted-foreground">Registros:</span>
+                                        <span className="font-semibold">{loteFechado.quantidade_registros}</span>
+                                    </div>
+                                    <div className="flex justify-between border-b border-border/50 pb-2">
+                                        <span className="text-muted-foreground">Valor Total:</span>
+                                        <span className="font-semibold text-emerald-600">{formatCurrency(loteFechado.valor_total)}</span>
+                                    </div>
+                                    <div className="flex justify-between border-b border-border/50 pb-2">
+                                        <span className="text-muted-foreground">Status Atual:</span>
+                                        <span className="font-semibold text-amber-600">Aguardando validação RH</span>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     )}
                     <DialogFooter>
-                        <Button onClick={() => setLoteFechado(null)} className="w-full">
+                        <Button onClick={() => setLotesFechados(null)} className="w-full">
                             Entendi
                         </Button>
                     </DialogFooter>

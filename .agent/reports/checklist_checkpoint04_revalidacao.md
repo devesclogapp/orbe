@@ -1,0 +1,12 @@
+# CHECKLIST - E2E REVALIDAÇÃO CHK04 (INTERMITENTES)
+
+- [x] Etapa 01 — Validação dos Lotes Criados (empresa_id = NULL inexistentes)
+- [x] Etapa 02 — Central Financeira (Visibilidade restaurada e segregada)
+- [x] Etapa 03 — Aprovação Financeira (Sucesso UX sem travamentos)
+- [x] Etapa 04 — Persistência (Status Migrados Validado_RH / Fechado_Financeiro)
+- [x] Etapa 05 — Integridade (Relacionamentos/FKs hígidos)
+- [x] Etapa 06 — Idempotência (Operações redundantes anuladas e trancadas)
+- [x] Etapa 07 — Auditoria (Log timestamps preenchidos com autor verdadeiro)
+- [x] Etapa 08 — Preparação para CNAB (Empresa_id validada)
+- [x] Etapa 09 — Regressão (Outros domínios imunes e inalterados)
+- [x] Etapa 10 — Parecer Final (Geração de relatórios com recomendação de avanço positiva)

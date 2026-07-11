@@ -118,6 +118,58 @@ serve(async (req) => {
       return dateString;
     };
 
+    const normalizeText = (value?: string | null) =>
+      String(value ?? "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim()
+        .replace(/\s+/g, " ");
+
+    const normalizeCompanyText = (value?: string | null) => {
+      const normalized = normalizeText(value);
+      return normalized
+        .replace(/\b(ltda|me|eireli|sa|epp)\b/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+    };
+
+    // Helper for fuzzy find empresa
+    const findEmpresaFuzzy = (depName: string) => {
+      const key = normalizeCompanyText(depName);
+      if (!key) return null;
+      
+      for (const [empresaId, data] of empresaMap) {
+        // empresaMap is currently ID_, CNPJ_, NOM_ 
+        // We will do a full scan over values since it's small, 
+        // but we rely on a custom array of companies.
+      }
+      return null;
+    };
+    
+    const dbEmpresasArray = dbEmpresas || [];
+
+    const getEmpresaIdFromDep = (depName: string) => {
+      const key = normalizeCompanyText(depName);
+      if (!key) return null;
+      
+      // Exact Match
+      for(const e of dbEmpresasArray) {
+        if(normalizeCompanyText(e.nome) === key) {
+           return e.id;
+        }
+      }
+      // Substring Match
+      for(const e of dbEmpresasArray) {
+        const cKey = normalizeCompanyText(e.nome);
+        if(cKey && (cKey.includes(key) || key.includes(cKey) || cKey.replace(/\s/g, "").includes(key.replace(/\s/g, "")))) {
+           return e.id;
+        }
+      }
+      return null;
+    };
+
     // Buscar registros existentes para fallback/idempotencia
     const normDates = Array.from(new Set(items.map((i: any) => normalizeDbDate(i.data_periodo || i.data || i.data_referencia || i.DATA)).filter(Boolean)));
     const { data: existingRecords, error: extErr } = await supabase
@@ -185,7 +237,7 @@ serve(async (req) => {
       let fallbackEmpresaId = null;
       const depName = item.departamento || rawItem.Departamento || item.unidade || rawItem.Unidade;
       if (depName) {
-         fallbackEmpresaId = empresaMap.get(`NOM_${String(depName).toUpperCase().trim()}`);
+         fallbackEmpresaId = getEmpresaIdFromDep(String(depName));
       }
       
       const launchBase = {
