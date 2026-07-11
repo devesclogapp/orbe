@@ -1,0 +1,5 @@
+﻿Ôùç injected env (2) from .env.local // tip: Ôîÿ custom filepath { path: '/custom/path/.env' }
+intermitentes_lotes_fechamento: 0 rows - Statuses: {}
+rh_financeiro_lotes: 0 rows - Statuses: {}
+diaristas_lotes_fechamento: 1 rows - Statuses: { PAGO: 1 }
+lotes_remessa: 0 rows - Statuses: {}
