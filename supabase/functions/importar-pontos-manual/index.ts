@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import * as XLSX from "https://esm.sh/xlsx"
 import { crypto } from "https://deno.land/std@0.168.0/crypto/mod.ts"
+import { EmpresaResolver } from "../_shared/EmpresaResolver.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -187,10 +188,9 @@ serve(async (req) => {
     if (nomes.size > 0) colabFilter.push(`nome.in.(${Array.from(nomes).map(n => '"' + n + '"').join(',')})`);
     if (colabFilter.length > 0) colabQuery = colabQuery.or(colabFilter.join(','));
 
-    const [{ data: dbColabs }, { data: dbEmpresas }] = await Promise.all([
-      colabQuery,
-      supabase.from('empresas').select('id, nome').eq('tenant_id', tenantId),
-    ]);
+    const resolver = new EmpresaResolver(supabase, tenantId, 'manual');
+    await resolver.loadCache();
+    const { data: dbColabs } = await colabQuery;
 
     const colabMap = new Map();
     if (dbColabs) {
@@ -201,16 +201,8 @@ serve(async (req) => {
        });
     }
 
-    const uniqueEmpresasMap = new Map();
-    if (dbEmpresas) {
-      dbEmpresas.forEach(e => {
-        if (e.nome) uniqueEmpresasMap.set(normalizeCompanyText(e.nome), e);
-      });
-    }
-
     const registrosMap = new Map();
     let novosColabs = 0;
-    let novasEmpresas = 0;
     let quantidadeIgnorada = 0;
     let quantidadeInconsistente = 0;
 
@@ -227,35 +219,10 @@ serve(async (req) => {
           continue;
       }
 
-      const normCmpName = normalizeCompanyText(empresaNome || "Empresa Desconhecida API");
       let matchedEmpresaId = empresa_id || null;
 
       if (!matchedEmpresaId && empresaNome) {
-         if (uniqueEmpresasMap.has(normCmpName)) {
-             matchedEmpresaId = uniqueEmpresasMap.get(normCmpName).id;
-         } else {
-             const ts = Date.now().toString().slice(-6);
-             const rand = String(Math.floor(Math.random() * 1000)).padStart(3, "0");
-             
-             const { data: newEmp } = await supabase.from('empresas')
-                .insert({
-                  tenant_id: tenantId,
-                  nome: empresaNome,
-                  origem: 'manual',
-                  cnpj: `00000${ts}${rand}`,
-                  status: 'ativa',
-                  cadastro_provisorio: true,
-                  unidade: 'Não informado',
-                  cidade: 'Não informado',
-                })
-                .select('id').single();
-                
-             if (newEmp) {
-               matchedEmpresaId = newEmp.id;
-               uniqueEmpresasMap.set(normCmpName, { id: newEmp.id });
-               novasEmpresas++;
-             }
-         }
+         matchedEmpresaId = await resolver.resolveOrCreate(empresaNome);
       }
 
       const rawCpf = cpf ? String(cpf).replace(/\D/g, '') : null;
@@ -381,7 +348,7 @@ serve(async (req) => {
       logs: { 
          mensagem: "Importação Manual concluída.", 
          clts_autocriados: novosColabs, 
-         empresas_criadas: novasEmpresas,
+         empresas_criadas: resolver.empresasCriadas,
          esquema_utilizado: schemaVersion
       }
     }).eq('id', importacaoId)
@@ -396,7 +363,7 @@ serve(async (req) => {
           ignorados: quantidadeIgnorada,
           inconsistentes: quantidadeInconsistente,
           clts_criados: novosColabs,
-          empresas_criadas: novasEmpresas,
+          empresas_criadas: resolver.empresasCriadas,
           schema: schemaVersion
         },
         message: `${inseridos_ou_atualizados} registros importados com sucesso`,

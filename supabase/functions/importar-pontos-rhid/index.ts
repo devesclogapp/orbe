@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { crypto } from "https://deno.land/std@0.168.0/crypto/mod.ts"
+import { EmpresaResolver } from "../_shared/EmpresaResolver.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -144,16 +145,10 @@ serve(async (req) => {
     }
 
     // 3. Buscar Empresas do Tenant para Self-Healing estruturado
-    const { data: dbEmpresas } = await supabase.from('empresas').select('id, nome').eq('tenant_id', finalTenantId);
-    const uniqueEmpresasMap = new Map();
-    if (dbEmpresas) {
-      dbEmpresas.forEach(e => {
-        if (e.nome) uniqueEmpresasMap.set(normalizeCompanyText(e.nome), e);
-      });
-    }
+    const resolver = new EmpresaResolver(supabase, finalTenantId, 'api');
+    await resolver.loadCache();
 
     let cltsCriados = 0;
-    let empresasCriadas = 0;
     const registrosMap = new Map();
     
     let quantidadeIgnorada = 0;
@@ -167,39 +162,9 @@ serve(async (req) => {
             continue;
         }
 
-        // Resolvendo Empresa (Fallback normalizado)
+        // Resolvendo Empresa (Fallback normalizado pelo Resolver)
         const rawCmpName = item.empresa_nome || item.empresa || "Empresa Desconhecida API";
-        const normCmpName = normalizeCompanyText(rawCmpName);
-        let matchedEmpresaId = null;
-
-        if (uniqueEmpresasMap.has(normCmpName)) {
-           matchedEmpresaId = uniqueEmpresasMap.get(normCmpName).id;
-        } else {
-           // Self-healing Empresa (Aguardando evidência sólida)
-           if (normCmpName && rawCmpName !== "Empresa Desconhecida API") {
-             const ts = Date.now().toString().slice(-6);
-             const rand = String(Math.floor(Math.random() * 1000)).padStart(3, "0");
-             
-             const { data: newEmp } = await supabase.from('empresas')
-                .insert({
-                  tenant_id: finalTenantId,
-                  nome: rawCmpName,
-                  origem: 'api',
-                  cnpj: `00000${ts}${rand}`,
-                  status: 'ativa',
-                  cadastro_provisorio: true,
-                  unidade: 'Não informado',
-                  cidade: 'Não informado',
-                })
-                .select('id').single();
-                
-             if (newEmp) {
-               matchedEmpresaId = newEmp.id;
-               uniqueEmpresasMap.set(normCmpName, { id: newEmp.id });
-               empresasCriadas++;
-             }
-           }
-        }
+        const matchedEmpresaId = await resolver.resolveOrCreate(rawCmpName);
 
         // Identificação Colaborador no Fallback rigoroso
         const matQuery = item.pessoa_matricula ? `MAT_${String(item.pessoa_matricula).trim()}` : null;
@@ -333,7 +298,7 @@ serve(async (req) => {
             logs: { 
                mensagem: "Requisição finalizada.", 
                clts_autocriados: cltsCriados, 
-               empresas_criadas: empresasCriadas,
+               empresas_criadas: resolver.empresasCriadas,
                esquema_utilizado: schemaVersion
             }
           })
@@ -350,7 +315,7 @@ serve(async (req) => {
           ignorados: quantidadeIgnorada,
           inconsistentes: quantidadeInconsistente,
           clts_criados: cltsCriados,
-          empresas_criadas: empresasCriadas,
+          empresas_criadas: resolver.empresasCriadas,
           schema: schemaVersion
        }
     }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });

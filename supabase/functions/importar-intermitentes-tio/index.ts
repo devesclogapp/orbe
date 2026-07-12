@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { EmpresaResolver } from "../_shared/EmpresaResolver.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -72,15 +73,8 @@ serve(async (req) => {
        });
     }
 
-    const { data: dbEmpresas } = await supabase.from('empresas').select('id, nome, cnpj').eq('tenant_id', tenant_id);
-    const empresaMap = new Map();
-    if (dbEmpresas) {
-      dbEmpresas.forEach(e => {
-        if (e.id) empresaMap.set(`ID_${e.id}`, e.id);
-        if (e.cnpj) empresaMap.set(`CNPJ_${e.cnpj.replace(/\D/g, '')}`, e.id);
-        if (e.nome) empresaMap.set(`NOM_${e.nome.toUpperCase().trim()}`, e.id);
-      });
-    }
+    const resolver = new EmpresaResolver(supabase, tenant_id, 'tio_digital');
+    await resolver.loadCache();
 
     const validos = [];
     const inconsistentes = [];
@@ -127,48 +121,7 @@ serve(async (req) => {
         .trim()
         .replace(/\s+/g, " ");
 
-    const normalizeCompanyText = (value?: string | null) => {
-      const normalized = normalizeText(value);
-      return normalized
-        .replace(/\b(ltda|me|eireli|sa|epp)\b/g, "")
-        .replace(/\s+/g, " ")
-        .trim();
-    };
-
-    // Helper for fuzzy find empresa
-    const findEmpresaFuzzy = (depName: string) => {
-      const key = normalizeCompanyText(depName);
-      if (!key) return null;
-      
-      for (const [empresaId, data] of empresaMap) {
-        // empresaMap is currently ID_, CNPJ_, NOM_ 
-        // We will do a full scan over values since it's small, 
-        // but we rely on a custom array of companies.
-      }
-      return null;
-    };
-    
-    const dbEmpresasArray = dbEmpresas || [];
-
-    const getEmpresaIdFromDep = (depName: string) => {
-      const key = normalizeCompanyText(depName);
-      if (!key) return null;
-      
-      // Exact Match
-      for(const e of dbEmpresasArray) {
-        if(normalizeCompanyText(e.nome) === key) {
-           return e.id;
-        }
-      }
-      // Substring Match
-      for(const e of dbEmpresasArray) {
-        const cKey = normalizeCompanyText(e.nome);
-        if(cKey && (cKey.includes(key) || key.includes(cKey) || cKey.replace(/\s/g, "").includes(key.replace(/\s/g, "")))) {
-           return e.id;
-        }
-      }
-      return null;
-    };
+    // A lógica de normalização da empresa e pesquisa fuzzy foi substituída pelo EmpresaResolver.
 
     // Buscar registros existentes para fallback/idempotencia
     const normDates = Array.from(new Set(items.map((i: any) => normalizeDbDate(i.data_periodo || i.data || i.data_referencia || i.DATA)).filter(Boolean)));
@@ -233,11 +186,11 @@ serve(async (req) => {
       const baseNome = rawName || 'Desconhecido';
       const baseConvocacao = item.convocacao || rawItem.Convocacao || 'Sem referência';
       
-      // Resolução de empresa fallback (Departamento)
+      // Resolução de empresa fallback (Departamento) via Resolver Oficial
       let fallbackEmpresaId = null;
       const depName = item.departamento || rawItem.Departamento || item.unidade || rawItem.Unidade;
       if (depName) {
-         fallbackEmpresaId = getEmpresaIdFromDep(String(depName));
+         fallbackEmpresaId = await resolver.resolveOrCreate(String(depName));
       }
       
       const launchBase = {
@@ -350,7 +303,8 @@ serve(async (req) => {
        atualizados: toUpdate.length,
        ignorados: ignorados,
        ignorados_por_lote: ignorados_por_lote,
-       inconsistentes: logsInconsistentes.length
+       inconsistentes: logsInconsistentes.length,
+       empresas_criadas: resolver.empresasCriadas
     }), {
        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
