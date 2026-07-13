@@ -73,21 +73,28 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
 
     const lotesGerados: IntermitenteLoteFechamento[] = [];
     
-    // Agrupar lançamentos por empresa_id
+    const competencia = params.periodoInicio.substring(0, 7); // yyyy-MM
+    
+    // Agrupar lançamentos por tenant_id + empresa_id + competência
     const groups = new Map<string, typeof lancamentos>();
     for (const lancamento of lancamentos) {
        if (!lancamento.empresa_id) {
-          throw new Error('Inconsistência identificada: Não é possível fechar o período pois existem lançamentos sem empresa vinculada (empresa_id ausente ou null). Por favor, corrija o cadastro ou reimporte os dados.');
+          throw new Error('Não foi possível fechar o período: foram encontrados lançamentos sem empresa ou de empresas diferentes no mesmo agrupamento.');
        }
-       const id = lancamento.empresa_id;
+       const id = `${tenantId}_${lancamento.empresa_id}_${competencia}`;
        if (!groups.has(id)) groups.set(id, []);
        groups.get(id)!.push(lancamento);
     }
     
-    const competencia = params.periodoInicio.substring(0, 7); // yyyy-MM
-    
     // Criar um lote para cada empresa
-    for (const [empresaId, groupLancamentos] of groups) {
+    for (const [groupKey, groupLancamentos] of groups) {
+      const empresaId = groupLancamentos[0].empresa_id;
+      
+      const uniqueEmpresas = new Set(groupLancamentos.map(l => l.empresa_id));
+      if (uniqueEmpresas.size > 1) {
+         throw new Error('Não foi possível fechar o período: foram encontrados lançamentos de empresas diferentes no mesmo agrupamento.');
+      }
+      
       const quantidade_registros = groupLancamentos.length;
       const valor_total = groupLancamentos.reduce((acc, curr) => acc + (Number(curr.total) || 0), 0);
 

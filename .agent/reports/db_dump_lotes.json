@@ -1,0 +1,24 @@
+[
+  {
+    "id": "1eed6737-4cba-41ee-81f8-f53d2e53fd3d",
+    "empresa_id": "a85df450-79b3-4f65-88a3-e2067c8791e9",
+    "periodo_inicio": "2026-07-06",
+    "periodo_fim": "2026-07-12",
+    "mes_referencia": "2026-07",
+    "total_registros": 4,
+    "valor_total": 350,
+    "status": "PAGO",
+    "fechado_por": "be2b4915-95dc-40ed-9d2b-61d19b1c8c90",
+    "fechado_por_nome": "dev.esclog@gmail.com",
+    "fechado_em": "2026-07-07T23:56:14.578+00:00",
+    "observacoes": "Fechamento semanal: 06/07 – 12/07/2026",
+    "tenant_id": "09ccafb6-2cf2-4c83-ac3d-a2913947693c",
+    "created_at": "2026-07-07T23:49:54.738759+00:00",
+    "updated_at": "2026-07-08T16:05:14.390958+00:00",
+    "paid_by": null,
+    "paid_by_nome": null,
+    "paid_at": null,
+    "tipo_reabertura": null,
+    "status_conciliacao": null
+  }
+]
