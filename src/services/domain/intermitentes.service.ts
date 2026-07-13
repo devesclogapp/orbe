@@ -167,7 +167,28 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
 
     if (itensError) throw itensError;
 
-    return { ...lote, itens: itens ?? [] };
+    const mappedItens = (itens ?? []).map((item: any) => ({
+      ...item,
+      horas: item.horas_trabalhadas,
+      valor_calculado: item.total,
+      tipo_evento: item.cargo || 'Intermitente',
+      status: (
+        item.status_pipeline === 'APROVADO_RH' || 
+        item.status_pipeline === 'ENVIADO_FINANCEIRO' || 
+        item.status_pipeline === 'RECEBIDO_FINANCEIRO'
+      ) 
+        ? 'APROVADO' 
+        : item.status_pipeline === 'EM_ANALISE_RH'
+        ? 'EM_ANALISE'
+        : item.status_pipeline === 'DEVOLVIDO' || item.status_pipeline === 'REJEITADO_RH'
+        ? 'REJEITADO'
+        : item.status_pipeline === 'RECEBIDO'
+        ? 'PENDENTE'
+        : item.status_pipeline
+    }));
+
+    const uniqueColabs = new Set(mappedItens.map(i => i.colaborador_id || i.nome_colaborador));
+    return { ...lote, itens: mappedItens, total_colaboradores: uniqueColabs.size };
   }
 
   async getResumoLoteIntermitente(loteId: string) {

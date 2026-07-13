@@ -1,17 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
 import * as dotenv from 'dotenv';
 import { resolve } from 'path';
+import { getE2EContext } from './utils/e2e-guard.ts';
 
 dotenv.config({ path: resolve(process.cwd(), '.env.local') });
 
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || '';
-const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || '';
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-const EDGE_URL = `${SUPABASE_URL}/functions/v1/importar-intermitentes-tio`;
-
 async function main() {
     console.log("=== INICIANDO HOMOLOGAÇÃO E2E (REVALIDAÇÃO CPT04) ===");
+    const { supabase, tenantId } = await getE2EContext();
+    const EDGE_URL = `${process.env.VITE_SUPABASE_URL}/functions/v1/importar-intermitentes-tio`;
     
     // Login
     const { error: authErr } = await supabase.auth.signInWithPassword({
@@ -26,11 +23,7 @@ async function main() {
         if (authErr2) console.log("Login fail, proceeding as anon (depends on RLS)");
     }
 
-    
-    // 1. Injetar dados via Edge Function (Tio Digital Webhook)
-    const tenant_id = '01a5b8a0-2f94-4d2d-8de5-3b0068a35626'; // get a valid tenant
-    const { data: tenantData } = await supabase.from('tenants').select('id').limit(1).single();
-    const activeTenant = tenant_id || tenantData?.id;
+    const activeTenant = tenantId;
 
     console.log("[PASS] Injetando carga multiempresa simulada no Edge Function...");
     const mockPayload = {

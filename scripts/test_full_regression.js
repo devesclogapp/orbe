@@ -1,14 +1,15 @@
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
+import { getE2EContext } from './utils/e2e-guard.ts';
 
 dotenv.config({ path: '.env.local' });
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL;
-const anonKey = process.env.VITE_SUPABASE_ANON_KEY;
-const tenantId = '09ccafb6-2cf2-4c83-ac3d-a2913947693c';
-
 async function runTests() {
     console.log("=== INICIANDO REGRESSÃO CIRÚRGICA ===");
+    const { supabase, tenantId } = await getE2EContext();
+    const supabaseUrl = process.env.VITE_SUPABASE_URL;
+    const anonKey = process.env.VITE_SUPABASE_ANON_KEY;
+
     console.log(`✅ TenantID configurado: ${tenantId}\n`);
 
     const dataReferencia = '2026-07-28';

@@ -218,11 +218,15 @@ serve(async (req) => {
 
 
       const finalEmpresaId = matchedColab?.empresa_id || fallbackEmpresaId || null;
+      
+      const isUnresolvedCompany = !finalEmpresaId;
 
       const recordToProcess = {
         ...launchBase,
+        status_pipeline: isUnresolvedCompany ? 'DEVOLVIDO' : 'RECEBIDO',
         colaborador_id: matchedColab ? matchedColab.id : null,
-        empresa_id: finalEmpresaId
+        empresa_id: finalEmpresaId,
+        ...(isUnresolvedCompany && { observacoes: `Empresa não resolvida na importação - departamento: '${depName || 'Desconhecido'}' - requer vínculo manual` })
       };
       
       if (!matchedColab) {

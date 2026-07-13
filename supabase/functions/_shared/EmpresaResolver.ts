@@ -66,6 +66,11 @@ export class EmpresaResolver {
    * Creates a provisory company (homologated behavior of RHID).
    */
   async criarEmpresaProvisoria(rawCmpName: string): Promise<string | null> {
+    if (/[,;()]/.test(rawCmpName) || rawCmpName.length > 60) {
+       console.warn(`[EMPRESA_RESOLVER] Rejeitado vazamento de strings malformadas como empresa provisória: "${rawCmpName}"`);
+       return null;
+    }
+
     const ts = Date.now().toString().slice(-6);
     const rand = String(Math.floor(Math.random() * 1000)).padStart(3, "0");
     const normCmpName = normalizeCompanyText(rawCmpName);

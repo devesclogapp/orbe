@@ -1,30 +1,15 @@
 // scripts/test_regressao_resolver.js
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
+import { getE2EContext } from './utils/e2e-guard.ts';
 
 dotenv.config({ path: '.env.local' });
-
-const supabaseUrl = process.env.VITE_SUPABASE_URL;
-const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY;
-// Usando a anon key pra teste básico. Ideal = service_role, mas vamos testar
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function runTests() {
     console.log("=== INICIANDO REGRESSÃO CIRÚRGICA ===");
 
-    // Pegar primeiro tenant
-    const { data: tenants, error: tenantErr } = await supabase.from('tenants').select('id').limit(1);
-    if (tenantErr || !tenants || tenants.length === 0) {
-        console.error("Falha ao obter tenant_id, certifique-se de que ha tenants.", tenantErr);
-        // Tenta do profile
-        const { data: profiles } = await supabase.from('profiles').select('tenant_id').not('tenant_id', 'is', null).limit(1);
-        if (!profiles || profiles.length === 0) {
-            console.log("Tenants indisponiveis! Abortando");
-            return;
-        }
-        tenants[0] = { id: profiles[0].tenant_id };
-    }
-    const tenantId = tenants[0].id;
+    const { supabase, tenantId } = await getE2EContext();
+    const supabaseUrl = process.env.VITE_SUPABASE_URL;
     console.log(`✅ TenantID isolado para o teste: ${tenantId}`);
 
     // Pegar uma Empresa existente para os testes Reutilizados
