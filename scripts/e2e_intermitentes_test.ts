@@ -1,29 +1,12 @@
-// @ts-nocheck
-import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
+import { getE2EContext } from "./utils/e2e-guard.ts";
 
 dotenv.config();
-
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!SUPABASE_URL || !SUPABASE_KEY) {
-    throw new Error("Missing Supabase env vars");
-}
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 async function runTest() {
     console.log("Starting E2E Intermitentes Test...");
     
-    // 0. Setup: Get test tenant and user (Service role is preferred, or test credentials)
-    // We assume the script is run with valid env or we can just fetch some data
-    const { data: tenantData } = await supabase.from('tenants').select('id').limit(1).single();
-    if (!tenantData) {
-        console.error("No tenant found");
-        return;
-    }
-    const tenant_id = tenantData.id;
+    const { supabase, tenantId: tenant_id } = await getE2EContext();
     console.log("Tenant:", tenant_id);
 
     const { data: authUser } = await supabase.auth.getSession();

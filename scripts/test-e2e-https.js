@@ -1,6 +1,8 @@
 import https from 'https';
 import fs from 'fs';
 import path from 'path';
+import { getE2EContext } from './utils/e2e-guard.ts';
+import path from 'path';
 
 // Parse .env.local manually
 const envPath = path.resolve('.env.local');
@@ -64,15 +66,8 @@ function querySupabase(endpoint, method = 'GET', body = null, prefer = null) {
 async function run() {
     try {
         console.log("=== INICIANDO HOMOLOGAÇÃO E2E INTERMITENTES (HTTPS) ===");
-
-        let tenants = await querySupabase('tenants?select=id&limit=1');
-        if (!tenants || tenants.length === 0) throw new Error("No tenants");
-        const tId = tenants[0].id;
+        const { tenantId: tId, empresaId: empId } = await getE2EContext();
         console.log("Tenant:", tId);
-
-        let empresas = await querySupabase(`empresas?select=id&tenant_id=eq.${tId}&limit=1`);
-        if (!empresas || empresas.length === 0) throw new Error("No empresas");
-        const empId = empresas[0].id;
 
         const payload = {
             tenant_id: tId,

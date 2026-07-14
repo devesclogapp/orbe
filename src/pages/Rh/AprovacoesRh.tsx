@@ -280,11 +280,6 @@ export default function AprovacoesRh() {
                 return;
             }
         },
-        onSuccess: () => {
-            toast.success("Item aprovado com sucesso!");
-            invalidate();
-            setSelectedItems([]);
-        },
         onError: (err: any) => toast.error("Erro ao aprovar.", { description: err?.message }),
     });
 
@@ -335,24 +330,41 @@ export default function AprovacoesRh() {
                 return;
             }
         },
-        onSuccess: () => {
-            toast.success("Item devolvido.");
-            invalidate();
-            setSelectedItems([]);
-        },
         onError: (err: any) => toast.error("Erro ao devolver.", { description: err?.message }),
     });
 
     // Ações em lote
     const handleBulkAprovar = async () => {
         const items = paginatedItems.filter(i => selectedItems.includes(i.id));
-        for (const item of items) await aprovarMutation.mutateAsync(item).catch(() => null);
+        const aprovados: string[] = [];
+        const parciais: string[] = [];
+
+        for (const item of items) {
+            try {
+                await aprovarMutation.mutateAsync(item);
+                aprovados.push(item.referencia);
+            } catch (err: any) {
+                parciais.push(`[${item.referencia}] ${err?.message || "Erro desconhecido"}`);
+            }
+        }
+
+        if (parciais.length > 0) {
+            toast.warning(`${aprovados.length} aprovado(s). ${parciais.length} falharam.`, {
+                description: parciais.join(" | ")
+            });
+        } else if (aprovados.length > 0) {
+            toast.success(`${aprovados.length} itens aprovados com sucesso!`);
+        }
+
+        invalidate();
         setSelectedItems([]);
     };
 
     const handleBulkDevolver = async () => {
         const items = paginatedItems.filter(i => selectedItems.includes(i.id));
         for (const item of items) await devolverMutation.mutateAsync(item).catch(() => null);
+        toast.success("Itens devolvidos com sucesso.");
+        invalidate();
         setSelectedItems([]);
     };
 
@@ -598,8 +610,26 @@ export default function AprovacoesRh() {
                         <DetailPanel
                             item={activeItem}
                             onClose={() => setActiveItem(null)}
-                            onAprovar={() => aprovarMutation.mutate(activeItem)}
-                            onDevolver={() => devolverMutation.mutate(activeItem)}
+                            onAprovar={() => {
+                                aprovarMutation.mutate(activeItem, {
+                                    onSuccess: () => {
+                                        toast.success("Item aprovado com sucesso!");
+                                        invalidate();
+                                        setSelectedItems([]);
+                                        setActiveItem(null);
+                                    }
+                                });
+                            }}
+                            onDevolver={() => {
+                                devolverMutation.mutate(activeItem, {
+                                    onSuccess: () => {
+                                        toast.success("Item devolvido.");
+                                        invalidate();
+                                        setSelectedItems([]);
+                                        setActiveItem(null);
+                                    }
+                                });
+                            }}
                             isAprovando={aprovarMutation.isPending}
                             isDevolvendo={devolverMutation.isPending}
                         />
@@ -773,6 +803,19 @@ function DetailPanel({
     isAprovando: boolean;
     isDevolvendo: boolean;
 }) {
+    // Validação de completude apenas para intermitentes em análise
+    const { data: valData, isLoading: valLoading } = useQuery({
+        queryKey: ["completude-lote", item.id],
+        queryFn: async () => {
+            if (item.tipo === "INTERMITENTE" && item.situacao === "Em análise") {
+                return await IntermitentesLoteService.verificarCompletudeLote(item.id);
+            }
+            return { podeAprovar: true, pendencias: [] };
+        }
+    });
+
+    const isBlocked = valData?.podeAprovar === false;
+
     return (
         <Sheet open={true} onOpenChange={(open) => { if (!open) onClose() }}>
             <SheetContent side="right" className="w-[400px] sm:max-w-md p-0 flex flex-col shadow-2xl bg-white overflow-hidden">
@@ -844,9 +887,26 @@ function DetailPanel({
 
                     {/* Ações */}
                     <div className="pt-2 flex flex-col gap-2">
+                        {isBlocked && valData.pendencias.length > 0 && (
+                            <div className="mb-4 bg-rose-50 border border-rose-200 rounded-md p-3">
+                                <div className="flex items-center gap-2 text-rose-700 font-bold mb-2">
+                                    <AlertTriangle size={16} />
+                                    <span>Bloqueio de Aprovação</span>
+                                </div>
+                                <ul className="text-xs text-rose-600 space-y-1 ml-2">
+                                    {valData.pendencias.map((p: any, idx: number) => (
+                                        <li key={idx} className="list-disc list-inside">
+                                            <span className="font-semibold">{p.colaborador}:</span> {p.pendencias.join(', ')}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
                         <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.15em]">Ações</label>
-                        <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-11 gap-2" onClick={onAprovar} disabled={isAprovando || item.situacao === "Aprovado"}>
-                            {isAprovando ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                        <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-11 gap-2"
+                            onClick={onAprovar}
+                            disabled={isBlocked || valLoading || isAprovando || item.situacao === "Aprovado"}>
+                            {(isAprovando || valLoading) ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
                             Aprovar
                         </Button>
                         <Button variant="outline" className="w-full border-orange-200 text-orange-600 hover:bg-orange-50 font-bold h-11 gap-2" onClick={onDevolver} disabled={isDevolvendo || item.situacao === "Devolvido"}>

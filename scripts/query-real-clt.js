@@ -1,18 +1,10 @@
-import { createClient } from '@supabase/supabase-js';
+import { getE2EContext } from './utils/e2e-guard.ts';
 import dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL;
-const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-const supabase = createClient(supabaseUrl, supabaseKey, {
-    auth: { persistSession: false }
-});
-
 async function run() {
     console.log("=== BUSCANDO DADOS REAIS DE CLT ===");
-    const { data: tenant } = await supabase.from('tenants').select('id').limit(1).single();
-    const tId = tenant.id;
+    const { supabase, tenantId: tId } = await getE2EContext();
 
     // Buscar empresas
     const { data: empresas } = await supabase.from('empresas').select('id, nome').eq('tenant_id', tId);

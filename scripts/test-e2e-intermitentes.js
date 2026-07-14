@@ -1,26 +1,14 @@
-import { createClient } from '@supabase/supabase-js';
+import { getE2EContext } from './utils/e2e-guard.ts';
 import dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
-
-const supabaseUrl = process.env.VITE_SUPABASE_URL;
-const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-const supabase = createClient(supabaseUrl, supabaseKey, {
-    auth: { persistSession: false }
-});
 
 async function run() {
     console.log("=== INICIANDO HOMOLOGAÇÃO E2E INTERMITENTES ===");
 
-    // 1. Get a valid tenant
-    const { data: tenant } = await supabase.from('tenants').select('id').limit(1).single();
-    if (!tenant) throw new Error("Sem tenant!");
-    const tId = tenant.id;
+    const { supabase, tenantId: tId, empresaId } = await getE2EContext();
     console.log("Tenant Id:", tId);
 
-    // Get an emp
-    const { data: emp } = await supabase.from('empresas').select('id').eq('tenant_id', tId).limit(1).single();
-    if (!emp) throw new Error("Sem empresa!");
+    const emp = { id: empresaId };
 
     // We will simulate directly inserting in lancamentos_intermitentes (Etapa 4.1 bypass API error)
     const { data: insertRes, error: errIns } = await supabase.from('lancamentos_intermitentes').insert([{

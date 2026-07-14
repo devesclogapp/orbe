@@ -26,3 +26,21 @@ export const decimalParaHora = (decimal: number | string | null | undefined) => 
 
   return `${String(horas).padStart(2, '0')}:${String(minutos).padStart(2, '0')}`;
 };
+
+export function validarCPF(cpf: string): boolean {
+  cpf = cpf.replace(/[^\d]+/g, "");
+  if (cpf.length !== 11 || !!cpf.match(/(\d)\1{10}/)) return false;
+  let split = cpf.split("");
+  let v1 = 0;
+  let v2 = 0;
+  for (let i = 0; i < 9; i++) {
+    v1 += parseInt(split[i]) * (10 - i);
+    v2 += parseInt(split[i]) * (11 - i);
+  }
+  v1 = (v1 * 10) % 11;
+  v1 = v1 >= 10 ? 0 : v1;
+  v2 += v1 * 2;
+  v2 = (v2 * 10) % 11;
+  v2 = v2 >= 10 ? 0 : v2;
+  return v1 === parseInt(split[9]) && v2 === parseInt(split[10]);
+}

@@ -1,17 +1,11 @@
 import fs from 'fs';
-import { createClient } from '@supabase/supabase-js';
+import { getE2EContext } from './utils/e2e-guard.ts';
 import dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL;
-const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-const supabase = createClient(supabaseUrl, supabaseKey, {
-    auth: { persistSession: false }
-});
-
 async function run() {
     console.log("=== INICIANDO HOMOLOGAÇÃO E2E OPERACIONAL CLT (DADOS REAIS) ===");
+    const { supabase } = await getE2EContext();
 
     // Buscar colaboradores reais para extrair o tenant_id sem ser pego no RLS de tenants
     const { data: recordsForRh, error: errFetch } = await supabase.from('registros_ponto')
@@ -43,7 +37,8 @@ async function run() {
         const { data: colab } = await supabase.from('colaboradores')
             .select('id, nome, tenant_id, empresa_id')
             .not('nome', 'ilike', '%HML%')
-            .limit(1).single();
+            .limit(1)
+            .maybeSingle();
 
         if (colab) {
             const { data: newPonto, error: newPontoErr } = await supabase.from('registros_ponto').insert({
@@ -59,7 +54,7 @@ async function run() {
 
             if (!newPontoErr && newPonto && newPonto.length > 0) {
                 console.log(`✅ Registro de ponto criado manualmente para o colaborador real: ${colab.nome} (ID Ponto: ${newPonto[0].id})`);
-                await processPipeline(colab.tenant_id, colab.empresa_id, newPonto[0].id, colab.id);
+                await processPipeline(supabase, colab.tenant_id, colab.empresa_id, newPonto[0].id, colab.id);
             } else {
                 fs.writeFileSync('error_insert.json', JSON.stringify(newPontoErr, null, 2));
                 console.error("❌ Erro criando ponto:", newPontoErr);
@@ -70,14 +65,14 @@ async function run() {
         console.log(`✅ Foram encontrados ${recordsForRh.length} registros reais 'RECEBIDOS'. Vamos processar o primeiro.`);
         const first = recordsForRh[0];
         console.log(`- Colaborador: ${first.colaboradores.nome} / Ponto: ${first.data} / Horas: ${first.horas_trabalhadas}`);
-        await processPipeline(first.tenant_id, first.empresa_id, first.id, first.colaborador_id);
+        await processPipeline(supabase, first.tenant_id, first.empresa_id, first.id, first.colaborador_id);
     }
 
     console.log("\n=== TESTE CONCLUÍDO COM SUCESSO ===");
     process.exit(0);
 }
 
-async function processPipeline(tId, empId, pontoId, colabId) {
+async function processPipeline(supabase, tId, empId, pontoId, colabId) {
     console.log("\n--- ETAPA 2 e 3: PROCESSAMENTO RH & BANCO DE HORAS ---");
     // Change to PROCESSADO
     const { error: errProc } = await supabase.from('registros_ponto').update({

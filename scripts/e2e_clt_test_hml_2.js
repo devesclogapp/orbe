@@ -1,23 +1,15 @@
-import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
+import { getE2EContext } from './utils/e2e-guard.ts';
 dotenv.config({ path: '.env.local' });
-
-const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
-const supabaseUrl = process.env.VITE_SUPABASE_URL;
-
-const supabase = createClient(supabaseUrl, supabaseKey, {
-    auth: { persistSession: false }
-});
 
 async function run() {
     console.log("=== INJETANDO E2E HML PONTOS ===");
 
-    // Fetch tenant_id (RLS allows select from tenants usually based on anonymous / default project setup)
-    const { data: tenant } = await supabase.from('tenants').select('id').limit(1).single();
-    if (!tenant) throw new Error("Sem tenant!");
-
-    const tenantId = tenant.id;
+    const { supabase, tenantId } = await getE2EContext();
     console.log("Tenant Id:", tenantId);
+
+    const supabaseUrl = process.env.VITE_SUPABASE_URL;
+    const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY;
 
     const dateStr = new Date(Date.now() - 86400000).toISOString().split('T')[0];
 

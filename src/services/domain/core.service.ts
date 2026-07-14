@@ -22,6 +22,7 @@ import {
   Table
 } from './base.service';
 import { OperacaoProducaoService } from './producao.service';
+import { validarCPF } from '@/lib/utils';
 
 
 
@@ -64,7 +65,7 @@ export function getColaboradorCompletudeDetailed(payload: Record<string, any>): 
   // Operacional Checks
   const pendenciasOperacionais: string[] = [];
   if (!nome) pendenciasOperacionais.push("Nome");
-  if (!cpf || cpf.length !== 11) pendenciasOperacionais.push("CPF");
+  if (!cpf || !validarCPF(cpf)) pendenciasOperacionais.push("CPF");
   if (!matricula) pendenciasOperacionais.push("Matrícula/ID");
   if (!empresaId) pendenciasOperacionais.push("Empresa vinculada");
   if (!tipoColab) pendenciasOperacionais.push("Tipo de colaborador");
@@ -104,7 +105,7 @@ export function getColaboradorCompletudeDetailed(payload: Record<string, any>): 
   if (telClean.length < 10) pendenciasGerais.push("Telefone de contato");
 
   const totalItems = [
-    nome, cpf.length === 11, matricula, empresaId, tipoColab,
+    nome, cpf && validarCPF(cpf), matricula, empresaId, tipoColab,
     cargo, !isCLT || pis.length === 11, tipoContrato, valorBase > 0,
     nomeBancario, bancoCodigo, agencia, conta, tipoConta, telClean.length >= 10
   ];

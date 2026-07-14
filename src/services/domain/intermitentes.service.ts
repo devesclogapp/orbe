@@ -1,5 +1,17 @@
 import { supabase } from '@/lib/supabase';
-import { BaseService, getCurrentTenantId } from './base.service';
+import { 
+  BaseService, 
+  cleanUuid, 
+  validateUuidFields, 
+  getCurrentTenantId, 
+  getTenantQueryFilter, 
+  extractReferencedTableFromFkError, 
+  requireAuthenticatedUserId, 
+  operationalClient,
+  Table
+} from './base.service';
+import { getColaboradorCompletudeDetailed } from './core.service';
+import { OperacaoProducaoService } from './producao.service';
 import {
   gerarCNAB240BB,
   downloadCNAB240,
@@ -252,6 +264,11 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
   }
 
   async validarLote(loteId: string, validadoPor: string) {
+    const check = await this.verificarCompletudeLote(loteId);
+    if (!check.podeAprovar) {
+      throw new Error(`Existem colaboradores com cadastro incompleto no lote.`);
+    }
+
     const { error: loteError } = await this.supabase
       .from('intermitentes_lotes_fechamento')
       .update({
@@ -270,6 +287,56 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
 
     if (itemError) throw itemError;
     return true;
+  }
+
+  async verificarCompletudeLote(loteId: string) {
+    const { data: lancamentos, error: errLanc } = await this.supabase
+      .from('lancamentos_intermitentes')
+      .select('colaborador_id, nome_colaborador')
+      .eq('lote_fechamento_id', loteId);
+
+    if (errLanc) throw errLanc;
+    if (!lancamentos || lancamentos.length === 0) return { podeAprovar: false, pendencias: [] };
+
+    const colabIds = [...new Set(lancamentos.map((l: any) => l.colaborador_id).filter(Boolean))];
+    const mapLancSemColab = lancamentos.filter((l: any) => !l.colaborador_id);
+
+    const pendencias: Array<{ colaborador: string; pendencias: string[] }> = [];
+
+    if (mapLancSemColab.length > 0) {
+      for (const l of mapLancSemColab) {
+        pendencias.push({
+          colaborador: l.nome_colaborador || 'Desconhecido',
+          pendencias: ['Colaborador não vinculado à base (sem ID)']
+        });
+      }
+    }
+
+    if (colabIds.length > 0) {
+      const { data: colaboradores, error: errColab } = await this.supabase
+        .from('colaboradores')
+        .select('*')
+        .in('id', colabIds as string[]);
+
+      if (errColab) throw errColab;
+
+      for (const c of (colaboradores ?? [])) {
+        const comp = getColaboradorCompletudeDetailed(c);
+        const isOk = comp.operacional.completo && comp.rh.completo && comp.financeiro.completo;
+        const falhas = [...new Set([...comp.operacional.pendencias, ...comp.rh.pendencias, ...comp.financeiro.pendencias])];
+        if (!isOk) {
+          pendencias.push({
+            colaborador: c.nome_completo || c.nome || "Colaborador",
+            pendencias: falhas
+          });
+        }
+      }
+    }
+
+    return {
+      podeAprovar: pendencias.length === 0,
+      pendencias
+    };
   }
 
   async devolverLote(loteId: string, observacao: string) {
