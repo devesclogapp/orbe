@@ -58,6 +58,8 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
                 </div>
             );
         }
+    } else if (!isOnboardingActive && location.pathname === "/onboarding") {
+        return <Navigate to="/operacional/dashboard" replace />;
     }
 
     const rule = getRouteAccessRule(location.pathname);

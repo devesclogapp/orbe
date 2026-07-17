@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import { supabase } from "@/lib/supabase";
 import { useTenant } from "./TenantContext";
 import { useAuth } from "./AuthContext";
-
+import { usePreferences } from "./PreferencesContext";
 export type OnboardingStep =
   | "cadastro_base"
   | "colaboradores"
@@ -163,6 +163,7 @@ const OnboardingContext = createContext<OnboardingContextType | undefined>(undef
 export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { tenantId, role } = useTenant();
   const { user } = useAuth();
+  const { environment } = usePreferences();
   const [currentStep, setCurrentStep] = useState<OnboardingStep>("cadastro_base");
   const [completedSteps, setCompletedSteps] = useState<OnboardingStep[]>([]);
   const [isActive, setIsActive] = useState(false);
@@ -570,29 +571,35 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [user, isOnboardingComplete]);
 
   useEffect(() => {
+    const isHomologacao = environment === 'HOMOLOGACAO';
+    if (isHomologacao) return; // Força pular a ativação indesejada
+
     if (isDataLoaded && (role === "admin" || role === "super_admin") && !isSystemReady && !isActive) {
       console.log("[OnboardingContext] Forcing onboarding active because system is not ready (base data missing)");
       setIsActive(true);
     }
-  }, [isDataLoaded, role, isSystemReady, isActive]);
+  }, [isDataLoaded, role, isSystemReady, isActive, environment]);
 
-  const value = useMemo(() => ({
-    currentStep,
-    completedSteps,
-    isActive,
-    dataStatus,
-    canAdvance,
-    isSystemReady,
-    isOnboardingComplete,
-    isDataLoaded,
-    progressPercentage,
-    setStep,
-    completeStep,
-    startOnboarding,
-    finishOnboarding,
-    skipOnboarding,
-    refetchStatus: fetchDataStatus,
-  }), [currentStep, completedSteps, isActive, dataStatus, canAdvance, isSystemReady, isOnboardingComplete, isDataLoaded, progressPercentage, setStep, completeStep, startOnboarding, finishOnboarding, skipOnboarding, fetchDataStatus]);
+  const value = useMemo(() => {
+    const isHomologacao = environment === 'HOMOLOGACAO';
+    return {
+      currentStep,
+      completedSteps,
+      isActive: isHomologacao ? false : isActive,
+      dataStatus,
+      canAdvance,
+      isSystemReady: isHomologacao ? true : isSystemReady,
+      isOnboardingComplete: isHomologacao ? true : isOnboardingComplete,
+      isDataLoaded,
+      progressPercentage: isHomologacao ? 100 : progressPercentage,
+      setStep,
+      completeStep,
+      startOnboarding,
+      finishOnboarding,
+      skipOnboarding,
+      refetchStatus: fetchDataStatus,
+    };
+  }, [currentStep, completedSteps, isActive, dataStatus, canAdvance, isSystemReady, isOnboardingComplete, isDataLoaded, progressPercentage, setStep, completeStep, startOnboarding, finishOnboarding, skipOnboarding, fetchDataStatus, environment]);
 
   return (
     <OnboardingContext.Provider value={value}>

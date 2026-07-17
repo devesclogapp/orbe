@@ -126,11 +126,11 @@ const queryClient = new QueryClient({
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
-      <TenantProvider>
-        <AccessControlProvider>
-          <OnboardingProvider>
-            <ClientProvider>
-              <PreferencesProvider>
+      <PreferencesProvider>
+        <TenantProvider>
+          <AccessControlProvider>
+            <OnboardingProvider>
+              <ClientProvider>
                 <SelectionProvider>
                   <OperationalPipelineProvider>
                     <TooltipProvider>
@@ -245,11 +245,11 @@ const App = () => (
                     </TooltipProvider>
                   </OperationalPipelineProvider>
                 </SelectionProvider>
-              </PreferencesProvider>
-            </ClientProvider>
-          </OnboardingProvider>
-        </AccessControlProvider>
-      </TenantProvider>
+              </ClientProvider>
+            </OnboardingProvider>
+          </AccessControlProvider>
+        </TenantProvider>
+      </PreferencesProvider>
     </AuthProvider>
   </QueryClientProvider>
 );

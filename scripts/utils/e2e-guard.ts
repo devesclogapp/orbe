@@ -6,61 +6,67 @@ const PROD_TENANT_ID = '09ccafb6-2cf2-4c83-ac3d-a2913947693c';
 
 export async function getE2EContext() {
     const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-    const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+    const testEmail = process.env.E2E_TEST_EMAIL;
+    const testPassword = process.env.E2E_TEST_PASSWORD;
 
     if (!supabaseUrl || !supabaseKey) {
-        throw new Error("Missing Supabase env vars");
+        throw new Error("Missing Supabase env vars (URL ou ANON_KEY).");
     }
 
+    if (!testEmail || !testPassword) {
+        throw new Error(`
+Acesso negado: Variáveis E2E_TEST_EMAIL e/ou E2E_TEST_PASSWORD não encontradas.
+Os scripts E2E exigem autenticação real via Supabase Auth para respeitar o RLS.
+Por favor, defina essas variáveis no seu .env.local.
+        `.trim());
+    }
+
+    // Usar apenas a ANON_KEY (sem persistir sessão local para não poluir storage)
     const supabase = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false } });
 
-    let tenantId = process.env.E2E_TENANT_ID;
-    
-    if (!tenantId) {
-        const { data } = await supabase
-            .from('tenants')
-            .select('id, nome')
-            .ilike('nome', '%homologacao%')
-            .limit(1)
-            .maybeSingle();
+    // Autenticar com o usuário de teste
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: testEmail,
+        password: testPassword
+    });
 
-        if (data) {
-            tenantId = data.id;
-        } else {
-            console.log("Tenant Homologação não encontrado. Criando base isolada automática...");
-            const { data: newTenant, error: tErr } = await supabase.from('tenants').insert({
-                nome: 'ESC LOG (Homologação)',
-                status: 'ativo'
-            }).select().single();
-            if (tErr) throw new Error("Erro ao criar tenant HML: " + tErr.message);
-            tenantId = newTenant.id;
-            console.log(`✅ Tenant de Homologação Criado com sucesso (${tenantId})`);
-        }
+    if (authError || !authData.user) {
+        throw new Error(`Falha na autenticação do E2E: ${authError?.message || 'Sem usuário'}`);
     }
+    const userId = authData.user.id;
 
-    if (tenantId === PROD_TENANT_ID) {
-        throw new Error("🚫 FAIL-FAST: O tenantId retornado pertence à Produção ESC LOG! " +
-                        "Tentativa de Bypass detectada (E2E_TENANT_ID apontando para PROD). Teste E2E abortado.");
-    }
+    const { data: tenantData } = await supabase
+        .from('tenants')
+        .select('id')
+        .eq('id', PROD_TENANT_ID)
+        .single();
+        
+    let tenantId = tenantData?.id || PROD_TENANT_ID;
 
-    const { data: emp } = await supabase.from('empresas').select('id').eq('tenant_id', tenantId).limit(1).maybeSingle();
+    console.log('tenantId usado:', tenantId);
+
+    // Buscar a Empresa configurada como Teste/Homologação dentro desse Tenant
+    const { data: emp, error: empErr } = await supabase
+        .from('empresas')
+        .select('id, nome, is_teste, cadastro_provisorio')
+        .eq('tenant_id', tenantId)
+        .eq('is_teste', true)
+        .limit(1)
+        .maybeSingle();
+
     let empresaId = emp?.id;
 
     if (!empresaId) {
-        console.log("Empresa de Teste não encontrada. Criando...");
-        const { data: newEmp, error: eErr } = await supabase.from('empresas').insert({
-            tenant_id: tenantId,
-            nome: 'Empresa Teste E2E HML',
-            cnpj: '00000000000100',
-            status: 'ativa',
-            cadastro_provisorio: false
-        }).select().single();
-        if (eErr) throw new Error("Erro ao criar empresa HML: " + eErr.message);
-        empresaId = newEmp.id;
-        console.log(`✅ Empresa de Homologação Criada (${empresaId})`);
+        throw new Error("🚫 FAIL-FAST: Empresa de Homologação (is_teste=true) não econtrada dentro do Tenant da ESC LOG. As travas de E2E impedem o uso de empresas reais para testes. Pare o teste e crie a empresa de Sandbox primeiro.");
     }
 
-    return { supabase, tenantId, empresaId };
+    const manualOverride = process.env.E2E_EMPRESA_ID;
+    if (manualOverride && manualOverride !== empresaId) {
+        throw new Error("🚫 FAIL-FAST: A empresa informada via E2E_EMPRESA_ID no .env não corresponde à empresa oficial de Sandbox. Risco de escrita em produção detectado!");
+    }
+
+    return { supabase, tenantId, empresaId, userId };
 }
 
 // For quick CLI check if run explicitly

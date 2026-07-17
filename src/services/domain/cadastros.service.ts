@@ -366,17 +366,6 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (typeof window !== 'undefined') {
-      const env = localStorage.getItem("esc-log-environment") || "PRODUCAO";
-      if (env === "HOMOLOGACAO") {
-        query = query.eq('is_teste', true);
-      } else if (env === "PRODUCAO") {
-        query = query.or('is_teste.is.null,is_teste.eq.false');
-      }
-    } else {
-      query = query.or('is_teste.is.null,is_teste.eq.false');
-    }
-
     if (empresaId) {
       query = query.eq('empresa_id', empresaId);
     }
@@ -384,15 +373,25 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
     const { data: colaboradores, error } = await query;
     if (error) throw error;
 
-    // Buscar empresas separadamente
-    const { data: empresas } = await supabase.from('empresas').select('id, nome, cidade, estado');
+    // Buscar empresas separadamente com a flag is_teste
+    const { data: empresas } = await supabase.from('empresas').select('id, nome, cidade, estado, is_teste');
     
-    // Join manual
     const empresaMap = new Map((empresas || []).map(e => [e.id, e]));
-    return (colaboradores || []).map(c => ({
-      ...c,
-      empresas: empresaMap.get(c.empresa_id) || null
-    }));
+
+    // Filtra pelo Environment da Empresa (Contexto Global)
+    const env = typeof window !== 'undefined' ? (localStorage.getItem("esc-log-environment") || "PRODUCAO") : "PRODUCAO";
+    
+    return (colaboradores || [])
+      .filter(c => {
+         const emp = empresaMap.get(c.empresa_id);
+         if (env === "HOMOLOGACAO") return emp?.is_teste === true || c.is_teste === true;
+         if (env === "PRODUCAO") return emp?.is_teste !== true && c.is_teste !== true;
+         return true; // "TODOS"
+      })
+      .map(c => ({
+        ...c,
+        empresas: empresaMap.get(c.empresa_id) || null
+      }));
   }
 
   async getByEmpresaWithOperationalFilters(
@@ -407,17 +406,6 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
       .select('*')
       .order('nome', { ascending: true });
 
-    if (typeof window !== 'undefined') {
-      const env = localStorage.getItem("esc-log-environment") || "PRODUCAO";
-      if (env === "HOMOLOGACAO") {
-        query = query.eq('is_teste', true);
-      } else if (env === "PRODUCAO") {
-        query = query.or('is_teste.is.null,is_teste.eq.false');
-      }
-    } else {
-      query = query.or('is_teste.is.null,is_teste.eq.false');
-    }
-
     if (shouldFilterByEmpresa) {
       query = query.eq('empresa_id', empresaId);
     }
@@ -429,8 +417,11 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
     const { data: colaboradores, error } = await query;
     if (error) throw error;
 
-    const { data: empresas } = await supabase.from('empresas').select('id, nome, cidade, estado');
+    const { data: empresas } = await supabase.from('empresas').select('id, nome, cidade, estado, is_teste');
     const empresaMap = new Map((empresas || []).map((empresa) => [empresa.id, empresa]));
+    
+    const env = typeof window !== 'undefined' ? (localStorage.getItem("esc-log-environment") || "PRODUCAO") : "PRODUCAO";
+    
     const tiposColaboradorPermitidos = new Set((filterConfig?.tipos_colaborador_permitidos ?? []).map(normalizeContratoToken));
     const regimesPermitidos = new Set((filterConfig?.regimes_trabalho_permitidos ?? []).map(normalizeContratoToken));
     const modelosPermitidos = new Set((filterConfig?.modelos_calculo_permitidos ?? []).map(normalizeContratoToken));
@@ -439,6 +430,11 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
     return (colaboradores || [])
       .filter((colaborador: any) => {
         if (colaborador.deleted_at) return false;
+        
+        const emp = empresaMap.get(colaborador.empresa_id);
+        if (env === "HOMOLOGACAO" && !(emp?.is_teste === true || colaborador.is_teste === true)) return false;
+        if (env === "PRODUCAO" && (emp?.is_teste === true || colaborador.is_teste === true)) return false;
+
         if (filterConfig?.somente_cadastro_completo && String(colaborador.status_cadastro ?? '').toLowerCase() !== 'completo') return false;
         if (filterConfig?.excluir_cadastro_provisorio && Boolean(colaborador.cadastro_provisorio)) return false;
         if (filterConfig?.exigir_permitir_lancamento_operacional && !colaborador.permitir_lancamento_operacional) return false;
@@ -463,26 +459,21 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
       .is('deleted_at', null)
       .order('nome', { ascending: true });
 
-    if (typeof window !== 'undefined') {
-      const env = localStorage.getItem("esc-log-environment") || "PRODUCAO";
-      if (env === "HOMOLOGACAO") {
-        query = query.eq('is_teste', true);
-      } else if (env === "PRODUCAO") {
-        query = query.or('is_teste.is.null,is_teste.eq.false');
-      }
-    } else {
-      query = query.or('is_teste.is.null,is_teste.eq.false');
-    }
-
     const { data: colaboradores, error } = await query;
 
     if (error) throw error;
 
-    const { data: empresas } = await supabase.from('empresas').select('id, nome, cidade, estado');
+    const { data: empresas } = await supabase.from('empresas').select('id, nome, cidade, estado, is_teste');
     const empresaMap = new Map((empresas || []).map((empresa) => [empresa.id, empresa]));
+
+    const env = typeof window !== 'undefined' ? (localStorage.getItem("esc-log-environment") || "PRODUCAO") : "PRODUCAO";
 
     return (colaboradores || [])
       .filter((colaborador: any) => {
+        const emp = empresaMap.get(colaborador.empresa_id);
+        if (env === "HOMOLOGACAO" && !(emp?.is_teste === true || colaborador.is_teste === true)) return false;
+        if (env === "PRODUCAO" && (emp?.is_teste === true || colaborador.is_teste === true)) return false;
+
         const tipoContrato = normalizeContratoToken(colaborador?.tipo_contrato);
         const modeloCalculo = normalizeContratoToken(colaborador?.modelo_calculo);
 
