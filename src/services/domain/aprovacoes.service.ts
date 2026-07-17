@@ -21,6 +21,12 @@ export class AprovacoesService {
     const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
     const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
     
+    // DECISÃO ARQUITETURAL (CHECKPOINT 06):
+    // A separação de ambientes é ESTRITA e BIDIRECIONAL por design.
+    // - Produção: Exibe EXCLUSIVAMENTE dados operacionais reais (is_teste = false ou is_teste is null).
+    // - Homologação: Exibe EXCLUSIVAMENTE dados gerados no sandbox (is_teste = true).
+    // Isso evita contaminação de métricas e garante que cenários de teste não inflem o faturamento real.
+    
     // Instead of fetching all valid IDs (which drops nulls and RLS-hidden genuine records),
     // we fetch ONLY explicitly marked test companies and perform an exclusion.
     let queryBuilder = supabase.from('empresas').select('id');
@@ -86,6 +92,10 @@ export class AprovacoesService {
     // Evaluate current environment to exclude non-matching companies
     const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
     const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
+    
+    // DECISÃO ARQUITETURAL (CHECKPOINT 06):
+    // A separação de ambientes deve ser bidirecional para evitar KPIs enganosos.
+    // Produção nunca reflete resultados com is_teste=true, e Homologação ignora dados reais.
     
     let queryBuilder = supabase.from('empresas').select('id');
     if (!isHomologacao) {
