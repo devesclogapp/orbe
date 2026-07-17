@@ -21,22 +21,36 @@ export class AprovacoesService {
     const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
     const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
     
+    // Instead of fetching all valid IDs (which drops nulls and RLS-hidden genuine records),
+    // we fetch ONLY explicitly marked test companies and perform an exclusion.
     let queryBuilder = supabase.from('empresas').select('id');
-    if (isHomologacao) {
+    if (!isHomologacao) {
       queryBuilder = queryBuilder.eq('is_teste', true);
     } else {
-      queryBuilder = queryBuilder.or('is_teste.eq.false,is_teste.is.null');
+      // In homologation, we exclusively WANT test companies. We keep the validIds logic.
+      queryBuilder = queryBuilder.eq('is_teste', true);
     }
-    
-    const { data: validEmpresas } = await queryBuilder;
-    const validIds = validEmpresas?.map(e => e.id) || [];
+    const { data: testEmpresas } = await queryBuilder;
+    const testIds = testEmpresas?.map(e => e.id) || [];
 
     let query = supabase
       .from('vw_aprovacoes_rh')
       .select('*', { count: 'exact' })
       .eq('situacao', situacao)
-      .in('empresa_id', validIds)
       .order('data_recebimento', { ascending: false });
+
+    // Conditional Application
+    if (isHomologacao) {
+        if (testIds.length > 0) {
+           query = query.in('empresa_id', testIds);
+        } else {
+           // No test companies found, return an impossible condition to return 0
+           query = query.in('empresa_id', ['00000000-0000-0000-0000-000000000000']);
+        }
+    } else if (testIds.length > 0) {
+        // Prod: Filter out test companies but KEEP nulls and legitimate ids.
+        query = query.or(`empresa_id.not.in.(${testIds.join(',')}),empresa_id.is.null`);
+    }
 
     if (tipo && tipo !== 'all') {
       query = query.eq('tipo', tipo);
@@ -74,21 +88,28 @@ export class AprovacoesService {
     const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
     
     let queryBuilder = supabase.from('empresas').select('id');
-    if (isHomologacao) {
+    if (!isHomologacao) {
       queryBuilder = queryBuilder.eq('is_teste', true);
     } else {
-      queryBuilder = queryBuilder.or('is_teste.eq.false,is_teste.is.null');
+      queryBuilder = queryBuilder.eq('is_teste', true);
     }
-    
-    const { data: validEmpresas } = await queryBuilder;
-    const validIds = validEmpresas?.map(e => e.id) || [];
+    const { data: testEmpresas } = await queryBuilder;
+    const testIds = testEmpresas?.map(e => e.id) || [];
     
     // We can do a single group by query using postgrest RPC later, or for now, just fetch the exact counts.
     // However, AprovacoesRh needs dynamic KPIs.
     // Instead of launching 6 queries, we'll launch a group-by RPC, but we don't have it.
     // The easiest way for now is to use exact counting on the view for each KPI.
     const baseQuery = () => {
-        let q = supabase.from('vw_aprovacoes_rh').select('*', { count: 'exact', head: true }).in('empresa_id', validIds);
+        let q = supabase.from('vw_aprovacoes_rh').select('*', { count: 'exact', head: true });
+        
+        if (isHomologacao) {
+            if (testIds.length > 0) q = q.in('empresa_id', testIds);
+            else q = q.in('empresa_id', ['00000000-0000-0000-0000-000000000000']);
+        } else if (testIds.length > 0) {
+            q = q.or(`empresa_id.not.in.(${testIds.join(',')}),empresa_id.is.null`);
+        }
+
         if (empresaId && empresaId !== 'all') q = q.eq('empresa_id', empresaId);
         if (inicioCompetencia && fimCompetencia) q = q.gte('filter_data', inicioCompetencia).lte('filter_data', fimCompetencia);
         return q;
