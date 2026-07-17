@@ -18,10 +18,24 @@ export class AprovacoesService {
     const start = (page - 1) * itemsPerPage;
     const end = start + itemsPerPage - 1;
 
+    const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
+    const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
+    
+    let queryBuilder = supabase.from('empresas').select('id');
+    if (isHomologacao) {
+      queryBuilder = queryBuilder.eq('is_teste', true);
+    } else {
+      queryBuilder = queryBuilder.or('is_teste.eq.false,is_teste.is.null');
+    }
+    
+    const { data: validEmpresas } = await queryBuilder;
+    const validIds = validEmpresas?.map(e => e.id) || [];
+
     let query = supabase
       .from('vw_aprovacoes_rh')
       .select('*', { count: 'exact' })
       .eq('situacao', situacao)
+      .in('empresa_id', validIds)
       .order('data_recebimento', { ascending: false });
 
     if (tipo && tipo !== 'all') {
@@ -55,12 +69,26 @@ export class AprovacoesService {
   static async getKpis(params: Omit<GetAprovacoesRhParams, 'page'|'itemsPerPage'|'situacao'>) {
     const { tipo, empresaId, inicioCompetencia, fimCompetencia } = params;
     
+    // Evaluate current environment to exclude non-matching companies
+    const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
+    const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
+    
+    let queryBuilder = supabase.from('empresas').select('id');
+    if (isHomologacao) {
+      queryBuilder = queryBuilder.eq('is_teste', true);
+    } else {
+      queryBuilder = queryBuilder.or('is_teste.eq.false,is_teste.is.null');
+    }
+    
+    const { data: validEmpresas } = await queryBuilder;
+    const validIds = validEmpresas?.map(e => e.id) || [];
+    
     // We can do a single group by query using postgrest RPC later, or for now, just fetch the exact counts.
     // However, AprovacoesRh needs dynamic KPIs.
     // Instead of launching 6 queries, we'll launch a group-by RPC, but we don't have it.
     // The easiest way for now is to use exact counting on the view for each KPI.
     const baseQuery = () => {
-        let q = supabase.from('vw_aprovacoes_rh').select('*', { count: 'exact', head: true });
+        let q = supabase.from('vw_aprovacoes_rh').select('*', { count: 'exact', head: true }).in('empresa_id', validIds);
         if (empresaId && empresaId !== 'all') q = q.eq('empresa_id', empresaId);
         if (inicioCompetencia && fimCompetencia) q = q.gte('filter_data', inicioCompetencia).lte('filter_data', fimCompetencia);
         return q;
