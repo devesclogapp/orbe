@@ -103,7 +103,7 @@ function getStepChecklist(stepId: string, dataStatus: any): StepChecklistItem[] 
         {
           id: "produto_com_preco",
           label: "Cadastrar produto/carga com preço operacional",
-          isComplete: dataStatus.hasRule,
+          isComplete: dataStatus.hasRule && dataStatus.hasProduct,
           link: `/cadastros?tab=parametros&subtab=produtos&onboarding_return=true`,
           linkLabel: "Ir para Produtos",
         },
