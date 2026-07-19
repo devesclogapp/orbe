@@ -232,6 +232,8 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
   }
 
   async getByEmpresaParaFinanceiro(empresaId: string) {
+    // Agora o CentralFinanceira.tsx irá ignorar isto (lerá de listLotesRecebidos),
+    // mas mantemos por precaução caso seja lido de outro lugar.
     const { data, error } = await this.supabase
       .from('intermitentes_lotes_fechamento')
       .select('*, empresa:empresas(nome)')
@@ -240,6 +242,119 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       .order('created_at', { ascending: false });
     if (error) throw error;
     return data ?? [];
+  }
+
+  async syncToRHFinanceiro(loteId: string, novoStatusOperacional?: string) {
+    const { data: lote, error: loteErr } = await this.supabase
+      .from('intermitentes_lotes_fechamento')
+      .select('*')
+      .eq('id', loteId)
+      .single();
+    if (loteErr || !lote) throw new Error('Lote não encontrado.');
+
+    const { data: lancamentos } = await this.supabase
+      .from('lancamentos_intermitentes')
+      .select('*')
+      .eq('lote_fechamento_id', loteId);
+
+    const statusOperacional = novoStatusOperacional || lote.status;
+    let targetStatus = 'AGUARDANDO_FINANCEIRO'; 
+    if (statusOperacional === 'FECHADO_FINANCEIRO' || statusOperacional === 'AGUARDANDO_PAGAMENTO') targetStatus = 'AGUARDANDO_PAGAMENTO';
+    if (statusOperacional === 'CNAB_GERADO' || statusOperacional === 'PAGO') targetStatus = 'FINALIZADO';
+    if (statusOperacional === 'DEVOLVIDO' || statusOperacional === 'CANCELADO') targetStatus = 'CANCELADO';
+    if (statusOperacional === 'VALIDADO_RH') targetStatus = 'AGUARDANDO_FINANCEIRO';
+
+    // Upsert the parent rh_financeiro_lotes
+    let { data: rhLote, error: rhLoteErr } = await this.supabase
+      .from('rh_financeiro_lotes')
+      .select('id')
+      .eq('tenant_id', lote.tenant_id)
+      .eq('empresa_id', lote.empresa_id)
+      .eq('competencia', lote.competencia)
+      .eq('origem', 'OPERACIONAL')
+      .eq('tipo', 'INTERMITENTES')
+      .maybeSingle();
+
+    if (rhLoteErr) throw rhLoteErr;
+    let rhLoteId = rhLote?.id;
+    const isDevolvido = statusOperacional === 'DEVOLVIDO';
+
+    if (!rhLoteId) {
+      // Creation guarantees 0 on valor if items are pushed next.
+      const { data: created, error: createErr } = await this.supabase
+        .from('rh_financeiro_lotes')
+        .insert({
+          tenant_id: lote.tenant_id,
+          empresa_id: lote.empresa_id,
+          competencia: lote.competencia,
+          origem: 'OPERACIONAL',
+          tipo: 'INTERMITENTES',
+          total_colaboradores: 0,
+          valor_total: 0,
+          status: isDevolvido ? 'DEVOLVIDO_RH' : targetStatus,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select('id')
+        .single();
+      if (createErr) throw createErr;
+      rhLoteId = created.id;
+    } else {
+      // Just update the status if we find an existing structural batch for this month
+      await this.supabase
+        .from('rh_financeiro_lotes')
+        .update({
+          status: isDevolvido ? 'DEVOLVIDO_RH' : targetStatus,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', rhLoteId);
+    }
+
+    // Always delete items belonging SPECIFICALLY to THIS operational batch (if they exist) so we don't duplicate on re-runs
+    if (lancamentos && lancamentos.length > 0) {
+      const idsDeLancamento = lancamentos.map((l: any) => l.id);
+      await this.supabase
+        .from('rh_financeiro_lote_itens')
+        .delete()
+        .eq('lote_id', rhLoteId)
+        .eq('origem_evento', 'lancamentos_intermitentes')
+        .in('referencia_evento_id', idsDeLancamento);
+    }
+
+    if (lancamentos && lancamentos.length > 0 && !isDevolvido) {
+      const payloadItens = lancamentos.map((l: any) => ({
+        lote_id: rhLoteId,
+        tenant_id: lote.tenant_id,
+        colaborador_id: l.colaborador_id,
+        nome_colaborador: l.nome_colaborador || 'Desconhecido',
+        tipo_evento: 'LANCAMENTO_INTERMITENTE',
+        horas: Number(l.horas_trabalhadas || l.quantidade_horas || 0),
+        minutos: Math.round(Number(l.horas_trabalhadas || l.quantidade_horas || 0) * 60),
+        valor_calculado: Number(l.total || l.valor_pagamento || 0),
+        origem_evento: 'lancamentos_intermitentes',
+        referencia_evento_id: l.id,
+        status: 'PENDENTE'
+      }));
+      const { error: insErr } = await this.supabase.from('rh_financeiro_lote_itens').insert(payloadItens);
+      if (insErr) throw insErr;
+    }
+
+    // Now, run an explicit aggregation read to recalculate the totals directly from the DB items
+    const { data: todosItens } = await this.supabase
+      .from('rh_financeiro_lote_itens')
+      .select('colaborador_id, nome_colaborador, valor_calculado')
+      .eq('lote_id', rhLoteId);
+
+    const aggregateTotal = (todosItens || []).reduce((acc: number, curr: any) => acc + (Number(curr.valor_calculado) || 0), 0);
+    const uniqueColabs = new Set((todosItens || []).map((l: any) => l.colaborador_id || l.nome_colaborador));
+
+    await this.supabase
+      .from('rh_financeiro_lotes')
+      .update({
+        total_colaboradores: uniqueColabs.size,
+        valor_total: aggregateTotal
+      })
+      .eq('id', rhLoteId);
   }
 
   async aprovarFinanceiro(loteId: string, validadoPor: string) {
@@ -260,6 +375,8 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       .eq('lote_fechamento_id', loteId);
 
     if (itemError) throw itemError;
+    
+    await this.syncToRHFinanceiro(loteId, 'FECHADO_FINANCEIRO');
     return true;
   }
 
@@ -286,6 +403,8 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       .eq('lote_fechamento_id', loteId);
 
     if (itemError) throw itemError;
+    
+    await this.syncToRHFinanceiro(loteId, 'VALIDADO_RH');
     return true;
   }
 
@@ -354,6 +473,8 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       .eq('lote_fechamento_id', loteId);
 
     if (itemError) throw itemError;
+    
+    await this.syncToRHFinanceiro(loteId, 'DEVOLVIDO');
     return true;
   }
 

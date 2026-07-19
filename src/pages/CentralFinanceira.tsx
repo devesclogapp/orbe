@@ -149,12 +149,6 @@ const CentralFinanceira = () => {
     enabled: !!selectedEmpresaId,
   });
 
-  const { data: lotesIntermitentes = [], isLoading: loadingIntermitentes } = useQuery({
-    queryKey: ["lotes-intermitentes-financeiro", selectedEmpresaId],
-    queryFn: () => IntermitentesLoteService.getByEmpresaParaFinanceiro(selectedEmpresaId!),
-    enabled: !!selectedEmpresaId,
-  });
-
   const lotesRh = useMemo(() => {
     const diaristasFormatted = lotesDiaristas
       .filter((l: any) => l.status === "VALIDADO_RH" || l.status === "FECHADO_FINANCEIRO" || l.status === "AGUARDANDO_PAGAMENTO")
@@ -168,25 +162,10 @@ const CentralFinanceira = () => {
       }))
       .filter((l: any) => !selectedMonth || l.competencia === selectedMonth);
 
-    const intermitentesFormatted = lotesIntermitentes
-      .filter((l: any) => l.status === "VALIDADO_RH" || l.status === "FECHADO_FINANCEIRO" || l.status === "AGUARDANDO_PAGAMENTO")
-      .map((l: any) => ({
-        ...l,
-        tipo: "INTERMITENTES",
-        origem: "OPERACIONAL",
-        competencia: l.competencia,
-        valor_total: l.valor_total,
-        total_registros: l.quantidade_registros,
-        status: l.status === "VALIDADO_RH" ? "AGUARDANDO_FINANCEIRO" :
-          l.status === "FECHADO_FINANCEIRO" ? "AGUARDANDO_PAGAMENTO" : l.status,
-        raw: l
-      }))
-      .filter((l: any) => !selectedMonth || l.competencia === selectedMonth);
-
-    return [...rawLotesRh, ...diaristasFormatted, ...intermitentesFormatted].sort((a, b) =>
+    return [...rawLotesRh, ...diaristasFormatted].sort((a, b) =>
       new Date(b.created_at).getTime() - new Date(a.getTime ? a.getTime() : a.created_at ? new Date(a.created_at).getTime() : 0)
     );
-  }, [rawLotesRh, lotesDiaristas, lotesIntermitentes, selectedMonth]);
+  }, [rawLotesRh, lotesDiaristas, selectedMonth]);
 
   const latestRhSentAt = useMemo(
     () => formatPipelineTimestamp(lotesRh.find((lote: any) => lote.status !== "DEVOLVIDO_RH")?.created_at),
@@ -341,13 +320,12 @@ const CentralFinanceira = () => {
   const lotesRhProntosBancario = lotesRh.filter((lote: any) => lote.status === "AGUARDANDO_PAGAMENTO");
   const lotesRhValorTotal = lotesRhPendentes.reduce((acc: number, lote: any) => acc + Number(lote.valor_total || 0), 0);
   const lotesRhValorBancario = lotesRhProntosBancario.reduce((acc: number, lote: any) => acc + Number(lote.valor_total || 0), 0);
-  const isLoading = loadingEmps || loadingComp || loadingCons || loadingFechamentos || loadingRhLotes || loadingIntermitentes;
+  const isLoading = loadingEmps || loadingComp || loadingCons || loadingFechamentos || loadingRhLotes;
 
   // helpers status
   const invalidateLotes = () => {
     queryClient.invalidateQueries({ queryKey: ["rh-financeiro-lotes"] });
     queryClient.invalidateQueries({ queryKey: ["lotes-diaristas-financeiro"] });
-    queryClient.invalidateQueries({ queryKey: ["lotes-intermitentes-financeiro"] });
     queryClient.invalidateQueries({ queryKey: ["rh-financeiro-lote-detalhe", rhLoteSelecionado?.id] });
     queryClient.invalidateQueries({ queryKey: ["rh-lote-historico", rhLoteSelecionado?.id] });
     // Invalidações para Diaristas no Central Bancaria (se estiver aberto em outra aba)
