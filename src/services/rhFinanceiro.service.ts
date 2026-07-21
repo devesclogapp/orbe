@@ -877,11 +877,26 @@ class RHFinanceiroServiceClass {
 
   async listLotesRecebidos(competencia?: string, empresaId?: string | null) {
     const { tenantId } = await getCurrentSessionContext();
+    const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
+    const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
+    
+    // DECISÃO ARQUITETURAL (CHECKPOINT 06): Separar lotes reais e logs do sandbox
+    let queryBuilder = (supabase as any).from('empresas').select('id').eq('is_teste', true);
+    const { data: testEmpresas } = await queryBuilder;
+    const testIds = testEmpresas?.map((e: any) => e.id) || [];
+    const safeTestIds = testIds.length > 0 ? testIds : ['00000000-0000-0000-0000-000000000000'];
+
     let query = (supabase as any)
       .from("rh_financeiro_lotes")
       .select("*, empresa:empresas(nome)")
       .eq("tenant_id", tenantId)
       .order("created_at", { ascending: false });
+
+    if (isHomologacao) {
+      query = query.in('empresa_id', safeTestIds);
+    } else {
+      query = query.or(`empresa_id.not.in.(${safeTestIds.join(',')}),empresa_id.is.null`);
+    }
 
     if (competencia) {
       query = query.eq("competencia", competencia);
@@ -1107,13 +1122,28 @@ class RHFinanceiroServiceClass {
 
   async getPendingSummary() {
     const { tenantId } = await getCurrentSessionContext();
-    const { data: lotes, error } = await (supabase as any)
+    const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
+    const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
+    
+    let queryBuilder = (supabase as any).from('empresas').select('id').eq('is_teste', true);
+    const { data: testEmpresas } = await queryBuilder;
+    const testIds = testEmpresas?.map((e: any) => e.id) || [];
+    const safeTestIds = testIds.length > 0 ? testIds : ['00000000-0000-0000-0000-000000000000'];
+
+    let query = (supabase as any)
       .from("rh_financeiro_lotes")
-      .select("id, competencia, origem, tipo, status, valor_total, total_colaboradores")
+      .select("id, competencia, origem, tipo, status, valor_total, total_colaboradores, empresa_id")
       .eq("tenant_id", tenantId)
       .eq("status", RH_LOTE_STATUS)
-      .order("created_at", { ascending: false })
-      .limit(6);
+      .order("created_at", { ascending: false });
+
+    if (isHomologacao) {
+      query = query.in('empresa_id', safeTestIds);
+    } else {
+      query = query.or(`empresa_id.not.in.(${safeTestIds.join(',')}),empresa_id.is.null`);
+    }
+
+    const { data: lotes, error } = await query.limit(6);
 
     if (error) throw error;
 

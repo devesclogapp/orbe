@@ -149,10 +149,24 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
   }
 
   async listarLotes(filtros?: { status?: string, competencia?: string }) {
+    const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
+    const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
+    
+    let queryBuilder = this.supabase.from('empresas').select('id').eq('is_teste', true);
+    const { data: testEmpresas } = await queryBuilder;
+    const testIds = testEmpresas?.map((e: any) => e.id) || [];
+    const safeTestIds = testIds.length > 0 ? testIds : ['00000000-0000-0000-0000-000000000000'];
+
     let query = this.supabase
       .from('intermitentes_lotes_fechamento')
       .select('*, empresa:empresas(nome)')
       .order('created_at', { ascending: false });
+
+    if (isHomologacao) {
+      query = query.in('empresa_id', safeTestIds);
+    } else {
+      query = query.or(`empresa_id.not.in.(${safeTestIds.join(',')}),empresa_id.is.null`);
+    }
 
     if (filtros?.status) query = query.eq('status', filtros.status);
     if (filtros?.competencia) query = query.eq('competencia', filtros.competencia);
@@ -232,14 +246,30 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
   }
 
   async getByEmpresaParaFinanceiro(empresaId: string) {
+    const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
+    const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
+    
+    let queryBuilder = this.supabase.from('empresas').select('id').eq('is_teste', true);
+    const { data: testEmpresas } = await queryBuilder;
+    const testIds = testEmpresas?.map((e: any) => e.id) || [];
+    const safeTestIds = testIds.length > 0 ? testIds : ['00000000-0000-0000-0000-000000000000'];
+
     // Agora o CentralFinanceira.tsx irá ignorar isto (lerá de listLotesRecebidos),
     // mas mantemos por precaução caso seja lido de outro lugar.
-    const { data, error } = await this.supabase
+    let query = this.supabase
       .from('intermitentes_lotes_fechamento')
       .select('*, empresa:empresas(nome)')
       .eq('empresa_id', empresaId)
       .in('status', ['VALIDADO_RH', 'FECHADO_FINANCEIRO', 'AGUARDANDO_PAGAMENTO', 'PAGO', 'cnab_gerado'])
       .order('created_at', { ascending: false });
+
+    if (isHomologacao) {
+      query = query.in('empresa_id', safeTestIds);
+    } else {
+      query = query.or(`empresa_id.not.in.(${safeTestIds.join(',')}),empresa_id.is.null`);
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
     return data ?? [];
   }

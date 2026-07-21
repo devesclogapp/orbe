@@ -307,6 +307,14 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
   }
 
   async getLotesPorPeriodo(inicio: string, fim: string, empresaId?: string | null) {
+    const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
+    const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
+    
+    let queryBuilder = this.supabase.from('empresas').select('id').eq('is_teste', true);
+    const { data: testEmpresas } = await queryBuilder;
+    const testIds = testEmpresas?.map((e: any) => e.id) || [];
+    const safeTestIds = testIds.length > 0 ? testIds : ['00000000-0000-0000-0000-000000000000'];
+
     // Lógica de INTERSEÇÃO: retorna lotes cujo período se sobrepõe ao intervalo filtrado.
     // Um lote intersecta [inicio, fim] se: periodo_inicio <= fim AND periodo_fim >= inicio
     // (ao contrário da lógica de contenção que só retornava lotes completamente dentro do filtro)
@@ -316,6 +324,12 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
       .lte('periodo_inicio', fim)    // lote começa antes ou no final do nosso período
       .gte('periodo_fim', inicio)    // lote termina depois ou no início do nosso período
       .order('created_at', { ascending: false });
+
+    if (isHomologacao) {
+      query = query.in('empresa_id', safeTestIds);
+    } else {
+      query = query.or(`empresa_id.not.in.(${safeTestIds.join(',')}),empresa_id.is.null`);
+    }
 
     if (empresaId) {
       query = query.eq('empresa_id', empresaId);
@@ -360,12 +374,28 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
   }
 
   async getByEmpresaParaFinanceiro(empresaId: string) {
-    const { data, error } = await this.supabase
+    const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
+    const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
+    
+    let queryBuilder = this.supabase.from('empresas').select('id').eq('is_teste', true);
+    const { data: testEmpresas } = await queryBuilder;
+    const testIds = testEmpresas?.map((e: any) => e.id) || [];
+    const safeTestIds = testIds.length > 0 ? testIds : ['00000000-0000-0000-0000-000000000000'];
+
+    let query = this.supabase
       .from('diaristas_lotes_fechamento')
       .select('*, empresa:empresas(nome)')
       .eq('empresa_id', empresaId)
       .in('status', ['VALIDADO_RH', 'FECHADO_FINANCEIRO', 'AGUARDANDO_PAGAMENTO', 'PAGO', 'pago', 'cnab_gerado'])
       .order('created_at', { ascending: false });
+
+    if (isHomologacao) {
+      query = query.in('empresa_id', safeTestIds);
+    } else {
+      query = query.or(`empresa_id.not.in.(${safeTestIds.join(',')}),empresa_id.is.null`);
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
     return data ?? [];
   }

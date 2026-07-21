@@ -36,31 +36,55 @@ async function main() {
     conta = newConta;
   }
   
-  // Vamos assegurar 2 colaboradores com contas Itaú nessa empresa HML
+function getCpfStr() {
+    const r = (n: number) => Math.round(Math.random() * n);
+    const mod = (dividendo: number, divisor: number) => Math.round(dividendo - (Math.floor(dividendo / divisor) * divisor));
+    const n = Array.from({length:9}, () => r(9));
+    let d1 = 11 - mod(n.reduce((acc, v, i) => acc + (v * (10 - i)), 0), 11);
+    if (d1 >= 10) d1 = 0;
+    let d2 = 11 - mod([...n, d1].reduce((acc, v, i) => acc + (v * (11 - i)), 0), 11);
+    if (d2 >= 10) d2 = 0;
+    return n.join('') + d1 + d2;
+}
+
   const colabsToInsert = [
     {
       nome: 'Homologação Itaú 001',
       nome_completo: 'Homologação Itaú 001',
-      cpf: '77777777771', // 11 digits
+      cpf: getCpfStr(), 
+      telefone: '11999999999',
       banco_codigo: '341',
       agencia: '1111',
       conta: '22222',
       tipo_conta: 'corrente',
       banco_validado: true,
       tipo_colaborador: 'INTERMITENTE',
-      is_teste: true
+      is_teste: true,
+      status: 'ATIVO',
+      data_admissao: '2026-01-01',
+      matricula: 'MAT-' + getCpfStr().substring(5),
+      cargo: 'Ajudante',
+      valor_hora: 30,
+      modelo_calculo: 'Horista'
     },
     {
       nome: 'Homologação Itaú 002',
       nome_completo: 'Homologação Itaú 002',
-      cpf: '77777777772', 
+      cpf: getCpfStr(), 
+      telefone: '11999999999',
       banco_codigo: '341',
       agencia: '3333',
       conta: '44444',
       tipo_conta: 'corrente',
       banco_validado: true,
       tipo_colaborador: 'INTERMITENTE',
-      is_teste: true
+      is_teste: true,
+      status: 'ATIVO',
+      data_admissao: '2026-01-01',
+      matricula: 'MAT-' + getCpfStr().substring(5),
+      cargo: 'Ajudante',
+      valor_hora: 30,
+      modelo_calculo: 'Horista'
     }
   ];
   
@@ -78,7 +102,8 @@ async function main() {
       colabIds.push(rec.id);
     } else {
       // Ensure it has the bank info updated
-      await supabase.from('colaboradores').update({ ...c, empresa_id: EMPRESA_ID }).eq('id', ext.id);
+      const { error: errUpd } = await supabase.from('colaboradores').update({ ...c, empresa_id: EMPRESA_ID }).eq('id', ext.id);
+      if (errUpd) throw errUpd;
       colabIds.push(ext.id);
     }
   }
@@ -122,9 +147,7 @@ async function main() {
   // Replace supabase client temporarily for the script
   (IntermitentesService as any).supabase = supabase;
   
-  // MOCK Completude API to let Dummies pass without inserting 20 address fields!
-  IntermitentesService.verificarCompletudeLote = async () => ({ podeAprovar: true, pendencias: [] });
-  
+  // MOCK REMOVIDO: Agora o teste passará organicamente!
   const { supabase: globalSupabase } = await import('../src/lib/supabase');
   const { data: sess } = await supabase.auth.getSession();
   if (sess?.session) {
@@ -133,6 +156,13 @@ async function main() {
 
   const userId = (await supabase.auth.getUser()).data.user?.id || '00000000-0000-0000-0000-000000000000';
   
+  const { getColaboradorCompletudeDetailed } = await import('../src/services/domain/core.service');
+  const { data: currentCols } = await supabase.from('colaboradores').select('*').in('id', colabIds);
+  if (currentCols && currentCols.length > 0) {
+    const r = getColaboradorCompletudeDetailed(currentCols[0]);
+    log(`DEBUG COMPLETUDE: HR: ${r.rh.completo}, OP: ${r.operacional.completo}, FIN: ${r.financeiro.completo}. FALHAS: ${r.geral.pendencias.join(', ')}`);
+  }
+
   log(`Enviando para RH (Validar Lote)...`);
   await IntermitentesService.validarLote(loteRow.id, userId);
   
@@ -163,8 +193,8 @@ async function main() {
     log(`SUCESSO ===========================`);
     log(`Arquivo ID: ${remessa.arquivoId}`);
     log(`Layout selecionado: Itaú (341) `);
-    log(`\n\n=== AMOSTRA DO ARQUIVO GERADO ===`);
-    log(remessa.content.substring(0, 500));
+    log(`\n=== ARQUIVO COMPLETO GERADO ===`);
+    log(remessa.content);
     log(`=================================`);
     
   } catch (err: any) {
