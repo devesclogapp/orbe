@@ -249,6 +249,29 @@ class DashboardConsolidadoServiceClass {
     const canonicalCompetencia = normalizeCompetencia(competencia) || '';
     const consolidadoEm = new Date().toISOString();
     
+    // Configuração do Isolamento de Ambiente - CHECKPOINT 06 
+    const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
+    const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
+    
+    const { data: testEmpresas } = await supabase.from('empresas').select('id').eq('is_teste', true);
+    const testIds = testEmpresas?.map(e => e.id) || [];
+    const safeTestIds = testIds.length > 0 ? testIds : ['00000000-0000-0000-0000-000000000000'];
+    
+    const { data: contasTest } = await supabase.from('contas_bancarias_empresa').select('id').in('empresa_id', safeTestIds);
+    const contatestIds = contasTest?.map(c => c.id) || [];
+    const safeContaTestIds = contatestIds.length > 0 ? contatestIds : ['11111111-1111-1111-1111-111111111111'];
+
+    // Helper functions to inject the correct where clause based on the environment
+    const applySeg = (q: any) => {
+      if (isHomologacao) return q.in('empresa_id', safeTestIds);
+      return q.or(`empresa_id.not.in.(${safeTestIds.join(',')}),empresa_id.is.null`);
+    };
+
+    const applyCnabSeg = (q: any) => {
+      if (isHomologacao) return q.or(`modo.eq.homologacao,and(modo.is.null,conta_bancaria_id.in.(${safeContaTestIds.join(',')}))`);
+      return q.or(`modo.eq.producao,and(modo.is.null,conta_bancaria_id.not.in.(${safeContaTestIds.join(',')}))`);
+    };
+    
     // Detect if we are looking for a whole year
     const isAnual = canonicalCompetencia.includes('all');
     const yearPart = Number(canonicalCompetencia.split('-')[0]);
@@ -259,9 +282,9 @@ class DashboardConsolidadoServiceClass {
       : format(addMonths(new Date(`${canonicalCompetencia}-01T12:00:00`), 1), 'yyyy-MM');
     const endRange = `${nextMonth}-01`;
 
-    let qReceitas = supabase
+    let qReceitas = applySeg(supabase
       .from('receitas_operacionais')
-      .select('valor_total, status, created_at, updated_at, competencia');
+      .select('valor_total, status, created_at, updated_at, competencia'));
       
     if (isAnual) {
       qReceitas = qReceitas.gte('created_at', `${yearPart}-01-01`).lt('created_at', `${yearPart + 1}-01-01`);
@@ -270,16 +293,16 @@ class DashboardConsolidadoServiceClass {
     }
     if (empresaId) qReceitas = qReceitas.eq('empresa_id', empresaId);
 
-    let qLotesD = supabase
+    let qLotesD = applySeg(supabase
       .from('diaristas_lotes_fechamento')
       .select('valor_total, status, periodo_inicio, created_at, updated_at')
       .gte('periodo_inicio', startRange)
-      .lt('periodo_inicio', endRange);
+      .lt('periodo_inicio', endRange));
     if (empresaId) qLotesD = qLotesD.eq('empresa_id', empresaId);
 
-    let qLotesRh = supabase
+    let qLotesRh = applySeg(supabase
       .from('rh_financeiro_lotes')
-      .select('status, created_at, updated_at, lote_itens:rh_financeiro_lote_itens(valor_calculado)');
+      .select('status, created_at, updated_at, lote_itens:rh_financeiro_lote_itens(valor_calculado)'));
     
     if (isAnual) {
       qLotesRh = qLotesRh.gte('competencia', `${yearPart}-01`).lt('competencia', `${yearPart + 1}-01`);
@@ -288,9 +311,9 @@ class DashboardConsolidadoServiceClass {
     }
     if (empresaId) qLotesRh = qLotesRh.eq('empresa_id', empresaId);
 
-    let qCnabLotes = supabase
+    let qCnabLotes = applySeg(supabase
       .from('lotes_remessa')
-      .select('id, valor_total, status, status_conciliacao, created_at');
+      .select('id, valor_total, status, status_conciliacao, created_at'));
     
     if (isAnual) {
       qCnabLotes = qCnabLotes.gte('competencia', `${yearPart}-01`).lt('competencia', `${yearPart + 1}-01`);
@@ -299,9 +322,9 @@ class DashboardConsolidadoServiceClass {
     }
     if (empresaId) qCnabLotes = qCnabLotes.eq('empresa_id', empresaId);
 
-    const qCnabArquivosBase = supabase
+    const qCnabArquivosBase = applyCnabSeg(supabase
       .from('cnab_remessas_arquivos')
-      .select('id, lote_id, total_valor, status, competencia, data_geracao, updated_at');
+      .select('id, lote_id, total_valor, status, competencia, data_geracao, updated_at'));
     
     const qCnabArquivos = isAnual 
       ? qCnabArquivosBase.gte('competencia', `${yearPart}-01`).lt('competencia', `${yearPart + 1}-01`)
@@ -318,19 +341,19 @@ class DashboardConsolidadoServiceClass {
         )
       `);
 
-    let qCustos = supabase
+    let qCustos = applySeg(supabase
       .from('custos_extras_operacionais')
       .select('total, status_pagamento, criado_em, atualizado_em')
       .gte('data', startRange)
-      .lt('data', endRange);
+      .lt('data', endRange));
     if (empresaId) qCustos = qCustos.eq('empresa_id', empresaId);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let qServicosExtras = (supabase as any)
+    let qServicosExtras = applySeg((supabase as any)
       .from('servicos_extras_operacionais')
       .select('total, pipeline_status, criado_em, atualizado_em')
       .gte('data', startRange)
-      .lt('data', endRange);
+      .lt('data', endRange));
     if (empresaId) qServicosExtras = qServicosExtras.eq('empresa_id', empresaId);
 
     const [

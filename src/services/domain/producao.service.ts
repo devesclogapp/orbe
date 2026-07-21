@@ -292,19 +292,41 @@ export const PontoService = new PontoServiceClass();
 
 class ConsolidadoServiceClass {
   async getByCompetencia(competencia: string, empresaId?: string) {
+    const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
+    const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
+    const { data: testEmpresas } = await supabase.from('empresas').select('id').eq('is_teste', true);
+    const testIds = testEmpresas?.map(e => e.id) || [];
+    const safeTestIds = testIds.length > 0 ? testIds : ['00000000-0000-0000-0000-000000000000'];
+
     let qC = supabase
       .from('financeiro_consolidados_cliente')
       .select('*, clientes(nome)')
       .eq('competencia', competencia);
 
-    if (empresaId) qC = qC.eq('empresa_id', empresaId);
+    if (empresaId && empresaId !== 'all') {
+      qC = qC.eq('empresa_id', empresaId);
+    } else {
+      if (isHomologacao) {
+         qC = qC.in('empresa_id', safeTestIds);
+      } else {
+         qC = qC.or(`empresa_id.not.in.(${safeTestIds.join(',')}),empresa_id.is.null`);
+      }
+    }
 
     let qCol = supabase
       .from('financeiro_consolidados_colaborador')
       .select('*, colaboradores(nome, cargo)')
       .eq('competencia', competencia);
 
-    if (empresaId) qCol = qCol.eq('empresa_id', empresaId);
+    if (empresaId && empresaId !== 'all') {
+      qCol = qCol.eq('empresa_id', empresaId);
+    } else {
+      if (isHomologacao) {
+         qCol = qCol.in('empresa_id', safeTestIds);
+      } else {
+         qCol = qCol.or(`empresa_id.not.in.(${safeTestIds.join(',')}),empresa_id.is.null`);
+      }
+    }
 
     const [resC, resCol] = await Promise.all([qC, qCol]);
 

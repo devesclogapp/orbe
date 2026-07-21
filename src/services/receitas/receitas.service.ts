@@ -8,6 +8,12 @@ class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
   }
 
   async getPipelinePainel(tenantId: string, empresaId?: string, competencia?: string) {
+    const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
+    const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
+    const { data: testEmpresas } = await supabase.from('empresas').select('id').eq('is_teste', true);
+    const testIds = testEmpresas?.map(e => e.id) || [];
+    const safeTestIds = testIds.length > 0 ? testIds : ['00000000-0000-0000-0000-000000000000'];
+
     let query = supabase
       .from('receitas_operacionais')
       .select(`
@@ -26,6 +32,12 @@ class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
 
     if (empresaId && empresaId !== 'all') {
       query = query.eq('empresa_id', empresaId);
+    } else {
+      if (isHomologacao) {
+         query = query.in('empresa_id', safeTestIds);
+      } else {
+         query = query.or(`empresa_id.not.in.(${safeTestIds.join(',')}),empresa_id.is.null`);
+      }
     }
     
     if (competencia) {
@@ -205,6 +217,12 @@ class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extra
   }
 
   async getWithEmpresas(empresaId?: string, competencia?: string) {
+    const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
+    const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
+    const { data: testEmpresas } = await supabase.from('empresas').select('id').eq('is_teste', true);
+    const testIds = testEmpresas?.map(e => e.id) || [];
+    const safeTestIds = testIds.length > 0 ? testIds : ['00000000-0000-0000-0000-000000000000'];
+
     try {
       let query = operationalClient
         .from('servicos_extras_operacionais' as any)
@@ -215,7 +233,15 @@ class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extra
           tipos_servico_operacional(nome)
         `);
       
-      if (empresaId) query = query.eq('empresa_id', empresaId);
+      if (empresaId && empresaId !== 'all') {
+        query = query.eq('empresa_id', empresaId);
+      } else {
+        if (isHomologacao) {
+           query = query.in('empresa_id', safeTestIds);
+        } else {
+           query = query.or(`empresa_id.not.in.(${safeTestIds.join(',')}),empresa_id.is.null`);
+        }
+      }
       if (competencia) {
         const parts = competencia.split('-');
         const year = Number(parts[0]);
@@ -242,7 +268,15 @@ class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extra
           .from('servicos_extras_operacionais' as any)
           .select('*');
         
-        if (empresaId) simpleQuery = simpleQuery.eq('empresa_id', empresaId);
+        if (empresaId && empresaId !== 'all') {
+          simpleQuery = simpleQuery.eq('empresa_id', empresaId);
+        } else {
+          if (isHomologacao) {
+             simpleQuery = simpleQuery.in('empresa_id', safeTestIds);
+          } else {
+             simpleQuery = simpleQuery.or(`empresa_id.not.in.(${safeTestIds.join(',')}),empresa_id.is.null`);
+          }
+        }
         if (competencia) {
           const parts = competencia.split('-');
           const year = Number(parts[0]);
