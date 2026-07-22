@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { EnvironmentQueryFilter } from "./environment/EnvironmentQueryFilter";
 
 type BloqueioItem = {
   id: string;
@@ -877,14 +878,6 @@ class RHFinanceiroServiceClass {
 
   async listLotesRecebidos(competencia?: string, empresaId?: string | null) {
     const { tenantId } = await getCurrentSessionContext();
-    const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
-    const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
-    
-    // DECISÃO ARQUITETURAL (CHECKPOINT 06): Separar lotes reais e logs do sandbox
-    let queryBuilder = (supabase as any).from('empresas').select('id').eq('is_teste', true);
-    const { data: testEmpresas } = await queryBuilder;
-    const testIds = testEmpresas?.map((e: any) => e.id) || [];
-    const safeTestIds = testIds.length > 0 ? testIds : ['00000000-0000-0000-0000-000000000000'];
 
     let query = (supabase as any)
       .from("rh_financeiro_lotes")
@@ -892,11 +885,13 @@ class RHFinanceiroServiceClass {
       .eq("tenant_id", tenantId)
       .order("created_at", { ascending: false });
 
-    if (isHomologacao) {
-      query = query.in('empresa_id', safeTestIds);
-    } else {
-      query = query.or(`empresa_id.not.in.(${safeTestIds.join(',')}),empresa_id.is.null`);
-    }
+    // PILOTO: Uso do EnvironmentQueryFilter com a regra de null = true 
+    // já que o baseline considerava `or(empresa_id.not.in...,empresa_id.is.null)`
+    query = await EnvironmentQueryFilter.applyEmpresaScope(query, {
+      tenantId,
+      column: "empresa_id",
+      includeNullInProduction: true,
+    });
 
     if (competencia) {
       query = query.eq("competencia", competencia);
@@ -1122,13 +1117,6 @@ class RHFinanceiroServiceClass {
 
   async getPendingSummary() {
     const { tenantId } = await getCurrentSessionContext();
-    const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
-    const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
-    
-    let queryBuilder = (supabase as any).from('empresas').select('id').eq('is_teste', true);
-    const { data: testEmpresas } = await queryBuilder;
-    const testIds = testEmpresas?.map((e: any) => e.id) || [];
-    const safeTestIds = testIds.length > 0 ? testIds : ['00000000-0000-0000-0000-000000000000'];
 
     let query = (supabase as any)
       .from("rh_financeiro_lotes")
@@ -1137,11 +1125,12 @@ class RHFinanceiroServiceClass {
       .eq("status", RH_LOTE_STATUS)
       .order("created_at", { ascending: false });
 
-    if (isHomologacao) {
-      query = query.in('empresa_id', safeTestIds);
-    } else {
-      query = query.or(`empresa_id.not.in.(${safeTestIds.join(',')}),empresa_id.is.null`);
-    }
+    // PILOTO: Uso do EnvironmentQueryFilter
+    query = await EnvironmentQueryFilter.applyEmpresaScope(query, {
+      tenantId,
+      column: "empresa_id",
+      includeNullInProduction: true,
+    });
 
     const { data: lotes, error } = await query.limit(6);
 

@@ -19,6 +19,7 @@ vi.mock('@/services/domain/base.service', async (importOriginal) => {
 
 import { supabase } from '@/lib/supabase';
 import { RHFinanceiroService } from '@/services/rhFinanceiro.service';
+import { EnvironmentService } from '@/services/environment/EnvironmentService';
 
 describe("Segregation of Produção and Homologação", () => {
     let mockSelect: any;
@@ -55,12 +56,14 @@ describe("Segregation of Produção and Homologação", () => {
             single: () => Promise.resolve({ data: { tenant_id: "mock-tenant" }, error: null })
         });
 
-        // Simula o comportamento do cliente Supabase para o teste
+        vi.stubGlobal('location', { reload: vi.fn() });
         (supabase.from as any).mockImplementation((table: string) => {
             if (table === 'empresas') {
                 return {
                     select: () => ({
-                        eq: () => Promise.resolve({ data: [{ id: "test-id-1" }, { id: "test-id-2" }] })
+                        eq: () => ({
+                            eq: () => Promise.resolve({ data: [{ id: "test-id-1" }, { id: "test-id-2" }], error: null })
+                        })
                     })
                 };
             }
@@ -75,6 +78,7 @@ describe("Segregation of Produção and Homologação", () => {
     });
 
     it("deve usar a cláusula IN com as empresas de teste em HOMOLOGAÇÃO", async () => {
+        EnvironmentService.invalidate();
         localStorage.setItem("esc-log-environment", "HOMOLOGACAO");
         
         await RHFinanceiroService.listLotesRecebidos();
@@ -85,6 +89,7 @@ describe("Segregation of Produção and Homologação", () => {
     });
 
     it("deve usar a cláusula NOT IN e IS NULL em PRODUCAO", async () => {
+        EnvironmentService.invalidate();
         localStorage.setItem("esc-log-environment", "PRODUCAO");
         
         await RHFinanceiroService.listLotesRecebidos();
