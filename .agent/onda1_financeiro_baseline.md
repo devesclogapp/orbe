@@ -1,5 +1,5 @@
 # Sprint: ONDA 1 - Baseline Financeiro
-Gerado em: 2026-07-21T22:01:43.488Z
+Gerado em: 2026-07-26T02:41:20.770Z
 
 O cache do baseline isola e calcula baseado puramente nos filtros SQL consolidados (IN safeTestIds vs NOT IN safeTestIds).
 
@@ -9,7 +9,7 @@ O cache do baseline isola e calcula baseado puramente nos filtros SQL consolidad
 * Quantidade de Remessas (CNAB): 0
 * Valor de Remessas: R$ 0.00
 * Quantidade de Arquivos de Retorno: 0
-* Tempo médio de consulta (Lotes): 296.03ms
+* Tempo médio de consulta (Lotes): 202.67ms
 
 ## STATUS DE PRODUÇÃO
 * Quantidade de Lotes RH: 0
@@ -17,4 +17,4 @@ O cache do baseline isola e calcula baseado puramente nos filtros SQL consolidad
 * Quantidade de Remessas (CNAB): 0
 * Valor de Remessas: R$ 0.00
 * Quantidade de Arquivos de Retorno: 0
-* Tempo médio de consulta (Lotes): 131.30ms
+* Tempo médio de consulta (Lotes): 129.86ms

@@ -499,6 +499,7 @@
 | `src\services\domain\servicos_especificos.service.ts` | Linha 118 | `servicos_especificos_regras` | Não | Não | SIM |
 | `src\services\domain\servicos_especificos.service.ts` | Linha 138 | `servicos_especificos_lancamentos` | Não | Não | SIM |
 | `src\services\domain\servicos_especificos.service.ts` | Linha 153 | `servicos_especificos_lancamentos` | Sim | Não | SIM |
+| `src\services\environment\EnvironmentService.ts` | Linha 42 | `empresas` | Não | Não | Não (Ignorado/Tabela Base) |
 | `src\services\financial.service.ts` | Linha 24 | `profiles` | Não | Não | Não (Ignorado/Tabela Base) |
 | `src\services\financial.service.ts` | Linha 34 | `lotes_remessa` | Não | Não | SIM |
 | `src\services\financial.service.ts` | Linha 51 | `faturas` | Não | Não | SIM |
@@ -581,36 +582,34 @@
 | `src\services\report.service.ts` | Linha 53 | `relatorios_agendamentos` | Não | Não | SIM |
 | `src\services\report.service.ts` | Linha 58 | `relatorios_agendamentos` | Não | Não | SIM |
 | `src\services\resetOperacional.service.ts` | Linha 45 | `profiles` | Não | Não | Não (Ignorado/Tabela Base) |
-| `src\services\rhFinanceiro.service.ts` | Linha 144 | `profiles` | Não | Não | Não (Ignorado/Tabela Base) |
-| `src\services\rhFinanceiro.service.ts` | Linha 172 | `empresas` | Sim | Não | Não (Ignorado/Tabela Base) |
-| `src\services\rhFinanceiro.service.ts` | Linha 174 | `registros_ponto` | Sim | Não | SIM |
-| `src\services\rhFinanceiro.service.ts` | Linha 181 | `colaboradores` | Sim | Não | SIM |
-| `src\services\rhFinanceiro.service.ts` | Linha 186 | `processamento_rh_inconsistencias` | Sim | Não | SIM |
-| `src\services\rhFinanceiro.service.ts` | Linha 193 | `processamento_rh_logs` | Sim | Não | SIM |
-| `src\services\rhFinanceiro.service.ts` | Linha 226 | `custos_extras_operacionais` | Sim | Não | SIM |
-| `src\services\rhFinanceiro.service.ts` | Linha 233 | `servicos_extras_operacionais` | Sim | Não | SIM |
-| `src\services\rhFinanceiro.service.ts` | Linha 335 | `banco_horas_eventos` | Sim | Não | SIM |
-| `src\services\rhFinanceiro.service.ts` | Linha 386 | `rh_financeiro_lote_historico` | Não | Não | SIM |
-| `src\services\rhFinanceiro.service.ts` | Linha 729 | `rh_financeiro_lotes` | Sim | Não | SIM |
-| `src\services\rhFinanceiro.service.ts` | Linha 758 | `rh_financeiro_lote_itens` | Não | Não | SIM |
-| `src\services\rhFinanceiro.service.ts` | Linha 759 | `rh_financeiro_lotes` | Não | Não | SIM |
-| `src\services\rhFinanceiro.service.ts` | Linha 781 | `rh_financeiro_lote_itens` | Não | Não | SIM |
-| `src\services\rhFinanceiro.service.ts` | Linha 806 | `rh_financeiro_lotes` | Sim | Não | SIM |
-| `src\services\rhFinanceiro.service.ts` | Linha 838 | `rh_financeiro_lote_itens` | Não | Não | SIM |
-| `src\services\rhFinanceiro.service.ts` | Linha 884 | `empresas` | Sim | Sim | Não (Ignorado/Tabela Base) |
-| `src\services\rhFinanceiro.service.ts` | Linha 890 | `rh_financeiro_lotes` | Sim | Sim | Não |
-| `src\services\rhFinanceiro.service.ts` | Linha 917 | `rh_financeiro_lotes` | Não | Não | SIM |
-| `src\services\rhFinanceiro.service.ts` | Linha 930 | `rh_financeiro_lote_historico` | Não | Não | SIM |
-| `src\services\rhFinanceiro.service.ts` | Linha 952 | `rh_financeiro_lotes` | Não | Não | SIM |
-| `src\services\rhFinanceiro.service.ts` | Linha 969 | `rh_financeiro_lotes` | Não | Não | SIM |
-| `src\services\rhFinanceiro.service.ts` | Linha 981 | `rh_financeiro_lote_historico` | Não | Não | SIM |
-| `src\services\rhFinanceiro.service.ts` | Linha 997 | `rh_financeiro_lotes` | Não | Não | SIM |
-| `src\services\rhFinanceiro.service.ts` | Linha 1019 | `rh_financeiro_lotes` | Não | Não | SIM |
-| `src\services\rhFinanceiro.service.ts` | Linha 1081 | `rh_financeiro_lotes` | Não | Não | SIM |
-| `src\services\rhFinanceiro.service.ts` | Linha 1098 | `rh_financeiro_lotes` | Não | Não | SIM |
-| `src\services\rhFinanceiro.service.ts` | Linha 1111 | `rh_financeiro_lote_historico` | Não | Sim | Não |
-| `src\services\rhFinanceiro.service.ts` | Linha 1128 | `empresas` | Sim | Sim | Não (Ignorado/Tabela Base) |
-| `src\services\rhFinanceiro.service.ts` | Linha 1134 | `rh_financeiro_lotes` | Sim | Sim | Não |
+| `src\services\rhFinanceiro.service.ts` | Linha 145 | `profiles` | Não | Não | Não (Ignorado/Tabela Base) |
+| `src\services\rhFinanceiro.service.ts` | Linha 173 | `empresas` | Sim | Não | Não (Ignorado/Tabela Base) |
+| `src\services\rhFinanceiro.service.ts` | Linha 175 | `registros_ponto` | Sim | Não | SIM |
+| `src\services\rhFinanceiro.service.ts` | Linha 182 | `colaboradores` | Sim | Não | SIM |
+| `src\services\rhFinanceiro.service.ts` | Linha 187 | `processamento_rh_inconsistencias` | Sim | Não | SIM |
+| `src\services\rhFinanceiro.service.ts` | Linha 194 | `processamento_rh_logs` | Sim | Não | SIM |
+| `src\services\rhFinanceiro.service.ts` | Linha 227 | `custos_extras_operacionais` | Sim | Não | SIM |
+| `src\services\rhFinanceiro.service.ts` | Linha 234 | `servicos_extras_operacionais` | Sim | Não | SIM |
+| `src\services\rhFinanceiro.service.ts` | Linha 336 | `banco_horas_eventos` | Sim | Não | SIM |
+| `src\services\rhFinanceiro.service.ts` | Linha 387 | `rh_financeiro_lote_historico` | Não | Não | SIM |
+| `src\services\rhFinanceiro.service.ts` | Linha 730 | `rh_financeiro_lotes` | Sim | Não | SIM |
+| `src\services\rhFinanceiro.service.ts` | Linha 759 | `rh_financeiro_lote_itens` | Não | Não | SIM |
+| `src\services\rhFinanceiro.service.ts` | Linha 760 | `rh_financeiro_lotes` | Não | Não | SIM |
+| `src\services\rhFinanceiro.service.ts` | Linha 782 | `rh_financeiro_lote_itens` | Não | Não | SIM |
+| `src\services\rhFinanceiro.service.ts` | Linha 807 | `rh_financeiro_lotes` | Sim | Não | SIM |
+| `src\services\rhFinanceiro.service.ts` | Linha 839 | `rh_financeiro_lote_itens` | Não | Não | SIM |
+| `src\services\rhFinanceiro.service.ts` | Linha 883 | `rh_financeiro_lotes` | Sim | Não | SIM |
+| `src\services\rhFinanceiro.service.ts` | Linha 912 | `rh_financeiro_lotes` | Não | Não | SIM |
+| `src\services\rhFinanceiro.service.ts` | Linha 925 | `rh_financeiro_lote_historico` | Não | Não | SIM |
+| `src\services\rhFinanceiro.service.ts` | Linha 947 | `rh_financeiro_lotes` | Não | Não | SIM |
+| `src\services\rhFinanceiro.service.ts` | Linha 964 | `rh_financeiro_lotes` | Não | Não | SIM |
+| `src\services\rhFinanceiro.service.ts` | Linha 976 | `rh_financeiro_lote_historico` | Não | Não | SIM |
+| `src\services\rhFinanceiro.service.ts` | Linha 992 | `rh_financeiro_lotes` | Não | Não | SIM |
+| `src\services\rhFinanceiro.service.ts` | Linha 1014 | `rh_financeiro_lotes` | Não | Não | SIM |
+| `src\services\rhFinanceiro.service.ts` | Linha 1076 | `rh_financeiro_lotes` | Não | Não | SIM |
+| `src\services\rhFinanceiro.service.ts` | Linha 1093 | `rh_financeiro_lotes` | Não | Não | SIM |
+| `src\services\rhFinanceiro.service.ts` | Linha 1106 | `rh_financeiro_lote_historico` | Não | Não | SIM |
+| `src\services\rhFinanceiro.service.ts` | Linha 1122 | `rh_financeiro_lotes` | Sim | Não | SIM |
 | `src\services\rhProcessing.service.ts` | Linha 335 | `empresas` | Não | Não | Não (Ignorado/Tabela Base) |
 | `src\services\rhProcessing.service.ts` | Linha 392 | `banco_horas_regras` | Sim | Não | SIM |
 | `src\services\rhProcessing.service.ts` | Linha 633 | `registros_ponto` | Não | Sim | Não |

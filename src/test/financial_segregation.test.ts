@@ -41,15 +41,14 @@ describe("Segregation of Produção and Homologação", () => {
         mockOr.mockResolvedValue({ data: [], error: null });
         mockOrder.mockResolvedValue({ data: [], error: null });
         
+        mockEq.mockResolvedValue({ data: [], error: null });
+
         mockSelect = vi.fn().mockReturnValue({
             eq: () => ({
                 order: () => ({
                     in: mockIn,
                     or: mockOr,
-                    eq: () => ({
-                        in: mockIn,
-                        or: mockOr
-                    })
+                    eq: mockEq
                 }),
                 single: () => Promise.resolve({ data: { tenant_id: "mock-tenant" }, error: null })
             }),
@@ -97,5 +96,104 @@ describe("Segregation of Produção and Homologação", () => {
         // Verifica se usou a lógica padrão que oculta as empresas de teste
         expect(mockOr).toHaveBeenCalledWith('empresa_id.not.in.(test-id-1,test-id-2),empresa_id.is.null');
         expect(mockIn).not.toHaveBeenCalled();
+    });
+
+    it("tenant A não compartilha cache com tenant B", async () => {
+        EnvironmentService.invalidate();
+        (supabase.from as any).mockImplementation((table: string) => {
+            if (table === 'empresas') {
+                return {
+                    select: () => ({
+                        eq: (field: string, val: any) => {
+                            if (field === 'tenant_id') {
+                                return {
+                                    eq: () => Promise.resolve({ 
+                                        data: val === 'tenant-A' ? [{ id: "test-A" }] : [{ id: "test-B" }], 
+                                        error: null 
+                                    })
+                                };
+                            }
+                            return { eq: () => Promise.resolve({ data: [], error: null }) };
+                        }
+                    })
+                };
+            }
+            return { select: mockSelect };
+        });
+
+        const idsA = await EnvironmentService.getTestEmpresaIds("tenant-A");
+        const idsB = await EnvironmentService.getTestEmpresaIds("tenant-B");
+        expect(idsA).toEqual(["test-A"]);
+        expect(idsB).toEqual(["test-B"]);
+    });
+
+    it("troca de ambiente invalida o escopo", () => {
+        const spyInvalidate = vi.spyOn(EnvironmentService, 'invalidate');
+        EnvironmentService.handleEnvironmentChange();
+        expect(spyInvalidate).toHaveBeenCalled();
+        spyInvalidate.mockRestore();
+    });
+
+    it("falha na descoberta de testIds impede a execução da consulta e lança erro", async () => {
+        EnvironmentService.invalidate();
+        (supabase.from as any).mockImplementation((table: string) => {
+            if (table === 'empresas') {
+                return {
+                    select: () => ({
+                        eq: () => ({
+                            eq: () => Promise.resolve({ data: null, error: { message: "error" } })
+                        })
+                    })
+                };
+            }
+            return { select: mockSelect };
+        });
+
+        await expect(RHFinanceiroService.listLotesRecebidos()).rejects.toThrow('Erro técnico ao buscar empresas de teste');
+        
+        // Assegura que o construtor financeiro sequer foi acionado
+        expect(mockIn).not.toHaveBeenCalled();
+        expect(mockOr).not.toHaveBeenCalled();
+        expect(mockEq).not.toHaveBeenCalled();
+    });
+
+    it("HML sem empresas teste como sucesso legítimo filtra para UUID vazio seguro", async () => {
+        EnvironmentService.invalidate();
+        localStorage.setItem("esc-log-environment", "HOMOLOGACAO");
+        (supabase.from as any).mockImplementation((table: string) => {
+            if (table === 'empresas') {
+                return {
+                    select: () => ({
+                        eq: () => ({
+                            eq: () => Promise.resolve({ data: [], error: null })
+                        })
+                    })
+                };
+            }
+            return { select: mockSelect };
+        });
+
+        await RHFinanceiroService.listLotesRecebidos();
+        expect(mockEq).toHaveBeenCalledWith('empresa_id', '00000000-0000-0000-0000-000000000000');
+    });
+
+    it("PROD sem empresas teste como sucesso legítimo não adiciona restrição NOT IN", async () => {
+        EnvironmentService.invalidate();
+        localStorage.setItem("esc-log-environment", "PRODUCAO");
+        (supabase.from as any).mockImplementation((table: string) => {
+            if (table === 'empresas') {
+                return {
+                    select: () => ({
+                        eq: () => ({
+                            eq: () => Promise.resolve({ data: [], error: null })
+                        })
+                    })
+                };
+            }
+            return { select: mockSelect };
+        });
+
+        await RHFinanceiroService.listLotesRecebidos();
+        expect(mockOr).not.toHaveBeenCalled();
     });
 });

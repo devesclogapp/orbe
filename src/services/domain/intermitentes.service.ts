@@ -11,6 +11,7 @@ import {
   Table
 } from './base.service';
 import { getColaboradorCompletudeDetailed } from './core.service';
+import { EnvironmentQueryFilter } from '../environment/EnvironmentQueryFilter';
 import { OperacaoProducaoService } from './producao.service';
 import {
   gerarCNAB240BB,
@@ -63,7 +64,24 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
   }): Promise<IntermitenteLoteFechamento[]> {
     const tenantId = await getCurrentTenantId();
 
-    // Buscar lançamentos abertos
+    // 1. Identificar, excluir e rastrear dados nulos (Inconsistências)
+    const { data: nullLancamentos } = await supabase
+      .from('lancamentos_intermitentes')
+      .select('id')
+      .eq('status_pipeline', 'RECEBIDO')
+      .is('lote_fechamento_id', null)
+      .is('empresa_id', null)
+      .gte('data_referencia', params.periodoInicio)
+      .lte('data_referencia', params.periodoFim);
+      
+    if (nullLancamentos && nullLancamentos.length > 0) {
+      const idsNulos = nullLancamentos.map(l => l.id);
+      await supabase.from('lancamentos_intermitentes').update({ 
+        status_pipeline: 'DEVOLVIDO' 
+      }).in('id', idsNulos);
+    }
+
+    // 2. Buscar lançamentos válidos com escopo rigoroso
     let query = supabase
       .from('lancamentos_intermitentes')
       .select('id, total, empresa_id')
@@ -75,12 +93,18 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
     if (params.empresaId) {
        query = query.eq('empresa_id', params.empresaId);
     }
+    
+    query = await EnvironmentQueryFilter.applyEmpresaScope(query, {
+      tenantId,
+      column: 'empresa_id',
+      includeNullInProduction: false
+    }) as any;
 
     const { data: lancamentos, error: queryError } = await query;
     if (queryError) throw queryError;
 
     if (!lancamentos || lancamentos.length === 0) {
-      throw new Error('Nenhum lançamento pendente encontrado para o período/filtro informado.');
+      throw new Error('Nenhum lançamento pendente encontrado para o período/filtro informado neste ambiente.');
     }
 
     const lotesGerados: IntermitenteLoteFechamento[] = [];
@@ -90,9 +114,7 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
     // Agrupar lançamentos por tenant_id + empresa_id + competência
     const groups = new Map<string, typeof lancamentos>();
     for (const lancamento of lancamentos) {
-       if (!lancamento.empresa_id) {
-          throw new Error('Não foi possível fechar o período: foram encontrados lançamentos sem empresa ou de empresas diferentes no mesmo agrupamento.');
-       }
+       // A cláusula null blocker e scope helper já garantem presence
        const id = `${tenantId}_${lancamento.empresa_id}_${competencia}`;
        if (!groups.has(id)) groups.set(id, []);
        groups.get(id)!.push(lancamento);
@@ -130,7 +152,7 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
 
       if (loteError) throw loteError;
 
-      const lancamentoIds = groupLancamentos.map(l => l.id);
+      const scopedLancamentoIds = groupLancamentos.map(l => l.id);
 
       const { error: updateError } = await this.supabase
         .from('lancamentos_intermitentes')
@@ -138,7 +160,7 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
           lote_fechamento_id: lote.id,
           status_pipeline: 'EM_ANALISE_RH'
         })
-        .in('id', lancamentoIds);
+        .in('id', scopedLancamentoIds);
 
       if (updateError) throw updateError;
       
@@ -149,24 +171,21 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
   }
 
   async listarLotes(filtros?: { status?: string, competencia?: string }) {
-    const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
-    const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
-    
-    let queryBuilder = this.supabase.from('empresas').select('id').eq('is_teste', true);
-    const { data: testEmpresas } = await queryBuilder;
-    const testIds = testEmpresas?.map((e: any) => e.id) || [];
-    const safeTestIds = testIds.length > 0 ? testIds : ['00000000-0000-0000-0000-000000000000'];
+    const tenantId = await getCurrentTenantId();
 
     let query = this.supabase
       .from('intermitentes_lotes_fechamento')
       .select('*, empresa:empresas(nome)')
       .order('created_at', { ascending: false });
 
-    if (isHomologacao) {
-      query = query.in('empresa_id', safeTestIds);
-    } else {
-      query = query.or(`empresa_id.not.in.(${safeTestIds.join(',')}),empresa_id.is.null`);
-    }
+    query = await EnvironmentQueryFilter.applyEmpresaScope(query, {
+       tenantId,
+       column: 'empresa_id',
+       includeNullInProduction: true
+       // LEGACY_NULL_COMPATIBILITY:
+       // Mantido temporariamente para exibição de lotes históricos.
+       // Não autoriza novos fechamentos com empresa_id nulo.
+    }) as any;
 
     if (filtros?.status) query = query.eq('status', filtros.status);
     if (filtros?.competencia) query = query.eq('competencia', filtros.competencia);
@@ -246,16 +265,8 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
   }
 
   async getByEmpresaParaFinanceiro(empresaId: string) {
-    const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
-    const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
-    
-    let queryBuilder = this.supabase.from('empresas').select('id').eq('is_teste', true);
-    const { data: testEmpresas } = await queryBuilder;
-    const testIds = testEmpresas?.map((e: any) => e.id) || [];
-    const safeTestIds = testIds.length > 0 ? testIds : ['00000000-0000-0000-0000-000000000000'];
+    const tenantId = await getCurrentTenantId();
 
-    // Agora o CentralFinanceira.tsx irá ignorar isto (lerá de listLotesRecebidos),
-    // mas mantemos por precaução caso seja lido de outro lugar.
     let query = this.supabase
       .from('intermitentes_lotes_fechamento')
       .select('*, empresa:empresas(nome)')
@@ -263,11 +274,11 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       .in('status', ['VALIDADO_RH', 'FECHADO_FINANCEIRO', 'AGUARDANDO_PAGAMENTO', 'PAGO', 'cnab_gerado'])
       .order('created_at', { ascending: false });
 
-    if (isHomologacao) {
-      query = query.in('empresa_id', safeTestIds);
-    } else {
-      query = query.or(`empresa_id.not.in.(${safeTestIds.join(',')}),empresa_id.is.null`);
-    }
+    query = await EnvironmentQueryFilter.applyEmpresaScope(query, {
+      tenantId, 
+      column: 'empresa_id', 
+      includeNullInProduction: false
+    }) as any;
 
     const { data, error } = await query;
     if (error) throw error;

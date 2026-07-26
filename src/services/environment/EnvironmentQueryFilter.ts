@@ -1,4 +1,4 @@
-import { EnvironmentService } from './EnvironmentService';
+import { EnvironmentService, EnvironmentScopeResolutionError } from './EnvironmentService';
 
 export type EnvironmentScopeOptions = {
   tenantId: string;
@@ -14,22 +14,29 @@ class EnvironmentQueryFilterClass {
     const { tenantId, column = 'empresa_id', includeNullInProduction = false } = options;
     
     if (!tenantId) {
-      console.warn("EnvironmentQueryFilter: Nenhum tenantId definido. Retornando array de seguranca vazio.");
+      throw new EnvironmentScopeResolutionError("EnvironmentQueryFilter: Nenhum tenantId definido para a aplicacao do escopo.");
     }
     
     const env = EnvironmentService.getCurrentEnvironment();
-    const safeTestIds = await EnvironmentService.getTestEmpresaIds(tenantId);
-    const safeJoined = `(${safeTestIds.join(',')})`;
-
+    const testIds = await EnvironmentService.getTestEmpresaIds(tenantId);
+    
     const q = query as any;
 
     if (env === 'homologacao') {
-      return q.in(column, safeTestIds) as T;
+      if (testIds.length === 0) {
+        return q.eq(column, '00000000-0000-0000-0000-000000000000') as T;
+      }
+      return q.in(column, testIds) as T;
     } else {
+      if (testIds.length === 0) {
+        return q as T; // Nenhum ID HML para excluir. Continua a query normal.
+      }
+      
+      const safeJoined = `(${testIds.join(',')})`;
+      
       if (includeNullInProduction) {
         return q.or(`${column}.not.in.${safeJoined},${column}.is.null`) as T;
       } else {
-        // More strict, cannot be null, must not be in safeTestIds
         return q.not(column, 'in', safeJoined) as T;
       }
     }
