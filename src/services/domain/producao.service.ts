@@ -21,6 +21,8 @@ import {
   requireAuthenticatedUserId, 
   operationalClient 
 } from './base.service';
+import { EnvironmentQueryFilter } from '../environment/EnvironmentQueryFilter';
+import { EnvironmentService } from '../environment/EnvironmentService';
 
 
 
@@ -818,6 +820,12 @@ class OperacaoProducaoServiceClass {
 
   async create(payload: Record<string, any>) {
     const tenantId = await getCurrentTenantId();
+    
+    await EnvironmentService.assertEmpresaAllowed({ 
+      tenantId, 
+      empresaId: payload.empresa_id 
+    });
+
     const safePayload = { ...this.sanitizeOperacaoPayload(payload), tenant_id: tenantId };
     const { data, error } = await operationalClient
       .from('operacoes_producao')
@@ -904,7 +912,11 @@ class OperacaoProducaoServiceClass {
             })),
           );
 
-        if (error) throw error;
+        if (error) {
+          // Compensatória
+          await this.delete(registro.id, registro.updated_at_frontend).catch(() => {});
+          throw error;
+        }
       }
     }
 
@@ -924,7 +936,11 @@ class OperacaoProducaoServiceClass {
           })),
         );
 
-      if (matError) throw matError;
+      if (matError) {
+         // Rollback compensatório de Operação em falha
+         await this.delete(registro.id, registro.updated_at_frontend).catch(() => {});
+         throw matError;
+      }
     }
 
     return this.getByDate(registro.data_operacao, registro.empresa_id, registro.unidade_id)
@@ -989,6 +1005,12 @@ class OperacaoProducaoServiceClass {
 
     // 1. Vincular Colaboradores
     if (colaboradores) {
+      // Snapshot recovery system
+      const { data: snapshotColabs } = await operationalClient
+        .from('production_entry_collaborators')
+        .select('*')
+        .eq('production_entry_id', id);
+
       // Remove vínculos antigos
       const { error: delError } = await operationalClient
         .from('production_entry_collaborators')
@@ -1006,6 +1028,7 @@ class OperacaoProducaoServiceClass {
           if (colabId && !seenIds.has(colabId)) {
               seenIds.add(colabId);
               uniqueColaboradores.push({
+                  production_entry_id: id,
                   collaborator_id: colabId,
                   had_infraction: item.had_infraction,
                   infraction_type_id: item.infraction_type_id ?? null,
@@ -1021,26 +1044,25 @@ class OperacaoProducaoServiceClass {
       if (uniqueColaboradores.length > 0) {
         const { error } = await operationalClient
           .from('production_entry_collaborators')
-          .insert(
-            uniqueColaboradores.map((item) => ({
-              production_entry_id: id,
-              collaborator_id: item.collaborator_id,
-              had_infraction: item.had_infraction,
-              infraction_type_id: item.infraction_type_id ?? null,
-              infraction_notes: item.infraction_notes ?? null,
-              entrada_ponto: item.entrada_ponto ?? null,
-              saida_almoco: item.saida_almoco ?? null,
-              retorno_almoco: item.retorno_almoco ?? null,
-              saida_ponto: item.saida_ponto ?? null,
-            })),
-          );
+          .insert(uniqueColaboradores);
 
-        if (error) throw error;
+        if (error) {
+          if (snapshotColabs && snapshotColabs.length > 0) {
+             console.error('[Rollback] Restaurando snapshot production_entry_collaborators');
+             try { await operationalClient.from('production_entry_collaborators').insert(snapshotColabs); } catch (e) {}
+          }
+          throw error;
+        }
       }
     }
 
     // 2. Vincular Materiais
     if (materiais) {
+      const { data: snapshotMateriais } = await operationalClient
+        .from('operacao_producao_materiais')
+        .select('*')
+        .eq('operacao_id', id);
+
       await operationalClient
         .from('operacao_producao_materiais')
         .delete()
@@ -1061,7 +1083,13 @@ class OperacaoProducaoServiceClass {
             })),
           );
 
-        if (matError) throw matError;
+        if (matError) {
+           if (snapshotMateriais && snapshotMateriais.length > 0) {
+               console.error('[Rollback] Restaurando snapshot operacao_producao_materiais');
+               try { await operationalClient.from('operacao_producao_materiais').insert(snapshotMateriais); } catch (e) {}
+           }
+           throw matError;
+        }
       }
     }
 
@@ -1072,6 +1100,23 @@ class OperacaoProducaoServiceClass {
   async update(id: string, payload: Record<string, any>) {
     const updatedAtFrontend = payload.updated_at_frontend;
     delete payload.updated_at_frontend;
+
+    const tenantId = await getCurrentTenantId();
+    // Proteção de Spoof: Fetch original first
+    const { data: existing, error: fetchOriginalError } = await operationalClient
+      .from('operacoes_producao')
+      .select('empresa_id')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+      
+    if (fetchOriginalError || !existing) throw new Error('NOT_FOUND_OR_CONFLICT');
+    
+    // Assegurar que tanto a origem atual quanto o update payload pertençam ao ambiente atual:
+    await EnvironmentService.assertEmpresaAllowed({ tenantId, empresaId: existing.empresa_id });
+    if (payload.empresa_id && payload.empresa_id !== existing.empresa_id) {
+       await EnvironmentService.assertEmpresaAllowed({ tenantId, empresaId: payload.empresa_id });
+    }
 
     const safePayload = this.sanitizeOperacaoPayload(payload);
     
@@ -1113,6 +1158,18 @@ class OperacaoProducaoServiceClass {
   }
 
   async aprovar(id: string, updatedAtFrontend?: string) {
+    const tenantId = await getCurrentTenantId();
+    // Proteção de validação restritiva em contexto correto
+    const { data: existing, error: fetchOriginalError } = await operationalClient
+      .from('operacoes_producao')
+      .select('empresa_id')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+      
+    if (fetchOriginalError || !existing) throw new Error('NOT_FOUND_OR_CONFLICT');
+    await EnvironmentService.assertEmpresaAllowed({ tenantId, empresaId: existing.empresa_id });
+
     const { data: result, error } = await operationalClient.rpc('rpc_operacao_validar_aprovar', {
       p_operacao_id: id,
       p_updated_at_frontend: updatedAtFrontend || null,
@@ -1150,6 +1207,12 @@ class OperacaoProducaoServiceClass {
       .is('deleted_at', null)
       .order('criado_em', { ascending: false })
       .limit(limit);
+
+    query = await EnvironmentQueryFilter.applyEmpresaScope(query as any, { 
+      tenantId: await getCurrentTenantId(), 
+      column: 'empresa_id', 
+      includeNullInProduction: false 
+    });
 
     if (empresaId) query = query.eq('empresa_id', empresaId);
     if (unidadeId) query = query.eq('unidade_id', unidadeId);
@@ -1203,6 +1266,12 @@ class OperacaoProducaoServiceClass {
       .is('deleted_at', null)
       .order('criado_em', { ascending: false });
 
+    query = await EnvironmentQueryFilter.applyEmpresaScope(query as any, { 
+      tenantId: currentTenantId, 
+      column: 'empresa_id', 
+      includeNullInProduction: false 
+    });
+
     if (empresaId) {
       query = query.eq('empresa_id', empresaId);
     }
@@ -1255,6 +1324,21 @@ class OperacaoProducaoServiceClass {
   }
 
   async delete(id: string, updatedAtFrontend?: string) {
+    const tenantId = await getCurrentTenantId();
+    const { data: existing, error: fetchOriginalError } = await operationalClient
+      .from('operacoes_producao')
+      .select('empresa_id')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+
+    // Se o UUID pertence ao tenant_id, checamos o asset scope (evita que PROD delete HML logado)
+    if (existing) {
+       await EnvironmentService.assertEmpresaAllowed({ tenantId, empresaId: existing.empresa_id });
+    } else {
+       throw new Error('NOT_FOUND_OR_CONFLICT');
+    }
+
     const { error } = await operationalClient.rpc('rpc_operacao_excluir_segura', {
       p_operacao_id: id,
       p_updated_at_frontend: updatedAtFrontend || null,
@@ -1281,6 +1365,20 @@ class OperacaoProducaoServiceClass {
   }
 
   async cancel(id: string, userId: string, reason: string) {
+    const tenantId = await getCurrentTenantId();
+    const { data: existing, error: fetchOriginalError } = await operationalClient
+      .from('operacoes_producao')
+      .select('empresa_id')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+
+    if (existing) {
+       await EnvironmentService.assertEmpresaAllowed({ tenantId, empresaId: existing.empresa_id });
+    } else {
+       throw new Error('NOT_FOUND_OR_CONFLICT');
+    }
+
     const { data, error } = await operationalClient
       .from('operacoes_producao')
       .update({
@@ -1354,6 +1452,12 @@ class OperacaoProducaoServiceClass {
       .select('*')
       .eq('data_operacao', date);
 
+    query = await EnvironmentQueryFilter.applyEmpresaScope(query as any, { 
+      tenantId: await getCurrentTenantId(), 
+      column: 'empresa_id', 
+      includeNullInProduction: false 
+    });
+
     if (empresaId) query = query.eq('empresa_id', empresaId);
     if (unidadeId) query = query.eq('unidade_id', unidadeId);
 
@@ -1372,6 +1476,12 @@ class OperacaoProducaoServiceClass {
       .is('deleted_at', null)
       .order('data_operacao', { ascending: false })
       .limit(1000);
+
+    query = await EnvironmentQueryFilter.applyEmpresaScope(query as any, { 
+      tenantId: currentTenantId, 
+      column: 'empresa_id', 
+      includeNullInProduction: false 
+    });
 
     if (empresaId) {
       query = query.eq('empresa_id', empresaId);

@@ -665,3 +665,5 @@
 | `src\services\v4.service.ts` | Linha 845 | `profiles` | C - Isento | N/A | N/A | Baixo | Adicionar comentário `// ENVIRONMENT_SCOPE_EXEMPT` | SELECT | Pendente | Pendente | ? | BACKEND_SCOPE | Server | Não | ? | Nenhum | N/A | AUTO_CLASSIFIED |
 | `src\services\v4.service.ts` | Linha 1035 | `perfis_usuarios` | C - Isento | N/A | N/A | Baixo | Adicionar comentário `// ENVIRONMENT_SCOPE_EXEMPT` | SELECT | Pendente | Pendente | ? | BACKEND_SCOPE | Server | Não | ? | Nenhum | N/A | AUTO_CLASSIFIED |
 | `src\services\v4.service.ts` | Linha 1072 | `profiles` | C - Isento | N/A | N/A | Baixo | Adicionar comentário `// ENVIRONMENT_SCOPE_EXEMPT` | SELECT | Pendente | Pendente | ? | BACKEND_SCOPE | Server | Não | ? | Nenhum | N/A | AUTO_CLASSIFIED |
+|   B l o c o   2   ( O p e r a c o e s   &   R e c e i t a s )   |   I N T E G R A T I O N _ T E S T E D   |   S u c e s s o   |   C u m u l a d o   8   p r e m i s s a s   H M L / P R O D   |  
+ 

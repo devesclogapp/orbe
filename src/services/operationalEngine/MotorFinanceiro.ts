@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { EngineLogger } from "./Logger";
+import { EnvironmentService, EnvironmentScopeResolutionError } from "../environment/EnvironmentService";
 
 export const MotorFinanceiro = {
   ensureClienteEspelho: async (tenant_id: string, source_id: string, is_empresa: boolean): Promise<string> => {
@@ -66,7 +67,8 @@ export const MotorFinanceiro = {
         .select(`
           id, valor_total, valor_faturamento_nf, quantidade, 
           tipo_calculo_snapshot, custo_com_iss, valor_descarga, 
-          colaborador_id, transportadora_id, status_pagamento, empresa_id
+          colaborador_id, transportadora_id, status_pagamento, empresa_id,
+          tenant_id, empresas!empresa_id ( is_teste )
         `)
         .eq('empresa_id', empresaId)
         .eq('tenant_id', tenantId)
@@ -78,6 +80,30 @@ export const MotorFinanceiro = {
       EngineLogger.info(`[MotorFinanceiro] Operações encontradas: ${operacoes?.length || 0}`, { component: 'MotorFinanceiro' });
 
       if (!operacoes || operacoes.length === 0) return { success: true, message: 'Nenhuma operação para faturar.' };
+
+      // Validar isolamento e ambiente na Origem (Fonte de Verdade = Banco)
+      // Array de mapeamentos tenant + empresa + is_teste das operações (Amostragem Total)
+      const scopes = new Set(
+         operacoes.map((op: any) => `${op.tenant_id}:${op.empresa_id}:${op.empresas?.is_teste}`)
+      );
+      
+      if (scopes.size !== 1) {
+          throw new EnvironmentScopeResolutionError('Fontes mistas não são permitidas no fechamento. (ENVIRONMENT_MIXED_SOURCE)', undefined, 'ENVIRONMENT_MISMATCH');
+      }
+
+      const scopeData = Array.from(scopes)[0].split(':');
+      // O [0] e [1] seriam tenant e empresa_id, o [2] é is_teste (como string)
+      if (scopeData[0] !== tenantId) throw new EnvironmentScopeResolutionError('Tenant Mismatch real divergente.', undefined, 'TENANT_MISMATCH');
+      
+      const opIsTeste = scopeData[2] === 'true';
+      const ambienteVisual = EnvironmentService.getCurrentEnvironment();
+
+      if (ambienteVisual === 'homologacao' && !opIsTeste) {
+          throw new EnvironmentScopeResolutionError('Operação HML detectou registros PROD: O faturamento HML não pode absorver uma operação produtiva.', undefined, 'ENVIRONMENT_MISMATCH');
+      }
+      if (ambienteVisual === 'production' && opIsTeste) {
+          throw new EnvironmentScopeResolutionError('Operação PROD detectou registros HML: Operações de HOMOLOGAÇÃO devem gerar faturamento restrito e jamais vazar dados.', undefined, 'ENVIRONMENT_MISMATCH');
+      }
 
       // 3. Consolidar por Cliente (Transportadora/Cliente da Operação)
       // Como não existe 'cliente_id' explícito na tabela, usaremos "transportadora_id" se ele atuar como cliente. Se houvesse cliente, usaríamos cliente_id.

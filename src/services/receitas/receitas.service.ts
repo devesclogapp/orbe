@@ -101,6 +101,18 @@ class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
   }
 
   async updateStatus(tenantId: string, receitaId: string, newStatus: string) {
+      // Garantia de Escopo: A Receita deve pertencer impreterivelmente a esse Tenant
+      const { data: original, error: fetchErr } = await supabase
+        .from('receitas_operacionais')
+        .select('empresa_id')
+        .eq('id', receitaId)
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+
+      if (fetchErr || !original) {
+         throw new Error('NOT_FOUND_OR_UNAUTHORIZED: Receita não encontrada ou sem permissão neste escopo.');
+      }
+
       let rpcName = '';
       let rpcParams: any = { p_receita_id: receitaId };
 
@@ -158,15 +170,30 @@ class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
        return { id: receitaId };
     }
 
+    // Validação de Escopo Estrito para zero-linhas afetadas
+    const { data: original, error: fetchErr } = await supabase
+      .from('receitas_operacionais')
+      .select('empresa_id')
+      .eq('id', receitaId)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+
+    if (fetchErr || !original) {
+       throw new Error('NOT_FOUND_OR_UNAUTHORIZED: Receita original não encontrada neste Tenant.');
+    }
+
     const { data, error } = await supabase
       .from('receitas_operacionais')
       .update(payload)
       .eq('id', receitaId)
       .eq('tenant_id', tenantId)
+      .eq('empresa_id', original.empresa_id)
       .select()
       .single();
 
     if (error) throw error;
+    if (!data) throw new Error('NOT_FOUND_OR_UNAUTHORIZED: Update falhou silenciosamente, 0 linhas afetadas no escopo original.');
+    
     return data;
   }
 }
