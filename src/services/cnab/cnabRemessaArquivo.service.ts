@@ -1,5 +1,7 @@
 import { supabase } from '@/lib/supabase';
-
+import { getCurrentTenantId } from '../domain/base.service';
+import { EnvironmentService, EnvironmentScopeResolutionError } from '../environment/EnvironmentService';
+import { EnvironmentQueryFilter } from '../environment/EnvironmentQueryFilter';
 // ============================================================
 // Tipos
 // ============================================================
@@ -261,6 +263,15 @@ export const CnabRemessaArquivoService = {
 
     // 5. Obter usuário atual
     const { data: { user } } = await supabase.auth.getUser();
+    
+    // Bloco 4 Segregation: Validate conta_bancaria_id aligns with current environment
+    const tenantId = await getCurrentTenantId();
+    if (contaBancariaId) {
+      const { data: contaDados } = await supabase.from('contas_bancarias_empresa').select('empresa_id').eq('id', contaBancariaId).single();
+      if (contaDados?.empresa_id) {
+         await EnvironmentService.assertEmpresaAllowed({ tenantId, empresaId: contaDados.empresa_id });
+      }
+    }
 
     // 6. Inserir registro
     const { data, error } = await supabase
@@ -429,28 +440,18 @@ export const CnabRemessaArquivoService = {
     contaBancariaId?: string;
     limit?: number;
   }): Promise<CnabRemessaArquivo[]> {
-    const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
-    const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
-    
-    // Obter contas de empresas de teste para legados
-    const { data: testEmpresas } = await supabase.from('empresas').select('id').eq('is_teste', true);
-    const testEmpresasIds = testEmpresas?.map(e => e.id) || [];
-    const safeTestEmpresasIds = testEmpresasIds.length > 0 ? testEmpresasIds : ['00000000-0000-0000-0000-000000000000'];
-    
-    const { data: contasTest } = await supabase.from('contas_bancarias_empresa').select('id').in('empresa_id', safeTestEmpresasIds);
-    const contatestIds = contasTest?.map(c => c.id) || [];
-    const safeContaTestIds = contatestIds.length > 0 ? contatestIds : ['11111111-1111-1111-1111-111111111111'];
+    const tenantId = await getCurrentTenantId();
+    let contasQuery = supabase.from('contas_bancarias_empresa').select('id, empresa_id');
+    contasQuery = await EnvironmentQueryFilter.applyEmpresaScope(contasQuery, { tenantId, column: 'empresa_id', includeNullInProduction: false });
+    const { data: allowedContas } = await contasQuery;
+    const allowedContaIds = (allowedContas ?? []).map(c => c.id);
+    if(allowedContaIds.length === 0) allowedContaIds.push('00000000-0000-0000-0000-000000000000');
 
     let query = supabase
       .from('cnab_remessas_arquivos')
       .select('*')
+      .in('conta_bancaria_id', allowedContaIds)
       .order('created_at', { ascending: false });
-
-    if (isHomologacao) {
-      query = query.or(`modo.eq.homologacao,and(modo.is.null,conta_bancaria_id.in.(${safeContaTestIds.join(',')}))`);
-    } else {
-      query = query.or(`modo.eq.producao,and(modo.is.null,conta_bancaria_id.not.in.(${safeContaTestIds.join(',')}))`);
-    }
 
     if (filtros?.competencia) query = query.eq('competencia', filtros.competencia);
     if (filtros?.status) query = query.eq('status', filtros.status);
@@ -474,17 +475,12 @@ export const CnabRemessaArquivoService = {
   },
 
   async listarHistorico(limit = 100): Promise<CnabRemessaHistoricoItem[]> {
-    const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
-    const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
-    
-    // Obter contas de empresas de teste para legados
-    const { data: testEmpresas } = await supabase.from('empresas').select('id').eq('is_teste', true);
-    const testEmpresasIds = testEmpresas?.map(e => e.id) || [];
-    const safeTestEmpresasIds = testEmpresasIds.length > 0 ? testEmpresasIds : ['00000000-0000-0000-0000-000000000000'];
-    
-    const { data: contasTest } = await supabase.from('contas_bancarias_empresa').select('id').in('empresa_id', safeTestEmpresasIds);
-    const contatestIds = contasTest?.map(c => c.id) || [];
-    const safeContaTestIds = contatestIds.length > 0 ? contatestIds : ['11111111-1111-1111-1111-111111111111'];
+    const tenantId = await getCurrentTenantId();
+    let contasQuery = supabase.from('contas_bancarias_empresa').select('id, empresa_id');
+    contasQuery = await EnvironmentQueryFilter.applyEmpresaScope(contasQuery, { tenantId, column: 'empresa_id', includeNullInProduction: false });
+    const { data: allowedContas } = await contasQuery;
+    const allowedContaIds = (allowedContas ?? []).map(c => c.id);
+    if(allowedContaIds.length === 0) allowedContaIds.push('00000000-0000-0000-0000-000000000000');
 
     let query = supabase
       .from('cnab_remessas_arquivos')
@@ -505,14 +501,9 @@ export const CnabRemessaArquivoService = {
           conta
         )
       `)
+      .in('conta_bancaria_id', allowedContaIds)
       .order('data_geracao', { ascending: false })
       .limit(limit);
-
-    if (isHomologacao) {
-      query = query.or(`modo.eq.homologacao,and(modo.is.null,conta_bancaria_id.in.(${safeContaTestIds.join(',')}))`);
-    } else {
-      query = query.or(`modo.eq.producao,and(modo.is.null,conta_bancaria_id.not.in.(${safeContaTestIds.join(',')}))`);
-    }
 
     const { data, error } = await query;
     if (error) throw new Error(`Erro ao listar histórico de remessas: ${error.message}`);

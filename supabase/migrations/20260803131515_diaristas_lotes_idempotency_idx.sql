@@ -1,10 +1,15 @@
--- Idempotency constraint ensuring that only one active closing batch can exist per company and period combination.
+BEGIN;
+
+ALTER TABLE public.diaristas_lotes_fechamento
+ALTER COLUMN tenant_id SET NOT NULL;
+
 CREATE UNIQUE INDEX IF NOT EXISTS
-  uq_diaristas_lote_ativo_periodo
-ON diaristas_lotes_fechamento (
+  uq_diaristas_lote_periodo
+ON public.diaristas_lotes_fechamento (
   tenant_id,
   empresa_id,
   periodo_inicio,
   periodo_fim
-)
-WHERE cancelado_em IS NULL;
+);
+
+COMMIT;

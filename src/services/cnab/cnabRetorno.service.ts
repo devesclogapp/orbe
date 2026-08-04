@@ -7,6 +7,9 @@ import {
 import { CnabRemessaArquivoService, type CnabRemessaHistoricoItem } from './cnabRemessaArquivo.service';
 import { mapearOcorrenciaBB } from './retorno/ocorrenciasBB';
 import { CnabConciliacaoService } from './cnabConciliacao.service';
+import { getCurrentTenantId } from '../domain/base.service';
+import { EnvironmentService } from '../environment/EnvironmentService';
+import { EnvironmentQueryFilter } from '../environment/EnvironmentQueryFilter';
 
 export type CnabRetornoArquivoStatus = 'processado' | 'processado_com_pendencias' | 'erro';
 export type CnabRetornoItemStatus = 'pago' | 'rejeitado' | 'divergente' | 'pendente' | 'desconhecido';
@@ -400,6 +403,7 @@ export const CnabRetornoService = {
         ),
         contas_bancarias_empresa (
           id,
+          empresa_id,
           banco_codigo,
           banco_nome,
           agencia,
@@ -414,7 +418,23 @@ export const CnabRetornoService = {
       throw new Error(`Erro ao localizar remessa relacionada: ${error.message}`);
     }
 
-    const candidatos = (data ?? []) as CnabRemessaHistoricoItem[];
+    const candidatosIniciais = (data ?? []) as CnabRemessaHistoricoItem[];
+    if (!candidatosIniciais.length) return null;
+
+    const candidatos: CnabRemessaHistoricoItem[] = [];
+    const tenantId = await getCurrentTenantId();
+    for (const cand of candidatosIniciais) {
+      const conta = cand.contas_bancarias_empresa as ({ empresa_id?: string | null, convenio?: string | null } & Record<string, unknown>) | null;
+      if (conta?.empresa_id) {
+         try {
+           await EnvironmentService.assertEmpresaAllowed({ tenantId, empresaId: conta.empresa_id });
+           candidatos.push(cand);
+         } catch (e) {
+           console.warn('[CNAB Retorno] Ignorando candidato fora do escopo de ambiente:', cand.id);
+         }
+      }
+    }
+    
     if (!candidatos.length) return null;
 
     const agenciaArquivo = parseResult.estrutura.headerArquivo.agencia;
@@ -434,8 +454,7 @@ export const CnabRetornoService = {
         moneyEquals(Number(item.total_valor || item.lotes_remessa?.valor_total || 0), parseResult.resumo.valorTotalPago)
       ) ||
       candidatos[0]
-    );
-  },
+    );  },
 
   async carregarFaturasRelacionadas(
     remessaRelacionada: CnabRemessaHistoricoItem | null,
@@ -544,16 +563,25 @@ export const CnabRetornoService = {
 
     if (!docs.length) return [];
 
-    const { data, error } = await supabase
+    let queryDocs = supabase
       .from('faturas')
-      .select('id, lote_remessa_id, colaborador_id, valor, nosso_numero, competencia, colaboradores(id, nome, cpf)')
-      .limit(200);
+      .select('id, lote_remessa_id, colaborador_id, valor, nosso_numero, competencia, empresa_id, colaboradores(id, nome, cpf)');
+      
+      // Bloco 4 Segregation: Never fetch Faturas without bounding by Active Environment!
+    const tenantId = await getCurrentTenantId();
+    const finalQuery = await EnvironmentQueryFilter.applyEmpresaScope(queryDocs, {
+      tenantId,
+      column: 'empresa_id',
+      includeNullInProduction: false
+    });
+
+    const { data, error } = await finalQuery;
 
     if (error) {
       return [];
     }
 
-    return ((data ?? []) as FaturaComColaborador[]).filter((item) =>
+    return ((data ?? []) as any as FaturaComColaborador[]).filter((item) =>
       docs.includes(normalizeDoc(item.colaboradores?.cpf))
     );
   },

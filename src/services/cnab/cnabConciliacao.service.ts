@@ -1,5 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import type { CnabRetornoItem } from './cnabRetorno.service';
+import { getCurrentTenantId } from '../domain/base.service';
+import { EnvironmentService } from '../environment/EnvironmentService';
 
 export const CnabConciliacaoService = {
   /**
@@ -37,12 +39,23 @@ export const CnabConciliacaoService = {
       }
 
       const itensConciliados: string[] = [];
+      const tenantId = await getCurrentTenantId();
 
       // ——— RH / Faturas (genérico) ———
       for (const [loteId, itens] of lotesRhItens.entries()) {
         const itemPagoIds = itens.filter(i => i.status === 'pago').map(i => i.fatura_id).filter(Boolean);
         
         if (itemPagoIds.length > 0) {
+          // Bloco 4 Segregation
+          const { data: fSample } = await supabase.from('faturas').select('empresa_id').in('id', itemPagoIds).limit(1).maybeSingle();
+          if (fSample?.empresa_id) {
+             try {
+               await EnvironmentService.assertEmpresaAllowed({ tenantId, empresaId: fSample.empresa_id });
+             } catch(e) {
+               console.warn(`[Baixa Financeira] Lote de RH ${loteId} pertence a contexto isolado e será ignorado.`);
+               continue;
+             }
+          }
           await supabase.from('faturas')
             .update({ status: 'pago' })
             .in('id', itemPagoIds);
@@ -68,6 +81,16 @@ export const CnabConciliacaoService = {
         const colabIds = itensPagos.map(i => i.colaborador_id).filter(Boolean);
         
         if (colabIds.length > 0) {
+          // Bloco 4 Segregation
+          const { data: lotSample } = await supabase.from('diaristas_lotes_fechamento').select('empresa_id').eq('id', loteId).maybeSingle();
+          if (lotSample?.empresa_id) {
+             try {
+               await EnvironmentService.assertEmpresaAllowed({ tenantId, empresaId: lotSample.empresa_id });
+             } catch(e) {
+               console.warn(`[Baixa Financeira] Lote de Diaristas ${loteId} pertence a contexto isolado e será ignorado.`);
+               continue;
+             }
+          }
           await supabase.from('lancamentos_diaristas')
             .update({ status: 'PAGO' })
             .eq('lote_fechamento_id', loteId)
@@ -93,6 +116,16 @@ export const CnabConciliacaoService = {
         const colabIds = itensPagos.map(i => i.colaborador_id).filter(Boolean);
 
         if (colabIds.length > 0) {
+          // Bloco 4 Segregation
+          const { data: lotSample } = await supabase.from('intermitentes_lotes_fechamento').select('empresa_id').eq('id', loteId).maybeSingle();
+          if (lotSample?.empresa_id) {
+             try {
+               await EnvironmentService.assertEmpresaAllowed({ tenantId, empresaId: lotSample.empresa_id });
+             } catch(e) {
+               console.warn(`[Baixa Financeira] Lote de Intermitentes ${loteId} pertence a contexto isolado e será ignorado.`);
+               continue;
+             }
+          }
           const { error: errLancamentos } = await supabase.from('lancamentos_intermitentes')
             .update({ status_pipeline: 'PAGO' })
             .eq('lote_fechamento_id', loteId)
