@@ -19,6 +19,7 @@ class EnvironmentQueryFilterClass {
     
     const env = EnvironmentService.getCurrentEnvironment();
     const testIds = await EnvironmentService.getTestEmpresaIds(tenantId);
+    console.log("TEST IDS INSIDE FILTER:", testIds);
     
     const q = query as any;
 
@@ -37,7 +38,10 @@ class EnvironmentQueryFilterClass {
       if (includeNullInProduction) {
         return q.or(`${column}.not.in.${safeJoined},${column}.is.null`) as T;
       } else {
-        return q.not(column, 'in', safeJoined) as T;
+        console.log("ABOUT TO CALL Q.NOT!", "IS q === chain?", typeof q.not, "SECRET KEY:", q.not?.mySecretKey, "CHAIN SECRET:", q.mySecretKey);
+        const result = q.not(column, 'in', safeJoined);
+        console.log("Q.NOT CALLED");
+        return result as T;
       }
     }
   }

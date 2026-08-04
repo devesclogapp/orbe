@@ -1,0 +1,22 @@
+
+TEST: 5. fecharPeriodo falha fechado se houver Lote Leak (idempotency 23505 simulado)
+Error: promise resolved "{ error: 'CONCURRENCY_ERROR' }" instead of rejecting
+    at _Assertion.__VITEST_REJECTS__ (file:///Y:/2026/ERP%20ESC%20LOG/Orbe/node_modules/@vitest/expect/dist/index.js:1610:17)
+    at _Assertion.propertyGetter (file:///Y:/2026/ERP%20ESC%20LOG/Orbe/node_modules/chai/index.js:1557:27)
+    at Reflect.get (<anonymous>)
+    at Object.proxyGetter [as get] (file:///Y:/2026/ERP%20ESC%20LOG/Orbe/node_modules/chai/index.js:1645:22)
+    at Y:\2026\ERP ESC LOG\Orbe\src\test\diaristas_segregation.test.ts:194:9
+    at file:///Y:/2026/ERP%20ESC%20LOG/Orbe/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11
+    at file:///Y:/2026/ERP%20ESC%20LOG/Orbe/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26
+    at file:///Y:/2026/ERP%20ESC%20LOG/Orbe/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Y:/2026/ERP%20ESC%20LOG/Orbe/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)
+TEST: 8. criarAjuste herda escopo exatamente do lan├ºamento original persistido, rejeita fraudes client-side
+AssertionError: expected [Function] to throw error including 'NOT_FOUND_OR_CONFLICT' but got 'Lan├ºamento original n├úo encontrado ouÔÇª'
+    at _Assertion.<anonymous> (file:///Y:/2026/ERP%20ESC%20LOG/Orbe/node_modules/@vitest/expect/dist/index.js:1420:16)
+    at _Assertion.<anonymous> (file:///Y:/2026/ERP%20ESC%20LOG/Orbe/node_modules/@vitest/expect/dist/index.js:1029:14)
+    at _Assertion.methodWrapper (file:///Y:/2026/ERP%20ESC%20LOG/Orbe/node_modules/chai/index.js:1686:25)
+    at file:///Y:/2026/ERP%20ESC%20LOG/Orbe/node_modules/@vitest/expect/dist/index.js:1639:20
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at Y:\2026\ERP ESC LOG\Orbe\src\test\diaristas_segregation.test.ts:228:9
+    at file:///Y:/2026/ERP%20ESC%20LOG/Orbe/node_modules/@vitest/runner/dist/chunk-hooks.js:752:20

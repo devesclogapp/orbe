@@ -1,0 +1,105 @@
+﻿
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90mY:/2026/ERP ESC LOG/Orbe[39m
+
+[90mstdout[2m | src/test/diaristas_segregation.test.ts[2m > [22m[2mSegregation of Produ├º├úo e Homologa├º├úo - Diaristas[2m > [22m[2m1. getByPeriodo PROD exclui HML
+[22m[39mSUPABASE.FROM MOCK CALLED FOR TABLE: lancamentos_diaristas
+SUPABASE.FROM MOCK CALLED FOR TABLE: empresas
+
+[90mstdout[2m | src/test/diaristas_segregation.test.ts[2m > [22m[2mSegregation of Produ├º├úo e Homologa├º├úo - Diaristas[2m > [22m[2m1. getByPeriodo PROD exclui HML
+[22m[39mTEST IDS INSIDE FILTER: [ [32m'test-hml'[39m ]
+ABOUT TO CALL Q.NOT! IS q === chain? function SECRET KEY: [90mundefined[39m CHAIN SECRET: [90mundefined[39m
+Q.NOT CALLED
+
+[90mstdout[2m | src/test/diaristas_segregation.test.ts[2m > [22m[2mSegregation of Produ├º├úo e Homologa├º├úo - Diaristas[2m > [22m[2m1. getByPeriodo PROD exclui HML
+[22m[39m[DiaristaService.getByPeriodo] empresa=TODAS periodo=2026-06-01ÔåÆ2026-06-30 status=todos | resultado=0 registros 
+
+[90mstdout[2m | src/test/diaristas_segregation.test.ts[2m > [22m[2mSegregation of Produ├º├úo e Homologa├º├úo - Diaristas[2m > [22m[2m1. getByPeriodo PROD exclui HML
+[22m[39mmockNot calls: []
+mockSelect calls: [ [ [32m'\n        *,\n        empresa:empresas(id, nome)\n      '[39m ] ]
+mockGte calls: [ [ [32m'data_lancamento'[39m, [32m'2026-06-01'[39m ] ]
+mockLte calls: [ [ [32m'data_lancamento'[39m, [32m'2026-06-30'[39m ] ]
+
+ [31mÔØ»[39m src/test/diaristas_segregation.test.ts [2m([22m[2m11 tests[22m[2m | [22m[31m1 failed[39m[2m | [22m[33m10 skipped[39m[2m)[22m[32m 14[2mms[22m[39m
+[31m   [31m├ù[31m Segregation of Produ├º├úo e Homologa├º├úo - Diaristas[2m > [22m1. getByPeriodo PROD exclui HML[39m[32m 13[2mms[22m[39m
+[31m     ÔåÆ expected "spy" to be called with arguments: [ 'empresa_id', 'in', '(test-hml)' ][90m
+
+Number of calls: [1m0[22m
+[31m[39m
+   [2m[90mÔåô[39m[22m Segregation of Produ├º├úo e Homologa├º├úo - Diaristas[2m > [22m2. getByPeriodo HML inclui PROD
+   [2m[90mÔåô[39m[22m Segregation of Produ├º├úo e Homologa├º├úo - Diaristas[2m > [22m3. getByEmpresaParaFinanceiro preserva empresa espec├¡fica sem vazamento nulo
+   [2m[90mÔåô[39m[22m Segregation of Produ├º├úo e Homologa├º├úo - Diaristas[2m > [22m4. fecharPeriodo PROD n├úo fecha itens HML (Strict Scope check)
+   [2m[90mÔåô[39m[22m Segregation of Produ├º├úo e Homologa├º├úo - Diaristas[2m > [22m5. fecharPeriodo falha fechado se houver Lote Leak (idempotency 23505 simulado)
+   [2m[90mÔåô[39m[22m Segregation of Produ├º├úo e Homologa├º├úo - Diaristas[2m > [22m6. Lan├ºamento nulo gera inconsist├¬ncia rastre├ível (Status DEVOLVIDO)
+   [2m[90mÔåô[39m[22m Segregation of Produ├º├úo e Homologa├º├úo - Diaristas[2m > [22m7. Conjunto vazio (ap├│s expurgo nulos) finaliza sem inserir lote
+   [2m[90mÔåô[39m[22m Segregation of Produ├º├úo e Homologa├º├úo - Diaristas[2m > [22m8. criarAjuste herda escopo exatamente do lan├ºamento original persistido, rejeita fraudes client-side
+   [2m[90mÔåô[39m[22m Segregation of Produ├º├úo e Homologa├º├úo - Diaristas[2m > [22m9. createBatch valida todas as distinct empresas listadas no batch antes de persistir
+   [2m[90mÔåô[39m[22m Segregation of Produ├º├úo e Homologa├º├úo - Diaristas[2m > [22m10. createBatch interrompe imediatamente se algum registro n├úo possuir empresa_id
+   [2m[90mÔåô[39m[22m Segregation of Produ├º├úo e Homologa├º├úo - Diaristas[2m > [22m11. gerarCNABParaLote audita restritamente consist├¬ncia e bloqueia batch furado
+node.exe : 
+No linha:1 caractere:1
++ & "C:\Program 
+Files\nodejs/node.exe" 
+"C:\Program 
+Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~
+    + CategoryInfo          : N 
+   otSpecified: (:String) [],   
+  RemoteException
+    + FullyQualifiedErrorId : N 
+   ativeCommandError
+ 
+[31mÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»[39m
+[1m[41m Failed Tests 1 [49m[2
+2m[31mÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»[39
+m
+
+[41m[1m FAIL [22m[49m src/te
+st/diaristas_segregation.test.ts
+[2m > [22mSegregation of 
+Produ├º├úo e Homologa├º├úo - 
+Diaristas[2m > [22m1. 
+getByPeriodo PROD exclui HML
+[31m[1mAssertionError[22m: 
+expected "spy" to be called 
+with arguments: [ 'empresa_id', 
+'in', '(test-hml)' ][90m
+
+Number of calls: [1m0[22m
+[31m[39m
+[36m [2mÔØ»[22m src/test/diar
+istas_segregation.test.ts:[2m14
+5:25[22m[39m
+    [90m143| [39m        conso
+le[33m.[39m[34mlog[39m([32m
+'mockGte 
+calls:'[39m[33m,[39m mockGte
+[33m.[39mmock[33m.[39mcalls)
+[33m;[39m
+    [90m144| [39m        conso
+le[33m.[39m[34mlog[39m([32m
+'mockLte 
+calls:'[39m[33m,[39m mockLte
+[33m.[39mmock[33m.[39mcalls)
+[33m;[39m
+    [90m145| [39m        expec
+t(mockNot).toHaveBeenCalledWith(
+'empresa_id', 'in', '(tesÔÇª
+    [90m   | [39m             
+           [31m^[39m
+    [90m146| [39m    
+})[33m;[39m
+    [90m147| [39m
+
+[31m[2mÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ
+»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»Ô
+Ä»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»[1/1]ÔÄ»[22m[
+39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[33m10 skipped[39m[90m (11)[39m
+[2m   Start at [22m 21:25:33
+[2m   Duration [22m 2.80s[2m (transform 250ms, setup 250ms, collect 228ms, tests 14ms, environment 1.54s, prepare 296ms)[22m
+

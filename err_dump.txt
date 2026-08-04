@@ -1,0 +1,1 @@
+__vite_ssr_import_0__.supabase.from(...).upsert is not a function

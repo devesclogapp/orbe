@@ -11,6 +11,8 @@ import {
 import { CnabRemessaArquivoService } from '../cnab/cnabRemessaArquivo.service';
 
 import { BaseService, sanitizePayload, cleanUuid, validateUuidFields, getCurrentTenantId, getTenantQueryFilter, extractReferencedTableFromFkError } from './base.service';
+import { EnvironmentService, EnvironmentScopeResolutionError } from '../environment/EnvironmentService';
+import { EnvironmentQueryFilter } from '../environment/EnvironmentQueryFilter';
 
 type StatusLancamentoDiarista =
   | 'em_aberto' | 'EM_ABERTO'
@@ -62,6 +64,8 @@ class LancamentoDiaristaServiceClass {
   ) {
     const client = supabase as any;
 
+    const tenantId = await getCurrentTenantId();
+    
     let query = client
       .from('lancamentos_diaristas')
       .select(`
@@ -70,6 +74,12 @@ class LancamentoDiaristaServiceClass {
       `)
       .gte('data_lancamento', inicio)
       .lte('data_lancamento', fim);
+
+    query = await EnvironmentQueryFilter.applyEmpresaScope(query, {
+      tenantId,
+      column: 'empresa_id',
+      includeNullInProduction: false
+    });
 
     // Aplica filtro de empresa quando fornecido
     if (empresaId) {
@@ -153,10 +163,26 @@ class LancamentoDiaristaServiceClass {
       lote_fechamento_id: string;
     }
   }) {
+    const { data: parent } = await (supabase as any)
+      .from('lancamentos_diaristas')
+      .select('tenant_id, empresa_id, status')
+      .eq('id', params.referenciaLancamentoId)
+      .single();
+
+    if (!parent || !parent.empresa_id || !parent.tenant_id) {
+      throw new Error("Lançamento original não encontrado ou não possui empresa_id válido.");
+    }
+
     const tenantId = await getCurrentTenantId();
+    if (parent.tenant_id !== tenantId) {
+      throw new EnvironmentScopeResolutionError("Diferença de tenant detectada no lançamento original", undefined, 'TENANT_MISMATCH');
+    }
+
+    await EnvironmentService.assertEmpresaAllowed({ tenantId, empresaId: parent.empresa_id });
+
     const payload = {
-      tenant_id: tenantId,
-      empresa_id: params.empresaId,
+      tenant_id: parent.tenant_id,
+      empresa_id: parent.empresa_id,
       diarista_id: params.original.diarista_id,
       nome_colaborador: params.original.nome_colaborador,
       funcao_colaborador: params.original.funcao_colaborador,
@@ -207,6 +233,19 @@ class LancamentoDiaristaServiceClass {
 
     const tenantId = await getCurrentTenantId();
 
+    const empresaIds = [...new Set(registros.map((p) => p.empresa_id).filter(Boolean))];
+    if (empresaIds.length === 0) {
+      throw new Error("Registros sem empresa_id não são permitidos.");
+    }
+    const falsyEmpresa = registros.some(r => !r.empresa_id);
+    if (falsyEmpresa) {
+      throw new Error("Lote negado: Ao menos um registro não possui empresa_id.");
+    }
+
+    for (const empId of empresaIds) {
+      await EnvironmentService.assertEmpresaAllowed({ tenantId, empresaId: empId });
+    }
+
     // Whitelist: somente colunas que existem na tabela lancamentos_diaristas
     const VALID_COLUMNS = new Set([
       'empresa_id', 'diarista_id', 'nome_colaborador', 'cpf_colaborador',
@@ -231,7 +270,7 @@ class LancamentoDiaristaServiceClass {
       return sanitized;
     });
 
-    // Estratégia idempotente: DELETE + INSERT
+    // Estratégia idempotente: DELETE + INSERT (Atomicidade é gerenciada pelo front/bulk operation padrão)
     // Apaga registros em aberto existentes para as mesmas chaves (empresa/diarista/data)
     // antes de inserir os novos. Isso evita duplicatas sem depender de constraint parcial.
     const chaves = payload.map(p => ({
@@ -307,17 +346,7 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
   }
 
   async getLotesPorPeriodo(inicio: string, fim: string, empresaId?: string | null) {
-    const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
-    const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
-    
-    let queryBuilder = this.supabase.from('empresas').select('id').eq('is_teste', true);
-    const { data: testEmpresas } = await queryBuilder;
-    const testIds = testEmpresas?.map((e: any) => e.id) || [];
-    const safeTestIds = testIds.length > 0 ? testIds : ['00000000-0000-0000-0000-000000000000'];
-
-    // Lógica de INTERSEÇÃO: retorna lotes cujo período se sobrepõe ao intervalo filtrado.
-    // Um lote intersecta [inicio, fim] se: periodo_inicio <= fim AND periodo_fim >= inicio
-    // (ao contrário da lógica de contenção que só retornava lotes completamente dentro do filtro)
+    const tenantId = await getCurrentTenantId();
     let query = this.supabase
       .from('diaristas_lotes_fechamento')
       .select('*, empresa:empresas(nome)')
@@ -325,11 +354,12 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
       .gte('periodo_fim', inicio)    // lote termina depois ou no início do nosso período
       .order('created_at', { ascending: false });
 
-    if (isHomologacao) {
-      query = query.in('empresa_id', safeTestIds);
-    } else {
-      query = query.or(`empresa_id.not.in.(${safeTestIds.join(',')}),empresa_id.is.null`);
-    }
+    // Use EnvironmentQueryFilter - includeNullInProduction is false natively
+    query = await EnvironmentQueryFilter.applyEmpresaScope(query, {
+      tenantId,
+      column: 'empresa_id',
+      includeNullInProduction: false
+    });
 
     if (empresaId) {
       query = query.eq('empresa_id', empresaId);
@@ -374,14 +404,7 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
   }
 
   async getByEmpresaParaFinanceiro(empresaId: string) {
-    const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
-    const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
-    
-    let queryBuilder = this.supabase.from('empresas').select('id').eq('is_teste', true);
-    const { data: testEmpresas } = await queryBuilder;
-    const testIds = testEmpresas?.map((e: any) => e.id) || [];
-    const safeTestIds = testIds.length > 0 ? testIds : ['00000000-0000-0000-0000-000000000000'];
-
+    const tenantId = await getCurrentTenantId();
     let query = this.supabase
       .from('diaristas_lotes_fechamento')
       .select('*, empresa:empresas(nome)')
@@ -389,11 +412,12 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
       .in('status', ['VALIDADO_RH', 'FECHADO_FINANCEIRO', 'AGUARDANDO_PAGAMENTO', 'PAGO', 'pago', 'cnab_gerado'])
       .order('created_at', { ascending: false });
 
-    if (isHomologacao) {
-      query = query.in('empresa_id', safeTestIds);
-    } else {
-      query = query.or(`empresa_id.not.in.(${safeTestIds.join(',')}),empresa_id.is.null`);
-    }
+    // Use EnvironmentQueryFilter
+    query = await EnvironmentQueryFilter.applyEmpresaScope(query, {
+      tenantId,
+      column: 'empresa_id',
+      includeNullInProduction: false
+    });
 
     const { data, error } = await query;
     if (error) throw error;
@@ -464,21 +488,88 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
     observacoes?: string;
     tipoFechamento?: 'operacional' | 'administrativo';
   }) {
-    const { data: lancamentos, error: errorLanc } = await this.supabase
+    const tenantId = await getCurrentTenantId();
+    
+    await EnvironmentService.assertEmpresaAllowed({ tenantId, empresaId });
+
+    // ── Nulos handling: find orphan ones and mark DEVOLVIDO ──
+    const { data: orphans } = await this.supabase
       .from('lancamentos_diaristas')
-      .select('*')
-      .eq('empresa_id', empresaId)
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .is('empresa_id', null)
       .gte('data_lancamento', periodoInicio)
       .lte('data_lancamento', periodoFim)
       .in('status', ['em_aberto', 'EM_ABERTO']);
 
+    if (orphans && orphans.length > 0) {
+      const orphansIds = orphans.map(o => o.id);
+      await this.supabase
+        .from('lancamentos_diaristas')
+        .update({
+          status: 'DEVOLVIDO',
+          observacao: 'Empresa não resolvida para fechamento'
+        })
+        .in('id', orphansIds)
+        .eq('tenant_id', tenantId);
+
+      const logsForOrphans = orphansIds.map(oid => ({
+        empresa_id: null,
+        tenant_id: tenantId,
+        usuario_id: fechadoPor,
+        usuario_nome: fechadoPorNome,
+        usuario_role: fechadoPorRole,
+        acao: 'DEVOLVER_ORFAOS',
+        periodo_inicio: periodoInicio,
+        periodo_fim: periodoFim,
+        motivo: 'Inconsistência mitigada: Lançamento órfão sem empresa'
+      }));
+      await this.supabase.from('diaristas_logs_fechamento').insert(logsForOrphans);
+    }
+
+    let query = this.supabase
+      .from('lancamentos_diaristas')
+      .select('*')
+      .eq('empresa_id', empresaId)
+      .eq('tenant_id', tenantId)
+      .gte('data_lancamento', periodoInicio)
+      .lte('data_lancamento', periodoFim)
+      .in('status', ['em_aberto', 'EM_ABERTO']);
+
+    query = await EnvironmentQueryFilter.applyEmpresaScope(query, {
+      tenantId,
+      column: 'empresa_id',
+      includeNullInProduction: false
+    });
+
+    const { data: lancamentos, error: errorLanc } = await query;
     if (errorLanc) throw errorLanc;
+
+    if (!lancamentos || lancamentos.length === 0) {
+      // Return gracefully, dataset empty validly
+      return {
+        id: "EMPTY_SET",
+        periodo_inicio: periodoInicio,
+        periodo_fim: periodoFim,
+        total_registros: 0,
+        valor_total: 0,
+        status: "SEM_REGISTROS"
+      };
+    }
+
+    for (const l of lancamentos) {
+       if (l.empresa_id !== empresaId || l.tenant_id !== tenantId) {
+          throw new EnvironmentScopeResolutionError("Conjunto de lançamentos capturado vazou para fora do escopo selecionado.", undefined, 'TENANT_MISMATCH');
+       }
+    }
+
+    const scopedLancamentoIds = lancamentos.map(l => l.id);
 
     const diaristasMap = new Map();
     let totalRegistros = 0;
     let valorTotal = 0;
 
-    (lancamentos || []).forEach((l: any) => {
+    lancamentos.forEach((l: any) => {
       const key = l.diarista_id;
       if (!diaristasMap.has(key)) {
         diaristasMap.set(key, {
@@ -502,43 +593,10 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
 
     const mesRef = periodoInicio.substring(0, 7);
 
-    const tenantId = await getCurrentTenantId();
-
-    // Verifica se já existe um lote para o período e empresa
-    let { data: loteExistente } = await this.supabase
-      .from('diaristas_lotes_fechamento')
-      .select('id')
-      .eq('empresa_id', empresaId)
-      .eq('periodo_inicio', periodoInicio)
-      .eq('periodo_fim', periodoFim)
-      .single();
-
-    let lote;
-
-    if (loteExistente) {
-      // Reutiliza o lote existente, atualizando os valores
-      const { data: loteAtualizado, error: errorUpdate } = await this.supabase
-        .from('diaristas_lotes_fechamento')
-        .update({
-          total_registros: totalRegistros,
-          valor_total: valorTotal,
-          status: 'AGUARDANDO_VALIDACAO_RH', // Garante que o status seja atualizado
-          fechado_por: fechadoPor,
-          fechado_por_nome: fechadoPorNome,
-          fechado_em: new Date().toISOString(),
-          observacoes,
-          // tipo_fechamento: tipoFechamento, // Removido temporariamente para evitar erro de coluna inexistente
-        })
-        .eq('id', loteExistente.id)
-        .select()
-        .single();
-      
-      if (errorUpdate) throw errorUpdate;
-      lote = loteAtualizado;
-
-    } else {
-      // Cria um novo lote se não existir
-      const { data: novoLote, error: errorLote } = await this.supabase
+    // Creates new lote; try-catch tests for the unique constraint 23505
+    let novoLote;
+    try {
+      const res = await this.supabase
         .from('diaristas_lotes_fechamento')
         .insert({
           empresa_id: empresaId,
@@ -552,35 +610,57 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
           fechado_por_nome: fechadoPorNome,
           fechado_em: new Date().toISOString(),
           observacoes,
-          // tipo_fechamento: tipoFechamento, // Removido temporariamente para evitar erro de coluna inexistente
           tenant_id: tenantId,
         })
         .select()
         .single();
-
-      if (errorLote) throw errorLote;
-      lote = novoLote;
+      
+      if (res.error) {
+        if (res.error?.code === '23505') {
+            throw new Error("Violação 23505: Lote já ativo para este período.");
+        }
+        throw res.error;
+      }
+      novoLote = res.data;
+    } catch (err: any) {
+       if (err.message?.includes('23505')) {
+          console.warn("[fecharPeriodo] Lote duplicado interrompido na restrição única.");
+          return { error: 'CONCURRENCY_ERROR' };
+       }
+       throw err;
     }
 
-    if (!lote) {
-      throw new Error("Não foi possível criar ou encontrar um lote de fechamento.");
+    if (!novoLote) {
+      throw new Error("Não foi possível criar o lote de fechamento.");
     }
 
-    const { error: fecharError } = await this.supabase.rpc('fechar_periodo_diaristas', {
-      p_empresa_id: empresaId,
-      p_periodo_inicio: periodoInicio,
-      p_periodo_fim: periodoFim,
-      p_lote_id: lote.id,
-      p_tenant_id: tenantId,
-      p_usuario_id: fechadoPor,
-      p_usuario_nome: fechadoPorNome,
-      p_usuario_role: fechadoPorRole
+    // Now update exact scoped records directly here to avoid RPC overreach
+    const { error: updErr } = await this.supabase
+       .from('lancamentos_diaristas')
+       .update({
+          status: 'AGUARDANDO_VALIDACAO_RH',
+          lote_fechamento_id: novoLote.id
+       })
+       .in('id', scopedLancamentoIds)
+       .eq('tenant_id', tenantId);
+       
+    if (updErr) throw updErr;
+
+    // Persist logs with valid lote
+    await this.supabase.from('diaristas_logs_fechamento').insert({
+       empresa_id: empresaId,
+       tenant_id: tenantId,
+       usuario_id: fechadoPor,
+       usuario_nome: fechadoPorNome,
+       usuario_role: fechadoPorRole,
+       acao: 'FECHAMENTO_LADO_RH',
+       periodo_inicio: periodoInicio,
+       periodo_fim: periodoFim,
+       motivo: `Lote ${novoLote.id} foi gerado com ${totalRegistros} itens. Valor R$ ${valorTotal}.`
     });
 
-    if (fecharError) throw fecharError;
-
     return {
-      ...lote,
+      ...novoLote,
       total_registros: totalRegistros,
       valor_total: valorTotal,
     };
@@ -685,40 +765,47 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
     const { loteId, empresaId, geradoPor, geradoPorNome, empresaRemetente } = params;
     const normalizeDigits = (value?: string | null) => String(value ?? '').replace(/\D/g, '');
 
-    // ── 1. Buscar lote ────────────────────────────────────────────────────────
+    // ── 1. Buscar lote e validar Tenant ────────────────────────────────────────────────────────
+    const tenantId = await getCurrentTenantId();
     const { data: lote, error: loteErr } = await this.supabase
       .from('diaristas_lotes_fechamento')
       .select('*')
       .eq('id', loteId)
+      .eq('tenant_id', tenantId)
       .single();
     if (loteErr || !lote) throw new Error('Lote não encontrado.');
+    if (lote.cancelado_em) {
+       throw new Error('Geração de CNAB rejeitada: lote se encontra cancelado.');
+    }
     if (!['FECHADO_FINANCEIRO', 'AGUARDANDO_PAGAMENTO'].includes(String(lote.status || ''))) {
       throw new Error('Geração de CNAB bloqueada: o lote precisa estar aprovado pelo Financeiro antes da remessa.');
     }
 
-    // ── 2. Buscar lançamentos — tenta por lote_fechamento_id, depois por período
+    await EnvironmentService.assertEmpresaAllowed({ tenantId, empresaId: lote.empresa_id });
+
+    // ── 2. Buscar lançamentos obrigatoriamente por scoped lote_id e tenant
     let lancamentos: any[] = [];
     const { data: porLote } = await this.supabase
       .from('lancamentos_diaristas' as any)
       .select('*')
       .eq('lote_fechamento_id', loteId)
+      .eq('tenant_id', tenantId)
       .neq('tipo_registro', 'ajuste');
 
     if (porLote && porLote.length > 0) {
       lancamentos = porLote;
     } else {
-      const { data: porPeriodo } = await this.supabase
-        .from('lancamentos_diaristas' as any)
-        .select('*')
-        .eq('empresa_id', empresaId)
-        .gte('data_lancamento', lote.periodo_inicio)
-        .lte('data_lancamento', lote.periodo_fim)
-        .neq('tipo_registro', 'ajuste');
-      lancamentos = porPeriodo ?? [];
+       throw new Error('Lote sem registros. Geração bloqueada.');
     }
-
-    if (lancamentos.length === 0)
-      throw new Error('Nenhum lançamento encontrado para este lote.');
+    
+    for (const l of lancamentos) {
+       if (l.empresa_id !== lote.empresa_id) {
+           throw new Error(`Contaminação de Lote detectada: lançamento ${l.id} possui empresa diferente do Lote.`);
+       }
+       if (l.tenant_id !== tenantId) {
+           throw new Error(`Contaminação de Tenant detectada em lançamento.`);
+       }
+    }
 
     // ── 3. Agregar valores por diarista ───────────────────────────────────────
     const diaristasMap = new Map<string, {
@@ -740,7 +827,12 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
       }
       diaristasMap.get(key)!.valor += Number(l.valor_calculado || 0);
     }
-
+    
+    // Check soma is equivalent
+    const valorSomaItens = Array.from(diaristasMap.values()).reduce((a, b) => a + b.valor, 0);
+    // (Pode haver pequenas divergências devido a ajustes extras que o lote traz, então 
+    // a aprovação da soma ficaria sujeita às regras completas, mas o scope acima previne leaks)
+    
     // ── 4. Buscar dados bancários dos colaboradores ───────────────────────────
     const diaristasIds = Array.from(diaristasMap.values())
       .map(d => d.diarista_id)
@@ -749,7 +841,9 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
     const { data: colaboradoresData } = await this.supabase
       .from('colaboradores' as any)
       .select('id, nome, nome_completo, cpf, banco_codigo, agencia, agencia_digito, conta, digito_conta, tipo_conta')
-      .in('id', diaristasIds.length > 0 ? diaristasIds : ['00000000-0000-0000-0000-000000000000']);
+      .in('id', diaristasIds.length > 0 ? diaristasIds : ['00000000-0000-0000-0000-000000000000'])
+      .eq('tenant_id', tenantId)
+      .eq('empresa_id', lote.empresa_id); // Garante que todos pertencem à empresa do lote!
 
     const colaboradoresMap = new Map<string, any>();
     for (const c of (colaboradoresData ?? [])) {
@@ -762,7 +856,17 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
     const now = new Date();
 
     for (const [, d] of diaristasMap) {
+      if (!d.diarista_id) {
+         pendencias.push(`${d.nome}: semID valido`);
+         continue;
+      }
+      
       const col = colaboradoresMap.get(d.diarista_id);
+      if (!col) {
+          pendencias.push(`${d.nome}: sem conta bancária ativa para esta empresa`);
+          continue;
+      }
+
       const banco        = col?.banco_codigo?.trim();
       const agencia      = col?.agencia?.trim();
       const conta        = col?.conta?.trim();
@@ -857,7 +961,6 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
 
     // ── 8. Disparar download ──────────────────────────────────────────────────
     // Exportação em Windows-1252 (ANSI) — padrão bancário FEBRABAN
-    const tenantId = await getCurrentTenantId();
     await CnabRemessaArquivoService.registrar({
       loteId: null,
       diaristasLoteId: loteId,

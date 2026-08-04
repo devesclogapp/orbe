@@ -42,16 +42,18 @@ describe('Operações por Volume & Receitas - Integração e Segregação', () =
     EnvironmentService.invalidate();
     vi.spyOn(EnvironmentService, 'getCurrentEnvironment').mockReturnValue('production');
     
-    const buildChain = (result: any = { data: {}, error: null }) => {
+    const buildChain = (result: any = { data: [], error: null }) => {
         const chain: any = {
             select: vi.fn().mockReturnThis(),
             eq: vi.fn().mockReturnThis(),
             gte: vi.fn().mockReturnThis(),
             lt: vi.fn().mockReturnThis(),
-            maybeSingle: vi.fn().mockResolvedValue(result),
-            single: vi.fn().mockResolvedValue(result),
-            insert: vi.fn().mockResolvedValue(result),
-            update: vi.fn().mockResolvedValue(result),
+            in: vi.fn().mockReturnThis(),
+            maybeSingle: vi.fn().mockResolvedValue({ data: Array.isArray(result?.data) && result.data.length ? result.data[0] : null, error: null }),
+            single: vi.fn().mockResolvedValue({ data: Array.isArray(result?.data) && result.data.length ? result.data[0] : null, error: null }),
+            insert: vi.fn().mockReturnThis(),
+            update: vi.fn().mockReturnThis(),
+            upsert: vi.fn().mockReturnThis(),
             delete: vi.fn().mockReturnThis(),
             then: (resolve: any) => resolve(result),
             catch: vi.fn().mockReturnThis(),
@@ -74,7 +76,7 @@ describe('Operações por Volume & Receitas - Integração e Segregação', () =
        
        const callOrder: string[] = [];
        assertSpy.mockImplementation(async () => { callOrder.push('assert'); });
-       insertSpy.mockImplementation(() => { callOrder.push('insert'); return Promise.resolve({ data: {}, error: null }); });
+       insertSpy.mockImplementation(() => { callOrder.push('insert'); return mockOpClientChain; });
 
        await OperacaoProducaoService.create({ empresa_id: 'emp-123' });
        
@@ -99,15 +101,21 @@ describe('Operações por Volume & Receitas - Integração e Segregação', () =
         vi.spyOn(OperacaoProducaoService, 'create').mockResolvedValue({ id: 'op-nova' } as any);
         
         // Simular erro DENTRO da branch de colaboradores
-        mockOpClientChain.insert.mockResolvedValueOnce({ data: null, error: new Error('FALHA_CONSTRAINTS') });
+        mockOpClientChain.insert.mockReturnValueOnce({ 
+            select: () => ({ single: () => Promise.resolve({ data: null, error: new Error('FALHA_CONSTRAINTS') }) }),
+            then: (res: any) => Promise.resolve({ data: null, error: new Error('FALHA_CONSTRAINTS') }).then(res)
+        });
         
         const deleteSpy = vi.spyOn(OperacaoProducaoService, 'delete').mockResolvedValue(true as any);
 
         await expect(
            OperacaoProducaoService.createWithColaboradores({ empresa_id: 'emp1' }, [{ collaborator_id: 'c1', had_infraction: false }])
+           .catch(e => { console.log('ACTUAL_THROWN:', e); throw e; })
         ).rejects.toThrow('FALHA_CONSTRAINTS');
 
         expect(deleteSpy).toHaveBeenCalledWith('op-nova', undefined);
+        vi.spyOn(OperacaoProducaoService, 'create').mockRestore();
+        deleteSpy.mockRestore();
     });
 
     it('Cenário 23: Falha no insert de MATERIAIS estorna a operação e (por cascata no banco) colaboradores', async () => {
@@ -116,8 +124,14 @@ describe('Operações por Volume & Receitas - Integração e Segregação', () =
         
         // Primeira insercao (colaboradores) OK 
         // Segunda inserção (materiais) ERRO
-        mockOpClientChain.insert.mockResolvedValueOnce({ data: {}, error: null }); // colabs
-        mockOpClientChain.insert.mockResolvedValueOnce({ data: null, error: new Error('FALHA_MATERIAIS') }); // mat
+        mockOpClientChain.insert.mockReturnValueOnce({ 
+            select: () => ({ single: () => Promise.resolve({ data: {}, error: null }) }),
+            then: (res: any) => Promise.resolve({ data: {}, error: null }).then(res)
+        }); // colabs
+        mockOpClientChain.insert.mockReturnValueOnce({ 
+            select: () => ({ single: () => Promise.resolve({ data: null, error: new Error('FALHA_MATERIAIS') }) }),
+            then: (res: any) => Promise.resolve({ data: null, error: new Error('FALHA_MATERIAIS') }).then(res)
+        }); // mat
         
         await expect(
            OperacaoProducaoService.createWithColaboradores({ empresa_id: 'emp1' }, 
@@ -127,6 +141,8 @@ describe('Operações por Volume & Receitas - Integração e Segregação', () =
         ).rejects.toThrow('FALHA_MATERIAIS');
 
         expect(deleteSpy).toHaveBeenCalledWith('op-nova2', undefined);
+        vi.spyOn(OperacaoProducaoService, 'create').mockRestore();
+        deleteSpy.mockRestore();
     });
     
     it('Bônus Update: Snapshot é acionado caso atualização de colaboradores falhe após a deleção', async () => {
@@ -143,11 +159,17 @@ describe('Operações por Volume & Receitas - Integração e Segregação', () =
         // 2. Erro gerado propositalmente no insert atual.
         mockOpClientChain.insert.mockImplementation((payload: any) => {
             // Se o payload for os "NOVOS" geramos o erro:
-            if (payload.length > 0 && payload[0].collaborator_id === 'novo1') {
-                return Promise.resolve({ data: null, error: new Error('ERRO_INSERT_NOVO') });
+            if (payload && payload.length > 0 && payload[0].collaborator_id === 'novo1') {
+                return { 
+                    select: () => ({ single: () => Promise.resolve({ data: null, error: new Error('ERRO_INSERT_NOVO') }) }),
+                    then: (res: any) => Promise.resolve({ data: null, error: new Error('ERRO_INSERT_NOVO') }).then(res)
+                };
             }
             // Se for do Catch restorativo, damos success:
-            return Promise.resolve({ data: payload, error: null });
+            return { 
+                select: () => ({ single: () => Promise.resolve({ data: payload, error: null }) }),
+                then: (res: any) => Promise.resolve({ data: payload, error: null }).then(res)
+            };
         });
 
         await expect(
@@ -157,6 +179,7 @@ describe('Operações por Volume & Receitas - Integração e Segregação', () =
         // Verifica se a function de restauracao foi chamada
         // Ele tentou fazer o insert pelo menos 2 vezes (1 p dar erro, 1 catch block restore)
         expect(mockOpClientChain.insert).toHaveBeenCalledTimes(2);
+        vi.spyOn(OperacaoProducaoService, 'update').mockRestore();
     });
   });
 
@@ -166,7 +189,7 @@ describe('Operações por Volume & Receitas - Integração e Segregação', () =
        const assertSpy = vi.spyOn(EnvironmentService, 'assertEmpresaAllowed').mockResolvedValue(undefined);
        
        // Simulando existing
-       mockOpClientChain.maybeSingle.mockResolvedValueOnce({ data: { empresa_id: 'emp-original' }, error: null }); // fetch prior
+       mockOpClientChain.maybeSingle.mockResolvedValueOnce({ data: { tenant_id: 'tenant-MEU', empresa_id: 'emp-original' }, error: null }); // fetch prior
        (operationalClient.rpc as any).mockResolvedValueOnce({ data: {}, error: null }); // rpc call
        
        await OperacaoProducaoService.update('hash123', { empresa_id: 'emp-original' });
@@ -245,6 +268,8 @@ describe('Operações por Volume & Receitas - Integração e Segregação', () =
          const res = await MotorFinanceiro.processarFechamento('2026-08', 'emp-hml', 'tenant-MEU');
          
          // Fluiu corretamente até o commit 
+         // Fluiu corretamente até o commit 
+         if (!res.success) { require('fs').writeFileSync('err_dump.txt', String(res.error?.message || res.error)); }
          expect(res.success).toBe(true);
      });
   });
