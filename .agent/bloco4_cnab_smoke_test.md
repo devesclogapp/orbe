@@ -23,9 +23,9 @@ Antes de realizar os testes funcionais, valide via SQL ou CLI a presença da inf
 ### Cenário A — Remessa PROD
 | Step | Checklist | Status | Notas |
 |:---|:---|:---:|:---|
-| 1 | Central Bancária mostra apenas lotes PROD | PENDENTE | Validar EnvironmentQueryFilter (is_teste=false) |
-| 2 | Conta bancária HML não aparece | PENDENTE | Idem |
-| 3 | Seleção gera somente itens PROD | PENDENTE | Lotes listados = Origem apenas PROD |
+| 1 | Central Bancária mostra apenas lotes PROD | **PASS** | Validado pela Automação UI. Nenhuma empresa teste vaza para dropdowns. |
+| 2 | Conta bancária HML não aparece | **PASS** | Isolamento HML/PROD efetivo |
+| 3 | Seleção gera somente itens PROD | **PASS** | Contadores segregam instantaneamente ao mudar Switcher |
 | 4 | Total visual corresponde à soma dos itens | PENDENTE | Valores coerentes com o CNAB gerado |
 | 5 | Arquivo é registrado uma única vez | PENDENTE | Geração envia para `rpc_registrar_cnab_remessa` atomico |
 | 6 | Segunda geração é bloqueada | PENDENTE | Status de lotes 'cnab_gerado' / Unique Arquivo |
@@ -47,10 +47,10 @@ Antes de realizar os testes funcionais, valide via SQL ou CLI a presença da inf
 ### Cenário B — Remessa HML
 | Step | Checklist | Status | Notas |
 |:---|:---|:---:|:---|
-| 1 | Central HML mostra somente lotes HML | PENDENTE | |
-| 2 | Nenhum lote ou beneficiário PROD aparece | PENDENTE | Fail-closed segregation efetivo |
+| 1 | Central HML mostra somente lotes HML | **PASS** | |
+| 2 | Nenhum lote ou beneficiário PROD aparece | **PASS** | Fail-closed segregation efetivo |
 | 3 | Arquivo HML é gerado e registrado no ambiente HML | PENDENTE | Empresa associada à remessa |
-| 4 | Arquivo HML não aparece na Central PROD | PENDENTE | |
+| 4 | Arquivo HML não aparece na Central PROD | **PASS** | |
 
 **Geração Remessa (HML)**
 - Ambiente: Homologação
