@@ -797,6 +797,14 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
     } else {
        throw new Error('Lote sem registros. Geração bloqueada.');
     }
+
+    const itensParaRpc = lancamentos.map(l => ({
+       origem_tipo: 'LANCAMENTO_DIARISTA',
+       origem_id: l.id,
+       fatura_id: null,
+       lote_item_id: null,
+       valor: Number(l.valor_calculado ?? l.valor_final ?? 0)
+    }));
     
     for (const l of lancamentos) {
        if (l.empresa_id !== lote.empresa_id) {
@@ -974,6 +982,7 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
       competencia: lote.mes_referencia,
       modo: 'producao',
       sequencialArquivo,
+      itens: itensParaRpc,
     });
     downloadCNAB240(resultado);
 

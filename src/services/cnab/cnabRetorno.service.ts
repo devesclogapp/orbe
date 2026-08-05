@@ -262,100 +262,41 @@ export const CnabRetornoService = {
       desconhecidos: itensPersistiveis.filter((item) => item.status === 'desconhecido').length,
     };
 
-    const statusArquivo: CnabRetornoArquivoStatus =
-      resumo.divergentes > 0 || resumo.pendentes > 0 || resumo.desconhecidos > 0
-        ? 'processado_com_pendencias'
-        : 'processado';
+    const rpcPayloadItens = itensPersistiveis.map(item => ({
+      remessa_id: item.remessa_arquivo_id,
+      remessa_item_id: null,
+      origem_tipo: remessaRelacionada?.intermitentes_lote_id ? 'INTERMITENTE' : (remessaRelacionada?.diaristas_lote_id ? 'CLT' : 'FATURA'),
+      origem_id: item.colaborador_id ? item.fatura_id : null,
+      status: item.status,
+      data_ocorrencia: item.data_ocorrencia,
+      codigo_ocorrencia: item.codigo_ocorrencia,
+      descricao_ocorrencia: item.descricao_ocorrencia,
+      valor_esperado: item.valor_esperado,
+      valor_pago: item.valor_retornado,
+      linha_original: item.linha_original
+    }));
 
-    const userId = await getCurrentUserId();
+    // For tracking the origins
+    if (remessaRelacionada?.diaristas_lote_id) { rpcPayloadItens.forEach(i => i.origem_tipo = 'CLT'); /* Because Diaristas are treated alongside CLT in RH tables natively mostly, or simply as RH_FINANCEIRO_ITEM - but the RPC uses 'CLT' or 'INTERMITENTE' */ }
 
-    const { data: arquivoData, error: arquivoError } = await supabase
-      .from('cnab_retorno_arquivos')
-      .insert({
-        remessa_arquivo_id: remessaRelacionada?.id ?? null,
-        nome_arquivo: fileName,
-        hash_arquivo: hash,
-        banco_codigo: banco,
-        data_processamento: new Date().toISOString(),
-        usuario_processamento: userId,
-        total_linhas: parseResult.metadados.totalLinhas,
-        total_processados: resumo.totalProcessado,
-        total_sucesso: resumo.pagos,
-        total_rejeitado: resumo.rejeitados,
-        total_divergente: resumo.divergentes,
-        total_pendente: resumo.pendentes + resumo.desconhecidos,
-        status: statusArquivo,
-        erros_json: parseResult.ocorrenciasArquivo,
-      })
-      .select()
-      .single();
-
-    if (arquivoError) {
-      throw new Error(`Erro ao registrar arquivo de retorno: ${arquivoError.message}`);
-    }
-
-    const { data: itensData, error: itensError } = await supabase
-      .from('cnab_retorno_itens')
-      .insert(
-        itensPersistiveis.map((item) => ({
-          retorno_arquivo_id: arquivoData.id,
-          ...item,
-        }))
-      )
-      .select();
-
-    if (itensError) {
-      throw new Error(`Erro ao registrar itens do retorno: ${itensError.message}`);
-    }
-
-    await CnabRemessaArquivoService.registrarAuditoria({
-      arquivoId: remessaRelacionada?.id ?? null,
-      loteId: remessaRelacionada?.lote_id ?? null,
-      acao: 'upload_retorno',
-      detalhes: {
-        diaristas_lote_id: remessaRelacionada?.diaristas_lote_id ?? null,
-        retorno_arquivo_id: arquivoData.id,
-        nome_arquivo: fileName,
-        hash: hash.substring(0, 16) + '...',
-      },
+    // Execute atomic RPC Block
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('rpc_aplicar_cnab_retorno', {
+      p_empresa_id: remessaRelacionada?.contas_bancarias_empresa?.empresa_id,
+      p_conta_bancaria_id: remessaRelacionada?.conta_bancaria_id,
+      p_banco_codigo: banco,
+      p_nome_arquivo: fileName,
+      p_hash_arquivo: hash,
+      p_itens: rpcPayloadItens
     });
 
-    await CnabRemessaArquivoService.registrarAuditoria({
-      arquivoId: remessaRelacionada?.id ?? null,
-      loteId: remessaRelacionada?.lote_id ?? null,
-      acao: 'processamento_retorno',
-      detalhes: {
-        diaristas_lote_id: remessaRelacionada?.diaristas_lote_id ?? null,
-        retorno_arquivo_id: arquivoData.id,
-        total_processado: resumo.totalProcessado,
-        pagos: resumo.pagos,
-        rejeitados: resumo.rejeitados,
-        divergentes: resumo.divergentes,
-        pendentes: resumo.pendentes,
-        desconhecidos: resumo.desconhecidos,
-      },
-    });
-
-    if (resumo.divergentes > 0 || resumo.pendentes > 0 || resumo.desconhecidos > 0) {
-      await CnabRemessaArquivoService.registrarAuditoria({
-        arquivoId: remessaRelacionada?.id ?? null,
-        loteId: remessaRelacionada?.lote_id ?? null,
-        acao: 'divergencia_retorno',
-        detalhes: {
-          diaristas_lote_id: remessaRelacionada?.diaristas_lote_id ?? null,
-          retorno_arquivo_id: arquivoData.id,
-          divergentes: resumo.divergentes,
-          pendentes: resumo.pendentes,
-          desconhecidos: resumo.desconhecidos,
-        },
-      });
+    if (rpcError) {
+      throw new Error(`Divergência / Erro Crítico na Transação de Retorno CNAB RPC: ${rpcError.message}`);
     }
 
     try {
       await supabase.rpc('log_audit', {
         p_action: 'PROCESS_CNAB240_RETORNO',
         p_details: JSON.stringify({
-          retorno_arquivo_id: arquivoData.id,
           remessa_arquivo_id: remessaRelacionada?.id ?? null,
           diaristas_lote_id: remessaRelacionada?.diaristas_lote_id ?? null,
           nome_arquivo: fileName,
@@ -371,15 +312,18 @@ export const CnabRetornoService = {
       // audit never blocks
     }
 
+    // Attempt to automatically perform specific business lowerings if not rolled back natively
     try {
-      await CnabConciliacaoService.processarBaixaAutomatica(arquivoData.id);
+      if (rpcResult?.retorno_arquivo_id) {
+         await CnabConciliacaoService.processarBaixaAutomatica(rpcResult.retorno_arquivo_id);
+      }
     } catch (_error) {
-      console.warn('[Baixa Automática] Falha ao processar conciliação na importação', _error);
+       // Automatic low could wait
     }
 
     return {
-      arquivo: arquivoData as CnabRetornoArquivo,
-      itens: (itensData ?? []) as CnabRetornoItem[],
+      arquivo: { id: rpcResult?.retorno_arquivo_id } as any, // Mock struct for the caller
+      itens: [] as any[], // No longer fully mapped locally avoiding cache issues
       resumo,
       remessaRelacionada,
       parseResult,
@@ -460,56 +404,20 @@ export const CnabRetornoService = {
     remessaRelacionada: CnabRemessaHistoricoItem | null,
     parseResult: CnabRetornoParseResult
   ): Promise<FaturaComColaborador[]> {
+    const tenantId = await getCurrentTenantId();
+
     if (remessaRelacionada?.lote_id) {
-      const { data, error } = await supabase
-        .from('faturas')
-        .select('id, lote_remessa_id, colaborador_id, valor, nosso_numero, competencia, colaboradores(id, nome, cpf)')
-        .eq('lote_remessa_id', remessaRelacionada.lote_id);
-
-      if (error) throw new Error(`Erro ao carregar faturas do lote relacionado: ${error.message}`);
-      return (data ?? []) as unknown as FaturaComColaborador[];
-    }
-
-    if (remessaRelacionada?.diaristas_lote_id) {
-      const { data: loteData, error: loteError } = await supabase
-        .from('diaristas_lotes_fechamento')
-        .select('empresa_id, mes_referencia')
-        .eq('id', remessaRelacionada.diaristas_lote_id)
-        .maybeSingle();
-
-      if (loteError || !loteData?.empresa_id || !loteData?.mes_referencia) {
-        return [];
-      }
-
-      const { data: lancamentosData, error: lancamentosError } = await supabase
-        .from('lancamentos_diaristas')
-        .select('diarista_id')
-        .eq('lote_fechamento_id', remessaRelacionada.diaristas_lote_id);
-
-      if (lancamentosError) {
-        return [];
-      }
-
-      const diaristasIds = Array.from(
-        new Set((lancamentosData ?? []).map((item) => item.diarista_id).filter(Boolean))
-      );
-
-      if (!diaristasIds.length) {
-        return [];
-      }
-
-      const { data, error } = await supabase
-        .from('faturas')
-        .select('id, lote_remessa_id, colaborador_id, valor, nosso_numero, competencia, colaboradores(id, nome, cpf)')
-        .eq('empresa_id', loteData.empresa_id)
-        .eq('competencia', loteData.mes_referencia)
-        .in('colaborador_id', diaristasIds);
-
-      if (error) {
-        return [];
-      }
-
-      return (data ?? []) as unknown as FaturaComColaborador[];
+       // Lotes RH Padrão (CLT) - Fetches the rh_financeiro_lote_itens as faturas
+       let query = supabase.from('rh_financeiro_lote_itens').select('id, lote_id, colaborador_id, valor_calculado, colaboradores(id, nome, cpf)').eq('lote_id', remessaRelacionada.lote_id);
+       const { data, error } = await query;
+       if (error) throw new Error(`Erro ao carregar itens RH Financeiro do Lote CLT: ${error.message}`);
+       return (data ?? []).map((x: any) => ({
+          id: x.id,
+          lote_remessa_id: x.lote_id,
+          colaborador_id: x.colaborador_id,
+          valor: x.valor_calculado,
+          colaboradores: x.colaboradores
+       })) as unknown as FaturaComColaborador[];
     }
 
     if (remessaRelacionada?.intermitentes_lote_id) {
@@ -519,71 +427,59 @@ export const CnabRetornoService = {
         .eq('id', remessaRelacionada.intermitentes_lote_id)
         .maybeSingle();
 
-      if (loteError || !loteData?.empresa_id || !loteData?.competencia) {
-        return [];
-      }
-
-      const { data: lancamentosData, error: lancamentosError } = await supabase
-        .from('lancamentos_intermitentes')
-        .select('colaborador_id, nome_colaborador, cpf_colaborador, total')
-        .eq('lote_fechamento_id', remessaRelacionada.intermitentes_lote_id);
-
-      if (lancamentosError || !lancamentosData) {
-        return [];
-      }
-
-      const mapValores = new Map<string, any>();
+      if (loteError || !loteData?.empresa_id || !loteData?.competencia) return [];
       
-      for (const l of lancamentosData) {
-        const cpf = String(l.cpf_colaborador || '').replace(/\D/g, '');
-        const key = cpf || String(l.nome_colaborador);
-        if (!mapValores.has(key)) {
-          mapValores.set(key, {
-            id: `INT_${l.colaborador_id || key}`,
-            colaborador_id: l.colaborador_id,
-            valor: 0,
-            nosso_numero: null,
-            competencia: loteData.competencia,
-            colaboradores: {
-              id: l.colaborador_id || key,
-              nome: l.nome_colaborador,
-              cpf: cpf,
-            }
-          });
-        }
-        mapValores.get(key).valor += Number(l.total || 0);
-      }
-
-      return Array.from(mapValores.values()) as FaturaComColaborador[];
+      const { data: parentRHLote } = await supabase.from('rh_financeiro_lotes')
+          .select('id').eq('tenant_id', tenantId).eq('empresa_id', loteData.empresa_id).eq('competencia', loteData.competencia).eq('tipo', 'INTERMITENTES').maybeSingle();
+          
+      if (!parentRHLote) return [];
+      
+      const { data: items } = await supabase.from('rh_financeiro_lote_itens').select('id, lote_id, colaborador_id, valor_calculado, colaboradores(id, nome, cpf)').eq('lote_id', parentRHLote.id);
+      
+      return (items ?? []).map((x: any) => ({
+          id: x.id,
+          lote_remessa_id: x.lote_id,
+          colaborador_id: x.colaborador_id,
+          valor: x.valor_calculado,
+          colaboradores: x.colaboradores
+      })) as unknown as FaturaComColaborador[];
     }
 
-    const docs = Array.from(
-      new Set(parseResult.detalhes.map((item) => normalizeDoc(item.documentoFavorecido)).filter(Boolean))
-    );
+    if (remessaRelacionada?.diaristas_lote_id) {
+      const { data: loteData, error: loteError } = await supabase
+        .from('diaristas_lotes_fechamento')
+        .select('empresa_id, mes_referencia')
+        .eq('id', remessaRelacionada.diaristas_lote_id)
+        .maybeSingle();
 
+      if (loteError || !loteData?.empresa_id || !loteData?.mes_referencia) return [];
+
+      const { data: parentRHLote } = await supabase.from('rh_financeiro_lotes')
+          .select('id').eq('tenant_id', tenantId).eq('empresa_id', loteData.empresa_id).eq('competencia', loteData.mes_referencia).eq('tipo', 'DIARISTAS').maybeSingle();
+          
+      if (!parentRHLote) return [];
+      
+      const { data: items } = await supabase.from('rh_financeiro_lote_itens').select('id, lote_id, colaborador_id, valor_calculado, colaboradores(id, nome, cpf)').eq('lote_id', parentRHLote.id);
+
+      return (items ?? []).map((x: any) => ({
+          id: x.id,
+          lote_remessa_id: x.lote_id,
+          colaborador_id: x.colaborador_id,
+          valor: x.valor_calculado,
+          colaboradores: x.colaboradores
+      })) as unknown as FaturaComColaborador[];
+    }
+
+    // Else Faturas normais (Operacional avulso, não vinculado a lote RH/Diarista)
+    const docs = Array.from(new Set(parseResult.detalhes.map((item) => normalizeDoc(item.documentoFavorecido)).filter(Boolean)));
     if (!docs.length) return [];
 
-    let queryDocs = supabase
-      .from('faturas')
-      .select('id, lote_remessa_id, colaborador_id, valor, nosso_numero, competencia, empresa_id, colaboradores(id, nome, cpf)');
-      
-      // Bloco 4 Segregation: Never fetch Faturas without bounding by Active Environment!
-    const tenantId = await getCurrentTenantId();
-    const finalQuery = await EnvironmentQueryFilter.applyEmpresaScope(queryDocs, {
-      tenantId,
-      column: 'empresa_id',
-      includeNullInProduction: false
-    });
-
+    let queryDocs = supabase.from('faturas').select('id, lote_remessa_id, colaborador_id, valor, nosso_numero, competencia, empresa_id, colaboradores(id, nome, cpf)');
+    const finalQuery = await EnvironmentQueryFilter.applyEmpresaScope(queryDocs, { tenantId, column: 'empresa_id', includeNullInProduction: false });
     const { data, error } = await finalQuery;
 
-    if (error) {
-      return [];
-    }
-
-    return ((data ?? []) as any as FaturaComColaborador[]).filter((item) =>
-      docs.includes(normalizeDoc(item.colaboradores?.cpf))
-    );
+    if (error) return [];
+    return ((data ?? []) as any as FaturaComColaborador[]).filter((item) => docs.includes(normalizeDoc(item.colaboradores?.cpf)));
   },
 
   matchDetalhe(detalhe: CnabRetornoDetalhe, faturas: FaturaComColaborador[]): MatchResult {

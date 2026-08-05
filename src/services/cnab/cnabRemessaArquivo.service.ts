@@ -68,6 +68,13 @@ export interface RegistrarRemessaParams {
   competencia?: string;
   modo?: CnabModo;
   sequencialArquivo?: number;
+  itens: Array<{
+    origem_tipo: string;
+    origem_id: string;
+    fatura_id?: string | null;
+    lote_item_id?: string | null;
+    valor: number;
+  }>;
 }
 
 export interface CnabRemessaHistoricoItem extends CnabRemessaArquivo {
@@ -266,43 +273,56 @@ export const CnabRemessaArquivoService = {
     
     // Bloco 4 Segregation: Validate conta_bancaria_id aligns with current environment
     const tenantId = await getCurrentTenantId();
+    let empresaId: string | null = null;
     if (contaBancariaId) {
       const { data: contaDados } = await supabase.from('contas_bancarias_empresa').select('empresa_id').eq('id', contaBancariaId).single();
       if (contaDados?.empresa_id) {
+         empresaId = contaDados.empresa_id;
          await EnvironmentService.assertEmpresaAllowed({ tenantId, empresaId: contaDados.empresa_id });
       }
     }
 
-    // 6. Inserir registro
-    const { data, error } = await supabase
-      .from('cnab_remessas_arquivos')
-      .insert({
-        lote_id: loteId,
-        diaristas_lote_id: diaristasLoteId ?? null,
-        intermitentes_lote_id: intermitentesLoteId ?? null,
-        nome_arquivo: nomeArquivo,
-        sequencial_arquivo: sequencial,
-        hash_arquivo: hash,
-        conteudo_arquivo: conteudoArquivo, // Salvar conteúdo para auditoria
-        total_registros: totalRegistros,
-        total_valor: totalValor,
-        banco_codigo: bancoCodigo,
-        banco_nome: bancoNome,
-        conta_bancaria_id: contaBancariaId,
-        status: 'gerado',
-        modo,
-        competencia,
-        usuario_geracao: user?.id,
-        data_geracao: new Date().toISOString(),
-      })
-      .select()
-      .single();
+    if (!empresaId) {
+      throw new Error('Empresa_id não resolvível via conta bancária.');
+    }
 
-    if (error) throw new Error(`Erro ao registrar remessa CNAB: ${error.message}`);
+    // 6. Inserir registro Atômicamente usando a RPC!
+    const { data, error } = await supabase.rpc('rpc_registrar_cnab_remessa', {
+       p_conta_bancaria_id: contaBancariaId,
+       p_lote_id: loteId,
+       p_empresa_id: empresaId,
+       p_modo: modo,
+       p_nome_arquivo: nomeArquivo,
+       p_hash_arquivo: hash,
+       p_total_valor: totalValor,
+       p_total_registros: totalRegistros,
+       p_itens: params.itens
+    });
 
-    // 7. Registrar auditoria
+    if (error) {
+      throw new Error(`Erro Crítico na Transação CNAB RPC: ${error.message}`);
+    }
+
+    // 7. Atualizar o ID devolvido pela RPC para o fluxo
+    const rpcResponse = data as any;
+    const finalRemessaId = rpcResponse.remessa_id;
+
+    // Atualizar lote físico (legacy sync)
+    if (loteId) await sincronizarStatusLote(loteId, 'gerado');
+    if (diaristasLoteId) {
+      await supabase.from('diaristas_lotes_fechamento').update({ status: 'FECHADO_FINANCEIRO' }).eq('id', diaristasLoteId);
+    }
+    if (intermitentesLoteId) {
+      await supabase.from('intermitentes_lotes_fechamento').update({ status: 'FECHADO_FINANCEIRO' }).eq('id', intermitentesLoteId);
+    }
+
+    // 8. Opcional: Persistir o Conteudo Arquivo em Storage (No database já estamos sobrecarregando `cnab_remessas_arquivos`)
+    // Se precisarmos salvar o blob TXT bruto
+    await supabase.from('cnab_remessas_arquivos').update({ conteudo_arquivo: conteudoArquivo }).eq('id', finalRemessaId).eq('tenant_id', tenantId);
+
+    // 9. Registrar auditoria (complementar ao RPC)
     await this.registrarAuditoria({
-      arquivoId: data.id,
+      arquivoId: finalRemessaId,
       loteId,
       acao: 'geracao',
       detalhes: {
@@ -315,7 +335,7 @@ export const CnabRemessaArquivoService = {
       },
     });
 
-    return data as CnabRemessaArquivo;
+    return { id: finalRemessaId } as CnabRemessaArquivo;
   },
 
   // ——— Atualização de status ———————————————————————————————

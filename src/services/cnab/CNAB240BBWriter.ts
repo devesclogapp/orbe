@@ -232,6 +232,18 @@ export class CNAB240BBWriter implements ICNAB240Writer {
     const seqFormatado = String(sequencialGlobal).padStart(6, '0');
     const fileName = `CNAB240_BB_${now.getFullYear()}${padZero(now.getMonth() + 1)}${padZero(now.getDate())}_SEQ${seqFormatado}.txt`;
 
+    const itensParaRpc = faturas.map(fura => {
+      const rec = fura as any;
+      const tipo = rhLoteId ? 'RH_FINANCEIRO_ITEM' : 'FATURA';
+      return {
+        origem_tipo: tipo,
+        origem_id: rec.id,
+        fatura_id: tipo === 'FATURA' ? rec.id : undefined,
+        lote_item_id: tipo === 'RH_FINANCEIRO_ITEM' ? rec.id : undefined,
+        valor: Number(rec.valor ?? 0)
+      };
+    });
+
     let arquivoRegistrado: Awaited<ReturnType<typeof CnabRemessaArquivoService.registrar>>;
 
     try {
@@ -247,6 +259,7 @@ export class CNAB240BBWriter implements ICNAB240Writer {
         competencia,
         modo,
         sequencialArquivo: sequencialGlobal,
+        itens: itensParaRpc,
       });
     } catch (regErr: unknown) {
       const msg = (regErr as Error).message;

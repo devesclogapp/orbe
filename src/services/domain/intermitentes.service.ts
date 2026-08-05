@@ -578,6 +578,14 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
     if (!lancamentos || lancamentos.length === 0)
       throw new Error('Nenhum lançamento encontrado para este lote.');
 
+    const itensParaRpc = lancamentos.map(l => ({
+       origem_tipo: 'LANCAMENTO_INTERMITENTE',
+       origem_id: l.id,
+       fatura_id: null,
+       lote_item_id: null,
+       valor: Number(l.total ?? 0)
+    }));
+
     // 3. Agregar valores por colaborador (intermitente)
     const colaboradoresMapInfo = new Map<string, {
       colaborador_id: string;
@@ -727,6 +735,7 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       competencia: lote.competencia,
       modo: 'producao',
       sequencialArquivo,
+      itens: itensParaRpc,
     });
     
     downloadCNAB240(resultado);

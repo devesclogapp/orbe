@@ -321,6 +321,18 @@ export class CNAB240ItauWriter implements ICNAB240Writer {
 
     let arquivoRegistrado: any;
 
+    const itensParaRpc = faturas.map(fura => {
+      const rec = fura as any;
+      const tipo = rhLoteId ? 'RH_FINANCEIRO_ITEM' : 'FATURA';
+      return {
+        origem_tipo: tipo,
+        origem_id: rec.id,
+        fatura_id: tipo === 'FATURA' ? rec.id : undefined,
+        lote_item_id: tipo === 'RH_FINANCEIRO_ITEM' ? rec.id : undefined,
+        valor: Number(rec.valor ?? 0)
+      };
+    });
+
     try {
       arquivoRegistrado = await CnabRemessaArquivoService.registrar({
         loteId,
@@ -334,6 +346,7 @@ export class CNAB240ItauWriter implements ICNAB240Writer {
         competencia,
         modo,
         sequencialArquivo: sequencialGlobal,
+        itens: itensParaRpc,
       });
     } catch (regErr: any) {
       if (regErr.message.includes('já possui remessa') || regErr.message.includes('idêntico')) {
