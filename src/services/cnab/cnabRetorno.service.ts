@@ -475,7 +475,8 @@ export const CnabRetornoService = {
     if (!docs.length) return [];
 
     let queryDocs = supabase.from('faturas').select('id, lote_remessa_id, colaborador_id, valor, nosso_numero, competencia, empresa_id, colaboradores(id, nome, cpf)');
-    const finalQuery = await EnvironmentQueryFilter.applyEmpresaScope(queryDocs, { tenantId, column: 'empresa_id', includeNullInProduction: false });
+    const testIds = await EnvironmentService.getTestEmpresaIds(tenantId);
+    const finalQuery = EnvironmentQueryFilter.applyEmpresaScope(queryDocs, { tenantId, column: 'empresa_id', includeNullInProduction: false, testIds });
     const { data, error } = await finalQuery;
 
     if (error) return [];

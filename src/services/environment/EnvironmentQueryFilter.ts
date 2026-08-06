@@ -4,22 +4,21 @@ export type EnvironmentScopeOptions = {
   tenantId: string;
   column?: string;
   includeNullInProduction?: boolean;
+  testIds: string[];
 };
 
 class EnvironmentQueryFilterClass {
-  async applyEmpresaScope<T>(
+  applyEmpresaScope<T>(
     query: T,
     options: EnvironmentScopeOptions
-  ): Promise<T> {
-    const { tenantId, column = 'empresa_id', includeNullInProduction = false } = options;
+  ): T {
+    const { tenantId, column = 'empresa_id', includeNullInProduction = false, testIds } = options;
     
     if (!tenantId) {
       throw new EnvironmentScopeResolutionError("EnvironmentQueryFilter: Nenhum tenantId definido para a aplicacao do escopo.");
     }
     
     const env = EnvironmentService.getCurrentEnvironment();
-    const testIds = await EnvironmentService.getTestEmpresaIds(tenantId);
-    console.log("TEST IDS INSIDE FILTER:", testIds);
     
     const q = query as any;
 
@@ -38,9 +37,7 @@ class EnvironmentQueryFilterClass {
       if (includeNullInProduction) {
         return q.or(`${column}.not.in.${safeJoined},${column}.is.null`) as T;
       } else {
-        console.log("ABOUT TO CALL Q.NOT!", "IS q === chain?", typeof q.not, "SECRET KEY:", q.not?.mySecretKey, "CHAIN SECRET:", q.mySecretKey);
         const result = q.not(column, 'in', safeJoined);
-        console.log("Q.NOT CALLED");
         return result as T;
       }
     }

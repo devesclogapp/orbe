@@ -462,7 +462,8 @@ export const CnabRemessaArquivoService = {
   }): Promise<CnabRemessaArquivo[]> {
     const tenantId = await getCurrentTenantId();
     let contasQuery = supabase.from('contas_bancarias_empresa').select('id, empresa_id');
-    contasQuery = await EnvironmentQueryFilter.applyEmpresaScope(contasQuery, { tenantId, column: 'empresa_id', includeNullInProduction: false });
+    const testIds = await EnvironmentService.getTestEmpresaIds(tenantId);
+    contasQuery = EnvironmentQueryFilter.applyEmpresaScope(contasQuery, { tenantId, column: 'empresa_id', includeNullInProduction: false, testIds });
     const { data: allowedContas } = await contasQuery;
     const allowedContaIds = (allowedContas ?? []).map(c => c.id);
     if(allowedContaIds.length === 0) allowedContaIds.push('00000000-0000-0000-0000-000000000000');
@@ -497,7 +498,8 @@ export const CnabRemessaArquivoService = {
   async listarHistorico(limit = 100): Promise<CnabRemessaHistoricoItem[]> {
     const tenantId = await getCurrentTenantId();
     let contasQuery = supabase.from('contas_bancarias_empresa').select('id, empresa_id');
-    contasQuery = await EnvironmentQueryFilter.applyEmpresaScope(contasQuery, { tenantId, column: 'empresa_id', includeNullInProduction: false });
+    const testIds = await EnvironmentService.getTestEmpresaIds(tenantId);
+    contasQuery = EnvironmentQueryFilter.applyEmpresaScope(contasQuery, { tenantId, column: 'empresa_id', includeNullInProduction: false, testIds });
     const { data: allowedContas } = await contasQuery;
     const allowedContaIds = (allowedContas ?? []).map(c => c.id);
     if(allowedContaIds.length === 0) allowedContaIds.push('00000000-0000-0000-0000-000000000000');

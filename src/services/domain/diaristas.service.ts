@@ -75,10 +75,12 @@ class LancamentoDiaristaServiceClass {
       .gte('data_lancamento', inicio)
       .lte('data_lancamento', fim);
 
-    query = await EnvironmentQueryFilter.applyEmpresaScope(query, {
+    const testIds = await EnvironmentService.getTestEmpresaIds(tenantId);
+    query = EnvironmentQueryFilter.applyEmpresaScope(query, {
       tenantId,
       column: 'empresa_id',
-      includeNullInProduction: false
+      includeNullInProduction: false,
+      testIds
     });
 
     // Aplica filtro de empresa quando fornecido
@@ -355,10 +357,12 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
       .order('created_at', { ascending: false });
 
     // Use EnvironmentQueryFilter - includeNullInProduction is false natively
-    query = await EnvironmentQueryFilter.applyEmpresaScope(query, {
+    const testIds = await EnvironmentService.getTestEmpresaIds(tenantId);
+    query = EnvironmentQueryFilter.applyEmpresaScope(query, {
       tenantId,
       column: 'empresa_id',
-      includeNullInProduction: false
+      includeNullInProduction: false,
+      testIds
     });
 
     if (empresaId) {
@@ -413,10 +417,12 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
       .order('created_at', { ascending: false });
 
     // Use EnvironmentQueryFilter
-    query = await EnvironmentQueryFilter.applyEmpresaScope(query, {
+    const testIds = await EnvironmentService.getTestEmpresaIds(tenantId);
+    query = EnvironmentQueryFilter.applyEmpresaScope(query, {
       tenantId,
       column: 'empresa_id',
-      includeNullInProduction: false
+      includeNullInProduction: false,
+      testIds
     });
 
     const { data, error } = await query;
@@ -536,10 +542,12 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
       .lte('data_lancamento', periodoFim)
       .in('status', ['em_aberto', 'EM_ABERTO']);
 
-    query = await EnvironmentQueryFilter.applyEmpresaScope(query, {
+    const testIds = await EnvironmentService.getTestEmpresaIds(tenantId);
+    query = EnvironmentQueryFilter.applyEmpresaScope(query, {
       tenantId,
       column: 'empresa_id',
-      includeNullInProduction: false
+      includeNullInProduction: false,
+      testIds
     });
 
     const { data: lancamentos, error: errorLanc } = await query;

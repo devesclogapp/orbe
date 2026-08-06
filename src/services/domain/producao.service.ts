@@ -1208,10 +1208,14 @@ class OperacaoProducaoServiceClass {
       .order('criado_em', { ascending: false })
       .limit(limit);
 
-    query = await EnvironmentQueryFilter.applyEmpresaScope(query as any, { 
-      tenantId: await getCurrentTenantId(), 
+    const tenantIdScope = await getCurrentTenantId();
+    const testIds = await EnvironmentService.getTestEmpresaIds(tenantIdScope);
+    
+    query = EnvironmentQueryFilter.applyEmpresaScope(query as any, { 
+      tenantId: tenantIdScope, 
       column: 'empresa_id', 
-      includeNullInProduction: false 
+      includeNullInProduction: false,
+      testIds
     });
 
     if (empresaId) query = query.eq('empresa_id', empresaId);
@@ -1246,6 +1250,7 @@ class OperacaoProducaoServiceClass {
 
   async getAll(empresaId?: string, tenantId?: string | null, unidadeId?: string | null, competencia?: string) {
     const currentTenantId = tenantId || await getCurrentTenantId();
+    const testIds = await EnvironmentService.getTestEmpresaIds(currentTenantId);
     
     let query = operationalClient
       .from('operacoes_producao')
@@ -1266,10 +1271,11 @@ class OperacaoProducaoServiceClass {
       .is('deleted_at', null)
       .order('criado_em', { ascending: false });
 
-    query = await EnvironmentQueryFilter.applyEmpresaScope(query as any, { 
+    query = EnvironmentQueryFilter.applyEmpresaScope(query as any, { 
       tenantId: currentTenantId, 
       column: 'empresa_id', 
-      includeNullInProduction: false 
+      includeNullInProduction: false,
+      testIds
     });
 
     if (empresaId) {
@@ -1452,10 +1458,14 @@ class OperacaoProducaoServiceClass {
       .select('*')
       .eq('data_operacao', date);
 
-    query = await EnvironmentQueryFilter.applyEmpresaScope(query as any, { 
-      tenantId: await getCurrentTenantId(), 
+    const tenantIdScope = await getCurrentTenantId();
+    const testIds = await EnvironmentService.getTestEmpresaIds(tenantIdScope);
+    
+    query = EnvironmentQueryFilter.applyEmpresaScope(query as any, { 
+      tenantId: tenantIdScope, 
       column: 'empresa_id', 
-      includeNullInProduction: false 
+      includeNullInProduction: false,
+      testIds
     });
 
     if (empresaId) query = query.eq('empresa_id', empresaId);
@@ -1468,6 +1478,7 @@ class OperacaoProducaoServiceClass {
 
   async getMonthsWithData(empresaId?: string, tenantId?: string | null) {
     const currentTenantId = tenantId || await getCurrentTenantId();
+    const testIds = await EnvironmentService.getTestEmpresaIds(currentTenantId);
     
     let query = operationalClient
       .from('operacoes_producao')
@@ -1477,10 +1488,11 @@ class OperacaoProducaoServiceClass {
       .order('data_operacao', { ascending: false })
       .limit(1000);
 
-    query = await EnvironmentQueryFilter.applyEmpresaScope(query as any, { 
+    query = EnvironmentQueryFilter.applyEmpresaScope(query as any, { 
       tenantId: currentTenantId, 
       column: 'empresa_id', 
-      includeNullInProduction: false 
+      includeNullInProduction: false,
+      testIds
     });
 
     if (empresaId) {

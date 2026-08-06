@@ -252,12 +252,12 @@ export const useOperationalPulse = () => {
         }, { tenantId }),
         safeCount("registros_ponto", (q) => {
           let res = q.in("status_processamento", ["PENDENTE_PROCESSAMENTO", "IMPORTADO"]);
-          if (queryStart && nextMonthStr) res = res.gte('data_ponto', queryStart).lt('data_ponto', nextMonthStr);
+          if (queryStart && nextMonthStr) res = res.gte('data', queryStart).lt('data', nextMonthStr);
           return res;
         }, { tenantId }),
         safeCount("registros_ponto", (q) => {
           let res = q.eq("status_processamento", "INCONSISTENTE");
-          if (queryStart && nextMonthStr) res = res.gte('data_ponto', queryStart).lt('data_ponto', nextMonthStr);
+          if (queryStart && nextMonthStr) res = res.gte('data', queryStart).lt('data', nextMonthStr);
           return res;
         }, { tenantId }),
         safeCount("diaristas_lotes_fechamento", (q) => {

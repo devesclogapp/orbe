@@ -87,10 +87,12 @@ export class CNABBase {
         .neq('status', 'pago');
 
       // Bloco 4 Segregation: Fail-closed query for faturas
-      query = await EnvironmentQueryFilter.applyEmpresaScope(query, {
+      const testIds = await EnvironmentService.getTestEmpresaIds(tenantId);
+      query = EnvironmentQueryFilter.applyEmpresaScope(query, {
         tenantId,
         column: 'empresa_id',
-        includeNullInProduction: false
+        includeNullInProduction: false,
+        testIds
       });
   
       const { data: faturasDb, error } = await query;

@@ -18,8 +18,7 @@ class CustoExtraOperacionalServiceClass {
   async getMonthsWithData(empresaId?: string, tenantId?: string | null) {
     let query = operationalClient
       .from('custos_extras_operacionais')
-      .select('data')
-      .is('deleted_at', null);
+      .select('data');
     
     if (empresaId && empresaId !== 'all') {
       query = query.eq('empresa_id', empresaId);
@@ -60,7 +59,7 @@ class CustoExtraOperacionalServiceClass {
   async delete(id: string) {
     const { error } = await operationalClient
       .from('custos_extras_operacionais')
-      .update({ deleted_at: new Date().toISOString() })
+      .delete()
       .eq('id', id);
 
     if (error) throw error;
@@ -92,7 +91,6 @@ class CustoExtraOperacionalServiceClass {
       .from('custos_extras_operacionais')
       .select('*, empresas:empresa_id(nome), forma_pagamento_ref:forma_pagamento_id(nome)')
       .eq('data', date)
-      .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -136,7 +134,6 @@ class CustoExtraOperacionalServiceClass {
         *,
         empresas:empresa_id(nome)
       `)
-      .is('deleted_at', null)
       .order('data', { ascending: false })
       .order('criado_em', { ascending: false });
 
@@ -171,7 +168,7 @@ class CustoExtraOperacionalServiceClass {
         query = query.gte('data', `${year}-${String(mo).padStart(2, '0')}-01`).lt('data', nextMonthStr);
       }
     }
-    query = query.is('deleted_at', null).order('data', { ascending: false });
+    query = query.order('data', { ascending: false });
 
     if (empresaId) query = query.eq('empresa_id', empresaId);
 
@@ -206,10 +203,9 @@ class CustoExtraOperacionalServiceClass {
   async deleteImported(empresaId?: string | null) {
     let query = operationalClient
       .from('custos_extras_operacionais')
-      .update({ deleted_at: new Date().toISOString() })
+      .delete()
       .select('id')
-      .eq('origem_dado', 'importacao')
-      .is('deleted_at', null);
+      .eq('origem_dado', 'importacao');
 
     if (empresaId) query = query.eq('empresa_id', empresaId);
 

@@ -12,6 +12,7 @@ import {
 } from './base.service';
 import { getColaboradorCompletudeDetailed } from './core.service';
 import { EnvironmentQueryFilter } from '../environment/EnvironmentQueryFilter';
+import { EnvironmentService } from '../environment/EnvironmentService';
 import { OperacaoProducaoService } from './producao.service';
 import {
   gerarCNAB240BB,
@@ -94,10 +95,12 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
        query = query.eq('empresa_id', params.empresaId);
     }
     
-    query = await EnvironmentQueryFilter.applyEmpresaScope(query, {
+    const testIds = await EnvironmentService.getTestEmpresaIds(tenantId);
+    query = EnvironmentQueryFilter.applyEmpresaScope(query, {
       tenantId,
       column: 'empresa_id',
-      includeNullInProduction: false
+      includeNullInProduction: false,
+      testIds
     }) as any;
 
     const { data: lancamentos, error: queryError } = await query;
@@ -178,10 +181,12 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       .select('*, empresa:empresas(nome)')
       .order('created_at', { ascending: false });
 
-    query = await EnvironmentQueryFilter.applyEmpresaScope(query, {
+    const testIds = await EnvironmentService.getTestEmpresaIds(tenantId);
+    query = EnvironmentQueryFilter.applyEmpresaScope(query, {
        tenantId,
        column: 'empresa_id',
-       includeNullInProduction: true
+       includeNullInProduction: true,
+       testIds
        // LEGACY_NULL_COMPATIBILITY:
        // Mantido temporariamente para exibição de lotes históricos.
        // Não autoriza novos fechamentos com empresa_id nulo.
@@ -274,10 +279,12 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       .in('status', ['VALIDADO_RH', 'FECHADO_FINANCEIRO', 'AGUARDANDO_PAGAMENTO', 'PAGO', 'cnab_gerado'])
       .order('created_at', { ascending: false });
 
-    query = await EnvironmentQueryFilter.applyEmpresaScope(query, {
+    const testIds = await EnvironmentService.getTestEmpresaIds(tenantId);
+    query = EnvironmentQueryFilter.applyEmpresaScope(query, {
       tenantId, 
       column: 'empresa_id', 
-      includeNullInProduction: false
+      includeNullInProduction: false,
+      testIds
     }) as any;
 
     const { data, error } = await query;
