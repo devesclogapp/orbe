@@ -91,7 +91,7 @@ const isOperationalEditable = (item: any) => {
   if (item?.origem !== "operacoes_producao") return false;
   const s = String(item?.status || "pendente").toLowerCase();
   // Operational edits are ONLY allowed before moving to financial pipeline
-  const allowedStatuses = ["pendente", "aberto", "registered", "registrado", "devolvido", "inconsistente", "recusado", "recebido", "em_validacao", "validado_rh"];
+  const allowedStatuses = ["pendente", "aberto", "registered", "registrado", "devolvido", "devolvido_rh", "em_restricao", "inconsistente", "recusado", "recebido", "em_validacao", "validado_rh"];
   return allowedStatuses.includes(s);
 };
 
@@ -387,7 +387,8 @@ const getStatusConfig = (status: string) => {
 
     case "devolvido":
     case "recusado":
-      return { label: "Recusado / Devolvido", className: "bg-rose-50 text-rose-600 border-rose-100", opacity: "opacity-100" };
+    case "em_restricao":
+      return { label: "Devolvido / Restrito", className: "bg-rose-50 text-rose-600 border-rose-100", opacity: "opacity-100" };
 
     case "inconsistente":
     case "bloqueado":

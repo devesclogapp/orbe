@@ -36,6 +36,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import {
     Select,
     SelectContent,
@@ -109,7 +111,7 @@ const situacaoMap = (status?: string): SituacaoItem => {
     ].some(k => s === k.toUpperCase());
     if (aprovado) return "Aprovado";
 
-    if (["DEVOLVIDO", "CANCELADO", "CANCELADO_RH", "RETORNADO", "RECUSADO", "REPROVADO"].some(k => s === k.toUpperCase())) return "Devolvido";
+    if (["DEVOLVIDO", "CANCELADO", "CANCELADO_RH", "RETORNADO", "RECUSADO", "REPROVADO", "DEVOLVIDO_RH"].some(k => s === k.toUpperCase())) return "Devolvido";
 
     return "Em análise";
 };
@@ -275,9 +277,9 @@ export default function AprovacoesRh() {
             }
             // Operações por Volume
             if (item.tipo === "OPERAÇÃO") {
-                const { error } = await supabase.from("operacoes_producao")
-                    .update({ status_rh: "VALIDADO_RH", atualizado_em: new Date().toISOString() })
-                    .eq("id", item.id);
+                const { error } = await supabase.rpc("rpc_rh_aprovar_operacao", {
+                    p_operacao_id: item.id
+                });
                 if (error) throw error;
                 return;
             }
@@ -286,7 +288,7 @@ export default function AprovacoesRh() {
     });
 
     const devolverMutation = useMutation({
-        mutationFn: async (item: ApprovalItem) => {
+        mutationFn: async ({ item, motivo }: { item: ApprovalItem, motivo?: string }) => {
             if (item.tipo === "DIARISTA" && item.raw_lote_id) {
                 const { error } = await supabase.from("diaristas_lotes_fechamento" as any)
                     .update({ status: "AGUARDANDO_VALIDACAO_RH", updated_at: new Date().toISOString() })
@@ -325,9 +327,10 @@ export default function AprovacoesRh() {
             }
             // Operações por Volume
             if (item.tipo === "OPERAÇÃO") {
-                const { error } = await supabase.from("operacoes_producao")
-                    .update({ status_rh: "PENDENTE_RH", atualizado_em: new Date().toISOString() })
-                    .eq("id", item.id);
+                const { error } = await supabase.rpc("rpc_rh_devolver_operacao", {
+                    p_operacao_id: item.id,
+                    p_motivo: motivo || null
+                });
                 if (error) throw error;
                 return;
             }
@@ -364,7 +367,7 @@ export default function AprovacoesRh() {
 
     const handleBulkDevolver = async () => {
         const items = paginatedItems.filter(i => selectedItems.includes(i.id));
-        for (const item of items) await devolverMutation.mutateAsync(item).catch(() => null);
+        for (const item of items) await devolverMutation.mutateAsync({ item }).catch(() => null);
         toast.success("Itens devolvidos com sucesso.");
         invalidate();
         setSelectedItems([]);
@@ -623,9 +626,19 @@ export default function AprovacoesRh() {
                                 });
                             }}
                             onDevolver={() => {
-                                devolverMutation.mutate(activeItem, {
+                                devolverMutation.mutate({ item: activeItem }, {
                                     onSuccess: () => {
                                         toast.success("Item devolvido.");
+                                        invalidate();
+                                        setSelectedItems([]);
+                                        setActiveItem(null);
+                                    }
+                                });
+                            }}
+                            onSolicitarCorrecao={(motivo) => {
+                                devolverMutation.mutate({ item: activeItem, motivo }, {
+                                    onSuccess: () => {
+                                        toast.success("Correção solicitada com sucesso.");
                                         invalidate();
                                         setSelectedItems([]);
                                         setActiveItem(null);
@@ -796,16 +809,20 @@ function ItensTable({
 }
 
 function DetailPanel({
-    item, onClose, onAprovar, onDevolver, isAprovando, isDevolvendo
+    item, onClose, onAprovar, onDevolver, onSolicitarCorrecao, isAprovando, isDevolvendo
 }: {
     item: ApprovalItem;
     onClose: () => void;
     onAprovar: () => void;
     onDevolver: () => void;
+    onSolicitarCorrecao: (motivo: string) => void;
     isAprovando: boolean;
     isDevolvendo: boolean;
 }) {
     const navigate = useNavigate();
+    const [correcaoOpen, setCorrecaoOpen] = useState(false);
+    const [motivo, setMotivo] = useState("");
+
     // Validação de completude apenas para intermitentes em análise
     const { data: valData, isLoading: valLoading } = useQuery({
         queryKey: ["completude-lote", item.id],
@@ -916,7 +933,7 @@ function DetailPanel({
                             {isDevolvendo ? <Loader2 size={16} className="animate-spin" /> : <RotateCcw size={16} />}
                             Devolver
                         </Button>
-                        <Button variant="outline" className="w-full border-rose-200 text-rose-500 hover:bg-rose-50 font-bold h-11 gap-2" onClick={() => toast.info("Funcionalidade em desenvolvimento.")}>
+                        <Button variant="outline" className="w-full border-rose-200 text-rose-500 hover:bg-rose-50 font-bold h-11 gap-2" onClick={() => setCorrecaoOpen(true)} disabled={isDevolvendo || item.situacao === "Devolvido"}>
                             <AlertTriangle size={16} />
                             Solicitar Correção
                         </Button>
@@ -939,6 +956,38 @@ function DetailPanel({
                     </div>
                 </div>
             </SheetContent>
+            <Dialog open={correcaoOpen} onOpenChange={setCorrecaoOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Solicitar Correção</DialogTitle>
+                        <DialogDescription>
+                            Ao solicitar correção, a operação será devolvida ao Encarregado com um status de Restrição e a sua nota será salva para visualização e ajuste.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4">
+                        <Textarea
+                            placeholder="Descreva detalhadamente o que precisa ser corrigido pelo Encarregado..."
+                            className="min-h-[120px]"
+                            value={motivo}
+                            onChange={(e) => setMotivo(e.target.value)}
+                        />
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setCorrecaoOpen(false)} disabled={isDevolvendo}>Cancelar</Button>
+                        <Button variant="destructive" onClick={() => {
+                            if (motivo.trim().length === 0) {
+                                toast.error("Por favor, preencha o motivo da correção.");
+                                return;
+                            }
+                            setCorrecaoOpen(false);
+                            onSolicitarCorrecao(motivo);
+                        }} disabled={isDevolvendo}>
+                            {isDevolvendo ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
+                            Confirmar Solicitação
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </Sheet>
     );
 }
