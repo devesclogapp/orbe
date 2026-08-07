@@ -1157,6 +1157,40 @@ class OperacaoProducaoServiceClass {
     return data;
   }
 
+  // Bypass para status de pagamento que acontece num ciclo posterior ao fechamento operacional.
+  async updatePaymentStatus(id: string, statusPagamento: string, dataPagamento: string | null, updatedAtFrontend?: string) {
+    if (!id) throw new Error("ID obrigatório.");
+    const tenantId = await getCurrentTenantId();
+    const { data: existing, error: fe } = await operationalClient
+      .from('operacoes_producao')
+      .select('empresa_id, atualizado_em')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+
+    if (fe || !existing) throw new Error('NOT_FOUND_OR_CONFLICT');
+    await EnvironmentService.assertEmpresaAllowed({ tenantId, empresaId: existing.empresa_id });
+
+    if (updatedAtFrontend && existing.atualizado_em && existing.atualizado_em !== updatedAtFrontend) {
+      throw new Error('CONCURRENCY_CONFLICT');
+    }
+
+    const { data, error } = await operationalClient
+      .from('operacoes_producao')
+      .update({
+        status_pagamento: statusPagamento,
+        data_pagamento: dataPagamento,
+        atualizado_em: new Date().toISOString()
+      })
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .select()
+      .single();
+
+    if (error) throw new Error((error as any).message || JSON.stringify(error));
+    return data;
+  }
+
   async aprovar(id: string, updatedAtFrontend?: string) {
     const tenantId = await getCurrentTenantId();
     // Proteção de validação restritiva em contexto correto

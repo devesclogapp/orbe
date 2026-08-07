@@ -196,6 +196,7 @@ const buildOperationUpdatePayload = (editingItem: any, editForm: EditableOperati
       : null,
     avaliacao_json: nextAvaliacao,
     origem_dado: editingItem.origem_dado === "importacao" ? "ajuste" : editingItem.origem_dado,
+    updated_at_frontend: editingItem.atualizado_em || editingItem.updated_at,
   };
 };
 
@@ -834,10 +835,12 @@ export const OperacoesTableBlock = ({
 
       const today = new Date().toISOString().split("T")[0];
 
-      return OperacaoProducaoService.update(item.id, {
-        status_pagamento: statusPagamento,
-        data_pagamento: statusPagamento === "RECEBIDO" ? today : null,
-      });
+      return OperacaoProducaoService.updatePaymentStatus(
+        item.id,
+        statusPagamento,
+        statusPagamento === "RECEBIDO" ? today : null,
+        item.atualizado_em || item.updated_at
+      );
     },
     onMutate: async ({ item, statusPagamento }) => {
       const dataPagamento = statusPagamento === "RECEBIDO" ? new Date().toISOString().split("T")[0] : null;
