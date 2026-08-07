@@ -1232,10 +1232,10 @@ export const OperacoesTableBlock = ({
         onSuccess: () => {
           setSelectedOpDetails(null);
 
-          toast.success("Operação aprovada e faturada", {
-            description: "Receita Operacional submetida com sucesso. Próxima etapa: Recebimento Financeiro.",
+          toast.success("Operação dividida com sucesso!", {
+            description: "O faturamento (Receita) foi gerado e as comissões (Despesa) foram enviadas ao RH.",
             action: {
-              label: "Ir para Contas a Receber",
+              label: "Ver Faturamento",
               onClick: () => navigate("/financeiro/receitas", { state: { highlight: item.id } })
             },
             duration: 8000
@@ -2710,7 +2710,7 @@ export const OperacoesTableBlock = ({
                 {!["AGUARDANDO_FATURAMENTO", "FATURADO", "RECEBIDO_FINANCEIRO", "CONCLUIDO", "APROVADO", "FECHADO"].includes(selectedOpDetails.status?.toUpperCase() || "") && (
                   <Button onClick={() => handleAprovar(selectedOpDetails)} className="bg-brand text-white border-0 hover:bg-brand/90 focus:ring-brand" disabled={aprovarOpMutation.isPending}>
                     {aprovarOpMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                    Aprovar e Faturarmento
+                    Dividir (Faturamento / RH)
                   </Button>
                 )}
               </div>

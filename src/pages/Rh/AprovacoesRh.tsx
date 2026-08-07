@@ -25,6 +25,7 @@ import {
 import { toast } from "sonner";
 import { format, startOfWeek, endOfWeek, subWeeks } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { useNavigate } from "react-router-dom";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { Card } from "@/components/ui/card";
@@ -135,6 +136,7 @@ const TIPO_COLORS: Record<TipoItem, string> = {
 export default function AprovacoesRh() {
     const { user } = useAuth();
     const queryClient = useQueryClient();
+    const navigate = useNavigate();
 
     // ── Filtros ──────────────────────────────────────
     const [periodo, setPeriodo] = useState<string>("semana-atual");
@@ -803,6 +805,7 @@ function DetailPanel({
     isAprovando: boolean;
     isDevolvendo: boolean;
 }) {
+    const navigate = useNavigate();
     // Validação de completude apenas para intermitentes em análise
     const { data: valData, isLoading: valLoading } = useQuery({
         queryKey: ["completude-lote", item.id],
@@ -917,7 +920,19 @@ function DetailPanel({
                             <AlertTriangle size={16} />
                             Solicitar Correção
                         </Button>
-                        <Button variant="ghost" className="w-full text-muted-foreground font-bold h-11 gap-2" onClick={() => toast.info("Abrindo detalhes completos...")}>
+                        <Button variant="ghost" className="w-full text-muted-foreground font-bold h-11 gap-2" onClick={() => {
+                            const typePaths: Record<string, string> = {
+                                "PONTO": "/operacional/pontos",
+                                "DIARISTA": "/operacional/diaristas",
+                                "INTERMITENTE": "/operacional/intermitentes",
+                                "CUSTO EXTRA": "/operacional/custos-extras",
+                                "SERVIÇO EXTRA": "/operacional/servicos-extras",
+                                "OPERAÇÃO": "/operacional/operacoes"
+                            };
+                            const path = typePaths[item.tipo] || "/operacional/dashboard";
+                            // Try to navigate with state passing the item id to highlight it on the target screen if supported
+                            navigate(path, { state: { highlight: item.id } });
+                        }}>
                             <ExternalLink size={16} />
                             Ver Detalhes Completos
                         </Button>
