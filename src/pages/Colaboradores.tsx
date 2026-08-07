@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
 import { useOnboardingCallback } from "@/hooks/useOnboardingCallback";
 import { OnboardingSuccessModal } from "@/components/onboarding/OnboardingSuccessModal";
@@ -119,7 +119,8 @@ const Colaboradores = () => {
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
 
   // Filter states
-  const [searchText, setSearchText] = useState("");
+  const [searchParams] = useSearchParams();
+  const [searchText, setSearchText] = useState(searchParams.get("search") || "");
   const [selectedEmpresa, setSelectedEmpresa] = useState("all");
   const [selectedRegime, setSelectedRegime] = useState("all");
   const [selectedModelo, setSelectedModelo] = useState("all");

@@ -1127,13 +1127,13 @@ class OperacaoProducaoServiceClass {
     });
 
     if (error) {
-      if (error.message.includes('CONCURRENCY_CONFLICT') || error.code === 'PGRST116') {
+      if (error.message && (error.message.includes('CONCURRENCY_CONFLICT') || error.code === 'PGRST116')) {
         throw new Error('CONCURRENCY_CONFLICT');
       }
-      if (error.message.includes('ESTADO_FECHADO')) {
+      if (error.message && error.message.includes('ESTADO_FECHADO')) {
         throw new Error('ESTADO_FECHADO');
       }
-      throw error;
+      throw new Error((error as any).message || JSON.stringify(error));
     }
 
     const { data, error: fetchError } = await operationalClient
@@ -1176,13 +1176,14 @@ class OperacaoProducaoServiceClass {
     });
 
     if (error) {
-      if (error.message.includes('CONCURRENCY_CONFLICT')) {
+      if (error.message && error.message.includes('CONCURRENCY_CONFLICT')) {
         throw new Error('CONCURRENCY_CONFLICT');
       }
-      if (error.message.includes('ESTADO_FECHADO')) {
+      if (error.message && error.message.includes('ESTADO_FECHADO')) {
         throw new Error('ESTADO_FECHADO');
       }
-      throw error;
+      // If it's another PostgreSQL exception, wrap it in an Error so the UI can read it
+      throw new Error((error as any).message || JSON.stringify(error));
     }
     return result;
   }

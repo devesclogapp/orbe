@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTenant } from "@/contexts/TenantContext";
 import { addMonths, format, startOfMonth } from "date-fns";
@@ -27,10 +27,17 @@ import {
   Users,
   Wallet,
   X,
+  ArrowUpRight,
+  ArrowDownRight,
+  SearchIcon,
+  Search,
+  X,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
@@ -48,6 +55,7 @@ import {
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useAccessControl } from "@/contexts/AccessControlContext";
+import { usePreferences } from "@/contexts/PreferencesContext";
 import { AppShell } from "@/components/layout/AppShell";
 import { MetricCard } from "@/components/painel/MetricCard";
 import { Badge } from "@/components/ui/badge";
@@ -196,29 +204,37 @@ const YEAR_OPTIONS = Array.from(
 const Dashboard = () => {
   const navigate = useNavigate();
   const { tenantId, loading: isTenantLoading } = useTenant();
+  const { environment } = usePreferences();
   const [chartType, setChartType] = useState<"line" | "bar">("line");
-  const [selectedYear, setSelectedYear] = useState(
-    String(new Date().getFullYear()),
-  );
-  const [selectedMonthNumber, setSelectedMonthNumber] = useState(
-    "all",
-  );
+  const [selectedYear, setSelectedYear] = useState(() => {
+    return localStorage.getItem("orbe_operacoes_year") || String(new Date().getFullYear());
+  });
+  const [selectedMonthNumber, setSelectedMonthNumber] = useState(() => {
+    return localStorage.getItem("orbe_operacoes_month") || "all";
+  });
   const selectedMonth = `${selectedYear}-${selectedMonthNumber}`;
+
+  // Watch for changes to persist them
+  useEffect(() => {
+    localStorage.setItem("orbe_operacoes_year", selectedYear);
+  }, [selectedYear]);
+
+  useEffect(() => {
+    localStorage.setItem("orbe_operacoes_month", selectedMonthNumber);
+  }, [selectedMonthNumber]);
 
   // Estado para filtro ativo nos KPIs
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
 
-  // Estado para alertas
   const [alertsExpanded, setAlertsExpanded] = useState(true);
 
-  // Estado para controle de visualização da tabela
-  const [showDataTable, setShowDataTable] = useState(false);
-
-  // Estado para filtros da tabela
+  // Estado para controle de visualização da tabela e filtros
   const [tableFilters, setTableFilters] = useState({
-    tipo: 'operacoes', // operacoes, custos, diaristas
+    tipo: 'operacoes',
     status: 'all',
   });
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedOpId, setSelectedOpId] = useState<string | null>(null);
 
   const buildFilters = (extraFilters: Record<string, string> = {}) => {
     const params = new URLSearchParams();
@@ -243,20 +259,17 @@ const Dashboard = () => {
   const handleKpiClick = (filterType: string) => {
     if (activeFilter === filterType) {
       setActiveFilter(null);
-      setShowDataTable(false);
     } else {
       setActiveFilter(filterType);
-      setShowDataTable(true);
     }
   };
 
   const clearFilter = () => {
     setActiveFilter(null);
-    setShowDataTable(false);
   };
 
-  const matchesSelectedPeriod = (value: unknown) => {
-    const referencia = String(value ?? "");
+  const matchesSelectedPeriod = (op: any) => {
+    const referencia = String(op?.data_operacao ?? op?.data_referencia ?? op?.data ?? "");
     if (!referencia.startsWith(selectedYear)) return false;
     if (selectedMonthNumber === "all") return true;
     return referencia.startsWith(`${selectedYear}-${selectedMonthNumber}`);
@@ -266,7 +279,7 @@ const Dashboard = () => {
     data: operacoesBase = [],
     isLoading: isLoadingOperacoes,
   } = useQuery<any[]>({
-    queryKey: ["dashboard-operacoes", tenantId || "all", selectedYear, selectedMonthNumber],
+    queryKey: ["dashboard-operacoes", tenantId || "all", selectedYear, selectedMonthNumber, environment],
     queryFn: () => OperacaoService.getAllPainel(undefined, tenantId).catch(() => []),
     retry: 0,
     enabled: !isTenantLoading && !!tenantId,
@@ -275,7 +288,7 @@ const Dashboard = () => {
   const {
     data: custosExtras = [],
   } = useQuery<any[]>({
-    queryKey: ["dashboard-custos-extras", tenantId || "all"],
+    queryKey: ["dashboard-custos-extras", tenantId || "all", environment],
     queryFn: () => CustoExtraOperacionalService.getAll(undefined, tenantId).catch(() => []),
     retry: 0,
     enabled: !isTenantLoading && !!tenantId,
@@ -287,7 +300,7 @@ const Dashboard = () => {
     isError: isErrorKpis,
     error: kpisError,
   } = useQuery<OperationalIntegrityKPIs>({
-    queryKey: ["dashboard-kpis-consolidados", tenantId, selectedYear, selectedMonthNumber],
+    queryKey: ["dashboard-kpis-consolidados", tenantId, selectedYear, selectedMonthNumber, environment],
     queryFn: () => DashboardConsolidadoService.getKpisAggregate(selectedYear, selectedMonthNumber, tenantId),
     retry: 1,
     enabled: !isTenantLoading && !!tenantId,
@@ -573,849 +586,257 @@ const Dashboard = () => {
     minute: "2-digit",
   });
 
+
+  useEffect(() => {
+    if (operacoesPeriodo.length > 0 && !selectedOpId) {
+      setSelectedOpId(operacoesPeriodo[0].id);
+    }
+  }, [operacoesPeriodo, selectedOpId]);
+
+  const selectedOp = operacoesPeriodo.find(op => op.id === selectedOpId) || operacoesPeriodo[0];
+
   return (
     <AppShell
       title="Dashboard"
       subtitle={`Visão geral consolidada de operações + custos extras · ${monthLabelCapitalized}`}
     >
-      <div className="space-y-5">
-        <section className="esc-card rounded-2xl border border-border p-4">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Período de análise
+      <div className="space-y-6 pb-12 w-full max-w-[1400px] mx-auto pt-2">
+        {/* ROW 1: 4 Main Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <MetricCard
+            label="LUCRO REAL"
+            value={formatCurrency(dashboardKpis.lucroReal)}
+            delta={{ value: "12.5%", positive: true }}
+            icon={Activity}
+            chartData={serieDiaria.map(d => ({ value: d.lucro }))}
+            chartColor="#10B981"
+            chartType="line"
+          />
+          <MetricCard
+            label="FATURAMENTO TOTAL"
+            value={formatCurrency(dashboardKpis.faturamento)}
+            delta={{ value: "8.2%", positive: true }}
+            icon={CalendarIcon}
+            chartData={serieDiaria.map(d => ({ value: d.faturamento }))}
+            chartColor="#2563EB"
+            chartType="bar"
+          />
+          <MetricCard
+            label="CUSTOS TOTAIS"
+            value={formatCurrency(dashboardKpis.custosTotais)}
+            delta={{ value: "2 dias", positive: false }}
+            icon={AlertCircle}
+            chartData={serieDiaria.map(d => ({ value: d.custos }))}
+            chartColor="#8B5CF6"
+            chartType="line"
+          />
+          <div className="group relative flex flex-col justify-between overflow-hidden rounded-[20px] bg-white border border-slate-100 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] transition-all duration-300 hover:shadow-[0_8px_30px_-4px_rgba(0,0,0,0.1)] p-5 text-left w-full min-h-[220px]">
+            <div className="flex justify-between items-start z-10 relative">
+              <span className="text-[13px] font-semibold text-slate-500 uppercase tracking-wide">Caixa Recebido</span>
+              <div className="flex items-center justify-center p-2 rounded-xl bg-slate-50 text-slate-400 border border-slate-100 transition-colors group-hover:bg-slate-100 group-hover:text-slate-600">
+                <Wallet className="h-5 w-5" />
               </div>
-              <Select value={selectedYear} onValueChange={setSelectedYear}>
-                <SelectTrigger className="w-[120px] h-10 shrink-0 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium">
-                  <div className="flex items-center gap-2">
-                    <CalendarIcon className="h-4 w-4 text-primary" />
-                    <SelectValue placeholder="Ano" />
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  {YEAR_OPTIONS.map((year) => (
-                    <SelectItem key={year} value={year}>
-                      {year}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={selectedMonthNumber} onValueChange={setSelectedMonthNumber}>
-                <SelectTrigger className="w-[180px] h-10 shrink-0 border-border border bg-card hover:bg-secondary transition-colors font-display font-medium">
-                  <div className="flex items-center gap-2">
-                    <CalendarIcon className="h-4 w-4 text-primary" />
-                    <SelectValue placeholder="Mês" />
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  {MONTH_FILTER_OPTIONS.map((month) => (
-                    <SelectItem key={month.value} value={month.value}>
-                      {month.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
-
-            <div className="flex items-center gap-4">
-              {alerts.length > 0 && (
-                <div className="hidden md:flex gap-2">
-                  {alerts.slice(0, 2).map((alert, index) => (
-                    <div
-                      key={alert.id}
-                      onClick={alert.onClick}
-                      className={cn(
-                        "flex items-center gap-2 px-3 py-1.5 rounded-lg border text-[11px] font-medium cursor-pointer transition-colors hover:shadow-sm",
-                        alert.tipo === 'destructive'
-                          ? "border-destructive/20 bg-destructive/5 text-destructive hover:bg-destructive/10"
-                          : alert.tipo === 'warning'
-                            ? "border-warning/30 bg-warning/10 text-warning-strong hover:bg-warning/20"
-                            : alert.tipo === 'info'
-                              ? "border-primary/20 bg-primary/5 text-primary hover:bg-primary/10"
-                              : "border-muted bg-muted/30 text-muted-foreground hover:bg-muted/50"
-                      )}
-                      title={alert.descricao}
-                    >
-                      {alert.tipo === 'destructive' ? (
-                        <AlertTriangle className="h-3.5 w-3.5" />
-                      ) : (
-                        <AlertCircle className="h-3.5 w-3.5" />
-                      )}
-                      <span>{alert.titulo}</span>
-                    </div>
-                  ))}
-                  {alerts.length > 2 && (
-                    <div className="flex items-center px-2 py-1.5 rounded-lg border border-muted bg-muted/30 text-[11px] font-medium text-muted-foreground">
-                      +{alerts.length - 2} alertas
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div className="flex items-center gap-2 text-xs text-muted-foreground whitespace-nowrap pl-4 border-l">
-                <div className="h-2 w-2 rounded-full bg-success animate-pulse" />
-                Consolidação atualizada em {lastSync}
+            <div className="mt-2 flex flex-col gap-1 w-full justify-center z-10 relative">
+              <div className="font-display font-bold text-4xl text-slate-900">{formatCurrency(dashboardKpis.caixaRecebido)}</div>
+              <div className="mt-1">
+                <Badge className="bg-[#DCFCE7] text-[#15803D] hover:bg-[#DCFCE7] font-semibold border-none rounded-[6px] px-2 py-0.5 text-[12px] w-fit">Em conta</Badge>
+              </div>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-2 z-10 relative">
+              <div className="rounded-lg bg-[#F7F7F7] border border-[#EBEBEB] p-2 text-center transition-all hover:bg-slate-100 cursor-pointer">
+                <div className="text-[10px] text-[#737373] font-semibold uppercase">A Receber</div>
+                <div className="font-bold text-[14px] text-[#171717] mt-1">{formatCurrency(dashboardKpis.aReceber)}</div>
+              </div>
+              <div className="rounded-lg bg-[#FEE2E2] border border-[#FEE2E2] p-2 text-center transition-all hover:bg-red-100 cursor-pointer">
+                <div className="text-[10px] text-[#B91C1C] font-semibold uppercase">Atrasado</div>
+                <div className="font-bold text-[14px] text-[#B91C1C] mt-1">{formatCurrency(dashboardKpis.atrasado)}</div>
               </div>
             </div>
           </div>
-        </section>
+        </div>
 
-        {isLoading ? (
-          <div className="esc-card flex flex-col items-center justify-center p-20 text-center">
-            <Loader2 className="mb-3 h-10 w-10 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">
-              Consolidando receita, custos e lucro do período...
-            </p>
+        {/* ROW 2: Active Filters Bar */}
+        <div className="flex flex-wrap items-center gap-3 py-2">
+          <div className="flex items-center gap-2 mr-2">
+            <span className="text-[14px] font-semibold text-[#171717]">Filtros operacionais</span>
           </div>
-        ) : isError ? (
-          <div className="esc-card flex flex-col items-center justify-center p-20 text-center">
-            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10">
-              <AlertTriangle className="h-7 w-7 text-destructive" />
-            </div>
-            <h2 className="font-display text-lg font-semibold text-foreground">
-              Erro ao carregar o dashboard
-            </h2>
-            <p className="mt-2 mb-6 max-w-md text-sm text-muted-foreground">
-              {kpisError instanceof Error
-                ? kpisError.message
-                : 'Não foi possível consolidar os dados. Verifique a conexão com o banco.'}
-            </p>
-            <Button onClick={() => window.location.reload()}>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Recarregar
-            </Button>
+
+          <Select value={tableFilters.tipo} onValueChange={(v) => setTableFilters(prev => ({ ...prev, tipo: v }))}>
+            <SelectTrigger className="w-[140px] h-[36px] bg-white border border-[#DEDEDE] font-medium text-[#171717] rounded-[6px] shadow-sm px-3">
+              <SelectValue placeholder="Todas Empresas" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="operacoes">Operações</SelectItem>
+              <SelectItem value="custos">Custos</SelectItem>
+              <SelectItem value="todos">Todos tipos</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={tableFilters.status} onValueChange={(v) => setTableFilters(prev => ({ ...prev, status: v }))}>
+            <SelectTrigger className="w-[130px] h-[36px] bg-white border border-[#DEDEDE] font-medium text-[#171717] rounded-[6px] shadow-sm px-3">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">S: Todos</SelectItem>
+              <SelectItem value="pendente">S: Pendente</SelectItem>
+              <SelectItem value="recebido">S: Recebido</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <div className="flex-1" />
+
+          {/* Date selectors */}
+          <div className="hidden lg:flex items-center gap-2">
+            <Select value={selectedYear} onValueChange={setSelectedYear}>
+              <SelectTrigger className="w-[130px] h-[36px] px-3 rounded-[6px] border-[#DEDEDE] bg-white shadow-sm font-medium text-[#171717] hover:bg-[#F0F0F0]">
+                <SelectValue placeholder="Selecione o Ano" />
+                <CalendarIcon className="ml-2 h-3.5 w-3.5 text-[#A3A3A3]" />
+              </SelectTrigger>
+              <SelectContent>
+                {YEAR_OPTIONS.map((y) => (
+                  <SelectItem key={y} value={y}>{y}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={selectedMonthNumber} onValueChange={setSelectedMonthNumber}>
+              <SelectTrigger className="w-[160px] h-[36px] px-3 rounded-[6px] border-[#DEDEDE] bg-white shadow-sm font-medium text-[#171717] hover:bg-[#F0F0F0]">
+                <SelectValue placeholder="Selecione o Mês" />
+                <CalendarIcon className="ml-2 h-3.5 w-3.5 text-[#A3A3A3]" />
+              </SelectTrigger>
+              <SelectContent>
+                {MONTH_FILTER_OPTIONS.map((m) => (
+                  <SelectItem key={m.value} value={m.value}>{m.label} {m.value !== 'all' ? selectedYear : ''}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-        ) : (
-          <>
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <MetricCard
-                  label="Lucro real"
-                  value={formatCurrency(dashboardKpis.lucroReal)}
-                  icon={PiggyBank}
-                  variant="solid"
-                  chartData={serieDiaria.map(d => ({ value: d.lucro }))}
-                />
-                <MetricCard
-                  label="Faturamento Total"
-                  value={formatCurrency(dashboardKpis.faturamento)}
-                  icon={Wallet}
-                  chartData={serieDiaria.map(d => ({ value: d.receita }))}
-                  chartColor={COLORS.receita}
-                  onClick={() => navigateToReceitas()}
-                />
-                <MetricCard
-                  label="Custos Totais"
-                  value={formatCurrency(dashboardKpis.custosTotais)}
-                  icon={TrendingDown}
-                  chartData={serieDiaria.map(d => ({ value: d.custos }))}
-                  chartColor={COLORS.custos}
-                  onClick={() => navigateToOperacoes({ categoria_servico: "CUSTO" })}
-                />
-                <MetricCard
-                  label="Margem de Lucro"
-                  value={formatPercent(dashboardKpis.margemLucro)}
-                  icon={Scale}
-                  chartData={serieDiaria.map(d => ({ value: d.receita > 0 ? (d.lucro / d.receita) * 100 : 0 }))}
-                  chartColor={COLORS.lucro}
-                />
-              </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-                <MetricCard
-                  label="Caixa Recebido"
-                  value={formatCurrency(dashboardKpis.caixaRecebido)}
-                  size="small"
-                  onClick={() => navigateToReceitas({ activeTab: 'CAIXA_IMEDIATO' })}
-                />
-                <MetricCard
-                  label="A Receber"
-                  value={formatCurrency(dashboardKpis.aReceber)}
-                  size="small"
-                  onClick={() => navigateToReceitas()}
-                />
-                <MetricCard
-                  label="Atrasado"
-                  value={formatCurrency(dashboardKpis.atrasado)}
-                  size="small"
-                  onClick={() => navigateToReceitas()}
-                />
-                <MetricCard
-                  label="Volume Total"
-                  value={formatInteger(dashboardKpis.volumeTotal)}
-                  size="small"
-                  onClick={() => navigateToOperacoes({ categoria_servico: "SERVICO_VOLUME" })}
-                />
-                <MetricCard
-                  label="Operações"
-                  value={formatInteger(dashboardKpis.totalOperacoes)}
-                  size="small"
-                  onClick={() => navigateToOperacoes()}
-                />
-                <MetricCard
-                  label="Custos (Lançs.)"
-                  value={formatInteger(dashboardKpis.totalLancamentosCustos)}
-                  size="small"
-                  onClick={() => navigateToOperacoes({ categoria_servico: "CUSTO" })}
-                />
-              </div>
+          <div className="relative">
+            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#A3A3A3]" />
+            <input
+              type="text"
+              placeholder="Buscar op #"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="h-[36px] w-[160px] rounded-[6px] border border-[#C4C4C4] bg-white pl-9 pr-4 text-[14px] font-medium text-[#171717] outline-none placeholder:text-[#A3A3A3] focus:border-[#2563EB] shadow-[0_0_0_0_rgba(37,99,235,0)] focus:shadow-[0_0_0_3px_rgba(37,99,235,0.12)] transition-all"
+            />
+          </div>
+        </div>
 
-              <section className="esc-card rounded-2xl border border-border p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Database className="h-4 w-4 text-primary" />
-                      <h3 className="font-semibold text-foreground">
-                        Auditoria da Competência
-                      </h3>
-                    </div>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Prova de consistência entre RH, Financeiro, CNAB e histórico bancário.
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant={getAuditoriaBadgeVariant(kpisConsolidados?.auditoriaCompetencia.status)}>
-                      {getAuditoriaStatusLabel(kpisConsolidados?.auditoriaCompetencia.status)}
-                    </Badge>
-                    <Badge variant="outline">
-                      Tipo: {getTipoFluxoLabel(kpisConsolidados?.auditoriaCompetencia.tipoFluxo)}
-                    </Badge>
-                  </div>
-                </div>
-
-                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
-                  <div className="rounded-xl border border-border bg-muted/20 p-3">
-                    <div className="text-xs uppercase tracking-wide text-muted-foreground">RH fechado</div>
-                    <div className="mt-1 text-lg font-semibold">{formatCurrency(kpisConsolidados?.auditoriaCompetencia.rhFechado || 0)}</div>
-                  </div>
-                  <div className="rounded-xl border border-border bg-muted/20 p-3">
-                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Financeiro recebido</div>
-                    <div className="mt-1 text-lg font-semibold">{formatCurrency(kpisConsolidados?.auditoriaCompetencia.financeiroRecebido || 0)}</div>
-                  </div>
-                  <div className="rounded-xl border border-border bg-muted/20 p-3">
-                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Financeiro aprovado</div>
-                    <div className="mt-1 text-lg font-semibold">{formatCurrency(kpisConsolidados?.auditoriaCompetencia.financeiroAprovado || 0)}</div>
-                  </div>
-                  <div className="rounded-xl border border-border bg-muted/20 p-3">
-                    <div className="text-xs uppercase tracking-wide text-muted-foreground">CNAB gerado</div>
-                    <div className="mt-1 text-lg font-semibold">{formatCurrency(kpisConsolidados?.auditoriaCompetencia.cnabGerado || 0)}</div>
-                  </div>
-                  <div className="rounded-xl border border-border bg-muted/20 p-3">
-                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Histórico bancário</div>
-                    <div className="mt-1 text-lg font-semibold">{formatCurrency(kpisConsolidados?.auditoriaCompetencia.bancoHistorico || 0)}</div>
-                  </div>
-                </div>
-
-                <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-4">
-                  <div className="rounded-xl border border-border p-3">
-                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Dif. RH x Financeiro</div>
-                    <div className="mt-1 text-base font-semibold">{formatCurrency(kpisConsolidados?.auditoriaCompetencia.diferencaRhFinanceiro || 0)}</div>
-                  </div>
-                  <div className="rounded-xl border border-border p-3">
-                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Dif. Financeiro x CNAB</div>
-                    <div className="mt-1 text-base font-semibold">{formatCurrency(kpisConsolidados?.auditoriaCompetencia.diferencaFinanceiroCnab || 0)}</div>
-                  </div>
-                  <div className="rounded-xl border border-border p-3">
-                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Dif. CNAB x Banco</div>
-                    <div className="mt-1 text-base font-semibold">{formatCurrency(kpisConsolidados?.auditoriaCompetencia.diferencaCnabHistorico || 0)}</div>
-                  </div>
-                  <div className="rounded-xl border border-border p-3">
-                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Diferença geral</div>
-                    <div className="mt-1 text-base font-semibold">{formatCurrency(kpisConsolidados?.auditoriaCompetencia.diferencaTotal || 0)}</div>
-                  </div>
-                </div>
-
-                <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                  <span>Competência: {kpisConsolidados?.competencia || "-"}</span>
-                  <span>Atualizado em: {formatDateTime(kpisConsolidados?.auditoriaCompetencia.atualizadoEm)}</span>
-                </div>
-
-                {(kpisConsolidados?.auditoriaCompetencia.pendencias || []).length > 0 && (
-                  <div className="mt-4 rounded-xl border border-warning/30 bg-warning/10 p-3">
-                    <div className="flex items-center gap-2 text-sm font-medium text-warning-strong">
-                      <AlertCircle className="h-4 w-4" />
-                      Pendências de auditoria
-                    </div>
-                    <div className="mt-2 space-y-1 text-sm text-muted-foreground">
-                      {(kpisConsolidados?.auditoriaCompetencia.pendencias || []).map((item) => (
-                        <div key={item}>{item}</div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </section>
-
-              <section className="esc-card rounded-2xl border border-border p-4">
-                <div className="flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-primary" />
-                  <h3 className="font-semibold text-foreground">Rastreabilidade dos KPIs</h3>
-                </div>
-                <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-5">
-                  {kpiOrigins.map((item) => (
-                    <div key={item.label} className="rounded-xl border border-border bg-muted/20 p-3">
-                      <div className="text-xs uppercase tracking-wide text-muted-foreground">{item.label}</div>
-                      <div className="mt-1 text-base font-semibold">{item.value}</div>
-                      <div className="mt-3 space-y-1 text-xs text-muted-foreground">
-                        <div>Fonte: {item.origin?.fonte || "-"}</div>
-                        <div>Competência: {item.origin?.competencia || "-"}</div>
-                        <div>Atualizado em: {formatDateTime(item.origin?.atualizadoEm)}</div>
-                        <div>Tipo: {getTipoFluxoLabel(item.origin?.tipoFluxo)}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            </div>
-
-            {/* Filtro ativo exibido */}
-            {activeFilter && (
-              <div className="flex items-center gap-2 p-3 bg-primary/10 rounded-lg">
-                <span className="text-sm font-medium">Filtro ativo:</span>
-                <Badge variant="outline" className="bg-white">
-                  {activeFilter}
-                </Badge>
-                <Button variant="ghost" size="sm" onClick={clearFilter}>
-                  <X className="h-3 w-3" />
-                </Button>
-              </div>
-            )}
-
-            {/* Tabela de Dados Principais */}
-            <div className="esc-card overflow-hidden">
-              <div className="p-4 border-b flex flex-wrap items-center justify-between gap-4">
-                <div className="flex items-center gap-2">
-                  <h3 className="font-semibold">Dados do Período</h3>
-                  <Badge variant="outline">{operacoesPeriodo.length + custosPeriodo.length} registros</Badge>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Select value={tableFilters.tipo} onValueChange={(v) => setTableFilters(prev => ({ ...prev, tipo: v }))}>
-                    <SelectTrigger className="w-[140px] h-8">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="operacoes">Operações</SelectItem>
-                      <SelectItem value="custos">Custos</SelectItem>
-                      <SelectItem value="todos">Todos</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={tableFilters.status} onValueChange={(v) => setTableFilters(prev => ({ ...prev, status: v }))}>
-                    <SelectTrigger className="w-[140px] h-8">
-                      <SelectValue placeholder="Status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos</SelectItem>
-                      <SelectItem value="pendente">Pendente</SelectItem>
-                      <SelectItem value="recebido">Recebido</SelectItem>
-                      <SelectItem value="atrasado">Atrasado</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
+        {/* ROW 3: Table and Context Panel (Standard Orbe Layout) */}
+        <div className="flex flex-col lg:flex-row gap-4 items-start relative pb-8">
+          <div className="w-full lg:w-[calc(100%-320px-16px)] rounded-[12px] bg-white border border-[#DEDEDE] overflow-hidden">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader className="bg-[#EBEBEB] border-b border-[#DEDEDE]">
+                  <TableRow>
+                    <TableHead className="text-[12px] font-medium text-[#4D4D4D] uppercase h-[44px]">Operação</TableHead>
+                    <TableHead className="text-[12px] font-medium text-[#4D4D4D] uppercase h-[44px]">Data</TableHead>
+                    <TableHead className="text-[12px] font-medium text-[#4D4D4D] uppercase h-[44px] text-center">Status</TableHead>
+                    <TableHead className="text-[12px] font-medium text-[#4D4D4D] uppercase h-[44px] text-right">Valor</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {operacoesPeriodo.length === 0 ? (
                     <TableRow>
-                      <TableHead className="w-[100px]">Data</TableHead>
-                      <TableHead>Empresa</TableHead>
-                      <TableHead>Serviço</TableHead>
-                      <TableHead>Quantidade</TableHead>
-                      <TableHead>Valor</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Ações</TableHead>
+                      <TableCell colSpan={4} className="h-32 text-center text-[#737373] text-[14px]">
+                        Nenhuma operação selecionada ou encontrada nesta competência.
+                      </TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {(() => {
-                      let rows: any[] = [];
+                  ) : (
+                    operacoesPeriodo.map(op => {
+                      const statusPg = String(op.status_pgto || op.status || 'Pendente').toLowerCase();
+                      const isSelected = selectedOpId === op.id;
+                      const opTitle = typeof op.id === 'number' ? `OP-${op.id}` : `OP-${String(op.id).substring(0, 6).toUpperCase()}`;
 
-                      if (tableFilters.tipo === 'operacoes' || tableFilters.tipo === 'todos') {
-                        operacoesPeriodo.slice(0, 20).forEach(op => {
-                          const statusPg = op.status_pgto || op.status;
-                          if (tableFilters.status !== 'all' && statusPg?.toUpperCase() !== tableFilters.status.toUpperCase()) return;
-                          rows.push({
-                            data: op.data_operacao || op.data,
-                            empresa: op.empresas?.nome || '-',
-                            servico: op.tipos_servico_operacional?.nome || '-',
-                            quantidade: op.quantidade || 1,
-                            valor: op.valor_total || 0,
-                            status: statusPg,
-                            tipo: 'op',
-                            id: op.id,
-                          });
-                        });
-                      }
+                      let badgeClasses = "bg-[#FEF9C3] text-[#A16207]";
+                      if (statusPg === "ok" || statusPg === "recebido" || statusPg === "pago") badgeClasses = "bg-[#DCFCE7] text-[#15803D]";
+                      if (statusPg === "atrasado" || statusPg === "divergente") badgeClasses = "bg-[#FEE2E2] text-[#B91C1C]";
+                      if (statusPg === "ajustado") badgeClasses = "bg-[#DBEAFE] text-[#1D4ED8]";
 
-                      if (tableFilters.tipo === 'custos' || tableFilters.tipo === 'todos') {
-                        custosPeriodo.slice(0, 20).forEach(c => {
-                          const statusPg = c.status;
-                          if (tableFilters.status !== 'all' && statusPg?.toUpperCase() !== tableFilters.status.toUpperCase()) return;
-                          rows.push({
-                            data: c.data,
-                            empresa: c.empresa?.nome || '-',
-                            servico: c.descricao || c.tipo_custo || '-',
-                            quantidade: 1,
-                            valor: c.total || 0,
-                            status: statusPg,
-                            tipo: 'custo',
-                            id: c.id,
-                          });
-                        });
-                      }
-
-                      rows = rows.slice(0, 50); // Limit to 50 rows
-
-                      if (rows.length === 0) {
-                        return (
-                          <TableRow>
-                            <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-                              Nenhum registro encontrado para os filtros selecionados.
-                            </TableCell>
-                          </TableRow>
-                        );
-                      }
-
-                      return rows.map((row, idx) => (
-                        <TableRow key={idx}>
-                          <TableCell className="whitespace-nowrap">{row.data ? format(new Date(row.data), 'dd/MM/yyyy') : '-'}</TableCell>
-                          <TableCell>{row.empresa}</TableCell>
-                          <TableCell>{row.servico}</TableCell>
-                          <TableCell className="text-center">{row.quantidade}</TableCell>
-                          <TableCell className="font-medium">{formatCurrency(row.valor)}</TableCell>
-                          <TableCell>
-                            <Badge variant={
-                              row.status?.toUpperCase() === 'RECEBIDO' || row.status?.toUpperCase() === 'PAGO' ? 'default' :
-                                row.status?.toUpperCase() === 'ATRASADO' ? 'destructive' : 'secondary'
-                            }>
-                              {row.status || 'Pendente'}
-                            </Badge>
+                      return (
+                        <TableRow
+                          key={op.id}
+                          onClick={() => setSelectedOpId(op.id)}
+                          className={cn("cursor-pointer h-[52px] border-b border-[#EBEBEB] text-[14px]", isSelected ? "bg-[#DBEAFE] hover:bg-[#DBEAFE]" : "hover:bg-[#F7F7F7] bg-white")}
+                        >
+                          <TableCell className="font-semibold text-[#171717]">
+                            #{opTitle}
                           </TableCell>
-                          <TableCell className="text-right">
-                            <Button variant="ghost" size="sm" onClick={() => navigateToOperacoes()}>
-                              <ArrowRight className="h-4 w-4" />
-                            </Button>
+                          <TableCell className="text-[#171717]">
+                            {op.data_operacao ? format(new Date(op.data_operacao), "dd/MM/yyyy") : "-"}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge className={cn("font-medium border-none shadow-none rounded-[6px] px-2 py-0.5", badgeClasses)}>{op.status_pgto || op.status || "Pendente"}</Badge>
+                          </TableCell>
+                          <TableCell className="text-right font-semibold text-[#171717]">
+                            {formatCurrency(op.valor_total || 0)}
                           </TableCell>
                         </TableRow>
-                      ));
-                    })()}
-                  </TableBody>
-                </Table>
-              </div>
-
-              <div className="p-3 border-t bg-muted/30 text-center">
-                <Button variant="outline" size="sm" onClick={() => navigateToOperacoes()}>
-                  Ver todos os registros
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-
-            <section className="esc-card p-5">
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <Activity className="h-4 w-4 text-muted-foreground" />
-                  <h2 className="font-display font-semibold text-foreground">
-                    Receita, custos e lucro por dia
-                  </h2>
-                </div>
-                {serieDiaria.length > 0 && (
-                  <div className="inline-flex items-center rounded-lg bg-muted p-1">
-                    <ChartTabBtn
-                      active={chartType === "line"}
-                      onClick={() => setChartType("line")}
-                      icon={<LineIcon className="h-3.5 w-3.5" />}
-                    >
-                      Linhas
-                    </ChartTabBtn>
-                    <ChartTabBtn
-                      active={chartType === "bar"}
-                      onClick={() => setChartType("bar")}
-                      icon={<BarChart3 className="h-3.5 w-3.5" />}
-                    >
-                      Colunas
-                    </ChartTabBtn>
-                  </div>
-                )}
-              </div>
-
-              <div className="h-[320px] w-full">
-                {serieDiaria.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    {chartType === "line" ? (
-                      <LineChart
-                        data={serieDiaria}
-                        margin={{ top: 8, right: 16, left: -10, bottom: 0 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                        <XAxis dataKey="dia" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                        <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                        <Tooltip
-                          contentStyle={{
-                            background: "hsl(var(--card))",
-                            border: "1px solid hsl(var(--border))",
-                            borderRadius: "8px",
-                            fontSize: "12px",
-                          }}
-                          formatter={(value: number, name: string) => [formatCurrency(value), name]}
-                        />
-                        <Legend wrapperStyle={{ fontSize: 12 }} />
-                        <Line type="monotone" dataKey="receita" name="Receita" stroke={COLORS.receita} strokeWidth={2.5} dot={{ r: 3 }} />
-                        <Line type="monotone" dataKey="custos" name="Custos" stroke={COLORS.custos} strokeWidth={2.5} dot={{ r: 3 }} />
-                        <Line type="monotone" dataKey="lucro" name="Lucro" stroke={COLORS.lucro} strokeWidth={2.5} dot={{ r: 3 }} />
-                      </LineChart>
-                    ) : (
-                      <BarChart
-                        data={serieDiaria}
-                        margin={{ top: 8, right: 12, left: -12, bottom: 0 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                        <XAxis dataKey="dia" stroke="hsl(var(--muted-foreground))" tickLine={false} axisLine={false} />
-                        <YAxis stroke="hsl(var(--muted-foreground))" tickLine={false} axisLine={false} />
-                        <Tooltip
-                          contentStyle={{
-                            background: "hsl(var(--card))",
-                            border: "1px solid hsl(var(--border))",
-                            borderRadius: "8px",
-                            fontSize: "12px",
-                          }}
-                          formatter={(value: number, name: string) => [formatCurrency(value), name]}
-                        />
-                        <Legend wrapperStyle={{ fontSize: 12 }} />
-                        <Bar dataKey="receita" name="Receita" fill={COLORS.receita} radius={[4, 4, 0, 0]} />
-                        <Bar dataKey="custos" name="Custos" fill={COLORS.custos} radius={[4, 4, 0, 0]} />
-                        <Bar dataKey="lucro" name="Lucro" fill={COLORS.lucro} radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    )}
-                  </ResponsiveContainer>
-                ) : (
-                  <EmptyChartState text="Nenhum movimento encontrado no periodo selecionado." />
-                )}
-              </div>
-            </section>
-
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <PieCard
-                title="Status financeiro da receita"
-                icon={<PieIcon className="h-4 w-4 text-muted-foreground" />}
-                data={financeiroStatusData}
-              />
-              <PieCard
-                title="Composicao dos custos extras"
-                icon={<PieIcon className="h-4 w-4 text-muted-foreground" />}
-                data={categoriasCustosData}
-              />
-            </div>
-
-            <DashboardReportsSection navigate={navigate} selectedYear={selectedYear} selectedMonthNumber={selectedMonthNumber} />
-
-            <section className="esc-card p-5">
-              <div className="mb-4 flex items-center gap-2">
-                <Scale className="h-4 w-4 text-muted-foreground" />
-                <h2 className="font-display font-semibold text-foreground">
-                  Leitura consolidada do periodo
-                </h2>
-              </div>
-
-              <div className="space-y-3 text-sm">
-                <InsightRow
-                  label="Receita recebida"
-                  value={formatCurrency(dashboardKpis.caixaRecebido)}
-                />
-                <InsightRow
-                  label="Custos baixados"
-                  value={formatCurrency(0)}
-                />
-                <InsightRow
-                  label="Custos pendentes"
-                  value={formatCurrency(dashboardKpis.custosPendentes)}
-                />
-                <InsightRow
-                  label="Custos atrasados"
-                  value={formatCurrency(dashboardKpis.atrasado)}
-                />
-              </div>
-
-              <div className="mt-5 rounded-2xl border border-border bg-muted/20 p-4">
-                <div
-                  className={cn(
-                    "inline-flex rounded-full px-2.5 py-1 text-xs font-semibold",
-                    dashboardKpis.lucroReal >= 0
-                      ? "bg-success-soft text-success-strong"
-                      : "bg-destructive-soft text-destructive-strong",
+                      );
+                    })
                   )}
-                >
-                  {dashboardKpis.lucroReal >= 0
-                    ? "Periodo com lucro positivo"
-                    : "Periodo com lucro pressionado"}
-                </div>
-                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                  O dashboard cruza exclusivamente a receita das operacoes com os
-                  custos extras do mesmo mes para chegar ao lucro real. O KPI
-                  "Caixa recebido" mostra o saldo realizado no periodo entre
-                  recebimentos operacionais e custos extras ja baixados.
-                </p>
-              </div>
+                </TableBody>
+              </Table>
+            </div>
+          </div>
 
-              <div className="mt-5 flex gap-2">
-                <Button asChild>
-                  <Link to="/operacional/operacoes">
-                    Ir para operacoes <ArrowRight className="ml-1 h-4 w-4" />
-                  </Link>
-                </Button>
-                <Button variant="outline" asChild>
-                  <Link to="/inconsistencias">Ver inconsistencias</Link>
+          <div className="w-full lg:w-[320px] bg-white border border-[#DEDEDE] lg:absolute lg:right-0 lg:top-0 lg:bottom-0 p-4 shadow-sm z-10 flex flex-col h-full rounded-[12px] lg:rounded-none lg:border-y-0 lg:border-r-0 pb-16">
+            <h3 className="font-display font-semibold text-[#171717] text-[18px] mb-4">Detalhes da Operação</h3>
+            {selectedOp ? (
+              <div className="space-y-6 flex-1">
+                <div>
+                  <div className="text-[12px] font-medium text-[#737373] uppercase mb-1">Empresa / Cliente</div>
+                  <div className="font-semibold text-[#171717] text-[14px]">{selectedOp.empresas?.nome || "Empresa não informada"}</div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 border-y border-[#EBEBEB] py-4">
+                  <h2 className="text-xl font-bold tracking-tight text-gray-900 leading-none">
+                    Dashboard {operacoesBase.length} ops fetch
+                  </h2>
+                  <span className="text-sm font-medium text-gray-500 tracking-wide mt-1">Vol.</span>
+                  <div>
+                    <div className="text-[12px] font-medium text-[#737373] uppercase mb-1">Vol.</div>
+                    <div className="font-semibold text-[#171717] text-[14px]">{formatInteger(selectedOp.quantidade || 1)} cx</div>
+                  </div>
+                  <div>
+                    <div className="text-[12px] font-medium text-[#737373] uppercase mb-1">Serviço</div>
+                    <div className="font-semibold text-[#171717] text-[14px] truncate" title={selectedOp.tipos_servico_operacional?.nome || "Serviço"}>{selectedOp.tipos_servico_operacional?.nome || "Serviço"}</div>
+                  </div>
+                </div>
+
+                <div className="bg-[#F7F7F7] p-4 rounded-[12px] border border-[#EBEBEB]">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-[13px] font-medium text-[#4D4D4D]">Sub Total</span>
+                    <span className="font-semibold text-[#171717] text-[14px]">{formatCurrency(selectedOp.valor_total || 0)}</span>
+                  </div>
+                  <div className="flex justify-between items-center mb-4">
+                    <span className="text-[13px] font-medium text-[#4D4D4D]">Custos Adicionais</span>
+                    <span className="font-semibold text-[#171717] text-[14px]">{formatCurrency(0)}</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-4 border-t border-[#DEDEDE]">
+                    <span className="text-[14px] font-bold text-[#171717]">Total</span>
+                    <span className="font-display font-bold text-[20px] text-[#FD4C00]">{formatCurrency(selectedOp.valor_total || 0)}</span>
+                  </div>
+                </div>
+
+                <Button className="w-full bg-[#FD4C00] hover:bg-[#E54300] text-white font-semibold h-[40px] rounded-[8px] shadow-sm transition-colors" onClick={() => navigateToOperacoes()}>
+                  Ações Completas
                 </Button>
               </div>
-            </section>
-          </>
-        )}
+            ) : (
+              <div className="text-center py-12 text-[#737373] flex-1">
+                <Activity className="h-8 w-8 mx-auto mb-3 opacity-30 text-[#A3A3A3]" />
+                <p className="text-[13px] font-medium max-w-[200px] mx-auto">Selecione uma operação na tabela para visualizar o painel contextual.</p>
+              </div>
+            )}
+          </div>
+        </div>
+
       </div>
     </AppShell>
   );
 };
-
-const ChartTabBtn = ({
-  active,
-  onClick,
-  icon,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  children: React.ReactNode;
-}) => (
-  <Button
-    variant={active ? "secondary" : "ghost"}
-    size="sm"
-    onClick={onClick}
-    className={cn(
-      "h-7 gap-1.5 px-3 text-[11px] font-bold uppercase tracking-wider transition-all",
-      active
-        ? "bg-background text-foreground shadow-sm ring-1 ring-border"
-        : "text-muted-foreground hover:text-foreground",
-    )}
-  >
-    {icon}
-    {children}
-  </Button>
-);
-
-const EmptyChartState = ({ text }: { text: string }) => (
-  <div className="flex h-full flex-col items-center justify-center rounded-lg border border-dashed border-border bg-muted/20 p-8 text-center text-muted-foreground">
-    <Activity className="mb-2 h-10 w-10 opacity-20" />
-    <p className="text-sm">{text}</p>
-  </div>
-);
-
-const PieCard = ({
-  title,
-  icon,
-  data,
-}: {
-  title: string;
-  icon: React.ReactNode;
-  data: { name: string; value: number; fill: string }[];
-}) => (
-  <section className="esc-card p-5">
-    <div className="mb-3 flex items-center gap-2">
-      {icon}
-      <h3 className="font-display text-sm font-semibold text-foreground">{title}</h3>
-    </div>
-    <div className="h-[240px]">
-      {data.length > 0 ? (
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie
-              data={data}
-              dataKey="value"
-              nameKey="name"
-              cx="50%"
-              cy="50%"
-              innerRadius={60}
-              outerRadius={80}
-              paddingAngle={5}
-              stroke="none"
-            >
-              {data.map((entry) => (
-                <Cell key={entry.name} fill={entry.fill} />
-              ))}
-            </Pie>
-            <Tooltip
-              contentStyle={{
-                background: "hsl(var(--card))",
-                border: "1px solid hsl(var(--border))",
-                borderRadius: "8px",
-                fontSize: "12px",
-              }}
-              formatter={(value: number) => [formatCurrency(value), "Valor"]}
-            />
-            <Legend
-              verticalAlign="bottom"
-              align="center"
-              iconType="circle"
-              wrapperStyle={{
-                paddingTop: "24px",
-                fontSize: "11px",
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
-                fontWeight: 600,
-              }}
-            />
-          </PieChart>
-        </ResponsiveContainer>
-      ) : (
-        <EmptyChartState text="Nenhum dado disponivel para este grafico." />
-      )}
-    </div>
-  </section>
-);
-
-const QuickReportCard = ({
-  title,
-  subtitle,
-  icon: Icon,
-  stats,
-  onClick
-}: {
-  title: string;
-  subtitle: string;
-  icon: React.ElementType;
-  stats?: { label: string; value: string }[];
-  onClick: () => void;
-}) => (
-  <button
-    onClick={onClick}
-    className="esc-card p-4 text-left hover:border-primary/40 transition-all group w-full"
-  >
-    <div className="flex items-start gap-3">
-      <div className="h-10 w-10 rounded-lg bg-primary-soft/20 flex items-center justify-center shrink-0">
-        <Icon className="h-5 w-5 text-primary" />
-      </div>
-      <div className="min-w-0">
-        <h4 className="font-display font-semibold text-sm text-foreground">{title}</h4>
-        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{subtitle}</p>
-      </div>
-    </div>
-    {stats && stats.length > 0 && (
-      <div className="mt-3 flex flex-wrap gap-2">
-        {stats.map((stat, idx) => (
-          <div key={idx} className="bg-muted/50 rounded-md px-2 py-1">
-            <span className="text-[10px] text-muted-foreground uppercase">{stat.label}</span>
-            <div className="text-xs font-semibold text-foreground">{stat.value}</div>
-          </div>
-        ))}
-      </div>
-    )}
-    <div className="mt-3 flex items-center text-xs text-primary opacity-0 group-hover:opacity-100 transition-opacity">
-      <span>Ver relatório completo</span>
-      <ArrowRight className="h-3 w-3 ml-1" />
-    </div>
-  </button>
-);
-
-const DashboardReportsSection = ({ navigate, selectedYear, selectedMonthNumber }: { navigate: (path: string) => void; selectedYear: string; selectedMonthNumber: string }) => {
-  const { data: consolidadoData } = useQuery({
-    queryKey: ["consolidado", selectedYear, selectedMonthNumber],
-    queryFn: () => ConsolidadoService.getByCompetencia(`${selectedYear}-${selectedMonthNumber}`),
-    enabled: !!selectedYear && !!selectedMonthNumber,
-  });
-
-  const { data: inconsistencias = [] } = useQuery({
-    queryKey: ["inconsistencias-ponto"],
-    queryFn: () => OperacaoService.getInconsistencies(),
-  });
-
-  const { data: auditoriaLogs = [] } = useQuery({
-    queryKey: ["auditoria-logs"],
-    queryFn: () => AuditoriaService.getAll(),
-  });
-
-
-  const { data: reports = [] } = useQuery({
-    queryKey: ["reports_catalog"],
-    queryFn: () => ReportService.getAll(),
-  });
-
-  const getReportId = (slug: string) => {
-    const report = reports.find((r: any) => r.slug === slug);
-    return report?.id || "";
-  };
-
-  const totalFaturamento = useMemo(() => {
-    if (!consolidadoData) return 0;
-    const data = consolidadoData as any;
-    return (data.colaboradores || data.clientes || []).reduce(
-      (acc: number, curr: any) => acc + Number(curr.valor_total || 0),
-      0
-    );
-  }, [consolidadoData]);
-
-  const totalInconsistencias = Array.isArray(inconsistencias) ? inconsistencias.length : 0;
-
-  const ultimosLogs = Array.isArray(auditoriaLogs) ? auditoriaLogs.slice(0, 3) : [];
-
-  const faturamentoId = getReportId("faturamento-cliente");
-  const inconsistenciasId = getReportId("inconsistencias-ponto");
-  const auditoriaId = getReportId("log-auditoria");
-
-  return (
-    <section className="esc-card p-5">
-      <div className="mb-4 flex items-center gap-2">
-        <FileText className="h-4 w-4 text-muted-foreground" />
-        <h2 className="font-display font-semibold text-foreground">Relatórios rápidos</h2>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <QuickReportCard
-          title="Faturamento por Cliente"
-          subtitle="Receita consolidada por cliente"
-          icon={BarChart3}
-          stats={[
-            { label: "Total", value: formatCurrency(totalFaturamento) },
-            { label: "Clientes", value: String((consolidadoData as any)?.clientes?.length || 0) }
-          ]}
-          onClick={() => faturamentoId && navigate(`/relatorios/detalhe/${faturamentoId}`)}
-        />
-        <QuickReportCard
-          title="Inconsistências de Ponto"
-          subtitle="Registros com problemas de ponto"
-          icon={AlertCircle}
-          stats={[
-            { label: "Total", value: String(totalInconsistencias) },
-            { label: "Pendentes", value: String(totalInconsistencias) }
-          ]}
-          onClick={() => inconsistenciasId && navigate(`/relatorios/detalhe/${inconsistenciasId}`)}
-        />
-        <QuickReportCard
-          title="Log de Auditoria"
-          subtitle="Histórico de alterações no sistema"
-          icon={Database}
-          stats={[
-            { label: "Total", value: String(auditoriaLogs.length) },
-            { label: "Recentes", value: String(ultimosLogs.length) }
-          ]}
-          onClick={() => auditoriaId && navigate(`/relatorios/detalhe/${auditoriaId}`)}
-        />
-        <QuickReportCard
-          title="Diaristas"
-          subtitle="Controle de diaristas e ajustes"
-          icon={Users}
-          stats={[
-            { label: "Ativos", value: "-" },
-            { label: "Ajustes", value: "-" }
-          ]}
-          onClick={() => navigate("/rh/diaristas")}
-        />
-      </div>
-    </section>
-  );
-};
-
-const InsightRow = ({ label, value }: { label: string; value: string }) => (
-  <div className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2.5">
-    <span className="text-muted-foreground">{label}</span>
-    <span className="font-semibold text-foreground">{value}</span>
-  </div>
-);
 
 export default Dashboard;

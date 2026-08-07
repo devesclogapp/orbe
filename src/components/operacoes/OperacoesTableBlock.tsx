@@ -1223,7 +1223,7 @@ export const OperacoesTableBlock = ({
     aprovarOpMutation.mutate(
       {
         id: item.id,
-        updated_at: item.updated_at
+        updated_at: item.atualizado_em || item.updated_at
       },
       {
         onSuccess: () => {
@@ -2279,7 +2279,23 @@ export const OperacoesTableBlock = ({
                                             const isInfraction = c.had_infraction === true;
                                             return (
                                               <tr key={c.collaborator_id || c.colaboradores?.id || `collab-${idx}`} className="hover:bg-muted/50">
-                                                <td className="px-4 py-2">{c.colaboradores?.nome || '-'}</td>
+                                                <td className="px-4 py-2">
+                                                  <div className="flex items-center gap-2">
+                                                    <span>{c.colaboradores?.nome || '-'}</span>
+                                                    {c.colaboradores?.nome && (
+                                                      <a
+                                                        href={`/colaboradores?search=${encodeURIComponent(c.colaboradores.nome.trim())}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="text-muted-foreground hover:text-primary transition-colors"
+                                                        title="Ver cadastro do colaborador"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                      >
+                                                        <ExternalLink className="h-3 w-3" />
+                                                      </a>
+                                                    )}
+                                                  </div>
+                                                </td>
                                                 <td className="px-4 py-2 text-muted-foreground">{c.colaboradores?.cargo || '-'}</td>
                                                 <td className="px-4 py-2">
                                                   {isInfraction ? (

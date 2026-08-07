@@ -197,7 +197,7 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                     : "NÃO",
                 status: initialData?.id ? undefined : "RECEBIDO",
                 status_pagamento: initialData?.id ? undefined : "PENDENTE",
-                updated_at_frontend: initialData?.updated_at,
+                updated_at_frontend: initialData?.atualizado_em || initialData?.updated_at,
                 origem_dado: "manual",
                 responsavel_nome: user?.user_metadata?.full_name || (mode === "admin" ? "Admin" : "Encarregado"),
                 colaborador_id: selectedColaboradores[0] || null,
