@@ -44,7 +44,7 @@ export default function ReceitasPipeline() {
     const [searchTerm, setSearchTerm] = useState("");
     const location = useLocation();
     const [activeTab, setActiveTab] = useState<'CAIXA_IMEDIATO' | 'DUPLICATA' | 'FATURAMENTO_MENSAL'>(
-        location.state?.activeTab || 'DUPLICATA'
+        location.state?.activeTab || 'CAIXA_IMEDIATO'
     );
     const [selectedReceita, setSelectedReceita] = useState<any>(null);
 
