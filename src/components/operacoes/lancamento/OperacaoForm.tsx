@@ -270,7 +270,8 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                 const currentEmpresa = empresas.find(e => e.id === (form.getValues().empresa_id || empresaId));
 
                 // Evita new Date() plain em GMT negativo. Parse puramente lexicográfico:
-                const dataForm = form.getValues().data_operacao || form.getValues().data || new Date().toISOString().split('T')[0];
+                const values = form.getValues() as any;
+                const dataForm = values.data_operacao || values.data || new Date().toISOString().split('T')[0];
                 const compMatch = dataForm.match(/^(\d{4})-(\d{2})/);
                 const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
                 const compStr = compMatch ? `${meses[parseInt(compMatch[2], 10) - 1]} / ${compMatch[1]}` : "Competência Atual";

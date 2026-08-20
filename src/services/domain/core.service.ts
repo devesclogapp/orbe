@@ -1493,7 +1493,7 @@ class DiaristaServiceClass {
       .from('colaboradores')
       .select('id, nome, matricula, cpf, telefone, cargo, valor_base, status, empresa_id, permitir_lancamento_operacional, deleted_at, banco_codigo, agencia, agencia_digito, conta, digito_conta, tipo_conta, chave_pix, nome_completo, observacoes')
       .eq('empresa_id', empresaId)
-      .eq('tipo_colaborador', 'DIARISTA')
+      .or('tipo_colaborador.ilike.%diarista%,regime_trabalho.ilike.%diarista%')
       .eq('permitir_lancamento_operacional', true)
       .is('deleted_at', null)
       .order('nome', { ascending: true });
@@ -1523,6 +1523,8 @@ class DiaristaServiceClass {
       status: payload.status ?? 'ativo',
       empresa_id: payload.empresa_id,
       tipo_colaborador: 'DIARISTA',
+      regime_trabalho: 'diarista',
+      modelo_calculo: 'diaria',
       permitir_lancamento_operacional: payload.permitir_lancamento_operacional ?? true,
       tenant_id: tenantId,
       // Dados bancários

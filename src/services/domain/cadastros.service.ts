@@ -595,7 +595,7 @@ class ColaboradorServiceClass extends BaseService<'colaboradores'> {
       .from('colaboradores')
       .select('*')
       .eq('empresa_id', empresaId)
-      .eq('tipo_colaborador', 'DIARISTA')
+      .or('tipo_colaborador.ilike.%diarista%,regime_trabalho.ilike.%diarista%')
       .eq('permitir_lancamento_operacional', true)
       .order('nome', { ascending: true });
 
