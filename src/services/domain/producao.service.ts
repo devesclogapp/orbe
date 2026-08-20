@@ -811,6 +811,28 @@ class OperacaoProducaoServiceClass {
     return data;
   }
 
+  async getByIdWithDetails(id: string) {
+    const { data, error } = await operationalClient
+      .from('operacoes_producao')
+      .select(`
+        *,
+        colaboradores:colaborador_id(nome, cargo),
+        production_entry_collaborators(had_infraction, infraction_type_id, infraction_notes, colaboradores:collaborator_id(id, nome, cargo, cpf)),
+        tipos_servico_operacional:tipo_servico_id(nome),
+        transportadoras_clientes:transportadora_id(nome),
+        fornecedores:fornecedor_id(nome),
+        produtos_carga:produto_carga_id(nome),
+        formas_pagamento_operacional:forma_pagamento_id(nome),
+        unidades:unidade_id(nome),
+        operacao_producao_materiais!operacao_id(*)
+      `)
+      .eq('id', id)
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
   async updateWithOverride(id: string, payload: Record<string, any>, justification: string) {
     if (justification) {
       payload.justificativa_retroativa = justification;

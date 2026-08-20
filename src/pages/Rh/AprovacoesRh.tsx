@@ -48,7 +48,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { EmpresaService } from "@/services/domain/cadastros.service";
-import { PontoService } from "@/services/domain/producao.service";
+import { PontoService, OperacaoProducaoService } from "@/services/domain/producao.service";
 import { OperacaoService } from "@/services/domain/core.service";
 import {
     CustoExtraOperacionalService,
@@ -834,11 +834,22 @@ function DetailPanel({
         }
     });
 
+    const { data: opData, isLoading: opLoading } = useQuery({
+        queryKey: ["operacao-detalhes", item.id],
+        queryFn: async () => {
+            if (item.tipo === "OPERAÇÃO") {
+                return await OperacaoProducaoService.getByIdWithDetails(item.id);
+            }
+            return null;
+        },
+        enabled: item.tipo === "OPERAÇÃO"
+    });
+
     const isBlocked = valData?.podeAprovar === false;
 
     return (
         <Sheet open={true} onOpenChange={(open) => { if (!open) onClose() }}>
-            <SheetContent side="right" className="w-[400px] sm:max-w-md p-0 flex flex-col shadow-2xl bg-white overflow-hidden">
+            <SheetContent side="right" className="w-[500px] sm:max-w-xl p-0 flex flex-col shadow-2xl bg-white overflow-hidden">
                 <div className="p-5 pr-14 border-b border-border/40 bg-slate-50/60 flex items-center justify-between shadow-sm relative z-10">
                     <h3 className="font-bold text-slate-800 tracking-tight">Detalhes do Item</h3>
                 </div>
@@ -880,6 +891,58 @@ function DetailPanel({
                             <span className="text-[13px] font-medium text-slate-800">{item.competencia}</span>
                         </div>
                     </div>
+
+                    {/* Detalhamento Operacional */}
+                    {item.tipo === "OPERAÇÃO" && (
+                        <div className="space-y-2">
+                            <div className="flex items-center gap-2 text-slate-700">
+                                <Layers size={15} />
+                                <span className="text-xs font-bold uppercase tracking-wide">Detalhamento Operacional</span>
+                            </div>
+                            <div className="bg-slate-50 border border-border/30 rounded-lg px-4 py-3 space-y-3">
+                                {opLoading ? (
+                                    <div className="flex justify-center py-4"><Loader2 className="animate-spin h-5 w-5 text-muted-foreground opacity-50" /></div>
+                                ) : opData ? (
+                                    <>
+                                        <div className="space-y-1.5">
+                                            {opData.tipos_servico_operacional && (
+                                                <p className="text-[12px] flex justify-between"><span className="text-muted-foreground font-medium">Serviço</span> <span className="font-semibold text-slate-800 text-right">{opData.tipos_servico_operacional.nome}</span></p>
+                                            )}
+                                            {opData.transportadoras_clientes && (
+                                                <p className="text-[12px] flex justify-between"><span className="text-muted-foreground font-medium">Transportadora</span> <span className="font-semibold text-slate-800 text-right">{opData.transportadoras_clientes.nome}</span></p>
+                                            )}
+                                            {opData.produtos_carga && (
+                                                <p className="text-[12px] flex justify-between"><span className="text-muted-foreground font-medium">Produto</span> <span className="font-semibold text-slate-800 text-right">{opData.produtos_carga.nome}</span></p>
+                                            )}
+                                            {(opData.placa || opData.nf_numero || opData.quantidade) && (
+                                                <div className="flex flex-wrap gap-4 pt-2 border-t border-border/50">
+                                                    {opData.quantidade != null && <p className="text-[12px]"><span className="text-muted-foreground font-medium">Qtd/Vol:</span> <span className="font-semibold text-slate-800">{opData.quantidade}</span></p>}
+                                                    {opData.placa && <p className="text-[12px]"><span className="text-muted-foreground font-medium">Placa:</span> <span className="font-semibold text-slate-800">{opData.placa}</span></p>}
+                                                    {opData.nf_numero && <p className="text-[12px]"><span className="text-muted-foreground font-medium">NF:</span> <span className="font-semibold text-slate-800">{opData.nf_numero}</span></p>}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {opData.production_entry_collaborators && opData.production_entry_collaborators.length > 0 && (
+                                            <div className="pt-3 border-t border-border/50 mt-1">
+                                                <p className="text-[10px] font-bold text-slate-500 uppercase mb-2 tracking-wide">Colaboradores Vinculados ({opData.production_entry_collaborators.length})</p>
+                                                <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
+                                                    {opData.production_entry_collaborators.map((c: any, i: number) => (
+                                                        <div key={i} className="flex justify-between items-center text-[11px] bg-white p-2 border border-border/40 rounded-md shadow-sm">
+                                                            <span className="font-bold text-slate-800 truncate mr-2">{c.colaboradores?.nome || `Desconhecido`}</span>
+                                                            <span className="text-muted-foreground text-[10px] shrink-0 bg-slate-50 px-1.5 py-0.5 rounded">{c.colaboradores?.cargo || 'Sem Cargo'}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </>
+                                ) : (
+                                    <p className="text-xs text-muted-foreground text-center py-2">Detalhes não encontrados.</p>
+                                )}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Resumo */}
                     <div className="space-y-2">

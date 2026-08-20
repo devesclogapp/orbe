@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Form } from "@/components/ui/form";
 import { useAuth } from "@/contexts/AuthContext";
+import { useNavigate } from "react-router-dom";
 import { OperacaoProducaoService } from "@/services/domain/producao.service";
 import {
     EmpresaService,
@@ -41,6 +42,7 @@ export interface OperacaoFormProps {
 
 export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: OperacaoFormProps) => {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const queryClient = useQueryClient();
     const { openPipeline } = useOperationalPipeline();
     const [etapa, setEtapa] = useState(1);
@@ -367,9 +369,24 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                         <FormStepSelector
                             form={form}
                             onNext={(preset) => {
-                                // Se for Admin nós não roteamos.
-                                // Mas `diaristas`, `custos-extras` não estariam acessíveis aqui se não rotear.
-                                // Para o Admin manter no mesmo modal, nós apenas pulamos a etapa. O fluxo original manda pra páginas soltas. 
+                                if (mode === 'encarregado') {
+                                    switch (preset.id) {
+                                        case "diaristas":
+                                            navigate("/producao/diaristas");
+                                            return;
+                                        case "custos_operacionais":
+                                            navigate("/producao/custos-extras");
+                                            return;
+                                        case "servicos_extras":
+                                            navigate("/producao/servicos-extras");
+                                            return;
+                                        case "servicos_especificos":
+                                            navigate("/producao/servicos-especificos");
+                                            return;
+                                    }
+                                }
+
+                                // Para o Admin manter no mesmo modal, ou fluxos padrão, apenas pula a etapa
                                 setEtapa(2);
                             }}
                         />
