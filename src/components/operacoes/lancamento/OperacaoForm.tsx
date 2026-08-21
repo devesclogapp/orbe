@@ -206,8 +206,8 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                 regra_id: regra_periodo_id || null,
                 codigo_operacional: selectedPeriodo ? `${selectedPeriodo.codigo}C${quantidade_colaboradores}` : null,
                 quantidade_colaboradores: quantidade_colaboradores,
-                horario_inicio: horario_inicio || null,
-                horario_fim: horario_fim || null,
+                entrada_ponto: horario_inicio || null,
+                saida_ponto: horario_fim || null,
             };
 
             // Clean undefineds, strictly sanitize against known columns to avoid 400 Bad Request
@@ -223,10 +223,11 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                 } else if (payload[key] === "" && uuidColumns.includes(key)) {
                     payload[key] = null;
                 } else if (payload[key] !== null && typeof payload[key] === 'object' && !Array.isArray(payload[key])) {
-                    // Remove relational objects like `empresas`, `colaboradores`, etc. that are not arrays or primitive types
-                    // We also want to skip Date objects but Supabase results don't have them as Date objects yet.
-                    // Just in case, check if it's a generic plain object
-                    if (Object.prototype.toString.call(payload[key]) === '[object Object]') {
+                    // Evitamos o drop silencioso (Silent Drop).
+                    // Removemos ESPECIFICAMENTE os objetos resultantes dos relacionamentos populados na listagem 
+                    // para preservar eventuais objetos customizados ou JSONB nativos (como Metadata).
+                    const joinKeys = ['empresas', 'unidades', 'tipos_servicos', 'produtos', 'transportadoras', 'fornecedores', 'forma_pagamento_ref', 'colaboradores'];
+                    if (joinKeys.includes(key)) {
                         delete payload[key];
                     }
                 }

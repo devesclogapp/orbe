@@ -861,7 +861,8 @@ class OperacaoProducaoServiceClass {
         fornecedores:fornecedor_id(nome),
         produtos_carga:produto_carga_id(nome),
         formas_pagamento_operacional:forma_pagamento_id(nome),
-        unidades:unidade_id(nome)
+        unidades:unidade_id(nome),
+        empresas:empresa_id(id, nome)
       `)
       .single();
 

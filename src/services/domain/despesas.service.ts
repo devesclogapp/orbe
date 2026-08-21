@@ -48,7 +48,8 @@ class CustoExtraOperacionalServiceClass {
       .eq('id', id)
       .select(`
         *,
-        empresas:empresa_id(nome)
+        empresas:empresa_id(nome),
+        unidades:unidade_id(nome)
       `)
       .single();
 
@@ -89,7 +90,7 @@ class CustoExtraOperacionalServiceClass {
   async getByDate(date: string) {
     const { data: rawData, error } = await operationalClient
       .from('custos_extras_operacionais')
-      .select('*, empresas:empresa_id(nome), forma_pagamento_ref:forma_pagamento_id(nome)')
+      .select('*, empresas:empresa_id(nome), forma_pagamento_ref:forma_pagamento_id(nome), unidades:unidade_id(nome)')
       .eq('data', date)
       .order('created_at', { ascending: false });
 
@@ -151,7 +152,7 @@ class CustoExtraOperacionalServiceClass {
   async getByCompetencia(competencia: string, empresaId?: string) {
     let query = operationalClient
       .from('custos_extras_operacionais')
-      .select('*, empresas:empresa_id(nome), forma_pagamento_ref:forma_pagamento_id(nome)');
+      .select('*, empresas:empresa_id(nome), forma_pagamento_ref:forma_pagamento_id(nome), unidades:unidade_id(nome)');
 
     if (competencia) {
       const parts = competencia.split('-');

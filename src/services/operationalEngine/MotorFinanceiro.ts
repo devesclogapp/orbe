@@ -68,7 +68,8 @@ export const MotorFinanceiro = {
           id, valor_total, valor_faturamento_nf, quantidade, 
           tipo_calculo_snapshot, custo_com_iss, valor_descarga, 
           colaborador_id, transportadora_id, status_pagamento, empresa_id,
-          tenant_id, empresas!empresa_id ( is_teste )
+          tenant_id, status, empresas!empresa_id ( is_teste ),
+          production_entry_collaborators ( collaborator_id )
         `)
         .eq('empresa_id', empresaId)
         .eq('tenant_id', tenantId)
@@ -77,14 +78,22 @@ export const MotorFinanceiro = {
 
       if (opError) throw opError;
 
-      EngineLogger.info(`[MotorFinanceiro] Operações encontradas: ${operacoes?.length || 0}`, { component: 'MotorFinanceiro' });
+      // Filtro rigoroso: Não faturar operações não autorizadas (bloqueadas no Hub RH ou Canceladas)
+      const invalidStatuses = ["RECEBIDO", "PENDENTE", "REPROVADO", "DEVOLVIDO", "DEVOLVIDO_RH", "CANCELADO", "EM_RESTRICAO", "AGUARDANDO_RH"];
+      const operacoesValidadas = (operacoes || []).filter((op: any) => {
+         const s = String(op.status || "pendente").toUpperCase();
+         return !invalidStatuses.includes(s);
+      });
 
-      if (!operacoes || operacoes.length === 0) return { success: true, message: 'Nenhuma operação para faturar.' };
+      EngineLogger.info(`[MotorFinanceiro] Operações válidas para fechamento: ${operacoesValidadas.length} / ${operacoes?.length || 0}`, { component: 'MotorFinanceiro' });
+
+      if (operacoesValidadas.length === 0) return { success: true, message: 'Nenhuma operação elegível para faturar.' };
+      const operacoesAtivas = operacoesValidadas;
 
       // Validar isolamento e ambiente na Origem (Fonte de Verdade = Banco)
       // Array de mapeamentos tenant + empresa + is_teste das operações (Amostragem Total)
       const scopes = new Set(
-         operacoes.map((op: any) => `${op.tenant_id}:${op.empresa_id}:${op.empresas?.is_teste}`)
+         operacoesAtivas.map((op: any) => `${op.tenant_id}:${op.empresa_id}:${op.empresas?.is_teste}`)
       );
       
       if (scopes.size !== 1) {
@@ -110,7 +119,11 @@ export const MotorFinanceiro = {
       // E Consolidado de Colaborador e Diarista
       const consolidadosCliente: Record<string, { total: number, ops: number, ids: string[], isEmpresa: boolean }> = {};
       const consolidadosColab: Record<string, { total: number, ids: string[] }> = {};
-      const colaboradorIds = Array.from(new Set((operacoes || []).map((op: any) => op.colaborador_id).filter(Boolean)));
+      const colaboradorIds = Array.from(new Set((operacoesAtivas || []).flatMap((op: any) => 
+        op.production_entry_collaborators?.length > 0
+          ? op.production_entry_collaborators.map((c: any) => c.collaborator_id)
+          : [op.colaborador_id]
+      ).filter(Boolean)));
       const colaboradoresPorId = new Map<string, any>();
 
       if (colaboradorIds.length > 0) {
@@ -127,7 +140,7 @@ export const MotorFinanceiro = {
         }
       }
 
-      for (const op of operacoes) {
+      for (const op of operacoesAtivas) {
         // FATURAMENTO (Cliente/Transportadora)
         // Usa transportadora_id provisoriamente como cliente neste contexto logístico, ou a própria empresa caso não haja transportadora
         const clienteFatId = op.transportadora_id || op.empresa_id;
@@ -142,17 +155,30 @@ export const MotorFinanceiro = {
         }
 
         // PAGAMENTO (Colaborador)
-        if (op.colaborador_id) {
-          if (!consolidadosColab[op.colaborador_id]) {
-            consolidadosColab[op.colaborador_id] = { total: 0, ids: [] };
+        const colaboradoresOperacao = op.production_entry_collaborators?.length > 0
+          ? op.production_entry_collaborators.map((c: any) => c.collaborator_id).filter(Boolean)
+          : (op.colaborador_id ? [op.colaborador_id] : []);
+
+        const isRateio = colaboradoresOperacao.length > 1;
+
+        for (const colabId of colaboradoresOperacao) {
+          if (!consolidadosColab[colabId]) {
+            consolidadosColab[colabId] = { total: 0, ids: [] };
           }
-          const colaborador = colaboradoresPorId.get(op.colaborador_id);
+          const colaborador = colaboradoresPorId.get(colabId);
           const modelo = String(colaborador?.modelo_calculo || "").trim();
           const tipoContrato = String(colaborador?.tipo_contrato || "").trim();
           const quantidade = Number(op.quantidade || 0);
           const horas = quantidade > 0 ? quantidade : 0;
 
-          let colabTotal = Number(op.custo_com_iss || op.valor_total || 0);
+          let colabTotalBruto = Number(op.custo_com_iss || op.valor_total || 0);
+          let colabTotal = colabTotalBruto;
+
+          // Se a operação tem custo global e é rateio, divide o valor do bolo pela equipe (apenas para Produção/Operação)
+          if (isRateio && (modelo === "Produção" || tipoContrato === "Operação")) {
+            colabTotal = colabTotalBruto / colaboradoresOperacao.length;
+          }
+
           if (modelo === "Mensal") {
             colabTotal = Number(colaborador?.salario_base || colaborador?.valor_base || colabTotal || 0);
           } else if (modelo === "Horista") {
@@ -160,17 +186,17 @@ export const MotorFinanceiro = {
           } else if (modelo === "Diária") {
             colabTotal = quantidade * Number(colaborador?.valor_diaria || colaborador?.valor_base || 0);
           } else if (modelo === "Produção") {
-            colabTotal = Number(op.custo_com_iss || op.valor_total || colaborador?.valor_base || 0);
+            colabTotal = colabTotal || Number(colaborador?.valor_base || 0);
           } else if (tipoContrato === "Mensal") {
             colabTotal = Number(colaborador?.salario_base || colaborador?.valor_base || colabTotal || 0);
           } else if (tipoContrato === "Hora") {
             colabTotal = horas * Number(colaborador?.valor_hora || colaborador?.valor_base || 0);
           } else if (tipoContrato === "Operação") {
-            colabTotal = Number(op.custo_com_iss || op.valor_total || colaborador?.valor_base || 0);
+            colabTotal = colabTotal || Number(colaborador?.valor_base || 0);
           }
 
-          consolidadosColab[op.colaborador_id].total += colabTotal;
-          consolidadosColab[op.colaborador_id].ids.push(op.id);
+          consolidadosColab[colabId].total += colabTotal;
+          consolidadosColab[colabId].ids.push(op.id);
         }
       }
 

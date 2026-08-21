@@ -64,6 +64,7 @@ type CustoExtraItem = {
   empresa_id?: string | null;
   empresa_nome?: string | null;
   empresas?: { nome?: string | null } | null;
+  unidades?: { nome?: string | null } | null;
   categoria_custo: string;
   descricao: string;
   valor_unitario?: number | null;
@@ -114,6 +115,7 @@ const LOCKED_COLS_STORAGE_KEY = "orbe_lockedCols_custos_extras_v1";
 const defaultVisibleCols = {
   data: true,
   empresa: true,
+  unidade: false,
   categoria: true,
   descricao: true,
   valorUnitario: true,
@@ -765,6 +767,7 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
               <tr className="text-center font-display text-muted-foreground uppercase text-xs tracking-wide">
                 {visibleCols.data && <th style={getStickyProps("data", true).style} className={cn(getStickyProps("data", true).className, "text-center")}>{renderHeaderMenu("data", <span className="inline-flex items-center justify-center gap-1.5 w-full"><CalendarDays className="h-3.5 w-3.5" />DATA</span>)}</th>}
                 {visibleCols.empresa && <th style={getStickyProps("empresa", true).style} className={cn(getStickyProps("empresa", true).className, "text-center")}>{renderHeaderMenu("empresa", "EMPRESA")}</th>}
+                {visibleCols.unidade && <th className="px-3 py-2.5 font-semibold text-center">UNIDADE</th>}
                 {visibleCols.categoria && <th className="px-3 py-2.5 font-semibold text-center">{renderHeaderMenu("categoria_custo", <span className="inline-flex items-center justify-center gap-1.5 w-full"><Tag className="h-3.5 w-3.5" />CATEGORIA</span>)}</th>}
                 {visibleCols.descricao && <th style={getStickyProps("descricao", true).style} className={cn(getStickyProps("descricao", true).className, "text-center")}>{renderHeaderMenu("descricao", <span className="inline-flex items-center justify-center gap-1.5 w-full"><FileText className="h-3.5 w-3.5" />DESCRICAO</span>)}</th>}
                 {visibleCols.valorUnitario && <th className="px-3 py-2.5 font-semibold text-center">{renderHeaderMenu("valor_unitario", "VAL. UNIT.")}</th>}
@@ -791,6 +794,7 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
                 >
                   {visibleCols.data && <td style={getStickyProps("data", false).style} className={cn(getStickyProps("data", false).className, "text-center text-muted-foreground whitespace-nowrap")}>{formatDate(item.data)}</td>}
                   {visibleCols.empresa && <td style={getStickyProps("empresa", false).style} className={cn(getStickyProps("empresa", false).className, "text-center text-muted-foreground whitespace-nowrap")}>{item.empresas?.nome || item.empresa_nome || "—"}</td>}
+                  {visibleCols.unidade && <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{item.unidades?.nome || "—"}</td>}
                   {visibleCols.categoria && <td className="px-3 py-3 text-center"><Badge variant="outline">{item.categoria_custo}</Badge></td>}
                   {visibleCols.descricao && <td style={getStickyProps("descricao", false).style} className={cn(getStickyProps("descricao", false).className, "text-center text-foreground whitespace-nowrap")}>{item.descricao}</td>}
                   {visibleCols.valorUnitario && <td className="px-3 py-3 text-center text-muted-foreground whitespace-nowrap">{item.valor_unitario !== null && item.valor_unitario !== undefined ? currencyFormatter.format(Number(item.valor_unitario)) : "—"}</td>}
