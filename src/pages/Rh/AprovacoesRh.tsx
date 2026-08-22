@@ -16,11 +16,12 @@ import {
     Check,
     RotateCcw,
     Info,
-    X,
     Calendar,
     Loader2,
     ExternalLink,
     Layers,
+    Pencil,
+    X
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, startOfWeek, endOfWeek, subWeeks } from "date-fns";
@@ -809,7 +810,7 @@ function ItensTable({
 }
 
 function DetailPanel({
-    item, onClose, onAprovar, onDevolver, onSolicitarCorrecao, isAprovando, isDevolvendo
+    item, onClose, onAprovar, onDevolver, onSolicitarCorrecao, isAprovando, isDevolvendo, onRefresh
 }: {
     item: ApprovalItem;
     onClose: () => void;
@@ -818,10 +819,17 @@ function DetailPanel({
     onSolicitarCorrecao: (motivo: string) => void;
     isAprovando: boolean;
     isDevolvendo: boolean;
+    onRefresh?: () => void;
 }) {
     const navigate = useNavigate();
     const [correcaoOpen, setCorrecaoOpen] = useState(false);
     const [motivo, setMotivo] = useState("");
+    const { user } = useAuth();
+
+    // States para edicao de diarista
+    const [editingDiarista, setEditingDiarista] = useState<any>(null);
+    const [diaristaValor, setDiaristaValor] = useState<string>("");
+    const [diaristaMotivo, setDiaristaMotivo] = useState<string>("");
 
     // Validação de completude apenas para intermitentes em análise
     const { data: valData, isLoading: valLoading } = useQuery({
@@ -843,6 +851,37 @@ function DetailPanel({
             return null;
         },
         enabled: item.tipo === "OPERAÇÃO"
+    });
+
+    const { data: diaristaData, isLoading: diaristaLoading, refetch: refetchDiarista } = useQuery({
+        queryKey: ["diarista-detalhes", item.raw_lote_id],
+        queryFn: async () => {
+            if (item.tipo === "DIARISTA" && item.raw_lote_id) {
+                return await LoteFechamentoDiaristaService.getLoteDetalhe(item.raw_lote_id);
+            }
+            return null;
+        },
+        enabled: item.tipo === "DIARISTA" && !!item.raw_lote_id
+    });
+
+    const editDiaristaMutation = useMutation({
+        mutationFn: async (payload: { id: string; valor: number; motivo: string }) => {
+            if (!item.raw_lote_id) throw new Error("Lote ID is missing");
+            await LancamentoDiaristaService.updateAdminWithRecalculate(
+                payload.id,
+                item.raw_lote_id,
+                { valor_calculado: payload.valor, motivo_edicao: payload.motivo, editado_admin: true, editado_por: user?.id || "", editado_por_nome: user?.full_name || "", editado_por_role: "RH", editado_em: new Date().toISOString() }
+            );
+        },
+        onSuccess: () => {
+            toast.success("Diarista corrigido com sucesso e valor do lote recalculado!");
+            refetchDiarista();
+            if (onRefresh) onRefresh();
+            setEditingDiarista(null);
+            setDiaristaMotivo("");
+            setDiaristaValor("");
+        },
+        onError: (err: any) => toast.error("Falha ao ajustar diarista", { description: err?.message })
     });
 
     const isBlocked = valData?.podeAprovar === false;
@@ -939,6 +978,54 @@ function DetailPanel({
                                     </>
                                 ) : (
                                     <p className="text-xs text-muted-foreground text-center py-2">Detalhes não encontrados.</p>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Detalhamento Diaristas */}
+                    {item.tipo === "DIARISTA" && (
+                        <div className="space-y-2">
+                            <div className="flex items-center gap-2 text-slate-700">
+                                <Users size={15} />
+                                <span className="text-xs font-bold uppercase tracking-wide">Colaboradores do Lote</span>
+                            </div>
+                            <div className="bg-slate-50 border border-border/30 rounded-lg px-4 py-3 space-y-3">
+                                {diaristaLoading ? (
+                                    <div className="flex justify-center py-4"><Loader2 className="animate-spin h-5 w-5 text-muted-foreground opacity-50" /></div>
+                                ) : diaristaData?.itens && diaristaData.itens.length > 0 ? (
+                                    <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-1">
+                                        {diaristaData.itens.map((c: any, i: number) => (
+                                            <div key={i} className="flex flex-col text-[11px] bg-white p-2 border border-border/40 rounded-md shadow-sm gap-1 hover:border-indigo-200 transition-colors">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="font-bold text-slate-800 truncate mr-2">{c.nome_colaborador || `Desconhecido`}</span>
+                                                    <span className="text-muted-foreground text-[10px] shrink-0 bg-slate-50 px-1.5 py-0.5 rounded uppercase">{c.tipo_evento}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center mt-0.5 pt-1 border-t border-border/30">
+                                                    <span className="text-muted-foreground font-medium">{c.horas} diárias</span>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-bold text-slate-900">{fmt(c.valor_calculado)}</span>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-6 w-6 text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50 shrink-0 shadow-sm border border-transparent hover:border-indigo-100"
+                                                            disabled={item.situacao !== "Em análise"}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setEditingDiarista(c);
+                                                                setDiaristaValor(String(c.valor_calculado || 0));
+                                                                setDiaristaMotivo("");
+                                                            }}
+                                                        >
+                                                            <Pencil size={12} />
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-xs text-muted-foreground text-center py-2">Nenhum diarista encontrado no lote.</p>
                                 )}
                             </div>
                         </div>
@@ -1047,6 +1134,54 @@ function DetailPanel({
                         }} disabled={isDevolvendo}>
                             {isDevolvendo ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
                             Confirmar Solicitação
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={!!editingDiarista} onOpenChange={(v) => { if (!v) setEditingDiarista(null) }}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Editar Lançamento: {editingDiarista?.nome_colaborador}</DialogTitle>
+                        <DialogDescription>
+                            Faça a correção no valor repassado ao colaborador. Esta alteração constará nos registros de auditoria financeira do RH.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <label className="text-sm font-semibold">Valor Corrigido (R$)</label>
+                            <Input
+                                type="number"
+                                step="0.01"
+                                value={diaristaValor}
+                                onChange={(e) => setDiaristaValor(e.target.value)}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm font-semibold">Motivo da Edição (Auditoria)</label>
+                            <Textarea
+                                placeholder="Justifique a mudança no valor..."
+                                className="min-h-[80px]"
+                                value={diaristaMotivo}
+                                onChange={(e) => setDiaristaMotivo(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setEditingDiarista(null)} disabled={editDiaristaMutation.isPending}>Cancelar</Button>
+                        <Button className="bg-indigo-600 hover:bg-indigo-700 text-white" onClick={() => {
+                            if (!diaristaMotivo.trim()) {
+                                toast.error("O motivo da edição é obrigatório para auditoria.");
+                                return;
+                            }
+                            editDiaristaMutation.mutate({
+                                id: editingDiarista.id,
+                                valor: Number(diaristaValor),
+                                motivo: diaristaMotivo
+                            });
+                        }} disabled={editDiaristaMutation.isPending}>
+                            {editDiaristaMutation.isPending ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
+                            Salvar Alterações
                         </Button>
                     </DialogFooter>
                 </DialogContent>

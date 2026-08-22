@@ -254,8 +254,13 @@ const RhDiaristasPainel = () => {
                 "PAGO"
             ].includes(l.status)
         );
+
+        if (loteAtivo && loteAtivo.tipo_reabertura === "administrativa" && (isAdmin || isRh)) {
+            return false;
+        }
+
         return !!loteAtivo;
-    }, [lotes, empresaFiltroId]);
+    }, [lotes, empresaFiltroId, isAdmin, isRh]);
 
     // periodoBloqueadoAdministrativo: verdadeiro quando o lote foi reaberto
     // em modo administrativo - usado para exibir aviso diferenciado
@@ -924,7 +929,7 @@ const RhDiaristasPainel = () => {
     });
 
     const updateRegraMutation = useMutation({
-        mutationFn: (payload: any) => DiaristaCicloService.updateRegraFechamento(payload),
+        mutationFn: (payload: any) => DiaristaCicloService.updateRegraFechamento((regraFechamento as any)?.id, payload),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["regra_fechamento_diaristas"] });
             toast.success("Configuração atualizada com sucesso.");

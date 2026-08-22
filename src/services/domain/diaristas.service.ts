@@ -321,6 +321,56 @@ class LancamentoDiaristaServiceClass {
       return data;
   }
 
+  async updateAdminWithRecalculate(id: string, loteId: string, payload: Partial<LancamentoDiaristaPayload> & { editado_admin: boolean; editado_por: string; editado_em: string; motivo_edicao: string; editado_por_nome: string; editado_por_role: string }) {
+      const tenantId = await getCurrentTenantId();
+      
+      const { data, error } = await (supabase as any)
+        .from('lancamentos_diaristas')
+        .update({
+            ...payload,
+            editado_admin: payload.editado_admin,
+            editado_por: payload.editado_por,
+            editado_em: payload.editado_em,
+            motivo_edicao: payload.motivo_edicao
+        })
+        .eq('id', id)
+        .select('*, empresa:empresas(nome)')
+        .single();
+        
+      if (error) throw error;
+
+      if (payload.motivo_edicao) {
+         await (supabase as any).from('diaristas_logs_fechamento').insert({
+             empresa_id: data.empresa_id,
+             tenant_id: tenantId,
+             usuario_id: payload.editado_por,
+             usuario_nome: payload.editado_por_nome,
+             usuario_role: payload.editado_por_role,
+             acao: 'EDICAO_LANCAMENTO_RH',
+             periodo_inicio: data.data_lancamento,
+             periodo_fim: data.data_lancamento,
+             motivo: `Ajuste RH. Motivo: ${payload.motivo_edicao}. Valor recalculado.`
+         });
+      }
+
+      if (loteId) {
+         const { data: todosLancamentos } = await (supabase as any)
+            .from('lancamentos_diaristas')
+            .select('valor_calculado')
+            .eq('lote_fechamento_id', loteId)
+            .neq('status', 'DEVOLVIDO');
+            
+         const valorTotal = (todosLancamentos || []).reduce((acc: number, item: any) => acc + (Number(item.valor_calculado) || 0), 0);
+         const totalRegistros = (todosLancamentos || []).length;
+         
+         await (supabase as any).from('diaristas_lotes_fechamento')
+            .update({ valor_total: valorTotal, total_registros: totalRegistros })
+            .eq('id', loteId);
+      }
+      
+      return data;
+  }
+
   async deleteAdmin(id: string) {
       const { error } = await (supabase as any)
         .from('lancamentos_diaristas')
@@ -1044,7 +1094,17 @@ class DiaristaCicloServiceClass {
     return data;
   }
 
-  async updateRegraFechamento(id: string, payload: any) {
+  async updateRegraFechamento(id: string | null | undefined, payload: any) {
+    if (!id) {
+        // Se ainda não existir a regra no banco para este cenário, vamos criá-la.
+        const { data, error } = await supabase
+            .from('regras_fechamento')
+            .insert([{ ...payload }])
+            .select()
+            .single();
+        if (error) throw error;
+        return data;
+    }
     const { data, error } = await supabase
       .from('regras_fechamento')
       .update({ ...payload, updated_at: new Date().toISOString() })
