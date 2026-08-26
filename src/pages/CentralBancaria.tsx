@@ -461,10 +461,10 @@ const CentralBancaria = () => {
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
             <TabsList className="bg-muted/50 p-1 rounded-xl border border-border/50 flex flex-wrap h-auto">
-              <TabsTrigger value="remessa">Remessa</TabsTrigger>
-              <TabsTrigger value="historico">Histórico</TabsTrigger>
-              <TabsTrigger value="retorno">Retorno</TabsTrigger>
-              <TabsTrigger value="diaristas">Pgto Diaristas</TabsTrigger>
+              <TabsTrigger value="remessa">Folha Oficial e CLT</TabsTrigger>
+              <TabsTrigger value="diaristas">Eventuais / Diaristas</TabsTrigger>
+              <TabsTrigger value="retorno">Conciliação Bancária (Retorno)</TabsTrigger>
+              <TabsTrigger value="historico">Auditoria e Arquivos Gerados</TabsTrigger>
             </TabsList>
 
             <TabsContent value="remessa">

@@ -60,6 +60,7 @@ const formatPipelineTimestamp = (value?: string | null) => {
 };
 
 const CentralFinanceira = () => {
+  const [subTabRh, setSubTabRh] = useState("todos");
   const navigate = useNavigate();
   const { openPipeline } = useOperationalPipeline();
   const { user } = useAuth();
@@ -167,6 +168,16 @@ const CentralFinanceira = () => {
       new Date(b.created_at).getTime() - new Date(a.getTime ? a.getTime() : a.created_at ? new Date(a.created_at).getTime() : 0)
     );
   }, [rawLotesRh, lotesDiaristas, selectedMonth]);
+
+  const lotesRhVisiveis = useMemo(() => {
+    return lotesRh.filter((l: any) => {
+      if (subTabRh === "todos") return true;
+      if (subTabRh === "folha") return l.tipo !== "DIARISTAS" && l.tipo !== "INTERMITENTES";
+      if (subTabRh === "diaristas") return l.tipo === "DIARISTAS";
+      if (subTabRh === "intermitentes") return l.tipo === "INTERMITENTES";
+      return true;
+    });
+  }, [lotesRh, subTabRh]);
 
   const latestRhSentAt = useMemo(
     () => formatPipelineTimestamp(lotesRh.find((lote: any) => lote.status !== "DEVOLVIDO_RH")?.created_at),
@@ -760,22 +771,29 @@ const CentralFinanceira = () => {
 
               <TabsContent value="lotes-rh" className="space-y-4">
                 <section className="esc-card overflow-hidden">
-                  <header className="px-5 py-4 border-b border-border flex items-center justify-between">
+                  <header className="px-5 py-4 border-b border-border flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
-                      <h2 className="font-display font-semibold text-foreground">Lotes recebidos do RH</h2>
+                      <h2 className="font-display font-semibold text-foreground">Inbox de Aprovação</h2>
                       <p className="text-sm text-muted-foreground">
                         Entregas oficiais enviadas pelo RH para análise e aprovação financeira.
                       </p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {(lotesRhPendentes.length > 0 || lotesRhProntosBancario.length > 0) && (
-                        <Badge className="bg-warning-soft text-warning-strong">
-                          {lotesRhPendentes.length + lotesRhProntosBancario.length} aguardando
+                    <div className="flex flex-col sm:flex-row items-center gap-3">
+                      <div className="flex bg-muted/50 p-1 rounded-md border border-border/50">
+                        <button onClick={() => setSubTabRh("todos")} className={cn("px-3 py-1 flex-1 text-xs font-medium rounded-sm transition-colors", subTabRh === "todos" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}>Todos</button>
+                        <button onClick={() => setSubTabRh("folha")} className={cn("px-3 py-1 flex-1 text-xs font-medium rounded-sm transition-colors", subTabRh === "folha" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}>Folha Oficial</button>
+                        <button onClick={() => setSubTabRh("diaristas")} className={cn("px-3 py-1 flex-1 text-xs font-medium rounded-sm transition-colors", subTabRh === "diaristas" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}>Diaristas</button>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {(lotesRhPendentes.length > 0 || lotesRhProntosBancario.length > 0) && (
+                          <Badge className="bg-warning-soft text-warning-strong shrink-0">
+                            {lotesRhPendentes.length + lotesRhProntosBancario.length} aguardando
+                          </Badge>
+                        )}
+                        <Badge className="bg-muted text-muted-foreground shrink-0">
+                          {lotesRhVisiveis.length} total
                         </Badge>
-                      )}
-                      <Badge className="bg-muted text-muted-foreground">
-                        {lotesRh.length} total
-                      </Badge>
+                      </div>
                     </div>
                   </header>
 
@@ -799,14 +817,14 @@ const CentralFinanceira = () => {
                               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground mx-auto" />
                             </td>
                           </tr>
-                        ) : lotesRh.length === 0 ? (
+                        ) : lotesRhVisiveis.length === 0 ? (
                           <tr>
                             <td colSpan={7} className="p-8 text-center text-muted-foreground italic">
-                              Nenhum lote do RH encontrado para os filtros atuais.
+                              Nenhuma aprovação encontrada para o filtro atual.
                             </td>
                           </tr>
                         ) : (
-                          lotesRh.map((lote: any) => {
+                          lotesRhVisiveis.map((lote: any) => {
                             const isAguardando = lote.status === "AGUARDANDO_FINANCEIRO";
                             const isEmAnalise = lote.status === "EM_ANALISE_FINANCEIRA";
                             const isAguardandoPagamento = lote.status === "AGUARDANDO_PAGAMENTO";
