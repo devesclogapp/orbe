@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { supabase } from "@/lib/supabase";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -552,7 +553,7 @@ const CentralFinanceira = () => {
                     </span>
                   )}
                 </TabsTrigger>
-                <TabsTrigger value="faturamento">Aprovações</TabsTrigger>
+                <TabsTrigger value="faturamento" className="esc-tab-trigger text-xs sm:text-sm">Faturamento (Clientes)</TabsTrigger>
                 <TabsTrigger value="custos-extras">Custos Extras</TabsTrigger>
                 <TabsTrigger value="servicos-extras">Serviços Extras</TabsTrigger>
                 <TabsTrigger value="fechamento">Fechamento</TabsTrigger>
@@ -1477,7 +1478,7 @@ const CentralFinanceira = () => {
             {/* Direita: Fechar / Iniciar / Aprovar */}
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setRhLoteSelecionado(null)}>Fechar</Button>
-              {rhLoteDetalhe && ["VALIDADO_RH", "AGUARDANDO_FINANCEIRO", "DEVOLVIDO_RH"].includes(rhLoteDetalhe.status) && (
+              {rhLoteDetalhe && rhLoteSelecionado?.tipo !== "DIARISTAS" && rhLoteSelecionado?.tipo !== "INTERMITENTES" && ["VALIDADO_RH", "AGUARDANDO_FINANCEIRO", "DEVOLVIDO_RH"].includes(rhLoteDetalhe.status) && (
                 <Button variant="outline" onClick={() => iniciarAnaliseMutation.mutate(rhLoteDetalhe.id)} disabled={iniciarAnaliseMutation.isPending}>
                   {iniciarAnaliseMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Search className="h-4 w-4 mr-2" />}
                   Iniciar Análise

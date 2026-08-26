@@ -196,21 +196,10 @@ const CentralBancaria = () => {
   const loadingLotesRh = loadingRhLotes || loadingDiaristas;
 
   const lotesRh = useMemo(() => {
-    const diaristasFormatted = lotesDiaristas
-      .filter((l: any) => l.status === "FECHADO_FINANCEIRO" || l.status === "AGUARDANDO_PAGAMENTO")
-      .map((l: any) => ({
-        ...l,
-        tipo: "DIARISTAS",
-        origem: "OPERACIONAL",
-        status: "AGUARDANDO_PAGAMENTO",
-        competencia: l.periodo_inicio?.slice(0, 7),
-      }))
-      .filter((l: any) => !competencia || l.competencia === competencia);
-
-    return [...rawLotesRh, ...diaristasFormatted].sort((a, b) =>
+    return [...rawLotesRh].sort((a, b) =>
       new Date(b.created_at).getTime() - new Date(a.getTime ? a.getTime() : a.created_at ? new Date(a.created_at).getTime() : 0)
     );
-  }, [rawLotesRh, lotesDiaristas, competencia]);
+  }, [rawLotesRh, loteRhSelecionadoId]);
 
   const lotesRhProntosCnab = useMemo(
     () => (lotesRh || []).filter((lote: any) => lote.status === "AGUARDANDO_PAGAMENTO"),

@@ -850,6 +850,7 @@ const RhDiaristasPainel = () => {
             queryClient.invalidateQueries({ queryKey: ["diaristas_lancamento"] });
             refetchHistorico();
             refetchLotes();
+            refetch();
             // Fechar modal
             setOpenReabertura(false);
             setMotivoReabertura("");
