@@ -20,6 +20,7 @@ import {
   Search,
   UnlockKeyhole,
   Wallet,
+  Lightbulb,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -208,9 +209,6 @@ const CentralFinanceira = () => {
       if (!rhLoteSelecionado?.id) return null;
       if (rhLoteSelecionado.tipo === "DIARISTAS") {
         return LoteFechamentoDiaristaService.getLoteDetalhe(rhLoteSelecionado.id);
-      }
-      if (rhLoteSelecionado.tipo === "INTERMITENTES") {
-        return IntermitentesLoteService.getLoteDetalhe(rhLoteSelecionado.id);
       }
       return RHFinanceiroService.getLoteDetalhe(rhLoteSelecionado.id);
     },
@@ -798,6 +796,19 @@ const CentralFinanceira = () => {
                   </header>
 
                   <div className="overflow-x-auto">
+                    <div className="bg-primary/5 mx-5 my-4 px-4 py-3 rounded-lg border border-primary/20 flex flex-col md:flex-row md:items-center gap-3 shadow-sm border-l-4 border-l-primary">
+                      <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                        <Lightbulb className="h-4 w-4 text-primary" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-semibold text-primary-strong">Guia Financeiro: Entenda este Inbox</h4>
+                        <p className="text-sm text-primary-strong/80 leading-relaxed mt-0.5">
+                          Lotes aprovados pelo RH chegam aqui consolidados como <strong>Despesas Operacionais (Pagamentos)</strong>.<br />
+                          As pendências faturadas diretamente ao cliente (<strong>Receitas</strong>) encontram-se na aba <strong className="text-primary-strong underline cursor-pointer hover:text-primary transition-colors" onClick={() => setActiveTab("faturamento")}>Faturamento (Clientes)</strong>.
+                        </p>
+                      </div>
+                    </div>
+
                     <table className="w-full text-sm">
                       <thead className="esc-table-header">
                         <tr className="text-left text-muted-foreground">

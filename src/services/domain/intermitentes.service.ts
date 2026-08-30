@@ -103,6 +103,8 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       testIds
     }) as any;
 
+    console.log("DEBUG EVENT - EXECUTING QUERY FOR FECHAR PERIODO WITH EMPRESA ID", params.empresaId, "tenant", tenantId);
+
     const { data: lancamentos, error: queryError } = await query;
     if (queryError) throw queryError;
 
@@ -405,26 +407,86 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       .eq('id', rhLoteId);
   }
 
-  async aprovarFinanceiro(loteId: string, validadoPor: string) {
-    const { error: loteError } = await this.supabase
-      .from('intermitentes_lotes_fechamento')
-      .update({
-        status: 'FECHADO_FINANCEIRO',
-        validated_by: validadoPor,
-        validated_at: new Date().toISOString()
-      })
-      .eq('id', loteId);
-
-    if (loteError) throw loteError;
-
-    const { error: itemError } = await this.supabase
-      .from('lancamentos_intermitentes')
-      .update({ status_pipeline: 'ENVIADO_FINANCEIRO' }) // Equivalente local, a instrução disse ENVIADO_FINANCEIRO ou equivalente
-      .eq('lote_fechamento_id', loteId);
-
-    if (itemError) throw itemError;
+  async aprovarFinanceiro(idPassed: string, validadoPor: string) {
+    if (!validadoPor) throw new Error('O validador é obrigatório.');
     
-    await this.syncToRHFinanceiro(loteId, 'FECHADO_FINANCEIRO');
+    // Resolve which ID was passed (Central Financeira = Financial Lote ID; Aprovações RH = Operational Lote ID)
+    let rhLoteId = idPassed;
+    let operationalLoteIds: string[] = [idPassed];
+    
+    // Try to treat it as Financial Lote first
+    const { data: itens, error: itensErr } = await this.supabase
+      .from('rh_financeiro_lote_itens')
+      .select('referencia_evento_id')
+      .eq('lote_id', idPassed)
+      .eq('origem_evento', 'lancamentos_intermitentes');
+
+    if (!itensErr && itens && itens.length > 0) {
+      // It IS a Financial Lote
+      const lancamentoIds = itens.map((i: any) => i.referencia_evento_id).filter(Boolean);
+      const { data: lancamentos } = await this.supabase
+        .from('lancamentos_intermitentes')
+        .select('lote_fechamento_id')
+        .in('id', lancamentoIds);
+        
+      operationalLoteIds = [...new Set((lancamentos || []).map((l: any) => l.lote_fechamento_id).filter(Boolean))];
+    } else {
+       // It IS an Operational Lote
+       const { data: finLoteItem } = await this.supabase
+         .from('rh_financeiro_lote_itens')
+         .select('lote_id, origem_evento, referencia_evento_id')
+         .eq('origem_evento', 'lancamentos_intermitentes')
+         .limit(100);
+         
+       const { data: oppLote } = await this.supabase.from('lancamentos_intermitentes').select('id').eq('lote_fechamento_id', idPassed);
+       const oppIds = (oppLote || []).map(x => x.id);
+       const match = (finLoteItem || []).find(fi => oppIds.includes(fi.referencia_evento_id));
+       
+       if (match) {
+          rhLoteId = match.lote_id;
+       }
+    }
+
+    if (operationalLoteIds.length > 0) {
+      const { error: loteError } = await this.supabase
+        .from('intermitentes_lotes_fechamento')
+        .update({ status: 'FECHADO_FINANCEIRO' })
+        .in('id', operationalLoteIds);
+
+      if (loteError) throw loteError;
+
+      const { data: updatedLancamentos, error: selectErr } = await this.supabase
+        .from('lancamentos_intermitentes')
+        .select('id, lote_fechamento_id')
+        .in('lote_fechamento_id', operationalLoteIds);
+        
+      if (!selectErr && updatedLancamentos && updatedLancamentos.length > 0) {
+        await this.supabase
+          .from('lancamentos_intermitentes')
+          .update({ status_pipeline: 'ABERTO_FINANCEIRO' })
+          .in('id', updatedLancamentos.map(l => l.id));
+      }
+    }
+
+    const { data: userAuth } = await this.supabase.auth.getUser();
+    
+    // Only update Financial Lote if we found one
+    if (rhLoteId !== idPassed || idPassed === rhLoteId) {
+      if (rhLoteId) {
+        await this.supabase
+          .from('rh_financeiro_lote_historico')
+          .insert({
+            tenant_id: await getCurrentTenantId(),
+            lote_id: rhLoteId,
+            usuario_id: userAuth.user?.id,
+            acao: 'APROVEI_OPERACOES',
+            status_anterior: 'VALIDADO_RH',
+            status_novo: 'AGUARDANDO_FINANCEIRO',
+            observacao: 'Aprovações Intermitentes verificadas com sucesso.',
+          });
+      }
+    }
+    
     return true;
   }
 
@@ -506,23 +568,73 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
     };
   }
 
-  async devolverLote(loteId: string, observacao: string) {
+  async devolverLote(idPassed: string, observacao: string) {
     if (!observacao) throw new Error('A observação é obrigatória para devolver um lote.');
 
-    const { error: loteError } = await this.supabase
-      .from('intermitentes_lotes_fechamento')
-      .update({ status: 'DEVOLVIDO', observacoes: observacao })
-      .eq('id', loteId);
-    if (loteError) throw loteError;
+    let rhLoteId = idPassed;
+    let operationalLoteIds: string[] = [idPassed];
+    let lancamentoIds: string[] = [];
 
-    const { error: itemError } = await this.supabase
-      .from('lancamentos_intermitentes')
-      .update({ status_pipeline: 'DEVOLVIDO' })
-      .eq('lote_fechamento_id', loteId);
+    // Try to treat it as Financial Lote first
+    const { data: itens, error: itensErr } = await this.supabase
+      .from('rh_financeiro_lote_itens')
+      .select('referencia_evento_id')
+      .eq('lote_id', idPassed)
+      .eq('origem_evento', 'lancamentos_intermitentes');
 
-    if (itemError) throw itemError;
+    if (!itensErr && itens && itens.length > 0) {
+      // It IS a Financial Lote
+      lancamentoIds = itens.map((i: any) => i.referencia_evento_id).filter(Boolean);
+      const { data: lancamentos } = await this.supabase
+        .from('lancamentos_intermitentes')
+        .select('lote_fechamento_id')
+        .in('id', lancamentoIds);
+        
+      operationalLoteIds = [...new Set((lancamentos || []).map((l: any) => l.lote_fechamento_id).filter(Boolean))];
+    } else {
+       // It IS an Operational Lote
+       const { data: oppLote } = await this.supabase.from('lancamentos_intermitentes').select('id').eq('lote_fechamento_id', idPassed);
+       lancamentoIds = (oppLote || []).map(x => x.id);
+       
+       const { data: finLoteItem } = await this.supabase
+         .from('rh_financeiro_lote_itens')
+         .select('lote_id, origem_evento, referencia_evento_id')
+         .eq('origem_evento', 'lancamentos_intermitentes')
+         .limit(200);
+         
+       const match = (finLoteItem || []).find(fi => lancamentoIds.includes(fi.referencia_evento_id));
+       
+       if (match) {
+          rhLoteId = match.lote_id;
+       }
+    }
+
+    if (operationalLoteIds.length > 0) {
+      const { error: loteError } = await this.supabase
+        .from('intermitentes_lotes_fechamento')
+        .update({ status: 'DEVOLVIDO', observacoes: observacao })
+        .in('id', operationalLoteIds);
+
+      if (loteError) throw loteError;
+    }
+
+    if (lancamentoIds.length > 0) {
+      const { error: itemError } = await this.supabase
+        .from('lancamentos_intermitentes')
+        .update({ status_pipeline: 'DEVOLVIDO_RH' })
+        .in('id', lancamentoIds);
+
+      if (itemError) throw itemError;
+    }
+
+    const { RHFinanceiroService } = await import('../rhFinanceiro.service');
+    if (rhLoteId && rhLoteId !== idPassed || rhLoteId) {
+      // If we found a valid RH Lote ID (or we were passed one initially), devolve to RH
+      // Because sometimes operational modules do NOT have a financial lot yet (never closed successfully).
+      // If we get an error from the financial service, we suppress it because the operational update succeeded.
+      await RHFinanceiroService.devolverAoRH(rhLoteId, observacao).catch((e) => console.warn("Lote já bloqueado ou inexistente no painel financeiro: ", e));
+    }
     
-    await this.syncToRHFinanceiro(loteId, 'DEVOLVIDO');
     return true;
   }
 
@@ -764,6 +876,31 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       totalRegistros: resultado.total_beneficiarios,
       valorTotal:     resultado.valor_total,
     };
+  }
+  async atualizarLancamento(id: string, payload: Partial<{
+    empresa_id: string | null;
+    horas_trabalhadas: number;
+    horas_normais: number;
+    he_50: number;
+    he_100: number;
+    hora_noturna: number;
+    total: number;
+    status_pipeline: string;
+  }>) {
+    const { data: userAuth } = await this.supabase.auth.getUser();
+    if (!userAuth?.user) throw new Error("Usuário não autenticado.");
+    
+    // Atualiza o registro principal
+    const { error } = await this.supabase
+      .from('lancamentos_intermitentes')
+      .update({
+        ...payload,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id);
+
+    if (error) throw error;
+    return true;
   }
 }
 

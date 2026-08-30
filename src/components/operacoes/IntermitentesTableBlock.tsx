@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Pencil } from "lucide-react";
 import { cn, decimalParaHora } from "@/lib/utils";
 
 type IntermitenteItem = {
@@ -26,6 +28,7 @@ type IntermitenteItem = {
 
 type IntermitentesTableBlockProps = {
     data: IntermitenteItem[];
+    onEdit?: (item: IntermitenteItem) => void;
 };
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
@@ -40,7 +43,7 @@ const formatDate = (value?: string | null) => {
     return date.toLocaleDateString("pt-BR");
 };
 
-export function IntermitentesTableBlock({ data }: IntermitentesTableBlockProps) {
+export function IntermitentesTableBlock({ data, onEdit }: IntermitentesTableBlockProps) {
     return (
         <div className="space-y-4 p-5 pt-2 min-w-0 overflow-hidden">
             <div className="w-full overflow-x-auto pb-2 scrollbar-thin">
@@ -61,6 +64,7 @@ export function IntermitentesTableBlock({ data }: IntermitentesTableBlockProps) 
                                 <th className="px-2 py-2 font-semibold text-center">TOTAL</th>
                                 <th className="px-2 py-2 font-semibold text-center">STATUS RH</th>
                                 <th className="px-2 py-2 font-semibold text-center">ORIGEM</th>
+                                {onEdit && <th className="px-2 py-2 font-semibold text-center">AÇÕES</th>}
                             </tr>
                         </thead>
                         <tbody>
@@ -119,11 +123,26 @@ export function IntermitentesTableBlock({ data }: IntermitentesTableBlockProps) 
                                             {item.origem || "—"}
                                         </Badge>
                                     </td>
+                                    {onEdit && (
+                                        <td className="px-2 py-1.5 text-center whitespace-nowrap">
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-7 w-7 text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50 shrink-0 shadow-[0_1px_2px_rgba(0,0,0,0.05)] border border-transparent hover:border-indigo-100"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onEdit(item);
+                                                }}
+                                            >
+                                                <Pencil size={13} strokeWidth={2.5} />
+                                            </Button>
+                                        </td>
+                                    )}
                                 </tr>
                             ))}
                             {data.length === 0 && (
                                 <tr>
-                                    <td colSpan={13} className="px-3 py-10 text-center text-muted-foreground">
+                                    <td colSpan={onEdit ? 14 : 13} className="px-3 py-10 text-center text-muted-foreground">
                                         Nenhum registro de intermitentes encontrado para o período.
                                     </td>
                                 </tr>

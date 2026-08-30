@@ -15,6 +15,7 @@ import {
     DollarSign,
     Moon,
     CheckCircle2,
+    Pencil,
 } from "lucide-react";
 
 import { AppShell } from "@/components/layout/AppShell";
@@ -124,6 +125,13 @@ const IntermitentesRecebidos = () => {
     const [filterText, setFilterText] = useState("");
     const [lotesFechados, setLotesFechados] = useState<any[] | null>(null);
     const [activeTab, setActiveTab] = useState("pendentes");
+
+    // Edição
+    const [editingItem, setEditingItem] = useState<any | null>(null);
+    const [editEmpresaId, setEditEmpresaId] = useState<string>("all");
+    const [editHoras, setEditHoras] = useState<string>("");
+    const [editTotal, setEditTotal] = useState<string>("");
+
     const { user } = useAuth();
     const queryClient = useQueryClient();
 
@@ -260,6 +268,25 @@ const IntermitentesRecebidos = () => {
         onError: (err: any) => {
             toast.error("Erro ao reabrir lote.", { description: err?.message || "" });
         }
+    });
+
+    const editItemMutation = useMutation({
+        mutationFn: async () => {
+            if (!editingItem) return;
+            return await IntermitentesLoteService.atualizarLancamento(editingItem.id, {
+                empresa_id: editEmpresaId === "all" ? null : editEmpresaId,
+                total: parseFloat(editTotal.replace(",", ".")) || 0,
+                horas_trabalhadas: parseFloat(editHoras.replace(",", ".")) || 0,
+                // Se o item estava devolvido por conta de inconsistencia e resolveu o problema (colocou empresa), devolve para a fila de RECEBIDOS
+                status_pipeline: 'RECEBIDO'
+            });
+        },
+        onSuccess: () => {
+            toast.success("Registro atualizado com sucesso!");
+            queryClient.invalidateQueries({ queryKey: ["intermitentes-recebidos"] });
+            setEditingItem(null);
+        },
+        onError: (err: any) => toast.error("Erro ao salvar", { description: err?.message })
     });
 
     return (
@@ -428,7 +455,12 @@ const IntermitentesRecebidos = () => {
                                     <p className="text-sm text-rose-500/80 text-center max-w-md">Não foi possível buscar a listagem do Tio Digital. Tente recarregar a página ou contate o suporte.</p>
                                 </div>
                             ) : (
-                                <IntermitentesTableBlock data={filteredData} />
+                                <IntermitentesTableBlock data={filteredData} onEdit={activeTab === 'pendentes' ? (item) => {
+                                    setEditingItem(item);
+                                    setEditEmpresaId(item.empresa_id || "all");
+                                    setEditTotal(item.total ? String(item.total).replace(".", ",") : "0,00");
+                                    setEditHoras(item.horas_trabalhadas ? String(item.horas_trabalhadas).replace(".", ",") : "0");
+                                } : undefined} />
                             )}
                         </div>
                     </Tabs>
@@ -474,6 +506,62 @@ const IntermitentesRecebidos = () => {
                     <DialogFooter>
                         <Button onClick={() => setLotesFechados(null)} className="w-full">
                             Entendi
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Modal de Edição (Correção de Lote) */}
+            <Dialog open={!!editingItem} onOpenChange={(v) => !v && setEditingItem(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Pencil className="h-4 w-4" />
+                            Corrigir Registro Intermitente
+                        </DialogTitle>
+                        <DialogDescription>
+                            Para aprovar no financeiro, o colaborador {editingItem?.nome_colaborador || "—"} precisa ter uma empresa vinculada.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                        <div className="space-y-2">
+                            <Label className="text-sm font-semibold">Empresa / Operação</Label>
+                            <Select value={editEmpresaId} onValueChange={setEditEmpresaId}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Sem empresa vinculada" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Sem empresa vinculada</SelectItem>
+                                    {(empresas as any[]).map((emp) => (
+                                        <SelectItem key={emp.id} value={emp.id}>{emp.nome}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label className="text-sm font-semibold">Horas Trabalhadas</Label>
+                                <Input
+                                    value={editHoras}
+                                    onChange={(e) => setEditHoras(e.target.value)}
+                                    placeholder="Ex: 8,50"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label className="text-sm font-semibold">Valor Total (R$)</Label>
+                                <Input
+                                    value={editTotal}
+                                    onChange={(e) => setEditTotal(e.target.value)}
+                                    placeholder="Ex: 120,00"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setEditingItem(null)} disabled={editItemMutation.isPending}>Cancelar</Button>
+                        <Button onClick={() => editItemMutation.mutate()} disabled={editItemMutation.isPending}>
+                            {editItemMutation.isPending ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
+                            Salvar Correção
                         </Button>
                     </DialogFooter>
                 </DialogContent>

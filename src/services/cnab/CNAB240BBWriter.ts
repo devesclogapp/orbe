@@ -234,12 +234,12 @@ export class CNAB240BBWriter implements ICNAB240Writer {
 
     const itensParaRpc = faturas.map(fura => {
       const rec = fura as any;
-      const tipo = rhLoteId ? 'RH_FINANCEIRO_ITEM' : 'FATURA';
+      const tipo = rhLoteId ? 'CLT' : 'FATURA';
       return {
         origem_tipo: tipo,
         origem_id: rec.id,
         fatura_id: tipo === 'FATURA' ? rec.id : undefined,
-        lote_item_id: tipo === 'RH_FINANCEIRO_ITEM' ? rec.id : undefined,
+        lote_item_id: tipo === 'CLT' ? rec.id : undefined,
         valor: Number(rec.valor ?? 0)
       };
     });

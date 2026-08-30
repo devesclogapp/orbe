@@ -16,146 +16,74 @@ export const CnabConciliacaoService = {
         .eq('retorno_arquivo_id', retornoArquivoId);
 
       if (errItens) throw errItens;
-      const todosItens = (todosItensData ?? []) as CnabRetornoItem[];
-      if (todosItens.length === 0) return { success: true, message: 'Nenhum item analisável' };
+      const cnabRetornoItens = (todosItensData ?? []) as any[];
 
-      const lotesRhItens = new Map<string, CnabRetornoItem[]>();
-      const diaristasLotes = new Map<string, CnabRetornoItem[]>();
-      const intermitentesLotes = new Map<string, CnabRetornoItem[]>();
+      const cnabRemessaIds = [...new Set(cnabRetornoItens.map(i => i.remessa_arquivo_id).filter(Boolean))];
+      if (cnabRemessaIds.length === 0) return { success: true, message: 'Sem remessas atreladas.' };
 
-      for (const item of todosItens) {
-        if (item.lote_id) {     
-          if (!lotesRhItens.has(item.lote_id)) lotesRhItens.set(item.lote_id, []);
-          lotesRhItens.get(item.lote_id)!.push(item);
-        }
-        if (item.diaristas_lote_id) {
-          if (!diaristasLotes.has(item.diaristas_lote_id)) diaristasLotes.set(item.diaristas_lote_id, []);
-          diaristasLotes.get(item.diaristas_lote_id)!.push(item);
-        }
-        if (item.intermitentes_lote_id) {
-          if (!intermitentesLotes.has(item.intermitentes_lote_id)) intermitentesLotes.set(item.intermitentes_lote_id, []);
-          intermitentesLotes.get(item.intermitentes_lote_id)!.push(item);
-        }
+      // 1. Encontrar todos os IDs mapeados em cnab_remessa_itens
+      const { data: remessaItens } = await supabase.from('cnab_remessa_itens').select('remessa_id, origem_tipo, origem_id, fatura_id').in('remessa_id', cnabRemessaIds);
+      const rmMap = new Map((remessaItens || []).map(r => [`${r.remessa_id}-${r.origem_id || r.fatura_id}`, r]));
+
+      const rhLoteItemIdsPaid: string[] = [];
+      const colabsPagosDiaria: { colabId: string, loteId: string }[] = [];
+      const colabsPagosIntermitente: { colabId: string, loteId: string }[] = [];
+
+      // 2. Classificá-los verificando origem_tipo
+      for (const item of cnabRetornoItens) {
+         if (item.status === 'pago' || item.status === 'PAGO') {
+            const rel = rmMap.get(`${item.remessa_arquivo_id}-${item.fatura_id}`);
+            if (rel?.origem_tipo === 'CLT' || rel?.origem_tipo === 'RH_FINANCEIRO_ITEM' || rel?.origem_tipo === 'INTERMITENTE') {
+               rhLoteItemIdsPaid.push(item.fatura_id);
+            }
+         }
       }
 
-      const itensConciliados: string[] = [];
-      const tenantId = await getCurrentTenantId();
+      // 3. Resgatar os Detalhes da Origem (Para baixar os pipelines operacionais originais)
+      if (rhLoteItemIdsPaid.length > 0) {
+         const { data: rhItensList } = await supabase.from('rh_financeiro_lote_itens').select('id, lote_id, colaborador_id, rh_financeiro_lotes(tipo, competencia, empresa_id)').in('id', rhLoteItemIdsPaid);
+         const lotesUnicos = new Map<string, any>();
 
-      // ——— RH / Faturas (genérico) ———
-      for (const [loteId, itens] of lotesRhItens.entries()) {
-        const itemPagoIds = itens.filter(i => i.status === 'pago').map(i => i.fatura_id).filter(Boolean);
-        
-        if (itemPagoIds.length > 0) {
-          // Bloco 4 Segregation
-          const { data: fSample } = await supabase.from('faturas').select('empresa_id').in('id', itemPagoIds).limit(1).maybeSingle();
-          if (fSample?.empresa_id) {
-             try {
-               await EnvironmentService.assertEmpresaAllowed({ tenantId, empresaId: fSample.empresa_id });
-             } catch(e) {
-               console.warn(`[Baixa Financeira] Lote de RH ${loteId} pertence a contexto isolado e será ignorado.`);
-               continue;
-             }
-          }
-          await supabase.from('faturas')
-            .update({ status: 'pago' })
-            .in('id', itemPagoIds);
-          
-          itens.filter(i => i.status === 'pago').forEach(i => itensConciliados.push(i.id));
-        }
+         if (rhItensList) {
+           for (const rhItem of rhItensList) {
+             const parentNode = rhItem.rh_financeiro_lotes;
+             const parent = Array.isArray(parentNode) ? parentNode[0] : parentNode;
+             if (!parent) continue;
 
-        const temDivergencia = itens.some(i => i.status === 'divergente' || i.status === 'rejeitado' || i.status === 'pendente' || i.status === 'desconhecido');
-        const { data: faturasLote } = await supabase.from('faturas').select('status').eq('lote_remessa_id', loteId);
-        // Considerando que as aprovadas foram transformadas em pago agorinha
-        const todasPagas = (faturasLote ?? []).every(f => f.status === 'pago' || f.status === 'PAGO');
+             lotesUnicos.set(rhItem.lote_id, parent);
 
-        if (!temDivergencia && todasPagas) {
-          await supabase.from('lotes_remessa')
-            .update({ status: 'pago', updated_at: new Date().toISOString() })
-            .eq('id', loteId);
-        }
+             if (parent.tipo === 'DIARISTAS') colabsPagosDiaria.push({ colabId: rhItem.colaborador_id, loteId: rhItem.lote_id });
+             if (parent.tipo === 'INTERMITENTES') colabsPagosIntermitente.push({ colabId: rhItem.colaborador_id, loteId: rhItem.lote_id });
+           }
+
+           // Trata as pendências Diaristas
+           if (colabsPagosDiaria.length > 0) {
+              for(const b of lotesUnicos.values()) {
+                 if (b.tipo !== 'DIARISTAS') continue;
+                 const { data: diagLote } = await supabase.from('diaristas_lotes_fechamento').select('id').eq('empresa_id', b.empresa_id).eq('mes_referencia', b.competencia).maybeSingle();
+                 if (diagLote?.id) {
+                    await supabase.from('diaristas_lotes_fechamento').update({ status: 'PAGO' }).eq('id', diagLote.id);
+                    await supabase.from('lancamentos_diaristas').update({ status: 'PAGO' }).eq('lote_fechamento_id', diagLote.id).in('diarista_id', colabsPagosDiaria.map(x=>x.colabId));
+                 }
+              }
+           }
+
+           // Trata as pendências Intermitentes
+           if (colabsPagosIntermitente.length > 0) {
+              for(const b of lotesUnicos.values()) {
+                 if (b.tipo !== 'INTERMITENTES') continue;
+                 const { data: intLote } = await supabase.from('intermitentes_lotes_fechamento').select('id').eq('empresa_id', b.empresa_id).eq('competencia', b.competencia).maybeSingle();
+                 if (intLote?.id) {
+                    await supabase.from('intermitentes_lotes_fechamento').update({ status: 'PAGO' }).eq('id', intLote.id);
+                    await supabase.from('lancamentos_intermitentes').update({ status_pipeline: 'PAGO' }).eq('lote_fechamento_id', intLote.id).in('colaborador_id', colabsPagosIntermitente.map(x=>x.colabId));
+                 }
+              }
+           }
+         }
       }
 
-      // ——— Diaristas ———
-      for (const [loteId, itens] of diaristasLotes.entries()) {
-        const itensPagos = itens.filter(i => i.status === 'pago');
-        const colabIds = itensPagos.map(i => i.colaborador_id).filter(Boolean);
-        
-        if (colabIds.length > 0) {
-          // Bloco 4 Segregation
-          const { data: lotSample } = await supabase.from('diaristas_lotes_fechamento').select('empresa_id').eq('id', loteId).maybeSingle();
-          if (lotSample?.empresa_id) {
-             try {
-               await EnvironmentService.assertEmpresaAllowed({ tenantId, empresaId: lotSample.empresa_id });
-             } catch(e) {
-               console.warn(`[Baixa Financeira] Lote de Diaristas ${loteId} pertence a contexto isolado e será ignorado.`);
-               continue;
-             }
-          }
-          await supabase.from('lancamentos_diaristas')
-            .update({ status: 'PAGO' })
-            .eq('lote_fechamento_id', loteId)
-            .in('diarista_id', colabIds);
-            
-          itensPagos.forEach(i => itensConciliados.push(i.id));
-        }
-
-        const temDivergencia = itens.some(i => i.status === 'divergente' || i.status === 'rejeitado' || i.status === 'pendente' || i.status === 'desconhecido');
-        const { data: lancamentosLote } = await supabase.from('lancamentos_diaristas').select('status').eq('lote_fechamento_id', loteId);
-        const todasPagas = (lancamentosLote || []).every(f => f.status === 'PAGO' || f.status === 'pago');
-
-        if (!temDivergencia && todasPagas) {
-           await supabase.from('diaristas_lotes_fechamento')
-             .update({ status: 'PAGO' })
-             .eq('id', loteId);
-        }
-      }
-
-      // ——— Intermitentes ———
-      for (const [loteId, itens] of intermitentesLotes.entries()) {
-        const itensPagos = itens.filter(i => i.status === 'pago');
-        const colabIds = itensPagos.map(i => i.colaborador_id).filter(Boolean);
-
-        if (colabIds.length > 0) {
-          // Bloco 4 Segregation
-          const { data: lotSample } = await supabase.from('intermitentes_lotes_fechamento').select('empresa_id').eq('id', loteId).maybeSingle();
-          if (lotSample?.empresa_id) {
-             try {
-               await EnvironmentService.assertEmpresaAllowed({ tenantId, empresaId: lotSample.empresa_id });
-             } catch(e) {
-               console.warn(`[Baixa Financeira] Lote de Intermitentes ${loteId} pertence a contexto isolado e será ignorado.`);
-               continue;
-             }
-          }
-          const { error: errLancamentos } = await supabase.from('lancamentos_intermitentes')
-            .update({ status_pipeline: 'PAGO' })
-            .eq('lote_fechamento_id', loteId)
-            .in('colaborador_id', colabIds);
-
-          if (errLancamentos) {
-            console.error(`[Baixa Financeira] Falha ao atualizar lancamentos_intermitentes para lote ${loteId}:`, errLancamentos.message);
-            // Não bloqueia os outros lotes, mas registra explicitamente
-          } else {
-            itensPagos.forEach(i => itensConciliados.push(i.id));
-          }
-        }
-
-        const temDivergencia = itens.some(i => i.status === 'divergente' || i.status === 'rejeitado' || i.status === 'pendente' || i.status === 'desconhecido');
-        const { data: lancamentosLote } = await supabase.from('lancamentos_intermitentes').select('status_pipeline').eq('lote_fechamento_id', loteId);
-        const todasPagas = (lancamentosLote || []).every(f => f.status_pipeline === 'PAGO' || f.status_pipeline === 'pago');
-
-        if (!temDivergencia && todasPagas) {
-          const { error: errLote } = await supabase.from('intermitentes_lotes_fechamento')
-            .update({ status: 'PAGO' })
-            .eq('id', loteId);
-
-          if (errLote) {
-            console.error(`[Baixa Financeira] Falha ao atualizar lote de intermitentes ${loteId} para PAGO:`, errLote.message);
-          }
-        }
-      }
-
-
-      // 3. Atualizar status de retorno `cnab_retorno_itens`
+      // 4. Fechamento das Conciliações
+      const itensConciliados = cnabRetornoItens.filter(i => i.status === 'pago' || i.status === 'PAGO').map(i => i.id);
       if (itensConciliados.length > 0) {
          // O Supabase tem limite de 1000 items em chamadas '.in()', se forem muitos é bom particionar. Assumo pequeno porte aqui.
          await supabase.from('cnab_retorno_itens')
