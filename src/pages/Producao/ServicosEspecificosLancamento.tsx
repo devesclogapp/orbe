@@ -28,6 +28,7 @@ export default function ServicosEspecificosLancamento() {
     const { tenantId } = useTenant();
     const { user } = useAuth();
     const navigate = useNavigate();
+  const { goBackUrl } = useContextualReturn("/producao");
     const queryClient = useQueryClient();
 
     const [empresaId, setEmpresaId] = useState('');

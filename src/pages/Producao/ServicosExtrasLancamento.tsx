@@ -18,6 +18,7 @@ import {
     Trash2,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useContextualReturn } from "@/hooks/useContextualReturn";
 import { toast } from "sonner";
 
 import { OperationalShell } from "@/components/layout/OperationalShell";
@@ -125,6 +126,7 @@ const formatCurrency = (value: number) => currencyFormatter.format(Number.isFini
 const ServicosExtrasLancamento = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
+  const { goBackUrl } = useContextualReturn("/operacional/servicos-extras");
     const queryClient = useQueryClient();
     const today = format(new Date(), "yyyy-MM-dd");
 
@@ -310,7 +312,7 @@ const ServicosExtrasLancamento = () => {
                         <Plus className="h-5 w-5 text-primary" />
                         Novo Lançamento
                     </h2>
-                    <Button variant="outline" size="sm" onClick={() => navigate("/producao")}>
+                    <Button variant="outline" size="sm" onClick={() => goBackUrl()}>
                         <ArrowLeft className="w-4 h-4 mr-2" /> Voltar
                     </Button>
                 </div>

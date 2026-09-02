@@ -6,13 +6,15 @@ import {
 import { OperationalShell } from "@/components/layout/OperationalShell";
 import { useAuth } from "@/contexts/AuthContext";
 
+import { useContextualReturn } from "@/hooks/useContextualReturn";
+
 // Modular Components
 import { RecentLaunchesList } from "@/components/operacoes/lancamento/RecentLaunchesList";
 import { OperacaoForm } from "@/components/operacoes/lancamento/OperacaoForm";
 
 const LancamentoProducao = () => {
     const { user } = useAuth();
-    const navigate = useNavigate();
+    const { goBackUrl } = useContextualReturn("/operacoes-volume");
     const empresaId = user?.user_metadata?.empresa_id || "";
 
     return (
@@ -23,7 +25,8 @@ const LancamentoProducao = () => {
             <div className="max-w-4xl mx-auto space-y-6 pb-20">
                 <OperacaoForm
                     mode="encarregado"
-                    onCancel={() => navigate(-1)}
+                    onCancel={() => goBackUrl()}
+
                 />
 
                 {/* Seção de Lançamentos Recentes */}

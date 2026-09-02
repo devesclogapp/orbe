@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useContextualReturn } from "@/hooks/useContextualReturn";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
@@ -54,6 +55,7 @@ const formatCurrency = (value: number) => currencyFormatter.format(Number.isFini
 const CustosExtrasLancamento = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { goBackUrl } = useContextualReturn("/operacional/custos-extras");
   const queryClient = useQueryClient();
   const [etapa, setEtapa] = useState(2); // Inicia no passo 2 pois o 1 foi a seleção de rota
   const today = format(new Date(), "yyyy-MM-dd");
@@ -130,7 +132,7 @@ const CustosExtrasLancamento = () => {
     onSuccess: () => {
       toast.success("Custo extra registrado com sucesso!");
       queryClient.invalidateQueries({ queryKey: ["custos-extras-hoje"] });
-      navigate("/producao");
+      goBackUrl();
     },
     onError: (err: any) => toast.error("Erro ao salvar: " + err.message)
   });
@@ -141,7 +143,7 @@ const CustosExtrasLancamento = () => {
         {/* Header do Wizard */}
         <div className="flex items-center justify-between px-2">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => etapa === 2 ? navigate("/producao") : setEtapa(prev => prev - 1)}>
+            <Button variant="ghost" size="icon" onClick={() => etapa === 2 ? goBackUrl() : setEtapa(prev => prev - 1)}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <div>
@@ -241,7 +243,7 @@ const CustosExtrasLancamento = () => {
 
           {/* Botões de Navegação */}
           <div className="fixed bottom-0 left-0 right-0 bg-white border-t p-4 flex justify-between gap-4 z-50 lg:left-64">
-            <Button type="button" variant="outline" className="flex-1 h-12" onClick={() => etapa === 2 ? navigate("/producao") : setEtapa(prev => prev - 1)}>
+            <Button type="button" variant="outline" className="flex-1 h-12" onClick={() => etapa === 2 ? goBackUrl() : setEtapa(prev => prev - 1)}>
               <ChevronLeft className="h-4 w-4 mr-2" /> Voltar
             </Button>
             {etapa < 4 ? (

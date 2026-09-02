@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useNavigate } from "react-router-dom";
+import { useContextualReturn } from "@/hooks/useContextualReturn";
 
 import { OperationalShell } from "@/components/layout/OperationalShell";
 import { Button } from "@/components/ui/button";
@@ -114,6 +115,7 @@ const DiaristasLancamento = () => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
     const navigate = useNavigate();
+  const { goBackUrl } = useContextualReturn("/operacional/diaristas");
     const { openPipeline } = useOperationalPipeline();
 
     /* Semana selecionada — começa no domingo da semana atual mas exibe de seg–dom */
@@ -555,7 +557,7 @@ const DiaristasLancamento = () => {
                 empresa: empresaNome,
                 currentStep: "lote_fechado",
             }));
-            navigate("/producao");
+            goBackUrl();
         },
         onError: (err: any) => toast.error("Erro ao fechar período.", { description: err.message }),
     });
@@ -579,7 +581,7 @@ const DiaristasLancamento = () => {
         <OperationalShell
             title="Lançamento de Diaristas"
             showBack={false}
-            onBack={() => navigate("/producao")}
+            onBack={() => goBackUrl()}
             hideFab={true}
             pipelineTrigger={diaristasReviewTrigger}
         >
@@ -588,7 +590,7 @@ const DiaristasLancamento = () => {
                 {/* Header: seletor de empresa + unidade + semana */}
                 <section className="esc-card p-5 space-y-4">
                     <div className="flex items-center gap-3">
-                        <button onClick={() => navigate("/producao")} className="text-muted-foreground hover:text-foreground p-1">
+                        <button onClick={() => goBackUrl()} className="text-muted-foreground hover:text-foreground p-1">
                             <ArrowLeft className="w-5 h-5" />
                         </button>
                         <div>
