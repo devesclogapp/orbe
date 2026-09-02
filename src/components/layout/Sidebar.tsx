@@ -111,7 +111,7 @@ const groups: MenuGroup[] = [
     label: "Operações por Volume",
     stageKey: "entradas",
     items: [
-      { icon: Plus, label: "Nova Operação", to: "/operacoes-volume/nova", module: "central_operacional" },
+      { icon: Plus, label: "Nova Operação", to: "/operacoes-volume?action=nova", module: "central_operacional" },
       { icon: Package, label: "Operações / Recebidos", to: "/operacoes-volume", module: "operacoes_recebidas", pulseKey: "operacoes_recebidas" },
       { icon: AlertTriangle, label: "Pendências", to: "/inconsistencias", module: "operacoes_recebidas" },
       { icon: Shield, label: "Aprovações", to: "/operacoes-volume/aprovacoes", module: "processamento_rh" },
@@ -149,7 +149,6 @@ const groups: MenuGroup[] = [
     label: "Diaristas",
     stageKey: "entradas",
     items: [
-      { icon: Plus, label: "Novo Lançamento", to: "/producao/diaristas", module: "central_operacional" },
       { icon: Users, label: "Recebidos / Lançamentos", to: "/operacional/diaristas", module: "diaristas_recebidos", pulseKey: "diaristas_recebidos" },
       { icon: AlertTriangle, label: "Pendências", to: "/inconsistencias", module: "operacoes_recebidas" },
       { icon: Shield, label: "Aprovações", to: "/diaristas/aprovacoes", module: "processamento_rh" },
@@ -161,8 +160,8 @@ const groups: MenuGroup[] = [
     label: "Serviços Extras",
     stageKey: "entradas",
     items: [
-      { icon: Plus, label: "Novo Lançamento", to: "/servicos-extras/novo", module: "central_operacional" },
-      { icon: Wrench, label: "Lançamentos / Recebidos", to: "/servicos-extras/lancamentos", module: "central_operacional", pulseKey: "servicos_extras" },
+      { icon: Plus, label: "Novo Lançamento", to: "/servicos-extras/lancamentos?action=nova", module: "central_operacional" },
+      { icon: Wrench, label: "Recebidos / Lançamentos", to: "/servicos-extras/lancamentos", module: "operacoes_recebidas", pulseKey: "servicos_extras" },
       { icon: Shield, label: "Aprovações", to: "/rh/aprovacoes", module: "processamento_rh" },
       { icon: FileText, label: "Faturamento", to: "/financeiro/faturamento", module: "central_financeira" },
     ],
@@ -172,8 +171,8 @@ const groups: MenuGroup[] = [
     label: "Custos Extras",
     stageKey: "entradas",
     items: [
-      { icon: Plus, label: "Novo Lançamento", to: "/custos-extras/novo", module: "central_operacional" },
-      { icon: Wallet, label: "Lançamentos / Recebidos", to: "/custos-extras/lancamentos", module: "central_operacional", pulseKey: "custos_extras" },
+      { icon: Plus, label: "Novo Lançamento", to: "/custos-extras/lancamentos?action=nova", module: "central_operacional" },
+      { icon: Wallet, label: "Recebidos / Lançamentos", to: "/custos-extras/lancamentos", module: "operacoes_recebidas", pulseKey: "custos_extras" },
       { icon: Shield, label: "Aprovações", to: "/rh/aprovacoes", module: "processamento_rh" },
       { icon: Banknote, label: "Pagamentos / Contas a Pagar", to: "/financeiro/contas-bancarias", module: "pagamentos_remessas" },
     ],

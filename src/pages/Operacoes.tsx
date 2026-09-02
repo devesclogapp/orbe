@@ -464,6 +464,16 @@ const Operacoes = () => {
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
 
+  useEffect(() => {
+    if (searchParams.get("action") === "nova") {
+      setNovaOpOpen(true);
+      // Remove query param to avoid reopening on refresh
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete("action");
+      navigate({ search: newParams.toString() }, { replace: true });
+    }
+  }, [searchParams, navigate]);
+
   const selectedMonth = `${selectedYear}-${selectedMonthNumber}`;
   const isAllMonthsSelected = selectedMonthNumber === "all";
   const selectedDate = useMemo(

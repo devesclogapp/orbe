@@ -15,7 +15,7 @@ import {
     AlertTriangle,
     Plus,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { Badge } from "@/components/ui/badge";
@@ -124,6 +124,16 @@ const ServicosExtrasRecebidos = () => {
     const [filterYear, setFilterYear] = useState<string>(format(new Date(), "yyyy"));
     const [isNovoServicoModalOpen, setIsNovoServicoModalOpen] = useState(false);
     const [serviceToEdit, setServiceToEdit] = useState<any>(null);
+    const [searchParams] = useSearchParams();
+
+    useEffect(() => {
+        if (searchParams.get("action") === "nova") {
+            setIsNovoServicoModalOpen(true);
+            const newParams = new URLSearchParams(searchParams);
+            newParams.delete("action");
+            navigate({ search: newParams.toString() }, { replace: true });
+        }
+    }, [searchParams, navigate]);
 
     useEffect(() => {
         const handleOpenEdit = (e: any) => {

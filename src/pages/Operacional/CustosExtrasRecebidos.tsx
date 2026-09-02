@@ -18,8 +18,9 @@ import {
     UtensilsCrossed,
     ShoppingCart,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
+import { useEffect } from "react";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { CustosExtrasTableBlock } from "@/components/operacoes/CustosExtrasTableBlock";
@@ -134,6 +135,16 @@ const CustosExtrasRecebidos = () => {
     const [filterMonth, setFilterMonth] = useState<string>(format(new Date(), "MM"));
     const [filterYear, setFilterYear] = useState<string>(format(new Date(), "yyyy"));
     const [isLaunchSheetOpen, setIsLaunchSheetOpen] = useState(false);
+    const [searchParams] = useSearchParams();
+
+    useEffect(() => {
+        if (searchParams.get("action") === "nova") {
+            setIsLaunchSheetOpen(true);
+            const newParams = new URLSearchParams(searchParams);
+            newParams.delete("action");
+            navigate({ search: newParams.toString() }, { replace: true });
+        }
+    }, [searchParams, navigate]);
 
     const { data: empresas = [] } = useQuery({ queryKey: ["empresas-all"], queryFn: () => EmpresaService.getAll() });
 

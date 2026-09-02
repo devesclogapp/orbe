@@ -51,3 +51,4 @@ A estrutura evolutiva seguirá a tag de baseline por checkpoints progressivos ho
 
 ## Regra Fundamental
 Conforme estabelecido pela FASE 0, não existirá adição, correção comportamental (ex. fix do test segregation de CNAB) ou remanejamento lógico atrelado à navegação que seja mascarado sob a rubrica desta feature. Toda mudança se reserva apenas a navegação, rotas e cascatas de layout (UI/UX).
+    
