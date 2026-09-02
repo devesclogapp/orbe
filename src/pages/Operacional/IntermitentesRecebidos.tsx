@@ -16,12 +16,14 @@ import {
     Moon,
     CheckCircle2,
     Pencil,
+    UserPlus,
 } from "lucide-react";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { IntermitentesTableBlock } from "@/components/operacoes/IntermitentesTableBlock";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { useNavigate } from "react-router-dom";
 import {
     Select,
     SelectContent,
@@ -132,6 +134,7 @@ const IntermitentesRecebidos = () => {
     const [editHoras, setEditHoras] = useState<string>("");
     const [editTotal, setEditTotal] = useState<string>("");
 
+    const navigate = useNavigate();
     const { user } = useAuth();
     const queryClient = useQueryClient();
 
@@ -557,12 +560,34 @@ const IntermitentesRecebidos = () => {
                             </div>
                         </div>
                     </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setEditingItem(null)} disabled={editItemMutation.isPending}>Cancelar</Button>
-                        <Button onClick={() => editItemMutation.mutate()} disabled={editItemMutation.isPending}>
-                            {editItemMutation.isPending ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
-                            Salvar Correção
+                    <DialogFooter className="flex items-center justify-between sm:justify-between pt-2">
+                        <Button
+                            variant="ghost"
+                            className="text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50"
+                            onClick={() => {
+                                const colabId = editingItem?.colaborador_id;
+                                setEditingItem(null);
+                                navigate('/colaboradores', {
+                                    state: colabId ? {
+                                        openEditId: colabId
+                                    } : {
+                                        openNew: true,
+                                        initialName: editingItem?.nome_colaborador,
+                                        initialTipo: 'Intermitente'
+                                    }
+                                });
+                            }}
+                        >
+                            <UserPlus className="h-4 w-4 mr-2" />
+                            {editingItem?.colaborador_id ? "Completar no RH" : "Cadastrar no RH"}
                         </Button>
+                        <div className="flex gap-2">
+                            <Button variant="outline" onClick={() => setEditingItem(null)} disabled={editItemMutation.isPending}>Cancelar</Button>
+                            <Button onClick={() => editItemMutation.mutate()} disabled={editItemMutation.isPending}>
+                                {editItemMutation.isPending ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
+                                Salvar Correção
+                            </Button>
+                        </div>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

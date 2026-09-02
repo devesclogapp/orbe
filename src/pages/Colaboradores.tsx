@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
 import { useOnboardingCallback } from "@/hooks/useOnboardingCallback";
 import { OnboardingSuccessModal } from "@/components/onboarding/OnboardingSuccessModal";
@@ -27,8 +27,8 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-const getInitialColaboradorFormData = (defaultEmpresaId = "") => ({
-  nome: "",
+const getInitialColaboradorFormData = (defaultEmpresaId = "", initialName = "") => ({
+  nome: initialName,
   cpf: "",
   telefone: "",
   cargo: "",
@@ -112,21 +112,13 @@ const inferModeloCalculo = (tipoColaborador?: string) => {
 const Colaboradores = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const location = useLocation();
   const { isOnboardingReturn, handleOnboardingReturn, showSuccessModal, setShowSuccessModal } = useOnboardingCallback();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(1);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
 
-  // Filter states
-  const [searchParams] = useSearchParams();
-  const [searchText, setSearchText] = useState(searchParams.get("search") || "");
-  const [selectedEmpresa, setSelectedEmpresa] = useState("all");
-  const [selectedRegime, setSelectedRegime] = useState("all");
-  const [selectedModelo, setSelectedModelo] = useState("all");
-  const [isProcessing, setIsProcessing] = useState(false);
-
-  // Queries
   const { data: list = [], isLoading, isFetching, isError, error: queryError } = useQuery({
     queryKey: ["colaboradores_list"],
     queryFn: () => ColaboradorService.getWithEmpresa(),
@@ -137,6 +129,15 @@ const Colaboradores = () => {
     queryKey: ["empresas"],
     queryFn: () => EmpresaService.getAll(),
   });
+
+  // Filter states
+  const [searchParams] = useSearchParams();
+  const [searchText, setSearchText] = useState(searchParams.get("search") || "");
+  const [selectedEmpresa, setSelectedEmpresa] = useState("all");
+  const [selectedRegime, setSelectedRegime] = useState("all");
+  const [selectedModelo, setSelectedModelo] = useState("all");
+  const [isProcessing, setIsProcessing] = useState(false);
+
 
   const [form, setForm] = useState(getInitialColaboradorFormData());
   const resetWizardState = () => {
@@ -274,6 +275,30 @@ const Colaboradores = () => {
     });
     setOpen(true);
   };
+
+  useEffect(() => {
+    if (location.state?.openNew && !open) {
+      handleModalOpenChange(true);
+      setStep(1);
+      setEditingId(null);
+      if (location.state?.initialName) {
+        setForm(prev => ({
+          ...prev,
+          nome: location.state.initialName,
+          nome_completo: location.state.initialName,
+          regime_trabalho: location.state.initialTipo || 'Intermitente',
+          modelo_calculo: 'Horista'
+        }));
+      }
+      navigate(location.pathname, { replace: true, state: {} });
+    } else if (location.state?.openEditId && !open && list.length > 0) {
+      const colab = list.find((c: any) => c.id === location.state.openEditId);
+      if (colab) {
+        handleEdit(colab);
+      }
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state, open, navigate, list]);
 
   const handleDelete = (id: string) => {
     if (confirm("Tem certeza que deseja remover este colaborador?")) {

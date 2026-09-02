@@ -10,6 +10,7 @@ import {
   ClipboardCheck,
   CreditCard,
   Clock,
+  Lock,
   Database,
   ExternalLink,
   FilePlus,
@@ -131,6 +132,7 @@ const groups: MenuGroup[] = [
     items: [
       { icon: Clock, label: "Banco de Horas", to: "/banco-horas", module: "banco_de_horas", pulseKey: "banco_de_horas" },
       { icon: CalendarCheck, label: "Processamento de Ponto", to: "/banco-horas/processamento", module: "processamento_rh", pulseKey: "processamento_rh" },
+      { icon: Lock, label: "Fechamento Mensal CLT", to: "/banco-horas/fechamento", module: "banco_de_horas" },
       { icon: LayoutGrid, label: "Cadastros", to: "/cadastros", module: "central_de_cadastros", pulseKey: "central_de_cadastros" },
     ],
   },

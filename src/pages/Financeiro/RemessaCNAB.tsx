@@ -33,6 +33,8 @@ const RemessaCNAB = () => {
     const [competencia, setCompetencia] = useState<string>("");
     const [empresaId, setEmpresaId] = useState<string>("");
     const [contaId, setContaId] = useState<string>("");
+    const [tipoRemessa, setTipoRemessa] = useState<string>("despesas");
+    const [rhLoteId, setRhLoteId] = useState<string>("");
     const [isValidating, setIsValidating] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
     const [validation, setValidation] = useState<any>(null);
@@ -63,6 +65,21 @@ const RemessaCNAB = () => {
         enabled: !!empresaId
     });
 
+    const { data: rhLotes, isLoading: isLoadingRhLotes } = useQuery({
+        queryKey: ["rh-lotes-pn", empresaId, competencia],
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from("rh_financeiro_lotes")
+                .select("id, tipo, valor_total, total_colaboradores, created_at, status")
+                .eq("empresa_id", empresaId)
+                .eq("competencia", competencia)
+                .in("status", ["AGUARDANDO_PAGAMENTO", "AGUARDANDO_FINANCEIRO", "CONCLUIDO"]);
+            if (error) throw error;
+            return data;
+        },
+        enabled: !!empresaId && !!competencia
+    });
+
     const navigate = useNavigate();
 
     const handleValidate = async () => {
@@ -73,7 +90,8 @@ const RemessaCNAB = () => {
         try {
             // Pequeno delay para feedback visual de 'trabalhando'
             await new Promise(resolve => setTimeout(resolve, 800));
-            const res = await CNABService.validateRemessa(competencia, empresaId, contaId);
+            const passedRhLoteId = tipoRemessa === 'rh' ? rhLoteId : undefined;
+            const res = await CNABService.validateRemessa(competencia, empresaId, contaId, passedRhLoteId);
             setValidation(res);
             if (res.isValid) {
                 toast.success("Remessa validada com sucesso!");
@@ -92,7 +110,8 @@ const RemessaCNAB = () => {
         if (!contaId) return toast.error("Selecione a conta bancária");
         setIsGenerating(true);
         try {
-            const res = await CNABService.generateRemessa({ competencia, empresaId, contaId });
+            const passedRhLoteId = tipoRemessa === 'rh' ? rhLoteId : undefined;
+            const res = await CNABService.generateRemessa({ competencia, empresaId, contaId, rhLoteId: passedRhLoteId });
             toast.success(`CNAB Gerado: ${res.fileName}`);
 
             // Trigger download
@@ -181,6 +200,45 @@ const RemessaCNAB = () => {
 
                             <div className="space-y-2">
                                 <label className="text-[11px] font-bold text-muted-foreground uppercase flex items-center gap-2">
+                                    <FileText className="w-3 h-3" /> Tipo de Remessa
+                                </label>
+                                <Select value={tipoRemessa} onValueChange={(val) => { setTipoRemessa(val); setValidation(null); }}>
+                                    <SelectTrigger className="h-11 bg-muted/20 border-border/50">
+                                        <SelectValue placeholder="Selecione o tipo" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="despesas">Despesas Operacionais (Faturas)</SelectItem>
+                                        <SelectItem value="rh">Lotes do RH (Folha / Banco / Diaristas)</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {tipoRemessa === 'rh' && (
+                                <div className="space-y-2 animate-in fade-in zoom-in-95 duration-200">
+                                    <label className="text-[11px] font-bold text-muted-foreground uppercase flex items-center gap-2 text-primary">
+                                        <FileText className="w-3 h-3" /> Lote do RH Aprovado
+                                    </label>
+                                    <Select value={rhLoteId} onValueChange={(val) => { setRhLoteId(val); setValidation(null); }} disabled={!empresaId || !competencia}>
+                                        <SelectTrigger className="h-11 bg-primary/5 border-primary/20">
+                                            <SelectValue placeholder={isLoadingRhLotes ? "Carregando..." : "Selecione o lote do RH"} />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {rhLotes?.length === 0 ? (
+                                                <div className="p-4 text-center text-xs text-muted-foreground">Nenhum lote RH disponível</div>
+                                            ) : (
+                                                rhLotes?.map(lote => (
+                                                    <SelectItem key={lote.id} value={lote.id}>
+                                                        {lote.tipo.replace('_', ' ')} - R$ {Number(lote.valor_total).toLocaleString('pt-BR')} ({lote.total_colaboradores} colabs) - {lote.status}
+                                                    </SelectItem>
+                                                ))
+                                            )}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            )}
+
+                            <div className="space-y-2">
+                                <label className="text-[11px] font-bold text-muted-foreground uppercase flex items-center gap-2">
                                     <CreditCard className="w-3 h-3" /> Conta Bancária Origem
                                 </label>
                                 <Select value={contaId} onValueChange={setContaId} disabled={!empresaId}>
@@ -214,7 +272,7 @@ const RemessaCNAB = () => {
                             <Button
                                 className="w-full h-11 bg-brand hover:shadow-lg hover:shadow-brand/20 transition-all font-semibold"
                                 onClick={handleValidate}
-                                disabled={isValidating || !competencia || !empresaId}
+                                disabled={isValidating || !competencia || !empresaId || (tipoRemessa === 'rh' && !rhLoteId)}
                             >
                                 {isValidating ? (
                                     <>

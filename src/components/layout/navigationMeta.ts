@@ -37,6 +37,7 @@ const routeMeta: RouteMeta[] = [
   // RH
   { pattern: "/banco-horas", label: "Banco de Horas", section: "RH" },
   { pattern: "/banco-horas/processamento", label: "Processamento de Ponto", section: "RH", parentPath: "/banco-horas" },
+  { pattern: "/banco-horas/fechamento", label: "Fechamento Mensal", section: "RH", parentPath: "/banco-horas" },
   { pattern: "/banco-horas/regras", label: "Regras de Banco", section: "RH", parentPath: "/banco-horas" },
   { pattern: "/banco-horas/extrato/:id", label: "Extrato do colaborador", section: "RH", parentPath: "/banco-horas" },
   { pattern: "/cadastros", label: "Central de Cadastros", section: "RH" },
