@@ -9,7 +9,7 @@ import { JustificationModal } from "@/components/modals/JustificationModal";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 
-const Inconsistencias = () => {
+const Inconsistencias = ({ flowType, lockedFlow }: { flowType?: string; lockedFlow?: boolean } = {}) => {
   const queryClient = useQueryClient();
   const { data: issues = [], isLoading } = useQuery({
     queryKey: ["inconsistencias"],

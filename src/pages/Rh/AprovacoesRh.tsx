@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
     Clock,
     CheckCircle2,
-  Lightbulb,
+    Lightbulb,
     AlertTriangle,
     Users,
     Search,
@@ -137,7 +137,7 @@ const TIPO_COLORS: Record<TipoItem, string> = {
 // ────────────────────────────────────────────────────
 // Página principal
 // ────────────────────────────────────────────────────
-export default function AprovacoesRh() {
+export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: string; lockedFlow?: boolean } = {}) {
     const { user } = useAuth();
     const queryClient = useQueryClient();
     const navigate = useNavigate();
@@ -147,7 +147,7 @@ export default function AprovacoesRh() {
     const [inicio, setInicio] = useState(format(startOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd"));
     const [fim, setFim] = useState(format(endOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd"));
     const [filterEmpresaId, setFilterEmpresaId] = useState("all");
-    const [filterType, setFilterType] = useState<string>("all");
+    const [filterType, setFilterType] = useState<string>(flowType || "all");
     const [searchTerm, setSearchTerm] = useState("");
     const [activeTab, setActiveTab] = useState<string>("fila");
     const [currentPage, setCurrentPage] = useState(1);
@@ -452,42 +452,44 @@ export default function AprovacoesRh() {
             <div className="flex flex-col gap-6 max-w-[1700px] mx-auto pb-12 px-4 md:px-6">
 
                 {/* FILTROS TIPO (Pills horizontais) */}
-                <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                    {APPROVAL_TYPES.map((type) => {
-                        const Icon = type.icon;
-                        const isActive = filterType === type.id;
-                        const count = type.id === "all"
-                            ? allItems.filter(i => i.situacao === "Em análise").length
-                            : allItems.filter(i => i.tipo === type.id && i.situacao === "Em análise").length;
+                {!lockedFlow && (
+                    <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                        {APPROVAL_TYPES.map((type) => {
+                            const Icon = type.icon;
+                            const isActive = filterType === type.id;
+                            const count = type.id === "all"
+                                ? allItems.filter(i => i.situacao === "Em análise").length
+                                : allItems.filter(i => i.tipo === type.id && i.situacao === "Em análise").length;
 
-                        return (
-                            <button
-                                key={type.id}
-                                onClick={() => {
-                                    setFilterType(type.id);
-                                    setCurrentPage(1);
-                                }}
-                                className={cn(
-                                    "h-9 px-4 rounded-full flex items-center gap-2 border transition-all whitespace-nowrap text-xs font-medium",
-                                    isActive
-                                        ? "bg-[#FFF1EC] text-[#FD4C00] border-[#FD4C00]/20 shadow-sm"
-                                        : "bg-white text-muted-foreground border-border hover:bg-bg-subtle"
-                                )}
-                            >
-                                <Icon className={cn("h-3.5 w-3.5", isActive ? "text-[#FD4C00]" : "text-muted-foreground/60")} />
-                                <span>{type.label}</span>
-                                {count > 0 && (
-                                    <span className={cn(
-                                        "ml-1 h-4 min-w-[16px] px-1 rounded-full text-[9px] flex items-center justify-center font-bold",
-                                        isActive ? "bg-[#FD4C00] text-white" : "bg-gray-100 text-gray-600"
-                                    )}>
-                                        {count}
-                                    </span>
-                                )}
-                            </button>
-                        );
-                    })}
-                </div>
+                            return (
+                                <button
+                                    key={type.id}
+                                    onClick={() => {
+                                        setFilterType(type.id);
+                                        setCurrentPage(1);
+                                    }}
+                                    className={cn(
+                                        "h-9 px-4 rounded-full flex items-center gap-2 border transition-all whitespace-nowrap text-xs font-medium",
+                                        isActive
+                                            ? "bg-[#FFF1EC] text-[#FD4C00] border-[#FD4C00]/20 shadow-sm"
+                                            : "bg-white text-muted-foreground border-border hover:bg-bg-subtle"
+                                    )}
+                                >
+                                    <Icon className={cn("h-3.5 w-3.5", isActive ? "text-[#FD4C00]" : "text-muted-foreground/60")} />
+                                    <span>{type.label}</span>
+                                    {count > 0 && (
+                                        <span className={cn(
+                                            "ml-1 h-4 min-w-[16px] px-1 rounded-full text-[9px] flex items-center justify-center font-bold",
+                                            isActive ? "bg-[#FD4C00] text-white" : "bg-gray-100 text-gray-600"
+                                        )}>
+                                            {count}
+                                        </span>
+                                    )}
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
 
                 {/* KPI Grid */}
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">

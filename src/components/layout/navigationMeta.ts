@@ -8,6 +8,20 @@ type RouteMeta = {
 };
 
 const routeMeta: RouteMeta[] = [
+  // ALIASES ROTAS CONTEXTUAIS (FASE 1A)
+  { pattern: "/diaristas/aprovacoes", label: "Aprovações (Diaristas)", section: "Processamento / Pipeline" },
+  { pattern: "/intermitentes/aprovacoes", label: "Aprovações (Intermitentes)", section: "Processamento / Pipeline" },
+  { pattern: "/clt/aprovacoes", label: "Aprovações (CLT)", section: "Processamento / Pipeline" },
+  { pattern: "/intermitentes/inconsistencias", label: "Pendências (Intermitentes)", section: "Processamento / Pipeline", parentPath: "/operacional/pipeline" },
+  { pattern: "/clt/banco-horas", label: "Banco de Horas", section: "RH" },
+  { pattern: "/operacoes-volume", label: "Operações Recebidas", section: "Entradas / Captura" },
+  { pattern: "/operacoes-volume/nova", label: "Lançamentos Operacionais", section: "Entradas / Captura", parentPath: "/operacoes-volume" },
+  { pattern: "/operacoes-volume/aprovacoes", label: "Aprovações RH", section: "Processamento / Pipeline", parentPath: "/operacoes-volume" },
+  { pattern: "/servicos-extras/novo", label: "Serviços Extras", section: "Entradas / Captura" },
+  { pattern: "/servicos-extras/lancamentos", label: "Serviços Extras", section: "Entradas / Captura" },
+  { pattern: "/custos-extras/novo", label: "Custos Extras", section: "Entradas / Captura" },
+  { pattern: "/custos-extras/lancamentos", label: "Custos Extras", section: "Entradas / Captura" },
+
   // Dashboard
   { pattern: "/operacional/dashboard", label: "Dashboard operacional", section: "Dashboard" },
   { pattern: "/central", label: "Central Operacional", section: "Dashboard" },
