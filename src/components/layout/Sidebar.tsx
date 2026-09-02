@@ -105,35 +105,90 @@ const dashboardItems: MenuItem[] = [
 ];
 
 const groups: MenuGroup[] = [
+  // --- FLUXOS OPERACIONAIS --- //
   {
-    id: "entradas",
-    label: "Entradas / Captura",
+    id: "operacoes_volume",
+    label: "Operações por Volume",
     stageKey: "entradas",
     items: [
-      { icon: Wallet, label: "Custos Extras", to: "/producao/custos-extras", module: "central_operacional", pulseKey: "custos_extras" },
-      { icon: Wrench, label: "Serviços Extras", to: "/producao/servicos-extras", module: "central_operacional", pulseKey: "servicos_extras" },
+      { icon: Plus, label: "Nova Operação", to: "/operacoes-volume/nova", module: "central_operacional" },
+      { icon: Package, label: "Operações / Recebidos", to: "/operacoes-volume", module: "operacoes_recebidas", pulseKey: "operacoes_recebidas" },
+      { icon: AlertTriangle, label: "Pendências", to: "/inconsistencias", module: "operacoes_recebidas" },
+      { icon: Shield, label: "Aprovações", to: "/operacoes-volume/aprovacoes", module: "processamento_rh" },
+      { icon: FileText, label: "Faturamento", to: "/financeiro/faturamento", module: "central_financeira" },
     ],
   },
   {
-    id: "pipeline",
-    label: "Processamento / Pipeline",
+    id: "clt",
+    label: "CLT",
+    stageKey: "rh",
     items: [
-      { icon: Rocket, label: "Pipeline Operacional", to: "/operacional/pipeline", module: "dashboard" },
-      { icon: Shield, label: "Aprovações RH", to: "/rh/aprovacoes", module: "processamento_rh" },
-      { icon: AlertTriangle, label: "Pendências", to: "/inconsistencias", module: "operacoes_recebidas" },
-      { icon: CalendarCheck, label: "Lotes e Fechamentos", to: "/fechamento", module: "fechamento_mensal", pulseKey: "fechamento_mensal" },
-      { icon: RefreshCw, label: "Reprocessamentos", to: "/processamento/reprocessamentos", module: "processamento_rh" },
+      { icon: Clock, label: "Pontos / Importações", to: "/operacional/pontos", module: "pontos_recebidos", pulseKey: "pontos_recebidos" },
+      { icon: CalendarCheck, label: "Jornadas Processadas", to: "/banco-horas/processamento", module: "processamento_rh", pulseKey: "processamento_rh" },
+      { icon: AlertTriangle, label: "Inconsistências", to: "/inconsistencias", module: "operacoes_recebidas" },
+      { icon: Lock, label: "Fechamento Mensal", to: "/banco-horas/fechamento", module: "banco_de_horas" },
+      { icon: LayoutGrid, label: "Banco de Horas", to: "/clt/banco-horas", module: "banco_de_horas", pulseKey: "banco_de_horas" },
+      { icon: RefreshCw, label: "Reprocessamento", to: "/processamento/reprocessamentos", module: "processamento_rh" },
     ],
   },
+  {
+    id: "intermitentes",
+    label: "Intermitentes",
+    stageKey: "entradas",
+    items: [
+      { icon: ArrowDownRight, label: "Importações", to: "/importacoes", module: "operacoes_recebidas" },
+      { icon: Clock, label: "Jornadas / Processamento", to: "/operacional/intermitentes", module: "operacoes_recebidas" },
+      { icon: AlertTriangle, label: "Inconsistências", to: "/intermitentes/inconsistencias", module: "operacoes_recebidas" },
+      { icon: Shield, label: "Aprovações", to: "/intermitentes/aprovacoes", module: "processamento_rh" },
+      { icon: CalendarCheck, label: "Lotes", to: "/fechamento", module: "fechamento_mensal", pulseKey: "fechamento_mensal" },
+      { icon: Banknote, label: "Pagamentos", to: "/bancario", module: "pagamentos_remessas" },
+    ],
+  },
+  {
+    id: "diaristas",
+    label: "Diaristas",
+    stageKey: "entradas",
+    items: [
+      { icon: Plus, label: "Novo Lançamento", to: "/producao/diaristas", module: "central_operacional" },
+      { icon: Users, label: "Recebidos / Lançamentos", to: "/operacional/diaristas", module: "diaristas_recebidos", pulseKey: "diaristas_recebidos" },
+      { icon: AlertTriangle, label: "Pendências", to: "/inconsistencias", module: "operacoes_recebidas" },
+      { icon: Shield, label: "Aprovações", to: "/diaristas/aprovacoes", module: "processamento_rh" },
+      { icon: CalendarCheck, label: "Lotes / Pagamentos", to: "/fechamento", module: "fechamento_mensal" },
+    ],
+  },
+  {
+    id: "servicos_extras",
+    label: "Serviços Extras",
+    stageKey: "entradas",
+    items: [
+      { icon: Plus, label: "Novo Lançamento", to: "/servicos-extras/novo", module: "central_operacional" },
+      { icon: Wrench, label: "Lançamentos / Recebidos", to: "/servicos-extras/lancamentos", module: "central_operacional", pulseKey: "servicos_extras" },
+      { icon: Shield, label: "Aprovações", to: "/rh/aprovacoes", module: "processamento_rh" },
+      { icon: FileText, label: "Faturamento", to: "/financeiro/faturamento", module: "central_financeira" },
+    ],
+  },
+  {
+    id: "custos_extras",
+    label: "Custos Extras",
+    stageKey: "entradas",
+    items: [
+      { icon: Plus, label: "Novo Lançamento", to: "/custos-extras/novo", module: "central_operacional" },
+      { icon: Wallet, label: "Lançamentos / Recebidos", to: "/custos-extras/lancamentos", module: "central_operacional", pulseKey: "custos_extras" },
+      { icon: Shield, label: "Aprovações", to: "/rh/aprovacoes", module: "processamento_rh" },
+      { icon: Banknote, label: "Pagamentos / Contas a Pagar", to: "/financeiro/contas-bancarias", module: "pagamentos_remessas" },
+    ],
+  },
+
+  // --- MÓDULOS TRANSVERSAIS / GLOBAIS --- //
   {
     id: "rh",
     label: "RH",
     stageKey: "rh",
     items: [
-      { icon: Clock, label: "Banco de Horas", to: "/banco-horas", module: "banco_de_horas", pulseKey: "banco_de_horas" },
-      { icon: CalendarCheck, label: "Processamento de Ponto", to: "/banco-horas/processamento", module: "processamento_rh", pulseKey: "processamento_rh" },
-      { icon: Lock, label: "Fechamento Mensal CLT", to: "/banco-horas/fechamento", module: "banco_de_horas" },
-      { icon: LayoutGrid, label: "Cadastros", to: "/cadastros", module: "central_de_cadastros", pulseKey: "central_de_cadastros" },
+      { icon: CalendarCheck, label: "Central / Processamento", to: "/banco-horas/processamento", module: "processamento_rh" },
+      { icon: Shield, label: "Aprovações Globais", to: "/rh/aprovacoes", module: "processamento_rh" },
+      { icon: Clock, label: "Banco de Horas", to: "/banco-horas", module: "banco_de_horas" },
+      { icon: Lock, label: "Fechamentos", to: "/banco-horas/fechamento", module: "banco_de_horas" },
     ],
   },
   {
@@ -142,30 +197,38 @@ const groups: MenuGroup[] = [
     stageKey: "financeiro",
     items: [
       { icon: Wallet, label: "Central Financeira", to: "/financeiro", end: true, module: "central_financeira", pulseKey: "central_financeira" },
+      { icon: Receipt, label: "Receitas", to: "/financeiro/receitas", module: "central_financeira" },
       { icon: Receipt, label: "Contas a Receber", to: "/financeiro/receitas", module: "central_financeira" },
-      { icon: FileText, label: "Faturamento (Lotes)", to: "/financeiro/faturamento", module: "central_financeira", pulseKey: "faturamento" },
-      { icon: AlertCircle, label: "Inadimplência", to: "/financeiro/inadimplencia", module: "central_financeira" },
-      { icon: Banknote, label: "Bancário / Remessas", to: "/bancario", module: "pagamentos_remessas", pulseKey: "pagamentos_remessas" },
-      { icon: ArrowRightLeft, label: "Conciliação", to: "/financeiro/retorno", module: "pagamentos_remessas" },
+      { icon: AlertCircle, label: "Contas a Pagar", to: "/financeiro/inadimplencia", module: "central_financeira" },
+      { icon: FileText, label: "Lotes", to: "/financeiro/faturamento", module: "central_financeira", pulseKey: "faturamento" },
+      { icon: Banknote, label: "Remessas", to: "/bancario", module: "pagamentos_remessas", pulseKey: "pagamentos_remessas" },
+      { icon: ArrowRightLeft, label: "Retornos / Conciliação", to: "/financeiro/retorno", module: "pagamentos_remessas" },
+      { icon: AlertCircle, label: "Aging / Inadimplência", to: "/financeiro/inadimplencia", module: "central_financeira" },
       { icon: TrendingUp, label: "Resultado (DRE)", to: "/financeiro/dre", module: "central_financeira" },
-      { icon: CreditCard, label: "Contas Bancárias", to: "/financeiro/contas-bancarias", module: "pagamentos_remessas" },
     ],
   },
   {
     id: "governanca",
-    label: "Governança",
+    label: "Governança / Relatórios",
     items: [
       { icon: BarChart3, label: "Relatórios", to: "/relatorios", module: "central_de_relatorios", pulseKey: "central_de_relatorios" },
+      { icon: Database, label: "Auditoria", to: "/governanca", module: "governanca", pulseKey: "governanca" },
       { icon: Shield, label: "Usuários", to: "/admin/usuarios-acessos", module: "governanca" },
       { icon: Zap, label: "Automação", to: "/governanca/automacao", module: "automacao_operacional", pulseKey: "automacao_operacional" },
-      { icon: Database, label: "Auditoria", to: "/governanca", module: "governanca", pulseKey: "governanca" },
+    ],
+  },
+  {
+    id: "cadastros",
+    label: "Cadastros",
+    items: [
+      { icon: LayoutGrid, label: "Central de Cadastros", to: "/cadastros", module: "central_de_cadastros", pulseKey: "central_de_cadastros" }
     ],
   },
   {
     id: "configuracoes",
     label: "Configurações",
     items: [
-      { icon: Wrench, label: "Regras", to: "/cadastros/regras-operacionais", module: "regras_operacionais", pulseKey: "regras_operacionais" },
+      { icon: Wrench, label: "Regras Operacionais", to: "/cadastros/regras-operacionais", module: "regras_operacionais", pulseKey: "regras_operacionais" },
       { icon: Settings, label: "Preferências", to: "/configuracoes?tab=preferencias" },
     ],
   },
@@ -283,28 +346,7 @@ export const Sidebar = () => {
         .map((group) => {
           let items = filterItems(group.items);
 
-          // Custom logic for "Entradas / Captura"
-          if (group.id === "entradas") {
-            if (isEncarregado) {
-              items = [
-                { icon: Wallet, label: "Custos Extras", to: "/producao/custos-extras", module: "central_operacional", pulseKey: "custos_extras" },
-                { icon: Wrench, label: "Serviços Extras", to: "/producao/servicos-extras", module: "central_operacional", pulseKey: "servicos_extras" },
-                { icon: UserCheck, label: "Diaristas", to: "/producao/diaristas", module: "central_operacional", pulseKey: "diaristas_recebidos" },
-                { icon: Package, label: "Serviços Específicos", to: "/producao/servicos-especificos", module: "central_operacional" },
-              ];
-            } else {
-              items = [
-                { icon: Activity, label: "Operações Recebidas", to: "/operacional/operacoes", module: "operacoes_recebidas", pulseKey: "operacoes_recebidas" },
-                { icon: Clock, label: "Pontos CLT's Recebidos", to: "/operacional/pontos", module: "pontos_recebidos", pulseKey: "pontos_recebidos" },
-                { icon: UserCheck, label: "Diaristas Recebidos", to: "/operacional/diaristas", module: "processamento_rh", pulseKey: "diaristas_recebidos" },
-                { icon: Users, label: "Intermitentes Rec.", to: "/operacional/intermitentes", module: "processamento_rh" },
-                { icon: Wrench, label: "Serviços Extras Rec.", to: "/operacional/servicos-extras", module: "central_operacional", pulseKey: "servicos_extras" },
-                { icon: Wallet, label: "Custos Extras Rec.", to: "/operacional/custos-extras", module: "central_operacional", pulseKey: "custos_extras" },
-              ];
-            }
-          }
-
-          return { ...group, items: filterItems(items) };
+          return { ...group, items: items };
         })
         .filter((group) => group.items.length > 0);
     },
