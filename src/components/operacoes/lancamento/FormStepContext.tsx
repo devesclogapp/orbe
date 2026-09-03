@@ -71,7 +71,7 @@ export function FormStepContext({ form, empresas, unidades, tiposServico, transp
                 {/* Tipo de Serviço */}
                 <div className="space-y-2">
                     <Label className="flex justify-between items-center">
-                        Tipo de Serviço / Operação
+                        Tipo de Operação
                     </Label>
                     <Select
                         onValueChange={(val) => form.setValue("tipo_servico", val)}

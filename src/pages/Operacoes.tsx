@@ -465,7 +465,7 @@ const Operacoes = () => {
   const [confirmClear, setConfirmClear] = useState(false);
 
   useEffect(() => {
-    if (searchParams.get("action") === "nova") {
+    if (searchParams.get("action") === "nova-operacao") {
       setNovaOpOpen(true);
       // Remove query param to avoid reopening on refresh
       const newParams = new URLSearchParams(searchParams);

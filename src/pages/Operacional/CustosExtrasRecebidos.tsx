@@ -138,7 +138,7 @@ const CustosExtrasRecebidos = () => {
     const [searchParams] = useSearchParams();
 
     useEffect(() => {
-        if (searchParams.get("action") === "nova") {
+        if (searchParams.get("action") === "novo-custo-extra") {
             setIsLaunchSheetOpen(true);
             const newParams = new URLSearchParams(searchParams);
             newParams.delete("action");

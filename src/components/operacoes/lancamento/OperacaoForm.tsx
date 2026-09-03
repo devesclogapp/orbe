@@ -104,7 +104,12 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
         queryFn: () => UnidadeOperacionalService.getByEmpresa(currentEmpresaId),
         enabled: !!currentEmpresaId
     });
-    const { data: tiposServico = [] } = useQuery({ queryKey: ["tipos_servico"], queryFn: () => TipoServicoOperacionalService.getAllActive() });
+    const { data: todosTiposServico = [] } = useQuery({ queryKey: ["tipos_servico"], queryFn: () => TipoServicoOperacionalService.getAllActive() });
+
+    // Filtro essencial (FIX 01): A "Operação por Volume" deve listar apenas os serviços que NÃO são estritamente caracterizados como serviços adicionais.
+    const tiposServico = useMemo(() => {
+        return (todosTiposServico as Array<{ id: string, nome: string, is_extra_service?: boolean }>).filter(t => !t.is_extra_service);
+    }, [todosTiposServico]);
     const { data: transportadoras = [] } = useQuery({
         queryKey: ["transportadoras", currentEmpresaId],
         queryFn: () => TransportadoraClienteService.getByEmpresa(currentEmpresaId),
@@ -370,7 +375,29 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                     {etapa === 1 && (
                         <FormStepSelector
                             form={form}
+                            mode={mode}
                             onNext={(preset) => {
+                                if (mode === 'admin') {
+                                    switch (preset.id) {
+                                        case "servicos_extras":
+                                            if (onCancel) onCancel();
+                                            navigate("/servicos-extras/lancamentos?action=novo-servico-extra", { replace: true });
+                                            return;
+                                        case "custos_operacionais":
+                                            if (onCancel) onCancel();
+                                            navigate("/custos-extras/lancamentos?action=novo-custo-extra", { replace: true });
+                                            return;
+                                        case "operacao_padrao_vista":
+                                        case "operacao_padrao_prazo":
+                                            // Preserve estado selecionado pela form (modalidade) e apenas avança pro passo 2.
+                                            setEtapa(2);
+                                            return;
+                                        default:
+                                            toast.warning("Modalidade não suportada neste launcher administrativo.");
+                                            return;
+                                    }
+                                }
+
                                 if (mode === 'encarregado') {
                                     switch (preset.id) {
                                         case "diaristas":
@@ -385,11 +412,12 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                                         case "servicos_especificos":
                                             navigate("/producao/servicos-especificos");
                                             return;
+                                        case "operacao_padrao_vista":
+                                        case "operacao_padrao_prazo":
+                                            setEtapa(2);
+                                            return;
                                     }
                                 }
-
-                                // Para o Admin manter no mesmo modal, ou fluxos padrão, apenas pula a etapa
-                                setEtapa(2);
                             }}
                         />
                     )}

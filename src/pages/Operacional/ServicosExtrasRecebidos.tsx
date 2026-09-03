@@ -127,7 +127,7 @@ const ServicosExtrasRecebidos = () => {
     const [searchParams] = useSearchParams();
 
     useEffect(() => {
-        if (searchParams.get("action") === "nova") {
+        if (searchParams.get("action") === "novo-servico-extra") {
             setIsNovoServicoModalOpen(true);
             const newParams = new URLSearchParams(searchParams);
             newParams.delete("action");
