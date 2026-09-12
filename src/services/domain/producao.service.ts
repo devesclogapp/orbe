@@ -732,11 +732,15 @@ class OperacaoProducaoServiceClass {
       ...rest 
     } = payload;
 
-    if (horario_inicio) {
-      rest.entrada_ponto = horario_inicio;
+    if (horario_inicio !== undefined) {
+      rest.entrada_ponto = horario_inicio ? String(horario_inicio).trim() : null;
+    } else if (rest.entrada_ponto === undefined) {
+      rest.entrada_ponto = null;
     }
-    if (horario_fim) {
-      rest.saida_ponto = horario_fim;
+    if (horario_fim !== undefined) {
+      rest.saida_ponto = horario_fim ? String(horario_fim).trim() : null;
+    } else if (rest.saida_ponto === undefined) {
+      rest.saida_ponto = null;
     }
 
     // Campos removidos pois NÃO existem na tabela operacoes_producao.
@@ -789,7 +793,22 @@ class OperacaoProducaoServiceClass {
   }
 
   async getInconsistencies() {
-    const { data, error } = await operationalClient
+    // 1. Buscar operações onde algum colaborador possui infração registrada
+    const { data: infractions, error: infError } = await operationalClient
+      .from('production_entry_collaborators')
+      .select('production_entry_id')
+      .eq('had_infraction', true);
+
+    if (infError) {
+      console.error('[OPERACOES_PRODUCAO] Erro ao buscar infrações para inconsistências:', infError);
+    }
+
+    const opIdsComInfracao = (infractions || [])
+      .map((i: any) => i.production_entry_id)
+      .filter(Boolean);
+
+    // 2. Query de operações filtrando apenas as que possuem restrição, devolução RH, horários ausentes ou infração real
+    let query = operationalClient
       .from('operacoes_producao')
       .select(`
         *,
@@ -803,12 +822,19 @@ class OperacaoProducaoServiceClass {
         unidades:unidade_id(nome),
         operacao_producao_materiais!operacao_id(*)
       `)
-      .in('status', ['RECEBIDO', 'EM_VALIDACAO', 'EM_RESTRICAO', 'AGUARDANDO_FATURAMENTO', 'FATURADO', 'RECEBIDO_FINANCEIRO', 'CONCLUIDO'])
       .is('deleted_at', null)
       .order('criado_em', { ascending: false });
 
+    // Inclui entrada_ponto.is.null e saida_ponto.is.null para capturar operações sem horários (ex: 83cc9319) sem update retroativo
+    if (opIdsComInfracao.length > 0) {
+      query = query.or(`status.eq.EM_RESTRICAO,status_rh.eq.DEVOLVIDO_RH,entrada_ponto.is.null,saida_ponto.is.null,id.in.(${opIdsComInfracao.join(',')})`);
+    } else {
+      query = query.or('status.eq.EM_RESTRICAO,status_rh.eq.DEVOLVIDO_RH,entrada_ponto.is.null,saida_ponto.is.null');
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
-    return data;
+    return data ?? [];
   }
 
   async getByIdWithDetails(id: string) {
@@ -840,6 +866,125 @@ class OperacaoProducaoServiceClass {
     return this.update(id, payload);
   }
 
+  /**
+   * CANÔNICO (FIX 06.2): Regularização Operacional de Horários
+   * Permite SOMENTE retificar entrada_ponto, saida_ponto e justificativa_retroativa.
+   * Não aceita nem altera valores, colaboradores, empresa, nem retrocede status financeiros.
+   */
+  async regularizarHorarios(
+    id: string,
+    horarioInicio: string,
+    horarioFim: string,
+    justificativa?: string
+  ): Promise<{
+    success: boolean;
+    operacao_id: string;
+    entrada_ponto: string;
+    saida_ponto: string;
+    status: string;
+    status_rh: string;
+    updated_at: string;
+  }> {
+    const inicio = String(horarioInicio || '').trim();
+    const fim = String(horarioFim || '').trim();
+
+    if (!inicio || !fim) {
+      throw new Error('HORARIOS_INVALIDOS: Horário de início e término são obrigatórios.');
+    }
+
+    // 1. Tenta executar via RPC canônica no backend
+    const { data: rpcRes, error: rpcError } = await operationalClient.rpc(
+      'rpc_operacao_regularizar_horarios',
+      {
+        p_operacao_id: id,
+        p_horario_inicio: inicio,
+        p_horario_fim: fim,
+        p_justificativa: justificativa?.trim() || 'Regularização operacional de horários de início e término.',
+      }
+    );
+
+    if (!rpcError && rpcRes) {
+      return rpcRes;
+    }
+
+    // Se a RPC falhou com um erro de domínio (não falta da função no schema cache)
+    if (rpcError && !rpcError.message?.includes('Could not find the function') && rpcError.code !== 'PGRST202') {
+      throw rpcError;
+    }
+
+    // 2. Fallback de Governança Controlada (se RPC não estiver no schema cache remoto)
+    const tenantId = await getCurrentTenantId();
+    const { data: existing, error: fetchError } = await operationalClient
+      .from('operacoes_producao')
+      .select('id, empresa_id, status, status_rh, avaliacao_json, entrada_ponto, saida_ponto, justificativa_retroativa')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (fetchError || !existing) {
+      throw new Error('OP_NOT_FOUND: Operação não encontrada.');
+    }
+
+    // Saneamento do avaliacao_json
+    const avaliacao = (typeof existing.avaliacao_json === 'object' && existing.avaliacao_json !== null)
+      ? { ...existing.avaliacao_json }
+      : {};
+
+    if (avaliacao.motivo_restricao === 'Horário de início e/ou término não informado') {
+      delete avaliacao.motivo_restricao;
+    }
+
+    // Checar se existe outra restrição remanescente
+    const hasOutraRestricao = Boolean(
+      (avaliacao.motivo_restricao && avaliacao.motivo_restricao !== 'Horário de início e/ou término não informado') ||
+      avaliacao.motivo_devolucao_rh ||
+      existing.status_rh === 'DEVOLVIDO_RH'
+    );
+
+    let novoStatus: string;
+    const novoStatusRh = existing.status_rh || 'PENDENTE_RH';
+
+    if (hasOutraRestricao) {
+      novoStatus = 'EM_RESTRICAO';
+    } else if (existing.status === 'EM_RESTRICAO') {
+      novoStatus = 'RECEBIDO';
+    } else {
+      // PRESERVA o status financeiro atual (ex: AGUARDANDO_FATURAMENTO, FATURADO, RECEBIDO_FINANCEIRO)
+      novoStatus = existing.status;
+    }
+
+    const now = new Date().toISOString();
+    const safeUpdate = {
+      entrada_ponto: inicio,
+      saida_ponto: fim,
+      justificativa_retroativa: justificativa?.trim() || existing.justificativa_retroativa || 'Regularização operacional de horários.',
+      avaliacao_json: avaliacao,
+      status: novoStatus,
+      status_rh: novoStatusRh,
+      atualizado_em: now,
+    };
+
+    const { error: updateError } = await operationalClient
+      .from('operacoes_producao')
+      .update(safeUpdate)
+      .eq('id', id)
+      .eq('tenant_id', tenantId);
+
+    if (updateError) {
+      throw updateError;
+    }
+
+    return {
+      success: true,
+      operacao_id: id,
+      entrada_ponto: inicio,
+      saida_ponto: fim,
+      status: novoStatus,
+      status_rh: novoStatusRh,
+      updated_at: now,
+    };
+  }
+
   async create(payload: Record<string, any>) {
     const tenantId = await getCurrentTenantId();
     
@@ -849,6 +994,27 @@ class OperacaoProducaoServiceClass {
     });
 
     const safePayload = { ...this.sanitizeOperacaoPayload(payload), tenant_id: tenantId };
+
+    // REGRA DE NEGÓCIO COMPARTILHADA (FIX 05):
+    // Início e Fim representam a janela operacional da carga na doca.
+    // Se entrada_ponto OU saida_ponto estiver ausente:
+    // status = 'EM_RESTRICAO'
+    // status_rh = 'PENDENTE_RH'
+    // avaliacao_json.motivo_restricao = "Horário de início e/ou término não informado"
+    const hasHorariosCompletos = Boolean(safePayload.entrada_ponto && safePayload.saida_ponto);
+    if (!hasHorariosCompletos) {
+      safePayload.status = 'EM_RESTRICAO';
+      safePayload.status_rh = safePayload.status_rh || 'PENDENTE_RH';
+      const avaliacao = (typeof safePayload.avaliacao_json === 'object' && safePayload.avaliacao_json !== null)
+        ? { ...safePayload.avaliacao_json }
+        : {};
+      avaliacao.motivo_restricao = "Horário de início e/ou término não informado";
+      safePayload.avaliacao_json = avaliacao;
+    } else {
+      safePayload.status = safePayload.status || 'RECEBIDO';
+      safePayload.status_rh = safePayload.status_rh || 'PENDENTE_RH';
+    }
+
     const { data, error } = await operationalClient
       .from('operacoes_producao')
       .insert(safePayload)
@@ -1125,10 +1291,10 @@ class OperacaoProducaoServiceClass {
     delete payload.updated_at_frontend;
 
     const tenantId = await getCurrentTenantId();
-    // Proteção de Spoof: Fetch original first
+    // Proteção de Spoof: Fetch original first com campos de auditoria e governança
     const { data: existing, error: fetchOriginalError } = await operationalClient
       .from('operacoes_producao')
-      .select('empresa_id')
+      .select('empresa_id, status, status_rh, avaliacao_json, entrada_ponto, saida_ponto, atualizado_em')
       .eq('id', id)
       .eq('tenant_id', tenantId)
       .maybeSingle();
@@ -1142,6 +1308,52 @@ class OperacaoProducaoServiceClass {
     }
 
     const safePayload = this.sanitizeOperacaoPayload(payload);
+
+    // REGRA DE DOMÍNIO COMPARTILHADA (FIX 05):
+    // Avaliar horários (novos ou mantidos do estado prévio)
+    const novaEntrada = safePayload.entrada_ponto !== undefined ? safePayload.entrada_ponto : existing.entrada_ponto;
+    const novaSaida = safePayload.saida_ponto !== undefined ? safePayload.saida_ponto : existing.saida_ponto;
+    const hasHorariosCompletos = Boolean(novaEntrada && novaSaida);
+
+    // Preservar outros dados de avaliacao_json sem sobrescrever dados legítimos
+    const currentAvaliacao = (typeof safePayload.avaliacao_json === 'object' && safePayload.avaliacao_json !== null)
+      ? { ...safePayload.avaliacao_json }
+      : (typeof existing.avaliacao_json === 'object' && existing.avaliacao_json !== null
+         ? { ...existing.avaliacao_json }
+         : {});
+
+    if (!hasHorariosCompletos) {
+      safePayload.status = 'EM_RESTRICAO';
+      if (!safePayload.status_rh) safePayload.status_rh = existing.status_rh || 'PENDENTE_RH';
+      currentAvaliacao.motivo_restricao = "Horário de início e/ou término não informado";
+      safePayload.avaliacao_json = currentAvaliacao;
+    } else {
+      // Se ambos preenchidos, remover apenas a restrição relativa a horário
+      if (currentAvaliacao.motivo_restricao === "Horário de início e/ou término não informado") {
+        delete currentAvaliacao.motivo_restricao;
+      }
+      safePayload.avaliacao_json = currentAvaliacao;
+
+      // NÃO liberar automaticamente se existir outra restrição real independente:
+      // 1) Outro motivo_restricao que não seja horário
+      // 2) Devolução do RH (motivo_devolucao_rh ou status_rh === 'DEVOLVIDO_RH')
+      const hasOutraRestricao = Boolean(
+        (currentAvaliacao.motivo_restricao && currentAvaliacao.motivo_restricao !== "Horário de início e/ou término não informado") ||
+        currentAvaliacao.motivo_devolucao_rh ||
+        existing.status_rh === 'DEVOLVIDO_RH'
+      );
+
+      if (hasOutraRestricao) {
+        safePayload.status = 'EM_RESTRICAO';
+        if (!safePayload.status_rh) safePayload.status_rh = existing.status_rh || 'PENDENTE_RH';
+      } else if (existing.status === 'EM_RESTRICAO' || safePayload.status === 'EM_RESTRICAO' || !safePayload.status) {
+        safePayload.status = 'RECEBIDO';
+        if (!safePayload.status_rh) safePayload.status_rh = existing.status_rh || 'PENDENTE_RH';
+      }
+    }
+
+    safePayload.entrada_ponto = novaEntrada;
+    safePayload.saida_ponto = novaSaida;
     
     const { data: updateRes, error } = await operationalClient.rpc('rpc_operacao_editar_segura', {
       p_operacao_id: id,
@@ -1156,7 +1368,41 @@ class OperacaoProducaoServiceClass {
       if (error.message && error.message.includes('ESTADO_FECHADO')) {
         throw new Error('ESTADO_FECHADO');
       }
-      throw new Error((error as any).message || JSON.stringify(error));
+      // Se a RPC falhar por incompatibilidade de schema da versão antiga da RPC:
+      if (error.message && (error.message.includes('does not exist') || error.code === '42703')) {
+        const v_status_blocked = ['AGUARDANDO_FATURAMENTO', 'FATURADO', 'RECEBIDO_FINANCEIRO', 'CONCLUIDO'];
+        if (v_status_blocked.includes(existing.status)) {
+          throw new Error('ESTADO_FECHADO');
+        }
+        if (updatedAtFrontend && existing.atualizado_em && existing.atualizado_em !== updatedAtFrontend) {
+          throw new Error('CONCURRENCY_CONFLICT');
+        }
+        const { error: directUpdateError } = await operationalClient
+          .from('operacoes_producao')
+          .update({
+            ...safePayload,
+            atualizado_em: new Date().toISOString()
+          })
+          .eq('id', id)
+          .eq('tenant_id', tenantId);
+        if (directUpdateError) throw directUpdateError;
+      } else {
+        throw new Error((error as any).message || JSON.stringify(error));
+      }
+    } else {
+      // Sincroniza campos de governança que não constam na assinatura da RPC
+      await operationalClient
+        .from('operacoes_producao')
+        .update({
+          status: safePayload.status,
+          status_rh: safePayload.status_rh,
+          entrada_ponto: safePayload.entrada_ponto,
+          saida_ponto: safePayload.saida_ponto,
+          avaliacao_json: safePayload.avaliacao_json,
+          atualizado_em: new Date().toISOString()
+        })
+        .eq('id', id)
+        .eq('tenant_id', tenantId);
     }
 
     const { data, error: fetchError } = await operationalClient
@@ -1219,13 +1465,18 @@ class OperacaoProducaoServiceClass {
     // Proteção de validação restritiva em contexto correto
     const { data: existing, error: fetchOriginalError } = await operationalClient
       .from('operacoes_producao')
-      .select('empresa_id')
+      .select('empresa_id, status, entrada_ponto, saida_ponto')
       .eq('id', id)
       .eq('tenant_id', tenantId)
       .maybeSingle();
       
     if (fetchOriginalError || !existing) throw new Error('NOT_FOUND_OR_CONFLICT');
     await EnvironmentService.assertEmpresaAllowed({ tenantId, empresaId: existing.empresa_id });
+
+    // DEFESA DE DOMÍNIO (FIX 05):
+    if (existing.status === 'EM_RESTRICAO' || !existing.entrada_ponto || !existing.saida_ponto) {
+      throw new Error("Esta operação possui restrições de horários e deve ser corrigida em Pendências antes de ser aprovada pelo RH.");
+    }
 
     const { data: result, error } = await operationalClient.rpc('rpc_operacao_validar_aprovar', {
       p_operacao_id: id,

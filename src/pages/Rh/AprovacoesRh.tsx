@@ -279,6 +279,19 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
             }
             // Operações por Volume
             if (item.tipo === "OPERAÇÃO") {
+                // Defesa de domínio (FIX 05): Operação em restrição ou sem horários de início/fim não pode ser aprovada
+                const { data: opData, error: opCheckErr } = await supabase
+                    .from("operacoes_producao")
+                    .select("id, status, entrada_ponto, saida_ponto")
+                    .eq("id", item.id)
+                    .single();
+
+                if (opCheckErr) throw opCheckErr;
+
+                if (opData?.status === "EM_RESTRICAO" || !opData?.entrada_ponto || !opData?.saida_ponto) {
+                    throw new Error("Esta operação possui restrições de horários e deve ser corrigida em Pendências antes de ser aprovada pelo RH.");
+                }
+
                 const { error } = await supabase.rpc("rpc_rh_aprovar_operacao", {
                     p_operacao_id: item.id
                 });

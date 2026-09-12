@@ -3,7 +3,7 @@ import * as z from "zod";
 export const productionSchema = z.object({
   // Identificação e Contexto
   tipo_lancamento: z.enum(["operacao_padrao", "transbordo_servico_extra", "custos_extras", "servicos_especificos", "diaristas"]),
-  modalidade_financeira: z.enum(["CAIXA_IMEDIATO", "DUPLICATA", "FATURAMENTO_MENSAL", "CUSTO_DESPESA", "FECHAMENTO_MENSAL_EMPRESA", "DUPLICATA_FORNECEDOR"]),
+  modalidade_financeira: z.enum(["CAIXA_IMEDIATO", "DUPLICATA", "FATURAMENTO_MENSAL", "CUSTO_DESPESA", "FECHAMENTO_MENSAL_EMPRESA", "DUPLICATA_FORNECEDOR"]).default("CAIXA_IMEDIATO"),
   data: z.string().min(1, "Data é obrigatória"),
   empresa_id: z.string().uuid("Selecione uma empresa válida"),
   unidade_id: z.string().uuid("Selecione uma unidade válida").optional().nullable(),
@@ -51,6 +51,7 @@ export type ProductionFormValues = z.infer<typeof productionSchema>;
 
 export const DEFAULT_PRODUCTION_VALUES: Partial<ProductionFormValues> = {
   tipo_lancamento: "operacao_padrao",
+  modalidade_financeira: "CAIXA_IMEDIATO",
   data: (() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;

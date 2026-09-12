@@ -376,7 +376,7 @@ export const Sidebar = () => {
           <div className="mb-3 space-y-1">
             {filterItems(dashboardItems).map((item) => (
               <SidebarItem
-                key={item.to}
+                key={`${item.to}-${item.label}`}
                 item={item}
                 pulse={item.pulseKey ? pulseItems[item.pulseKey] : undefined}
                 onBadgeClick={(pulse) => setDrawer({ title: item.label, route: item.to, pulse })}
@@ -421,7 +421,7 @@ export const Sidebar = () => {
 
                       {group.items.map((item) => (
                         <SidebarItem
-                          key={item.to}
+                          key={`${item.to}-${item.label}`}
                           item={item}
                           pulse={item.pulseKey ? pulseItems[item.pulseKey] : undefined}
                           onBadgeClick={(pulse) => setDrawer({ title: item.label, route: item.to, pulse })}

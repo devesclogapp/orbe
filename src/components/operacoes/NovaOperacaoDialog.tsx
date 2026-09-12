@@ -32,7 +32,7 @@ const normalizeInitialData = (data: any) => {
         produto: data.produto_carga_id || data.produto,
         forma_pagamento: data.forma_pagamento_id || data.forma_pagamento,
         data: data.data_operacao || data.data,
-        modalidade_financeira: data.modalidade_financeira || data.modalidadeFinanceira || getContext("modalidade_financeira_override"),
+        modalidade_financeira: data.modalidade_financeira || data.modalidadeFinanceira || getContext("modalidade_financeira_override") || "CAIXA_IMEDIATO",
         observacao: data.observacao || getContext("observacao"),
         placa_veiculo: data.placa || data.placa_veiculo,
         horario_inicio: data.horario_inicio_label || data.entrada_ponto || data.horario_inicio,

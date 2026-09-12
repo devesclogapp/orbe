@@ -12,8 +12,9 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
+import { Plus, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { QuickRegisterDialog } from "./QuickRegisterDialog";
+import { cn } from "@/lib/utils";
 
 interface FormStepContextProps {
     form: UseFormReturn<ProductionFormValues>;
@@ -22,11 +23,18 @@ interface FormStepContextProps {
     tiposServico: any[];
     transportadoras: any[];
     fornecedores: any[];
+    isPendenciaHorario?: boolean;
 }
 
-export function FormStepContext({ form, empresas, unidades, tiposServico, transportadoras, fornecedores }: FormStepContextProps) {
+export function FormStepContext({ form, empresas, unidades, tiposServico, transportadoras, fornecedores, isPendenciaHorario }: FormStepContextProps) {
     const { register, watch, formState: { errors } } = form;
     const empresaId = watch("empresa_id");
+    const horarioInicio = watch("horario_inicio");
+    const horarioFim = watch("horario_fim");
+
+    const faltaInicio = Boolean(isPendenciaHorario && (!horarioInicio || String(horarioInicio).trim() === ""));
+    const faltaFim = Boolean(isPendenciaHorario && (!horarioFim || String(horarioFim).trim() === ""));
+    const pendenciaAtiva = faltaInicio || faltaFim;
 
     const [quickReg, setQuickReg] = useState<{ open: boolean; type: "transportadora" | "fornecedor" | "produto" }>({
         open: false,
@@ -39,6 +47,33 @@ export function FormStepContext({ form, empresas, unidades, tiposServico, transp
 
     return (
         <div className="space-y-6">
+            {isPendenciaHorario && (
+                <div className={cn(
+                    "p-4 rounded-xl border flex items-start gap-3 transition-colors",
+                    pendenciaAtiva
+                        ? "bg-amber-500/10 border-amber-500/30 text-amber-900 dark:text-amber-200"
+                        : "bg-emerald-500/10 border-emerald-500/30 text-emerald-900 dark:text-emerald-200"
+                )}>
+                    {pendenciaAtiva ? (
+                        <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                    ) : (
+                        <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                    )}
+                    <div className="space-y-0.5">
+                        <p className="text-sm font-semibold">
+                            {pendenciaAtiva
+                                ? "Pendência operacional: informe o horário de início e término da operação para liberar o registro."
+                                : "Horários informados com sucesso! Clique em 'Salvar e liberar pendência' para regularizar."}
+                        </p>
+                        <p className="text-xs opacity-90">
+                            {pendenciaAtiva
+                                ? "Os horários delimitam a janela operacional da carga na doca. Preencha os campos destacados abaixo para liberar o registro."
+                                : "Os campos de início e término foram preenchidos. Clique no botão abaixo para concluir o saneamento e liberar o registro."}
+                        </p>
+                    </div>
+                </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Empresa */}
                 <div className="space-y-2">
@@ -167,14 +202,44 @@ export function FormStepContext({ form, empresas, unidades, tiposServico, transp
 
                 {/* Horário Início */}
                 <div className="space-y-2">
-                    <Label>Horário Início (Opcional)</Label>
-                    <Input type="time" {...register("horario_inicio")} />
+                    <Label className="flex items-center gap-1">
+                        {isPendenciaHorario ? "Horário Início" : "Horário Início (Opcional)"}
+                        {faltaInicio && <span className="text-amber-600 font-bold">*</span>}
+                    </Label>
+                    <Input
+                        type="time"
+                        {...register("horario_inicio")}
+                        className={cn(
+                            faltaInicio && "border-amber-500 ring-2 ring-amber-500/20 bg-amber-50/30 focus-visible:ring-amber-500"
+                        )}
+                    />
+                    {faltaInicio && (
+                        <p className="text-xs text-amber-600 font-medium flex items-center gap-1.5 mt-1">
+                            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                            Campo necessário para resolver esta pendência.
+                        </p>
+                    )}
                 </div>
 
                 {/* Horário Fim */}
                 <div className="space-y-2">
-                    <Label>Horário Fim (Opcional)</Label>
-                    <Input type="time" {...register("horario_fim")} />
+                    <Label className="flex items-center gap-1">
+                        {isPendenciaHorario ? "Horário Fim" : "Horário Fim (Opcional)"}
+                        {faltaFim && <span className="text-amber-600 font-bold">*</span>}
+                    </Label>
+                    <Input
+                        type="time"
+                        {...register("horario_fim")}
+                        className={cn(
+                            faltaFim && "border-amber-500 ring-2 ring-amber-500/20 bg-amber-50/30 focus-visible:ring-amber-500"
+                        )}
+                    />
+                    {faltaFim && (
+                        <p className="text-xs text-amber-600 font-medium flex items-center gap-1.5 mt-1">
+                            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                            Campo necessário para resolver esta pendência.
+                        </p>
+                    )}
                 </div>
             </div>
 

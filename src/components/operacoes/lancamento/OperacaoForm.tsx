@@ -4,7 +4,8 @@ import {
     ChevronRight,
     ChevronLeft,
     Save,
-    Loader2
+    Loader2,
+    CheckCircle2
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -53,11 +54,33 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
     const [justificativa, setJustificativa] = useState("");
     const [justificativaError, setJustificativaError] = useState("");
     const [concurrencyError, setConcurrencyError] = useState(false);
+    const [isRegularizando, setIsRegularizando] = useState(false);
+
+    const isPendenciaHorario = useMemo(() => {
+        if (!initialData || !initialData.id) return false;
+        const motivoRestricao = initialData.avaliacao_json?.motivo_restricao;
+        const motivoTemHorario = typeof motivoRestricao === 'string' && (
+            motivoRestricao.toLowerCase().includes("horário") || 
+            motivoRestricao.toLowerCase().includes("horario")
+        );
+        const isRestricaoOuPendencia = initialData.status === 'EM_RESTRICAO' || 
+            initialData.status_rh === 'PENDENTE_RH' || 
+            initialData.had_infraction;
+        const faltaHorario = !initialData.entrada_ponto || !initialData.saida_ponto || !initialData.horario_inicio || !initialData.horario_fim;
+
+        return Boolean(motivoTemHorario || (isRestricaoOuPendencia && faltaHorario));
+    }, [initialData]);
 
     // Quick initialize from initialData if editing
     useEffect(() => {
         if (initialData && initialData.id) {
             setEtapa(2); // Pula a escolha do tipo se for edição
+            if (!form.getValues("modalidade_financeira")) {
+                form.setValue("modalidade_financeira", (initialData.modalidade_financeira || "CAIXA_IMEDIATO") as any);
+            }
+            if (isPendenciaHorario && !justificativa) {
+                setJustificativa("Regularização de horários de início e término da operação.");
+            }
 
             // Popula os colaboradores vinculados a esta operação da nova relação: production_entry_collaborators
             if (initialData.production_entry_collaborators && Array.isArray(initialData.production_entry_collaborators)) {
@@ -73,7 +96,7 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                 setSelectedMateriais(initialData.operacao_producao_materiais);
             }
         }
-    }, [initialData]);
+    }, [initialData, isPendenciaHorario]);
 
     const [selectedMateriais, setSelectedMateriais] = useState<Array<{
         material_id: string;
@@ -93,6 +116,13 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
         empresaId,
         defaultValues: initialData ? { ...DEFAULT_PRODUCTION_VALUES, ...cleanInitialData } : DEFAULT_PRODUCTION_VALUES,
     });
+
+    const watchedHorarioInicio = form.watch("horario_inicio");
+    const watchedHorarioFim = form.watch("horario_fim");
+    const hasHorariosValidos = Boolean(
+        watchedHorarioInicio && String(watchedHorarioInicio).trim() !== "" &&
+        watchedHorarioFim && String(watchedHorarioFim).trim() !== ""
+    );
 
     const currentEmpresaId = form.watch("empresa_id") || empresaId;
     const currentModalidade = form.watch("modalidade_financeira") as "CAIXA_IMEDIATO" | "DUPLICATA" | undefined;
@@ -264,12 +294,19 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
             }
         },
         onSuccess: (data: any) => {
-            toast.success(data?.isEdit ? "Operação atualizada com sucesso!" : "Produção lançada com sucesso!");
+            if (isPendenciaHorario) {
+                toast.success("Horários corrigidos. Operação liberada para continuar o fluxo.");
+            } else {
+                toast.success(data?.isEdit ? "Operação atualizada com sucesso!" : "Produção lançada com sucesso!");
+            }
             queryClient.invalidateQueries({ queryKey: ["producao_recente"] });
             queryClient.invalidateQueries({ queryKey: ["operacoes"] });
             queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
             queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
             queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
+            queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
+            queryClient.invalidateQueries({ queryKey: ["aprovacoes_rh"] });
+            queryClient.invalidateQueries({ queryKey: ["operacoes-inconsistencias"] });
 
             // Trigger the operational progress modal natively if it's a new launch (Volume)
             if (!data?.isEdit && (form.getValues().tipo_lancamento === 'volume' || !form.getValues().tipo_lancamento)) {
@@ -314,6 +351,48 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
         toast.error("Erro de validação. Verifique os campos: " + errorFields, {
             description: "Um ou mais campos obrigatórios estão ausentes ou inválidos."
         });
+    };
+
+    const handleSalvarSaneamentoRapido = async () => {
+        if (!hasHorariosValidos || !initialData?.id) return;
+
+        const inicio = String(watchedHorarioInicio || '').trim();
+        const fim = String(watchedHorarioFim || '').trim();
+
+        if (!inicio || !fim) {
+            toast.error("Informe os horários de início e término.");
+            return;
+        }
+
+        setIsRegularizando(true);
+        try {
+            const just = justificativa.trim() || "Regularização de horários de início e término da operação.";
+            await OperacaoProducaoService.regularizarHorarios(
+                initialData.id,
+                inicio,
+                fim,
+                just
+            );
+
+            toast.success("Horários corrigidos. Operação liberada para continuar o fluxo.");
+            queryClient.invalidateQueries({ queryKey: ["producao_recente"] });
+            queryClient.invalidateQueries({ queryKey: ["operacoes"] });
+            queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
+            queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+            queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
+            queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
+            queryClient.invalidateQueries({ queryKey: ["aprovacoes_rh"] });
+            queryClient.invalidateQueries({ queryKey: ["operacoes-inconsistencias"] });
+
+            if (onSuccess) {
+                onSuccess();
+            }
+        } catch (err: any) {
+            console.error("[SANEAMENTO_RAPIDO] Erro ao regularizar horários:", err);
+            toast.error(err.message || "Erro ao regularizar horários.");
+        } finally {
+            setIsRegularizando(false);
+        }
     };
 
     const handleNext = async () => {
@@ -431,6 +510,7 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                                 tiposServico={tiposServico}
                                 transportadoras={transportadoras}
                                 fornecedores={fornecedores}
+                                isPendenciaHorario={isPendenciaHorario}
                             />
                         </div>
                     )}
@@ -507,18 +587,45 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                                 ? "fixed bottom-0 left-0 right-0 bg-white border-t p-4 flex justify-between gap-4 z-50 lg:left-64"
                                 : "mt-6 pt-4 border-t flex justify-between gap-4"
                         }>
-                            <Button type="button" variant="outline" className="flex-1" onClick={() => {
-                                if (etapa > 1) setEtapa(prev => prev - 1);
-                                else if (onCancel) onCancel();
-                            }}>
-                                <ChevronLeft className="h-4 w-4 mr-2" /> Voltar
-                            </Button>
+                            {isPendenciaHorario && etapa === 2 ? (
+                                <>
+                                    <Button 
+                                        type="button" 
+                                        variant="outline" 
+                                        className="flex-1" 
+                                        onClick={() => onCancel && onCancel()}
+                                    >
+                                        <ChevronLeft className="h-4 w-4 mr-2" /> Cancelar
+                                    </Button>
 
-                            {etapa < 4 ? (
-                                <Button type="button" className="flex-1" onClick={handleNext}>
-                                    Próximo <ChevronRight className="h-4 w-4 ml-2" />
-                                </Button>
+                                    <Button
+                                        type="button"
+                                        className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90 font-medium shadow-sm transition-all"
+                                        disabled={!hasHorariosValidos || isRegularizando}
+                                        onClick={handleSalvarSaneamentoRapido}
+                                    >
+                                        {isRegularizando ? (
+                                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                        ) : (
+                                            <CheckCircle2 className="h-4 w-4 mr-2" />
+                                        )}
+                                        Salvar e liberar pendência
+                                    </Button>
+                                </>
                             ) : (
+                                <>
+                                    <Button type="button" variant="outline" className="flex-1" onClick={() => {
+                                        if (etapa > 1) setEtapa(prev => prev - 1);
+                                        else if (onCancel) onCancel();
+                                    }}>
+                                        <ChevronLeft className="h-4 w-4 mr-2" /> Voltar
+                                    </Button>
+
+                                    {etapa < 4 ? (
+                                        <Button type="button" className="flex-1" onClick={handleNext}>
+                                            Próximo <ChevronRight className="h-4 w-4 ml-2" />
+                                        </Button>
+                                    ) : (
                                 <Button
                                     type="button"
                                     onClick={() => {
@@ -560,6 +667,8 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                                     {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
                                     {initialData ? "Salvar Alterações" : "Finalizar Lançamento"}
                                 </Button>
+                            )}
+                                </>
                             )}
                         </div>
                     )}
