@@ -43,7 +43,7 @@ import {
   Table,
   LucideIcon,
 } from "lucide-react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink, useNavigate, useLocation } from "react-router-dom";
 import { ComponentType, MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { OperationalDetail, OperationalPulseItem, useOperationalPulse } from "@/hooks/useOperationalPulse";
@@ -56,6 +56,27 @@ import { AccessModule } from "@/lib/access-control";
 import { cn } from "@/lib/utils";
 
 const SIDEBAR_SCROLL_KEY = "sidebar-scroll-position";
+const SIDEBAR_OPEN_GROUPS_KEY = "orbe_sidebar_open_groups";
+
+const getInitialOpenGroups = (pathname: string): Record<string, boolean> => {
+  try {
+    const saved = localStorage.getItem(SIDEBAR_OPEN_GROUPS_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed && typeof parsed === "object") {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.warn("Falha ao recuperar estado dos grupos da sidebar:", e);
+  }
+
+  // Padrão inicial inteligente: abre apenas o grupo da rota atual ou operacoes_volume
+  const matched = groups.find(g => g.items.some(i => i.to === pathname || (i.to !== "/" && pathname.startsWith(i.to.split("?")[0]))));
+  return {
+    [matched ? matched.id : "operacoes_volume"]: true,
+  };
+};
 
 type PulseKey =
   | "dashboard"
@@ -305,9 +326,29 @@ export const Sidebar = () => {
   const { canAccess, isAdmin } = useAccessControl();
   const { items: pulseItems, stages } = useOperationalPulse();
   const navigate = useNavigate();
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const location = useLocation();
+
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
+    getInitialOpenGroups(location.pathname)
+  );
   const [drawer, setDrawer] = useState<DrawerState>(null);
   const navRef = useRef<HTMLElement>(null);
+
+  // Garante que o grupo da rota atual esteja aberto quando o usuário navegar, sem fechar os demais
+  useEffect(() => {
+    const matched = groups.find((g) =>
+      g.items.some((i) => i.to === location.pathname || (i.to !== "/" && location.pathname.startsWith(i.to.split("?")[0])))
+    );
+    if (matched && !openGroups[matched.id]) {
+      setOpenGroups((prev) => {
+        const next = { ...prev, [matched.id]: true };
+        try {
+          localStorage.setItem(SIDEBAR_OPEN_GROUPS_KEY, JSON.stringify(next));
+        } catch {}
+        return next;
+      });
+    }
+  }, [location.pathname]);
 
   useEffect(() => {
     const savedScrollPosition = sessionStorage.getItem(SIDEBAR_SCROLL_KEY);
@@ -327,8 +368,15 @@ export const Sidebar = () => {
     navigate("/login");
   };
 
-  const toggleGroup = (id: string) =>
-    setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }));
+  const toggleGroup = (id: string) => {
+    setOpenGroups((prev) => {
+      const next = { ...prev, [id]: !prev[id] };
+      try {
+        localStorage.setItem(SIDEBAR_OPEN_GROUPS_KEY, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
 
   const filterItems = (items: MenuItem[]) =>
     items.filter((item) => {
@@ -386,7 +434,7 @@ export const Sidebar = () => {
 
           <div className="space-y-2">
             {visibleGroups.map((group) => {
-              const isOpen = !collapsed[group.id];
+              const isOpen = Boolean(openGroups[group.id]);
               const stageTone = group.stageKey ? stages[group.stageKey].tone : "gray";
 
               return (

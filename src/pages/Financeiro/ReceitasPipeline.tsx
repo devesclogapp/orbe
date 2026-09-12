@@ -69,7 +69,16 @@ export default function ReceitasPipeline() {
         if (location.state?.activeTab) {
             setActiveTab(location.state.activeTab as any);
         }
-    }, [location.state]);
+        if (location.state?.highlightReceitaId && receitas && receitas.length > 0) {
+            const found = receitas.find((r: any) => r.id === location.state.highlightReceitaId);
+            if (found) {
+                if (found.modalidade && found.modalidade !== activeTab) {
+                    setActiveTab(found.modalidade);
+                }
+                setSelectedReceita(found);
+            }
+        }
+    }, [location.state, receitas]);
 
     const handleNovaReceita = () => {
         toast({ title: "Aviso", description: "Criação avulsa de receitas será disponibilizada em breve.", variant: "default" });
@@ -331,7 +340,10 @@ export default function ReceitasPipeline() {
                                                     <div
                                                         key={r.id}
                                                         onClick={() => setSelectedReceita(r)}
-                                                        className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm hover:border-gray-300 hover:shadow-md transition-all group relative cursor-pointer"
+                                                        className={cn(
+                                                            "bg-white p-4 rounded-xl border border-gray-200 shadow-sm hover:border-gray-300 hover:shadow-md transition-all group relative cursor-pointer",
+                                                            location.state?.highlightReceitaId === r.id && "ring-2 ring-primary border-primary bg-primary/[0.02]"
+                                                        )}
                                                     >
                                                         <div className={cn("absolute left-0 top-0 bottom-0 w-1.5 rounded-l-xl", indicatorColor)} title={
                                                             (r.status === 'recebido' || r.status === 'pago' || r.status === 'conciliado') ? "Recebido" : isVencido ? "Vencido" : isVenceHoje ? "Vence hoje" : isVenceBreve ? "Vence em breve" : "No prazo"

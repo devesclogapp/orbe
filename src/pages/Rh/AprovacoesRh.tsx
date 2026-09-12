@@ -869,6 +869,24 @@ function DetailPanel({
         enabled: item.tipo === "OPERAÇÃO"
     });
 
+    const { data: receitaVinculada } = useQuery({
+        queryKey: ["receita-vinculada-op", item.id],
+        queryFn: async () => {
+            if (item.tipo !== "OPERAÇÃO") return null;
+            const { data, error } = await supabase
+                .from("receitas_operacionais_itens")
+                .select("receita_id, receitas_operacionais(id, status, modalidade, valor_total)")
+                .eq("operacao_id", item.id)
+                .maybeSingle();
+            if (error) {
+                console.warn("Nenhuma receita vinculada encontrada:", error);
+                return null;
+            }
+            return data;
+        },
+        enabled: item.tipo === "OPERAÇÃO"
+    });
+
     const { data: diaristaData, isLoading: diaristaLoading, refetch: refetchDiarista } = useQuery({
         queryKey: ["diarista-detalhes", item.raw_lote_id],
         queryFn: async () => {
@@ -1066,13 +1084,66 @@ function DetailPanel({
                             <span className="text-xs font-bold uppercase tracking-wide">Informações</span>
                         </div>
                         <div className="space-y-2 bg-slate-50 border border-border/30 rounded-lg px-4 py-3">
-                            <SummaryLine label="Recebido em" value={item.dataRecebimento} />
+                            <SummaryLine label="Recebido em" value={(item as any).dataRecebimento || item.data_recebimento} />
                             <SummaryLine label="Referência" value={item.referencia} />
                         </div>
                     </div>
 
                     {/* Ações */}
                     <div className="pt-2 flex flex-col gap-2">
+                        {/* Contexto Operacional RH x Financeiro */}
+                        {item.tipo === "OPERAÇÃO" && item.situacao === "Aprovado" && (
+                            <div className="bg-emerald-50/80 border border-emerald-200/80 rounded-lg p-3.5 space-y-2.5">
+                                <div className="flex items-start gap-2.5">
+                                    <CheckCircle2 className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
+                                    <div className="text-xs text-emerald-950 leading-relaxed">
+                                        <p className="font-bold">Validação RH Concluída</p>
+                                        <p className="text-emerald-700 text-[11px] mt-0.5">
+                                            A validação RH desta operação está finalizada. A quitação e cobrança financeira são gerenciadas no pipeline de Receitas Operacionais.
+                                        </p>
+                                    </div>
+                                </div>
+                                {receitaVinculada?.receita_id && (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="w-full bg-white hover:bg-emerald-50 border-emerald-300 text-emerald-800 font-semibold h-9 text-xs gap-1.5 shadow-sm"
+                                        onClick={() => {
+                                            const rec = receitaVinculada.receitas_operacionais as any;
+                                            navigate("/financeiro/receitas", {
+                                                state: {
+                                                    highlightReceitaId: receitaVinculada.receita_id,
+                                                    activeTab: rec?.modalidade || "CAIXA_IMEDIATO"
+                                                }
+                                            });
+                                        }}
+                                    >
+                                        <DollarSign className="h-3.5 w-3.5 text-emerald-600" />
+                                        Ver Receita Operacional
+                                    </Button>
+                                )}
+                            </div>
+                        )}
+
+                        {item.tipo === "OPERAÇÃO" && receitaVinculada?.receita_id && item.situacao !== "Aprovado" && (
+                            <Button
+                                variant="outline"
+                                className="w-full border-emerald-200 text-emerald-700 hover:bg-emerald-50 font-bold h-11 gap-2"
+                                onClick={() => {
+                                    const rec = receitaVinculada.receitas_operacionais as any;
+                                    navigate("/financeiro/receitas", {
+                                        state: {
+                                            highlightReceitaId: receitaVinculada.receita_id,
+                                            activeTab: rec?.modalidade || "CAIXA_IMEDIATO"
+                                        }
+                                    });
+                                }}
+                            >
+                                <DollarSign size={16} className="text-emerald-600" />
+                                Ver Receita Vinculada
+                            </Button>
+                        )}
+
                         {isBlocked && valData.pendencias.length > 0 && (
                             <div className="mb-4 bg-rose-50 border border-rose-200 rounded-md p-3">
                                 <div className="flex items-center gap-2 text-rose-700 font-bold mb-2">
