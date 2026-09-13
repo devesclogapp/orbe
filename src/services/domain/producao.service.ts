@@ -732,6 +732,10 @@ class OperacaoProducaoServiceClass {
       ...rest 
     } = payload;
 
+    if (data_vencimento !== undefined) {
+      rest.data_vencimento = data_vencimento ? String(data_vencimento).trim() : null;
+    }
+
     if (horario_inicio !== undefined) {
       rest.entrada_ponto = horario_inicio ? String(horario_inicio).trim() : null;
     } else if (rest.entrada_ponto === undefined) {

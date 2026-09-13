@@ -23,8 +23,10 @@ import {
     FormaPagamentoOperacionalService,
     TransportadoraClienteService,
     FornecedorService,
-    MateriaisOperacionaisService
+    MateriaisOperacionaisService,
+    RegrasFinanceirasService
 } from "@/services/base.service";
+import { classificarFinanceiroSync } from "@/utils/financeiro";
 
 import { useProductionForm } from "@/components/operacoes/lancamento/hooks/useProductionForm";
 import { FormStepSelector } from "@/components/operacoes/lancamento/FormStepSelector";
@@ -167,6 +169,10 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
         queryKey: ["materiais_ativos"],
         queryFn: () => MateriaisOperacionaisService.getAllActive()
     });
+    const { data: regrasFinanceiras = [] } = useQuery({
+        queryKey: ["regras_financeiras_form"],
+        queryFn: () => RegrasFinanceirasService.getAllActive(),
+    });
 
     const currentTipoLancamento = form.watch("tipo_lancamento");
 
@@ -213,9 +219,33 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                 ...rest
             } = formData;
 
+            // Resolução do vencimento (Source of Truth no lançamento):
+            // 1. Data manual se fornecida explicitamente
+            // 2. Regra financeira específica da empresa / global via regras_financeiras
+            let resolvedVencimento: string | null = null;
+            if (data_vencimento && String(data_vencimento).trim() !== "") {
+                resolvedVencimento = String(data_vencimento).trim();
+            } else {
+                const formaSelecionada = formasPagamento.find((f: any) => f.id === forma_pagamento);
+                const classif = classificarFinanceiroSync(
+                    {
+                        data_operacao: data,
+                        forma_pagamento: formaSelecionada || forma_pagamento,
+                        formas_pagamento_operacional: formaSelecionada,
+                        empresa_id: currentEmpresaId,
+                    },
+                    { id: currentEmpresaId },
+                    regrasFinanceiras
+                );
+                if (classif.vencimento) {
+                    resolvedVencimento = classif.vencimento.toISOString().split("T")[0];
+                }
+            }
+
             const payload = {
                 ...rest,
                 data_operacao: data,
+                data_vencimento: resolvedVencimento || null,
                 placa: placa_veiculo || rest.placa || null,
                 tipo_servico_id: tipo_servico,
                 transportadora_id: transportadora,

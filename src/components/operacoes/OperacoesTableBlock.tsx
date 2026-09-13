@@ -116,7 +116,7 @@ const buildEditableForm = (item: any): EditableOperationForm => {
     forma_pagamento: getContextoImportacaoValue(item, "forma_pagamento") ?? "",
     observacao: getContextoImportacaoValue(item, "observacao") ?? "",
     modalidade_financeira: getContextoImportacaoValue(item, "modalidade_financeira_override") ?? "",
-    data_vencimento: getContextoImportacaoValue(item, "data_vencimento_override") ?? "",
+    data_vencimento: item.data_vencimento ? toInputValue(item.data_vencimento) : (getContextoImportacaoValue(item, "data_vencimento_override") ?? ""),
     status_pagamento: toInputValue(item.status_pagamento ?? item.statusPagamento ?? "PENDENTE"),
   };
 };
@@ -192,6 +192,7 @@ const buildOperationUpdatePayload = (editingItem: any, editForm: EditableOperati
     valor_total_filme: valores.totalFilmeCalculado, // Valor correto calculado para filme
     valor_total_materiais: Number(editingItem.valor_total_materiais || 0),
     valor_total: valores.totalFinalCalculado,
+    data_vencimento: editForm.data_vencimento || null,
     status_pagamento: editForm.status_pagamento || null,
     data_pagamento: editForm.status_pagamento === "RECEBIDO"
       ? (editingItem.data_pagamento ?? new Date().toISOString().split("T")[0])
@@ -696,8 +697,8 @@ export const OperacoesTableBlock = ({
   const processedRows = useMemo(() => {
     const sourceRows = Array.isArray(rowsData) ? rowsData : rows;
     if (!Array.isArray(sourceRows)) return [];
-    return sourceRows.map((item: any) => processarOperacao(item, empresas as any[]));
-  }, [rows, rowsData, empresas]);
+    return sourceRows.map((item: any) => processarOperacao(item, empresas as any[], regrasFinanceiras as any[]));
+  }, [rows, rowsData, empresas, regrasFinanceiras]);
 
   const updateMutation = useMutation({
     mutationFn: async () => {
@@ -1437,6 +1438,7 @@ export const OperacoesTableBlock = ({
         forma_pagamento: value,
       },
       empresa,
+      regrasFinanceiras as any[],
     );
   };
 
@@ -1696,8 +1698,9 @@ export const OperacoesTableBlock = ({
         forma_pagamento: editForm.forma_pagamento,
       },
       empresa,
+      regrasFinanceiras as any[],
     );
-  }, [editForm?.forma_pagamento, editingItem, empresas]);
+  }, [editForm?.forma_pagamento, editingItem, empresas, regrasFinanceiras]);
 
   if (!rowsData && isLoading) {
     return (
