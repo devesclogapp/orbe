@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, useEffect } from "react";
+import { useLocation, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -108,6 +109,19 @@ const RetornoBancario = () => {
   const canConciliar = role === "admin" || role === "financeiro";
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+
+  const tabParam = searchParams.get("tab") || (location.state as any)?.activeTab;
+  const [activeTab, setActiveTab] = useState<string>(() => (tabParam === "receitas" ? "receitas" : "pagamentos"));
+  const highlightReceitaId = searchParams.get("receita") || (location.state as any)?.highlightReceitaId;
+
+  useEffect(() => {
+    const tab = searchParams.get("tab") || (location.state as any)?.activeTab;
+    if (tab === "receitas" || tab === "pagamentos") {
+      setActiveTab(tab);
+    }
+  }, [searchParams, location.state]);
 
   const [banco, setBanco] = useState("001");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -316,7 +330,7 @@ const RetornoBancario = () => {
   return (
     <AppShell title="Central de Conciliações">
       <div className="mx-auto max-w-[1700px] w-full px-4 sm:px-6 md:px-8">
-        <Tabs defaultValue="pagamentos">
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="mb-6 grid w-full max-w-[500px] grid-cols-2 bg-muted/60">
             <TabsTrigger value="pagamentos" className="data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">Pagamentos & CNAB</TabsTrigger>
             <TabsTrigger value="receitas" className="data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm">Faturamentos (Receitas)</TabsTrigger>
@@ -848,7 +862,7 @@ const RetornoBancario = () => {
           </TabsContent>
 
           <TabsContent value="receitas" className="m-0 animate-in fade-in-50 duration-500">
-            <ConciliacaoReceitasBlock />
+            <ConciliacaoReceitasBlock highlightReceitaId={highlightReceitaId} />
           </TabsContent>
         </Tabs>
       </div>

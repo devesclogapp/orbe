@@ -104,8 +104,9 @@ describe('FIX 12.1 — Correção Visual do Pipeline e Invalidação de Cache', 
     });
 
     it('o código de ModalReceitaOperacional.tsx deve conter receita.status === "conciliado" para a etapa Conciliação', () => {
-      // Garantir que a linha de Conciliação NÃO usa mais (receita.status === 'recebido' || ...)
-      expect(modalContent).toContain("receita.status === 'conciliado' ? \"text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded\" : \"\")}>");
+      // Garantir que a etapa Conciliação concluída exige status === 'conciliado'
+      expect(modalContent).toContain("receita.status === 'conciliado' ? (");
+      expect(modalContent).toContain("text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded");
       expect(modalContent).toContain("Conciliação");
     });
   });

@@ -15,7 +15,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import {
     CheckCircle, FileText, Send, Clock, Receipt, Calculator,
     Banknote, ListPlus, Paperclip, ChevronLeft,
-    Zap, Layers, FileSpreadsheet
+    Zap, Layers, FileSpreadsheet, ArrowRightLeft
 } from "lucide-react";
 import { ReceitasService } from "@/services/receitas/receitas.service";
 import { generateCobrancaPDF } from "@/utils/pdfCobranca";
@@ -91,6 +91,39 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
         onClose();
     }
 
+    const finishRecebimentoSuccess = () => {
+        const receitaId = receita?.id;
+        toast({
+            title: "Recebimento registrado",
+            description: "O pagamento foi marcado como recebido no ORBE, mas ainda precisa ser conferido no extrato bancário. Próxima etapa: Conciliação bancária.",
+            action: (
+                <ToastAction
+                    altText="Ir para Conciliação"
+                    onClick={() => navigate('/financeiro/retorno', {
+                        state: {
+                            activeTab: 'receitas',
+                            highlightReceitaId: receitaId
+                        }
+                    })}
+                    className="bg-emerald-600 text-white hover:bg-emerald-700 hover:text-white border-transparent"
+                >
+                    Ir para Conciliação
+                </ToastAction>
+            ),
+            duration: 8000,
+        });
+        queryClient.invalidateQueries({ queryKey: ["receitas-pipeline"] });
+        queryClient.invalidateQueries({ queryKey: ["receita-historico"] });
+        queryClient.invalidateQueries({ queryKey: ["receita-detalhes"] });
+        queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+        queryClient.invalidateQueries({ queryKey: ["operacoes"] });
+        queryClient.invalidateQueries({ queryKey: ["receitas_para_conciliacao"] });
+        setIsSubmitting(false);
+        setActionView('main');
+        onSuccess();
+        onClose();
+    }
+
     const handleError = (err: any) => {
         toast({ title: "Erro na operação", description: err.message || "Erro desconhecido", variant: "destructive" });
         setIsSubmitting(false);
@@ -125,7 +158,7 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
     const handleConfirmRecebimento = () => {
         setIsSubmitting(true);
         updateStatusMutation.mutate('recebido', {
-            onSuccess: finishMutationSuccess,
+            onSuccess: finishRecebimentoSuccess,
             onError: handleError
         });
     };
@@ -141,7 +174,7 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
         }, {
             onSuccess: () => {
                 updateStatusMutation.mutate('recebido', {
-                    onSuccess: finishMutationSuccess,
+                    onSuccess: finishRecebimentoSuccess,
                     onError: handleError
                 });
             },
@@ -350,12 +383,10 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
 
     // --- Main Buttons ---
     const renderActionButtons = () => {
-        // REFINAMENTO 03
-        if (receita.status === 'recebido' || receita.status === 'pago' || receita.status === 'conciliado') {
-            const auditReceb = historico?.reverse().find((h: any) =>
-                h.acao?.includes('Recebimento') ||
-                h.status_novo === 'recebido' ||
-                h.status_novo === 'pago' ||
+        // FIX 13.2: Semântica precisa de Recebido vs Conciliado
+        if (receita.status === 'conciliado') {
+            const auditConcil = historico?.slice().reverse().find((h: any) =>
+                h.acao?.includes('Conciliação') ||
                 h.status_novo === 'conciliado'
             );
 
@@ -364,14 +395,19 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                     <div className="bg-emerald-100 p-2 rounded-full mt-0.5">
                         <CheckCircle className="h-6 w-6 text-emerald-600" />
                     </div>
-                    <div>
-                        <h4 className="font-bold text-emerald-800 text-sm">Recebido</h4>
+                    <div className="flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                            <h4 className="font-bold text-emerald-800 text-sm">Recebimento Conciliado</h4>
+                            <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded border border-emerald-200">
+                                Ciclo financeiro concluído
+                            </span>
+                        </div>
                         <div className="text-emerald-700/80 text-xs mt-1.5 leading-relaxed space-y-1">
-                            <p>A receita foi liquidada e o valor contabilizado.</p>
-                            {auditReceb ? (
+                            <p>A conferência no extrato bancário foi confirmada e o ciclo financeiro está concluído.</p>
+                            {auditConcil ? (
                                 <ul className="pl-0 flex flex-wrap items-center gap-x-4 pt-1 mt-2 border-t border-emerald-200/50">
-                                    <li><span className="font-semibold text-emerald-700">Data e Hora:</span> {new Date(auditReceb.created_at).toLocaleDateString('pt-BR')} às {new Date(auditReceb.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</li>
-                                    <li><span className="font-semibold text-emerald-700">Usuário Responsável:</span> {auditReceb.detalhes?.usuario_email || 'Sistema'}</li>
+                                    <li><span className="font-semibold text-emerald-700">Data e Hora:</span> {new Date(auditConcil.created_at).toLocaleDateString('pt-BR')} às {new Date(auditConcil.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</li>
+                                    <li><span className="font-semibold text-emerald-700">Conciliado por:</span> {auditConcil.detalhes?.usuario_email || 'Sistema'}</li>
                                 </ul>
                             ) : (
                                 <p><span className="font-semibold text-emerald-700">Data de Atualização:</span> {new Date(receita.updated_at || new Date()).toLocaleString('pt-BR')}</p>
@@ -384,6 +420,67 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                                 </Button>
                             )}
                             <Button size="sm" variant="outline" className="text-gray-600 border-gray-200 hover:bg-gray-100" onClick={onClose}>
+                                Voltar ao Kanban
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        if (receita.status === 'recebido' || receita.status === 'pago') {
+            const auditReceb = historico?.slice().reverse().find((h: any) =>
+                h.acao?.includes('Recebimento') ||
+                h.status_novo === 'recebido' ||
+                h.status_novo === 'pago'
+            );
+
+            return (
+                <div className="bg-amber-50/70 border border-amber-200 rounded-lg p-5 flex items-start gap-4">
+                    <div className="bg-amber-100 p-2 rounded-full mt-0.5">
+                        <Clock className="h-6 w-6 text-amber-600" />
+                    </div>
+                    <div className="flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                            <h4 className="font-bold text-amber-900 text-sm">Recebimento registrado</h4>
+                            <span className="text-[11px] font-semibold text-amber-800 bg-amber-100 px-2 py-0.5 rounded border border-amber-200">
+                                Próxima etapa: Conciliação bancária
+                            </span>
+                        </div>
+                        <div className="text-amber-800/90 text-xs mt-1.5 leading-relaxed space-y-1">
+                            <p>O pagamento foi informado como recebido no ORBE. Confira o crédito no extrato bancário para concluir a conciliação.</p>
+                            {auditReceb ? (
+                                <ul className="pl-0 flex flex-wrap items-center gap-x-4 pt-1 mt-2 border-t border-amber-200/60 text-amber-800">
+                                    <li><span className="font-semibold">Data e Hora:</span> {new Date(auditReceb.created_at).toLocaleDateString('pt-BR')} às {new Date(auditReceb.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</li>
+                                    <li><span className="font-semibold">Registrado por:</span> {auditReceb.detalhes?.usuario_email || 'Sistema'}</li>
+                                </ul>
+                            ) : (
+                                <p><span className="font-semibold">Data de Atualização:</span> {new Date(receita.updated_at || new Date()).toLocaleString('pt-BR')}</p>
+                            )}
+                        </div>
+                        <div className="mt-4 border-t border-amber-200/60 pt-3 flex flex-wrap items-center gap-2">
+                            <Button
+                                size="sm"
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium gap-1.5 shadow-sm"
+                                onClick={() => {
+                                    onClose();
+                                    navigate('/financeiro/retorno', {
+                                        state: {
+                                            activeTab: 'receitas',
+                                            highlightReceitaId: receita.id
+                                        }
+                                    });
+                                }}
+                            >
+                                <ArrowRightLeft className="h-4 w-4" />
+                                Ir para Conciliação
+                            </Button>
+                            {itemOps?.id && (
+                                <Button size="sm" variant="outline" className="text-gray-700 border-gray-300 hover:bg-gray-100" onClick={() => { onClose(); navigate("/operacional/operacoes", { state: { highlight: itemOps.id } }); }}>
+                                    Visualizar Operação Original
+                                </Button>
+                            )}
+                            <Button size="sm" variant="ghost" className="text-gray-500 hover:text-gray-800" onClick={onClose}>
                                 Voltar ao Kanban
                             </Button>
                         </div>
@@ -487,7 +584,7 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                             <div className="w-px h-6 bg-gray-200"></div>
                             <div><span className="font-semibold text-gray-700 uppercase tracking-widest text-[10px]">Modalidade</span><br /> <span className="text-gray-900 font-medium">{receita.modalidade?.replace('_', ' ')}</span></div>
                             <div className="w-px h-6 bg-gray-200"></div>
-                            <div><span className="font-semibold text-gray-700 uppercase tracking-widest text-[10px]">Situação Financeira</span><br /> <span className="inline-block mt-0.5 text-blue-700 font-bold uppercase text-[11px] bg-blue-50 px-2 py-0.5 rounded">{(receita.status === 'recebido' || receita.status === 'pago' || receita.status === 'conciliado') ? 'RECEBIDO' : receita.status?.replace('_', ' ')}</span></div>
+                            <div><span className="font-semibold text-gray-700 uppercase tracking-widest text-[10px]">Situação Financeira</span><br /> <span className="inline-block mt-0.5 text-blue-700 font-bold uppercase text-[11px] bg-blue-50 px-2 py-0.5 rounded">{receita.status === 'conciliado' ? 'CONCILIADO' : (receita.status === 'recebido' || receita.status === 'pago') ? 'RECEBIDO' : receita.status?.replace('_', ' ')}</span></div>
                         </div>
 
                         {/* Pipeline de Receita e Última Atualização */}
@@ -507,7 +604,19 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                                 {receita.modalidade !== 'CAIXA_IMEDIATO' && (
                                     <>
                                         <span>↓</span>
-                                        <span className={cn("flex items-center gap-1", receita.status === 'conciliado' ? "text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded" : "")}><CheckCircle className="h-3.5 w-3.5" /> Conciliação</span>
+                                        {receita.status === 'conciliado' ? (
+                                            <span className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
+                                                <CheckCircle className="h-3.5 w-3.5" /> Conciliação
+                                            </span>
+                                        ) : (receita.status === 'recebido' || receita.status === 'pago') ? (
+                                            <span className="flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded animate-pulse font-semibold" title="Conciliação pendente de conferência no extrato bancário">
+                                                <Clock className="h-3.5 w-3.5 text-amber-600" /> Conciliação (Pendente)
+                                            </span>
+                                        ) : (
+                                            <span className="flex items-center gap-1 text-gray-400">
+                                                <CheckCircle className="h-3.5 w-3.5" /> Conciliação
+                                            </span>
+                                        )}
                                     </>
                                 )}
                             </div>
@@ -548,9 +657,13 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                                     <div className="flex flex-wrap items-start gap-4 md:gap-5 bg-white p-5 rounded-xl border shadow-sm">
                                         <div className="space-y-1.5 flex-[1_1_auto] min-w-max">
                                             <p className="text-[10px] font-bold text-gray-400 tracking-wider uppercase leading-tight">Situação Financeira</p>
-                                            {receita.status === 'recebido' || receita.status === 'pago' || receita.status === 'conciliado' ? (
+                                            {receita.status === 'conciliado' ? (
                                                 <div className="inline-flex bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded gap-1 whitespace-nowrap items-center min-h-[22px]">
-                                                    <CheckCircle className="h-3 w-3" /> RECEBIDO
+                                                    <CheckCircle className="h-3 w-3" /> CONCILIADO
+                                                </div>
+                                            ) : (receita.status === 'recebido' || receita.status === 'pago') ? (
+                                                <div className="inline-flex bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded gap-1 whitespace-nowrap items-center min-h-[22px]" title="Recebimento registrado — aguardando conferência bancária">
+                                                    <Clock className="h-3 w-3 text-amber-700" /> RECEBIMENTO REGISTRADO
                                                 </div>
                                             ) : (
                                                 <div className="inline-flex bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded whitespace-nowrap items-center min-h-[22px]">

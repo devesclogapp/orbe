@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { ArrowRightLeft, FileCheck2, Loader2, RotateCcw, Search, XCircle, CheckCircle2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,7 +26,11 @@ const formatDateTime = (value?: string | null) => {
     return new Date(value).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 };
 
-export function ConciliacaoReceitasBlock() {
+interface ConciliacaoReceitasBlockProps {
+    highlightReceitaId?: string | null;
+}
+
+export function ConciliacaoReceitasBlock({ highlightReceitaId }: ConciliacaoReceitasBlockProps = {}) {
     const { role } = useTenant();
     const canConciliar = role === "admin" || role === "financeiro";
     const queryClient = useQueryClient();
@@ -86,6 +91,16 @@ export function ConciliacaoReceitasBlock() {
 
         return filtered;
     }, [receitasRaw, filtroStatus, search]);
+
+    // FIX 13.2: Garantir que se um item destacado vier de navegação, ele não fique oculto por filtro de status
+    useEffect(() => {
+        if (highlightReceitaId && receitasRaw.length > 0) {
+            const found = receitasRaw.find(r => r.id === highlightReceitaId);
+            if (found && found.status === 'conciliado' && filtroStatus === 'recebido') {
+                setFiltroStatus('todos');
+            }
+        }
+    }, [highlightReceitaId, receitasRaw]);
 
     const resumo = useMemo(() => {
         return receitasRaw
@@ -231,10 +246,24 @@ export function ConciliacaoReceitasBlock() {
                                 ) : (
                                     receitasList.map((item) => {
                                         const isConciliado = item.status === 'conciliado';
+                                        const isHighlighted = Boolean(highlightReceitaId && item.id === highlightReceitaId);
                                         return (
-                                            <TableRow key={item.id}>
+                                            <TableRow 
+                                                key={item.id}
+                                                className={cn(
+                                                    "transition-colors",
+                                                    isHighlighted ? "bg-amber-50/80 border-l-4 border-l-amber-500 shadow-sm" : ""
+                                                )}
+                                            >
                                                 <TableCell className="min-w-[220px]">
-                                                    <div className="font-medium">{item.empresas?.nome || "Sem identificação"}</div>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-medium">{item.empresas?.nome || "Sem identificação"}</span>
+                                                        {isHighlighted && (
+                                                            <span className="text-[10px] bg-amber-200/80 text-amber-900 font-bold px-1.5 py-0.5 rounded uppercase tracking-wider animate-pulse">
+                                                                Foco
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                     <div className="text-xs text-muted-foreground">
                                                         Mod: {item.modalidade.replace(/_/g, ' ')}
                                                     </div>

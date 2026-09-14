@@ -143,7 +143,9 @@ describe('FIX 13.1 — Conciliação de Receitas com RPC, Auditoria e Controle d
     });
 
     it('no pipeline visual: recebido mantém Conciliação pendente, conciliado marca Conciliação como concluída', () => {
-      expect(modalContent).toContain("receita.status === 'conciliado' ? \"text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded\" : \"\"");
+      expect(modalContent).toContain("receita.status === 'conciliado' ? (");
+      expect(modalContent).toContain("text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded");
+      expect(modalContent).toContain("Conciliação (Pendente)");
     });
   });
 
