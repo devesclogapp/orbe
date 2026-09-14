@@ -802,9 +802,9 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
 
                                                     {isStatusChange && (
                                                         <div className="flex items-center gap-2 bg-gray-50 p-2.5 rounded-lg border border-gray-100 mb-3 text-xs w-full">
-                                                            <span className="text-gray-500 truncate">{h.status_anterior === 'recebido' || h.status_anterior === 'pago' || h.status_anterior === 'conciliado' ? 'Recebido' : (h.status_anterior?.replace('_', ' ') || 'Indefinido')}</span>
+                                                            <span className="text-gray-500 truncate">{h.status_anterior === 'conciliado' ? 'Conciliado' : (h.status_anterior === 'recebido' || h.status_anterior === 'pago' ? 'Recebido' : (h.status_anterior?.replace('_', ' ') || 'Indefinido'))}</span>
                                                             <span className="text-gray-400 text-[10px] px-1">↓</span>
-                                                            <span className="font-bold text-emerald-700">{h.status_novo === 'recebido' || h.status_novo === 'pago' || h.status_novo === 'conciliado' ? 'Recebido' : (h.status_novo?.replace('_', ' ') || 'Indefinido')}</span>
+                                                            <span className="font-bold text-emerald-700">{h.status_novo === 'conciliado' ? 'Conciliado' : (h.status_novo === 'recebido' || h.status_novo === 'pago' ? 'Recebido' : (h.status_novo?.replace('_', ' ') || 'Indefinido'))}</span>
                                                         </div>
                                                     )}
 

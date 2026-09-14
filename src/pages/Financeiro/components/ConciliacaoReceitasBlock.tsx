@@ -15,6 +15,7 @@ import { supabase } from "@/lib/supabase";
 import { getCurrentTenantId } from "@/services/domain/base.service";
 import { ReceitasService } from "@/services/receitas/receitas.service";
 import { ReceitaOperacional } from "@/types/receitas.types";
+import { useTenant } from "@/contexts/TenantContext";
 
 const formatCurrency = (value?: number | null) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(value || 0));
@@ -25,6 +26,8 @@ const formatDateTime = (value?: string | null) => {
 };
 
 export function ConciliacaoReceitasBlock() {
+    const { role } = useTenant();
+    const canConciliar = role === "admin" || role === "financeiro";
     const queryClient = useQueryClient();
     const [search, setSearch] = useState("");
     const [filtroStatus, setFiltroStatus] = useState<"todos" | "recebido" | "conciliado">("recebido");
@@ -32,7 +35,7 @@ export function ConciliacaoReceitasBlock() {
     const [dialogAcao, setDialogAcao] = useState<{
         open: boolean;
         item: (ReceitaOperacional & { empresas?: { nome: string } }) | null;
-        acao: "conciliado" | "pendente";
+        acao: "conciliado";
         observacao: string;
     }>({
         open: false,
@@ -100,39 +103,37 @@ export function ConciliacaoReceitasBlock() {
 
     // Mutations
     const actionMutation = useMutation({
-        mutationFn: async ({ id, acao, obs }: { id: string, acao: string, obs: string }) => {
-            const tenantId = await getCurrentTenantId();
-            // Atualiza o status
-            await ReceitasService.update(id, { status: acao === 'conciliado' ? 'conciliado' : 'recebido' });
-            // Registra o evento
-            const logAcao = acao === 'conciliado' ? 'Receita Conciliada' : 'Recebimento Desfeito (Divergência)';
-            const msgOpcional = obs ? ` | Obs: ${obs}` : '';
-            await ReceitasService.logEvent(tenantId, id, logAcao, `A situação bancária foi atualizada para ${acao.toUpperCase()}.${msgOpcional}`);
+        mutationFn: async ({ id }: { id: string }) => {
+            if (!canConciliar) {
+                throw new Error("Acesso negado: Perfil sem permissão para conciliar receitas.");
+            }
+            await ReceitasService.conciliar(id);
             return true;
         },
         onSuccess: () => {
-            toast.success("Operação de conciliação confirmada com sucesso.");
+            toast.success("Receita conciliada com sucesso após conferência bancária.");
             void queryClient.invalidateQueries({ queryKey: ["receitas_para_conciliacao"] });
+            void queryClient.invalidateQueries({ queryKey: ["receitas-pipeline"] });
+            void queryClient.invalidateQueries({ queryKey: ["receita-historico"] });
+            void queryClient.invalidateQueries({ queryKey: ["receita-detalhes"] });
             void queryClient.invalidateQueries({ queryKey: ["receitas"] });
             void queryClient.invalidateQueries({ queryKey: ["receitas-painel"] });
             setDialogAcao({ open: false, item: null, acao: "conciliado", observacao: "" });
         },
         onError: (err: any) => {
-            toast.error(err.message || "Erro ao processar a ação");
+            toast.error(err.message || "Erro ao processar a conciliação");
         }
     });
 
     const submitAcaoDialog = () => {
         if (!dialogAcao.item) return;
-        if (dialogAcao.acao === 'pendente' && !dialogAcao.observacao.trim()) {
-            toast.error("Obrigatório registrar observação ao apontar divergência/desfazer.");
+        if (!canConciliar) {
+            toast.error("Apenas perfis admin ou financeiro podem conciliar receitas.");
             return;
         }
 
         actionMutation.mutate({
             id: dialogAcao.item.id,
-            acao: dialogAcao.acao,
-            obs: dialogAcao.observacao.trim()
         });
     };
 
@@ -146,11 +147,11 @@ export function ConciliacaoReceitasBlock() {
                         </h3>
 
                         <div className="rounded-2xl border border-border/60 bg-background p-4 text-sm text-muted-foreground">
-                            O saldo reportado como <strong>Recebido</strong> pelas faturas só se torna definitivo após a inspeção e verificação física nos <strong>Extratos do Banco (Real)</strong>.
+                            Receitas marcadas como recebidas aguardam conferência manual no extrato bancário. Após verificar o crédito no banco, confirme a conciliação no ORBE.
                         </div>
 
                         <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
-                            <div className="text-xs uppercase text-blue-700">Aguardando Baixa Definitiva</div>
+                            <div className="text-xs uppercase text-blue-700">Aguardando Conciliação</div>
                             <div className="mt-1 text-2xl font-bold text-blue-800">{formatCurrency(resumo.recebido)}</div>
                         </div>
 
@@ -158,6 +159,12 @@ export function ConciliacaoReceitasBlock() {
                             <div className="text-xs uppercase text-emerald-700">Total Conciliado</div>
                             <div className="mt-1 text-2xl font-bold text-emerald-800">{formatCurrency(resumo.conciliado)}</div>
                         </div>
+
+                        {!canConciliar && (
+                            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
+                                Seu perfil pode consultar os faturamentos recebidos, mas a confirmação de conciliação exige perfil <code>admin</code> ou <code>financeiro</code>.
+                            </div>
+                        )}
 
                     </div>
                 </Card>
@@ -180,7 +187,7 @@ export function ConciliacaoReceitasBlock() {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="todos">Todos Registros</SelectItem>
-                                    <SelectItem value="recebido">Aguardando Avaliação</SelectItem>
+                                    <SelectItem value="recebido">Aguardando Conciliação</SelectItem>
                                     <SelectItem value="conciliado">Já Conciliados</SelectItem>
                                 </SelectContent>
                             </Select>
@@ -247,17 +254,20 @@ export function ConciliacaoReceitasBlock() {
                                                     <div className="flex justify-end gap-2">
                                                         {!isConciliado ? (
                                                             <>
-                                                                <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => setDialogAcao({ open: true, item, acao: 'conciliado', observacao: '' })}>
-                                                                    <CheckCircle2 className="mr-1 h-4 w-4" /> Confirmar Baixa
+                                                                <Button 
+                                                                    size="sm" 
+                                                                    className="bg-green-600 hover:bg-green-700 text-white" 
+                                                                    disabled={!canConciliar}
+                                                                    onClick={() => setDialogAcao({ open: true, item, acao: 'conciliado', observacao: '' })}
+                                                                >
+                                                                    <CheckCircle2 className="mr-1 h-4 w-4" /> Confirmar Conciliação
                                                                 </Button>
-                                                                <Button size="sm" variant="outline" className="text-amber-700" onClick={() => setDialogAcao({ open: true, item, acao: 'pendente', observacao: '' })}>
-                                                                    <ArrowRightLeft className="mr-1 h-4 w-4" /> Desfazer (Não Caiu)
-                                                                </Button>
+                                                                {/* FIX FUTURO — reversão de recebimento precisa sincronizar Receita, Operação e histórico. Botão Desfazer desativado temporariamente. */}
                                                             </>
                                                         ) : (
-                                                            <Button size="sm" variant="outline" onClick={() => setDialogAcao({ open: true, item, acao: 'pendente', observacao: 'Revertendo conciliação' })}>
-                                                                <RotateCcw className="mr-1 h-4 w-4" /> Reverter
-                                                            </Button>
+                                                            <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">
+                                                                Conciliado
+                                                            </Badge>
                                                         )}
                                                     </div>
                                                 </TableCell>
@@ -276,11 +286,10 @@ export function ConciliacaoReceitasBlock() {
             }}>
                 <DialogContent className="sm:max-w-[460px]">
                     <DialogHeader>
-                        <DialogTitle>{dialogAcao.acao === 'conciliado' ? 'Efetivar Baixa Bancária' : 'Apontar Divergência Bancária'}</DialogTitle>
-                        <DialogDescription>
-                            {dialogAcao.acao === 'conciliado'
-                                ? 'Você confirmou visualmente no extrato bancário (PJ) que o valor abaixo já creditou com sucesso?'
-                                : 'Você está desassociando este registro revertendo ao status Pendente, informe o ocorrido operacional:'}
+                        <DialogTitle>Confirmar conciliação?</DialogTitle>
+                        <DialogDescription className="space-y-1 pt-1">
+                            <span className="block text-gray-700">Confirme somente após verificar que este recebimento consta no extrato bancário real.</span>
+                            <span className="block text-xs text-muted-foreground mt-1">Esta ação registrará a Receita como conciliada no ORBE.</span>
                         </DialogDescription>
                     </DialogHeader>
 
@@ -290,25 +299,17 @@ export function ConciliacaoReceitasBlock() {
                                 <div className="text-lg font-bold text-center text-emerald-700 mb-2">{formatCurrency(dialogAcao.item.valor_total)}</div>
                                 <div className="text-sm font-medium text-center">{dialogAcao.item.empresas?.nome || 'Operação Oculta'}</div>
                             </div>
-
-                            {dialogAcao.acao === 'pendente' && (
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium">Motivo / Observação Obrigatória</label>
-                                    <Textarea
-                                        required
-                                        value={dialogAcao.observacao}
-                                        onChange={(event) => setDialogAcao((prev) => ({ ...prev, observacao: event.target.value }))}
-                                        placeholder="Ex: Não identifiquei o PIX ou transação devolvida."
-                                    />
-                                </div>
-                            )}
                         </div>
                     )}
 
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setDialogAcao({ open: false, item: null, acao: "conciliado", observacao: "" })}>Cancelar</Button>
-                        <Button onClick={submitAcaoDialog} disabled={actionMutation.isPending} className={dialogAcao.acao === 'conciliado' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700 text-white'}>
-                            {actionMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Confirmar Execução'}
+                        <Button 
+                            onClick={submitAcaoDialog} 
+                            disabled={actionMutation.isPending || !canConciliar} 
+                            className="bg-green-600 hover:bg-green-700 text-white"
+                        >
+                            {actionMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Confirmar Conciliação'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

@@ -128,6 +128,9 @@ class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
           rpcName = 'rpc_receita_confirmar_recebimento';
           // p_data_recebimento omisso usa = CURRENT_DATE interno.
           break;
+        case 'conciliado':
+          rpcName = 'rpc_receita_conciliar';
+          break;
         case 'cancelado':
           rpcName = 'rpc_receita_cancelar_ou_estornar';
           rpcParams['p_motivo'] = 'Cancelamento/Estorno via dor do módulo Dashboard.';
@@ -194,6 +197,14 @@ class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
     if (error) throw error;
     if (!data) throw new Error('NOT_FOUND_OR_UNAUTHORIZED: Update falhou silenciosamente, 0 linhas afetadas no escopo original.');
     
+    return data;
+  }
+
+  async conciliar(receitaId: string) {
+    const { data, error } = await supabase.rpc('rpc_receita_conciliar', {
+      p_receita_id: receitaId
+    });
+    if (error) throw error;
     return data;
   }
 }
