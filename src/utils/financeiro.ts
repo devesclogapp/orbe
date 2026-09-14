@@ -19,6 +19,21 @@ export function getModalidadeLabel(mod: ModalidadeFinanceira | string) {
   }
 }
 
+/**
+ * Formata strings semânticas de PostgreSQL DATE ('YYYY-MM-DD') para 'DD/MM/YYYY'.
+ * NÃO instancia o objeto Date para evitar conversão de fuso horário / timezone drift.
+ */
+export function formatDateOnly(dateStr?: string | null): string {
+  if (!dateStr || typeof dateStr !== "string") return "-";
+  const clean = dateStr.trim().slice(0, 10);
+  const match = clean.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (match) {
+    const [, year, month, day] = match;
+    return `${day}/${month}/${year}`;
+  }
+  return dateStr;
+}
+
 const normalizeFinanceText = (value: unknown) =>
   String(value ?? "")
     .normalize("NFD")

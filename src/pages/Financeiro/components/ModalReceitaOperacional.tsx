@@ -14,11 +14,12 @@ import { ToastAction } from "@/components/ui/toast";
 import { useTenant } from "@/contexts/TenantContext";
 import {
     CheckCircle, FileText, Send, Clock, Receipt, Calculator,
-    Banknote, ListPlus, Mail, MessageCircle, Link, Paperclip, ChevronLeft,
+    Banknote, ListPlus, Paperclip, ChevronLeft,
     Zap, Layers, FileSpreadsheet
 } from "lucide-react";
 import { ReceitasService } from "@/services/receitas/receitas.service";
 import { generateCobrancaPDF } from "@/utils/pdfCobranca";
+import { formatDateOnly } from "@/utils/financeiro";
 import { cn } from "@/lib/utils";
 
 interface ModalReceitaOperacionalProps {
@@ -40,10 +41,8 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
 
     // Forms
     const [pixForm, setPixForm] = useState({ data: new Date().toISOString().split('T')[0], banco: '', observacao: '' });
-    const [cobrancaForm, setCobrancaForm] = useState({ formato: 'Boleto (PDF)', vencimento: receita?.vencimento || '' });
+    const [cobrancaForm, setCobrancaForm] = useState({ formato: 'Fatura Comercial (PDF)', vencimento: receita?.vencimento || '' });
     const [consolidarForm, setConsolidarForm] = useState({ vencimento: receita?.vencimento || '' });
-    const [enviarForm, setEnviarForm] = useState({ contato: 'financeiro@cliente.com', mensagem: '' });
-    const [canalEnvio, setCanalEnvio] = useState<'email' | 'whatsapp' | 'link'>('email');
 
     // Data Load
     const { data: historico = [], isLoading: isLoadingHistorico } = useQuery({
@@ -83,6 +82,9 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
         });
         queryClient.invalidateQueries({ queryKey: ["receitas-pipeline"] });
         queryClient.invalidateQueries({ queryKey: ["receita-historico"] });
+        queryClient.invalidateQueries({ queryKey: ["receita-detalhes"] });
+        queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+        queryClient.invalidateQueries({ queryKey: ["operacoes"] });
         setIsSubmitting(false);
         setActionView('main');
         onSuccess();
@@ -178,32 +180,21 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
     const handleConfirmEnviarCobranca = (e: React.FormEvent) => {
         e.preventDefault();
         setIsSubmitting(true);
-        // Atualiza status e loga nativamente o update
         updateStatusMutation.mutate('cobranca_enviada', {
             onSuccess: () => {
-                const valorFormatado = Number(receita.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                const textoPadrao = `Olá!\n\nEsta é uma notificação da sua Fatura no valor de ${valorFormatado}.\n\n${enviarForm.mensagem}\n\nAtenciosamente,\nEquipe Logística`;
-
-                // Dispara o envio
-                if (canalEnvio === 'email') {
-                    // Simula envio em background sem sair do ERP (integração de API de e-mail como Resend/SendGrid seria plugada aqui)
-                    toast({ title: "E-mail enviado!", description: "O e-mail foi enfileirado para envio ao cliente com sucesso." });
-                } else if (canalEnvio === 'whatsapp') {
-                    const tel = enviarForm.contato.replace(/\D/g, '');
-                    window.open(`https://wa.me/55${tel}?text=${encodeURIComponent(textoPadrao)}`, '_blank');
-                } else {
-                    navigator.clipboard.writeText(textoPadrao);
-                    toast({ title: "Copiado para a Área de Transferência", description: "O link e a mensagem da cobrança foram copiados com sucesso." });
-                }
-
-                logEventMutation.mutate({
-                    acao: 'Cobrança Enviada ao Cliente',
-                    detalhesText: `Canal: ${canalEnvio.toUpperCase()} | Contato: ${enviarForm.contato} | Mensagem: ${enviarForm.mensagem || 'N/A'}`,
-                    json: { ...enviarForm, canal: canalEnvio }
-                }, {
-                    onSuccess: finishMutationSuccess,
-                    onError: handleError
+                toast({
+                    title: "Cobrança registrada como enviada",
+                    description: "O status da receita foi atualizado no pipeline.",
                 });
+                queryClient.invalidateQueries({ queryKey: ["receitas-pipeline"] });
+                queryClient.invalidateQueries({ queryKey: ["receita-historico"] });
+                queryClient.invalidateQueries({ queryKey: ["receita-detalhes"] });
+                queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+                queryClient.invalidateQueries({ queryKey: ["operacoes"] });
+                setIsSubmitting(false);
+                setActionView('main');
+                onSuccess();
+                onClose();
             },
             onError: handleError
         });
@@ -263,7 +254,7 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                 <div>
                     <Label>Formato do Documento</Label>
                     <div className="flex gap-2 mt-1">
-                        <Button type="button" variant="outline" className={cn("flex-1", cobrancaForm.formato === 'Boleto (PDF)' ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-white")} onClick={() => setCobrancaForm(p => ({ ...p, formato: 'Boleto (PDF)' }))}>Boleto (PDF)</Button>
+                        <Button type="button" variant="outline" className={cn("flex-1", cobrancaForm.formato === 'Fatura Comercial (PDF)' ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-white")} onClick={() => setCobrancaForm(p => ({ ...p, formato: 'Fatura Comercial (PDF)' }))}>Fatura Comercial (PDF)</Button>
                         <Button type="button" variant="outline" className={cn("flex-1", cobrancaForm.formato === 'Nota Fiscal' ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-white")} onClick={() => setCobrancaForm(p => ({ ...p, formato: 'Nota Fiscal' }))}>Nota Fiscal</Button>
                         <Button type="button" variant="outline" className={cn("flex-1", cobrancaForm.formato === 'Link Pix' ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-white")} onClick={() => setCobrancaForm(p => ({ ...p, formato: 'Link Pix' }))}>Link Pix</Button>
                     </div>
@@ -285,32 +276,48 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
     );
 
     const renderEnviarCobrancaForm = () => (
-        <form onSubmit={handleConfirmEnviarCobranca} className="space-y-4 animate-in slide-in-from-right-4">
-            <div className="flex items-center gap-2 mb-4">
+        <form onSubmit={handleConfirmEnviarCobranca} className="space-y-5 animate-in slide-in-from-right-4">
+            <div className="flex items-center gap-2 mb-2">
                 <Button type="button" variant="ghost" size="icon" className="-ml-3" onClick={() => setActionView('main')}>
                     <ChevronLeft className="h-5 w-5" />
                 </Button>
-                <h4 className="font-semibold text-gray-800">Envio de Cobrança para o Cliente</h4>
+                <h4 className="font-semibold text-gray-800">Registrar Envio de Cobrança</h4>
             </div>
 
-            <div className="space-y-4">
-                <div>
-                    <Label>Canal de Envio</Label>
-                    <div className="flex gap-2 mt-1">
-                        <Button type="button" variant="outline" className={cn("flex-1 gap-2", canalEnvio === 'email' ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white')} onClick={() => setCanalEnvio('email')}><Mail className="h-4 w-4" /> E-mail</Button>
-                        <Button type="button" variant="outline" className={cn("flex-1 gap-2 border-green-200 text-green-700 hover:bg-green-50", canalEnvio === 'whatsapp' ? 'bg-green-50 border-green-300 font-bold' : 'bg-white')} onClick={() => setCanalEnvio('whatsapp')}><MessageCircle className="h-4 w-4" /> WhatsApp</Button>
-                        <Button type="button" variant="outline" className={cn("flex-1 gap-2", canalEnvio === 'link' ? 'bg-gray-100 border-gray-300' : 'bg-white')} onClick={() => setCanalEnvio('link')}><Link className="h-4 w-4" /> Copiar Link</Button>
+            <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-5 space-y-3">
+                <div className="flex items-start gap-3">
+                    <div className="bg-amber-100 p-2 rounded-lg text-amber-700 mt-0.5 shrink-0">
+                        <Send className="h-5 w-5" />
+                    </div>
+                    <div className="space-y-1">
+                        <p className="text-sm font-bold text-gray-900">
+                            Confirma que esta cobrança já foi enviada ao cliente por um canal externo?
+                        </p>
+                        <p className="text-xs text-gray-600 leading-relaxed">
+                            O ORBE não realiza o envio automaticamente. Esta ação apenas registra que o documento foi enviado externamente.
+                        </p>
                     </div>
                 </div>
-                <div><Label>{canalEnvio === 'whatsapp' ? 'Número do WhatsApp (com DDD)' : (canalEnvio === 'link' ? 'Destinatário Final' : 'E-mail de Cobrança')}</Label> <Input className="mt-1" required value={enviarForm.contato} onChange={e => setEnviarForm(p => ({ ...p, contato: e.target.value }))} placeholder={canalEnvio === 'whatsapp' ? 'Ex: 11999999999' : 'financeiro@cliente.com'} /></div>
-                <div><Label>Mensagem Anexada</Label> <Textarea placeholder="Descreva observações de corpo de email ou whatsapp..." className="mt-1" value={enviarForm.mensagem} onChange={e => setEnviarForm(p => ({ ...p, mensagem: e.target.value }))} /></div>
+
+                <div className="border-t border-amber-200/50 pt-3 mt-2 grid grid-cols-2 gap-2 text-xs text-gray-700">
+                    <div>
+                        <span className="text-gray-400 block text-[10px] uppercase font-bold">Cliente</span>
+                        <span className="font-medium text-gray-800">{clienteNome}</span>
+                    </div>
+                    <div>
+                        <span className="text-gray-400 block text-[10px] uppercase font-bold">Valor Total</span>
+                        <span className="font-bold text-blue-700">{valorStr}</span>
+                    </div>
+                </div>
             </div>
 
-            <div className="pt-4 flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => setActionView('main')}>Cancelar</Button>
+            <div className="pt-2 flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setActionView('main')} disabled={isSubmitting}>
+                    Cancelar
+                </Button>
                 <Button type="submit" disabled={isSubmitting} className="bg-orange-600 hover:bg-orange-700 text-white gap-2">
-                    {canalEnvio === 'link' ? <Link className="h-4 w-4" /> : <Send className="h-4 w-4" />}
-                    {canalEnvio === 'email' ? 'Enviar E-mail pelo Sistema' : (canalEnvio === 'whatsapp' ? 'Registrar e Abrir WhatsApp' : 'Registrar e Copiar')}
+                    <Send className="h-4 w-4" />
+                    {isSubmitting ? "Registrando..." : "Confirmar Envio"}
                 </Button>
             </div>
         </form>
@@ -394,41 +401,66 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                         </Button>
                     </div>
                 );
-            case 'DUPLICATA':
+            case 'DUPLICATA': {
+                const isPendenteCobranca = receita.status === 'pendente_cobranca';
+                const isCobrancaEnviada = receita.status === 'cobranca_enviada' || receita.status === 'pendente_recebimento';
+
                 return (
                     <div className="grid grid-cols-2 gap-3">
-                        <Button onClick={() => setActionView('gerar_cobranca')} disabled={isSubmitting} className="w-full bg-blue-600 hover:bg-blue-700 text-white gap-2 h-11 col-span-2">
+                        <Button 
+                            onClick={() => setActionView('gerar_cobranca')} 
+                            disabled={isSubmitting} 
+                            className={cn(
+                                "w-full bg-blue-600 hover:bg-blue-700 text-white gap-2 h-11",
+                                (!isPendenteCobranca && !isCobrancaEnviada) ? "col-span-2" : ""
+                            )}
+                        >
                             <Calculator className="h-4 w-4" /> Gerar Cobrança (Eventos / Docs)
                         </Button>
-                        <Button onClick={() => setActionView('enviar_cobranca')} disabled={isSubmitting} variant="secondary" className="w-full gap-2 h-11">
-                            <Send className="h-4 w-4" /> Registrar Envio
-                        </Button>
-                        <Button onClick={handleConfirmRecebimento} disabled={isSubmitting} variant="outline" className="w-full gap-2 bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 hover:text-emerald-800 h-11">
-                            <Banknote className="h-4 w-4" /> Confirmar Recebimento
-                        </Button>
+                        {isPendenteCobranca && (
+                            <Button onClick={() => setActionView('enviar_cobranca')} disabled={isSubmitting} variant="secondary" className="w-full gap-2 h-11">
+                                <Send className="h-4 w-4" /> Registrar como Enviado
+                            </Button>
+                        )}
+                        {isCobrancaEnviada && (
+                            <Button onClick={handleConfirmRecebimento} disabled={isSubmitting} variant="outline" className="w-full gap-2 bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 hover:text-emerald-800 h-11">
+                                <Banknote className="h-4 w-4" /> Confirmar Recebimento
+                            </Button>
+                        )}
                     </div>
                 );
-            case 'FATURAMENTO_MENSAL':
+            }
+            case 'FATURAMENTO_MENSAL': {
+                const isPendenteCobranca = receita.status === 'pendente_cobranca';
+                const isCobrancaEnviada = receita.status === 'cobranca_enviada' || receita.status === 'pendente_recebimento';
+
                 return (
                     <div className="grid grid-cols-2 gap-3">
                         <div className="bg-gray-50 border p-3 rounded-md text-sm text-gray-700 col-span-2 flex items-start gap-3">
                             <ListPlus className="h-5 w-5 text-gray-400 mt-0.5 shrink-0" />
                             <p>Este painel agrupa operações do mês. Operações individuais atreladas ao agrupamento são descritas abaixo.</p>
                         </div>
-                        <Button onClick={() => setActionView('consolidar')} disabled={isSubmitting} className="w-full bg-purple-600 hover:bg-purple-700 text-white gap-2 h-11 col-span-2">
-                            <ListPlus className="h-4 w-4" /> Consolidar Competência & Fechamento
-                        </Button>
-                        <Button onClick={() => setActionView('gerar_cobranca')} disabled={isSubmitting} variant="outline" className="w-full gap-2 h-11 bg-white">
+                        {receita.status === 'aguardando_fechamento' && (
+                            <Button onClick={() => setActionView('consolidar')} disabled={isSubmitting} className="w-full bg-purple-600 hover:bg-purple-700 text-white gap-2 h-11 col-span-2">
+                                <ListPlus className="h-4 w-4" /> Consolidar Competência & Fechamento
+                            </Button>
+                        )}
+                        <Button onClick={() => setActionView('gerar_cobranca')} disabled={isSubmitting} variant="outline" className={cn("w-full gap-2 h-11 bg-white", (!isPendenteCobranca && !isCobrancaEnviada) ? "col-span-2" : "")}>
                             <Calculator className="h-4 w-4" /> Gerar Doc. Consolidado
                         </Button>
-                        <Button onClick={() => setActionView('enviar_cobranca')} disabled={isSubmitting} variant="secondary" className="w-full gap-2 h-11">
-                            <Send className="h-4 w-4" /> Enviar ao Cliente
-                        </Button>
-                        <Button onClick={handleConfirmRecebimento} disabled={isSubmitting} variant="outline" className="w-full gap-2 border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 h-11 col-span-2">
-                            <CheckCircle className="h-4 w-4" /> Confirmar Recebimento
-                        </Button>
+                        {isPendenteCobranca && (
+                            <Button onClick={() => setActionView('enviar_cobranca')} disabled={isSubmitting} variant="secondary" className="w-full gap-2 h-11">
+                                <Send className="h-4 w-4" /> Registrar como Enviado
+                            </Button>
+                        )}
+                        {isCobrancaEnviada && (
+                            <Button onClick={handleConfirmRecebimento} disabled={isSubmitting} variant="outline" className="w-full gap-2 border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 h-11">
+                                <CheckCircle className="h-4 w-4" /> Confirmar Recebimento
+                            </Button>
+                        )}
                     </div>
                 );
+            }
             default: return null;
         }
     };
@@ -475,7 +507,7 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                                 {receita.modalidade !== 'CAIXA_IMEDIATO' && (
                                     <>
                                         <span>↓</span>
-                                        <span className={cn("flex items-center gap-1", (receita.status === 'recebido' || receita.status === 'pago' || receita.status === 'conciliado') ? "text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded" : "")}><CheckCircle className="h-3.5 w-3.5" /> Conciliação</span>
+                                        <span className={cn("flex items-center gap-1", receita.status === 'conciliado' ? "text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded" : "")}><CheckCircle className="h-3.5 w-3.5" /> Conciliação</span>
                                     </>
                                 )}
                             </div>
@@ -584,7 +616,7 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                                                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                                                         <div><span className="text-gray-400 text-xs block">Origem</span> <span className="font-medium text-gray-700 block">Operação por Volume</span></div>
                                                                         <div><span className="text-gray-400 text-xs block">Nº Operação</span> <button type="button" onClick={() => { onClose(); navigate("/operacional/operacoes", { state: { highlight: op.id } }); }} className="font-bold text-blue-600 hover:underline truncate tracking-wide block cursor-pointer">{op.id?.substring(0, 8) || '-'}</button></div>
-                                                                        <div><span className="text-gray-400 text-xs block">Data Op.</span> <span className="font-medium text-gray-700">{op.data_operacao ? new Date(op.data_operacao).toLocaleDateString('pt-BR') : 'N/A'}</span></div>
+                                                                        <div><span className="text-gray-400 text-xs block">Data Op.</span> <span className="font-medium text-gray-700">{formatDateOnly(op.data_operacao)}</span></div>
                                                                         <div>
                                                                             <span className="text-gray-400 text-xs block mb-0.5">Status Operacional</span>
                                                                             <span className="font-medium text-gray-700 uppercase text-[10px] bg-gray-100 px-2 py-0.5 rounded border">{op.status?.replace('_', ' ') || 'Processada'}</span>
