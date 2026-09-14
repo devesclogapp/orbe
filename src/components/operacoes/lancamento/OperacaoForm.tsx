@@ -27,6 +27,7 @@ import {
     RegrasFinanceirasService
 } from "@/services/base.service";
 import { classificarFinanceiroSync } from "@/utils/financeiro";
+import { format } from "date-fns";
 
 import { useProductionForm } from "@/components/operacoes/lancamento/hooks/useProductionForm";
 import { FormStepSelector } from "@/components/operacoes/lancamento/FormStepSelector";
@@ -127,7 +128,7 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
     );
 
     const currentEmpresaId = form.watch("empresa_id") || empresaId;
-    const currentModalidade = form.watch("modalidade_financeira") as "CAIXA_IMEDIATO" | "DUPLICATA" | undefined;
+    const currentModalidade = form.watch("modalidade_financeira") as "CAIXA_IMEDIATO" | "DUPLICATA" | "FATURAMENTO_MENSAL" | undefined;
 
     // Queries globais
     const { data: empresas = [] } = useQuery({ queryKey: ["empresas"], queryFn: () => EmpresaService.getAll() });
@@ -238,7 +239,7 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                     regrasFinanceiras
                 );
                 if (classif.vencimento) {
-                    resolvedVencimento = classif.vencimento.toISOString().split("T")[0];
+                    resolvedVencimento = format(classif.vencimento, "yyyy-MM-dd");
                 }
             }
 

@@ -231,13 +231,20 @@ export function FormStepSummary({
                     <Label className="flex justify-between items-center text-xs">
                         Forma de Pagamento
                         {values.modalidade_financeira && (
-                            <span className="text-[10px] text-muted-foreground bg-slate-100 px-1.5 py-0.5 rounded uppercase">
-                                Mod: {values.modalidade_financeira?.split('_')[0]}
+                            <span className="text-[10px] text-muted-foreground bg-slate-100 px-1.5 py-0.5 rounded uppercase font-semibold">
+                                Mod: {values.modalidade_financeira?.replace(/_/g, ' ')}
                             </span>
                         )}
                     </Label>
                     <Select
-                        onValueChange={(val) => form.setValue("forma_pagamento", val)}
+                        value={values.forma_pagamento || undefined}
+                        onValueChange={(val) => {
+                            form.setValue("forma_pagamento", val, { shouldValidate: true, shouldDirty: true });
+                            const formaObj = formasPagamento.find((f: any) => f.id === val);
+                            if (formaObj?.modalidade && formaObj.modalidade !== 'AMBOS') {
+                                form.setValue("modalidade_financeira", formaObj.modalidade as any, { shouldValidate: true, shouldDirty: true });
+                            }
+                        }}
                         defaultValue={form.getValues("forma_pagamento")}
                     >
                         <SelectTrigger>

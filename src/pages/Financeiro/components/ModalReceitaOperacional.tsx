@@ -716,89 +716,172 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                                     )}
 
                                     {detalhesReceita?.receitas_operacionais_itens?.length > 0 ? (
-                                        <div className="space-y-3">
-                                            {detalhesReceita.receitas_operacionais_itens.map((item: any) => {
-                                                const op = item.operacoes_producao;
-                                                return (
-                                                    <div key={item.id} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm text-sm">
-                                                        {op ? (
-                                                            <div className="flex flex-col gap-6">
-                                                                {/* BLOCO 02: Origem */}
-                                                                <div>
-                                                                    <h5 className="text-xs font-bold text-gray-800 uppercase tracking-widest border-b pb-2 mb-3">Origem da Receita</h5>
-                                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                                                        <div><span className="text-gray-400 text-xs block">Origem</span> <span className="font-medium text-gray-700 block">Operação por Volume</span></div>
-                                                                        <div><span className="text-gray-400 text-xs block">Nº Operação</span> <button type="button" onClick={() => { onClose(); navigate("/operacional/operacoes", { state: { highlight: op.id } }); }} className="font-bold text-blue-600 hover:underline truncate tracking-wide block cursor-pointer">{op.id?.substring(0, 8) || '-'}</button></div>
-                                                                        <div><span className="text-gray-400 text-xs block">Data Op.</span> <span className="font-medium text-gray-700">{formatDateOnly(op.data_operacao)}</span></div>
-                                                                        <div>
-                                                                            <span className="text-gray-400 text-xs block mb-0.5">Status Operacional</span>
-                                                                            <span className="font-medium text-gray-700 uppercase text-[10px] bg-gray-100 px-2 py-0.5 rounded border">{op.status?.replace('_', ' ') || 'Processada'}</span>
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-
-                                                                {/* BLOCO 03: Dados Operacionais */}
-                                                                <div>
-                                                                    <h5 className="text-xs font-bold text-gray-800 uppercase tracking-widest border-b pb-2 mb-3">Dados Operacionais</h5>
-                                                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                                                                        <div className="col-span-2"><span className="text-gray-400 text-xs block">Serviço</span> <span className="font-medium text-gray-700 truncate block">{op.servicos?.nome || op.servicos?.descricao || '-'}</span></div>
-                                                                        <div><span className="text-gray-400 text-xs block">Produto</span> <span className="font-medium text-gray-700 truncate block">{op.produtos?.nome || op.produtos?.descricao || '-'}</span></div>
-                                                                        <div>
-                                                                            <span className="text-gray-400 text-xs block">Quantidade</span>
-                                                                            <span className="font-medium text-gray-700">{op.quantidade || 0}</span>
-                                                                        </div>
-                                                                        <div>
-                                                                            <span className="text-gray-400 text-xs block">V. Unitário</span>
-                                                                            <span className="font-medium text-gray-700">R$ {Number(op.valor_unitario_snapshot ?? op.valor_unitario_label ?? op.valor_unitario ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                                                                        </div>
-                                                                        <div><span className="text-gray-400 text-xs block">Materiais</span> <span className="font-medium text-gray-700">R$ {Number(op.valor_total_materiais ?? op.valor_materiais ?? op.custo_materiais ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>
-                                                                        <div><span className="text-gray-400 text-xs block">V. ISS</span> <span className="font-medium text-gray-700">R$ {Number(op.custo_com_iss ?? op.valor_iss ?? op.iss ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>
-                                                                        <div><span className="text-gray-400 text-xs block">Forma Pgto</span> <span className="font-medium text-gray-700 truncate block">{op.formas_pagamento_operacional?.nome || op.formas_pagamento_operacional?.descricao || '-'}</span></div>
-
-                                                                        {/* Campos Operacionais do Encarregado */}
-                                                                        <div><span className="text-gray-400 text-xs block">Placa</span> <span className="font-medium text-gray-700">{op.placa || '-'}</span></div>
-                                                                        <div><span className="text-gray-400 text-xs block">Nº Nota Fiscal</span> <span className="font-medium text-gray-700">{op.nf_numero || (op.possui_nf ? 'SIM (Sem Nº)' : 'NÃO')}</span></div>
-                                                                        <div><span className="text-gray-400 text-xs block">Horário (In / Out)</span> <span className="font-medium text-gray-700">{op.entrada_ponto ? `${op.entrada_ponto.substring(0, 5)} até ${op.saida_ponto?.substring(0, 5) || '?'}` : '-'}</span></div>
-                                                                        <div><span className="text-gray-400 text-xs block">Qtd Colabs (Prod.)</span> <span className="font-medium text-gray-700">{op.quantidade_colaboradores || 0}</span></div>
-
-                                                                        <div className="col-span-2 border-t pt-2 md:border-none md:pt-0">
-                                                                            <span className="text-gray-400 text-[11px] font-semibold uppercase block">Valor Total Origem</span>
-                                                                            <span className="font-bold text-blue-700 text-lg">R$ {Number(op.total_final ?? op.valor_total ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-
-                                                                {/* BLOCO 04: Responsáveis */}
-                                                                <div>
-                                                                    <h5 className="text-xs font-bold text-gray-800 uppercase tracking-widest border-b pb-2 mb-3">Responsáveis</h5>
-                                                                    <div className="grid grid-cols-2 gap-4">
-                                                                        <div><span className="text-gray-400 text-xs block">Empresa Faturada</span> <span className="font-medium text-gray-700 truncate block">{receita.empresas?.nome || '-'}</span></div>
-                                                                        <div><span className="text-gray-400 text-xs block">Encarregado</span> <span className="font-medium text-gray-700 truncate tracking-wide">{op.responsavel_nome || op.encarregado?.nome || op.encarregado_id?.substring(0, 8) || '-'}</span></div>
-                                                                        <div><span className="text-gray-400 text-xs block">Fornecedor (Mão de Obra)</span> <span className="font-medium text-gray-700 truncate block">{op.fornecedores?.nome_fantasia || op.fornecedores?.razao_social || op.fornecedores?.nome || '-'}</span></div>
-                                                                        <div><span className="text-gray-400 text-xs block">Transportadora Cliente</span> <span className="font-medium text-gray-700 truncate block">{op.transportadoras?.nome_fantasia || op.transportadoras?.razao_social || op.transportadoras?.nome || '-'}</span></div>
-                                                                    </div>
-                                                                </div>
-
-                                                                <div className="pt-2 flex items-center justify-between">
-                                                                    {op.observacao ? (
-                                                                        <div className="bg-yellow-50/50 px-3 py-2 rounded text-gray-600 text-xs border border-yellow-100 flex-1 mr-4">
-                                                                            <strong className="text-yellow-700">Obs:</strong> {op.observacao}
-                                                                        </div>
-                                                                    ) : <div className="flex-1"></div>}
-
-                                                                    <Button type="button" variant="outline" size="sm" className="h-8 gap-2 text-xs bg-white shrink-0 shadow-sm border-blue-200 text-blue-700 hover:bg-blue-50" onClick={() => { onClose(); navigate("/operacional/operacoes", { state: { highlight: op.id } }); }}>
-                                                                        <Layers className="h-3.5 w-3.5" />
-                                                                        Ir para Operação Original
-                                                                    </Button>
-                                                                </div>
-                                                            </div>
-                                                        ) : (
-                                                            <div className="text-gray-500">Item sem operação referenciada (Avulso). Valor: R$ {item.valor_item}</div>
-                                                        )}
+                                        receita.modalidade === 'FATURAMENTO_MENSAL' ? (
+                                            <div className="space-y-4">
+                                                {/* TABELA CONSOLIDADA DE ITENS MENSAL (FIX 14) */}
+                                                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+                                                    <div className="bg-gray-50/80 px-4 py-3 border-b flex items-center justify-between">
+                                                        <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+                                                            Operações Consolidadas da Competência ({detalhesReceita.receitas_operacionais_itens.length})
+                                                        </span>
+                                                        <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                                                            Faturamento Mensal
+                                                        </span>
                                                     </div>
-                                                );
-                                            })}
-                                        </div>
+                                                    <table className="w-full text-xs text-left">
+                                                        <thead className="bg-gray-50/50 text-gray-500 border-b border-gray-100 font-semibold uppercase text-[10px]">
+                                                            <tr>
+                                                                <th className="px-4 py-2.5">Data</th>
+                                                                <th className="px-3 py-2.5">Operação</th>
+                                                                <th className="px-3 py-2.5">Serviço / Produto</th>
+                                                                <th className="px-3 py-2.5 text-center">Qtd</th>
+                                                                <th className="px-3 py-2.5 text-right">V. Unitário</th>
+                                                                <th className="px-4 py-2.5 text-right font-bold text-gray-700">Subtotal</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-gray-100 text-gray-700">
+                                                            {detalhesReceita.receitas_operacionais_itens.map((item: any) => {
+                                                                const op = item.operacoes_producao;
+                                                                const servicoNome = op?.servicos?.nome || op?.servicos?.descricao || 'Serviço Operacional';
+                                                                const prodNome = op?.produtos?.nome ? ` - ${op.produtos.nome}` : '';
+                                                                const valItem = Number(item.valor_item || op?.valor_total || 0);
+
+                                                                return (
+                                                                    <tr key={item.id} className="hover:bg-gray-50/60 transition-colors">
+                                                                        <td className="px-4 py-3 font-medium whitespace-nowrap">
+                                                                            {op?.data_operacao ? formatDateOnly(op.data_operacao) : '-'}
+                                                                        </td>
+                                                                        <td className="px-3 py-3">
+                                                                            {op ? (
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => { onClose(); navigate("/operacional/operacoes", { state: { highlight: op.id } }); }}
+                                                                                    className="font-bold text-blue-600 hover:underline tracking-wide"
+                                                                                    title="Ver na Recepção Operacional"
+                                                                                >
+                                                                                    #{op.id?.substring(0, 8)}
+                                                                                </button>
+                                                                            ) : (
+                                                                                <span className="text-gray-400">-</span>
+                                                                            )}
+                                                                        </td>
+                                                                        <td className="px-3 py-3 truncate max-w-[220px]">
+                                                                            <span className="font-semibold text-gray-800">{servicoNome}</span>
+                                                                            <span className="text-gray-500">{prodNome}</span>
+                                                                        </td>
+                                                                        <td className="px-3 py-3 text-center font-medium">
+                                                                            {op?.quantidade || 1}
+                                                                        </td>
+                                                                        <td className="px-3 py-3 text-right text-gray-500 whitespace-nowrap">
+                                                                            R$ {Number(op?.valor_unitario_snapshot ?? op?.valor_unitario ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                                        </td>
+                                                                        <td className="px-4 py-3 text-right font-bold text-gray-900 whitespace-nowrap">
+                                                                            R$ {valItem.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                                        </td>
+                                                                    </tr>
+                                                                );
+                                                            })}
+                                                        </tbody>
+                                                        <tfoot className="bg-gray-50 border-t font-semibold text-gray-800">
+                                                            <tr>
+                                                                <td colSpan={4} className="px-4 py-3 text-xs text-gray-500 uppercase tracking-wide">
+                                                                    Total da Competência ({detalhesReceita.receitas_operacionais_itens.length} {detalhesReceita.receitas_operacionais_itens.length === 1 ? 'operação' : 'operações'})
+                                                                </td>
+                                                                <td className="px-3 py-3 text-right text-xs uppercase text-gray-500">
+                                                                    TOTAL:
+                                                                </td>
+                                                                <td className="px-4 py-3 text-right font-black text-blue-700 text-sm whitespace-nowrap">
+                                                                    {valorStr}
+                                                                </td>
+                                                            </tr>
+                                                        </tfoot>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-3">
+                                                {detalhesReceita.receitas_operacionais_itens.map((item: any) => {
+                                                    const op = item.operacoes_producao;
+                                                    return (
+                                                        <div key={item.id} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm text-sm">
+                                                            {op ? (
+                                                                <div className="flex flex-col gap-6">
+                                                                    {/* BLOCO 02: Origem */}
+                                                                    <div>
+                                                                        <h5 className="text-xs font-bold text-gray-800 uppercase tracking-widest border-b pb-2 mb-3">Origem da Receita</h5>
+                                                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                                                            <div><span className="text-gray-400 text-xs block">Origem</span> <span className="font-medium text-gray-700 block">Operação por Volume</span></div>
+                                                                            <div><span className="text-gray-400 text-xs block">Nº Operação</span> <button type="button" onClick={() => { onClose(); navigate("/operacional/operacoes", { state: { highlight: op.id } }); }} className="font-bold text-blue-600 hover:underline truncate tracking-wide block cursor-pointer">{op.id?.substring(0, 8) || '-'}</button></div>
+                                                                            <div><span className="text-gray-400 text-xs block">Data Op.</span> <span className="font-medium text-gray-700">{formatDateOnly(op.data_operacao)}</span></div>
+                                                                            <div>
+                                                                                <span className="text-gray-400 text-xs block mb-0.5">Status Operacional</span>
+                                                                                <span className="font-medium text-gray-700 uppercase text-[10px] bg-gray-100 px-2 py-0.5 rounded border">{op.status?.replace('_', ' ') || 'Processada'}</span>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {/* BLOCO 03: Dados Operacionais */}
+                                                                    <div>
+                                                                        <h5 className="text-xs font-bold text-gray-800 uppercase tracking-widest border-b pb-2 mb-3">Dados Operacionais</h5>
+                                                                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                                                                            <div className="col-span-2"><span className="text-gray-400 text-xs block">Serviço</span> <span className="font-medium text-gray-700 truncate block">{op.servicos?.nome || op.servicos?.descricao || '-'}</span></div>
+                                                                            <div><span className="text-gray-400 text-xs block">Produto</span> <span className="font-medium text-gray-700 truncate block">{op.produtos?.nome || op.produtos?.descricao || '-'}</span></div>
+                                                                            <div>
+                                                                                <span className="text-gray-400 text-xs block">Quantidade</span>
+                                                                                <span className="font-medium text-gray-700">{op.quantidade || 0}</span>
+                                                                            </div>
+                                                                            <div>
+                                                                                <span className="text-gray-400 text-xs block">V. Unitário</span>
+                                                                                <span className="font-medium text-gray-700">R$ {Number(op.valor_unitario_snapshot ?? op.valor_unitario_label ?? op.valor_unitario ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                                                            </div>
+                                                                            <div><span className="text-gray-400 text-xs block">Materiais</span> <span className="font-medium text-gray-700">R$ {Number(op.valor_total_materiais ?? op.valor_materiais ?? op.custo_materiais ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>
+                                                                            <div><span className="text-gray-400 text-xs block">V. ISS</span> <span className="font-medium text-gray-700">R$ {Number(op.custo_com_iss ?? op.valor_iss ?? op.iss ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>
+                                                                            <div><span className="text-gray-400 text-xs block">Forma Pgto</span> <span className="font-medium text-gray-700 truncate block">{op.formas_pagamento_operacional?.nome || op.formas_pagamento_operacional?.descricao || '-'}</span></div>
+
+                                                                            {/* Campos Operacionais do Encarregado */}
+                                                                            <div><span className="text-gray-400 text-xs block">Placa</span> <span className="font-medium text-gray-700">{op.placa || '-'}</span></div>
+                                                                            <div><span className="text-gray-400 text-xs block">Nº Nota Fiscal</span> <span className="font-medium text-gray-700">{op.nf_numero || (op.possui_nf ? 'SIM (Sem Nº)' : 'NÃO')}</span></div>
+                                                                            <div><span className="text-gray-400 text-xs block">Horário (In / Out)</span> <span className="font-medium text-gray-700">{op.entrada_ponto ? `${op.entrada_ponto.substring(0, 5)} até ${op.saida_ponto?.substring(0, 5) || '?'}` : '-'}</span></div>
+                                                                            <div><span className="text-gray-400 text-xs block">Qtd Colabs (Prod.)</span> <span className="font-medium text-gray-700">{op.quantidade_colaboradores || 0}</span></div>
+
+                                                                            <div className="col-span-2 border-t pt-2 md:border-none md:pt-0">
+                                                                                <span className="text-gray-400 text-[11px] font-semibold uppercase block">Valor Total Origem</span>
+                                                                                <span className="font-bold text-blue-700 text-lg">R$ {Number(op.total_final ?? op.valor_total ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {/* BLOCO 04: Responsáveis */}
+                                                                    <div>
+                                                                        <h5 className="text-xs font-bold text-gray-800 uppercase tracking-widest border-b pb-2 mb-3">Responsáveis</h5>
+                                                                        <div className="grid grid-cols-2 gap-4">
+                                                                            <div><span className="text-gray-400 text-xs block">Empresa Faturada</span> <span className="font-medium text-gray-700 truncate block">{receita.empresas?.nome || '-'}</span></div>
+                                                                            <div><span className="text-gray-400 text-xs block">Encarregado</span> <span className="font-medium text-gray-700 truncate tracking-wide">{op.responsavel_nome || op.encarregado?.nome || op.encarregado_id?.substring(0, 8) || '-'}</span></div>
+                                                                            <div><span className="text-gray-400 text-xs block">Fornecedor (Mão de Obra)</span> <span className="font-medium text-gray-700 truncate block">{op.fornecedores?.nome_fantasia || op.fornecedores?.razao_social || op.fornecedores?.nome || '-'}</span></div>
+                                                                            <div><span className="text-gray-400 text-xs block">Transportadora Cliente</span> <span className="font-medium text-gray-700 truncate block">{op.transportadoras?.nome_fantasia || op.transportadoras?.razao_social || op.transportadoras?.nome || '-'}</span></div>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    <div className="pt-2 flex items-center justify-between">
+                                                                        {op.observacao ? (
+                                                                            <div className="bg-yellow-50/50 px-3 py-2 rounded text-gray-600 text-xs border border-yellow-100 flex-1 mr-4">
+                                                                                <strong className="text-yellow-700">Obs:</strong> {op.observacao}
+                                                                            </div>
+                                                                        ) : <div className="flex-1"></div>}
+
+                                                                        <Button type="button" variant="outline" size="sm" className="h-8 gap-2 text-xs bg-white shrink-0 shadow-sm border-blue-200 text-blue-700 hover:bg-blue-50" onClick={() => { onClose(); navigate("/operacional/operacoes", { state: { highlight: op.id } }); }}>
+                                                                            <Layers className="h-3.5 w-3.5" /> Detalhar Operação Completa
+                                                                        </Button>
+                                                                    </div>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="text-gray-500">Item sem operação referenciada (Avulso). Valor: R$ {item.valor_item}</div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )
                                     ) : (
                                         !isLoadingDetalhes && (
                                             <div className="text-center p-6 border border-dashed border-gray-200 rounded-xl bg-gray-50 text-gray-400 text-sm">

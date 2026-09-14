@@ -1,4 +1,4 @@
-import { addDays, endOfMonth, isAfter, startOfDay } from "date-fns";
+import { addDays, endOfMonth, format, isAfter, startOfDay } from "date-fns";
 import { RegrasFinanceirasService } from "@/services/base.service";
 
 export type ModalidadeFinanceira =
@@ -170,7 +170,9 @@ export function classificarFinanceiroSync(
   }
 
   if (modalidade === "FECHAMENTO_MENSAL_EMPRESA") {
-    return { modalidade, vencimento: endOfMonth(dataOp) };
+    const eom = endOfMonth(dataOp);
+    eom.setHours(12, 0, 0, 0);
+    return { modalidade, vencimento: eom };
   }
 
   if (modalidade === "DUPLICATA_FORNECEDOR") {
@@ -352,7 +354,7 @@ export function processarOperacao(operacao: any, empresas: any[] = [], regrasFin
     valorDescargaCalculado: valor_descarga,
     totalFinalCalculado: total_final,
     modalidadeFinanceira: financeiro.modalidade,
-    dataVencimento: dataVencimento ? dataVencimento.toISOString().split("T")[0] : null,
+    dataVencimento: dataVencimento ? format(dataVencimento, "yyyy-MM-dd") : null,
     statusPagamento: status_pagamento,
     formaPagamento: formaPagamentoValue,
     observacao: observacaoValue,

@@ -358,8 +358,13 @@ export default function ReceitasPipeline() {
                                                             <div className="flex flex-col text-sm text-gray-600 bg-gray-50 border border-gray-100 p-2.5 rounded-lg space-y-2">
                                                                 <p className="font-semibold text-gray-800 tracking-wide text-xs truncate" title={servicoNome.toUpperCase()}>{servicoNome.toUpperCase()}</p>
 
-                                                                {/* Detalhes operacionais injetados defensivamente */}
-                                                                {itemOps && itemCount === 1 && (
+                                                                {/* Detalhes operacionais: se consolidado com múltiplos itens */}
+                                                                {itemCount > 1 ? (
+                                                                    <div className="flex items-center justify-between text-[11px] text-gray-500 border-t border-gray-200/50 pt-2 font-medium">
+                                                                        <span className="text-[10px] font-bold text-gray-400 uppercase">Volume Consolidado</span>
+                                                                        <span className="font-bold text-blue-700 bg-blue-50 border border-blue-200/60 px-2 py-0.5 rounded text-[10px]">{itemCount} operações</span>
+                                                                    </div>
+                                                                ) : itemOps ? (
                                                                     <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 text-[10px] text-gray-500 border-t border-gray-200/50 pt-2">
                                                                         <div>
                                                                             <span className="font-bold text-gray-400 block uppercase">Quantidade</span>
@@ -376,7 +381,7 @@ export default function ReceitasPipeline() {
                                                                             </div>
                                                                         )}
                                                                     </div>
-                                                                )}
+                                                                ) : null}
                                                             </div>
 
                                                             <div className="grid grid-cols-2 text-xs text-gray-500 gap-y-1">
