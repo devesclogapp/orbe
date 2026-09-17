@@ -939,7 +939,9 @@ export const buildOperacaoVolumePipeline = (params: {
             case "validacao":
                 return "/operacional/operacoes";
             case "financeiro":
+                return "/financeiro/receitas";
             case "faturamento":
+                return "/financeiro/receitas?tab=FATURAMENTO_MENSAL&origem=OPERACAO";
             case "recebimento":
                 return "/financeiro/receitas";
             default:
@@ -1143,8 +1145,9 @@ export const buildServicosExtrasPipeline = (params: {
             case "aprovacao":
                 return "/producao/servicos-extras";
             case "financeiro":
-            case "faturamento":
                 return "/financeiro";
+            case "faturamento":
+                return "/financeiro/receitas?tab=FATURAMENTO_MENSAL&origem=SERVICO_EXTRA";
             default:
                 return undefined;
         }

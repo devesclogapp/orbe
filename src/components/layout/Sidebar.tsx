@@ -58,25 +58,7 @@ import { cn } from "@/lib/utils";
 const SIDEBAR_SCROLL_KEY = "sidebar-scroll-position";
 const SIDEBAR_OPEN_GROUPS_KEY = "orbe_sidebar_open_groups";
 
-const getInitialOpenGroups = (pathname: string): Record<string, boolean> => {
-  try {
-    const saved = localStorage.getItem(SIDEBAR_OPEN_GROUPS_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed && typeof parsed === "object") {
-        return parsed;
-      }
-    }
-  } catch (e) {
-    console.warn("Falha ao recuperar estado dos grupos da sidebar:", e);
-  }
 
-  // Padrão inicial inteligente: abre apenas o grupo da rota atual ou operacoes_volume
-  const matched = groups.find(g => g.items.some(i => i.to === pathname || (i.to !== "/" && pathname.startsWith(i.to.split("?")[0]))));
-  return {
-    [matched ? matched.id : "operacoes_volume"]: true,
-  };
-};
 
 type PulseKey =
   | "dashboard"
@@ -136,7 +118,7 @@ const groups: MenuGroup[] = [
       { icon: Package, label: "Operações / Recebidos", to: "/operacoes-volume", module: "operacoes_recebidas", pulseKey: "operacoes_recebidas" },
       { icon: AlertTriangle, label: "Pendências", to: "/inconsistencias", module: "operacoes_recebidas" },
       { icon: Shield, label: "Aprovações", to: "/operacoes-volume/aprovacoes", module: "processamento_rh" },
-      { icon: FileText, label: "Faturamento", to: "/financeiro/faturamento", module: "central_financeira" },
+      { icon: FileText, label: "Faturamento", to: "/financeiro/receitas?tab=FATURAMENTO_MENSAL&origem=OPERACAO", module: "central_financeira" },
     ],
   },
   {
@@ -184,7 +166,7 @@ const groups: MenuGroup[] = [
       { icon: Plus, label: "Novo Lançamento", to: "/servicos-extras/lancamentos?action=novo-servico-extra", module: "central_operacional" },
       { icon: Wrench, label: "Recebidos / Lançamentos", to: "/servicos-extras/lancamentos", module: "operacoes_recebidas", pulseKey: "servicos_extras" },
       { icon: Shield, label: "Aprovações", to: "/servicos-extras/aprovacoes", module: "processamento_rh" },
-      { icon: FileText, label: "Faturamento", to: "/financeiro/receitas?tab=FATURAMENTO_MENSAL", module: "central_financeira" },
+      { icon: FileText, label: "Faturamento", to: "/financeiro/receitas?tab=FATURAMENTO_MENSAL&origem=SERVICO_EXTRA", module: "central_financeira" },
     ],
   },
   {
@@ -321,6 +303,96 @@ const toneLabels = {
   gray: "Informativo",
 } as const;
 
+export const isRouteMatchingItem = (
+  item: MenuItem,
+  location: { pathname: string; search?: string }
+): boolean => {
+  const [itemPath, itemQuery] = item.to.split("?");
+  const itemParams = new URLSearchParams(itemQuery || "");
+  const currentParams = new URLSearchParams(location.search || "");
+
+  // 1. Verificação de correspondência do pathname base
+  const pathMatches = item.end
+    ? location.pathname === itemPath
+    : itemPath === "/"
+      ? location.pathname === "/"
+      : location.pathname === itemPath || location.pathname.startsWith(itemPath + "/");
+
+  if (!pathMatches) {
+    return false;
+  }
+
+  // 2. Regra Contextual para Central de Receitas (/financeiro/receitas)
+  if (itemPath === "/financeiro/receitas") {
+    const currentOrigem = currentParams.get("origem");
+    const itemOrigem = itemParams.get("origem");
+
+    if (currentOrigem === "OPERACAO") {
+      // Somente o atalho contextual de Operações por Volume fica ativo
+      return itemOrigem === "OPERACAO";
+    }
+
+    if (currentOrigem === "SERVICO_EXTRA") {
+      // Somente o atalho contextual de Serviços Extras fica ativo
+      return itemOrigem === "SERVICO_EXTRA";
+    }
+
+    // Visão GLOBAL do Financeiro (/financeiro/receitas sem origem contextual válida):
+    // Os atalhos contextuais de Operações e Serviços Extras NÃO devem ficar ativos.
+    if (itemOrigem) {
+      return false;
+    }
+
+    // Na visão global, evitar que "Receitas" e "Contas a Receber" fiquem simultaneamente ativos.
+    // Destacar o item financeiro canônico "Receitas".
+    if (item.label === "Contas a Receber") {
+      return false;
+    }
+
+    return true;
+  }
+
+  // 3. Regra Geral para itens com query params específicos (ex: ?action=nova-operacao)
+  if (itemQuery) {
+    for (const [key, value] of itemParams.entries()) {
+      if (currentParams.get(key) !== value) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Se o item não tem query params, mas a URL atual possui ação específica (?action=...),
+  // o item genérico de listagem não deve ficar ativo simultaneamente.
+  if (currentParams.has("action")) {
+    return false;
+  }
+
+  return true;
+};
+
+const getInitialOpenGroups = (pathname: string, search: string = ""): Record<string, boolean> => {
+  try {
+    const saved = localStorage.getItem(SIDEBAR_OPEN_GROUPS_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed && typeof parsed === "object") {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.warn("Falha ao recuperar estado dos grupos da sidebar:", e);
+  }
+
+  // Padrão inicial inteligente: abre o grupo correspondente à rota e contexto atual
+  const matched = groups.find((g) =>
+    g.items.some((i) => isRouteMatchingItem(i, { pathname, search }))
+  );
+  return {
+    [matched ? matched.id : "operacoes_volume"]: true,
+  };
+};
+
 export const Sidebar = () => {
   const { user, signOut } = useAuth();
   const { canAccess, isAdmin } = useAccessControl();
@@ -329,7 +401,7 @@ export const Sidebar = () => {
   const location = useLocation();
 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
-    getInitialOpenGroups(location.pathname)
+    getInitialOpenGroups(location.pathname, location.search)
   );
   const [drawer, setDrawer] = useState<DrawerState>(null);
   const navRef = useRef<HTMLElement>(null);
@@ -337,7 +409,7 @@ export const Sidebar = () => {
   // Garante que o grupo da rota atual esteja aberto quando o usuário navegar, sem fechar os demais
   useEffect(() => {
     const matched = groups.find((g) =>
-      g.items.some((i) => i.to === location.pathname || (i.to !== "/" && location.pathname.startsWith(i.to.split("?")[0])))
+      g.items.some((i) => isRouteMatchingItem(i, location))
     );
     if (matched && !openGroups[matched.id]) {
       setOpenGroups((prev) => {
@@ -348,7 +420,7 @@ export const Sidebar = () => {
         return next;
       });
     }
-  }, [location.pathname]);
+  }, [location.pathname, location.search]);
 
   useEffect(() => {
     const savedScrollPosition = sessionStorage.getItem(SIDEBAR_SCROLL_KEY);
@@ -540,7 +612,9 @@ const SidebarItem = ({
   pulse?: OperationalPulseItem;
   onBadgeClick: (pulse: OperationalPulseItem) => void;
 }) => {
+  const location = useLocation();
   const Icon = item.icon;
+  const isActive = isRouteMatchingItem(item, location);
 
   const handleBadgeClick = (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -552,7 +626,7 @@ const SidebarItem = ({
     <NavLink
       to={item.to}
       end={item.end}
-      className={({ isActive }) =>
+      className={
         cn(
           "relative flex items-center gap-3 px-3 py-2 text-[13px] transition-colors",
           isActive
@@ -562,27 +636,23 @@ const SidebarItem = ({
         )
       }
     >
-      {({ isActive }) => (
-        <>
-          <div className={cn("flex h-4 w-4 shrink-0 items-center justify-center", isActive ? "text-[#FD4C00]" : "text-[#737373]")}>
-            <Icon className="h-4 w-4" strokeWidth={1.75} />
-          </div>
-          <span className="min-w-0 flex-1 truncate">{item.label}</span>
-          {pulse && pulse.count > 0 ? (
-            <button
-              type="button"
-              onClick={handleBadgeClick}
-              className={cn(
-                "inline-flex min-w-6 items-center justify-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold transition-transform hover:scale-[1.03]",
-                toneClasses[pulse.tone],
-              )}
-              title={pulse.hint}
-            >
-              {pulse.count}
-            </button>
-          ) : null}
-        </>
-      )}
+      <div className={cn("flex h-4 w-4 shrink-0 items-center justify-center", isActive ? "text-[#FD4C00]" : "text-[#737373]")}>
+        <Icon className="h-4 w-4" strokeWidth={1.75} />
+      </div>
+      <span className="min-w-0 flex-1 truncate">{item.label}</span>
+      {pulse && pulse.count > 0 ? (
+        <button
+          type="button"
+          onClick={handleBadgeClick}
+          className={cn(
+            "inline-flex min-w-6 items-center justify-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold transition-transform hover:scale-[1.03]",
+            toneClasses[pulse.tone],
+          )}
+          title={pulse.hint}
+        >
+          {pulse.count}
+        </button>
+      ) : null}
     </NavLink>
   );
 };

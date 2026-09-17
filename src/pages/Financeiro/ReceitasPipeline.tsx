@@ -1,11 +1,11 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
     Building2, Calendar, FileText, Search, Filter, RefreshCw, AlertTriangle,
     Wallet, TrendingUp, DollarSign, ArrowRight, Layers, Receipt, Zap, CheckCircle2,
     Clock, Package, AlertCircle, CreditCard, FileSpreadsheet, Lock, Plus,
-    LayoutList, LayoutGrid
+    LayoutList, LayoutGrid, Info
 } from "lucide-react";
 
 import { AppShell } from "@/components/layout/AppShell";
@@ -47,6 +47,19 @@ export default function ReceitasPipeline() {
     const [filterEmpresaId, setFilterEmpresaId] = useState<string>("all");
     const [searchTerm, setSearchTerm] = useState("");
     const location = useLocation();
+    const navigate = useNavigate();
+
+    // Contexto de Origem Operacional (OPERACAO, SERVICO_EXTRA ou fallback GLOBAL)
+    const origemParam = useMemo<'OPERACAO' | 'SERVICO_EXTRA' | null>(() => {
+        if (typeof window !== 'undefined') {
+            const searchParams = new URLSearchParams(location.search);
+            const raw = searchParams.get('origem');
+            if (raw === 'OPERACAO' || raw === 'SERVICO_EXTRA') {
+                return raw as 'OPERACAO' | 'SERVICO_EXTRA';
+            }
+        }
+        return null; // Regra: valores desconhecidos ou ausência de origem => fallback GLOBAL
+    }, [location.search]);
     const [activeTab, setActiveTab] = useState<'CAIXA_IMEDIATO' | 'DUPLICATA' | 'FATURAMENTO_MENSAL'>(() => {
         if (typeof window !== 'undefined') {
             const searchParams = new URLSearchParams(location.search);
@@ -138,9 +151,23 @@ export default function ReceitasPipeline() {
         return receitas.filter((r: any) => {
             const matchSearch = !searchTerm || String(r.empresas?.nome || "").toLowerCase().includes(searchTerm.toLowerCase());
             const matchModalidade = r.modalidade === activeTab;
-            return matchSearch && matchModalidade;
+            if (!matchSearch || !matchModalidade) return false;
+
+            // Filtro contextual de origem derivado dos itens da receita
+            if (origemParam === 'OPERACAO') {
+                return (r.receitas_operacionais_itens || []).some(
+                    (it: any) => it.operacao_id != null || it.operacoes_producao != null
+                );
+            }
+            if (origemParam === 'SERVICO_EXTRA') {
+                return (r.receitas_operacionais_itens || []).some(
+                    (it: any) => it.servico_extra_id != null || it.servicos_extras_operacionais != null
+                );
+            }
+
+            return true; // GLOBAL
         });
-    }, [receitas, searchTerm, activeTab]);
+    }, [receitas, searchTerm, activeTab, origemParam]);
 
     const kpis = useMemo(() => {
         let count = 0;
@@ -200,10 +227,23 @@ export default function ReceitasPipeline() {
 
     const cardsByCols = (stageId: string) => kanbanColumns[stageId] || [];
 
+    const pageSubtitle = origemParam === 'OPERACAO'
+        ? "Faturamento contextualizado em Operações por Volume"
+        : origemParam === 'SERVICO_EXTRA'
+            ? "Faturamento contextualizado em Serviços Extras"
+            : "Funil Financeiro Operacional";
+
+    const pageBadge = origemParam === 'OPERACAO'
+        ? "OPERAÇÕES POR VOLUME / FATURAMENTO"
+        : origemParam === 'SERVICO_EXTRA'
+            ? "SERVIÇOS EXTRAS / FATURAMENTO"
+            : undefined;
+
     return (
         <AppShell
             title="Receitas e Contas a Receber"
-            subtitle="Funil Financeiro Operacional"
+            subtitle={pageSubtitle}
+            badge={pageBadge}
             actions={
                 <div className="flex gap-2">
                     <Button variant="outline" size="sm" onClick={handleRefresh} className="h-9">
@@ -229,6 +269,35 @@ export default function ReceitasPipeline() {
                         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
                             <strong className="font-bold">Erro do Supabase: </strong>
                             <span className="block sm:inline">{errorReceitas instanceof Error ? errorReceitas.message : JSON.stringify(errorReceitas)}</span>
+                        </div>
+                    )}
+
+                    {/* Banner de Contexto Operacional Ativo */}
+                    {origemParam && (
+                        <div className="bg-blue-50/80 dark:bg-blue-950/30 border border-blue-200/80 dark:border-blue-900/40 rounded-lg p-3 flex items-center justify-between gap-3 text-xs text-blue-900 dark:text-blue-200 shadow-sm">
+                            <div className="flex items-center gap-2.5">
+                                <Info className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                                <span>
+                                    Visão contextualizada: exibindo receitas originadas de{" "}
+                                    <strong className="font-semibold">
+                                        {origemParam === 'OPERACAO' ? 'Operações por Volume' : 'Serviços Extras'}
+                                    </strong>
+                                    . Lançamentos mistos (com ambas as origens) também são contemplados.
+                                </span>
+                            </div>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2.5 text-xs text-blue-700 dark:text-blue-300 hover:text-blue-900 hover:bg-blue-100/70 dark:hover:bg-blue-900/50 font-semibold shrink-0"
+                                onClick={() => {
+                                    const sp = new URLSearchParams(location.search);
+                                    sp.delete('origem');
+                                    const q = sp.toString();
+                                    navigate(`${location.pathname}${q ? `?${q}` : ''}`);
+                                }}
+                            >
+                                Exibir Visão Global (todas as origens)
+                            </Button>
                         </div>
                     )}
 

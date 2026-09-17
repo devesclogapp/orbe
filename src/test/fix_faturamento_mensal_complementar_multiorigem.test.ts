@@ -356,11 +356,11 @@ describe('SUÍTE: Faturamento Mensal Complementar + Continuidade Multiorigem', (
   });
 
   describe('3. Verificações de Interface (Sidebar, ReceitasPipeline e Modais)', () => {
-    it('Sidebar.tsx deve direcionar Serviços Extras -> Faturamento para o pipeline com ?tab=FATURAMENTO_MENSAL', () => {
+    it('Sidebar.tsx deve direcionar Serviços Extras e Operações por Volume para o pipeline com ?tab=FATURAMENTO_MENSAL e origem contextual', () => {
       const sidebarContent = fs.readFileSync(path.resolve(__dirname, '../components/layout/Sidebar.tsx'), 'utf-8');
-      expect(sidebarContent).toContain('to: "/financeiro/receitas?tab=FATURAMENTO_MENSAL"');
-      // Operações por volume continua apontando para faturamento por cliente
+      expect(sidebarContent).toContain('to: "/financeiro/receitas?tab=FATURAMENTO_MENSAL&origem=SERVICO_EXTRA"');
       expect(sidebarContent).toContain('id: "operacoes_volume"');
+      expect(sidebarContent).toContain('to: "/financeiro/receitas?tab=FATURAMENTO_MENSAL&origem=OPERACAO"');
       expect(sidebarContent).toContain('to: "/financeiro/faturamento"');
     });
 

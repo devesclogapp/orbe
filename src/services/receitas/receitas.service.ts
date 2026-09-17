@@ -22,6 +22,8 @@ class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
         receitas_operacionais_itens(
           id,
           valor_item,
+          operacao_id,
+          servico_extra_id,
           operacoes_producao(
             id,
             servicos:tipos_servico_operacional(nome)
@@ -68,7 +70,10 @@ class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
         *,
         empresas(nome),
         receitas_operacionais_itens(
-          id, valor_item,
+          id,
+          valor_item,
+          operacao_id,
+          servico_extra_id,
           operacoes_producao(
             *,
             produtos:produtos_carga (*),

@@ -1242,7 +1242,7 @@ export const OperacoesTableBlock = ({
             description: "A operação foi encaminhada para validação do RH e processamento financeiro.",
             action: {
               label: "Ver Faturamento",
-              onClick: () => navigate("/financeiro/receitas", { state: { highlight: item.id } })
+              onClick: () => navigate("/financeiro/receitas?tab=FATURAMENTO_MENSAL&origem=OPERACAO", { state: { highlight: item.id } })
             },
             duration: 8000
           });
