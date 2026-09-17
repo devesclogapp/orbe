@@ -184,7 +184,7 @@ const groups: MenuGroup[] = [
       { icon: Plus, label: "Novo Lançamento", to: "/servicos-extras/lancamentos?action=novo-servico-extra", module: "central_operacional" },
       { icon: Wrench, label: "Recebidos / Lançamentos", to: "/servicos-extras/lancamentos", module: "operacoes_recebidas", pulseKey: "servicos_extras" },
       { icon: Shield, label: "Aprovações", to: "/servicos-extras/aprovacoes", module: "processamento_rh" },
-      { icon: FileText, label: "Faturamento", to: "/financeiro/faturamento", module: "central_financeira" },
+      { icon: FileText, label: "Faturamento", to: "/financeiro/receitas?tab=FATURAMENTO_MENSAL", module: "central_financeira" },
     ],
   },
   {

@@ -4,7 +4,8 @@ import { useLocation } from "react-router-dom";
 import {
     Building2, Calendar, FileText, Search, Filter, RefreshCw, AlertTriangle,
     Wallet, TrendingUp, DollarSign, ArrowRight, Layers, Receipt, Zap, CheckCircle2,
-    Clock, Package, AlertCircle, CreditCard, FileSpreadsheet, Lock, Plus
+    Clock, Package, AlertCircle, CreditCard, FileSpreadsheet, Lock, Plus,
+    LayoutList, LayoutGrid
 } from "lucide-react";
 
 import { AppShell } from "@/components/layout/AppShell";
@@ -15,7 +16,10 @@ import { ReceitasService } from "@/services/receitas/receitas.service";
 import { useTenant } from "@/contexts/TenantContext";
 import { cn } from "@/lib/utils";
 import { ModalReceitaOperacional } from "./components/ModalReceitaOperacional";
+import { ReceitaKanbanCard } from "./components/ReceitaKanbanCard";
 import { useToast } from "@/components/ui/use-toast";
+
+export const DENSITY_STORAGE_KEY = 'orbe.financeiro.receitas.cardDensity';
 
 const KANBAN_CONFIGS = {
     'CAIXA_IMEDIATO': [
@@ -43,10 +47,51 @@ export default function ReceitasPipeline() {
     const [filterEmpresaId, setFilterEmpresaId] = useState<string>("all");
     const [searchTerm, setSearchTerm] = useState("");
     const location = useLocation();
-    const [activeTab, setActiveTab] = useState<'CAIXA_IMEDIATO' | 'DUPLICATA' | 'FATURAMENTO_MENSAL'>(
-        location.state?.activeTab || 'CAIXA_IMEDIATO'
-    );
+    const [activeTab, setActiveTab] = useState<'CAIXA_IMEDIATO' | 'DUPLICATA' | 'FATURAMENTO_MENSAL'>(() => {
+        if (typeof window !== 'undefined') {
+            const searchParams = new URLSearchParams(location.search);
+            const tabParam = searchParams.get('tab');
+            if (tabParam && ['CAIXA_IMEDIATO', 'DUPLICATA', 'FATURAMENTO_MENSAL'].includes(tabParam)) {
+                return tabParam as any;
+            }
+        }
+        return location.state?.activeTab || 'CAIXA_IMEDIATO';
+    });
     const [selectedReceita, setSelectedReceita] = useState<any>(null);
+
+    // Controle de Densidade de Visualização dos Cards (Compacto vs Detalhado)
+    const [density, setDensity] = useState<'compact' | 'detailed'>(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem(DENSITY_STORAGE_KEY);
+            if (saved === 'compact' || saved === 'detailed') {
+                return saved;
+            }
+        }
+        return 'detailed'; // Regra: Default Detalhado para usuários sem preferência salva
+    });
+
+    const [expandedCardIds, setExpandedCardIds] = useState<Set<string>>(new Set());
+
+    const handleDensityChange = (newDensity: 'compact' | 'detailed') => {
+        setDensity(newDensity);
+        setExpandedCardIds(new Set()); // Regra: Resetar expansões individuais ao alternar modo global
+        if (typeof window !== 'undefined') {
+            localStorage.setItem(DENSITY_STORAGE_KEY, newDensity);
+        }
+    };
+
+    const toggleCardExpansion = (id: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setExpandedCardIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) {
+                next.delete(id);
+            } else {
+                next.add(id);
+            }
+            return next;
+        });
+    };
 
     const { data: empresas = [], isLoading: isEmpresasLoading } = useQuery({
         queryKey: ["empresas"],
@@ -67,7 +112,11 @@ export default function ReceitasPipeline() {
     };
 
     useEffect(() => {
-        if (location.state?.activeTab) {
+        const searchParams = new URLSearchParams(location.search);
+        const tabParam = searchParams.get('tab');
+        if (tabParam && ['CAIXA_IMEDIATO', 'DUPLICATA', 'FATURAMENTO_MENSAL'].includes(tabParam)) {
+            setActiveTab(tabParam as any);
+        } else if (location.state?.activeTab) {
             setActiveTab(location.state.activeTab as any);
         }
         if (location.state?.highlightReceitaId && receitas && receitas.length > 0) {
@@ -79,7 +128,7 @@ export default function ReceitasPipeline() {
                 setSelectedReceita(found);
             }
         }
-    }, [location.state, receitas]);
+    }, [location.state, location.search, receitas]);
 
     const handleNovaReceita = () => {
         toast({ title: "Aviso", description: "Criação avulsa de receitas será disponibilizada em breve.", variant: "default" });
@@ -258,6 +307,45 @@ export default function ReceitasPipeline() {
                                 />
                             </div>
                         </div>
+
+                        {/* Seletor de Densidade de Visualização dos Cards */}
+                        <div className="flex items-center gap-2 self-start xl:self-auto shrink-0">
+                            <span className="text-xs font-semibold text-gray-500 hidden sm:inline">Visualização:</span>
+                            <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg border border-border/40">
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDensityChange('compact')}
+                                    aria-label="Visualização compacta dos cards"
+                                    className={cn(
+                                        "h-8 px-3 gap-1.5 text-xs font-medium transition-all",
+                                        density === 'compact'
+                                            ? 'bg-white shadow-sm text-gray-900 border border-gray-200'
+                                            : 'text-gray-500 hover:text-gray-700'
+                                    )}
+                                >
+                                    <LayoutList className="h-3.5 w-3.5" />
+                                    <span>Compacto</span>
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDensityChange('detailed')}
+                                    aria-label="Visualização detalhada dos cards"
+                                    className={cn(
+                                        "h-8 px-3 gap-1.5 text-xs font-medium transition-all",
+                                        density === 'detailed'
+                                            ? 'bg-white shadow-sm text-gray-900 border border-gray-200'
+                                            : 'text-gray-500 hover:text-gray-700'
+                                    )}
+                                >
+                                    <LayoutGrid className="h-3.5 w-3.5" />
+                                    <span>Detalhado</span>
+                                </Button>
+                            </div>
+                        </div>
                     </div>
 
                     <div className={cn("grid gap-6 items-start", currentKanbanStages.length <= 2 ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-2' : currentKanbanStages.length === 3 ? 'grid-cols-1 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-1 md:grid-cols-2 xl:grid-cols-4')}>
@@ -290,130 +378,17 @@ export default function ReceitasPipeline() {
                                                 Nenhum registro.
                                             </div>
                                         ) : (
-                                            items.map((r: any) => {
-                                                const today = new Date();
-                                                today.setHours(0, 0, 0, 0);
-                                                let isVencido = false;
-                                                let isVenceHoje = false;
-                                                let isVenceBreve = false;
-
-                                                if (r.vencimento && r.status !== 'recebido') {
-                                                    const [ano, mes, dia] = r.vencimento.split('-');
-                                                    const vDate = new Date(Number(ano), Number(mes) - 1, Number(dia));
-                                                    const diffDays = Math.ceil((vDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-
-                                                    if (diffDays < 0) isVencido = true;
-                                                    else if (diffDays === 0) isVenceHoje = true;
-                                                    else if (diffDays <= 3) isVenceBreve = true;
-                                                }
-
-                                                let indicatorColor = 'bg-gray-300';
-                                                if (r.status === 'recebido' || r.status === 'pago' || r.status === 'conciliado') indicatorColor = 'bg-emerald-500';
-                                                else if (isVencido) indicatorColor = 'bg-red-500';
-                                                else if (isVenceHoje) indicatorColor = 'bg-amber-400';
-                                                else if (isVenceBreve) indicatorColor = 'bg-orange-500';
-
-                                                const itens = r.receitas_operacionais_itens || [];
-                                                const itemCount = itens.length;
-                                                const itemOps = itens[0]?.operacoes_producao;
-
-                                                let servicoNome = itemCount > 1
-                                                    ? `Operação Consolidada (${itemCount} lançamentos)`
-                                                    : (itemOps?.servicos?.nome || itemOps?.servicos?.descricao || 'Operação Avulsa / Consolidada');
-
-                                                const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-                                                let compStr = "N/A";
-                                                if (r.competencia) {
-                                                    const ano = r.competencia.slice(0, 4);
-                                                    const mes = r.competencia.slice(5, 7);
-                                                    compStr = `${meses[parseInt(mes) - 1] || mes}/${ano}`;
-                                                } else if (itemOps?.data_operacao) { // Fallback para data_operacao caso a base não preencha competencia na origem
-                                                    const dt = new Date(itemOps.data_operacao);
-                                                    const dtUTC = new Date(dt.getTime() + dt.getTimezoneOffset() * 60000);
-                                                    compStr = `${meses[dtUTC.getMonth()]} / ${dtUTC.getFullYear()}`;
-                                                }
-
-                                                let vencStr = "Não definido";
-                                                if (r.modalidade === 'CAIXA_IMEDIATO') {
-                                                    vencStr = "Recebimento imediato";
-                                                } else if (r.vencimento) {
-                                                    vencStr = new Date(r.vencimento + 'T12:00:00Z').toLocaleDateString('pt-BR');
-                                                }
-
-                                                return (
-                                                    <div
-                                                        key={r.id}
-                                                        onClick={() => setSelectedReceita(r)}
-                                                        className={cn(
-                                                            "bg-white p-4 rounded-xl border border-gray-200 shadow-sm hover:border-gray-300 hover:shadow-md transition-all group relative cursor-pointer",
-                                                            location.state?.highlightReceitaId === r.id && "ring-2 ring-primary border-primary bg-primary/[0.02]"
-                                                        )}
-                                                    >
-                                                        <div className={cn("absolute left-0 top-0 bottom-0 w-1.5 rounded-l-xl", indicatorColor)} title={
-                                                            (r.status === 'recebido' || r.status === 'pago' || r.status === 'conciliado') ? "Recebido" : isVencido ? "Vencido" : isVenceHoje ? "Vence hoje" : isVenceBreve ? "Vence em breve" : "No prazo"
-                                                        } />
-                                                        <div className="pl-2 flex flex-col gap-2">
-                                                            <div>
-                                                                <p className="font-bold text-gray-800 leading-tight truncate text-sm" title={r.empresas?.nome}>
-                                                                    {r.empresas?.nome || "Empresa não vinculada"}
-                                                                </p>
-                                                            </div>
-
-                                                            <div className="flex flex-col text-sm text-gray-600 bg-gray-50 border border-gray-100 p-2.5 rounded-lg space-y-2">
-                                                                <p className="font-semibold text-gray-800 tracking-wide text-xs truncate" title={servicoNome.toUpperCase()}>{servicoNome.toUpperCase()}</p>
-
-                                                                {/* Detalhes operacionais: se consolidado com múltiplos itens */}
-                                                                {itemCount > 1 ? (
-                                                                    <div className="flex items-center justify-between text-[11px] text-gray-500 border-t border-gray-200/50 pt-2 font-medium">
-                                                                        <span className="text-[10px] font-bold text-gray-400 uppercase">Volume Consolidado</span>
-                                                                        <span className="font-bold text-blue-700 bg-blue-50 border border-blue-200/60 px-2 py-0.5 rounded text-[10px]">{itemCount} operações</span>
-                                                                    </div>
-                                                                ) : itemOps ? (
-                                                                    <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 text-[10px] text-gray-500 border-t border-gray-200/50 pt-2">
-                                                                        <div>
-                                                                            <span className="font-bold text-gray-400 block uppercase">Quantidade</span>
-                                                                            <span className="font-medium text-gray-900">{itemOps.quantidade || 1}</span>
-                                                                        </div>
-                                                                        <div>
-                                                                            <span className="font-bold text-gray-400 block uppercase">Placa</span>
-                                                                            <span className="font-medium text-gray-900 truncate block">{itemOps.placa || '-'}</span>
-                                                                        </div>
-                                                                        {itemOps.produtos?.nome && (
-                                                                            <div className="col-span-2">
-                                                                                <span className="font-bold text-gray-400 block uppercase">Produto</span>
-                                                                                <span className="font-medium text-gray-900 truncate block">{itemOps.produtos.nome}</span>
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                ) : null}
-                                                            </div>
-
-                                                            <div className="grid grid-cols-2 text-xs text-gray-500 gap-y-1">
-                                                                <div>
-                                                                    <span className="font-semibold block text-gray-400">Competência</span>
-                                                                    <span>{compStr}</span>
-                                                                </div>
-                                                                <div>
-                                                                    <span className="font-semibold block text-gray-400">Vencimento</span>
-                                                                    <span className={cn("font-medium", isVencido ? "text-red-600" : isVenceHoje ? "text-amber-600" : "")}>{vencStr}</span>
-                                                                </div>
-                                                            </div>
-
-                                                            <div className="flex items-center justify-between mt-1 pt-3 border-t border-gray-100">
-                                                                <span className={cn("px-2 py-0.5 rounded text-[10px] uppercase font-bold",
-                                                                    r.modalidade === 'CAIXA_IMEDIATO' ? 'bg-purple-100 text-purple-700' :
-                                                                        r.modalidade === 'DUPLICATA' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
-                                                                )}>
-                                                                    {r.modalidade === 'FATURAMENTO_MENSAL' ? 'MENSAL' : r.modalidade?.replace('_', ' ')}
-                                                                </span>
-                                                                <span className="font-black text-gray-800 text-[15px]">
-                                                                    R$ {Number(r.valor_total).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                                                </span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                )
-                                            })
+                                            items.map((r: any) => (
+                                                <ReceitaKanbanCard
+                                                    key={r.id}
+                                                    receita={r}
+                                                    density={density}
+                                                    isExpanded={expandedCardIds.has(r.id)}
+                                                    onToggleExpand={(e) => toggleCardExpansion(r.id, e)}
+                                                    onClick={() => setSelectedReceita(r)}
+                                                    isHighlighted={location.state?.highlightReceitaId === r.id}
+                                                />
+                                            ))
                                         )}
                                     </div>
                                 </div>

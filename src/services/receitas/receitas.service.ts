@@ -361,7 +361,9 @@ class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extra
         }
       }
       
-      const { data, error } = await query.order('data', { ascending: false });
+      const { data, error } = await query
+        .order('criado_em', { ascending: false })
+        .order('id', { ascending: false });
       
       if (error) {
         console.warn('Falha ao buscar serviços extras com empresas, tentando simplificado:', error);
@@ -392,10 +394,15 @@ class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extra
             simpleQuery = simpleQuery.gte('data', `${year}-${String(mo).padStart(2, '0')}-01`).lt('data', nextMonthStr);
           }
         }
-        const { data: simpleData, error: simpleError } = await simpleQuery.order('data', { ascending: false });
+        const { data: simpleData, error: simpleError } = await simpleQuery
+          .order('criado_em', { ascending: false })
+          .order('id', { ascending: false });
         
         if (simpleError) throw simpleError;
-        return simpleData ?? [];
+        return (simpleData ?? []).map((item: any) => ({
+          ...item,
+          created_at: item.created_at ?? item.criado_em
+        }));
       }
         const resultData = data ?? [];
         
@@ -415,6 +422,7 @@ class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extra
 
         return resultData.map((item: any) => ({
           ...item,
+          created_at: item.created_at ?? item.criado_em,
           responsavel_nome: item.criado_por ? (profilesMap[item.criado_por] || null) : null
         }));
     } catch (e) {

@@ -95,6 +95,8 @@ type ServicoExtraItem = {
     observacao?: string | null;
     operacao_id?: string | null;
     origem_dado?: string | null;
+    created_at?: string | null;
+    criado_em?: string | null;
 };
 
 type ServicosExtrasTableBlockProps = {
@@ -405,7 +407,12 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                 return searchMatch && tipoMatch && pipelineStatusMatch && pipelineMatch;
             })
             .sort((a, b) => {
-                if (!sortConfig) return 0;
+                if (!sortConfig) {
+                    const timeA = new Date(a.created_at || a.criado_em || (a.data ? `${a.data}T12:00:00` : 0)).getTime();
+                    const timeB = new Date(b.created_at || b.criado_em || (b.data ? `${b.data}T12:00:00` : 0)).getTime();
+                    if (timeA !== timeB) return timeB - timeA;
+                    return String(b.id ?? "").localeCompare(String(a.id ?? ""));
+                }
                 const key = sortConfig.key as keyof ServicoExtraItem;
                 const valA = a[key] ?? "";
                 const valB = b[key] ?? "";

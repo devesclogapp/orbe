@@ -413,9 +413,17 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                 <h4 className="font-semibold text-gray-800">Consolidar Faturamento Mensal (Fechamento)</h4>
             </div>
 
-            <div className="bg-orange-50 border border-orange-100 text-orange-800 p-3 rounded-lg text-sm mb-4">
-                Você agrupará {(detalhesReceita?.receitas_operacionais_itens || []).length} operações pendentes para esta Empresa e gravará o fechamento deste ciclo.
-            </div>
+            {(() => {
+                const totalItens = (detalhesReceita?.receitas_operacionais_itens || []).length;
+                const textoFechamento = totalItens === 1
+                    ? "Você consolidará 1 lançamento pendente para esta empresa e registrará o fechamento deste ciclo."
+                    : `Você consolidará ${totalItens} lançamentos pendentes para esta empresa e registrará o fechamento deste ciclo.`;
+                return (
+                    <div className="bg-orange-50 border border-orange-100 text-orange-800 p-3 rounded-lg text-sm mb-4">
+                        {textoFechamento}
+                    </div>
+                );
+            })()}
 
             <div className="space-y-3">
                 <div className="flex justify-between font-medium border-b pb-1 text-sm"><span className="text-gray-500">Valor Total Consolidado</span><span className="text-gray-900">R$ {Number(detalhesReceita?.valor_total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>
@@ -619,10 +627,10 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                     cardBg: "bg-purple-50/60",
                     icone: Clock,
                     iconeColor: "text-purple-600",
-                    descricao: "As operações de faturamento mensal deste ciclo foram apuradas. Para dar início ao processo de cobrança, consolide a competência e defina o vencimento padrão.",
+                    descricao: "Os lançamentos de faturamento mensal deste ciclo foram apurados. Para dar início ao processo de cobrança, consolide a competência e defina o vencimento padrão.",
                     etapas: [
                         { numero: 1, titulo: "Consolidar competência", detalhe: "Fechar o ciclo mensal e fixar a data de vencimento padrão da fatura.", destaque: true },
-                        { numero: 2, titulo: "Gerar fatura consolidada", detalhe: "Emitir o PDF da fatura unificada com todas as operações apuradas." },
+                        { numero: 2, titulo: "Gerar fatura consolidada", detalhe: "Emitir o PDF da fatura unificada com todos os lançamentos apurados." },
                         { numero: 3, titulo: "Enviar externamente e registrar no ORBE", detalhe: "Encaminhar ao cliente e registrar o envio no sistema." }
                     ],
                     proximaAcao: {
@@ -731,7 +739,7 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                     ? "Competência mensal consolidada e fechada. O ORBE não realiza o envio automático; siga a sequência operacional para emitir e registrar a cobrança:"
                     : "Operação a prazo faturável. O ORBE não realiza o envio automático; siga a sequência operacional para emitir e registrar a cobrança:",
                 etapas: [
-                    { numero: 1, titulo: "Gerar documento de cobrança", detalhe: isMensal ? "Baixe a Fatura Consolidada em PDF no ORBE contendo todas as operações apuradas." : "Emita a fatura ou documento de cobrança em PDF no ORBE.", destaque: true },
+                    { numero: 1, titulo: "Gerar documento de cobrança", detalhe: isMensal ? "Baixe a Fatura Consolidada em PDF no ORBE contendo todos os lançamentos apurados." : "Emita a fatura ou documento de cobrança em PDF no ORBE.", destaque: true },
                     { numero: 2, titulo: "Enviar externamente ao cliente", detalhe: "Encaminhe o documento emitido por e-mail ou WhatsApp ao setor financeiro do cliente.", destaque: false },
                     { numero: 3, titulo: "Registrar envio no ORBE", detalhe: "Marque a cobrança como enviada para iniciar o monitoramento do prazo de vencimento.", destaque: false }
                 ],
@@ -993,8 +1001,15 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                                         </div>
                                         <div className="space-y-1.5 flex-[1_1_auto] min-w-max">
                                             <p className="text-[10px] font-bold text-gray-400 tracking-wider uppercase leading-tight">Modalidade</p>
-                                            <div className="inline-flex bg-gray-100 text-gray-800 text-[10px] font-bold px-2 py-0.5 rounded whitespace-nowrap items-center min-h-[22px] uppercase">
-                                                {receita.modalidade?.replace('_', ' ')}
+                                            <div className="flex items-center gap-1.5 min-h-[22px]">
+                                                <div className="inline-flex bg-gray-100 text-gray-800 text-[10px] font-bold px-2 py-0.5 rounded whitespace-nowrap items-center uppercase">
+                                                    {receita.modalidade?.replace('_', ' ')}
+                                                </div>
+                                                {receita.observacao === 'FATURA_COMPLEMENTAR' && (
+                                                    <div className="inline-flex bg-amber-50 text-amber-800 border border-amber-200/80 text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap items-center uppercase">
+                                                        Complementar
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                         <div className="space-y-1.5 flex-[1_1_auto] min-w-max">
@@ -1023,9 +1038,22 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                                 {/* OPERAÇÕES VINCULADAS (Lazy Loaded) */}
                                 <div>
                                     <div className="flex items-center justify-between mb-3 mx-1">
-                                        <h4 className="text-sm font-bold text-gray-800 flex items-center gap-2">
-                                            <Layers className="h-4 w-4 text-gray-500" /> Detalhes das Operações Base
-                                        </h4>
+                                        {(() => {
+                                            const itens = detalhesReceita?.receitas_operacionais_itens || [];
+                                            let tituloSecao = "Detalhes dos Lançamentos";
+                                            if (itens.length > 0) {
+                                                const temOp = itens.some((i: any) => i.operacao_id || i.operacoes_producao);
+                                                const temSe = itens.some((i: any) => i.servico_extra_id || i.servicos_extras_operacionais);
+                                                if (temOp && !temSe) tituloSecao = "Detalhes das Operações";
+                                                else if (temSe && !temOp) tituloSecao = "Detalhes dos Serviços Extras";
+                                                else tituloSecao = "Detalhes dos Lançamentos";
+                                            }
+                                            return (
+                                                <h4 className="text-sm font-bold text-gray-800 flex items-center gap-2">
+                                                    <Layers className="h-4 w-4 text-gray-500" /> {tituloSecao}
+                                                </h4>
+                                            );
+                                        })()}
                                         {isLoadingDetalhes && <span className="text-xs text-gray-400 animate-pulse">Carregando dados...</span>}
                                     </div>
 
@@ -1045,7 +1073,7 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                                                             Lançamentos Consolidados da Competência ({detalhesReceita.receitas_operacionais_itens.length})
                                                         </span>
                                                         <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                                                            Faturamento Mensal
+                                                            {receita.observacao === 'FATURA_COMPLEMENTAR' ? 'Faturamento Mensal (Complementar)' : 'Faturamento Mensal'}
                                                         </span>
                                                     </div>
                                                     <table className="w-full text-xs text-left">

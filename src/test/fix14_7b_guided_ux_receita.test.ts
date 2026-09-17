@@ -80,7 +80,7 @@ function getModalGuidance(
           proximaEtapaBadge: 'Próxima etapa: Consolidar e fechar a competência',
           acaoPrincipal: '1. Consolidar Competência & Fechamento',
           acaoSecundaria: 'Pré-visualizar Documento Consolidado (Rascunho)',
-          orientacaoTexto: 'As operações de faturamento mensal deste ciclo foram apuradas. Para dar início ao processo de cobrança, consolide a competência e defina o vencimento padrão.'
+          orientacaoTexto: 'Os lançamentos de faturamento mensal deste ciclo foram apurados. Para dar início ao processo de cobrança, consolide a competência e defina o vencimento padrão.'
         };
       }
       if (status === 'cobranca_enviada') {
