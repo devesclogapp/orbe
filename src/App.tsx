@@ -162,8 +162,10 @@ const App = () => (
                             <Route path="/operacoes-volume/aprovacoes" element={<AuthGuard><AprovacoesRh flowType="OPERAÇÃO" lockedFlow={true} /></AuthGuard>} />
                             <Route path="/servicos-extras/novo" element={<AuthGuard><ServicosExtrasLancamento /></AuthGuard>} />
                             <Route path="/servicos-extras/lancamentos" element={<AuthGuard><ServicosExtrasRecebidos /></AuthGuard>} />
+                            <Route path="/servicos-extras/aprovacoes" element={<AuthGuard><AprovacoesRh flowType="SERVIÇO EXTRA" lockedFlow={true} /></AuthGuard>} />
                             <Route path="/custos-extras/novo" element={<AuthGuard><CustosExtrasLancamento /></AuthGuard>} />
                             <Route path="/custos-extras/lancamentos" element={<AuthGuard><CustosExtrasRecebidos /></AuthGuard>} />
+                            <Route path="/custos-extras/aprovacoes" element={<AuthGuard><AprovacoesRh flowType="CUSTO EXTRA" lockedFlow={true} /></AuthGuard>} />
                             <Route path="/onboarding" element={<AuthGuard><Onboarding /></AuthGuard>} />
                             <Route path="/" element={<Navigate to="/operacional/dashboard" replace />} />
                             <Route path="/central" element={<AuthGuard><CentralOperacional /></AuthGuard>} />

@@ -136,6 +136,9 @@ export default function ReceitasPipeline() {
             if (st === 'pago' || st === 'conciliado' || st === 'fechado') {
                 st = 'recebido';
             }
+            if (st === 'cobranca_gerada') {
+                st = 'pendente_cobranca';
+            }
 
             if (cols[st]) {
                 cols[st].push(r);

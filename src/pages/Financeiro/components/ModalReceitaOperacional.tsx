@@ -74,7 +74,8 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
     });
 
     const logEventMutation = useMutation({
-        mutationFn: ({ acao, detalhesText, json }: any) => ReceitasService.logEvent(tenantId!, receita.id, acao, detalhesText, json),
+        mutationFn: ({ acao, detalhesText, json, statusAnterior, statusNovo }: any) =>
+            ReceitasService.logEvent(tenantId!, receita.id, acao, detalhesText, json, statusAnterior, statusNovo),
     });
 
     const finishMutationSuccess = () => {
@@ -168,8 +169,9 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
         const dtUTC = new Date(dt.getTime() + dt.getTimezoneOffset() * 60000);
         const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
         compStr = `${meses[dtUTC.getMonth()] || (dtUTC.getMonth() + 1).toString().padStart(2, '0')}/${dtUTC.getFullYear()}`;
-    } else if (itemExtra?.data_servico) {
-        const dt = new Date(itemExtra.data_servico);
+    } else if (itemExtra?.data || itemExtra?.data_servico) {
+        const rawDate = itemExtra.data || itemExtra.data_servico;
+        const dt = new Date(rawDate);
         const dtUTC = new Date(dt.getTime() + dt.getTimezoneOffset() * 60000);
         const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
         compStr = `${meses[dtUTC.getMonth()] || (dtUTC.getMonth() + 1).toString().padStart(2, '0')}/${dtUTC.getFullYear()}`;
@@ -212,28 +214,43 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
         e.preventDefault();
         setIsSubmitting(true);
 
-        // Let's resolve the next status. If it's aguardando_fechamento for a duplicata (legacy bug or just generated), we move it to pendente_cobranca.
-        let proximoStatus = receita.status;
-        if (receita.modalidade === 'DUPLICATA' && receita.status === 'aguardando_fechamento') {
-            proximoStatus = 'pendente_cobranca';
+        const proceedWithGeneration = () => {
+            // Dispara o download do arquivo imediatamente
+            generateCobrancaPDF(receita, detalhesReceita, cobrancaForm.formato, cobrancaForm.vencimento);
+
+            logEventMutation.mutate({
+                acao: 'GERAR_COBRANCA',
+                detalhesText: `Documentos gerados em formato: ${cobrancaForm.formato}. Vencimento: ${cobrancaForm.vencimento ? new Date(cobrancaForm.vencimento + 'T12:00:00Z').toLocaleDateString('pt-BR') : 'Imediato'}.`,
+                json: { tipo: 'Documento', formato: cobrancaForm.formato, vencimento: cobrancaForm.vencimento || null },
+                statusAnterior: receita.status,
+                statusNovo: receita.status
+            }, {
+                onSuccess: () => {
+                    toast({
+                        title: "Documento de cobrança gerado",
+                        description: "O documento foi emitido com sucesso e o registro foi atualizado no histórico.",
+                    });
+                    queryClient.invalidateQueries({ queryKey: ["receitas-pipeline"] });
+                    queryClient.invalidateQueries({ queryKey: ["receita-historico", receita?.id] });
+                    queryClient.invalidateQueries({ queryKey: ["receita-detalhes", receita?.id] });
+                    queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+                    queryClient.invalidateQueries({ queryKey: ["operacoes"] });
+                    setIsSubmitting(false);
+                    setActionView('main');
+                    onSuccess();
+                },
+                onError: handleError
+            });
+        };
+
+        if (cobrancaForm.vencimento && cobrancaForm.vencimento !== receita.vencimento) {
+            updateReceitaMutation.mutate({ vencimento: cobrancaForm.vencimento }, {
+                onSuccess: proceedWithGeneration,
+                onError: handleError
+            });
+        } else {
+            proceedWithGeneration();
         }
-
-        updateReceitaMutation.mutate({ vencimento: cobrancaForm.vencimento, status: proximoStatus }, {
-            onSuccess: () => {
-                // Dispara o download do arquivo imediatamente
-                generateCobrancaPDF(receita, detalhesReceita, cobrancaForm.formato, cobrancaForm.vencimento);
-
-                logEventMutation.mutate({
-                    acao: 'Cobrança Gerada',
-                    detalhesText: `Documentos gerados em formato: ${cobrancaForm.formato}. Vencimento: ${cobrancaForm.vencimento ? new Date(cobrancaForm.vencimento + 'T12:00:00Z').toLocaleDateString('pt-BR') : 'Imediato'}.`,
-                    json: { tipo: 'Documento', formato: cobrancaForm.formato, vencimento: cobrancaForm.vencimento }
-                }, {
-                    onSuccess: finishMutationSuccess,
-                    onError: handleError
-                });
-            },
-            onError: handleError
-        });
     };
 
     const handleConfirmEnviarCobranca = (e: React.FormEvent) => {
@@ -561,6 +578,7 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
 
         const isPendenteCobranca = receita.status === 'pendente_cobranca';
         const isCobrancaEnviada = receita.status === 'cobranca_enviada' || receita.status === 'pendente_recebimento';
+        const hasDocumentoGerado = receita.status === 'cobranca_gerada' || Boolean(historico?.some((h: any) => h.acao === 'GERAR_COBRANCA' || h.acao === 'Cobrança Gerada'));
 
         const getOrientacaoFluxo = (): OrientacaoFluxo | null => {
             const modalidade = receita.modalidade;
@@ -653,7 +671,7 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                         disabled: isSubmitting
                     },
                     acaoSecundaria: {
-                        label: "Reemitir Documento de Cobrança",
+                        label: isMensal ? "Reemitir Doc. Consolidado" : "Reemitir Documento de Cobrança",
                         icone: FileText,
                         onClick: () => setActionView('gerar_cobranca'),
                         variant: "ghost",
@@ -663,8 +681,44 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                 };
             }
 
-            // 4. DUPLICATA ou FATURAMENTO_MENSAL — pendente_cobranca (ou padrão)
+            // 4. DUPLICATA ou FATURAMENTO_MENSAL — pendente_cobranca / cobranca_gerada (ou padrão)
             const isMensal = modalidade === 'FATURAMENTO_MENSAL';
+
+            if (hasDocumentoGerado) {
+                return {
+                    titulo: isMensal ? "Competência Consolidada — Documento Emitido" : "Operação Faturável — Documento Emitido",
+                    badge: "Próxima etapa: 2. Enviar e Registrar Cobrança",
+                    badgeClasses: "text-blue-800 bg-blue-100 border-blue-200",
+                    cardBorder: "border-blue-200",
+                    cardBg: "bg-blue-50/50",
+                    icone: Wallet,
+                    iconeColor: "text-blue-600",
+                    descricao: isMensal
+                        ? "O documento de cobrança já foi gerado. Conclua a sequência operacional encaminhando o documento ao cliente e registrando o envio no sistema:"
+                        : "O documento de cobrança já foi gerado. Conclua a sequência operacional encaminhando a fatura ao cliente e registrando o envio no sistema:",
+                    etapas: [
+                        { numero: 1, titulo: "Gerar documento de cobrança", detalhe: "Documento emitido com sucesso.", destaque: false },
+                        { numero: 2, titulo: "Enviar externamente ao cliente", detalhe: "Encaminhe o documento emitido por e-mail ou WhatsApp ao setor financeiro do cliente.", destaque: true },
+                        { numero: 3, titulo: "Registrar envio no ORBE", detalhe: "Marque a cobrança como enviada para iniciar o monitoramento do prazo de vencimento.", destaque: false }
+                    ],
+                    proximaAcao: {
+                        label: "2. Registrar como Enviado ao Cliente",
+                        icone: Send,
+                        onClick: () => setActionView('enviar_cobranca'),
+                        className: "bg-blue-600 hover:bg-blue-700 text-white",
+                        disabled: isSubmitting
+                    },
+                    acaoSecundaria: {
+                        label: isMensal ? "Reemitir Doc. Consolidado" : "Reemitir Documento de Cobrança",
+                        icone: FileText,
+                        onClick: () => setActionView('gerar_cobranca'),
+                        variant: "ghost",
+                        className: "text-gray-500 hover:text-gray-800",
+                        disabled: isSubmitting
+                    }
+                };
+            }
+
             return {
                 titulo: isMensal ? "Competência Consolidada — Pronta para Cobrança" : "Operação Faturável — Emissão de Cobrança",
                 badge: "Fluxo sequencial de cobrança",
@@ -719,30 +773,45 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                     {orientacao.descricao}
                 </p>
 
+                {/* Linha das Etapas Sequenciais */}
                 {orientacao.etapas && orientacao.etapas.length > 0 && (
-                    <div className="bg-white/80 border border-gray-200/80 rounded p-2.5 text-xs text-gray-600 space-y-1.5">
-                        <div className="flex items-center justify-between">
-                            <p className="font-semibold text-gray-800 text-[11px] uppercase tracking-wider">Roteiro operacional do fluxo:</p>
-                            <span className="text-[10px] text-blue-700 font-medium bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
-                                Próxima ação recomendada: Etapa {orientacao.etapas.find(e => e.destaque)?.numero || 1}
-                            </span>
-                        </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2 pt-1">
                         {orientacao.etapas.map((etapa) => (
-                            <div key={etapa.numero} className={cn("flex items-start gap-2 p-1.5 rounded transition-colors", etapa.destaque ? "bg-blue-50/70 border border-blue-100 text-blue-950 font-medium" : "text-gray-600")}>
-                                <span className={cn("h-4 w-4 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5", etapa.destaque ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-700")}>
-                                    {etapa.numero}
-                                </span>
-                                <div className="text-xs">
-                                    <span className={cn("font-bold mr-1", etapa.destaque ? "text-blue-900" : "text-gray-800")}>{etapa.titulo}:</span>
-                                    <span className="text-gray-600">{etapa.detalhe}</span>
+                            <div
+                                key={etapa.numero}
+                                className={cn(
+                                    "p-2.5 rounded border text-xs transition-colors",
+                                    etapa.destaque
+                                        ? "bg-white border-blue-300 shadow-sm ring-1 ring-blue-100"
+                                        : "bg-white/60 border-gray-200 opacity-75"
+                                )}
+                            >
+                                <div className="flex items-center gap-1.5 font-bold mb-1">
+                                    <span
+                                        className={cn(
+                                            "h-4 w-4 rounded-full flex items-center justify-center text-[10px] font-extrabold",
+                                            etapa.destaque
+                                                ? "bg-blue-600 text-white"
+                                                : "bg-gray-200 text-gray-700"
+                                        )}
+                                    >
+                                        {etapa.numero}
+                                    </span>
+                                    <span className={etapa.destaque ? "text-blue-950" : "text-gray-700"}>
+                                        {etapa.titulo}
+                                    </span>
                                 </div>
+                                <p className="text-[11px] text-gray-500 leading-tight">
+                                    {etapa.detalhe}
+                                </p>
                             </div>
                         ))}
                     </div>
                 )}
 
+                {/* Alerta contextual se houver */}
                 {orientacao.alertaContextual && (
-                    <div className="bg-amber-50 border border-amber-200 rounded p-2 text-xs text-amber-800 flex items-start gap-1.5">
+                    <div className="flex items-start gap-2 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded p-2.5">
                         <Clock className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
                         <span>{orientacao.alertaContextual}</span>
                     </div>
@@ -773,21 +842,23 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                         </Button>
                     )}
 
-                    {/* Botão de Registrar como Enviado sob isPendenteCobranca */}
+                    {/* Ação secundária para antes da emissão: Registrar como Enviado */}
                     {isPendenteCobranca && (
-                        <Button
-                            onClick={() => setActionView('enviar_cobranca')}
-                            disabled={isSubmitting}
-                            variant="outline"
-                            className="w-full gap-2 h-10 border-blue-200 text-blue-800 bg-white hover:bg-blue-50"
-                        >
-                            <Send className="h-4 w-4 text-blue-600" />
-                            2. Registrar como Enviado ao Cliente
-                        </Button>
+                        !hasDocumentoGerado && (
+                            <Button
+                                onClick={() => setActionView('enviar_cobranca')}
+                                disabled={isSubmitting}
+                                variant="outline"
+                                className="w-full gap-2 h-10 border-blue-200 text-blue-800 bg-white hover:bg-blue-50"
+                            >
+                                <Send className="h-4 w-4 text-blue-600" />
+                                2. Registrar como Enviado ao Cliente
+                            </Button>
+                        )
                     )}
 
-                    {/* Outras Ações Secundárias (ex: Reemissão, Pré-visualização) */}
-                    {!isPendenteCobranca && orientacao.acaoSecundaria && (
+                    {/* Outras Ações Secundárias (ex: Reemissão quando gerado, pré-visualização) */}
+                    {(!isPendenteCobranca || hasDocumentoGerado) && orientacao.acaoSecundaria && (
                         <Button
                             onClick={orientacao.acaoSecundaria.onClick}
                             disabled={orientacao.acaoSecundaria.disabled}
@@ -992,7 +1063,7 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                                                             {detalhesReceita.receitas_operacionais_itens.map((item: any) => {
                                                                 const op = item.operacoes_producao;
                                                                 const se = item.servicos_extras_operacionais;
-                                                                const dataStr = op?.data_operacao ? formatDateOnly(op.data_operacao) : (se?.data_servico ? formatDateOnly(se.data_servico) : '-');
+                                                                const dataStr = op?.data_operacao ? formatDateOnly(op.data_operacao) : formatDateOnly(se?.data || se?.data_servico);
                                                                 const servicoNome = op?.servicos?.nome || op?.servicos?.descricao || se?.tipo_servico || 'Serviço Operacional';
                                                                 const prodNome = op?.produtos?.nome ? ` - ${op.produtos.nome}` : (se?.descricao && se?.tipo_servico ? ` (${se.descricao})` : (se?.descricao ? ` - ${se.descricao}` : ''));
                                                                 const qtd = op?.quantidade || se?.quantidade || 1;
@@ -1140,7 +1211,7 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                                                                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                                                             <div><span className="text-gray-400 text-xs block">Origem</span> <span className="font-semibold text-purple-700 block">Serviço Extra</span></div>
                                                                             <div><span className="text-gray-400 text-xs block">Nº Registro</span> <span className="font-bold text-gray-800 tracking-wide block">SE #{se.id?.substring(0, 8) || '-'}</span></div>
-                                                                            <div><span className="text-gray-400 text-xs block">Data Serv.</span> <span className="font-medium text-gray-700">{formatDateOnly(se.data_servico)}</span></div>
+                                                                            <div><span className="text-gray-400 text-xs block">Data Serv.</span> <span className="font-medium text-gray-700">{formatDateOnly(se.data || se.data_servico)}</span></div>
                                                                             <div>
                                                                                 <span className="text-gray-400 text-xs block mb-0.5">Status Aprovação</span>
                                                                                 <span className="font-medium text-emerald-700 uppercase text-[10px] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">{se.pipeline_status?.replace('_', ' ') || 'Aprovado'}</span>

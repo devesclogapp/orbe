@@ -183,7 +183,7 @@ const groups: MenuGroup[] = [
     items: [
       { icon: Plus, label: "Novo Lançamento", to: "/servicos-extras/lancamentos?action=novo-servico-extra", module: "central_operacional" },
       { icon: Wrench, label: "Recebidos / Lançamentos", to: "/servicos-extras/lancamentos", module: "operacoes_recebidas", pulseKey: "servicos_extras" },
-      { icon: Shield, label: "Aprovações", to: "/rh/aprovacoes", module: "processamento_rh" },
+      { icon: Shield, label: "Aprovações", to: "/servicos-extras/aprovacoes", module: "processamento_rh" },
       { icon: FileText, label: "Faturamento", to: "/financeiro/faturamento", module: "central_financeira" },
     ],
   },
@@ -194,7 +194,7 @@ const groups: MenuGroup[] = [
     items: [
       { icon: Plus, label: "Novo Lançamento", to: "/custos-extras/lancamentos?action=novo-custo-extra", module: "central_operacional" },
       { icon: Wallet, label: "Recebidos / Lançamentos", to: "/custos-extras/lancamentos", module: "operacoes_recebidas", pulseKey: "custos_extras" },
-      { icon: Shield, label: "Aprovações", to: "/rh/aprovacoes", module: "processamento_rh" },
+      { icon: Shield, label: "Aprovações", to: "/custos-extras/aprovacoes", module: "processamento_rh" },
       { icon: Banknote, label: "Pagamentos / Contas a Pagar", to: "/financeiro/contas-bancarias", module: "pagamentos_remessas" },
     ],
   },

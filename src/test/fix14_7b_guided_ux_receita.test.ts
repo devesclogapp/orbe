@@ -13,7 +13,11 @@ interface ModalStateConfig {
 }
 
 // Simulador das regras de composição da UX guiada do ModalReceitaOperacional.tsx
-function getModalGuidance(modalidade: 'CAIXA_IMEDIATO' | 'DUPLICATA' | 'FATURAMENTO_MENSAL', status: string): ModalStateConfig {
+function getModalGuidance(
+  modalidade: 'CAIXA_IMEDIATO' | 'DUPLICATA' | 'FATURAMENTO_MENSAL',
+  status: string,
+  hasDocumentoGerado = false
+): ModalStateConfig {
   if (status === 'conciliado') {
     return {
       proximaEtapaBadge: 'Ciclo financeiro concluído',
@@ -47,6 +51,18 @@ function getModalGuidance(modalidade: 'CAIXA_IMEDIATO' | 'DUPLICATA' | 'FATURAME
           orientacaoTexto: 'A duplicata/fatura foi enviada. Somente confirme o recebimento após o pagamento ter sido efetivamente identificado (comprovante ou liquidação bancária).'
         };
       }
+      if (status === 'cobranca_gerada' || hasDocumentoGerado) {
+        return {
+          proximaEtapaBadge: 'Próxima etapa: 2. Enviar e Registrar Cobrança',
+          acaoPrincipal: '2. Registrar como Enviado ao Cliente',
+          acaoSecundaria: 'Reemitir Documento de Cobrança',
+          passos: [
+            '1. Gerar documento de cobrança',
+            '2. Enviar externamente ao cliente',
+            '3. Registrar envio no ORBE'
+          ]
+        };
+      }
       return {
         proximaEtapaBadge: 'Fluxo sequencial de cobrança',
         acaoPrincipal: '1. Gerar Documento de Cobrança',
@@ -75,7 +91,19 @@ function getModalGuidance(modalidade: 'CAIXA_IMEDIATO' | 'DUPLICATA' | 'FATURAME
           orientacaoTexto: 'A fatura consolidada foi enviada ao cliente. Somente confirme o recebimento após o pagamento ter sido efetivamente identificado (comprovante ou extrato preliminar).'
         };
       }
-      // pendente_cobranca
+      if (status === 'cobranca_gerada' || hasDocumentoGerado) {
+        return {
+          proximaEtapaBadge: 'Próxima etapa: 2. Enviar e Registrar Cobrança',
+          acaoPrincipal: '2. Registrar como Enviado ao Cliente',
+          acaoSecundaria: 'Reemitir Doc. Consolidado',
+          passos: [
+            '1. Gerar documento de cobrança',
+            '2. Enviar externamente ao cliente',
+            '3. Registrar envio no ORBE'
+          ]
+        };
+      }
+      // pendente_cobranca (antes da emissão)
       return {
         proximaEtapaBadge: 'Fluxo sequencial de cobrança',
         acaoPrincipal: '1. Gerar Documento de Cobrança',
@@ -100,8 +128,8 @@ describe('FIX 14.7B — UX Guiada por Estado da Receita Operacional', () => {
       expect(guidance.orientacaoTexto).toContain('consolide a competência');
     });
 
-    it('pendente_cobranca: deve guiar o fluxo em 3 etapas com geração antes do registro de envio', () => {
-      const guidance = getModalGuidance('FATURAMENTO_MENSAL', 'pendente_cobranca');
+    it('pendente_cobranca (antes da emissão): deve ter CTA primária Gerar Documento e secundária Registrar Envio', () => {
+      const guidance = getModalGuidance('FATURAMENTO_MENSAL', 'pendente_cobranca', false);
 
       expect(guidance.proximaEtapaBadge).toBe('Fluxo sequencial de cobrança');
       expect(guidance.passos).toHaveLength(3);
@@ -109,9 +137,17 @@ describe('FIX 14.7B — UX Guiada por Estado da Receita Operacional', () => {
       expect(guidance.passos![1]).toBe('2. Enviar externamente ao cliente');
       expect(guidance.passos![2]).toBe('3. Registrar envio no ORBE');
 
-      // Ação principal deve ser Gerar Documento, antes de Registrar como Enviado
+      // Antes da emissão: Ação principal deve ser Gerar Documento, secundária Registrar como Enviado
       expect(guidance.acaoPrincipal).toBe('1. Gerar Documento de Cobrança');
       expect(guidance.acaoSecundaria).toBe('2. Registrar como Enviado ao Cliente');
+    });
+
+    it('cobranca_gerada (após emissão): deve inverter hierarquia — CTA primária Registrar Envio e secundária Reemitir', () => {
+      const guidance = getModalGuidance('FATURAMENTO_MENSAL', 'cobranca_gerada', true);
+
+      expect(guidance.proximaEtapaBadge).toBe('Próxima etapa: 2. Enviar e Registrar Cobrança');
+      expect(guidance.acaoPrincipal).toBe('2. Registrar como Enviado ao Cliente');
+      expect(guidance.acaoSecundaria).toBe('Reemitir Doc. Consolidado');
     });
 
     it('cobranca_enviada: deve orientar confirmação de recebimento somente após identificação', () => {
@@ -125,12 +161,20 @@ describe('FIX 14.7B — UX Guiada por Estado da Receita Operacional', () => {
   });
 
   describe('2. DUPLICATA', () => {
-    it('pendente_cobranca: deve apresentar roteiro de emissão e registro de envio', () => {
-      const guidance = getModalGuidance('DUPLICATA', 'pendente_cobranca');
+    it('pendente_cobranca (antes da emissão): deve apresentar roteiro de emissão com CTA primária Gerar Documento', () => {
+      const guidance = getModalGuidance('DUPLICATA', 'pendente_cobranca', false);
 
       expect(guidance.proximaEtapaBadge).toBe('Fluxo sequencial de cobrança');
       expect(guidance.acaoPrincipal).toBe('1. Gerar Documento de Cobrança');
       expect(guidance.acaoSecundaria).toBe('2. Registrar como Enviado ao Cliente');
+    });
+
+    it('cobranca_gerada (após emissão): deve inverter hierarquia com CTA primária Registrar Envio e secundária Reemitir', () => {
+      const guidance = getModalGuidance('DUPLICATA', 'cobranca_gerada', true);
+
+      expect(guidance.proximaEtapaBadge).toBe('Próxima etapa: 2. Enviar e Registrar Cobrança');
+      expect(guidance.acaoPrincipal).toBe('2. Registrar como Enviado ao Cliente');
+      expect(guidance.acaoSecundaria).toBe('Reemitir Documento de Cobrança');
     });
 
     it('cobranca_enviada: deve orientar recebimento como ação principal e reemissão como secundária', () => {

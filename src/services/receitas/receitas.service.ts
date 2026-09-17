@@ -103,11 +103,32 @@ class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
   }
 
   async logEvent(tenantId: string, receitaId: string, acao: string, detalhesText: string, detalhesJson?: any, statusAnterior?: string, statusNovo?: string) {
-    // [DEPRECATION NOTICE]: Por conta do Etapa 04 - Auditoria Atômica (Domain Hardening), 
-    // todas as triggers críticas e eventos nascem das próprias funções RPC.
-    // Ignoramos eventlogs arbitrários oriundos do client React.
-    console.warn("[SECURITY] logEvent is deprecated. Financial transitions generate logs entirely on DB via RPCs. Call suppressed: ", acao);
-    return { success: true, bypassed: true };
+    const { data: authData } = await supabase.auth.getUser();
+    const userId = authData?.user?.id || null;
+    const userEmail = authData?.user?.email || 'Sistema';
+
+    const payload: any = {
+      tenant_id: tenantId,
+      receita_id: receitaId,
+      acao: acao,
+      usuario_id: userId,
+      detalhes: { texto: detalhesText, usuario_email: userEmail, ...detalhesJson }
+    };
+
+    if (statusAnterior) payload.status_anterior = statusAnterior;
+    if (statusNovo) payload.status_novo = statusNovo;
+
+    const { data, error } = await supabase
+      .from('receitas_operacionais_historico')
+      .insert(payload)
+      .select()
+      .maybeSingle();
+
+    if (error) {
+      console.error("[ReceitasService] Erro ao gravar evento no historico:", error);
+      throw error;
+    }
+    return data;
   }
 
   async updateStatus(tenantId: string, receitaId: string, newStatus: string) {

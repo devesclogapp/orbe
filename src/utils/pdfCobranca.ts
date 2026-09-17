@@ -107,7 +107,7 @@ export const generateCobrancaPDF = (receita: any, detalhesReceita: any, formato:
                 }
             } else if (item.servicos_extras_operacionais) {
                 const se = item.servicos_extras_operacionais;
-                const dataSeStr = formatDateOnly(se.data_servico);
+                const dataSeStr = formatDateOnly(se.data || se.data_servico);
                 const tipoNome = se.tipo_servico || 'Serviço Extra';
                 const descCompleta = se.descricao ? `${tipoNome} — ${se.descricao}` : tipoNome;
                 const qtd = se.quantidade ? String(se.quantidade) : "1";
@@ -142,7 +142,7 @@ export const generateCobrancaPDF = (receita: any, detalhesReceita: any, formato:
     autoTable(doc, {
       startY: 85,
       margin: { left: 14, right: 14 },
-      head: [["Data", "Descrição da Operação", "Qtd", "V. Unitário", "Subtotal"]],
+      head: [["Data", "Descrição", "Qtd", "V. Unitário", "Subtotal"]],
       body: tableData,
       foot: [["", "TOTAL DA FATURA", "", "", valorStr]],
       headStyles: {

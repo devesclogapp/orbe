@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
     Clock,
@@ -27,7 +27,8 @@ import {
 import { toast } from "sonner";
 import { format, startOfWeek, endOfWeek, subWeeks } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { formatDateTime } from "@/utils/financeiro";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { Card } from "@/components/ui/card";
@@ -141,17 +142,29 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
     const { user } = useAuth();
     const queryClient = useQueryClient();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+
+    // ── Context Mode (Props ou URL SearchParams) ──
+    const effectiveFlowType = flowType || searchParams.get("tipo") || searchParams.get("flowType") || undefined;
+    const isLocked = lockedFlow ?? (searchParams.get("locked") === "true" || !!effectiveFlowType);
 
     // ── Filtros ──────────────────────────────────────
     const [periodo, setPeriodo] = useState<string>("semana-atual");
     const [inicio, setInicio] = useState(format(startOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd"));
     const [fim, setFim] = useState(format(endOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd"));
     const [filterEmpresaId, setFilterEmpresaId] = useState("all");
-    const [filterType, setFilterType] = useState<string>(flowType || "all");
+    const [filterType, setFilterType] = useState<string>(effectiveFlowType || "all");
     const [searchTerm, setSearchTerm] = useState("");
     const [activeTab, setActiveTab] = useState<string>("fila");
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
+
+    useEffect(() => {
+        if (effectiveFlowType) {
+            setFilterType(effectiveFlowType);
+            setCurrentPage(1);
+        }
+    }, [effectiveFlowType]);
 
     const [selectedItems, setSelectedItems] = useState<string[]>([]);
     const [activeItem, setActiveItem] = useState<ApprovalItem | null>(null);
@@ -455,17 +468,26 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
         { id: "OPERAÇÃO", label: "Operações", icon: CheckCircle2, color: "text-cyan-500" },
     ];
 
+    const currentTypeObj = APPROVAL_TYPES.find(t => t.id === filterType);
+    const currentTypeLabel = currentTypeObj?.label || filterType;
+    const isContextMode = isLocked && filterType !== "all";
+    const pageTitle = isContextMode ? `Aprovações — ${currentTypeLabel}` : "Aprovações RH";
+    const pageSubtitle = isContextMode 
+        ? `Fila de aprovações contextuais para ${currentTypeLabel}` 
+        : "Fila de aprovações do RH - decisões pendentes";
+    const pageBadge = isContextMode ? `${currentTypeLabel.toUpperCase()} / APROVAÇÕES` : "PROCESSAMENTO / PIPELINE";
+
     // ── Render ───────────────────────────────────────
     return (
         <AppShell
-            title="Aprovações RH"
-            subtitle="Fila de aprovações do RH - decisões pendentes"
-            badge="PROCESSAMENTO / PIPELINE"
+            title={pageTitle}
+            subtitle={pageSubtitle}
+            badge={pageBadge}
         >
             <div className="flex flex-col gap-6 max-w-[1700px] mx-auto pb-12 px-4 md:px-6">
 
                 {/* FILTROS TIPO (Pills horizontais) */}
-                {!lockedFlow && (
+                {!isLocked && (
                     <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
                         {APPROVAL_TYPES.map((type) => {
                             const Icon = type.icon;
@@ -590,7 +612,7 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
                                         <>
                                             <Button size="sm" className="h-9 bg-emerald-600 hover:bg-emerald-700 text-white gap-2 px-4 shadow-sm font-bold text-xs" disabled={selectedItems.length === 0 || aprovarMutation.isPending} onClick={handleBulkAprovar}>
                                                 {aprovarMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                                                Validar Selecionados
+                                                Aprovar Selecionados
                                             </Button>
                                             <Button variant="outline" size="sm" className="h-9 border-orange-200 text-orange-600 hover:bg-orange-50 gap-2 px-4 font-bold text-xs" disabled={selectedItems.length === 0 || devolverMutation.isPending} onClick={handleBulkDevolver}>
                                                 {devolverMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
@@ -1084,7 +1106,7 @@ function DetailPanel({
                             <span className="text-xs font-bold uppercase tracking-wide">Informações</span>
                         </div>
                         <div className="space-y-2 bg-slate-50 border border-border/30 rounded-lg px-4 py-3">
-                            <SummaryLine label="Recebido em" value={(item as any).dataRecebimento || item.data_recebimento} />
+                            <SummaryLine label="Recebido em" value={formatDateTime((item as any).dataRecebimento || item.data_recebimento)} />
                             <SummaryLine label="Referência" value={item.referencia} />
                         </div>
                     </div>

@@ -34,6 +34,20 @@ export function formatDateOnly(dateStr?: string | null): string {
   return dateStr;
 }
 
+/**
+ * Formata timestamps ISO com data e hora no fuso operacional brasileiro ('DD/MM/YYYY às HH:mm').
+ */
+export function formatDateTime(value?: string | null): string {
+  if (!value) return "-";
+  try {
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return value;
+    return format(d, "dd/MM/yyyy 'às' HH:mm");
+  } catch {
+    return value;
+  }
+}
+
 const normalizeFinanceText = (value: unknown) =>
   String(value ?? "")
     .normalize("NFD")
