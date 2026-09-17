@@ -139,9 +139,23 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
     if (!receita) return null;
 
     // Derived info for Display
-    const itemOps = detalhesReceita?.receitas_operacionais_itens?.[0]?.operacoes_producao;
+    const firstItem = detalhesReceita?.receitas_operacionais_itens?.[0];
+    const itemOps = firstItem?.operacoes_producao;
+    const itemExtra = firstItem?.servicos_extras_operacionais;
     const itemCount = detalhesReceita?.receitas_operacionais_itens?.length || 0;
-    const servicoNome = isLoadingDetalhes ? "..." : (itemCount > 1 ? `Consolidada (${itemCount} lançamentos)` : (itemOps?.servicos?.nome || 'Operação Avulsa'));
+
+    let servicoNome = "...";
+    if (!isLoadingDetalhes) {
+        if (itemCount > 1) {
+            servicoNome = `Consolidada (${itemCount} lançamentos)`;
+        } else if (itemOps?.servicos?.nome) {
+            servicoNome = itemOps.servicos.nome;
+        } else if (itemExtra?.tipo_servico) {
+            servicoNome = itemExtra.tipo_servico;
+        } else {
+            servicoNome = 'Operação Avulsa';
+        }
+    }
 
     let compStr = "";
     if (receita.competencia) {
@@ -151,6 +165,11 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
         compStr = `${meses[parseInt(mes) - 1] || mes}/${ano}`;
     } else if (itemOps?.data_operacao) { // REFINAMENTO 01
         const dt = new Date(itemOps.data_operacao);
+        const dtUTC = new Date(dt.getTime() + dt.getTimezoneOffset() * 60000);
+        const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+        compStr = `${meses[dtUTC.getMonth()] || (dtUTC.getMonth() + 1).toString().padStart(2, '0')}/${dtUTC.getFullYear()}`;
+    } else if (itemExtra?.data_servico) {
+        const dt = new Date(itemExtra.data_servico);
         const dtUTC = new Date(dt.getTime() + dt.getTimezoneOffset() * 60000);
         const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
         compStr = `${meses[dtUTC.getMonth()] || (dtUTC.getMonth() + 1).toString().padStart(2, '0')}/${dtUTC.getFullYear()}`;
@@ -796,7 +815,12 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                         </div>
                         {/* REFINAMENTO 06 */}
                         <div className="text-[11px] text-gray-500 font-normal">
-                            Receita originada automaticamente a partir {itemCount > 1 ? `de ${itemCount} Operações por Volume agrupadas` : `da Operação por Volume ${itemOps?.id?.substring(0, 8) || 'Desconhecida'}`}.
+                            {itemCount > 1 
+                                ? `Receita originada automaticamente a partir de ${itemCount} lançamentos operacionais agrupados.`
+                                : itemExtra 
+                                    ? `Receita originada automaticamente a partir do Serviço Extra ${itemExtra.id?.substring(0, 8) || ''}.`
+                                    : `Receita originada automaticamente a partir da Operação por Volume ${itemOps?.id?.substring(0, 8) || 'Desconhecida'}.`
+                            }
                         </div>
                         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px] font-normal text-gray-500 mt-1">
                             <div><span className="font-semibold text-gray-700 uppercase tracking-widest text-[10px]">Cliente</span><br /> <span className="text-gray-900 font-medium">{clienteNome}</span></div>
@@ -813,7 +837,9 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                         {/* Pipeline de Receita e Última Atualização */}
                         <div className="flex flex-col md:flex-row md:items-center justify-between border-t border-gray-100 pt-3 mt-1 gap-2">
                             <div className="flex items-center space-x-2 text-[11px] font-bold text-gray-400">
-                                <span className={cn("flex items-center gap-1", itemOps ? "text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded" : "")}><CheckCircle className="h-3.5 w-3.5" /> Operação</span>
+                                <span className={cn("flex items-center gap-1", (itemOps || itemExtra) ? "text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded" : "")}>
+                                    <CheckCircle className="h-3.5 w-3.5" /> {itemExtra ? "Serviço Extra" : "Operação"}
+                                </span>
                                 <span>↓</span>
                                 <span className={cn("flex items-center gap-1", receita ? "text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded" : "")}><CheckCircle className="h-3.5 w-3.5" /> Receita</span>
                                 {receita.modalidade !== 'CAIXA_IMEDIATO' && (
@@ -945,7 +971,7 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                                                 <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
                                                     <div className="bg-gray-50/80 px-4 py-3 border-b flex items-center justify-between">
                                                         <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">
-                                                            Operações Consolidadas da Competência ({detalhesReceita.receitas_operacionais_itens.length})
+                                                            Lançamentos Consolidados da Competência ({detalhesReceita.receitas_operacionais_itens.length})
                                                         </span>
                                                         <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
                                                             Faturamento Mensal
@@ -955,8 +981,8 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                                                         <thead className="bg-gray-50/50 text-gray-500 border-b border-gray-100 font-semibold uppercase text-[10px]">
                                                             <tr>
                                                                 <th className="px-4 py-2.5">Data</th>
-                                                                <th className="px-3 py-2.5">Operação</th>
-                                                                <th className="px-3 py-2.5">Serviço / Produto</th>
+                                                                <th className="px-3 py-2.5">Origem / ID</th>
+                                                                <th className="px-3 py-2.5">Serviço / Descrição</th>
                                                                 <th className="px-3 py-2.5 text-center">Qtd</th>
                                                                 <th className="px-3 py-2.5 text-right">V. Unitário</th>
                                                                 <th className="px-4 py-2.5 text-right font-bold text-gray-700">Subtotal</th>
@@ -965,14 +991,18 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                                                         <tbody className="divide-y divide-gray-100 text-gray-700">
                                                             {detalhesReceita.receitas_operacionais_itens.map((item: any) => {
                                                                 const op = item.operacoes_producao;
-                                                                const servicoNome = op?.servicos?.nome || op?.servicos?.descricao || 'Serviço Operacional';
-                                                                const prodNome = op?.produtos?.nome ? ` - ${op.produtos.nome}` : '';
-                                                                const valItem = Number(item.valor_item || op?.valor_total || 0);
+                                                                const se = item.servicos_extras_operacionais;
+                                                                const dataStr = op?.data_operacao ? formatDateOnly(op.data_operacao) : (se?.data_servico ? formatDateOnly(se.data_servico) : '-');
+                                                                const servicoNome = op?.servicos?.nome || op?.servicos?.descricao || se?.tipo_servico || 'Serviço Operacional';
+                                                                const prodNome = op?.produtos?.nome ? ` - ${op.produtos.nome}` : (se?.descricao && se?.tipo_servico ? ` (${se.descricao})` : (se?.descricao ? ` - ${se.descricao}` : ''));
+                                                                const qtd = op?.quantidade || se?.quantidade || 1;
+                                                                const vUnit = Number(op?.valor_unitario_snapshot ?? op?.valor_unitario ?? se?.valor_unitario ?? 0);
+                                                                const valItem = Number(item.valor_item || op?.valor_total || se?.valor_total || 0);
 
                                                                 return (
                                                                     <tr key={item.id} className="hover:bg-gray-50/60 transition-colors">
                                                                         <td className="px-4 py-3 font-medium whitespace-nowrap">
-                                                                            {op?.data_operacao ? formatDateOnly(op.data_operacao) : '-'}
+                                                                            {dataStr}
                                                                         </td>
                                                                         <td className="px-3 py-3">
                                                                             {op ? (
@@ -984,6 +1014,10 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                                                                                 >
                                                                                     #{op.id?.substring(0, 8)}
                                                                                 </button>
+                                                                            ) : se ? (
+                                                                                <span className="font-bold text-purple-600 tracking-wide" title="Serviço Extra">
+                                                                                    SE #{se.id?.substring(0, 8)}
+                                                                                </span>
                                                                             ) : (
                                                                                 <span className="text-gray-400">-</span>
                                                                             )}
@@ -993,10 +1027,10 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                                                                             <span className="text-gray-500">{prodNome}</span>
                                                                         </td>
                                                                         <td className="px-3 py-3 text-center font-medium">
-                                                                            {op?.quantidade || 1}
+                                                                            {qtd}
                                                                         </td>
                                                                         <td className="px-3 py-3 text-right text-gray-500 whitespace-nowrap">
-                                                                            R$ {Number(op?.valor_unitario_snapshot ?? op?.valor_unitario ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                                            R$ {vUnit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                                                         </td>
                                                                         <td className="px-4 py-3 text-right font-bold text-gray-900 whitespace-nowrap">
                                                                             R$ {valItem.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
@@ -1008,7 +1042,7 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                                                         <tfoot className="bg-gray-50 border-t font-semibold text-gray-800">
                                                             <tr>
                                                                 <td colSpan={4} className="px-4 py-3 text-xs text-gray-500 uppercase tracking-wide">
-                                                                    Total da Competência ({detalhesReceita.receitas_operacionais_itens.length} {detalhesReceita.receitas_operacionais_itens.length === 1 ? 'operação' : 'operações'})
+                                                                    Total da Competência ({detalhesReceita.receitas_operacionais_itens.length} {detalhesReceita.receitas_operacionais_itens.length === 1 ? 'item' : 'itens'})
                                                                 </td>
                                                                 <td className="px-3 py-3 text-right text-xs uppercase text-gray-500">
                                                                     TOTAL:
@@ -1025,6 +1059,7 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                                             <div className="space-y-3">
                                                 {detalhesReceita.receitas_operacionais_itens.map((item: any) => {
                                                     const op = item.operacoes_producao;
+                                                    const se = item.servicos_extras_operacionais;
                                                     return (
                                                         <div key={item.id} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm text-sm">
                                                             {op ? (
@@ -1097,8 +1132,70 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                                                                         </Button>
                                                                     </div>
                                                                 </div>
+                                                            ) : se ? (
+                                                                <div className="flex flex-col gap-6">
+                                                                    {/* BLOCO 02: Origem Serviço Extra */}
+                                                                    <div>
+                                                                        <h5 className="text-xs font-bold text-gray-800 uppercase tracking-widest border-b pb-2 mb-3">Origem da Receita</h5>
+                                                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                                                            <div><span className="text-gray-400 text-xs block">Origem</span> <span className="font-semibold text-purple-700 block">Serviço Extra</span></div>
+                                                                            <div><span className="text-gray-400 text-xs block">Nº Registro</span> <span className="font-bold text-gray-800 tracking-wide block">SE #{se.id?.substring(0, 8) || '-'}</span></div>
+                                                                            <div><span className="text-gray-400 text-xs block">Data Serv.</span> <span className="font-medium text-gray-700">{formatDateOnly(se.data_servico)}</span></div>
+                                                                            <div>
+                                                                                <span className="text-gray-400 text-xs block mb-0.5">Status Aprovação</span>
+                                                                                <span className="font-medium text-emerald-700 uppercase text-[10px] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">{se.pipeline_status?.replace('_', ' ') || 'Aprovado'}</span>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {/* BLOCO 03: Dados do Serviço Extra */}
+                                                                    <div>
+                                                                        <h5 className="text-xs font-bold text-gray-800 uppercase tracking-widest border-b pb-2 mb-3">Dados do Serviço Extra</h5>
+                                                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                                                            <div className="col-span-2"><span className="text-gray-400 text-xs block">Tipo de Serviço</span> <span className="font-semibold text-gray-800 truncate block">{se.tipo_servico || '-'}</span></div>
+                                                                            <div className="col-span-2"><span className="text-gray-400 text-xs block">Descrição</span> <span className="font-medium text-gray-700 truncate block">{se.descricao || '-'}</span></div>
+                                                                            <div>
+                                                                                <span className="text-gray-400 text-xs block">Quantidade</span>
+                                                                                <span className="font-medium text-gray-700">{se.quantidade || 1}</span>
+                                                                            </div>
+                                                                            <div>
+                                                                                <span className="text-gray-400 text-xs block">V. Unitário</span>
+                                                                                <span className="font-medium text-gray-700">R$ {Number(se.valor_unitario || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                                                            </div>
+                                                                            <div>
+                                                                                <span className="text-gray-400 text-xs block">Forma Pgto</span>
+                                                                                <span className="font-medium text-gray-700 truncate block">{se.formas_pagamento_operacional?.nome || se.formas_pagamento_operacional?.descricao || '-'}</span>
+                                                                            </div>
+                                                                            <div>
+                                                                                <span className="text-gray-400 text-xs block">Modalidade</span>
+                                                                                <span className="font-medium text-gray-700 truncate block">{se.modalidade_financeira || '-'}</span>
+                                                                            </div>
+                                                                            <div className="col-span-2 border-t pt-2 md:border-none md:pt-0">
+                                                                                <span className="text-gray-400 text-[11px] font-semibold uppercase block">Valor Total</span>
+                                                                                <span className="font-bold text-blue-700 text-lg">R$ {Number(se.valor_total || item.valor_item || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {/* BLOCO 04: Responsáveis */}
+                                                                    <div>
+                                                                        <h5 className="text-xs font-bold text-gray-800 uppercase tracking-widest border-b pb-2 mb-3">Responsáveis & Local</h5>
+                                                                        <div className="grid grid-cols-2 gap-4">
+                                                                            <div><span className="text-gray-400 text-xs block">Empresa Faturada</span> <span className="font-medium text-gray-700 truncate block">{receita.empresas?.nome || '-'}</span></div>
+                                                                            <div><span className="text-gray-400 text-xs block">Encarregado / Solicitante</span> <span className="font-medium text-gray-700 truncate tracking-wide">{se.encarregado?.nome || se.encarregado_id?.substring(0, 8) || '-'}</span></div>
+                                                                            <div><span className="text-gray-400 text-xs block">Colaborador / Terceiro</span> <span className="font-medium text-gray-700 truncate block">{se.colaborador?.nome || se.colaborador_externo || '-'}</span></div>
+                                                                            <div><span className="text-gray-400 text-xs block">Unidade / Local</span> <span className="font-medium text-gray-700 truncate block">{se.unidade?.nome || se.local_servico || '-'}</span></div>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {se.observacao && (
+                                                                        <div className="bg-yellow-50/50 px-3 py-2 rounded text-gray-600 text-xs border border-yellow-100">
+                                                                            <strong className="text-yellow-700">Obs:</strong> {se.observacao}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
                                                             ) : (
-                                                                <div className="text-gray-500">Item sem operação referenciada (Avulso). Valor: R$ {item.valor_item}</div>
+                                                                <div className="text-gray-500">Item sem operação ou serviço extra referenciado. Valor: R$ {item.valor_item}</div>
                                                             )}
                                                         </div>
                                                     );

@@ -257,6 +257,19 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange, initialData }: Novo
         mutationFn: async () => {
             if (!validate()) throw new Error("Corrija os campos obrigatórios.");
 
+            const formaSelecionada = (formasPagamento as any[]).find((f: any) => f.id === form.forma_pagamento_id);
+            let modalidadeFinal = "DUPLICATA";
+            if (formaSelecionada?.modalidade && formaSelecionada.modalidade !== "AMBOS") {
+                modalidadeFinal = formaSelecionada.modalidade;
+            } else if (formaSelecionada?.nome) {
+                const nomeUpper = formaSelecionada.nome.toUpperCase();
+                if (nomeUpper.includes("MENSAL") || nomeUpper.includes("FATURAMENTO")) modalidadeFinal = "FATURAMENTO_MENSAL";
+                else if (["PIX", "DINHEIRO", "CART", "DEBITO", "DÉBITO"].some(k => nomeUpper.includes(k))) modalidadeFinal = "CAIXA_IMEDIATO";
+                else modalidadeFinal = "DUPLICATA";
+            } else if (form.forma_cobranca) {
+                modalidadeFinal = form.forma_cobranca;
+            }
+
             const payload = {
                 data: form.data,
                 empresa_id: form.empresa_id,
@@ -267,7 +280,7 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange, initialData }: Novo
                 tipo_servico_id: form.tipo_servico_id,
                 descricao_servico: form.descricao.trim(),
                 descricao: form.descricao.trim(),
-                modalidade_financeira: form.forma_cobranca || "DEPOSITO_IMEDIATO",
+                modalidade_financeira: modalidadeFinal,
                 forma_pagamento_id: form.forma_pagamento_id,
                 responsavel_nome: (form.responsavel_nome.trim() || perfil?.nome || user?.email || "Admin").trim(),
                 observacao: form.observacao.trim(),
@@ -413,7 +426,16 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange, initialData }: Novo
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label>Forma de Pagamento <span className="text-red-500">*</span></Label>
-                                <Select value={form.forma_pagamento_id} onValueChange={(v) => setField("forma_pagamento_id", v)}>
+                                <Select 
+                                    value={form.forma_pagamento_id} 
+                                    onValueChange={(v) => {
+                                        setField("forma_pagamento_id", v);
+                                        const forma = (formasPagamento as any[]).find((f: any) => f.id === v);
+                                        if (forma?.modalidade && forma.modalidade !== "AMBOS") {
+                                            setField("forma_cobranca", forma.modalidade as any);
+                                        }
+                                    }}
+                                >
                                     <SelectTrigger className={cn(errors.forma_pagamento_id && "border-destructive")}>
                                         <SelectValue placeholder="Selecione a forma" />
                                     </SelectTrigger>

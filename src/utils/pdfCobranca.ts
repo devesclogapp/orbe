@@ -105,6 +105,24 @@ export const generateCobrancaPDF = (receita: any, detalhesReceita: any, formato:
                         valorIss.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
                     ]);
                 }
+            } else if (item.servicos_extras_operacionais) {
+                const se = item.servicos_extras_operacionais;
+                const dataSeStr = formatDateOnly(se.data_servico);
+                const tipoNome = se.tipo_servico || 'Serviço Extra';
+                const descCompleta = se.descricao ? `${tipoNome} — ${se.descricao}` : tipoNome;
+                const qtd = se.quantidade ? String(se.quantidade) : "1";
+                const unitValor = Number(se.valor_unitario || 0);
+                const unitStr = unitValor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                const subtotalSe = Number(item.valor_item ?? se.valor_total ?? (Number(se.quantidade || 1) * unitValor));
+                const subtotalSeStr = subtotalSe.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+                tableData.push([
+                    dataSeStr,
+                    descCompleta,
+                    qtd,
+                    unitStr,
+                    subtotalSeStr
+                ]);
             } else {
                 tableData.push([
                     "-",

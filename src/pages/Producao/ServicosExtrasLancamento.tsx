@@ -263,6 +263,19 @@ const ServicosExtrasLancamento = () => {
         mutationFn: async () => {
             if (!validate()) throw new Error("Corrija os campos obrigatórios.");
 
+            const formaSelecionada = (formasPagamento as any[]).find((f: any) => f.id === form.forma_pagamento_id);
+            let modalidadeFinal = "DUPLICATA";
+            if (formaSelecionada?.modalidade && formaSelecionada.modalidade !== "AMBOS") {
+                modalidadeFinal = formaSelecionada.modalidade;
+            } else if (formaSelecionada?.nome) {
+                const nomeUpper = formaSelecionada.nome.toUpperCase();
+                if (nomeUpper.includes("MENSAL") || nomeUpper.includes("FATURAMENTO")) modalidadeFinal = "FATURAMENTO_MENSAL";
+                else if (["PIX", "DINHEIRO", "CART", "DEBITO", "DÉBITO"].some(k => nomeUpper.includes(k))) modalidadeFinal = "CAIXA_IMEDIATO";
+                else modalidadeFinal = "DUPLICATA";
+            } else if (form.forma_cobranca) {
+                modalidadeFinal = form.forma_cobranca;
+            }
+
             const payload = {
                 data: form.data,
                 empresa_id: form.empresa_id,
@@ -273,7 +286,7 @@ const ServicosExtrasLancamento = () => {
                 tipo_servico_id: form.tipo_servico_id,
                 descricao_servico: form.descricao.trim(),
                 descricao: form.descricao.trim(),
-                modalidade_financeira: form.forma_cobranca || "DEPOSITO_IMEDIATO",
+                modalidade_financeira: modalidadeFinal,
                 forma_pagamento_id: form.forma_pagamento_id,
                 responsavel_nome: (form.responsavel_nome.trim() || perfil?.nome || user?.email || "N/A").trim(),
                 observacao: form.observacao.trim(),
@@ -420,7 +433,16 @@ const ServicosExtrasLancamento = () => {
                             <div className="space-y-4">
                                 <div className="space-y-2">
                                     <Label className="text-xs font-bold uppercase">Forma de Pagamento <span className="text-destructive">*</span></Label>
-                                    <Select value={form.forma_pagamento_id} onValueChange={(v) => setField("forma_pagamento_id", v)}>
+                                    <Select 
+                                        value={form.forma_pagamento_id} 
+                                        onValueChange={(v) => {
+                                            setField("forma_pagamento_id", v);
+                                            const forma = (formasPagamento as any[]).find((f: any) => f.id === v);
+                                            if (forma?.modalidade && forma.modalidade !== "AMBOS") {
+                                                setField("forma_cobranca", forma.modalidade as any);
+                                            }
+                                        }}
+                                    >
                                         <SelectTrigger className={cn(errors.forma_pagamento_id && "border-destructive")}><SelectValue placeholder="Selecione a forma" /></SelectTrigger>
                                         <SelectContent>{(formasPagamento as any[]).map((f: any) => (<SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>))}</SelectContent>
                                     </Select>
