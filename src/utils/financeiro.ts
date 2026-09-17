@@ -253,29 +253,36 @@ export function calcularValoresOperacao({
   nfRaw?: string | null;
   valorTotalMateriais?: number;
 }) {
-  const valorDescargaCalculado = Math.max(quantidade, 0) * Math.max(valorUnitario, 0);
+  const valorDescargaCalculado = Number((Math.max(quantidade, 0) * Math.max(valorUnitario, 0)).toFixed(2));
   const nfInformada = String(nfRaw ?? "")
     .trim()
     .toUpperCase();
-  const aplicaIss = nfInformada !== "" && nfInformada !== "NAO" && nfInformada !== "NÃO";
+  const aplicaIss = nfInformada !== "" && 
+    nfInformada !== "NAO" && 
+    nfInformada !== "NÃO" && 
+    nfInformada !== "FALSE" && 
+    nfInformada !== "0";
   
   // Regra crítica: se aplica ISS, o percentual mínimo é 5% (0.05)
   let percentualCalculado = 0;
   if (aplicaIss) {
-    percentualCalculado = percentualIss > 0 ? percentualIss : 0.05;
+    const rawPct = percentualIss > 1 ? percentualIss / 100 : percentualIss;
+    percentualCalculado = rawPct > 0 ? rawPct : 0.05;
   }
 
-  const custoIssCalculado = valorDescargaCalculado * percentualCalculado;
-  const totalFilmeCalculado = Math.max(quantidadeFilme, 0) * Math.max(valorUnitarioFilme, 0);
-  // Fórmula ajustada: O ISS aumenta o valor total do dia
-  const totalFinalCalculado = valorDescargaCalculado + custoIssCalculado + totalFilmeCalculado + (valorTotalMateriais || 0);
+  const custoIssCalculado = Number((valorDescargaCalculado * percentualCalculado).toFixed(2));
+  const totalFilmeCalculado = Number((Math.max(quantidadeFilme, 0) * Math.max(valorUnitarioFilme, 0)).toFixed(2));
+  // Regra canônica: valor_total = valor_descarga + custo_com_iss + total_filme + materiais
+  const totalFinalCalculado = Number(
+    (valorDescargaCalculado + custoIssCalculado + totalFilmeCalculado + (valorTotalMateriais || 0)).toFixed(2)
+  );
 
   return {
     percentualCalculado,
     valorDescargaCalculado,
     custoIssCalculado,
     totalFilmeCalculado,
-    valorTotalMateriais: valorTotalMateriais || 0,
+    valorTotalMateriais: Number((valorTotalMateriais || 0).toFixed(2)),
     totalFinalCalculado,
   };
 }

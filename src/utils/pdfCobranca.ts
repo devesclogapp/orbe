@@ -62,7 +62,7 @@ export const generateCobrancaPDF = (receita: any, detalhesReceita: any, formato:
                 // Linha 1: Serviço / Descarga
                 tableData.push([
                     dataOpStr,
-                    descOp.substring(0, 45),
+                    descOp,
                     qtd,
                     unitStr,
                     subtotalOpStr
@@ -123,30 +123,63 @@ export const generateCobrancaPDF = (receita: any, detalhesReceita: any, formato:
     
     autoTable(doc, {
       startY: 85,
+      margin: { left: 14, right: 14 },
       head: [["Data", "Descrição da Operação", "Qtd", "V. Unitário", "Subtotal"]],
       body: tableData,
       foot: [["", "TOTAL DA FATURA", "", "", valorStr]],
-      headStyles: { fillColor: [51, 65, 85] },
-      alternateRowStyles: { fillColor: [248, 250, 252] },
-      footStyles: { fillColor: [241, 245, 249], textColor: [29, 78, 216], fontStyle: 'bold' },
-      styles: { fontSize: 9, cellPadding: 4 },
+      headStyles: {
+        fillColor: [51, 65, 85],
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 9,
+        valign: 'middle'
+      },
+      alternateRowStyles: {
+        fillColor: [248, 250, 252]
+      },
+      footStyles: {
+        fillColor: [241, 245, 249],
+        textColor: [29, 78, 216],
+        fontStyle: 'bold',
+        fontSize: 10,
+        valign: 'middle'
+      },
+      styles: {
+        fontSize: 9,
+        cellPadding: 4,
+        overflow: 'linebreak',
+        valign: 'middle'
+      },
+      columnStyles: {
+        0: { cellWidth: 25, halign: 'center' },
+        1: { cellWidth: 78, halign: 'left' },
+        2: { cellWidth: 18, halign: 'center' },
+        3: { cellWidth: 30, halign: 'right' },
+        4: { cellWidth: 31, halign: 'right' }
+      },
     });
 
     const finalY = (doc as any).lastAutoTable.finalY || 100;
 
     // Footer / Payment Info (Neutro, fiel e sem dados bancários fictícios)
+    let boxY = finalY + 12;
+    if (boxY + 35 > 270) {
+        doc.addPage();
+        boxY = 20;
+    }
+
     doc.setFillColor(245, 247, 250);
-    doc.rect(14, finalY + 12, 182, 32, "F");
+    doc.rect(14, boxY, 182, 32, "F");
     
     doc.setFontSize(10);
     doc.setTextColor(31, 41, 55);
-    doc.text("Instruções e Condições de Pagamento", 18, finalY + 20);
+    doc.text("Instruções e Condições de Pagamento", 18, boxY + 8);
     
     doc.setFontSize(9);
     doc.setTextColor(75, 85, 99);
-    doc.text("Fatura referente aos serviços operacionais prestados.", 18, finalY + 27);
-    doc.text(`Vencimento: ${vencText} | Valor Total: ${valorStr}`, 18, finalY + 33);
-    doc.text("Pagamento conforme condições comerciais acordadas.", 18, finalY + 39);
+    doc.text("Fatura referente aos serviços operacionais prestados.", 18, boxY + 15);
+    doc.text(`Vencimento: ${vencText} | Valor Total: ${valorStr}`, 18, boxY + 21);
+    doc.text("Pagamento conforme condições comerciais acordadas.", 18, boxY + 27);
     
     doc.setFontSize(8);
     doc.setTextColor(156, 163, 175);

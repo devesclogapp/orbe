@@ -159,6 +159,38 @@ class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
       return updated;
   }
 
+  async fecharCompetenciaMensal(tenantId: string, receitaId: string, vencimento?: string) {
+      // Garantia de Escopo: A Receita deve pertencer impreterivelmente a esse Tenant
+      const { data: original, error: fetchErr } = await supabase
+        .from('receitas_operacionais')
+        .select('empresa_id')
+        .eq('id', receitaId)
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+
+      if (fetchErr || !original) {
+         throw new Error('NOT_FOUND_OR_UNAUTHORIZED: Receita não encontrada ou sem permissão neste escopo.');
+      }
+
+      const { data: rpcRes, error: errRpc } = await supabase.rpc('rpc_receita_fechar_competencia_mensal', {
+         p_receita_id: receitaId,
+         p_vencimento: vencimento || null
+      });
+
+      if (errRpc) {
+         throw errRpc;
+      }
+
+      // Re-busca o dataset final apenas para devolver no padrão anterior (compatibility mode)
+      const { data: updated } = await supabase
+        .from('receitas_operacionais')
+        .select('*')
+        .eq('id', receitaId)
+        .single();
+
+      return updated || rpcRes;
+  }
+
   async updateReceita(tenantId: string, receitaId: string, payload: Partial<ReceitaOperacional>) {
     // Domain Hardening (Etapa 07: Segurança Financeira)
     // Omitimos tentativas de editar campos críticos e matemáticos pelo Frontend.

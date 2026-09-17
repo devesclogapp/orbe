@@ -26,7 +26,7 @@ import {
     MateriaisOperacionaisService,
     RegrasFinanceirasService
 } from "@/services/base.service";
-import { classificarFinanceiroSync } from "@/utils/financeiro";
+import { classificarFinanceiroSync, calcularValoresOperacao } from "@/utils/financeiro";
 import { format } from "date-fns";
 
 import { useProductionForm } from "@/components/operacoes/lancamento/hooks/useProductionForm";
@@ -243,6 +243,21 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                 }
             }
 
+            const totalMateriais = selectedMateriais.reduce((acc, m) => acc + m.valor_total, 0);
+
+            let unitarioCalculado = Number(valor_unitario || 0);
+            if (tipo_lancamento === 'servicos_especificos' && selectedPeriodo) {
+                unitarioCalculado = unitarioCalculado * Number(selectedPeriodo.peso_multiplicador || 1);
+            }
+
+            const valoresCalculados = calcularValoresOperacao({
+                quantidade: Number(formData.quantidade || 0),
+                valorUnitario: unitarioCalculado,
+                percentualIss: (Number(iss_percentual) || 0) / 100,
+                nfRaw: formData.nf_emite ? "SIM" : "NÃO",
+                valorTotalMateriais: totalMateriais,
+            });
+
             const payload = {
                 ...rest,
                 data_operacao: data,
@@ -254,11 +269,11 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                 produto_carga_id: produto,
                 forma_pagamento_id: forma_pagamento,
                 valor_unitario_snapshot: valor_unitario,
-                percentual_iss: (iss_percentual || 0) / 100,
-                custo_com_iss: valor_iss || 0,
-                valor_total_materiais: selectedMateriais.reduce((acc, m) => acc + m.valor_total, 0),
-                valor_total: (valor_total_liquido || (formData.quantidade * (valor_unitario || 0))) + selectedMateriais.reduce((acc, m) => acc + m.valor_total, 0),
-                valor_descarga: formData.quantidade * (valor_unitario || 0),
+                percentual_iss: valoresCalculados.percentualCalculado,
+                custo_com_iss: valoresCalculados.custoIssCalculado,
+                valor_total_materiais: valoresCalculados.valorTotalMateriais,
+                valor_total: valoresCalculados.totalFinalCalculado,
+                valor_descarga: valoresCalculados.valorDescargaCalculado,
                 tipo_calculo_snapshot: "volume",
                 nf_numero: formData.nf_emite
                     ? (!rest.nf_numero || rest.nf_numero === "NÃO" || rest.nf_numero === "NAO" ? "SIM" : rest.nf_numero)
@@ -338,6 +353,8 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
             queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
             queryClient.invalidateQueries({ queryKey: ["aprovacoes_rh"] });
             queryClient.invalidateQueries({ queryKey: ["operacoes-inconsistencias"] });
+            queryClient.invalidateQueries({ queryKey: ["receitas-pipeline"] });
+            queryClient.invalidateQueries({ queryKey: ["receita-detalhes"] });
 
             // Trigger the operational progress modal natively if it's a new launch (Volume)
             if (!data?.isEdit && (form.getValues().tipo_lancamento === 'volume' || !form.getValues().tipo_lancamento)) {

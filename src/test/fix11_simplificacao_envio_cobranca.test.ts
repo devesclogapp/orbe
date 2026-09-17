@@ -164,7 +164,7 @@ describe('FIX 11.1 — Simplificação do Envio de Cobrança', () => {
 
     it('deve manter a geração/baixa da Fatura Comercial disponível em ambos os estados', () => {
       // O botão de Gerar Cobrança não é bloqueado por isPendenteCobranca e permanece presente
-      expect(modalContent).toContain('Gerar Cobrança (Eventos / Docs)');
+      expect(modalContent).toContain('Gerar Documento de Cobrança');
     });
 
     it('lógica de transição de visibilidade: pendente_cobranca vs cobranca_enviada', () => {

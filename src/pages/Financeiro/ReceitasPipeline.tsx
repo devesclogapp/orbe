@@ -63,6 +63,7 @@ export default function ReceitasPipeline() {
 
     const handleRefresh = () => {
         queryClient.invalidateQueries({ queryKey: ["receitas-pipeline"] });
+        queryClient.invalidateQueries({ queryKey: ["receita-detalhes"] });
     };
 
     useEffect(() => {
@@ -194,7 +195,7 @@ export default function ReceitasPipeline() {
                             <span className="text-2xl font-black text-emerald-600">R$ {kpis.recebido.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                         </div>
                         <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col">
-                            <span className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-1">Em Aberto</span>
+                            <span className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-1">A Receber</span>
                             <span className="text-2xl font-black text-orange-500">R$ {kpis.aberto.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                         </div>
                         <div className="bg-white p-4 rounded-xl border border-transparent shadow-sm flex flex-col bg-red-50 relative overflow-hidden">

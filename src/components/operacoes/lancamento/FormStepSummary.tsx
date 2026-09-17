@@ -15,6 +15,7 @@ import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Plus, Trash2, Package } from "lucide-react";
 import { QuickRegisterDialog } from "./QuickRegisterDialog";
+import { calcularValoresOperacao } from "@/utils/financeiro";
 
 interface FormStepSummaryProps {
     form: UseFormReturn<ProductionFormValues>;
@@ -50,6 +51,21 @@ export function FormStepSummary({
 
     const [quickRegOpen, setQuickRegOpen] = useState(false);
     const [usouMateriais, setUsouMateriais] = useState(selectedMateriais.length > 0);
+
+    const totalMateriais = selectedMateriais.reduce((acc, m) => acc + m.valor_total, 0);
+
+    let unitarioCalculado = Number(values.valor_unitario || 0);
+    if (isEspecífico && selectedPeriodo) {
+        unitarioCalculado = unitarioCalculado * Number(selectedPeriodo.peso_multiplicador || 1);
+    }
+
+    const valores = calcularValoresOperacao({
+        quantidade: Number(values.quantidade || 0),
+        valorUnitario: unitarioCalculado,
+        percentualIss: (Number(values.iss_percentual) || 0) / 100,
+        nfRaw: values.nf_emite ? "SIM" : "NÃO",
+        valorTotalMateriais: totalMateriais,
+    });
 
     return (
         <div className="space-y-6">
@@ -336,8 +352,8 @@ export function FormStepSummary({
                             </div>
                             <div className="space-y-1.5">
                                 <Label className="text-xs text-muted-foreground">Valor ISS</Label>
-                                <div className="h-8 px-3 flex items-center bg-slate-50 border border-slate-200 rounded-md text-sm text-red-600 font-medium">
-                                    - {formatCurrency(values.valor_iss || 0)}
+                                <div className="h-8 px-3 flex items-center bg-slate-50 border border-slate-200 rounded-md text-sm text-slate-900 font-medium">
+                                    + {formatCurrency(valores.custoIssCalculado)}
                                 </div>
                             </div>
                         </div>
@@ -352,18 +368,18 @@ export function FormStepSummary({
                         </div>
                         <div className="flex justify-between border-b border-slate-200 pb-1 mb-1 text-slate-700">
                             <span>Base: {values.quantidade || 0} x {formatCurrency(values.valor_unitario || 0)}</span>
-                            <span className="text-slate-900 font-bold">{formatCurrency(Number(values.quantidade || 0) * Number(values.valor_unitario || 0))}</span>
+                            <span className="text-slate-900 font-bold">{formatCurrency(valores.valorDescargaCalculado)}</span>
                         </div>
                         {values.nf_emite && (
-                            <div className="flex justify-between text-red-600">
-                                <span>ISS ({values.iss_percentual || 0}%):</span>
-                                <span>- {formatCurrency(values.valor_iss || 0)}</span>
+                            <div className="flex justify-between text-slate-700">
+                                <span>ISS ({(valores.percentualCalculado * 100).toFixed(0)}%):</span>
+                                <span>+ {formatCurrency(valores.custoIssCalculado)}</span>
                             </div>
                         )}
                         {selectedMateriais.length > 0 && (
                             <div className="flex justify-between text-blue-600 border-t border-slate-200 mt-1 pt-1 italic text-[10px]">
                                 <span>Materiais:</span>
-                                <span>+ {formatCurrency(selectedMateriais.reduce((acc, m) => acc + m.valor_total, 0))}</span>
+                                <span>+ {formatCurrency(valores.valorTotalMateriais)}</span>
                             </div>
                         )}
                         {isEspecífico && selectedPeriodo && (
@@ -373,8 +389,8 @@ export function FormStepSummary({
                             </div>
                         )}
                         <div className="flex justify-between text-green-700 pt-1 text-sm border-t border-slate-300 mt-1">
-                            <span className="font-bold">TOTAL LÍQUIDO:</span>
-                            <span className="font-bold">{formatCurrency((values.valor_total_liquido || 0) + selectedMateriais.reduce((acc, m) => acc + m.valor_total, 0))}</span>
+                            <span className="font-bold">VALOR TOTAL:</span>
+                            <span className="font-bold">{formatCurrency(valores.totalFinalCalculado)}</span>
                         </div>
                     </div>
                 </div>
@@ -385,7 +401,7 @@ export function FormStepSummary({
                 <div className="flex justify-between items-center relative z-10">
                     <div className="space-y-0.5">
                         <span className="text-[10px] uppercase tracking-widest opacity-80">Valor Final Lançado</span>
-                        <div className="text-2xl font-black">{formatCurrency((values.valor_total_liquido || 0) + selectedMateriais.reduce((acc, m) => acc + m.valor_total, 0))}</div>
+                        <div className="text-2xl font-black">{formatCurrency(valores.totalFinalCalculado)}</div>
                     </div>
                     <div className="text-right">
                         <span className="text-[10px] uppercase tracking-widest opacity-80 block mb-1">Status Base</span>

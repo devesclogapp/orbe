@@ -1210,6 +1210,8 @@ export const OperacoesTableBlock = ({
       queryClient.invalidateQueries({ queryKey: ["operacoes-pipeline"] });
       queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
       queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
+      queryClient.invalidateQueries({ queryKey: ["receitas-pipeline"] });
+      queryClient.invalidateQueries({ queryKey: ["receita-detalhes"] });
     },
     onError: (error: unknown) => {
       console.error("[DEBUG] Erro ao aprovar operação:", error);

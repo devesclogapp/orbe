@@ -15,7 +15,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import {
     CheckCircle, FileText, Send, Clock, Receipt, Calculator,
     Banknote, ListPlus, Paperclip, ChevronLeft,
-    Zap, Layers, FileSpreadsheet, ArrowRightLeft
+    Zap, Layers, FileSpreadsheet, ArrowRightLeft, Wallet
 } from "lucide-react";
 import { ReceitasService } from "@/services/receitas/receitas.service";
 import { generateCobrancaPDF } from "@/utils/pdfCobranca";
@@ -54,12 +54,19 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
     const { data: detalhesReceita, isLoading: isLoadingDetalhes, error: errDetalhes } = useQuery({
         queryKey: ['receita-detalhes', receita?.id],
         queryFn: () => ReceitasService.getReceitaDetalhes(receita!.id),
-        enabled: isOpen && !!receita?.id
+        enabled: isOpen && !!receita?.id,
+        staleTime: 0,
+        refetchOnMount: 'always'
     });
 
     // Mutations
     const updateStatusMutation = useMutation({
         mutationFn: (newStatus: string) => ReceitasService.updateStatus(tenantId!, receita.id, newStatus),
+    });
+
+    const fecharCompetenciaMutation = useMutation({
+        mutationFn: ({ vencimento }: { vencimento?: string }) =>
+            ReceitasService.fecharCompetenciaMensal(tenantId!, receita.id, vencimento),
     });
 
     const updateReceitaMutation = useMutation({
@@ -236,20 +243,25 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
     const handleConfirmConsolidar = (e: React.FormEvent) => {
         e.preventDefault();
         setIsSubmitting(true);
-        updateReceitaMutation.mutate({ vencimento: consolidarForm.vencimento, status: 'pendente_cobranca' }, {
+        fecharCompetenciaMutation.mutate({ vencimento: consolidarForm.vencimento }, {
             onSuccess: () => {
-                logEventMutation.mutate({
-                    acao: 'Competência Fechada',
-                    detalhesText: `Competência consolidada. Pronta para Geração de Cobrança. Vencimento Padrão: ${consolidarForm.vencimento ? new Date(consolidarForm.vencimento + 'T12:00:00Z').toLocaleDateString('pt-BR') : 'Imediato'}.`,
-                    json: { acao_interna: true, vencimento: consolidarForm.vencimento }
-                }, {
-                    onSuccess: finishMutationSuccess,
-                    onError: handleError
+                toast({
+                    title: "Competência consolidada com sucesso!",
+                    description: "A receita de faturamento mensal foi fechada e está pronta para cobrança.",
                 });
+                queryClient.invalidateQueries({ queryKey: ["receitas-pipeline"] });
+                queryClient.invalidateQueries({ queryKey: ["receita-detalhes"] });
+                queryClient.invalidateQueries({ queryKey: ["receita-historico"] });
+                queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+                queryClient.invalidateQueries({ queryKey: ["operacoes"] });
+                setIsSubmitting(false);
+                setActionView('main');
+                onSuccess();
+                onClose();
             },
             onError: handleError
         });
-    }
+    };
 
     // --- Sub-Views (Forms embutidos) ---
     const renderConfirmarPixForm = () => (
@@ -489,77 +501,288 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
             );
         }
 
-        switch (receita.modalidade) {
-            case 'CAIXA_IMEDIATO':
-                return (
-                    <div className="flex flex-col gap-3">
-                        <Button onClick={() => setActionView('confirmar_pix')} disabled={isSubmitting} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white gap-2 h-11">
-                            <CheckCircle className="h-4 w-4" /> Confirmar Conferência e Recebimento
-                        </Button>
-                    </div>
-                );
-            case 'DUPLICATA': {
-                const isPendenteCobranca = receita.status === 'pendente_cobranca';
-                const isCobrancaEnviada = receita.status === 'cobranca_enviada' || receita.status === 'pendente_recebimento';
-
-                return (
-                    <div className="grid grid-cols-2 gap-3">
-                        <Button 
-                            onClick={() => setActionView('gerar_cobranca')} 
-                            disabled={isSubmitting} 
-                            className={cn(
-                                "w-full bg-blue-600 hover:bg-blue-700 text-white gap-2 h-11",
-                                (!isPendenteCobranca && !isCobrancaEnviada) ? "col-span-2" : ""
-                            )}
-                        >
-                            <Calculator className="h-4 w-4" /> Gerar Cobrança (Eventos / Docs)
-                        </Button>
-                        {isPendenteCobranca && (
-                            <Button onClick={() => setActionView('enviar_cobranca')} disabled={isSubmitting} variant="secondary" className="w-full gap-2 h-11">
-                                <Send className="h-4 w-4" /> Registrar como Enviado
-                            </Button>
-                        )}
-                        {isCobrancaEnviada && (
-                            <Button onClick={handleConfirmRecebimento} disabled={isSubmitting} variant="outline" className="w-full gap-2 bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 hover:text-emerald-800 h-11">
-                                <Banknote className="h-4 w-4" /> Confirmar Recebimento
-                            </Button>
-                        )}
-                    </div>
-                );
-            }
-            case 'FATURAMENTO_MENSAL': {
-                const isPendenteCobranca = receita.status === 'pendente_cobranca';
-                const isCobrancaEnviada = receita.status === 'cobranca_enviada' || receita.status === 'pendente_recebimento';
-
-                return (
-                    <div className="grid grid-cols-2 gap-3">
-                        <div className="bg-gray-50 border p-3 rounded-md text-sm text-gray-700 col-span-2 flex items-start gap-3">
-                            <ListPlus className="h-5 w-5 text-gray-400 mt-0.5 shrink-0" />
-                            <p>Este painel agrupa operações do mês. Operações individuais atreladas ao agrupamento são descritas abaixo.</p>
-                        </div>
-                        {receita.status === 'aguardando_fechamento' && (
-                            <Button onClick={() => setActionView('consolidar')} disabled={isSubmitting} className="w-full bg-purple-600 hover:bg-purple-700 text-white gap-2 h-11 col-span-2">
-                                <ListPlus className="h-4 w-4" /> Consolidar Competência & Fechamento
-                            </Button>
-                        )}
-                        <Button onClick={() => setActionView('gerar_cobranca')} disabled={isSubmitting} variant="outline" className={cn("w-full gap-2 h-11 bg-white", (!isPendenteCobranca && !isCobrancaEnviada) ? "col-span-2" : "")}>
-                            <Calculator className="h-4 w-4" /> Gerar Doc. Consolidado
-                        </Button>
-                        {isPendenteCobranca && (
-                            <Button onClick={() => setActionView('enviar_cobranca')} disabled={isSubmitting} variant="secondary" className="w-full gap-2 h-11">
-                                <Send className="h-4 w-4" /> Registrar como Enviado
-                            </Button>
-                        )}
-                        {isCobrancaEnviada && (
-                            <Button onClick={handleConfirmRecebimento} disabled={isSubmitting} variant="outline" className="w-full gap-2 border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 h-11">
-                                <CheckCircle className="h-4 w-4" /> Confirmar Recebimento
-                            </Button>
-                        )}
-                    </div>
-                );
-            }
-            default: return null;
+        // ---------------------------------------------------------------------
+        // CONFIGURAÇÃO GENÉRICA DE ORIENTAÇÃO SEQUENCIAL DAS AÇÕES DO FLUXO
+        // Determinada pela modalidade e status canônico da receita
+        // ---------------------------------------------------------------------
+        interface EtapaFluxoSequencial {
+            numero: number;
+            titulo: string;
+            detalhe: string;
+            destaque?: boolean;
         }
+
+        interface OrientacaoFluxo {
+            titulo: string;
+            badge: string;
+            badgeClasses: string;
+            cardBorder: string;
+            cardBg: string;
+            icone: React.ComponentType<{ className?: string }>;
+            iconeColor: string;
+            descricao: string;
+            alertaContextual?: string;
+            etapas?: EtapaFluxoSequencial[];
+            proximaAcao?: {
+                label: string;
+                icone: React.ComponentType<{ className?: string }>;
+                onClick: () => void;
+                className: string;
+                disabled?: boolean;
+            };
+            acaoSecundaria?: {
+                label: string;
+                icone?: React.ComponentType<{ className?: string }>;
+                onClick: () => void;
+                variant?: 'outline' | 'ghost' | 'secondary';
+                className?: string;
+                disabled?: boolean;
+            };
+        }
+
+        const isPendenteCobranca = receita.status === 'pendente_cobranca';
+        const isCobrancaEnviada = receita.status === 'cobranca_enviada' || receita.status === 'pendente_recebimento';
+
+        const getOrientacaoFluxo = (): OrientacaoFluxo | null => {
+            const modalidade = receita.modalidade;
+            const status = receita.status;
+
+            // 1. CAIXA_IMEDIATO
+            if (modalidade === 'CAIXA_IMEDIATO') {
+                return {
+                    titulo: "Recebimento Imediato (À Vista)",
+                    badge: "Próxima etapa: Confirmar recebimento imediato",
+                    badgeClasses: "text-emerald-800 bg-emerald-100 border-emerald-200",
+                    cardBorder: "border-emerald-200",
+                    cardBg: "bg-emerald-50/50",
+                    icone: Zap,
+                    iconeColor: "text-emerald-600",
+                    descricao: "Operação com liquidação imediata. Confirme a conferência e o recebimento com os dados do comprovante (PIX, dinheiro ou cartão).",
+                    etapas: [
+                        { numero: 1, titulo: "Conferência do pagamento", detalhe: "Conferir o comprovante ou crédito imediato da operação.", destaque: true },
+                        { numero: 2, titulo: "Confirmação no ORBE", detalhe: "Registrar o recebimento à vista para alimentar o fluxo de caixa." }
+                    ],
+                    proximaAcao: {
+                        label: "Confirmar Conferência e Recebimento",
+                        icone: CheckCircle,
+                        onClick: () => setActionView('confirmar_pix'),
+                        className: "bg-emerald-600 hover:bg-emerald-700 text-white",
+                        disabled: isSubmitting
+                    }
+                };
+            }
+
+            // 2. FATURAMENTO_MENSAL — aguardando_fechamento
+            if (modalidade === 'FATURAMENTO_MENSAL' && status === 'aguardando_fechamento') {
+                return {
+                    titulo: "Competência em Aberto",
+                    badge: "Próxima etapa: Consolidar e fechar a competência",
+                    badgeClasses: "text-purple-800 bg-purple-100 border-purple-200",
+                    cardBorder: "border-purple-200",
+                    cardBg: "bg-purple-50/60",
+                    icone: Clock,
+                    iconeColor: "text-purple-600",
+                    descricao: "As operações de faturamento mensal deste ciclo foram apuradas. Para dar início ao processo de cobrança, consolide a competência e defina o vencimento padrão.",
+                    etapas: [
+                        { numero: 1, titulo: "Consolidar competência", detalhe: "Fechar o ciclo mensal e fixar a data de vencimento padrão da fatura.", destaque: true },
+                        { numero: 2, titulo: "Gerar fatura consolidada", detalhe: "Emitir o PDF da fatura unificada com todas as operações apuradas." },
+                        { numero: 3, titulo: "Enviar externamente e registrar no ORBE", detalhe: "Encaminhar ao cliente e registrar o envio no sistema." }
+                    ],
+                    proximaAcao: {
+                        label: "1. Consolidar Competência & Fechamento",
+                        icone: ListPlus,
+                        onClick: () => setActionView('consolidar'),
+                        className: "bg-purple-600 hover:bg-purple-700 text-white",
+                        disabled: isSubmitting
+                    },
+                    acaoSecundaria: {
+                        label: "Pré-visualizar Documento Consolidado (Rascunho)",
+                        icone: FileText,
+                        onClick: () => setActionView('gerar_cobranca'),
+                        variant: "ghost",
+                        className: "text-gray-500 hover:text-gray-800",
+                        disabled: isSubmitting
+                    }
+                };
+            }
+
+            // 3. DUPLICATA ou FATURAMENTO_MENSAL — cobranca_enviada
+            if (isCobrancaEnviada) {
+                const isMensal = modalidade === 'FATURAMENTO_MENSAL';
+                return {
+                    titulo: "Cobrança Enviada ao Cliente",
+                    badge: "Próxima etapa: Confirmar recebimento",
+                    badgeClasses: "text-orange-800 bg-orange-100 border-orange-200",
+                    cardBorder: "border-orange-200",
+                    cardBg: "bg-orange-50/50",
+                    icone: Receipt,
+                    iconeColor: "text-orange-600",
+                    descricao: isMensal
+                        ? "A fatura consolidada foi enviada ao cliente. O título encontra-se em monitoramento até o vencimento."
+                        : "A duplicata/fatura foi enviada. O título encontra-se em monitoramento até o vencimento.",
+                    alertaContextual: "Atenção: Somente confirme o recebimento após o pagamento ter sido efetivamente identificado (comprovante ou liquidação bancária).",
+                    etapas: [
+                        { numero: 1, titulo: "Cobrança enviada ao cliente", detalhe: "Documento emitido e encaminhado pelos canais comerciais.", destaque: false },
+                        { numero: 2, titulo: "Identificação do pagamento", detalhe: "Aguardar compensação ou comprovante de pagamento real.", destaque: true },
+                        { numero: 3, titulo: "Confirmar recebimento", detalhe: "Registrar a liquidação no ORBE para liberar a conciliação bancária.", destaque: false }
+                    ],
+                    proximaAcao: {
+                        label: "Confirmar Recebimento do Pagamento",
+                        icone: Banknote,
+                        onClick: handleConfirmRecebimento,
+                        className: "bg-emerald-600 hover:bg-emerald-700 text-white",
+                        disabled: isSubmitting
+                    },
+                    acaoSecundaria: {
+                        label: "Reemitir Documento de Cobrança",
+                        icone: FileText,
+                        onClick: () => setActionView('gerar_cobranca'),
+                        variant: "ghost",
+                        className: "text-gray-500 hover:text-gray-800",
+                        disabled: isSubmitting
+                    }
+                };
+            }
+
+            // 4. DUPLICATA ou FATURAMENTO_MENSAL — pendente_cobranca (ou padrão)
+            const isMensal = modalidade === 'FATURAMENTO_MENSAL';
+            return {
+                titulo: isMensal ? "Competência Consolidada — Pronta para Cobrança" : "Operação Faturável — Emissão de Cobrança",
+                badge: "Fluxo sequencial de cobrança",
+                badgeClasses: "text-blue-800 bg-blue-100 border-blue-200",
+                cardBorder: "border-blue-200",
+                cardBg: "bg-blue-50/50",
+                icone: Wallet,
+                iconeColor: "text-blue-600",
+                descricao: isMensal
+                    ? "Competência mensal consolidada e fechada. O ORBE não realiza o envio automático; siga a sequência operacional para emitir e registrar a cobrança:"
+                    : "Operação a prazo faturável. O ORBE não realiza o envio automático; siga a sequência operacional para emitir e registrar a cobrança:",
+                etapas: [
+                    { numero: 1, titulo: "Gerar documento de cobrança", detalhe: isMensal ? "Baixe a Fatura Consolidada em PDF no ORBE contendo todas as operações apuradas." : "Emita a fatura ou documento de cobrança em PDF no ORBE.", destaque: true },
+                    { numero: 2, titulo: "Enviar externamente ao cliente", detalhe: "Encaminhe o documento emitido por e-mail ou WhatsApp ao setor financeiro do cliente.", destaque: false },
+                    { numero: 3, titulo: "Registrar envio no ORBE", detalhe: "Marque a cobrança como enviada para iniciar o monitoramento do prazo de vencimento.", destaque: false }
+                ],
+                proximaAcao: {
+                    label: "1. Gerar Documento de Cobrança",
+                    icone: Calculator,
+                    onClick: () => setActionView('gerar_cobranca'),
+                    className: "bg-blue-600 hover:bg-blue-700 text-white",
+                    disabled: isSubmitting
+                },
+                acaoSecundaria: {
+                    label: "2. Registrar como Enviado ao Cliente",
+                    icone: Send,
+                    onClick: () => setActionView('enviar_cobranca'),
+                    variant: "outline",
+                    className: "border-blue-200 text-blue-800 bg-white hover:bg-blue-50",
+                    disabled: isSubmitting
+                }
+            };
+        };
+
+        const orientacao = getOrientacaoFluxo();
+        if (!orientacao) return null;
+
+        const IconeHeader = orientacao.icone;
+
+        return (
+            <div className={cn("border rounded-lg p-4 space-y-3", orientacao.cardBg, orientacao.cardBorder)}>
+                <div className="flex items-center justify-between gap-2">
+                    <h5 className="font-bold text-gray-900 text-sm flex items-center gap-1.5">
+                        <IconeHeader className={cn("h-4 w-4", orientacao.iconeColor)} /> {orientacao.titulo}
+                    </h5>
+                    <span className={cn("text-[11px] font-semibold px-2 py-0.5 rounded border", orientacao.badgeClasses)}>
+                        {orientacao.badge}
+                    </span>
+                </div>
+
+                <p className="text-xs text-gray-600 leading-relaxed">
+                    {orientacao.descricao}
+                </p>
+
+                {orientacao.etapas && orientacao.etapas.length > 0 && (
+                    <div className="bg-white/80 border border-gray-200/80 rounded p-2.5 text-xs text-gray-600 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                            <p className="font-semibold text-gray-800 text-[11px] uppercase tracking-wider">Roteiro operacional do fluxo:</p>
+                            <span className="text-[10px] text-blue-700 font-medium bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
+                                Próxima ação recomendada: Etapa {orientacao.etapas.find(e => e.destaque)?.numero || 1}
+                            </span>
+                        </div>
+                        {orientacao.etapas.map((etapa) => (
+                            <div key={etapa.numero} className={cn("flex items-start gap-2 p-1.5 rounded transition-colors", etapa.destaque ? "bg-blue-50/70 border border-blue-100 text-blue-950 font-medium" : "text-gray-600")}>
+                                <span className={cn("h-4 w-4 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5", etapa.destaque ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-700")}>
+                                    {etapa.numero}
+                                </span>
+                                <div className="text-xs">
+                                    <span className={cn("font-bold mr-1", etapa.destaque ? "text-blue-900" : "text-gray-800")}>{etapa.titulo}:</span>
+                                    <span className="text-gray-600">{etapa.detalhe}</span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {orientacao.alertaContextual && (
+                    <div className="bg-amber-50 border border-amber-200 rounded p-2 text-xs text-amber-800 flex items-start gap-1.5">
+                        <Clock className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                        <span>{orientacao.alertaContextual}</span>
+                    </div>
+                )}
+
+                <div className="space-y-2 pt-1">
+                    {/* Botão de Ação Primária para Cobrança Enviada */}
+                    {isCobrancaEnviada && (
+                        <Button
+                            onClick={handleConfirmRecebimento}
+                            disabled={isSubmitting}
+                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white gap-2 h-11 font-semibold shadow-sm"
+                        >
+                            <Banknote className="h-4 w-4" />
+                            Confirmar Recebimento do Pagamento
+                        </Button>
+                    )}
+
+                    {/* Botão de Ação Primária para demais estados */}
+                    {!isCobrancaEnviada && orientacao.proximaAcao && (
+                        <Button
+                            onClick={orientacao.proximaAcao.onClick}
+                            disabled={orientacao.proximaAcao.disabled}
+                            className={cn("w-full gap-2 h-11 font-semibold shadow-sm", orientacao.proximaAcao.className)}
+                        >
+                            <orientacao.proximaAcao.icone className="h-4 w-4" />
+                            {orientacao.proximaAcao.label}
+                        </Button>
+                    )}
+
+                    {/* Botão de Registrar como Enviado sob isPendenteCobranca */}
+                    {isPendenteCobranca && (
+                        <Button
+                            onClick={() => setActionView('enviar_cobranca')}
+                            disabled={isSubmitting}
+                            variant="outline"
+                            className="w-full gap-2 h-10 border-blue-200 text-blue-800 bg-white hover:bg-blue-50"
+                        >
+                            <Send className="h-4 w-4 text-blue-600" />
+                            2. Registrar como Enviado ao Cliente
+                        </Button>
+                    )}
+
+                    {/* Outras Ações Secundárias (ex: Reemissão, Pré-visualização) */}
+                    {!isPendenteCobranca && orientacao.acaoSecundaria && (
+                        <Button
+                            onClick={orientacao.acaoSecundaria.onClick}
+                            disabled={orientacao.acaoSecundaria.disabled}
+                            variant={orientacao.acaoSecundaria.variant || "ghost"}
+                            size="sm"
+                            className={cn("w-full text-xs gap-1.5 h-8", orientacao.acaoSecundaria.className)}
+                        >
+                            {orientacao.acaoSecundaria.icone && <orientacao.acaoSecundaria.icone className="h-3.5 w-3.5" />}
+                            {orientacao.acaoSecundaria.label}
+                        </Button>
+                    )}
+                </div>
+            </div>
+        );
     };
 
     return (
