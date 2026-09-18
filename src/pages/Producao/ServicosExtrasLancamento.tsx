@@ -126,7 +126,7 @@ const formatCurrency = (value: number) => currencyFormatter.format(Number.isFini
 const ServicosExtrasLancamento = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
-  const { goBackUrl } = useContextualReturn("/operacional/servicos-extras");
+    const { goBackUrl } = useContextualReturn("/producao");
     const queryClient = useQueryClient();
     const today = format(new Date(), "yyyy-MM-dd");
 
@@ -313,6 +313,7 @@ const ServicosExtrasLancamento = () => {
             setForm({ ...INITIAL_FORM, responsavel_nome: form.responsavel_nome });
             setSelectedMateriais([]);
             setUsouMateriais(false);
+            goBackUrl("/producao");
         },
         onError: (err: any) => toast.error("Erro ao salvar serviço extra.", { description: err.message }),
     });

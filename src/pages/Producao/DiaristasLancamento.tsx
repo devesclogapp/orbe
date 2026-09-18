@@ -115,7 +115,7 @@ const DiaristasLancamento = () => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
     const navigate = useNavigate();
-  const { goBackUrl } = useContextualReturn("/operacional/diaristas");
+    const { goBackUrl } = useContextualReturn("/producao");
     const { openPipeline } = useOperationalPipeline();
 
     /* Semana selecionada — começa no domingo da semana atual mas exibe de seg–dom */
@@ -580,7 +580,7 @@ const DiaristasLancamento = () => {
     return (
         <OperationalShell
             title="Lançamento de Diaristas"
-            showBack={false}
+            showBack={true}
             onBack={() => goBackUrl()}
             hideFab={true}
             pipelineTrigger={diaristasReviewTrigger}

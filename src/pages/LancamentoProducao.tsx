@@ -1,4 +1,4 @@
-﻿import { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
     History
@@ -14,7 +14,7 @@ import { OperacaoForm } from "@/components/operacoes/lancamento/OperacaoForm";
 
 const LancamentoProducao = () => {
     const { user } = useAuth();
-    const { goBackUrl } = useContextualReturn("/operacoes-volume");
+    const { goBackUrl } = useContextualReturn("/producao");
     const empresaId = user?.user_metadata?.empresa_id || "";
 
     return (

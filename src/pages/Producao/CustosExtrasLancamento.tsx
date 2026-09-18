@@ -55,7 +55,7 @@ const formatCurrency = (value: number) => currencyFormatter.format(Number.isFini
 const CustosExtrasLancamento = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const { goBackUrl } = useContextualReturn("/operacional/custos-extras");
+  const { goBackUrl } = useContextualReturn("/producao");
   const queryClient = useQueryClient();
   const [etapa, setEtapa] = useState(2); // Inicia no passo 2 pois o 1 foi a seleção de rota
   const today = format(new Date(), "yyyy-MM-dd");

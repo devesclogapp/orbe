@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Eye, EyeOff, Loader2, Zap, Lock, HelpCircle, Shield } from "lucide-react";
 import { Logo } from "@/components/ui/Logo";
+import { getDefaultRouteForRole } from "@/lib/access-control";
 
 const loginSchema = z.object({
     email: z.string().email("E-mail inválido"),
@@ -57,7 +58,7 @@ const LoginOperacional = () => {
             }
 
             toast.success("Acesso operacional autorizado!");
-            navigate("/producao");
+            navigate(getDefaultRouteForRole("encarregado"));
         } catch (error) {
             toast.error(error instanceof Error ? error.message : "Erro ao realizar login");
         } finally {

@@ -87,6 +87,7 @@ type CustoExtraItem = {
 
 type CustosExtrasTableBlockProps = {
   data: CustoExtraItem[];
+  defaultPipelineFilter?: "todos" | "pendentes" | "validacao" | "aprovacoes" | "financeiro" | "concluidos";
 };
 
 type EditableCostForm = {
@@ -188,23 +189,23 @@ const getPipelineStatusConfig = (status?: string | null) => {
     case "RECEBIDO":
     case "PENDENTE":
     case "EM_ANALISE":
-      return { label: "🟡 Em análise RH", className: "bg-amber-50 text-amber-600 border-amber-100", opacity: "opacity-100" };
+      return { label: "Recebido", className: "bg-amber-50 text-amber-700 border-amber-200", opacity: "opacity-100" };
     case "EM_VALIDACAO":
-      return { label: "🟢 Validado RH", className: "bg-cyan-50 text-cyan-600 border-cyan-100", opacity: "opacity-[0.95]" };
+      return { label: "Em validação operacional", className: "bg-cyan-50 text-cyan-700 border-cyan-200", opacity: "opacity-[0.95]" };
     case "APROVADO_OPERACAO":
-      return { label: "🔵 Financeiro", className: "bg-blue-50 text-blue-600 border-blue-100", opacity: "opacity-[0.90]" };
+      return { label: "Aprovado Operação", className: "bg-blue-50 text-blue-700 border-blue-200", opacity: "opacity-[0.90]" };
     case "ENVIADO_FINANCEIRO":
-      return { label: "🟣 CNAB Gerado", className: "bg-indigo-50 text-indigo-600 border-indigo-100", opacity: "opacity-[0.80]" };
+      return { label: "Enviado ao Financeiro", className: "bg-indigo-50 text-indigo-700 border-indigo-200", opacity: "opacity-[0.80]" };
     case "PAGO":
-      return { label: "💰 Pago", className: "bg-zinc-100 text-zinc-500 border-zinc-200", opacity: "opacity-[0.70]" };
+      return { label: "Pago", className: "bg-emerald-50 text-emerald-700 border-emerald-200", opacity: "opacity-[0.70]" };
     case "FINALIZADO":
     case "CONCLUIDO":
     case "FECHADO":
-      return { label: "⚫ Concluído", className: "bg-zinc-100 text-zinc-500 border-zinc-200", opacity: "opacity-[0.60]" };
+      return { label: "Finalizado", className: "bg-zinc-100 text-zinc-600 border-zinc-200", opacity: "opacity-[0.60]" };
     case "REPROVADO":
     case "CANCELADO":
     case "DEVOLVIDO":
-      return { label: "Devolvido", className: "bg-rose-50 text-rose-600 border-rose-100", opacity: "opacity-100" };
+      return { label: "Devolvido / Reprovado", className: "bg-rose-50 text-rose-700 border-rose-200", opacity: "opacity-100" };
     default:
       return { label: status || "Pendente", className: "bg-muted text-muted-foreground", opacity: "opacity-100" };
   }
@@ -223,13 +224,13 @@ const buildEditForm = (item: CustoExtraItem): EditableCostForm => ({
   operacao_id: toInputValue(item.operacao_id),
 });
 
-export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
+export function CustosExtrasTableBlock({ data, defaultPipelineFilter = "todos" }: CustosExtrasTableBlockProps) {
   const queryClient = useQueryClient();
   const tableScrollRef = useRef<HTMLDivElement>(null);
   const [filterText, setFilterText] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [pipelineStatusFilter, setPipelineStatusFilter] = useState("all");
-  const [pipelineFilter, setPipelineFilter] = useState<"todos" | "pendentes" | "rh" | "financeiro" | "concluidos">("todos");
+  const [pipelineFilter, setPipelineFilter] = useState<"todos" | "pendentes" | "validacao" | "aprovacoes" | "financeiro" | "concluidos">(defaultPipelineFilter);
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
   const [lockedCols, setLockedCols] = useState<Record<string, boolean>>(() => {
@@ -415,8 +416,9 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
         const pipelineMatch = pipelineFilter === "todos" || (() => {
           // Normalizamos para upper case na leitura
           const s = String(item.pipeline_status || "RECEBIDO").toUpperCase();
+          if (pipelineFilter === "aprovacoes") return ["RECEBIDO", "PENDENTE", "EM_VALIDACAO"].includes(s);
           if (pipelineFilter === "pendentes") return ["RECEBIDO", "PENDENTE", "REPROVADO", "EM_ANALISE", "DEVOLVIDO"].includes(s);
-          if (pipelineFilter === "rh") return ["EM_VALIDACAO"].includes(s);
+          if (pipelineFilter === "validacao") return ["EM_VALIDACAO"].includes(s);
           if (pipelineFilter === "financeiro") return ["APROVADO_OPERACAO", "ENVIADO_FINANCEIRO"].includes(s);
           if (pipelineFilter === "concluidos") return ["FINALIZADO", "PAGO", "CONCLUIDO"].includes(s);
           return true;
@@ -693,18 +695,25 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
           </Select>
 
           <div className="flex items-center bg-muted/30 p-1 rounded-lg border border-border">
-            {["todos", "pendentes", "rh", "financeiro", "concluidos"].map((id) => (
+            {[
+              { id: "todos", label: "Todos" },
+              { id: "aprovacoes", label: "Aprovações Pendentes" },
+              { id: "pendentes", label: "Recebidos" },
+              { id: "validacao", label: "Em Validação" },
+              { id: "financeiro", label: "Financeiro" },
+              { id: "concluidos", label: "Concluídos" },
+            ].map((tab) => (
               <button
-                key={id}
-                onClick={() => setPipelineFilter(id as any)}
+                key={tab.id}
+                onClick={() => setPipelineFilter(tab.id as any)}
                 className={cn(
                   "px-3 py-1.5 text-[11px] font-bold uppercase tracking-tight rounded-md transition-all",
-                  pipelineFilter === id
+                  pipelineFilter === tab.id
                     ? "shadow-sm border scale-[1.02] bg-white text-primary border-border"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                 )}
               >
-                {id.charAt(0).toUpperCase() + id.slice(1)}
+                {tab.label}
               </button>
             ))}
           </div>
@@ -862,7 +871,7 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
                         {item.pipeline_status && item.pipeline_status !== 'RECEBIDO' && canDevolve(item) && (
                           <button
                             className="h-7 w-7 rounded-md hover:bg-orange-50 flex items-center justify-center text-orange-600 hover:text-orange-700"
-                            onClick={() => handleDevolvePipeline(item.id)}
+                            onClick={() => handleDevolvePipeline(item)}
                             title="Devolver etapa"
                             disabled={updatePipelineMutation.isPending}
                           >

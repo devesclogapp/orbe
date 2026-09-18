@@ -276,9 +276,19 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
             }
             // Custos extras
             if (item.tipo === "CUSTO EXTRA") {
-                const { error } = await supabase.from("custos_extras_operacionais" as any)
-                    .update({ pipeline_status: "EM_VALIDACAO", atualizado_em: new Date().toISOString() })
-                    .eq("id", item.id);
+                const { data: custoData, error: fetchErr } = await supabase
+                    .from("custos_extras_operacionais" as any)
+                    .select("id, atualizado_em")
+                    .eq("id", item.id)
+                    .single();
+                if (fetchErr) throw fetchErr;
+
+                const { error } = await supabase.rpc("rpc_custo_extra_transicionar" as any, {
+                    p_id: item.id,
+                    p_acao: "aprovar",
+                    p_updated_at: custoData?.atualizado_em || null,
+                    p_justificativa: null,
+                });
                 if (error) throw error;
                 return;
             }

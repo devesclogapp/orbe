@@ -3,7 +3,11 @@ import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAccessControl } from "@/contexts/AccessControlContext";
 import { useOnboarding } from "@/contexts/OnboardingContext";
-import { getRouteAccessRule } from "@/lib/access-control";
+import {
+    getRouteAccessRule,
+    getAccessDeniedFallbackRoute,
+    isRouteForbiddenForRole,
+} from "@/lib/access-control";
 
 interface AuthGuardProps {
     children: React.ReactNode;
@@ -62,6 +66,12 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
         return <Navigate to="/operacional/dashboard" replace />;
     }
 
+    // Bloqueio explícito por perfil (ex: Encarregado tentando acessar /central)
+    if (isRouteForbiddenForRole(role, location.pathname)) {
+        const fallback = getAccessDeniedFallbackRoute(role);
+        return <Navigate to={fallback} replace />;
+    }
+
     const rule = getRouteAccessRule(location.pathname);
     if (rule && role !== "admin" && !canAccess(rule.module, rule.action)) {
         if (location.pathname === "/onboarding") {
@@ -89,7 +99,8 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
             );
         }
 
-        return <Navigate to="/central" replace />;
+        const fallback = getAccessDeniedFallbackRoute(role);
+        return <Navigate to={fallback} replace />;
     }
 
     return <>{children}</>;

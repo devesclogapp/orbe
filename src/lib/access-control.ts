@@ -164,12 +164,24 @@ export const ROUTE_ACCESS_RULES: Array<{
   { prefix: "/servicos", module: "central_de_cadastros" },
   { prefix: "/coletores", module: "central_de_cadastros" },
   { prefix: "/operacional/dashboard", module: "dashboard" },
-  { prefix: "/", module: "dashboard" },
   { prefix: "/central", module: "central_operacional" },
   { prefix: "/producao", module: "central_operacional" },
+  { prefix: "/custos-extras/aprovacoes", module: "processamento_rh" },
+  { prefix: "/custos-extras", module: "operacoes_recebidas" },
+  { prefix: "/operacional/custos-extras", module: "operacoes_recebidas" },
+  { prefix: "/servicos-extras/aprovacoes", module: "processamento_rh" },
+  { prefix: "/servicos-extras", module: "operacoes_recebidas" },
+  { prefix: "/operacional/servicos-extras", module: "operacoes_recebidas" },
+  { prefix: "/operacoes-volume/aprovacoes", module: "processamento_rh" },
+  { prefix: "/operacoes-volume", module: "operacoes_recebidas" },
+  { prefix: "/diaristas/aprovacoes", module: "processamento_rh" },
+  { prefix: "/intermitentes/aprovacoes", module: "processamento_rh" },
+  { prefix: "/clt/aprovacoes", module: "processamento_rh" },
+  { prefix: "/rh/aprovacoes", module: "processamento_rh" },
   { prefix: "/operacional/operacoes", module: "operacoes_recebidas" },
   { prefix: "/operacional/pontos", module: "pontos_recebidos" },
   { prefix: "/operacional/diaristas", module: "diaristas_recebidos" },
+  { prefix: "/operacional/intermitentes", module: "operacoes_recebidas" },
   { prefix: "/producao/diaristas", module: "central_operacional" },
   { prefix: "/rh/diaristas", module: "diaristas_recebidos" },
   { prefix: "/banco-horas/regras", module: "regras_de_banco" },
@@ -273,4 +285,42 @@ export function getRouteAccessRule(pathname: string) {
 
       return pathname.startsWith(rule.prefix);
     });
+}
+
+/**
+ * Retorna o destino padrão / inicial canônico da sessão de acordo com o perfil do usuário.
+ * Centraliza a decisão para AuthGuard, redirecionamentos de raiz e login.
+ */
+export function getDefaultRouteForRole(role?: string | null): string {
+  const normalizedRole = normalizeRole(role);
+  if (normalizedRole === "encarregado") {
+    return "/producao";
+  }
+  return "/operacional/dashboard";
+}
+
+/**
+ * Retorna o destino para onde redirecionar em caso de acesso negado a uma rota.
+ */
+export function getAccessDeniedFallbackRoute(role?: string | null): string {
+  const normalizedRole = normalizeRole(role);
+  if (normalizedRole === "encarregado") {
+    return "/producao";
+  }
+  return "/central";
+}
+
+/**
+ * Verifica se uma rota específica é explicitamente bloqueada para determinado perfil,
+ * mesmo que haja permissão herdada/compartilhada a nível de módulo.
+ */
+export function isRouteForbiddenForRole(role: string | null | undefined, pathname: string): boolean {
+  const normalizedRole = normalizeRole(role);
+  if (normalizedRole === "encarregado") {
+    // /central é tela de torre de controle administrativa e nunca deve ser acessada por encarregado
+    if (pathname === "/central" || pathname.startsWith("/central/")) {
+      return true;
+    }
+  }
+  return false;
 }

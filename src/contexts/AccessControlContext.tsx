@@ -31,7 +31,7 @@ interface AccessControlContextValue {
   refetch: () => Promise<unknown>;
 }
 
-const AccessControlContext = createContext<AccessControlContextValue | undefined>(
+export const AccessControlContext = createContext<AccessControlContextValue | undefined>(
   undefined,
 );
 

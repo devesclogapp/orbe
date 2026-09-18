@@ -177,7 +177,7 @@ const groups: MenuGroup[] = [
       { icon: Plus, label: "Novo Lançamento", to: "/custos-extras/lancamentos?action=novo-custo-extra", module: "central_operacional" },
       { icon: Wallet, label: "Recebidos / Lançamentos", to: "/custos-extras/lancamentos", module: "operacoes_recebidas", pulseKey: "custos_extras" },
       { icon: Shield, label: "Aprovações", to: "/custos-extras/aprovacoes", module: "processamento_rh" },
-      { icon: Banknote, label: "Pagamentos / Contas a Pagar", to: "/financeiro/contas-bancarias", module: "pagamentos_remessas" },
+      { icon: Banknote, label: "Pagamentos / Contas a Pagar", to: "/financeiro?tab=custos-extras", module: "pagamentos_remessas" },
     ],
   },
 

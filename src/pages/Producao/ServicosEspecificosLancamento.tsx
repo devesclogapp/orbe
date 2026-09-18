@@ -160,7 +160,7 @@ export default function ServicosEspecificosLancamento() {
     };
 
     return (
-        <OperationalShell title="Períodos Operacionais">
+        <OperationalShell title="Períodos Operacionais" showBack={true} onBack={() => goBackUrl()}>
             <div className="container mx-auto p-4 max-w-4xl pt-8 space-y-6">
                 <div className="space-y-1">
                     <h2 className="text-2xl font-bold tracking-tight">Períodos Operacionais</h2>

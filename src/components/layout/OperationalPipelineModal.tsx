@@ -209,9 +209,9 @@ export const OperationalPipelineModal = () => {
     const isEncarregado = role === "encarregado";
     const rawNextAction = payload?.nextAction;
 
-    // Oculta a próxima ação para o Encarregado caso a rota de destino não pertença à sua área de competência,
-    // garantindo que ele clique apenas em "Continuar nesta tela" (Close) e evite telas 403 / vazias (ex: /rh/diaristas)
-    const nextAction = rawNextAction && isEncarregado && rawNextAction.route && !rawNextAction.route.startsWith("/producao") && !rawNextAction.route.startsWith("/operacional/dashboard")
+    // Oculta a próxima ação para o Encarregado caso a rota de destino não pertença estritamente a /producao,
+    // garantindo que ele não seja ejetado para rotas administrativas (ex: /operacional/*, /rh/*)
+    const nextAction = rawNextAction && isEncarregado && (!rawNextAction.route || !rawNextAction.route.startsWith("/producao"))
         ? undefined
         : rawNextAction;
     const hasBlocked = steps.some((step) => step.status === "blocked");

@@ -9,12 +9,13 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { TenantProvider } from "@/contexts/TenantContext";
 import { ClientProvider } from "@/contexts/ClientContext";
 import { OnboardingProvider } from "@/contexts/OnboardingContext";
-import { AccessControlProvider } from "@/contexts/AccessControlContext";
+import { AccessControlProvider, useAccessControl } from "@/contexts/AccessControlContext";
 import { OperationalPipelineProvider } from "@/contexts/OperationalPipelineContext";
 import { OperationalPipelineModal } from "@/components/layout/OperationalPipelineModal";
 import { AuthGuard } from "@/components/Auth/AuthGuard";
 import { PortalGuard } from "@/components/Auth/PortalGuard";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
+import { getDefaultRouteForRole } from "@/lib/access-control";
 // AI Chat disabled for operational mode
 
 // Auth Pages
@@ -124,6 +125,12 @@ const queryClient = new QueryClient({
   },
 });
 
+const RootRedirect: React.FC = () => {
+  const { role } = useAccessControl();
+  const destination = getDefaultRouteForRole(role);
+  return <Navigate to={destination} replace />;
+};
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
@@ -167,9 +174,9 @@ const App = () => (
                             <Route path="/custos-extras/lancamentos" element={<AuthGuard><CustosExtrasRecebidos /></AuthGuard>} />
                             <Route path="/custos-extras/aprovacoes" element={<AuthGuard><AprovacoesRh flowType="CUSTO EXTRA" lockedFlow={true} /></AuthGuard>} />
                             <Route path="/onboarding" element={<AuthGuard><Onboarding /></AuthGuard>} />
-                            <Route path="/" element={<Navigate to="/operacional/dashboard" replace />} />
+                            <Route path="/" element={<AuthGuard><RootRedirect /></AuthGuard>} />
                             <Route path="/central" element={<AuthGuard><CentralOperacional /></AuthGuard>} />
-                            <Route path="/operacional" element={<Navigate to="/operacional/dashboard" replace />} />
+                            <Route path="/operacional" element={<AuthGuard><RootRedirect /></AuthGuard>} />
                             <Route path="/operacional/dashboard" element={<AuthGuard><Dashboard /></AuthGuard>} />
                             <Route path="/operacional/pontos" element={<AuthGuard><Pontos /></AuthGuard>} />
                             <Route path="/operacional/operacoes" element={<AuthGuard><Operacoes /></AuthGuard>} />

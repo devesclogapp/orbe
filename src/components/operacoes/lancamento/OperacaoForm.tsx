@@ -356,8 +356,8 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
             queryClient.invalidateQueries({ queryKey: ["receitas-pipeline"] });
             queryClient.invalidateQueries({ queryKey: ["receita-detalhes"] });
 
-            // Trigger the operational progress modal natively if it's a new launch (Volume)
-            if (!data?.isEdit && (form.getValues().tipo_lancamento === 'volume' || !form.getValues().tipo_lancamento)) {
+            // Trigger the operational progress modal natively if it's a new launch (Volume) in admin mode
+            if (mode === "admin" && !data?.isEdit && (form.getValues().tipo_lancamento === 'volume' || !form.getValues().tipo_lancamento)) {
                 const currentEmpresa = empresas.find(e => e.id === (form.getValues().empresa_id || empresaId));
 
                 // Evita new Date() plain em GMT negativo. Parse puramente lexicográfico:
@@ -370,7 +370,7 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                 openPipeline(buildOperacaoVolumePipeline({
                     competencia: compStr,
                     empresa: currentEmpresa?.nome || "Operacional",
-                    currentStep: mode === "admin" ? "validacao" : "lancamento"
+                    currentStep: "validacao"
                 }));
             }
 

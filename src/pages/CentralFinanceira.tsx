@@ -80,7 +80,50 @@ const CentralFinanceira = () => {
   const [motivoReabrir, setMotivoReabrir] = useState("");
   const [openConfirmAprovacao, setOpenConfirmAprovacao] = useState(false);
   const [rhLoteSelecionado, setRhLoteSelecionado] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState("visao-geral");
+
+  const VALID_FINANCEIRO_TABS = [
+    "visao-geral",
+    "lotes-rh",
+    "faturamento",
+    "custos-extras",
+    "servicos-extras",
+    "fechamento",
+  ] as const;
+
+  type FinanceiroTabValue = (typeof VALID_FINANCEIRO_TABS)[number];
+
+  const tabParam = searchParams.get("tab");
+  const initialTab: FinanceiroTabValue = (tabParam && (VALID_FINANCEIRO_TABS as readonly string[]).includes(tabParam))
+    ? (tabParam as FinanceiroTabValue)
+    : "visao-geral";
+
+  const [activeTab, setActiveTab] = useState<FinanceiroTabValue>(initialTab);
+
+  useEffect(() => {
+    const tabUrl = searchParams.get("tab");
+    if (tabUrl && (VALID_FINANCEIRO_TABS as readonly string[]).includes(tabUrl)) {
+      if (tabUrl !== activeTab) {
+        setActiveTab(tabUrl as FinanceiroTabValue);
+      }
+    } else if (!tabUrl && activeTab !== "visao-geral") {
+      setActiveTab("visao-geral");
+    }
+  }, [searchParams]);
+
+  const handleTabChange = (newTab: string) => {
+    const valid = (VALID_FINANCEIRO_TABS as readonly string[]).includes(newTab)
+      ? (newTab as FinanceiroTabValue)
+      : "visao-geral";
+    setActiveTab(valid);
+
+    const next = new URLSearchParams(searchParams);
+    if (valid === "visao-geral") {
+      next.delete("tab");
+    } else {
+      next.set("tab", valid);
+    }
+    setSearchParams(next, { replace: true });
+  };
   // etapa 2 - análise financeira
   const [openDevolucao, setOpenDevolucao] = useState(false);
   const [motivoDevolucao, setMotivoDevolucao] = useState("");
@@ -551,7 +594,7 @@ const CentralFinanceira = () => {
               <MetricCard label="Clientes" value={clientes.length.toString()} icon={Building2} />
             </div>
 
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+            <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
               <TabsList className="bg-muted/50 p-1 rounded-xl border border-border/50 flex flex-wrap h-auto">
                 <TabsTrigger value="visao-geral">Visão geral</TabsTrigger>
                 <TabsTrigger value="lotes-rh" className="relative">
