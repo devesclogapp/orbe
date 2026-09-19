@@ -65,6 +65,12 @@ import { IntermitentesLoteService } from "@/services/domain/intermitentes.servic
 import { AprovacoesService } from "@/services/domain/aprovacoes.service";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+    getOrigemRecursoBadge,
+    getOrigemRecursoApprovalNotice,
+    getOrigemRecursoStatusNotice,
+    type OrigemRecursoBanco
+} from "@/types/custosExtrasForm";
 
 // ────────────────────────────────────────────────────
 // Tipo unificado de item de aprovação
@@ -87,6 +93,7 @@ interface ApprovalItem {
     situacao: SituacaoItem;
     raw_status?: string;
     raw_lote_id?: string;
+    origem_recurso?: OrigemRecursoBanco;
 }
 
 // ────────────────────────────────────────────────────
@@ -246,6 +253,10 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
     const invalidate = () => {
         queryClient.invalidateQueries({ queryKey: ["aprovacoes-rh"] });
         queryClient.invalidateQueries({ queryKey: ["aprovacoes-kpis"] });
+        queryClient.invalidateQueries({ queryKey: ["custos-extras"], refetchType: "all" });
+        queryClient.invalidateQueries({ queryKey: ["dashboard-custos-extras"] });
+        queryClient.invalidateQueries({ queryKey: ["financeiro-despesas"] });
+        queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
     };
 
     const aprovarMutation = useMutation({
@@ -322,6 +333,9 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
                 return;
             }
         },
+        onSuccess: () => {
+            invalidate();
+        },
         onError: (err: any) => toast.error("Erro ao aprovar.", { description: err?.message }),
     });
 
@@ -372,6 +386,9 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
                 if (error) throw error;
                 return;
             }
+        },
+        onSuccess: () => {
+            invalidate();
         },
         onError: (err: any) => toast.error("Erro ao devolver.", { description: err?.message }),
     });
@@ -930,6 +947,50 @@ function DetailPanel({
         enabled: item.tipo === "DIARISTA" && !!item.raw_lote_id
     });
 
+    const { data: custoExtraData, isLoading: custoExtraLoading } = useQuery({
+        queryKey: ["custo-extra-detalhes-aprovacao", item.id],
+        queryFn: async () => {
+            if (item.tipo !== "CUSTO EXTRA") return null;
+            const { data, error } = await supabase
+                .from("custos_extras_operacionais" as any)
+                .select("id, origem_recurso, atualizado_em, pipeline_status, status_pagamento, favorecido_colaborador_id, favorecido_fornecedor_id, colaboradores:favorecido_colaborador_id(nome), fornecedores:favorecido_fornecedor_id(nome)")
+                .eq("id", item.id)
+                .maybeSingle();
+            if (error) {
+                console.warn("Erro ao buscar detalhes de custo extra:", error);
+                return null;
+            }
+            return data;
+        },
+        enabled: item.tipo === "CUSTO EXTRA"
+    });
+
+    const isItemAprovado =
+        item.situacao === "Aprovado" ||
+        (item.tipo === "CUSTO EXTRA" && (
+            (custoExtraData as any)?.pipeline_status === "FINALIZADO" ||
+            (custoExtraData as any)?.pipeline_status === "ENVIADO_FINANCEIRO" ||
+            (custoExtraData as any)?.pipeline_status === "APROVADO_OPERACAO" ||
+            (custoExtraData as any)?.status_pagamento === "PAGO" ||
+            item.raw_status === "PAGO" ||
+            item.raw_status === "FINALIZADO"
+        )) ||
+        ["APROVADO", "VALIDADO_RH", "VALIDADO", "FECHADO_FINANCEIRO", "PAGO", "PROCESSADO", "CNAB_GERADO", "AGUARDANDO_PAGAMENTO", "CONCLUIDO", "FINALIZADO", "FECHADO", "APROVADO_OPERACAO"].includes(String(item.raw_status || "").toUpperCase());
+
+    const isItemDevolvido =
+        item.situacao === "Devolvido" ||
+        (item.tipo === "CUSTO EXTRA" && (custoExtraData as any)?.pipeline_status === "REPROVADO") ||
+        ["DEVOLVIDO", "CANCELADO", "CANCELADO_RH", "RETORNADO", "RECUSADO", "REPROVADO", "DEVOLVIDO_RH"].includes(String(item.raw_status || "").toUpperCase());
+
+    const isItemEmAnalise = !isItemAprovado && !isItemDevolvido;
+
+    const displaySituacao: SituacaoItem = isItemAprovado ? "Aprovado" : (isItemDevolvido ? "Devolvido" : item.situacao);
+
+    const origemRecurso = ((custoExtraData as any)?.origem_recurso || item.origem_recurso) as OrigemRecursoBanco | undefined;
+    const origemBadge = getOrigemRecursoBadge(origemRecurso);
+    const detailNotice = getOrigemRecursoStatusNotice(origemRecurso, isItemAprovado);
+    const approvalNotice = getOrigemRecursoApprovalNotice(origemRecurso);
+
     const editDiaristaMutation = useMutation({
         mutationFn: async (payload: { id: string; valor: number; motivo: string }) => {
             if (!item.raw_lote_id) throw new Error("Lote ID is missing");
@@ -966,8 +1027,8 @@ function DetailPanel({
                             <Badge variant="outline" className={cn("text-[10px] font-black uppercase border-none px-2 py-0.5", TIPO_COLORS[item.tipo])}>
                                 {item.tipo}
                             </Badge>
-                            <Badge className={cn("border text-[10px] font-bold uppercase", SITUACAO_COLORS[item.situacao])}>
-                                {item.situacao}
+                            <Badge className={cn("border text-[10px] font-bold uppercase", SITUACAO_COLORS[displaySituacao])}>
+                                {displaySituacao}
                             </Badge>
                         </div>
                         <h2 className="text-xl font-bold text-slate-900 leading-tight mb-2">{item.colaborador}</h2>
@@ -1075,7 +1136,7 @@ function DetailPanel({
                                                             variant="ghost"
                                                             size="icon"
                                                             className="h-6 w-6 text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50 shrink-0 shadow-sm border border-transparent hover:border-indigo-100"
-                                                            disabled={item.situacao !== "Em análise"}
+                                                            disabled={!isItemEmAnalise}
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
                                                                 setEditingDiarista(c);
@@ -1092,6 +1153,50 @@ function DetailPanel({
                                     </div>
                                 ) : (
                                     <p className="text-xs text-muted-foreground text-center py-2">Nenhum diarista encontrado no lote.</p>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Detalhamento Custo Extra */}
+                    {item.tipo === "CUSTO EXTRA" && (
+                        <div className="space-y-2">
+                            <div className="flex items-center gap-2 text-slate-700">
+                                <DollarSign size={15} />
+                                <span className="text-xs font-bold uppercase tracking-wide">Origem do Recurso</span>
+                            </div>
+                            <div className="bg-slate-50 border border-border/30 rounded-lg px-4 py-3 space-y-2.5">
+                                {custoExtraLoading ? (
+                                    <div className="flex justify-center py-2"><Loader2 className="animate-spin h-4 w-4 text-muted-foreground opacity-50" /></div>
+                                ) : (
+                                    <>
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs text-muted-foreground font-medium">Quem pagou:</span>
+                                            <Badge variant={origemBadge.variant} className={cn("text-xs font-medium px-2.5 py-0.5", origemBadge.className)}>
+                                                {origemBadge.labelCompleto}
+                                            </Badge>
+                                        </div>
+                                        {detailNotice && (
+                                            <div className="p-2.5 rounded-md bg-blue-50/80 border border-blue-200/80 text-xs text-blue-900 leading-relaxed">
+                                                <div className="flex items-start gap-2">
+                                                    <Info className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
+                                                    <span className="font-medium">{detailNotice}</span>
+                                                </div>
+                                            </div>
+                                        )}
+                                        {origemRecurso === "REEMBOLSO_COLABORADOR" && (custoExtraData as any)?.colaboradores?.nome && (
+                                            <div className="flex justify-between items-center text-xs pt-2 border-t border-border/40">
+                                                <span className="text-muted-foreground font-medium">Colaborador a reembolsar:</span>
+                                                <span className="font-semibold text-slate-800">{(custoExtraData as any).colaboradores.nome}</span>
+                                            </div>
+                                        )}
+                                        {origemRecurso === "PAGAMENTO_PENDENTE" && (custoExtraData as any)?.fornecedores?.nome && (
+                                            <div className="flex justify-between items-center text-xs pt-2 border-t border-border/40">
+                                                <span className="text-muted-foreground font-medium">Fornecedor a pagar:</span>
+                                                <span className="font-semibold text-slate-800">{(custoExtraData as any).fornecedores.nome}</span>
+                                            </div>
+                                        )}
+                                    </>
                                 )}
                             </div>
                         </div>
@@ -1124,7 +1229,7 @@ function DetailPanel({
                     {/* Ações */}
                     <div className="pt-2 flex flex-col gap-2">
                         {/* Contexto Operacional RH x Financeiro */}
-                        {item.tipo === "OPERAÇÃO" && item.situacao === "Aprovado" && (
+                        {item.tipo === "OPERAÇÃO" && isItemAprovado && (
                             <div className="bg-emerald-50/80 border border-emerald-200/80 rounded-lg p-3.5 space-y-2.5">
                                 <div className="flex items-start gap-2.5">
                                     <CheckCircle2 className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
@@ -1157,7 +1262,7 @@ function DetailPanel({
                             </div>
                         )}
 
-                        {item.tipo === "OPERAÇÃO" && receitaVinculada?.receita_id && item.situacao !== "Aprovado" && (
+                        {item.tipo === "OPERAÇÃO" && receitaVinculada?.receita_id && !isItemAprovado && (
                             <Button
                                 variant="outline"
                                 className="w-full border-emerald-200 text-emerald-700 hover:bg-emerald-50 font-bold h-11 gap-2"
@@ -1176,36 +1281,121 @@ function DetailPanel({
                             </Button>
                         )}
 
-                        {isBlocked && valData.pendencias.length > 0 && (
-                            <div className="mb-4 bg-rose-50 border border-rose-200 rounded-md p-3">
-                                <div className="flex items-center gap-2 text-rose-700 font-bold mb-2">
-                                    <AlertTriangle size={16} />
-                                    <span>Bloqueio de Aprovação</span>
+                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.15em]">
+                            {isItemAprovado ? "Situação do Registro" : "Ações"}
+                        </label>
+
+                        {/* ESTADO 1: Item Aprovado (Somente Consulta) */}
+                        {isItemAprovado && (
+                            <>
+                                {item.tipo === "CUSTO EXTRA" ? (
+                                    origemRecurso === "PAGO_EMPRESA" ? (
+                                        <div className="p-3.5 rounded-lg bg-emerald-50/90 border border-emerald-200 text-emerald-950 space-y-1.5 shadow-sm">
+                                            <div className="flex items-center gap-2 font-bold text-xs text-emerald-800">
+                                                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                                                <span>Custo Extra Concluído — Pago pela Empresa</span>
+                                            </div>
+                                            <p className="text-[11px] text-emerald-700 leading-relaxed">
+                                                Este lançamento foi pago diretamente pela empresa e finalizado. Registro em modo somente leitura (sem repasse financeiro pendente).
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <div className="p-3.5 rounded-lg bg-emerald-50/90 border border-emerald-200 text-emerald-950 space-y-1.5 shadow-sm">
+                                            <div className="flex items-center gap-2 font-bold text-xs text-emerald-800">
+                                                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                                                <span>Aprovado pelo RH — Encaminhado ao Financeiro</span>
+                                            </div>
+                                            <p className="text-[11px] text-emerald-700 leading-relaxed">
+                                                {origemRecurso === "REEMBOLSO_COLABORADOR"
+                                                    ? "Despesa aprovada pelo RH e encaminhada para reembolso ao colaborador no módulo Financeiro."
+                                                    : "Despesa aprovada pelo RH e encaminhada para pagamento no módulo Financeiro."}
+                                            </p>
+                                        </div>
+                                    )
+                                ) : item.tipo !== "OPERAÇÃO" ? (
+                                    <div className="p-3.5 rounded-lg bg-emerald-50/90 border border-emerald-200 text-emerald-950 space-y-1.5 shadow-sm">
+                                        <div className="flex items-center gap-2 font-bold text-xs text-emerald-800">
+                                            <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                                            <span>Validação RH Concluída</span>
+                                        </div>
+                                        <p className="text-[11px] text-emerald-700 leading-relaxed">
+                                            A validação deste lançamento foi concluída com sucesso. O registro encontra-se em modo de somente consulta.
+                                        </p>
+                                    </div>
+                                ) : null}
+                            </>
+                        )}
+
+                        {/* ESTADO 2: Item Devolvido */}
+                        {isItemDevolvido && !isItemAprovado && (
+                            <div className="p-3.5 rounded-lg bg-amber-50/90 border border-amber-200 text-amber-950 space-y-1.5 shadow-sm">
+                                <div className="flex items-center gap-2 font-bold text-xs text-amber-800">
+                                    <RotateCcw className="h-4 w-4 text-amber-600 shrink-0" />
+                                    <span>Lançamento Devolvido</span>
                                 </div>
-                                <ul className="text-xs text-rose-600 space-y-1 ml-2">
-                                    {valData.pendencias.map((p: any, idx: number) => (
-                                        <li key={idx} className="list-disc list-inside">
-                                            <span className="font-semibold">{p.colaborador}:</span> {p.pendencias.join(', ')}
-                                        </li>
-                                    ))}
-                                </ul>
+                                <p className="text-[11px] text-amber-700 leading-relaxed">
+                                    Este lançamento foi devolvido ao responsável para correção. Ações de aprovação direta estão desabilitadas nesta etapa.
+                                </p>
                             </div>
                         )}
-                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.15em]">Ações</label>
-                        <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-11 gap-2"
-                            onClick={onAprovar}
-                            disabled={isBlocked || valLoading || isAprovando || item.situacao === "Aprovado"}>
-                            {(isAprovando || valLoading) ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-                            Aprovar
-                        </Button>
-                        <Button variant="outline" className="w-full border-orange-200 text-orange-600 hover:bg-orange-50 font-bold h-11 gap-2" onClick={onDevolver} disabled={isDevolvendo || item.situacao === "Devolvido"}>
-                            {isDevolvendo ? <Loader2 size={16} className="animate-spin" /> : <RotateCcw size={16} />}
-                            Devolver
-                        </Button>
-                        <Button variant="outline" className="w-full border-rose-200 text-rose-500 hover:bg-rose-50 font-bold h-11 gap-2" onClick={() => setCorrecaoOpen(true)} disabled={isDevolvendo || item.situacao === "Devolvido"}>
-                            <AlertTriangle size={16} />
-                            Solicitar Correção
-                        </Button>
+
+                        {/* ESTADO 3: Item Em Análise / Pendente (Ações Ativas) */}
+                        {isItemEmAnalise && (
+                            <>
+                                {isBlocked && valData.pendencias.length > 0 && (
+                                    <div className="mb-2 bg-rose-50 border border-rose-200 rounded-md p-3">
+                                        <div className="flex items-center gap-2 text-rose-700 font-bold mb-2">
+                                            <AlertTriangle size={16} />
+                                            <span>Bloqueio de Aprovação</span>
+                                        </div>
+                                        <ul className="text-xs text-rose-600 space-y-1 ml-2">
+                                            {valData.pendencias.map((p: any, idx: number) => (
+                                                <li key={idx} className="list-disc list-inside">
+                                                    <span className="font-semibold">{p.colaborador}:</span> {p.pendencias.join(', ')}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+
+                                {item.tipo === "CUSTO EXTRA" && approvalNotice && (
+                                    <div className="p-2.5 rounded-lg bg-slate-50 border border-border/60 text-[11px] text-slate-700 leading-snug">
+                                        <div className="flex items-start gap-2">
+                                            <Info className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
+                                            <span>{approvalNotice}</span>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <Button
+                                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-11 gap-2"
+                                    onClick={onAprovar}
+                                    disabled={isBlocked || valLoading || isAprovando}
+                                >
+                                    {(isAprovando || valLoading) ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                                    Aprovar
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    className="w-full border-orange-200 text-orange-600 hover:bg-orange-50 font-bold h-11 gap-2"
+                                    onClick={onDevolver}
+                                    disabled={isDevolvendo}
+                                >
+                                    {isDevolvendo ? <Loader2 size={16} className="animate-spin" /> : <RotateCcw size={16} />}
+                                    Devolver
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    className="w-full border-rose-200 text-rose-500 hover:bg-rose-50 font-bold h-11 gap-2"
+                                    onClick={() => setCorrecaoOpen(true)}
+                                    disabled={isDevolvendo}
+                                >
+                                    <AlertTriangle size={16} />
+                                    Solicitar Correção
+                                </Button>
+                            </>
+                        )}
+
                         <Button variant="ghost" className="w-full text-muted-foreground font-bold h-11 gap-2" onClick={() => {
                             const typePaths: Record<string, string> = {
                                 "PONTO": "/operacional/pontos",

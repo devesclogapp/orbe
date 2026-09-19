@@ -71,6 +71,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { CustoExtraOperacionalService } from "@/services/base.service";
+import { getOrigemRecursoBadge } from "@/types/custosExtrasForm";
 
 type CustoExtraItem = {
   id: string;
@@ -92,11 +93,17 @@ type CustoExtraItem = {
   operacao_id?: string | null;
   tipo_lancamento?: string | null;
   origem_dado?: string | null;
+  origem_recurso?: "PAGO_EMPRESA" | "REEMBOLSO_COLABORADOR" | "PAGAMENTO_PENDENTE" | "LEGACY" | null;
+  favorecido_colaborador_id?: string | null;
+  favorecido_fornecedor_id?: string | null;
+  favorecido_colaborador?: { nome?: string | null } | null;
+  favorecido_fornecedor?: { nome?: string | null } | null;
   pipeline_status?: "RECEBIDO" | "EM_VALIDACAO" | "APROVADO_OPERACAO" | "REPROVADO" | "ENVIADO_FINANCEIRO" | "FINALIZADO" | null;
   justificativa_devolucao?: string | null;
   responsavel?: { full_name?: string | null } | null;
   responsavel_nome?: string | null;
   observacao?: string | null;
+  atualizado_em?: string | null;
 };
 
 type CustosExtrasTableBlockProps = {
@@ -296,11 +303,14 @@ export function CustosExtrasTableBlock({ data, defaultPipelineFilter = "todos" }
       return CustoExtraOperacionalService.transicionar(id, acao, updatedAt, justification);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
+      queryClient.invalidateQueries({ queryKey: ["custos-extras"], refetchType: "all" });
       queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
       queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
       queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
       queryClient.invalidateQueries({ queryKey: ["aprovacoes-rh"] });
+      queryClient.invalidateQueries({ queryKey: ["aprovacoes-kpis"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-custos-extras"] });
+      queryClient.invalidateQueries({ queryKey: ["financeiro-despesas"] });
       toast.success("Status do pipeline atualizado");
     },
     onError: (error: any) => {
@@ -331,48 +341,53 @@ export function CustosExtrasTableBlock({ data, defaultPipelineFilter = "todos" }
     }
 
     if (acao !== '') {
+      const currentItem = item;
       updatePipelineMutation.mutate({
-        id: item.id,
+        id: currentItem.id,
         acao,
         // @ts-ignore (atualizado_em comes from the backend payload even if not fully typed in CustoExtraItem frontend schema)
-        updatedAt: item.atualizado_em || new Date().toISOString()
+        updatedAt: currentItem.atualizado_em || new Date().toISOString()
       }, {
-        onSuccess: () => {
+        onSuccess: (result: any) => {
           setSelectedItem(null);
+          const competencia = currentItem.data ? format(new Date(currentItem.data), "yyyy-MM") : format(new Date(), "yyyy-MM");
+
+          openPipeline(buildCustosExtrasPipeline({
+            competencia,
+            empresa: currentItem.empresas?.nome || currentItem.empresa_nome || "Empresa",
+            currentStep: stepId,
+            pipelineStatus: result?.pipeline_status,
+            statusPagamento: result?.status_pagamento,
+          }));
         }
       });
-
-      const competencia = item.data ? format(new Date(item.data), "yyyy-MM") : format(new Date(), "yyyy-MM");
-
-      openPipeline(buildCustosExtrasPipeline({
-        competencia,
-        empresa: item.empresas?.nome || item.empresa_nome || "Empresa",
-        currentStep: stepId,
-      }));
     }
   };
 
   const handleConfirmPayment = () => {
     if (!itemToPay) return;
+    const currentItem = itemToPay;
     updatePipelineMutation.mutate({
-      id: itemToPay.id,
+      id: currentItem.id,
       acao: 'finalizar_pagamento',
       // @ts-ignore
-      updatedAt: itemToPay.atualizado_em || new Date().toISOString()
+      updatedAt: currentItem.atualizado_em || new Date().toISOString()
     }, {
-      onSuccess: () => {
+      onSuccess: (result: any) => {
         setConfirmPaymentOpen(false);
         setItemToPay(null);
         setSelectedItem(null);
+
+        const competencia = currentItem.data ? format(new Date(currentItem.data), "yyyy-MM") : format(new Date(), "yyyy-MM");
+        openPipeline(buildCustosExtrasPipeline({
+          competencia,
+          empresa: currentItem.empresas?.nome || currentItem.empresa_nome || "Empresa",
+          currentStep: 'concluido',
+          pipelineStatus: result?.pipeline_status || 'FINALIZADO',
+          statusPagamento: result?.status_pagamento || 'PAGO',
+        }));
       }
     });
-
-    const competencia = itemToPay.data ? format(new Date(itemToPay.data), "yyyy-MM") : format(new Date(), "yyyy-MM");
-    openPipeline(buildCustosExtrasPipeline({
-      competencia,
-      empresa: itemToPay.empresas?.nome || itemToPay.empresa_nome || "Empresa",
-      currentStep: 'concluido',
-    }));
   };
 
   const handleDevolvePipeline = (item: CustoExtraItem) => {
@@ -516,10 +531,12 @@ export function CustosExtrasTableBlock({ data, defaultPipelineFilter = "todos" }
       CustoExtraOperacionalService.update(id, payload),
     onSuccess: () => {
       toast.success("Custo extra atualizado.");
-      queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
+      queryClient.invalidateQueries({ queryKey: ["custos-extras"], refetchType: "all" });
       queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
       queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
       queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
+      queryClient.invalidateQueries({ queryKey: ["aprovacoes-rh"] });
+      queryClient.invalidateQueries({ queryKey: ["aprovacoes-kpis"] });
       setEditingItem(null);
       setEditForm(null);
     },
@@ -532,10 +549,12 @@ export function CustosExtrasTableBlock({ data, defaultPipelineFilter = "todos" }
     mutationFn: (id: string) => CustoExtraOperacionalService.delete(id),
     onSuccess: () => {
       toast.success("Custo extra removido.");
-      queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
+      queryClient.invalidateQueries({ queryKey: ["custos-extras"], refetchType: "all" });
       queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
       queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
       queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
+      queryClient.invalidateQueries({ queryKey: ["aprovacoes-rh"] });
+      queryClient.invalidateQueries({ queryKey: ["aprovacoes-kpis"] });
       setSelectedItem(null);
     },
     onError: (error: Error) => {
@@ -570,10 +589,12 @@ export function CustosExtrasTableBlock({ data, defaultPipelineFilter = "todos" }
       toast.success("Coluna atualizada em massa.", {
         description: `${count} linha(s) atualizada(s).`,
       });
-      queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
+      queryClient.invalidateQueries({ queryKey: ["custos-extras"], refetchType: "all" });
       queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
       queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
       queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
+      queryClient.invalidateQueries({ queryKey: ["aprovacoes-rh"] });
+      queryClient.invalidateQueries({ queryKey: ["aprovacoes-kpis"] });
       setIsBulkEditOpen(false);
       setBulkValue("");
     },
@@ -589,7 +610,8 @@ export function CustosExtrasTableBlock({ data, defaultPipelineFilter = "todos" }
         origem_dado: item.origem_dado === "importacao" ? "ajuste" : item.origem_dado,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
+      queryClient.invalidateQueries({ queryKey: ["custos-extras"], refetchType: "all" });
+      queryClient.invalidateQueries({ queryKey: ["financeiro-despesas"] });
       toast.success("Status de pagamento atualizado.");
     },
     onError: (error: Error) => {
@@ -956,8 +978,8 @@ export function CustosExtrasTableBlock({ data, defaultPipelineFilter = "todos" }
       </div >
 
       <Sheet open={!!selectedItem} onOpenChange={(value) => !value && setSelectedItem(null)}>
-        <SheetContent className="sm:max-w-lg overflow-y-auto flex flex-col justify-between">
-          <div className="space-y-6">
+        <SheetContent className="w-full sm:max-w-lg overflow-y-auto overflow-x-hidden flex flex-col justify-between">
+          <div className="space-y-6 min-w-0">
             <SheetHeader>
               <SheetTitle className="text-xl font-bold text-foreground">
                 Detalhes do Custo Extra
@@ -970,97 +992,136 @@ export function CustosExtrasTableBlock({ data, defaultPipelineFilter = "todos" }
             {selectedItem && (() => {
               const item = selectedItem;
               const pipelineCfg = getPipelineStatusConfig(item.pipeline_status);
+              const origemBadge = getOrigemRecursoBadge(item.origem_recurso);
 
               return (
-                <div className="space-y-5">
+                <div className="space-y-5 min-w-0">
                   {/* Status Badges */}
-                  <div className="grid grid-cols-2 gap-3 p-3.5 rounded-xl bg-muted/30 border border-border/70">
-                    <div className="space-y-1">
-                      <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-3.5 rounded-xl bg-muted/30 border border-border/70 min-w-0">
+                    <div className="space-y-1 min-w-0">
+                      <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block truncate">
                         Pipeline Operacional
                       </span>
                       <div>
-                        <Badge className={cn("border shadow-none font-medium uppercase px-2.5 py-0.5 text-xs", pipelineCfg.className)}>
+                        <Badge className={cn("border shadow-none font-medium uppercase px-2 py-0.5 text-[11px] max-w-full truncate inline-block", pipelineCfg.className)}>
                           {pipelineCfg.label}
                         </Badge>
                       </div>
                     </div>
-                    <div className="space-y-1">
-                      <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                    <div className="space-y-1 min-w-0">
+                      <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block truncate">
                         Status Financeiro
                       </span>
                       <div>
-                        <Badge className={cn("border-0 font-medium px-2.5 py-0.5 text-xs", getStatusBadgeClass(item.status_pagamento))}>
+                        <Badge className={cn("border-0 font-medium px-2 py-0.5 text-[11px] max-w-full truncate inline-block", getStatusBadgeClass(item.status_pagamento))}>
                           {item.status_pagamento || "A PAGAR"}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="space-y-1 min-w-0">
+                      <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block truncate">
+                        Origem do Recurso
+                      </span>
+                      <div>
+                        <Badge variant={origemBadge.variant} className={cn("border font-medium px-2 py-0.5 text-[11px] max-w-full whitespace-normal break-words inline-block leading-tight text-left", origemBadge.className)}>
+                          {origemBadge.labelCompleto}
                         </Badge>
                       </div>
                     </div>
                   </div>
 
                   {/* Highlighted Value Card */}
-                  <div className="p-4 rounded-xl bg-muted/50 border border-border space-y-2.5">
-                    <div className="flex items-baseline justify-between">
-                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  <div className="p-4 rounded-xl bg-muted/50 border border-border space-y-2.5 min-w-0">
+                    <div className="flex items-baseline justify-between gap-2 min-w-0">
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider shrink-0">
                         Valor Total da Despesa
                       </span>
-                      <span className="text-2xl font-bold font-display text-foreground tracking-tight">
+                      <span className="text-2xl font-bold font-display text-foreground tracking-tight truncate">
                         {currencyFormatter.format(Number(item.total ?? 0))}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t border-border/60">
-                      <span>
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground pt-2 border-t border-border/60 min-w-0">
+                      <span className="truncate">
                         Qtd: <strong className="text-foreground font-medium">{Number(item.quantidade ?? 0).toLocaleString("pt-BR")}</strong> × Un: <strong className="text-foreground font-medium">{currencyFormatter.format(Number(item.valor_unitario ?? 0))}</strong>
                       </span>
-                      <Badge variant="outline" className="text-[11px] font-medium uppercase">
+                      <Badge variant="outline" className="text-[11px] font-medium uppercase shrink-0">
                         {item.categoria_custo || "OPERACIONAL"}
                       </Badge>
                     </div>
                   </div>
 
                   {/* Grid de Dados Operacionais */}
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-3.5 text-sm">
-                    <div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-3.5 text-sm min-w-0">
+                    <div className="min-w-0">
                       <p className="text-xs text-muted-foreground font-medium">Data da Despesa</p>
-                      <p className="font-medium text-foreground mt-0.5">{formatDate(item.data)}</p>
+                      <p className="font-medium text-foreground mt-0.5 truncate">{formatDate(item.data)}</p>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-xs text-muted-foreground font-medium">Empresa</p>
-                      <p className="font-medium text-foreground mt-0.5">{item.empresas?.nome || item.empresa_nome || "—"}</p>
+                      <p className="font-medium text-foreground mt-0.5 truncate" title={item.empresas?.nome || item.empresa_nome || "—"}>
+                        {item.empresas?.nome || item.empresa_nome || "—"}
+                      </p>
                     </div>
-                    <div>
+                    <div className="min-w-0">
+                      <p className="text-xs text-muted-foreground font-medium">Origem do Recurso</p>
+                      <p className="font-medium text-foreground mt-0.5 break-words">{origemBadge.labelCompleto}</p>
+                    </div>
+                    <div className="min-w-0">
                       <p className="text-xs text-muted-foreground font-medium">Forma de Pagamento</p>
-                      <p className="font-medium text-foreground mt-0.5">{item.forma_pagamento_ref?.nome || item.forma_pagamento || "—"}</p>
+                      <p className="font-medium text-foreground mt-0.5 truncate" title={item.forma_pagamento_ref?.nome || item.forma_pagamento || "—"}>
+                        {item.forma_pagamento_ref?.nome || item.forma_pagamento || "—"}
+                      </p>
                     </div>
-                    <div>
+                    {item.origem_recurso === "REEMBOLSO_COLABORADOR" && (item.favorecido_colaborador?.nome || item.favorecido_colaborador_id) && (
+                      <div className="min-w-0 col-span-2 sm:col-span-1">
+                        <p className="text-xs text-muted-foreground font-medium">Favorecido (Reembolso)</p>
+                        <p className="font-medium text-foreground mt-0.5 truncate" title={item.favorecido_colaborador?.nome || item.favorecido_colaborador_id}>
+                          {item.favorecido_colaborador?.nome || item.favorecido_colaborador_id}
+                        </p>
+                      </div>
+                    )}
+                    {item.origem_recurso === "PAGAMENTO_PENDENTE" && (item.favorecido_fornecedor?.nome || item.favorecido_fornecedor_id) && (
+                      <div className="min-w-0 col-span-2 sm:col-span-1">
+                        <p className="text-xs text-muted-foreground font-medium">Favorecido (Fornecedor)</p>
+                        <p className="font-medium text-foreground mt-0.5 truncate" title={item.favorecido_fornecedor?.nome || item.favorecido_fornecedor_id}>
+                          {item.favorecido_fornecedor?.nome || item.favorecido_fornecedor_id}
+                        </p>
+                      </div>
+                    )}
+                    <div className="min-w-0">
                       <p className="text-xs text-muted-foreground font-medium">Vencimento</p>
-                      <p className="font-medium text-foreground mt-0.5">{formatDate(item.data_vencimento)}</p>
+                      <p className="font-medium text-foreground mt-0.5 truncate">{formatDate(item.data_vencimento)}</p>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-xs text-muted-foreground font-medium">Responsável</p>
-                      <p className="font-medium text-foreground mt-0.5">{item.responsavel?.full_name || item.responsavel_nome || "—"}</p>
+                      <p className="font-medium text-foreground mt-0.5 truncate" title={item.responsavel?.full_name || item.responsavel_nome || "—"}>
+                        {item.responsavel?.full_name || item.responsavel_nome || "—"}
+                      </p>
                     </div>
-                    <div>
+                    <div className="min-w-0 col-span-2">
                       <p className="text-xs text-muted-foreground font-medium">Operação Vinculada</p>
-                      <p className="font-medium text-foreground mt-0.5">{item.operacao_id || "Não vinculada"}</p>
+                      <p className="font-medium text-foreground mt-0.5 break-all text-xs font-mono">
+                        {item.operacao_id || "Não vinculada"}
+                      </p>
                     </div>
                   </div>
 
                   {/* Descrição / Observação */}
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 min-w-0">
                     <p className="text-xs text-muted-foreground font-medium">Descrição / Observações</p>
-                    <div className="p-3 rounded-lg bg-card border border-border/80 text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+                    <div className="p-3 rounded-lg bg-card border border-border/80 text-sm text-foreground leading-relaxed whitespace-pre-wrap break-words">
                       {item.descricao || "Nenhuma descrição ou observação informada."}
                     </div>
                   </div>
 
                   {/* Alerta de Devolução Anterior se houver */}
                   {(item.justificativa_devolucao || (item as any).motivo_devolucao) && (
-                    <div className="p-3.5 rounded-xl bg-orange-50/80 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-900/50 text-xs text-orange-900 dark:text-orange-200 space-y-1">
+                    <div className="p-3.5 rounded-xl bg-orange-50/80 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-900/50 text-xs text-orange-900 dark:text-orange-200 space-y-1 min-w-0">
                       <div className="flex items-center gap-1.5 font-semibold text-orange-800 dark:text-orange-300">
                         <AlertTriangle className="h-4 w-4 shrink-0 text-orange-600 dark:text-orange-400" />
                         <span>Motivo do Retorno / Devolução</span>
                       </div>
-                      <p className="pl-5.5 text-xs text-orange-800/90 dark:text-orange-300/90">
+                      <p className="pl-5.5 text-xs text-orange-800/90 dark:text-orange-300/90 break-words">
                         {item.justificativa_devolucao || (item as any).motivo_devolucao}
                       </p>
                     </div>
@@ -1070,111 +1131,112 @@ export function CustosExtrasTableBlock({ data, defaultPipelineFilter = "todos" }
             })()}
           </div>
 
-          {/* Rodapé com Ações de Negócio Contextualizadas */}
+          {/* Rodapé com Ações de Negócio Contextualizadas e Totalmente Responsivas */}
           {selectedItem && (() => {
             const item = selectedItem;
             const currentStatus = item.pipeline_status || 'RECEBIDO';
             const isFinalizado = currentStatus === 'FINALIZADO' || currentStatus === 'CONCLUIDO';
 
             return (
-              <SheetFooter className="mt-8 pt-4 border-t border-border flex-col gap-2.5 sm:flex-col sm:space-x-0">
+              <SheetFooter className="mt-8 pt-4 border-t border-border flex-col gap-2.5 sm:flex-col sm:space-x-0 w-full min-w-0">
                 {isFinalizado ? (
-                  <div className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-medium">
+                  <div className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-medium text-center">
                     <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
                     <span>Despesa liquidada e finalizada no pipeline financeiro.</span>
                   </div>
                 ) : (
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 w-full">
-                    {/* Botão de Devolução */}
-                    {canDevolve(item) && currentStatus !== 'RECEBIDO' ? (
+                  <div className="flex flex-col gap-2.5 w-full min-w-0">
+                    {/* Botão de Avanço Principal no topo do footer (largura total, destaque claro, sem corte lateral) */}
+                    {currentStatus === 'RECEBIDO' && (
                       <Button
-                        variant="outline"
                         size="sm"
-                        className="border-orange-200 text-orange-700 hover:bg-orange-50 hover:text-orange-800 dark:border-orange-900/50 dark:text-orange-400 dark:hover:bg-orange-950/30"
-                        onClick={() => handleDevolvePipeline(item)}
-                        disabled={updatePipelineMutation.isPending}
+                        className="w-full font-medium h-10 gap-2 text-sm justify-center shadow-sm"
+                        onClick={() => handleAdvancePipeline(item)}
+                        disabled={!canAdvance(item) || updatePipelineMutation.isPending}
                       >
-                        <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
-                        {currentStatus === 'EM_VALIDACAO' ? 'Devolver para correção' : 'Devolver para Operação'}
+                        {updatePipelineMutation.isPending ? (
+                          <Loader2 className="h-4 w-4 mr-1.5 animate-spin shrink-0" />
+                        ) : (
+                          <ArrowRight className="h-4 w-4 mr-1.5 shrink-0" />
+                        )}
+                        Encaminhar para Validação
                       </Button>
-                    ) : (
-                      <div />
                     )}
 
-                    {/* Botões da Direita: Editar e Avanço */}
-                    <div className="flex items-center gap-2 justify-end">
+                    {currentStatus === 'EM_VALIDACAO' && (
+                      <Button
+                        size="sm"
+                        className="w-full font-medium h-10 gap-2 text-sm justify-center shadow-sm"
+                        onClick={() => handleAdvancePipeline(item)}
+                        disabled={!canAdvance(item) || updatePipelineMutation.isPending}
+                      >
+                        {updatePipelineMutation.isPending ? (
+                          <Loader2 className="h-4 w-4 mr-1.5 animate-spin shrink-0" />
+                        ) : (
+                          <Check className="h-4 w-4 mr-1.5 shrink-0" />
+                        )}
+                        Aprovar Despesa
+                      </Button>
+                    )}
+
+                    {currentStatus === 'APROVADO_OPERACAO' && (
+                      <Button
+                        size="sm"
+                        className="w-full font-medium h-10 gap-2 text-sm justify-center shadow-sm"
+                        onClick={() => handleAdvancePipeline(item)}
+                        disabled={!canAdvance(item) || updatePipelineMutation.isPending}
+                      >
+                        {updatePipelineMutation.isPending ? (
+                          <Loader2 className="h-4 w-4 mr-1.5 animate-spin shrink-0" />
+                        ) : (
+                          <ArrowRight className="h-4 w-4 mr-1.5 shrink-0" />
+                        )}
+                        Liberar para o Financeiro
+                      </Button>
+                    )}
+
+                    {currentStatus === 'ENVIADO_FINANCEIRO' && (
+                      <Button
+                        size="sm"
+                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm h-10 gap-2 text-sm justify-center"
+                        onClick={() => handleAdvancePipeline(item)}
+                        disabled={!canAdvance(item) || updatePipelineMutation.isPending}
+                      >
+                        <CheckCircle2 className="h-4 w-4 shrink-0" />
+                        Registrar Pagamento
+                      </Button>
+                    )}
+
+                    {/* Linha de Ações Secundárias (Devolver + Editar) perfeitamente responsiva */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 w-full min-w-0">
+                      {canDevolve(item) && currentStatus !== 'RECEBIDO' ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 min-w-[140px] border-orange-200 text-orange-700 hover:bg-orange-50 hover:text-orange-800 dark:border-orange-900/50 dark:text-orange-400 dark:hover:bg-orange-950/30 text-xs justify-center"
+                          onClick={() => handleDevolvePipeline(item)}
+                          disabled={updatePipelineMutation.isPending}
+                        >
+                          <RotateCcw className="h-3.5 w-3.5 mr-1.5 shrink-0" />
+                          {currentStatus === 'EM_VALIDACAO' ? 'Devolver para correção' : 'Devolver para Operação'}
+                        </Button>
+                      ) : null}
+
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="text-muted-foreground hover:text-foreground"
+                        className={cn(
+                          "text-muted-foreground hover:text-foreground text-xs justify-center",
+                          canDevolve(item) && currentStatus !== 'RECEBIDO' ? "shrink-0 px-3" : "w-full"
+                        )}
                         onClick={() => {
                           openEditor(item);
                           setSelectedItem(null);
                         }}
                       >
-                        <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                        <Pencil className="h-3.5 w-3.5 mr-1.5 shrink-0" />
                         Editar
                       </Button>
-
-                      {currentStatus === 'RECEBIDO' && (
-                        <Button
-                          size="sm"
-                          className="font-medium"
-                          onClick={() => handleAdvancePipeline(item)}
-                          disabled={!canAdvance(item) || updatePipelineMutation.isPending}
-                        >
-                          {updatePipelineMutation.isPending ? (
-                            <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                          ) : (
-                            <ArrowRight className="h-3.5 w-3.5 mr-1.5" />
-                          )}
-                          Encaminhar para Validação
-                        </Button>
-                      )}
-
-                      {currentStatus === 'EM_VALIDACAO' && (
-                        <Button
-                          size="sm"
-                          className="font-medium"
-                          onClick={() => handleAdvancePipeline(item)}
-                          disabled={!canAdvance(item) || updatePipelineMutation.isPending}
-                        >
-                          {updatePipelineMutation.isPending ? (
-                            <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                          ) : (
-                            <Check className="h-3.5 w-3.5 mr-1.5" />
-                          )}
-                          Aprovar Despesa
-                        </Button>
-                      )}
-
-                      {currentStatus === 'APROVADO_OPERACAO' && (
-                        <Button
-                          size="sm"
-                          className="font-medium"
-                          onClick={() => handleAdvancePipeline(item)}
-                          disabled={!canAdvance(item) || updatePipelineMutation.isPending}
-                        >
-                          {updatePipelineMutation.isPending ? (
-                            <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                          ) : (
-                            <ArrowRight className="h-3.5 w-3.5 mr-1.5" />
-                          )}
-                          Liberar para o Financeiro
-                        </Button>
-                      )}
-
-                      {currentStatus === 'ENVIADO_FINANCEIRO' && (
-                        <Button
-                          size="sm"
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm"
-                          onClick={() => handleAdvancePipeline(item)}
-                          disabled={!canAdvance(item) || updatePipelineMutation.isPending}
-                        >
-                          <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
-                          Registrar Pagamento
-                        </Button>
-                      )}
                     </div>
                   </div>
                 )}
@@ -1210,6 +1272,14 @@ export function CustosExtrasTableBlock({ data, defaultPipelineFilter = "todos" }
                     <span>Empresa:</span>
                     <span className="font-medium text-foreground">{itemToPay.empresas?.nome || itemToPay.empresa_nome || "—"}</span>
                   </div>
+                  {itemToPay.origem_recurso === "REEMBOLSO_COLABORADOR" && (
+                    <div className="flex justify-between">
+                      <span>Favorecido (Reembolso):</span>
+                      <span className="font-medium text-foreground">
+                        {itemToPay.favorecido_colaborador?.nome || itemToPay.favorecido_colaborador_id || "—"}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex justify-between">
                     <span>Categoria:</span>
                     <span className="font-medium text-foreground">{itemToPay.categoria_custo}</span>

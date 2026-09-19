@@ -152,7 +152,7 @@ class CustoExtraOperacionalServiceClass {
   async getByCompetencia(competencia: string, empresaId?: string) {
     let query = operationalClient
       .from('custos_extras_operacionais')
-      .select('*, empresas:empresa_id(nome), forma_pagamento_ref:forma_pagamento_id(nome), unidades:unidade_id(nome)');
+      .select('*, empresas:empresa_id(nome), forma_pagamento_ref:forma_pagamento_id(nome), unidades:unidade_id(nome), favorecido_colaborador:favorecido_colaborador_id(nome), favorecido_fornecedor:favorecido_fornecedor_id(nome)');
 
     if (competencia) {
       const parts = competencia.split('-');

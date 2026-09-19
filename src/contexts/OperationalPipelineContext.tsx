@@ -1019,10 +1019,37 @@ export type CustoExtraStepId = "lancamento" | "validacao_operacional" | "finance
 export const buildCustosExtrasPipeline = (params: {
     competencia: string;
     empresa: string;
-    currentStep: CustoExtraStepId;
+    currentStep?: CustoExtraStepId;
+    pipelineStatus?: "RECEBIDO" | "EM_VALIDACAO" | "APROVADO_OPERACAO" | "ENVIADO_FINANCEIRO" | "FINALIZADO" | string | null;
+    statusPagamento?: "A_PAGAR" | "PAGO" | string | null;
     devolucaoMotivo?: string;
 }): PipelineTrigger => {
-    const { competencia, empresa, currentStep, devolucaoMotivo } = params;
+    const { competencia, empresa, devolucaoMotivo, pipelineStatus, statusPagamento } = params;
+
+    // Resolução do step canônico a partir de pipelineStatus retornado/recarregado ou currentStep
+    let effectiveStep: CustoExtraStepId = params.currentStep || "lancamento";
+    if (pipelineStatus) {
+        switch (pipelineStatus) {
+            case "RECEBIDO":
+                effectiveStep = "lancamento";
+                break;
+            case "EM_VALIDACAO":
+                effectiveStep = "validacao_operacional";
+                break;
+            case "APROVADO_OPERACAO":
+                effectiveStep = "financeiro";
+                break;
+            case "ENVIADO_FINANCEIRO":
+                effectiveStep = "centro_custo";
+                break;
+            case "FINALIZADO":
+                effectiveStep = "concluido";
+                break;
+            default:
+                if (params.currentStep) effectiveStep = params.currentStep;
+                break;
+        }
+    }
 
     const stepOrder: CustoExtraStepId[] = [
         "lancamento",
@@ -1032,10 +1059,14 @@ export const buildCustosExtrasPipeline = (params: {
         "concluido"
     ];
 
-    const currentIndex = stepOrder.indexOf(currentStep);
+    const currentIndex = stepOrder.indexOf(effectiveStep);
+
+    // O fluxo é considerado finalizado quando atinge 'concluido' ou estado canônico FINALIZADO (especialmente com PAGO)
+    const isDone = effectiveStep === "concluido" || pipelineStatus === "FINALIZADO" || (pipelineStatus === "FINALIZADO" && statusPagamento === "PAGO");
 
     const getStatus = (index: number): PipelineStepStatus => {
         if (devolucaoMotivo && index === currentIndex) return "devolved";
+        if (isDone && index <= currentIndex) return "done";
         if (index < currentIndex) return "done";
         if (index === currentIndex) return "current";
         return "pending";
@@ -1094,8 +1125,6 @@ export const buildCustosExtrasPipeline = (params: {
             status: getStatus(4),
         },
     ];
-
-    const isDone = currentStep === "concluido";
 
     return {
         context: { competencia, empresa, fluxo: "Custos Extras" },
