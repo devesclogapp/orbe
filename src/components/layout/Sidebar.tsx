@@ -177,7 +177,7 @@ const groups: MenuGroup[] = [
       { icon: Plus, label: "Novo Lançamento", to: "/custos-extras/lancamentos?action=novo-custo-extra", module: "central_operacional" },
       { icon: Wallet, label: "Recebidos / Lançamentos", to: "/custos-extras/lancamentos", module: "operacoes_recebidas", pulseKey: "custos_extras" },
       { icon: Shield, label: "Aprovações", to: "/custos-extras/aprovacoes", module: "processamento_rh" },
-      { icon: Banknote, label: "Pagamentos / Contas a Pagar", to: "/financeiro?tab=custos-extras", module: "pagamentos_remessas" },
+      { icon: Banknote, label: "Pagamentos / Contas a Pagar", to: "/financeiro?tab=custos-extras&origem=CUSTOS_EXTRAS", module: "pagamentos_remessas" },
     ],
   },
 
@@ -350,6 +350,20 @@ export const isRouteMatchingItem = (
     }
 
     return true;
+  }
+
+  // 2.1 Regra Contextual para Central Financeira (/financeiro)
+  if (itemPath === "/financeiro") {
+    const currentOrigem = currentParams.get("origem");
+    const itemOrigem = itemParams.get("origem");
+
+    if (currentOrigem === "CUSTOS_EXTRAS") {
+      return itemOrigem === "CUSTOS_EXTRAS";
+    }
+
+    if (itemOrigem === "CUSTOS_EXTRAS") {
+      return false;
+    }
   }
 
   // 3. Regra Geral para itens com query params específicos (ex: ?action=nova-operacao)

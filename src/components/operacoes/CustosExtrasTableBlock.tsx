@@ -29,6 +29,7 @@ import { toast } from "sonner";
 import { useOperationalPipeline, buildCustosExtrasPipeline, type CustoExtraStepId } from "@/contexts/OperationalPipelineContext";
 import { JustificationModal } from "@/components/modals/JustificationModal";
 import { useAccessControl } from "@/contexts/AccessControlContext";
+import { useSearchParams } from "react-router-dom";
 
 
 import { Badge } from "@/components/ui/badge";
@@ -109,6 +110,7 @@ type CustoExtraItem = {
 type CustosExtrasTableBlockProps = {
   data: CustoExtraItem[];
   defaultPipelineFilter?: "todos" | "pendentes" | "validacao" | "aprovacoes" | "financeiro" | "concluidos";
+  contextualOrigem?: "CUSTOS_EXTRAS" | string;
 };
 
 type EditableCostForm = {
@@ -232,6 +234,24 @@ const getPipelineStatusConfig = (status?: string | null) => {
   }
 };
 
+const getDisplayPipelineStatus = (item: CustoExtraItem, isContextual: boolean) => {
+  if (isContextual) {
+    const s = String(item.pipeline_status || "").toUpperCase();
+    const sp = String(item.status_pagamento || "").toUpperCase();
+
+    if (s === "FINALIZADO" || sp === "PAGO") {
+      return { label: "Pago", className: "bg-emerald-50 text-emerald-700 border-emerald-200", opacity: "opacity-[0.75]" };
+    }
+    if (s === "ENVIADO_FINANCEIRO") {
+      return { label: "A pagar", className: "bg-indigo-50 text-indigo-700 border-indigo-200", opacity: "opacity-100" };
+    }
+    if (s === "APROVADO_OPERACAO") {
+      return { label: "Aguardando liberação para pagamento", className: "bg-amber-50 text-amber-700 border-amber-200", opacity: "opacity-100" };
+    }
+  }
+  return getPipelineStatusConfig(item.pipeline_status);
+};
+
 const buildEditForm = (item: CustoExtraItem): EditableCostForm => ({
   data: toInputValue(item.data),
   empresa_nome: item.empresas?.nome || item.empresa_nome || "",
@@ -245,13 +265,15 @@ const buildEditForm = (item: CustoExtraItem): EditableCostForm => ({
   operacao_id: toInputValue(item.operacao_id),
 });
 
-export function CustosExtrasTableBlock({ data, defaultPipelineFilter = "todos" }: CustosExtrasTableBlockProps) {
+export function CustosExtrasTableBlock({ data, defaultPipelineFilter = "todos", contextualOrigem }: CustosExtrasTableBlockProps) {
+  const [searchParams] = useSearchParams();
+  const isContextualCustosExtras = contextualOrigem === "CUSTOS_EXTRAS" || searchParams.get("origem") === "CUSTOS_EXTRAS";
   const queryClient = useQueryClient();
   const tableScrollRef = useRef<HTMLDivElement>(null);
   const [filterText, setFilterText] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [pipelineStatusFilter, setPipelineStatusFilter] = useState("all");
-  const [pipelineFilter, setPipelineFilter] = useState<"todos" | "pendentes" | "validacao" | "aprovacoes" | "financeiro" | "concluidos">(defaultPipelineFilter);
+  const [pipelineFilter, setPipelineFilter] = useState<string>(defaultPipelineFilter);
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
   const [lockedCols, setLockedCols] = useState<Record<string, boolean>>(() => {
@@ -358,6 +380,8 @@ export function CustosExtrasTableBlock({ data, defaultPipelineFilter = "todos" }
             currentStep: stepId,
             pipelineStatus: result?.pipeline_status,
             statusPagamento: result?.status_pagamento,
+            userRole: role,
+            isAdmin,
           }));
         }
       });
@@ -385,6 +409,8 @@ export function CustosExtrasTableBlock({ data, defaultPipelineFilter = "todos" }
           currentStep: 'concluido',
           pipelineStatus: result?.pipeline_status || 'FINALIZADO',
           statusPagamento: result?.status_pagamento || 'PAGO',
+          userRole: role,
+          isAdmin,
         }));
       }
     });
@@ -490,6 +516,14 @@ export function CustosExtrasTableBlock({ data, defaultPipelineFilter = "todos" }
         const pipelineMatch = pipelineFilter === "todos" || (() => {
           // Normalizamos para upper case na leitura
           const s = String(item.pipeline_status || "RECEBIDO").toUpperCase();
+          const sp = String(item.status_pagamento || "").toUpperCase();
+
+          if (isContextualCustosExtras) {
+            if (pipelineFilter === "aguardando_liberacao") return s === "APROVADO_OPERACAO" && sp !== "PAGO";
+            if (pipelineFilter === "a_pagar") return s === "ENVIADO_FINANCEIRO" && sp !== "PAGO";
+            if (pipelineFilter === "pagos") return s === "FINALIZADO" || sp === "PAGO";
+          }
+
           if (pipelineFilter === "aprovacoes") return ["RECEBIDO", "PENDENTE", "EM_VALIDACAO"].includes(s);
           if (pipelineFilter === "pendentes") return ["RECEBIDO", "PENDENTE", "REPROVADO", "EM_ANALISE", "DEVOLVIDO"].includes(s);
           if (pipelineFilter === "validacao") return ["EM_VALIDACAO"].includes(s);
@@ -776,17 +810,25 @@ export function CustosExtrasTableBlock({ data, defaultPipelineFilter = "todos" }
           </Select>
 
           <div className="flex items-center bg-muted/30 p-1 rounded-lg border border-border">
-            {[
-              { id: "todos", label: "Todos" },
-              { id: "aprovacoes", label: "Aprovações Pendentes" },
-              { id: "pendentes", label: "Recebidos" },
-              { id: "validacao", label: "Em Validação" },
-              { id: "financeiro", label: "Financeiro" },
-              { id: "concluidos", label: "Concluídos" },
-            ].map((tab) => (
+            {(isContextualCustosExtras
+              ? [
+                  { id: "todos", label: "Todos" },
+                  { id: "aguardando_liberacao", label: "Aguardando liberação para pagamento" },
+                  { id: "a_pagar", label: "A pagar" },
+                  { id: "pagos", label: "Pago" },
+                ]
+              : [
+                  { id: "todos", label: "Todos" },
+                  { id: "aprovacoes", label: "Aprovações Pendentes" },
+                  { id: "pendentes", label: "Recebidos" },
+                  { id: "validacao", label: "Em Validação" },
+                  { id: "financeiro", label: "Financeiro" },
+                  { id: "concluidos", label: "Concluídos" },
+                ]
+            ).map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setPipelineFilter(tab.id as any)}
+                onClick={() => setPipelineFilter(tab.id)}
                 className={cn(
                   "px-3 py-1.5 text-[11px] font-bold uppercase tracking-tight rounded-md transition-all",
                   pipelineFilter === tab.id
@@ -878,7 +920,7 @@ export function CustosExtrasTableBlock({ data, defaultPipelineFilter = "todos" }
                   key={item.id}
                   className={cn(
                     "esc-table-row cursor-pointer transition-all border-b border-border last:border-0 hover:bg-muted/50",
-                    getPipelineStatusConfig(item.pipeline_status).opacity
+                    getDisplayPipelineStatus(item, isContextualCustosExtras).opacity
                   )}
                   onClick={() => setSelectedItem(item)}
                 >
@@ -921,7 +963,7 @@ export function CustosExtrasTableBlock({ data, defaultPipelineFilter = "todos" }
                   {visibleCols.pipelineStatus && (
                     <td className="px-3 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                       {(() => {
-                        const cfg = getPipelineStatusConfig(item.pipeline_status);
+                        const cfg = getDisplayPipelineStatus(item, isContextualCustosExtras);
                         return (
                           <Badge className={cn("border shadow-none font-medium uppercase h-6 px-2 text-[11px]", cfg.className)}>
                             {cfg.label}
@@ -991,7 +1033,7 @@ export function CustosExtrasTableBlock({ data, defaultPipelineFilter = "todos" }
 
             {selectedItem && (() => {
               const item = selectedItem;
-              const pipelineCfg = getPipelineStatusConfig(item.pipeline_status);
+              const pipelineCfg = getDisplayPipelineStatus(item, isContextualCustosExtras);
               const origemBadge = getOrigemRecursoBadge(item.origem_recurso);
 
               return (
@@ -1003,9 +1045,26 @@ export function CustosExtrasTableBlock({ data, defaultPipelineFilter = "todos" }
                         Pipeline Operacional
                       </span>
                       <div>
-                        <Badge className={cn("border shadow-none font-medium uppercase px-2 py-0.5 text-[11px] max-w-full truncate inline-block", pipelineCfg.className)}>
-                          {pipelineCfg.label}
-                        </Badge>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const comp = item.data ? format(new Date(item.data), "yyyy-MM") : format(new Date(), "yyyy-MM");
+                            openPipeline(buildCustosExtrasPipeline({
+                              competencia: comp,
+                              empresa: item.empresas?.nome || item.empresa_nome || "Empresa",
+                              pipelineStatus: item.pipeline_status,
+                              statusPagamento: item.status_pagamento,
+                              userRole: role,
+                              isAdmin,
+                            }));
+                          }}
+                          className="group inline-flex items-center gap-1 focus:outline-none"
+                          title="Clique para ver a linha do tempo do fluxo"
+                        >
+                          <Badge className={cn("border shadow-none font-medium uppercase px-2 py-0.5 text-[11px] max-w-full truncate inline-block group-hover:ring-1 group-hover:ring-primary/40 cursor-pointer transition-all", pipelineCfg.className)}>
+                            {pipelineCfg.label}
+                          </Badge>
+                        </button>
                       </div>
                     </div>
                     <div className="space-y-1 min-w-0">
@@ -1191,7 +1250,7 @@ export function CustosExtrasTableBlock({ data, defaultPipelineFilter = "todos" }
                         ) : (
                           <ArrowRight className="h-4 w-4 mr-1.5 shrink-0" />
                         )}
-                        Liberar para o Financeiro
+                        Liberar para pagamento
                       </Button>
                     )}
 

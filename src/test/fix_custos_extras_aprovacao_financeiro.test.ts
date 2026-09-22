@@ -71,7 +71,7 @@ describe('FIX CIRÚRGICO — CUSTOS EXTRAS: APROVAÇÃO OPERACIONAL E LINK FINAN
       const custosExtrasBlock = sidebarContent.substring(custosExtrasIndex, nextSectionIndex);
 
       expect(custosExtrasBlock).toContain(
-        '{ icon: Banknote, label: "Pagamentos / Contas a Pagar", to: "/financeiro?tab=custos-extras", module: "pagamentos_remessas" }'
+        '{ icon: Banknote, label: "Pagamentos / Contas a Pagar", to: "/financeiro?tab=custos-extras&origem=CUSTOS_EXTRAS", module: "pagamentos_remessas" }'
       );
       expect(custosExtrasBlock).not.toContain('/financeiro/contas-bancarias');
     });

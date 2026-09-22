@@ -1023,8 +1023,10 @@ export const buildCustosExtrasPipeline = (params: {
     pipelineStatus?: "RECEBIDO" | "EM_VALIDACAO" | "APROVADO_OPERACAO" | "ENVIADO_FINANCEIRO" | "FINALIZADO" | string | null;
     statusPagamento?: "A_PAGAR" | "PAGO" | string | null;
     devolucaoMotivo?: string;
+    userRole?: string | null;
+    isAdmin?: boolean;
 }): PipelineTrigger => {
-    const { competencia, empresa, devolucaoMotivo, pipelineStatus, statusPagamento } = params;
+    const { competencia, empresa, devolucaoMotivo, pipelineStatus, statusPagamento, userRole, isAdmin } = params;
 
     // Resolução do step canônico a partir de pipelineStatus retornado/recarregado ou currentStep
     let effectiveStep: CustoExtraStepId = params.currentStep || "lancamento";
@@ -1075,11 +1077,12 @@ export const buildCustosExtrasPipeline = (params: {
     const getRoute = (id: CustoExtraStepId) => {
         switch (id) {
             case "lancamento":
+                return "/custos-extras/lancamentos";
             case "validacao_operacional":
-                return "/producao/custos-extras";
+                return "/custos-extras/aprovacoes";
             case "financeiro":
             case "centro_custo":
-                return "/financeiro";
+                return "/financeiro?tab=custos-extras&origem=CUSTOS_EXTRAS";
             default:
                 return undefined;
         }
@@ -1126,16 +1129,66 @@ export const buildCustosExtrasPipeline = (params: {
         },
     ];
 
+    // Determina o próximo atalho de continuidade respeitando RBAC / perfil do usuário
+    const resolveNextAction = (): PipelineTrigger["nextAction"] => {
+        if (isDone) return undefined;
+
+        if (devolucaoMotivo) {
+            return {
+                label: "Ver Lançamentos para Correção →",
+                description: "Corrija a pendência indicada no lançamento.",
+                route: "/custos-extras/lancamentos",
+            };
+        }
+
+        const canValidate = Boolean(isAdmin || userRole === undefined || userRole === "gestor" || userRole === "rh" || userRole === "admin");
+        const canFinance = Boolean(isAdmin || userRole === undefined || userRole === "financeiro" || userRole === "gestor" || userRole === "admin");
+
+        switch (effectiveStep) {
+            case "lancamento":
+                return {
+                    label: "Continuar para Lançamentos →",
+                    description: "Encaminhe o lançamento para validação operacional.",
+                    route: "/custos-extras/lancamentos",
+                };
+            case "validacao_operacional":
+                if (canValidate) {
+                    return {
+                        label: "Continuar para Aprovações →",
+                        description: "Revise os dados e aprove ou devolva o lançamento.",
+                        route: "/custos-extras/aprovacoes",
+                    };
+                }
+                return undefined;
+            case "financeiro":
+                if (canValidate || canFinance) {
+                    return {
+                        label: "Continuar para Pagamentos →",
+                        description: "Acompanhe a liberação da despesa na Central de Pagamentos.",
+                        route: "/financeiro?tab=custos-extras&origem=CUSTOS_EXTRAS",
+                    };
+                }
+                return undefined;
+            case "centro_custo":
+                if (canFinance) {
+                    return {
+                        label: "Continuar para Pagamentos →",
+                        description: "Acesse a Central de Pagamentos para registrar a liquidação.",
+                        route: "/financeiro?tab=custos-extras&origem=CUSTOS_EXTRAS",
+                    };
+                }
+                return undefined;
+            default:
+                return undefined;
+        }
+    };
+
     return {
         context: { competencia, empresa, fluxo: "Custos Extras" },
         steps,
         title: "Status do Custo Extra",
         subtitle: "Acompanhe o fluxo de aprovação e pagamento da despesa.",
-        nextAction: isDone ? undefined : {
-            label: "Ver Fluxo Completo →",
-            description: "Acompanhe a próxima etapa de validação.",
-            route: getRoute(stepOrder[Math.min(currentIndex + 1, stepOrder.length - 1)]) || "/producao/custos-extras",
-        }
+        nextAction: resolveNextAction(),
     };
 };
 

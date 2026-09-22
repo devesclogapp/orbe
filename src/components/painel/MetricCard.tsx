@@ -5,7 +5,8 @@ import { cn } from "@/lib/utils";
 interface Props {
   label: string;
   value: string;
-  delta?: { value: string; positive: boolean };
+  delta?: { value: string; positive?: boolean; neutral?: boolean; label?: string };
+  sublabel?: string;
   icon?: LucideIcon;
   chartType?: "line" | "bar" | "none"; // Let's support line or bar for variety like Finnova
   size?: "default" | "small";
@@ -13,9 +14,10 @@ interface Props {
   chartColor?: string;
   className?: string;
   onClick?: () => void;
+  accent?: boolean;
 }
 
-export const MetricCard = ({ label, value, delta, icon: Icon, chartType = "line", size = "default", chartData, chartColor = "hsl(var(--primary))", className, onClick }: Props) => {
+export const MetricCard = ({ label, value, delta, sublabel, icon: Icon, chartType = "line", size = "default", chartData, chartColor = "hsl(var(--primary))", className, onClick }: Props) => {
   const isSmall = size === "small";
 
   return (
@@ -60,11 +62,27 @@ export const MetricCard = ({ label, value, delta, icon: Icon, chartType = "line"
         {delta && (
           <div className={cn("inline-flex items-center gap-1 font-medium",
             isSmall ? "text-[10px]" : "text-sm",
-            delta.positive ? "text-emerald-500" : "text-rose-500"
+            delta.neutral
+              ? "text-slate-500"
+              : delta.positive
+                ? "text-emerald-500"
+                : "text-rose-500"
           )}>
-            {delta.positive ? <ArrowUpRight className={isSmall ? "h-3 w-3" : "h-4 w-4"} /> : <ArrowDownRight className={isSmall ? "h-3 w-3" : "h-4 w-4"} />}
+            {!delta.neutral && (
+              delta.positive
+                ? <ArrowUpRight className={isSmall ? "h-3 w-3" : "h-4 w-4"} />
+                : <ArrowDownRight className={isSmall ? "h-3 w-3" : "h-4 w-4"} />
+            )}
             {delta.value}
-            <span className="font-normal text-slate-400 ml-0.5">vs. last month</span>
+            <span className="font-normal text-slate-400 ml-0.5">
+              {delta.label ?? "em relação ao mês anterior"}
+            </span>
+          </div>
+        )}
+
+        {sublabel && (
+          <div className={cn("text-slate-500 font-medium", isSmall ? "text-[10px]" : "text-xs")}>
+            {sublabel}
           </div>
         )}
       </div>

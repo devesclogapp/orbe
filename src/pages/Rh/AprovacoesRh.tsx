@@ -22,7 +22,8 @@ import {
     ExternalLink,
     Layers,
     Pencil,
-    X
+    X,
+    ArrowRight
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, startOfWeek, endOfWeek, subWeeks } from "date-fns";
@@ -684,7 +685,13 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
                             onAprovar={() => {
                                 aprovarMutation.mutate(activeItem, {
                                     onSuccess: () => {
-                                        toast.success("Item aprovado com sucesso!");
+                                        if (activeItem.tipo === "CUSTO EXTRA") {
+                                            toast.success("Despesa aprovada operacionalmente.", {
+                                                description: "Encaminhada para Pagamentos."
+                                            });
+                                        } else {
+                                            toast.success("Item aprovado com sucesso!");
+                                        }
                                         invalidate();
                                         setSelectedItems([]);
                                         setActiveItem(null);
@@ -1300,16 +1307,25 @@ function DetailPanel({
                                             </p>
                                         </div>
                                     ) : (
-                                        <div className="p-3.5 rounded-lg bg-emerald-50/90 border border-emerald-200 text-emerald-950 space-y-1.5 shadow-sm">
+                                        <div className="p-3.5 rounded-lg bg-emerald-50/90 border border-emerald-200 text-emerald-950 space-y-2.5 shadow-sm">
                                             <div className="flex items-center gap-2 font-bold text-xs text-emerald-800">
                                                 <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-                                                <span>Aprovado pelo RH — Encaminhado ao Financeiro</span>
+                                                <span>Despesa aprovada operacionalmente</span>
                                             </div>
                                             <p className="text-[11px] text-emerald-700 leading-relaxed">
                                                 {origemRecurso === "REEMBOLSO_COLABORADOR"
-                                                    ? "Despesa aprovada pelo RH e encaminhada para reembolso ao colaborador no módulo Financeiro."
-                                                    : "Despesa aprovada pelo RH e encaminhada para pagamento no módulo Financeiro."}
+                                                    ? "Despesa aprovada operacionalmente. Encaminhada para reembolso ao colaborador em Pagamentos."
+                                                    : "Despesa aprovada operacionalmente. Existe valor a pagar; a próxima etapa é Pagamentos."}
                                             </p>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="w-full bg-white hover:bg-emerald-100/60 text-emerald-900 border-emerald-300 font-semibold text-xs justify-center gap-1.5 h-8 shadow-xs"
+                                                onClick={() => navigate("/financeiro?tab=custos-extras&origem=CUSTOS_EXTRAS")}
+                                            >
+                                                Continuar para Pagamentos
+                                                <ArrowRight className="h-3.5 w-3.5 text-emerald-700" />
+                                            </Button>
                                         </div>
                                     )
                                 ) : item.tipo !== "OPERAÇÃO" ? (

@@ -200,7 +200,9 @@ const CustosExtrasLancamento = () => {
       return CustoExtraOperacionalService.createMany([payload]);
     },
     onSuccess: () => {
-      toast.success("Custo extra registrado com sucesso!");
+      toast.success("Custo extra registrado com sucesso.", {
+        description: "O lançamento foi recebido e aguarda validação. A etapa operacional do encarregado foi concluída."
+      });
       queryClient.invalidateQueries({ queryKey: ["custos-extras-hoje"] });
       queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
       goBackUrl();

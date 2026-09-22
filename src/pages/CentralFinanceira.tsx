@@ -273,6 +273,46 @@ const CentralFinanceira = () => {
     enabled: !!selectedEmpresaId,
   });
 
+  const isCustosExtrasContext = searchParams.get("origem") === "CUSTOS_EXTRAS";
+
+  const custosExtrasTotals = useMemo(() => {
+    let total = 0;
+    let aguardandoLiberacaoValor = 0;
+    let aguardandoLiberacaoQtd = 0;
+    let aPagarValor = 0;
+    let aPagarQtd = 0;
+    let pagosValor = 0;
+    let pagosQtd = 0;
+
+    for (const item of custosExtras) {
+      const val = Number(item.total ?? 0);
+      total += val;
+      const s = String(item.pipeline_status || "").toUpperCase();
+      const sp = String(item.status_pagamento || "").toUpperCase();
+
+      if (s === "FINALIZADO" || sp === "PAGO") {
+        pagosValor += val;
+        pagosQtd += 1;
+      } else if (s === "ENVIADO_FINANCEIRO") {
+        aPagarValor += val;
+        aPagarQtd += 1;
+      } else if (s === "APROVADO_OPERACAO") {
+        aguardandoLiberacaoValor += val;
+        aguardandoLiberacaoQtd += 1;
+      }
+    }
+
+    return {
+      total,
+      aguardandoLiberacaoValor,
+      aguardandoLiberacaoQtd,
+      aPagarValor,
+      aPagarQtd,
+      pagosValor,
+      pagosQtd,
+    };
+  }, [custosExtras]);
+
   const { data: servicosExtras = [], isLoading: loadingServicosExtras } = useQuery<any[]>({
     queryKey: ["servicos-extras-faturaveis", selectedMonth, selectedEmpresaId],
     queryFn: () => ServicosExtrasOperacionaisService.getWithEmpresas(selectedEmpresaId!, selectedMonth),
@@ -476,9 +516,11 @@ const CentralFinanceira = () => {
 
   return (
     <AppShell
-      title="Central Financeira"
-      subtitle={`Aprovação de lotes, faturamento e fechamento de competência · ${selectedCompetenciaLabel}`}
-      pipelineTrigger={financePipelineReviewTrigger}
+      title={isCustosExtrasContext ? "Pagamentos — Custos Extras" : "Central Financeira"}
+      subtitle={isCustosExtrasContext
+        ? `Acompanhamento financeiro, liberação e liquidação de despesas extras · ${selectedCompetenciaLabel}`
+        : `Aprovação de lotes, faturamento e fechamento de competência · ${selectedCompetenciaLabel}`}
+      pipelineTrigger={isCustosExtrasContext ? undefined : financePipelineReviewTrigger}
     >
       <div className="space-y-6">
         <section className="esc-card p-4 md:p-5">
@@ -536,28 +578,37 @@ const CentralFinanceira = () => {
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={() => navigate("/financeiro/regras")}>
-                <ExternalLink className="h-4 w-4 mr-2" />
-                Regras
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => navigate("/bancario")}>
-                <ExternalLink className="h-4 w-4 mr-2" />
-                Bancário (CNAB)
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => reprocessMutation.mutate()}
-                disabled={reprocessMutation.isPending || !selectedEmpresaId}
-                title="Consolida e recalcula os valores financeiros da competência selecionada"
-              >
-                {reprocessMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                )}
-                Consolidar Competência
-              </Button>
+              {isCustosExtrasContext ? (
+                <Button variant="outline" size="sm" onClick={() => navigate("/financeiro")} className="gap-1.5 text-muted-foreground hover:text-foreground">
+                  <ExternalLink className="h-4 w-4" />
+                  Ver Central Financeira Global
+                </Button>
+              ) : (
+                <>
+                  <Button variant="outline" size="sm" onClick={() => navigate("/financeiro/regras")}>
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Regras
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => navigate("/bancario")}>
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Bancário (CNAB)
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => reprocessMutation.mutate()}
+                    disabled={reprocessMutation.isPending || !selectedEmpresaId}
+                    title="Consolida e recalcula os valores financeiros da competência selecionada"
+                  >
+                    {reprocessMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                    )}
+                    Consolidar Competência
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </section>
@@ -565,6 +616,74 @@ const CentralFinanceira = () => {
         {isLoading ? (
           <div className="flex items-center justify-center p-20 esc-card">
             <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
+          </div>
+        ) : isCustosExtrasContext ? (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+              <MetricCard
+                label="Total Despesas Extras"
+                value={`R$ ${Number(custosExtrasTotals.total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+                sublabel={`${custosExtras.length} registro(s) no período`}
+                icon={Wallet}
+              />
+              <MetricCard
+                label="Aguardando liberação para pagamento"
+                value={`R$ ${Number(custosExtrasTotals.aguardandoLiberacaoValor).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+                sublabel={`${custosExtrasTotals.aguardandoLiberacaoQtd} despesa(s) aprovada(s)`}
+                icon={AlertTriangle}
+              />
+              <MetricCard
+                label="A pagar"
+                value={`R$ ${Number(custosExtrasTotals.aPagarValor).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+                sublabel={`${custosExtrasTotals.aPagarQtd} no financeiro`}
+                icon={FileCheck}
+              />
+              <MetricCard
+                label="Pago"
+                value={`R$ ${Number(custosExtrasTotals.pagosValor).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+                sublabel={`${custosExtrasTotals.pagosQtd} liquidada(s)`}
+                icon={CheckCircle2}
+              />
+            </div>
+
+            <section className="esc-card">
+              <header className="px-5 py-4 border-b border-border flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="font-display font-semibold text-foreground">Pagamentos — Custos Extras</h2>
+                    <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 text-xs">
+                      Visão Contextual
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    Acompanhamento de liberação, liquidação e pagamento de despesas operacionais da competência.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20">
+                    {custosExtras.length} registros
+                  </Badge>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8"
+                    onClick={() => queryClient.invalidateQueries({ queryKey: ["custos-extras"] })}
+                  >
+                    <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", loadingCustos && "animate-spin")} />
+                    Atualizar
+                  </Button>
+                </div>
+              </header>
+              <div className="p-1">
+                {loadingCustos ? (
+                  <div className="flex items-center justify-center p-12">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <CustosExtrasTableBlock data={custosExtras} contextualOrigem="CUSTOS_EXTRAS" />
+                )}
+              </div>
+            </section>
           </div>
         ) : (
           <>
