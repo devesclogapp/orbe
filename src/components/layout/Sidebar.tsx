@@ -94,7 +94,11 @@ type MenuGroup = {
   id: string;
   label: string;
   stageKey?: "entradas" | "rh" | "financeiro";
-  items: MenuItem[];
+  items?: MenuItem[];
+  to?: string;
+  icon?: LucideIcon;
+  module?: AccessModule;
+  pulseKey?: PulseKey;
 };
 
 type DrawerState = {
@@ -188,10 +192,24 @@ const groups: MenuGroup[] = [
     stageKey: "rh",
     items: [
       { icon: CalendarCheck, label: "Central / Processamento", to: "/banco-horas/processamento", module: "processamento_rh" },
-      { icon: Shield, label: "Aprovações Globais", to: "/rh/aprovacoes", module: "processamento_rh" },
       { icon: Clock, label: "Banco de Horas", to: "/banco-horas", module: "banco_de_horas" },
-      { icon: Lock, label: "Fechamentos", to: "/banco-horas/fechamento", module: "banco_de_horas" },
+      { icon: Lock, label: "Fechamento Mensal CLT", to: "/banco-horas/fechamento", module: "banco_de_horas" },
     ],
+  },
+  {
+    id: "aprovacoes",
+    label: "Aprovações",
+    to: "/rh/aprovacoes",
+    icon: Shield,
+    module: "processamento_rh",
+  },
+  {
+    id: "fechamento",
+    label: "Fechamento",
+    to: "/fechamento",
+    icon: CalendarCheck,
+    module: "fechamento_mensal",
+    pulseKey: "fechamento_mensal",
   },
   {
     id: "financeiro",
@@ -200,12 +218,10 @@ const groups: MenuGroup[] = [
     items: [
       { icon: Wallet, label: "Central Financeira", to: "/financeiro", end: true, module: "central_financeira", pulseKey: "central_financeira" },
       { icon: Receipt, label: "Receitas", to: "/financeiro/receitas", module: "central_financeira" },
-      { icon: Receipt, label: "Contas a Receber", to: "/financeiro/receitas", module: "central_financeira" },
-      { icon: AlertCircle, label: "Contas a Pagar", to: "/financeiro/inadimplencia", module: "central_financeira" },
-      { icon: FileText, label: "Lotes", to: "/financeiro/faturamento", module: "central_financeira", pulseKey: "faturamento" },
+      { icon: FileText, label: "Faturamento de Clientes", to: "/financeiro/faturamento", module: "central_financeira", pulseKey: "faturamento" },
       { icon: Banknote, label: "Remessas", to: "/bancario", module: "pagamentos_remessas", pulseKey: "pagamentos_remessas" },
       { icon: ArrowRightLeft, label: "Retornos / Conciliação", to: "/financeiro/retorno", module: "pagamentos_remessas" },
-      { icon: AlertCircle, label: "Aging / Inadimplência", to: "/financeiro/inadimplencia", module: "central_financeira" },
+      { icon: AlertCircle, label: "Inadimplência de Clientes", to: "/financeiro/inadimplencia", module: "central_financeira" },
       { icon: TrendingUp, label: "Resultado (DRE)", to: "/financeiro/dre", module: "central_financeira" },
     ],
   },
@@ -366,6 +382,16 @@ export const isRouteMatchingItem = (
     }
   }
 
+  // 2.2 Regra para Fechamento Canônico (/fechamento)
+  if (itemPath === "/fechamento") {
+    // Na visão canônica transversal, destacar com exclusividade o item "Fechamento"
+    if (item.label === "Fechamento") {
+      return true;
+    }
+    // Evitar que itens residuais de outros submódulos fiquem acesos ao navegar no Fechamento canônico
+    return false;
+  }
+
   // 3. Regra Geral para itens com query params específicos (ex: ?action=nova-operacao)
   if (itemQuery) {
     for (const [key, value] of itemParams.entries()) {
@@ -400,7 +426,7 @@ const getInitialOpenGroups = (pathname: string, search: string = ""): Record<str
 
   // Padrão inicial inteligente: abre o grupo correspondente à rota e contexto atual
   const matched = groups.find((g) =>
-    g.items.some((i) => isRouteMatchingItem(i, { pathname, search }))
+    !g.to && g.items?.some((i) => isRouteMatchingItem(i, { pathname, search }))
   );
   return {
     [matched ? matched.id : "operacoes_volume"]: true,
@@ -423,7 +449,7 @@ export const Sidebar = () => {
   // Garante que o grupo da rota atual esteja aberto quando o usuário navegar, sem fechar os demais
   useEffect(() => {
     const matched = groups.find((g) =>
-      g.items.some((i) => isRouteMatchingItem(i, location))
+      !g.to && g.items?.some((i) => isRouteMatchingItem(i, location))
     );
     if (matched && !openGroups[matched.id]) {
       setOpenGroups((prev) => {
@@ -473,17 +499,22 @@ export const Sidebar = () => {
 
   const visibleGroups = useMemo(
     () => {
-      const isEncarregado = user?.user_metadata?.role?.toLowerCase() === "encarregado";
-
       return groups
         .map((group) => {
-          let items = filterItems(group.items);
-
+          if (group.to) {
+            const hasAccess = !group.module || isAdmin || canAccess(group.module);
+            return hasAccess ? group : null;
+          }
+          let items = filterItems(group.items || []);
           return { ...group, items: items };
         })
-        .filter((group) => group.items.length > 0);
+        .filter((group): group is MenuGroup => {
+          if (!group) return false;
+          if (group.to) return true;
+          return Boolean(group.items && group.items.length > 0);
+        });
     },
-    [canAccess, isAdmin, user?.user_metadata?.role],
+    [canAccess, isAdmin],
   );
 
   const userInitials = user?.user_metadata?.full_name
@@ -520,6 +551,54 @@ export const Sidebar = () => {
 
           <div className="space-y-2">
             {visibleGroups.map((group) => {
+              if (group.to) {
+                const isDirectActive = location.pathname === group.to;
+                const groupPulse = group.pulseKey ? pulseItems[group.pulseKey] : undefined;
+
+                return (
+                  <NavLink
+                    key={group.id}
+                    to={group.to}
+                    className={cn(
+                      "flex w-full items-center justify-between rounded-md px-2 py-2 my-1 text-left transition-colors",
+                      isDirectActive
+                        ? "bg-[#FFF1EC] text-[#FD4C00] font-semibold border-l-[3px] border-[#FD4C00]"
+                        : "bg-muted/40 hover:bg-muted/80 text-muted-foreground/80 hover:text-foreground",
+                    )}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      {!isDirectActive && <span className="h-4 w-1 rounded-sm bg-slate-300/40" />}
+                      {group.icon && (
+                        <group.icon className={cn("h-3.5 w-3.5 shrink-0", isDirectActive ? "text-[#FD4C00]" : "text-muted-foreground/70")} />
+                      )}
+                      <span className={cn(
+                        "text-[10px] font-semibold uppercase tracking-[0.2em] truncate",
+                        isDirectActive ? "text-[#FD4C00]" : "text-muted-foreground/80"
+                      )}>
+                        {group.label}
+                      </span>
+                    </div>
+                    {groupPulse && groupPulse.count > 0 ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDrawer({ title: group.label, route: group.to!, pulse: groupPulse });
+                        }}
+                        className={cn(
+                          "inline-flex min-w-6 items-center justify-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold transition-transform hover:scale-[1.03]",
+                          toneClasses[groupPulse.tone],
+                        )}
+                        title={groupPulse.hint}
+                      >
+                        {groupPulse.count}
+                      </button>
+                    ) : null}
+                  </NavLink>
+                );
+              }
+
               const isOpen = Boolean(openGroups[group.id]);
               const stageTone = group.stageKey ? stages[group.stageKey].tone : "gray";
 
@@ -547,7 +626,7 @@ export const Sidebar = () => {
                     />
                   </button>
 
-                  {isOpen ? (
+                  {isOpen && group.items ? (
                     <div className="relative mt-1 mb-3 space-y-1 pl-3">
                       {group.stageKey ? (
                         <span className={cn("absolute bottom-2 left-[13px] top-1 w-px", stageLineTone[stageTone])} />

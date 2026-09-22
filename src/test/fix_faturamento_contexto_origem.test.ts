@@ -155,12 +155,26 @@ describe('FIX — CONTEXTO DE ORIGEM NO FATURAMENTO', () => {
       expect(sidebarContent).toContain('{ icon: Receipt, label: "Receitas", to: "/financeiro/receitas"');
     });
 
-    it('Financeiro -> Contas a Receber deve permanecer sem origem (visão global)', () => {
-      expect(sidebarContent).toContain('{ icon: Receipt, label: "Contas a Receber", to: "/financeiro/receitas"');
+    it('Financeiro -> Contas a Receber foi removido do Sidebar (duplicata de Receitas saneada na UX-1A)', () => {
+      expect(sidebarContent).not.toContain('{ icon: Receipt, label: "Contas a Receber"');
     });
 
-    it('Financeiro -> Lotes continua utilizando /financeiro/faturamento (preservado)', () => {
-      expect(sidebarContent).toContain('{ icon: FileText, label: "Lotes", to: "/financeiro/faturamento"');
+    it('Financeiro -> Faturamento de Clientes continua utilizando /financeiro/faturamento (saneado na UX-1A)', () => {
+      expect(sidebarContent).toContain('{ icon: FileText, label: "Faturamento de Clientes", to: "/financeiro/faturamento"');
+    });
+
+    it('Centrais Transversais -> Fechamento aponta para rota canônica /fechamento (Fase UX-1B)', () => {
+      expect(sidebarContent).toContain('label: "Fechamento"');
+      expect(sidebarContent).toContain('to: "/fechamento"');
+      expect(sidebarContent).toContain('icon: CalendarCheck');
+    });
+
+    it('Financeiro -> Contas a Pagar foi removido do Sidebar (rótulo invertido saneado na UX-1A)', () => {
+      expect(sidebarContent).not.toContain('label: "Contas a Pagar", to: "/financeiro/inadimplencia"');
+    });
+
+    it('Financeiro -> Inadimplência de Clientes aponta para /financeiro/inadimplencia (Fase UX-1A)', () => {
+      expect(sidebarContent).toContain('{ icon: AlertCircle, label: "Inadimplência de Clientes", to: "/financeiro/inadimplencia"');
     });
   });
 

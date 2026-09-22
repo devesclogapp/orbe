@@ -503,10 +503,10 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
     const currentTypeObj = APPROVAL_TYPES.find(t => t.id === filterType);
     const currentTypeLabel = currentTypeObj?.label || filterType;
     const isContextMode = isLocked && filterType !== "all";
-    const pageTitle = isContextMode ? `Aprovações — ${currentTypeLabel}` : "Aprovações RH";
+    const pageTitle = isContextMode ? `Aprovações — ${currentTypeLabel}` : "Aprovações";
     const pageSubtitle = isContextMode 
         ? `Fila de aprovações contextuais para ${currentTypeLabel}` 
-        : "Fila de aprovações do RH - decisões pendentes";
+        : "Central de validação e decisões pendentes";
     const pageBadge = isContextMode ? `${currentTypeLabel.toUpperCase()} / APROVAÇÕES` : "PROCESSAMENTO / PIPELINE";
 
     // ── Render ───────────────────────────────────────
