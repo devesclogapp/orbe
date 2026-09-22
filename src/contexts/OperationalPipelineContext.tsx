@@ -22,6 +22,8 @@ export type PipelineContext = {
     competencia: string;
     empresa: string;
     fluxo: string;
+    registroId?: string;
+    [key: string]: any;
 };
 
 export type PipelineTrigger = {
@@ -39,6 +41,7 @@ export type PipelineTrigger = {
         route: string;
         autoNavigate?: boolean;
         delayMs?: number;
+        actionPayload?: any;
     };
 };
 
@@ -1025,8 +1028,9 @@ export const buildCustosExtrasPipeline = (params: {
     devolucaoMotivo?: string;
     userRole?: string | null;
     isAdmin?: boolean;
+    registroId?: string;
 }): PipelineTrigger => {
-    const { competencia, empresa, devolucaoMotivo, pipelineStatus, statusPagamento, userRole, isAdmin } = params;
+    const { competencia, empresa, devolucaoMotivo, pipelineStatus, statusPagamento, userRole, isAdmin, registroId } = params;
 
     // Resolução do step canônico a partir de pipelineStatus retornado/recarregado ou currentStep
     let effectiveStep: CustoExtraStepId = params.currentStep || "lancamento";
@@ -1175,6 +1179,7 @@ export const buildCustosExtrasPipeline = (params: {
                         label: "Continuar para Pagamentos →",
                         description: "Acesse a Central de Pagamentos para registrar a liquidação.",
                         route: "/financeiro?tab=custos-extras&origem=CUSTOS_EXTRAS",
+                        actionPayload: { registroId },
                     };
                 }
                 return undefined;
@@ -1184,7 +1189,7 @@ export const buildCustosExtrasPipeline = (params: {
     };
 
     return {
-        context: { competencia, empresa, fluxo: "Custos Extras" },
+        context: { competencia, empresa, fluxo: "Custos Extras", registroId },
         steps,
         title: "Status do Custo Extra",
         subtitle: "Acompanhe o fluxo de aprovação e pagamento da despesa.",

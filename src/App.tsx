@@ -11,7 +11,7 @@ import { ClientProvider } from "@/contexts/ClientContext";
 import { OnboardingProvider } from "@/contexts/OnboardingContext";
 import { AccessControlProvider, useAccessControl } from "@/contexts/AccessControlContext";
 import { OperationalPipelineProvider } from "@/contexts/OperationalPipelineContext";
-import { OperationalPipelineModal } from "@/components/layout/OperationalPipelineModal";
+import { OperationalPipelinePresenter } from "@/components/layout/OperationalPipelinePresenter";
 import { AuthGuard } from "@/components/Auth/AuthGuard";
 import { PortalGuard } from "@/components/Auth/PortalGuard";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
@@ -145,7 +145,7 @@ const App = () => (
                       <Toaster />
                       <Sonner />
                       <BrowserRouter>
-                        <OperationalPipelineModal />
+                        <OperationalPipelinePresenter />
                         <ErrorBoundary>
                           <Routes>
                             {/* Public Auth Routes */}

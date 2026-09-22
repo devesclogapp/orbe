@@ -66,6 +66,8 @@ import { IntermitentesLoteService } from "@/services/domain/intermitentes.servic
 import { AprovacoesService } from "@/services/domain/aprovacoes.service";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTenant } from "@/contexts/TenantContext";
+import { useOperationalPipeline, buildCustosExtrasPipeline } from "@/contexts/OperationalPipelineContext";
 import {
     getOrigemRecursoBadge,
     getOrigemRecursoApprovalNotice,
@@ -148,6 +150,8 @@ const TIPO_COLORS: Record<TipoItem, string> = {
 // ────────────────────────────────────────────────────
 export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: string; lockedFlow?: boolean } = {}) {
     const { user } = useAuth();
+    const { role, isAdmin } = useTenant();
+    const { openPipeline } = useOperationalPipeline();
     const queryClient = useQueryClient();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
@@ -295,14 +299,14 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
                     .single();
                 if (fetchErr) throw fetchErr;
 
-                const { error } = await supabase.rpc("rpc_custo_extra_transicionar" as any, {
+                const { data: result, error } = await supabase.rpc("rpc_custo_extra_transicionar" as any, {
                     p_id: item.id,
                     p_acao: "aprovar",
                     p_updated_at: custoData?.atualizado_em || null,
                     p_justificativa: null,
                 });
                 if (error) throw error;
-                return;
+                return result;
             }
             // Serviços extras
             if (item.tipo === "SERVIÇO EXTRA") {
@@ -683,9 +687,10 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
                             item={activeItem}
                             onClose={() => setActiveItem(null)}
                             onAprovar={() => {
-                                aprovarMutation.mutate(activeItem, {
-                                    onSuccess: () => {
-                                        if (activeItem.tipo === "CUSTO EXTRA") {
+                                const currentItem = activeItem;
+                                aprovarMutation.mutate(currentItem, {
+                                    onSuccess: (result: any) => {
+                                        if (currentItem.tipo === "CUSTO EXTRA") {
                                             toast.success("Despesa aprovada operacionalmente.", {
                                                 description: "Encaminhada para Pagamentos."
                                             });
@@ -694,27 +699,61 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
                                         }
                                         invalidate();
                                         setSelectedItems([]);
+                                        // 1. Fechar primeiro o Drawer de Detalhes atual
                                         setActiveItem(null);
+
+                                        // 2. Selecionar automaticamente a aba "Aprovados" e resetar página
+                                        setActiveTab("aprovados");
+                                        setCurrentPage(1);
+
+                                        // 3. Disparar o Drawer de Continuidade exclusivamente para CUSTO EXTRA
+                                        if (currentItem.tipo === "CUSTO EXTRA") {
+                                            const compCandidate = currentItem.competencia || currentItem.data_recebimento || "";
+                                            let competencia = format(new Date(), "yyyy-MM");
+                                            if (/^\d{4}-\d{2}/.test(compCandidate)) {
+                                                competencia = compCandidate.substring(0, 7);
+                                            }
+
+                                            setTimeout(() => {
+                                                openPipeline(buildCustosExtrasPipeline({
+                                                    competencia,
+                                                    empresa: currentItem.empresa || "Empresa",
+                                                    currentStep: "financeiro",
+                                                    pipelineStatus: result?.pipeline_status || "APROVADO_OPERACAO",
+                                                    statusPagamento: result?.status_pagamento || "A_PAGAR",
+                                                    userRole: role,
+                                                    isAdmin,
+                                                }));
+                                            }, 100);
+                                        }
                                     }
                                 });
                             }}
                             onDevolver={() => {
-                                devolverMutation.mutate({ item: activeItem }, {
+                                const currentItem = activeItem;
+                                if (!currentItem) return;
+                                devolverMutation.mutate({ item: currentItem }, {
                                     onSuccess: () => {
                                         toast.success("Item devolvido.");
                                         invalidate();
                                         setSelectedItems([]);
                                         setActiveItem(null);
+                                        setActiveTab("devolvidos");
+                                        setCurrentPage(1);
                                     }
                                 });
                             }}
                             onSolicitarCorrecao={(motivo) => {
-                                devolverMutation.mutate({ item: activeItem, motivo }, {
+                                const currentItem = activeItem;
+                                if (!currentItem) return;
+                                devolverMutation.mutate({ item: currentItem, motivo }, {
                                     onSuccess: () => {
                                         toast.success("Correção solicitada com sucesso.");
                                         invalidate();
                                         setSelectedItems([]);
                                         setActiveItem(null);
+                                        setActiveTab("devolvidos");
+                                        setCurrentPage(1);
                                     }
                                 });
                             }}

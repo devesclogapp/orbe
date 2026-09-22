@@ -1,9 +1,10 @@
-import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
+import React, { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
   AlertTriangle,
   ArrowDownAZ,
+  ArrowLeft,
   ArrowRight,
   ArrowUpZA,
   BadgeDollarSign,
@@ -13,6 +14,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Circle,
   Eye,
   FileText,
   Lock,
@@ -111,6 +113,8 @@ type CustosExtrasTableBlockProps = {
   data: CustoExtraItem[];
   defaultPipelineFilter?: "todos" | "pendentes" | "validacao" | "aprovacoes" | "financeiro" | "concluidos";
   contextualOrigem?: "CUSTOS_EXTRAS" | string;
+  controlledPipelineFilter?: string;
+  onPipelineFilterChange?: (filter: string) => void;
 };
 
 type EditableCostForm = {
@@ -252,6 +256,94 @@ const getDisplayPipelineStatus = (item: CustoExtraItem, isContextual: boolean) =
   return getPipelineStatusConfig(item.pipeline_status);
 };
 
+const MINI_FLOW_STAGES = [
+  { id: 0, label: "Recebido" },
+  { id: 1, label: "Validação" },
+  { id: 2, label: "Aprovado" },
+  { id: 3, label: "A pagar" },
+  { id: 4, label: "Pago" },
+] as const;
+
+const FULL_FLOW_STAGES = [
+  {
+    id: 0,
+    label: "Recebido",
+    responsible: "Encarregado",
+    description: "Custo extra registrado e capturado pelo sistema.",
+  },
+  {
+    id: 1,
+    label: "Em validação",
+    responsible: "Operação / ADM",
+    description: "Análise técnica operacional e conferência de dados.",
+  },
+  {
+    id: 2,
+    label: "Aprovado",
+    responsible: "Gestor Operacional",
+    description: "Despesa aprovada operacionalmente para pagamento.",
+  },
+  {
+    id: 3,
+    label: "A pagar",
+    responsible: "Financeiro",
+    description: "Disponível na Central de Pagamentos para liquidação.",
+  },
+  {
+    id: 4,
+    label: "Pago",
+    responsible: "Financeiro",
+    description: "Despesa liquidada e fluxo operacional concluído.",
+  },
+] as const;
+
+const getCustoExtraStageIndex = (item: CustoExtraItem) => {
+  const s = String(item.pipeline_status || "RECEBIDO").toUpperCase();
+  const sp = String(item.status_pagamento || "").toUpperCase();
+  if (s === "FINALIZADO" || sp === "PAGO") return 4;
+  if (s === "ENVIADO_FINANCEIRO") return 3;
+  if (s === "APROVADO_OPERACAO") return 2;
+  if (s === "EM_VALIDACAO") return 1;
+  return 0;
+};
+
+const getContextualFooterBanner = (currentStatus: string, isFinalizado: boolean) => {
+  if (isFinalizado) {
+    return {
+      text: "Despesa liquidada e finalizada no pipeline financeiro.",
+      className: "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800",
+      icon: CheckCircle2,
+    };
+  }
+  switch (currentStatus) {
+    case "ENVIADO_FINANCEIRO":
+      return {
+        text: "Despesa liberada. Pagamento pendente.",
+        className: "bg-indigo-50 text-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800",
+        icon: BadgeDollarSign,
+      };
+    case "APROVADO_OPERACAO":
+      return {
+        text: "Despesa aprovada. Aguardando liberação para pagamento.",
+        className: "bg-blue-50 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300 border-blue-200 dark:border-blue-800",
+        icon: CheckCircle2,
+      };
+    case "EM_VALIDACAO":
+      return {
+        text: "Despesa em validação operacional.",
+        className: "bg-cyan-50 text-cyan-800 dark:bg-cyan-950/40 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800",
+        icon: ArrowRight,
+      };
+    case "RECEBIDO":
+    default:
+      return {
+        text: "Lançamento recebido. Aguardando encaminhamento para validação.",
+        className: "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border-amber-200 dark:border-amber-800",
+        icon: Check,
+      };
+  }
+};
+
 const buildEditForm = (item: CustoExtraItem): EditableCostForm => ({
   data: toInputValue(item.data),
   empresa_nome: item.empresas?.nome || item.empresa_nome || "",
@@ -265,7 +357,13 @@ const buildEditForm = (item: CustoExtraItem): EditableCostForm => ({
   operacao_id: toInputValue(item.operacao_id),
 });
 
-export function CustosExtrasTableBlock({ data, defaultPipelineFilter = "todos", contextualOrigem }: CustosExtrasTableBlockProps) {
+export function CustosExtrasTableBlock({
+  data,
+  defaultPipelineFilter = "todos",
+  contextualOrigem,
+  controlledPipelineFilter,
+  onPipelineFilterChange,
+}: CustosExtrasTableBlockProps) {
   const [searchParams] = useSearchParams();
   const isContextualCustosExtras = contextualOrigem === "CUSTOS_EXTRAS" || searchParams.get("origem") === "CUSTOS_EXTRAS";
   const queryClient = useQueryClient();
@@ -273,7 +371,12 @@ export function CustosExtrasTableBlock({ data, defaultPipelineFilter = "todos", 
   const [filterText, setFilterText] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [pipelineStatusFilter, setPipelineStatusFilter] = useState("all");
-  const [pipelineFilter, setPipelineFilter] = useState<string>(defaultPipelineFilter);
+  const [internalPipelineFilter, setInternalPipelineFilter] = useState<string>(defaultPipelineFilter);
+  const pipelineFilter = controlledPipelineFilter !== undefined ? controlledPipelineFilter : internalPipelineFilter;
+  const setPipelineFilter = (newFilter: string) => {
+    setInternalPipelineFilter(newFilter);
+    onPipelineFilterChange?.(newFilter);
+  };
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
   const [lockedCols, setLockedCols] = useState<Record<string, boolean>>(() => {
@@ -319,6 +422,25 @@ export function CustosExtrasTableBlock({ data, defaultPipelineFilter = "todos", 
 
   const [confirmPaymentOpen, setConfirmPaymentOpen] = useState(false);
   const [itemToPay, setItemToPay] = useState<CustoExtraItem | null>(null);
+  const [detailsViewMode, setDetailsViewMode] = useState<"details" | "flow">("details");
+
+  useEffect(() => {
+    const handleContinuarPagamento = (e: Event) => {
+      const customEvent = e as CustomEvent<{ registroId?: string }>;
+      const targetId = customEvent.detail?.registroId;
+      if (!targetId) return;
+
+      const item = data.find((d) => d.id === targetId);
+      if (item) {
+        setPipelineFilter("a_pagar");
+        setSelectedItem(item);
+        setDetailsViewMode("details");
+      }
+    };
+
+    window.addEventListener("orbe:continuar-pagamento-custo-extra", handleContinuarPagamento);
+    return () => window.removeEventListener("orbe:continuar-pagamento-custo-extra", handleContinuarPagamento);
+  }, [data]);
 
   const updatePipelineMutation = useMutation({
     mutationFn: async ({ id, acao, updatedAt, justification }: { id: string; acao: string; updatedAt: string; justification?: string }) => {
@@ -333,7 +455,7 @@ export function CustosExtrasTableBlock({ data, defaultPipelineFilter = "todos", 
       queryClient.invalidateQueries({ queryKey: ["aprovacoes-kpis"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-custos-extras"] });
       queryClient.invalidateQueries({ queryKey: ["financeiro-despesas"] });
-      toast.success("Status do pipeline atualizado");
+      toast.success("Status do pipeline atualizado", { id: "pipeline-status" });
     },
     onError: (error: any) => {
       console.error("Erro ao atualizar pipeline:", error);
@@ -372,7 +494,13 @@ export function CustosExtrasTableBlock({ data, defaultPipelineFilter = "todos", 
       }, {
         onSuccess: (result: any) => {
           setSelectedItem(null);
+          // Dismiss específico apenas para o toast de atualização de status do pipeline, preservando outros feedbacks
+          toast.dismiss("pipeline-status");
           const competencia = currentItem.data ? format(new Date(currentItem.data), "yyyy-MM") : format(new Date(), "yyyy-MM");
+
+          if (current === 'APROVADO_OPERACAO') {
+            setPipelineFilter("a_pagar");
+          }
 
           openPipeline(buildCustosExtrasPipeline({
             competencia,
@@ -382,6 +510,7 @@ export function CustosExtrasTableBlock({ data, defaultPipelineFilter = "todos", 
             statusPagamento: result?.status_pagamento,
             userRole: role,
             isAdmin,
+            registroId: currentItem.id,
           }));
         }
       });
@@ -401,6 +530,8 @@ export function CustosExtrasTableBlock({ data, defaultPipelineFilter = "todos", 
         setConfirmPaymentOpen(false);
         setItemToPay(null);
         setSelectedItem(null);
+        // Dismiss específico apenas para o toast de atualização de status do pipeline
+        toast.dismiss("pipeline-status");
 
         const competencia = currentItem.data ? format(new Date(currentItem.data), "yyyy-MM") : format(new Date(), "yyyy-MM");
         openPipeline(buildCustosExtrasPipeline({
@@ -1019,15 +1150,25 @@ export function CustosExtrasTableBlock({ data, defaultPipelineFilter = "todos", 
         </div>
       </div >
 
-      <Sheet open={!!selectedItem} onOpenChange={(value) => !value && setSelectedItem(null)}>
+      <Sheet
+        open={!!selectedItem}
+        onOpenChange={(value) => {
+          if (!value) {
+            setSelectedItem(null);
+            setDetailsViewMode("details");
+          }
+        }}
+      >
         <SheetContent className="w-full sm:max-w-lg overflow-y-auto overflow-x-hidden flex flex-col justify-between">
-          <div className="space-y-6 min-w-0">
+          <div className="space-y-5 min-w-0">
             <SheetHeader>
               <SheetTitle className="text-xl font-bold text-foreground">
-                Detalhes do Custo Extra
+                {detailsViewMode === "flow" ? "Linha do Tempo — Custo Extra" : "Detalhes do Custo Extra"}
               </SheetTitle>
               <SheetDescription>
-                Informações operacionais e financeiras consolidadas deste lançamento.
+                {detailsViewMode === "flow"
+                  ? "Acompanhamento das 5 etapas operacionais e financeiras deste lançamento."
+                  : "Informações operacionais e financeiras consolidadas deste lançamento."}
               </SheetDescription>
             </SheetHeader>
 
@@ -1035,59 +1176,222 @@ export function CustosExtrasTableBlock({ data, defaultPipelineFilter = "todos", 
               const item = selectedItem;
               const pipelineCfg = getDisplayPipelineStatus(item, isContextualCustosExtras);
               const origemBadge = getOrigemRecursoBadge(item.origem_recurso);
+              const currentStatus = String(item.pipeline_status || "RECEBIDO").toUpperCase();
+              const currentStatusPgto = String(item.status_pagamento || "").toUpperCase();
+              const isFinalizado = currentStatus === "FINALIZADO" || currentStatus === "CONCLUIDO" || currentStatusPgto === "PAGO";
+              const currentStageIdx = getCustoExtraStageIndex(item);
 
               return (
-                <div className="space-y-5 min-w-0">
-                  {/* Status Badges */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-3.5 rounded-xl bg-muted/30 border border-border/70 min-w-0">
-                    <div className="space-y-1 min-w-0">
-                      <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block truncate">
-                        Pipeline Operacional
-                      </span>
-                      <div>
-                        <button
+                <div className="space-y-4 min-w-0">
+                  {detailsViewMode === "flow" ? (
+                    <div className="space-y-3 min-w-0">
+                      {/* Modo Fluxo Completo: Voltar aos detalhes sem duplicação do mini-fluxo */}
+                      <div className="flex items-center justify-between pb-1">
+                        <Button
                           type="button"
-                          onClick={() => {
-                            const comp = item.data ? format(new Date(item.data), "yyyy-MM") : format(new Date(), "yyyy-MM");
-                            openPipeline(buildCustosExtrasPipeline({
-                              competencia: comp,
-                              empresa: item.empresas?.nome || item.empresa_nome || "Empresa",
-                              pipelineStatus: item.pipeline_status,
-                              statusPagamento: item.status_pagamento,
-                              userRole: role,
-                              isAdmin,
-                            }));
-                          }}
-                          className="group inline-flex items-center gap-1 focus:outline-none"
-                          title="Clique para ver a linha do tempo do fluxo"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setDetailsViewMode("details")}
+                          className="text-xs font-semibold text-primary hover:text-primary hover:bg-primary/10 h-7 px-2 -ml-2 shrink-0 gap-1.5"
                         >
-                          <Badge className={cn("border shadow-none font-medium uppercase px-2 py-0.5 text-[11px] max-w-full truncate inline-block group-hover:ring-1 group-hover:ring-primary/40 cursor-pointer transition-all", pipelineCfg.className)}>
-                            {pipelineCfg.label}
-                          </Badge>
-                        </button>
+                          <ArrowLeft className="h-3.5 w-3.5" />
+                          Voltar aos detalhes
+                        </Button>
+                      </div>
+
+                      {/* Linha do tempo completa com 5 etapas e forte destaque na etapa atual */}
+                      <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+                        <div className="flex items-center justify-between pb-1 border-b border-border/60">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                            Linha do Tempo
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">
+                            5 etapas
+                          </span>
+                        </div>
+
+                        <div className="space-y-0 pt-1">
+                          {FULL_FLOW_STAGES.map((stage, idx) => {
+                            const isStepDone = isFinalizado || idx < currentStageIdx;
+                            const isStepCurrent = !isFinalizado && idx === currentStageIdx;
+                            const isStepPending = !isFinalizado && idx > currentStageIdx;
+                            const isLast = idx === FULL_FLOW_STAGES.length - 1;
+
+                            return (
+                              <div key={stage.id} className="flex gap-3 relative">
+                                <div className="flex flex-col items-center">
+                                  {isStepDone ? (
+                                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-xs">
+                                      <Check className="h-3.5 w-3.5 stroke-[3]" />
+                                    </div>
+                                  ) : isStepCurrent ? (
+                                    <div className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-white ring-4 ring-primary/25 ring-offset-2 ring-offset-background shadow-xs">
+                                      <span className="absolute inset-0 rounded-full bg-primary/40 animate-ping" />
+                                      <Circle className="h-2.5 w-2.5 fill-white text-white" />
+                                    </div>
+                                  ) : (
+                                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-slate-300 dark:border-slate-700 bg-muted/40">
+                                      <Circle className="h-1.5 w-1.5 fill-slate-300 text-slate-300 dark:fill-slate-600 dark:text-slate-600" />
+                                    </div>
+                                  )}
+
+                                  {!isLast && (
+                                    <div
+                                      className={cn(
+                                        "w-0.5 my-1 flex-1 min-h-[30px]",
+                                        isStepDone ? "bg-emerald-400/80" : "bg-border/70"
+                                      )}
+                                    />
+                                  )}
+                                </div>
+
+                                <div
+                                  className={cn(
+                                    "flex-1 pb-4 min-w-0 transition-all p-3 -mt-1 rounded-lg",
+                                    isStepCurrent && "bg-primary/5 dark:bg-primary/10 border-l-4 border-l-primary border-y border-r border-border/80 shadow-xs rounded-r-lg",
+                                    isLast && "pb-1"
+                                  )}
+                                >
+                                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                                    <div className="flex items-center gap-1.5">
+                                      <span
+                                        className={cn(
+                                          "text-xs",
+                                          isStepDone && "font-semibold text-emerald-700 dark:text-emerald-400",
+                                          isStepCurrent && "font-bold text-foreground text-sm",
+                                          isStepPending && "font-medium text-muted-foreground/70"
+                                        )}
+                                      >
+                                        {stage.label}
+                                      </span>
+
+                                      {isStepDone && (
+                                        <Badge
+                                          variant="outline"
+                                          className="text-[10px] font-semibold h-4 px-1.5 bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400"
+                                        >
+                                          ✓ Concluído
+                                        </Badge>
+                                      )}
+
+                                      {isStepCurrent && (
+                                        <Badge
+                                          className="text-[10px] font-bold uppercase tracking-tight h-5 px-2 bg-primary text-primary-foreground shadow-xs animate-pulse"
+                                        >
+                                          ● Você está aqui
+                                        </Badge>
+                                      )}
+
+                                      {isStepPending && (
+                                        <Badge
+                                          variant="outline"
+                                          className="text-[10px] font-medium h-4 px-1.5 bg-muted/80 text-muted-foreground border-border"
+                                        >
+                                          Pendente
+                                        </Badge>
+                                      )}
+                                    </div>
+
+                                    <span className="text-[10px] text-muted-foreground font-medium">
+                                      {stage.responsible}
+                                    </span>
+                                  </div>
+
+                                  <p
+                                    className={cn(
+                                      "mt-1 text-[11px] leading-relaxed",
+                                      isStepCurrent ? "text-foreground/90 font-medium" : "text-muted-foreground/70"
+                                    )}
+                                  >
+                                    {stage.description}
+                                  </p>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
-                    <div className="space-y-1 min-w-0">
-                      <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block truncate">
-                        Status Financeiro
-                      </span>
-                      <div>
-                        <Badge className={cn("border-0 font-medium px-2 py-0.5 text-[11px] max-w-full truncate inline-block", getStatusBadgeClass(item.status_pagamento))}>
-                          {item.status_pagamento || "A PAGAR"}
-                        </Badge>
+                  ) : (
+                    <>
+                      {/* Modo Detalhes: Mini-resumo compacto no topo com ação Ver fluxo completo */}
+                      <div className="p-3 rounded-xl bg-muted/40 border border-border/70 space-y-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-1 text-xs">
+                            {MINI_FLOW_STAGES.map((st, idx) => {
+                              const isDone = isFinalizado || idx < currentStageIdx;
+                              const isCurrent = !isFinalizado && idx === currentStageIdx;
+                              return (
+                                <React.Fragment key={st.id}>
+                                  <span
+                                    className={cn(
+                                      "inline-flex items-center gap-1 text-[11px] rounded-md px-1.5 py-0.5 transition-colors",
+                                      isDone && "text-emerald-700 dark:text-emerald-400 font-semibold bg-emerald-50 dark:bg-emerald-950/40",
+                                      isCurrent && "text-primary font-bold bg-primary/10",
+                                      !isDone && !isCurrent && "text-muted-foreground/60 font-normal"
+                                    )}
+                                  >
+                                    {isDone ? "✓" : isCurrent ? "●" : "○"} {st.label}
+                                  </span>
+                                  {idx < MINI_FLOW_STAGES.length - 1 && (
+                                    <span className="text-muted-foreground/40 text-[10px]">→</span>
+                                  )}
+                                </React.Fragment>
+                              );
+                            })}
+                          </div>
+
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setDetailsViewMode("flow")}
+                            className="text-xs font-semibold text-primary hover:text-primary hover:bg-primary/10 h-7 px-2 shrink-0"
+                          >
+                            Ver fluxo completo →
+                          </Button>
+                        </div>
                       </div>
-                    </div>
-                    <div className="space-y-1 min-w-0">
-                      <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block truncate">
-                        Origem do Recurso
-                      </span>
-                      <div>
-                        <Badge variant={origemBadge.variant} className={cn("border font-medium px-2 py-0.5 text-[11px] max-w-full whitespace-normal break-words inline-block leading-tight text-left", origemBadge.className)}>
-                          {origemBadge.labelCompleto}
-                        </Badge>
+                      {/* Status Badges */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 rounded-xl bg-muted/30 border border-border/70 min-w-0">
+                        <div className="space-y-1 min-w-0 sm:col-span-2">
+                          <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block">
+                            Pipeline Operacional
+                          </span>
+                          <div>
+                            <button
+                              type="button"
+                              onClick={() => setDetailsViewMode("flow")}
+                              className="group inline-flex items-center gap-1 focus:outline-none"
+                              title="Clique para ver a linha do tempo completa do fluxo"
+                            >
+                              <Badge className={cn("border shadow-none font-medium uppercase px-2.5 py-1 text-[11px] whitespace-normal leading-tight group-hover:ring-1 group-hover:ring-primary/40 cursor-pointer transition-all", pipelineCfg.className)}>
+                                {pipelineCfg.label}
+                              </Badge>
+                            </button>
+                          </div>
+                        </div>
+                        <div className="space-y-1 min-w-0">
+                          <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block truncate">
+                            Status Financeiro
+                          </span>
+                          <div>
+                            <Badge className={cn("border-0 font-medium px-2 py-0.5 text-[11px] whitespace-normal inline-block", getStatusBadgeClass(item.status_pagamento))}>
+                              {item.status_pagamento || "A PAGAR"}
+                            </Badge>
+                          </div>
+                        </div>
+                        <div className="space-y-1 min-w-0">
+                          <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block truncate">
+                            Origem do Recurso
+                          </span>
+                          <div>
+                            <Badge variant={origemBadge.variant} className={cn("border font-medium px-2 py-0.5 text-[11px] max-w-full whitespace-normal break-words inline-block leading-tight text-left", origemBadge.className)}>
+                              {origemBadge.labelCompleto}
+                            </Badge>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
 
                   {/* Highlighted Value Card */}
                   <div className="p-4 rounded-xl bg-muted/50 border border-border space-y-2.5 min-w-0">
@@ -1185,25 +1489,31 @@ export function CustosExtrasTableBlock({ data, defaultPipelineFilter = "todos", 
                       </p>
                     </div>
                   )}
+                    </>
+                  )}
                 </div>
               );
             })()}
           </div>
 
-          {/* Rodapé com Ações de Negócio Contextualizadas e Totalmente Responsivas */}
+          {/* Rodapé com Ações de Negócio Contextualizadas e Banner Informativo */}
           {selectedItem && (() => {
             const item = selectedItem;
-            const currentStatus = item.pipeline_status || 'RECEBIDO';
-            const isFinalizado = currentStatus === 'FINALIZADO' || currentStatus === 'CONCLUIDO';
+            const currentStatus = String(item.pipeline_status || 'RECEBIDO').toUpperCase();
+            const currentStatusPgto = String(item.status_pagamento || '').toUpperCase();
+            const isFinalizado = currentStatus === 'FINALIZADO' || currentStatus === 'CONCLUIDO' || currentStatusPgto === 'PAGO';
+            const footerBanner = getContextualFooterBanner(currentStatus, isFinalizado);
+            const BannerIcon = footerBanner.icon;
 
             return (
               <SheetFooter className="mt-8 pt-4 border-t border-border flex-col gap-2.5 sm:flex-col sm:space-x-0 w-full min-w-0">
-                {isFinalizado ? (
-                  <div className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-medium text-center">
-                    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-                    <span>Despesa liquidada e finalizada no pipeline financeiro.</span>
-                  </div>
-                ) : (
+                {/* Banner Contextual obrigatório em todos os estados */}
+                <div className={cn("w-full flex items-center gap-2 py-2 px-3 rounded-lg border text-xs font-medium", footerBanner.className)}>
+                  <BannerIcon className="h-4 w-4 shrink-0" />
+                  <span className="leading-snug">{footerBanner.text}</span>
+                </div>
+
+                {!isFinalizado && (
                   <div className="flex flex-col gap-2.5 w-full min-w-0">
                     {/* Botão de Avanço Principal no topo do footer (largura total, destaque claro, sem corte lateral) */}
                     {currentStatus === 'RECEBIDO' && (

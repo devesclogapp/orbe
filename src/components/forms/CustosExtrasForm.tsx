@@ -23,6 +23,8 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { useTenant } from "@/contexts/TenantContext";
+import { useOperationalPipeline, buildCustosExtrasPipeline } from "@/contexts/OperationalPipelineContext";
 import {
     OPCOES_ORIGEM_RECURSO,
     buildCustoExtraInsertPayload,
@@ -51,6 +53,8 @@ interface CustosExtrasFormProps {
 
 export const CustosExtrasForm = ({ onSuccess, empresaPadraoId }: CustosExtrasFormProps) => {
     const { user } = useAuth();
+    const { role, isAdmin } = useTenant();
+    const { openPipeline } = useOperationalPipeline();
     const queryClient = useQueryClient();
     const today = format(new Date(), "yyyy-MM-dd");
 
@@ -189,6 +193,22 @@ export const CustosExtrasForm = ({ onSuccess, empresaPadraoId }: CustosExtrasFor
             queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
             queryClient.invalidateQueries({ queryKey: ["custos-extras-hoje"] });
             onSuccess?.();
+
+            const empresaObj = empresas.find((e: any) => e.id === form.empresa_id);
+            const empresaNome = empresaObj?.nome || "Empresa";
+            const competencia = form.data ? form.data.substring(0, 7) : format(new Date(), "yyyy-MM");
+
+            setTimeout(() => {
+                openPipeline(buildCustosExtrasPipeline({
+                    competencia,
+                    empresa: empresaNome,
+                    currentStep: "lancamento",
+                    pipelineStatus: "RECEBIDO",
+                    statusPagamento: "A_PAGAR",
+                    userRole: role,
+                    isAdmin,
+                }));
+            }, 100);
         },
         onError: (err: any) => toast.error("Erro ao salvar lançamento", { description: err.message }),
     });

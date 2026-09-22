@@ -6,7 +6,7 @@ interface Props {
   label: string;
   value: string;
   delta?: { value: string; positive?: boolean; neutral?: boolean; label?: string };
-  sublabel?: string;
+  sublabel?: React.ReactNode;
   icon?: LucideIcon;
   chartType?: "line" | "bar" | "none"; // Let's support line or bar for variety like Finnova
   size?: "default" | "small";

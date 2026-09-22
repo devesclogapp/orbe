@@ -297,7 +297,7 @@ describe('Fase 1.1A — Domínio e Validação de Custos Extras', () => {
     expect(content).toContain('Devolver para Operação');
     expect(content).toContain('flex flex-wrap items-center justify-between gap-2 w-full min-w-0');
     // Verifica que não há overflow nos cards internos (min-w-0 presente)
-    expect(content).toContain('grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-3.5 rounded-xl bg-muted/30 border border-border/70 min-w-0');
+    expect(content).toContain('p-3.5 rounded-xl bg-muted/30 border border-border/70 min-w-0');
   });
 
   it('19. Modal Liquidação: CustosExtrasTableBlock.tsx deve exibir Favorecido (Reembolso) quando origem_recurso for REEMBOLSO_COLABORADOR', () => {

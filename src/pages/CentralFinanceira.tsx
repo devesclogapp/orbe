@@ -73,6 +73,7 @@ const CentralFinanceira = () => {
   const [selectedMonth, setSelectedMonth] = useState(filterMonth);
   const [selectedEmpresaId, setSelectedEmpresaId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [custosPipelineFilter, setCustosPipelineFilter] = useState<string>("todos");
 
   // dialogs financeiro
   const [openReabrir, setOpenReabrir] = useState(false);
@@ -625,26 +626,93 @@ const CentralFinanceira = () => {
                 value={`R$ ${Number(custosExtrasTotals.total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
                 sublabel={`${custosExtras.length} registro(s) no período`}
                 icon={Wallet}
+                onClick={() => setCustosPipelineFilter("todos")}
+                className={cn(
+                  "cursor-pointer transition-all duration-200 hover:border-primary/40 select-none",
+                  custosPipelineFilter === "todos" && "ring-2 ring-primary/30 border-primary/50 bg-primary/[0.02] shadow-sm"
+                )}
               />
               <MetricCard
                 label="Aguardando liberação para pagamento"
                 value={`R$ ${Number(custosExtrasTotals.aguardandoLiberacaoValor).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
-                sublabel={`${custosExtrasTotals.aguardandoLiberacaoQtd} despesa(s) aprovada(s)`}
+                sublabel={
+                  custosExtrasTotals.aguardandoLiberacaoQtd > 0 ? (
+                    <span className="inline-flex items-center gap-1 font-semibold text-amber-600 dark:text-amber-400">
+                      {custosExtrasTotals.aguardandoLiberacaoQtd} despesa{custosExtrasTotals.aguardandoLiberacaoQtd > 1 ? "s" : ""} requer{custosExtrasTotals.aguardandoLiberacaoQtd > 1 ? "m" : ""} ação
+                      <ArrowRight className="h-3 w-3" />
+                    </span>
+                  ) : (
+                    "0 despesas pendentes"
+                  )
+                }
                 icon={AlertTriangle}
+                onClick={() => setCustosPipelineFilter("aguardando_liberacao")}
+                className={cn(
+                  "cursor-pointer transition-all duration-200 hover:border-amber-400/50 select-none",
+                  custosPipelineFilter === "aguardando_liberacao" && "ring-2 ring-amber-500/35 border-amber-500/50 bg-amber-500/[0.02] shadow-sm"
+                )}
               />
               <MetricCard
                 label="A pagar"
                 value={`R$ ${Number(custosExtrasTotals.aPagarValor).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
-                sublabel={`${custosExtrasTotals.aPagarQtd} no financeiro`}
+                sublabel={
+                  custosExtrasTotals.aPagarQtd > 0 ? (
+                    <span className="inline-flex items-center gap-1 font-semibold text-indigo-600 dark:text-indigo-400">
+                      {custosExtrasTotals.aPagarQtd} pagamento{custosExtrasTotals.aPagarQtd > 1 ? "s" : ""} pendente{custosExtrasTotals.aPagarQtd > 1 ? "s" : ""}
+                      <ArrowRight className="h-3 w-3" />
+                    </span>
+                  ) : (
+                    "0 pagamentos pendentes"
+                  )
+                }
                 icon={FileCheck}
+                onClick={() => setCustosPipelineFilter("a_pagar")}
+                className={cn(
+                  "cursor-pointer transition-all duration-200 hover:border-indigo-400/50 select-none",
+                  custosPipelineFilter === "a_pagar" && "ring-2 ring-indigo-500/35 border-indigo-500/50 bg-indigo-500/[0.02] shadow-sm"
+                )}
               />
               <MetricCard
                 label="Pago"
                 value={`R$ ${Number(custosExtrasTotals.pagosValor).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
                 sublabel={`${custosExtrasTotals.pagosQtd} liquidada(s)`}
                 icon={CheckCircle2}
+                onClick={() => setCustosPipelineFilter("pagos")}
+                className={cn(
+                  "cursor-pointer transition-all duration-200 hover:border-emerald-400/50 select-none",
+                  custosPipelineFilter === "pagos" && "ring-2 ring-emerald-500/35 border-emerald-500/50 bg-emerald-500/[0.02] shadow-sm"
+                )}
               />
             </div>
+
+            {/* Orientação Contextual Discreta: visível apenas quando houver pendências e o usuário ainda NÃO filtrou por elas */}
+            {custosExtrasTotals.aguardandoLiberacaoQtd > 0 && custosPipelineFilter !== "aguardando_liberacao" && (
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 py-3 rounded-xl border border-amber-200/80 bg-amber-50/60 dark:bg-amber-950/20 dark:border-amber-900/40 text-xs shadow-xs transition-all animate-in fade-in">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                  </div>
+                  <div className="text-amber-900 dark:text-amber-200 leading-relaxed">
+                    <span className="font-semibold">
+                      {custosExtrasTotals.aguardandoLiberacaoQtd === 1
+                        ? "1 despesa aguarda sua liberação para pagamento."
+                        : `${custosExtrasTotals.aguardandoLiberacaoQtd} despesas aguardam sua liberação para pagamento.`}
+                    </span>{" "}
+                    <span className="text-amber-800/80 dark:text-amber-300/80">
+                      Revise o lançamento aprovado e libere-o para o Financeiro.
+                    </span>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCustosPipelineFilter("aguardando_liberacao")}
+                  className="shrink-0 h-7 text-xs font-semibold bg-white hover:bg-amber-100/60 text-amber-900 border-amber-300 shadow-xs"
+                >
+                  Ver despesa{custosExtrasTotals.aguardandoLiberacaoQtd > 1 ? "s" : ""} pendente{custosExtrasTotals.aguardandoLiberacaoQtd > 1 ? "s" : ""} →
+                </Button>
+              </div>
+            )}
 
             <section className="esc-card">
               <header className="px-5 py-4 border-b border-border flex items-center justify-between">
@@ -680,7 +748,12 @@ const CentralFinanceira = () => {
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                   </div>
                 ) : (
-                  <CustosExtrasTableBlock data={custosExtras} contextualOrigem="CUSTOS_EXTRAS" />
+                  <CustosExtrasTableBlock
+                    data={custosExtras}
+                    contextualOrigem="CUSTOS_EXTRAS"
+                    controlledPipelineFilter={custosPipelineFilter}
+                    onPipelineFilterChange={setCustosPipelineFilter}
+                  />
                 )}
               </div>
             </section>
