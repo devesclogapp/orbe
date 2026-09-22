@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { Competencia } from "../../types/motor.types";
 import { MotorFinanceiro } from "./MotorFinanceiro";
+import { normalizeRole, normalizePermissionMatrix, canAccessModule } from "@/lib/access-control";
 
 export type StatusCiclo = 'aberto' | 'processando' | 'validacao' | 'fechado' | 'enviado_financeiro';
 export type StatusWorkflowRH = 'pendente' | 'validado_rh' | 'rejeitado_rh';
@@ -32,13 +33,20 @@ export interface CicloOperacional {
   updated_at: string;
 }
 
+export interface ResultadoRevalidacaoCiclo {
+  liberado: boolean;
+  motivo?: string;
+  motivos: string[];
+  ciclo?: CicloOperacional;
+}
+
 export interface AuditoriaWorkflowCiclo {
   id: string;
   tenant_id: string;
   ciclo_id: string;
   usuario_id: string;
-  etapa: 'OPERACIONAL' | 'RH' | 'FINANCEIRO' | 'REMESSA';
-  acao: 'APROVAR' | 'REJEITAR' | 'REABRIR' | 'GERAR';
+  etapa: 'OPERACIONAL' | 'RH' | 'FINANCEIRO' | 'REMESSA' | 'AUTOMACAO';
+  acao: 'APROVAR' | 'REJEITAR' | 'REABRIR' | 'GERAR' | 'AUTO_CURAR' | 'LIBERAR' | 'RECUPERAR';
   observacao?: string;
   criado_em: string;
 }
@@ -326,7 +334,7 @@ export class CicloOperacionalService {
   static async validarFinanceiro(cicloId: string, usuarioId: string, observacao: string = 'Validação financeira concluída'): Promise<CicloOperacional> {
     const { data: ciclo, error: errFetch } = await supabase
       .from('ciclos_operacionais')
-      .select('status, status_rh, total_inconsistencias, status_remessa, tenant_id, empresa_id, competencia')
+      .select('status, status_rh, total_inconsistencias, status_remessa, tenant_id, empresa_id, competencia, data_inicio, data_fim')
       .eq('id', cicloId)
       .single();
     if (errFetch || !ciclo) throw new Error("Ciclo não encontrado");
@@ -341,6 +349,37 @@ export class CicloOperacionalService {
 
     if ((ciclo.total_inconsistencias || 0) > 0) {
       throw new Error("Não é possível validar no Financeiro: existem inconsistências no ciclo.");
+    }
+
+    // Blindagem canônica: Custos Extras pendentes no período da semana
+    if (ciclo.empresa_id && ciclo.data_inicio && ciclo.data_fim) {
+      let queryCustos = supabase
+        .from('custos_extras_operacionais')
+        .select('id, data, pipeline_status, status_pagamento')
+        .eq('empresa_id', ciclo.empresa_id)
+        .gte('data', ciclo.data_inicio)
+        .lte('data', ciclo.data_fim)
+        .is('deleted_at', null)
+        .in('pipeline_status', ['RECEBIDO', 'EM_VALIDACAO']);
+
+      if (ciclo.tenant_id) {
+        queryCustos = queryCustos.eq('tenant_id', ciclo.tenant_id);
+      }
+
+      const { data: custosPendentes, error: errCustos } = await queryCustos;
+      if (errCustos) {
+        throw new Error(`Erro ao verificar custos extras pendentes: ${errCustos.message}`);
+      }
+
+      const ativosPendentes = (custosPendentes || []).filter(
+        (item: any) => String(item.status_pagamento || '').toUpperCase() !== 'CANCELADO'
+      );
+
+      if (ativosPendentes.length > 0) {
+        throw new Error(
+          `Não é possível aprovar no Financeiro: existe(m) ${ativosPendentes.length} custo(s) extra(s) pendente(s) de validação operacional neste período.`
+        );
+      }
     }
 
     const { data, error } = await supabase
@@ -386,6 +425,190 @@ export class CicloOperacionalService {
     if (error) throw error;
     await this.registrarAuditoria(ciclo.tenant_id, cicloId, usuarioId, 'FINANCEIRO', 'REJEITAR', motivo);
     return data as CicloOperacional;
+  }
+
+  /**
+   * Revalidação Canônica Individual do Ciclo Operacional
+   * Executa verificações de integridade estritas para um ciclo específico antes de liberá-lo.
+   */
+  static async revalidarCicloIndividual(
+    cicloId: string,
+    usuarioId?: string,
+  ): Promise<ResultadoRevalidacaoCiclo> {
+    // 1. Identificar e validar usuário autenticado
+    let effectiveUserId = usuarioId;
+    if (!effectiveUserId) {
+      const { data: authData } = await supabase.auth.getUser();
+      effectiveUserId = authData?.user?.id;
+    }
+
+    if (!effectiveUserId) {
+      throw new Error("Acesso não autorizado: usuário não autenticado.");
+    }
+
+    // 2. Carregar o ciclo operacional alvo
+    const { data: ciclo, error: errFetch } = await supabase
+      .from('ciclos_operacionais')
+      .select('*')
+      .eq('id', cicloId)
+      .single();
+
+    if (errFetch || !ciclo) {
+      throw new Error("Ciclo operacional não encontrado.");
+    }
+
+    // 3. Validar tenant e autorização RBAC
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('tenant_id, role')
+      .eq('user_id', effectiveUserId)
+      .maybeSingle();
+
+    const { data: userPerm } = await supabase
+      .from('user_permissions')
+      .select('role, permissions, status')
+      .eq('user_id', effectiveUserId)
+      .maybeSingle();
+
+    const userTenantId = profile?.tenant_id;
+    if (userTenantId && ciclo.tenant_id && userTenantId !== ciclo.tenant_id) {
+      throw new Error("Acesso não autorizado: o ciclo pertence a outro tenant.");
+    }
+
+    const effectiveRole = normalizeRole(userPerm?.role || profile?.role || 'user');
+    let hasPermission = effectiveRole === 'admin';
+
+    if (!hasPermission) {
+      const permissions = normalizePermissionMatrix(userPerm?.permissions, effectiveRole);
+      hasPermission = canAccessModule(permissions, 'fechamento_mensal', 'processar') ||
+                      canAccessModule(permissions, 'fechamento_mensal', 'fechar') ||
+                      canAccessModule(permissions, 'fechamento_mensal', 'aprovar');
+    }
+
+    if (!hasPermission) {
+      throw new Error("Acesso negado: usuário não possui permissão para revalidar fechamento mensal.");
+    }
+
+    // 4. Verificar estado elegível do ciclo (não sofrer mutação se fechado/enviado)
+    if (ciclo.status === 'fechado' || ciclo.status === 'enviado_financeiro') {
+      return {
+        liberado: false,
+        motivo: "Ciclo já se encontra fechado ou enviado ao financeiro.",
+        motivos: ["Ciclo já se encontra fechado ou enviado ao financeiro."],
+        ciclo: ciclo as CicloOperacional,
+      };
+    }
+
+    const motivos: string[] = [];
+
+    // 5. Verificar total_inconsistencias do próprio ciclo
+    if (Number(ciclo.total_inconsistencias || 0) > 0) {
+      motivos.push(`Ciclo possui ${ciclo.total_inconsistencias} inconsistência(s) crítica(s) registrada(s).`);
+    }
+
+    // 6. Verificar alertas críticos ativos da empresa
+    if (ciclo.empresa_id) {
+      const { data: alertasCriticos } = await supabase
+        .from('automacao_alertas')
+        .select('id, tipo, severidade, mensagem')
+        .eq('empresa_id', ciclo.empresa_id)
+        .eq('resolvido', false)
+        .eq('severidade', 'critical');
+
+      if (alertasCriticos && alertasCriticos.length > 0) {
+        for (const alerta of alertasCriticos) {
+          motivos.push(`Alerta crítico ativo na empresa: ${alerta.mensagem}`);
+        }
+      }
+    }
+
+    // 7. Verificar alertas ativos vinculados explicitamente a este ciclo
+    const { data: alertasCiclo } = await supabase
+      .from('automacao_alertas')
+      .select('id, tipo, severidade, mensagem')
+      .eq('resolvido', false)
+      .contains('contexto_json', { ciclo_id: cicloId });
+
+    if (alertasCiclo && alertasCiclo.length > 0) {
+      for (const alerta of alertasCiclo) {
+        if (alerta.severidade !== 'resolvido') {
+          motivos.push(`Alerta ativo no ciclo: ${alerta.mensagem}`);
+        }
+      }
+    }
+
+    // 8. Verificações delimitadas pelo período operacional do ciclo (data_inicio a data_fim)
+    if (ciclo.data_inicio && ciclo.data_fim && ciclo.empresa_id) {
+      // 8.1 Batidas de ponto incompletas no período
+      const { data: pontosProblematicos } = await supabase
+        .from('registros_ponto')
+        .select('id, status')
+        .eq('empresa_id', ciclo.empresa_id)
+        .gte('data_registro', ciclo.data_inicio)
+        .lte('data_registro', ciclo.data_fim)
+        .in('status', ['incompleto', 'Incompleto'])
+        .limit(10);
+
+      if (pontosProblematicos && pontosProblematicos.length > 0) {
+        motivos.push(`${pontosProblematicos.length} registro(s) de ponto incompleto(s) no período do ciclo.`);
+      }
+
+      // 8.2 Operações de produção com erro ou status inconsistente no período
+      const { data: operacoesProblematicas } = await supabase
+        .from('operacoes_producao')
+        .select('id, status')
+        .eq('empresa_id', ciclo.empresa_id)
+        .gte('data_operacao', ciclo.data_inicio)
+        .lte('data_operacao', ciclo.data_fim)
+        .in('status', ['INCONSISTENTE', 'erro'])
+        .limit(10);
+
+      if (operacoesProblematicas && operacoesProblematicas.length > 0) {
+        motivos.push(`${operacoesProblematicas.length} operação(ões) de produção inconsistente(s) no período do ciclo.`);
+      }
+    }
+
+    // 9. Se encontrar qualquer bloqueio, NÃO alterar status_automacao
+    if (motivos.length > 0) {
+      return {
+        liberado: false,
+        motivo: motivos.join("; "),
+        motivos,
+        ciclo: ciclo as CicloOperacional,
+      };
+    }
+
+    // 10. Quando todas as verificações forem aprovadas, transicionar exclusivamente este ciclo
+    const now = new Date().toISOString();
+    const { data: cicloAtualizado, error: errUpdate } = await supabase
+      .from('ciclos_operacionais')
+      .update({
+        status_automacao: 'pronto_para_fechamento',
+        status_automacao_atualizado_em: now,
+        auto_cura_liberado_em: now,
+      })
+      .eq('id', cicloId)
+      .select()
+      .single();
+
+    if (errUpdate) throw errUpdate;
+
+    // 11. Registrar auditoria de workflow
+    await this.registrarAuditoria(
+      ciclo.tenant_id,
+      cicloId,
+      effectiveUserId,
+      'AUTOMACAO',
+      'LIBERAR',
+      'Ciclo revalidado e liberado individualmente via validação canônica'
+    );
+
+    return {
+      liberado: true,
+      motivo: "Ciclo revalidado e liberado com sucesso.",
+      motivos: [],
+      ciclo: cicloAtualizado as CicloOperacional,
+    };
   }
 
   /**

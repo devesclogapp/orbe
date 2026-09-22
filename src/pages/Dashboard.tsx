@@ -85,7 +85,7 @@ import { AuditoriaService } from "@/services/v4.service";
 import { ReportService } from "@/services/report.service";
 
 import { processarOperacao } from "@/utils/financeiro";
-import { DashboardConsolidadoService, OperationalIntegrityKPIs } from "@/services/dashboard.service";
+import { DashboardConsolidadoService, OperationalIntegrityKPIs, isCustoExtraReconhecidoDRE } from "@/services/dashboard.service";
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   style: "currency",
@@ -326,7 +326,7 @@ const Dashboard = () => {
   const custosPeriodo = useMemo(
     () =>
       custosExtras.filter((item) =>
-        matchesSelectedPeriod(item.data),
+        matchesSelectedPeriod(item.data) && isCustoExtraReconhecidoDRE(item),
       ),
     [custosExtras, selectedMonthNumber, selectedYear],
   );
@@ -361,7 +361,7 @@ const Dashboard = () => {
       const status = String(item.status_pagamento ?? "").toUpperCase();
       const categoria = String(item.categoria_custo ?? "").toUpperCase();
 
-      if (status === "PENDENTE") custosPendentes += total;
+      if (status === "PENDENTE" || status === "A_PAGAR") custosPendentes += total;
       if (status === "ATRASADO") atrasado += total;
 
       if (categoria === "MERENDA") merenda += total;

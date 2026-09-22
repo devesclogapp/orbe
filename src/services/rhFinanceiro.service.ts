@@ -225,7 +225,7 @@ const loadFinancialFlowPendencias = async (tenantId: string, empresaId: string, 
   ] = await Promise.all([
     supabase
       .from("custos_extras_operacionais")
-      .select("id, data, status_pagamento")
+      .select("id, data, status_pagamento, pipeline_status")
       .eq("tenant_id", tenantId)
       .eq("empresa_id", empresaId)
       .gte("data", startDate)
@@ -245,11 +245,14 @@ const loadFinancialFlowPendencias = async (tenantId: string, empresaId: string, 
   }
 
   const custosExtrasPendentes = (custosExtras || [])
-    .filter((item: any) => String(item.status_pagamento || "").toUpperCase() !== "RECEBIDO")
+    .filter((item: any) =>
+      ["RECEBIDO", "EM_VALIDACAO"].includes(String(item.pipeline_status || "").toUpperCase()) &&
+      String(item.status_pagamento || "").toUpperCase() !== "CANCELADO",
+    )
     .map((item: any) => ({
       id: item.id,
       nome: "Custo extra operacional",
-      motivo: `status ${String(item.status_pagamento || "PENDENTE").toUpperCase().toLowerCase()}`,
+      motivo: `pipeline ${String(item.pipeline_status || "PENDENTE").toLowerCase()}`,
     }));
 
   const servicosExtrasPendentes = (servicosExtras || [])

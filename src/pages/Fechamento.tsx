@@ -1,12 +1,20 @@
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { JustificationModal } from "@/components/modals/JustificationModal";
-import { CalendarCheck, Lock, Unlock, Loader2, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { CalendarCheck, Lock, Unlock, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, Building2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
-import { CicloOperacionalService, CicloOperacional } from "@/services/operationalEngine/CicloOperacionalService";
+import { CicloOperacionalService, CicloOperacional, ResultadoRevalidacaoCiclo } from "@/services/operationalEngine/CicloOperacionalService";
 import { toast } from "sonner";
 import { buildOperationalFailurePipeline, buildOperationalStagePipeline, buildOperationalStageReviewPipeline, useOperationalPipeline } from "@/contexts/OperationalPipelineContext";
 import { buildOperationalPipelineSeenKey, useOperationalPipelineAutoTrigger } from "@/hooks/useOperationalPipelineAutoTrigger";
@@ -16,6 +24,7 @@ type CustoExtraResumo = {
   empresa_id: string | null;
   data: string | null;
   status_pagamento: string | null;
+  pipeline_status: string | null;
 };
 
 type ServicoExtraResumo = {
@@ -61,9 +70,21 @@ const Fechamento = () => {
   const currentMonth = new Date().toISOString().substring(0, 7);
   const { openPipeline } = useOperationalPipeline();
   const [pendingAction, setPendingAction] = useState<PendingActionState | null>(null);
+  const [selectedEmpresaId, setSelectedEmpresaId] = useState<string>("");
 
-  const { data: list = [], isLoading } = useQuery<CicloOperacional[]>({
-    queryKey: ["ciclos_operacionais", currentMonth],
+  const competenciaFormatada = useMemo(() => {
+    const [ano, mes] = currentMonth.split("-");
+    const meses = [
+      "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+      "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"
+    ];
+    const mesIndex = parseInt(mes, 10) - 1;
+    return `${meses[mesIndex] || mes}/${ano}`;
+  }, [currentMonth]);
+
+  // Busca empresas do tenant
+  const { data: empresas = [], isLoading: isLoadingEmpresas } = useQuery<{ id: string; nome: string }[]>({
+    queryKey: ["empresas_fechamento"],
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return [];
@@ -75,26 +96,60 @@ const Fechamento = () => {
       const tenantId = profile?.tenant_id;
       if (!tenantId) return [];
 
-      // Busca empresas do tenant para criar ciclos isolados por empresa
-      const { data: empresas } = await supabase
+      const { data, error } = await supabase
         .from('empresas')
-        .select('id')
-        .eq('tenant_id', tenantId);
+        .select('id, nome')
+        .eq('tenant_id', tenantId)
+        .order('nome', { ascending: true });
 
-      if (!empresas || empresas.length === 0) {
-        // Fallback: busca sem filtro de empresa (compatibilidade com tenants de empresa única)
-        return CicloOperacionalService.getCiclosDaCompetencia(tenantId, currentMonth);
-      }
-
-      // Busca e consolida ciclos de todas as empresas do tenant
-      const ciclosPorEmpresa = await Promise.all(
-        empresas.map(e =>
-          CicloOperacionalService.getCiclosDaCompetencia(tenantId, currentMonth, e.id)
-        )
-      );
-      return ciclosPorEmpresa.flat();
+      if (error) throw error;
+      return (data || []) as { id: string; nome: string }[];
     },
   });
+
+  const empresaNomeMap = useMemo(() => new Map(empresas.map(e => [e.id, e.nome])), [empresas]);
+
+  // Determina empresa padrão (prioriza BENEVIDES para homologação, senão a primeira)
+  const defaultEmpresaId = useMemo(() => {
+    if (empresas.length === 0) return "";
+    const benevides = empresas.find(e => e.nome.toUpperCase().includes("BENEVIDES"));
+    return benevides ? benevides.id : empresas[0].id;
+  }, [empresas]);
+
+  const effectiveEmpresaId = selectedEmpresaId || defaultEmpresaId;
+
+  useEffect(() => {
+    if (!selectedEmpresaId && defaultEmpresaId) {
+      setSelectedEmpresaId(defaultEmpresaId);
+    }
+  }, [selectedEmpresaId, defaultEmpresaId]);
+
+  const selectedEmpresaNome = empresaNomeMap.get(effectiveEmpresaId) || "";
+
+  const { data: list = [], isLoading: isLoadingCiclos } = useQuery<CicloOperacional[]>({
+    queryKey: ["ciclos_operacionais", currentMonth, effectiveEmpresaId],
+    enabled: Boolean(effectiveEmpresaId || empresas.length === 0),
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return [];
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('user_id', user.id)
+        .single();
+      const tenantId = profile?.tenant_id;
+      if (!tenantId) return [];
+
+      if (effectiveEmpresaId) {
+        return CicloOperacionalService.getCiclosDaCompetencia(tenantId, currentMonth, effectiveEmpresaId);
+      }
+
+      // Fallback: busca sem filtro de empresa se não houver empresas cadastradas
+      return CicloOperacionalService.getCiclosDaCompetencia(tenantId, currentMonth);
+    },
+  });
+
+  const isLoading = isLoadingCiclos || (isLoadingEmpresas && empresas.length === 0);
 
   const getUserId = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -112,11 +167,25 @@ const Fechamento = () => {
         case 'rejeitarRH': return CicloOperacionalService.rejeitarRH(id, userId, obs || 'Rejeitado pelo RH');
         case 'validarFin': return CicloOperacionalService.validarFinanceiro(id, userId, obs);
         case 'rejeitarFin': return CicloOperacionalService.rejeitarFinanceiro(id, userId, obs || 'Rejeitado pelo Financeiro');
+        case 'revalidar': return CicloOperacionalService.revalidarCicloIndividual(id, userId);
         default: throw new Error("Ação inválida");
       }
     },
-    onSuccess: () => {
-      toast.success("Ação concluída com sucesso!");
+    onSuccess: (data, variables) => {
+      if (variables.action === 'revalidar') {
+        const res = data as ResultadoRevalidacaoCiclo;
+        if (res?.liberado) {
+          toast.success("Semana revalidada com sucesso!", {
+            description: "O motor operacional liberou o ciclo para fechamento."
+          });
+        } else {
+          toast.warning("Semana não liberada pelo motor operacional", {
+            description: (res?.motivos && res.motivos.length > 0) ? res.motivos.join(" • ") : (res?.motivo || "Pendências encontradas.")
+          });
+        }
+      } else {
+        toast.success("Ação concluída com sucesso!");
+      }
       queryClient.invalidateQueries({ queryKey: ["ciclos_operacionais"] });
     },
     onError: (err: any, variables) => {
@@ -127,6 +196,7 @@ const Fechamento = () => {
         rejeitarRH: "fechamento_mensal",
         validarFin: "central_financeira",
         rejeitarFin: "central_financeira",
+        revalidar: "fechamento_mensal",
       };
 
       openPipeline(
@@ -173,30 +243,44 @@ const Fechamento = () => {
   };
 
   const { data: custosExtras = [] } = useQuery<CustoExtraResumo[]>({
-    queryKey: ["custos_extras_fechamento", currentMonth],
+    queryKey: ["custos_extras_fechamento", currentMonth, effectiveEmpresaId],
+    enabled: Boolean(effectiveEmpresaId || empresas.length === 0),
     queryFn: async () => {
       const startDate = `${currentMonth}-01`;
       const endDate = `${currentMonth}-31`;
-      const { data, error } = await supabase
+      let query = supabase
         .from("custos_extras_operacionais")
-        .select("id, empresa_id, data, status_pagamento")
+        .select("id, empresa_id, data, status_pagamento, pipeline_status")
         .gte("data", startDate)
         .lte("data", endDate);
+
+      if (effectiveEmpresaId) {
+        query = query.eq("empresa_id", effectiveEmpresaId);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       return (data || []) as CustoExtraResumo[];
     },
   });
 
   const { data: servicosExtras = [] } = useQuery<ServicoExtraResumo[]>({
-    queryKey: ["servicos_extras_fechamento", currentMonth],
+    queryKey: ["servicos_extras_fechamento", currentMonth, effectiveEmpresaId],
+    enabled: Boolean(effectiveEmpresaId || empresas.length === 0),
     queryFn: async () => {
       const startDate = `${currentMonth}-01`;
       const endDate = `${currentMonth}-31`;
-      const { data, error } = await (supabase as any)
+      let query = (supabase as any)
         .from("servicos_extras_operacionais")
         .select("id, empresa_id, data, pipeline_status")
         .gte("data", startDate)
         .lte("data", endDate);
+
+      if (effectiveEmpresaId) {
+        query = query.eq("empresa_id", effectiveEmpresaId);
+      }
+
+      const { data, error } = await query;
       if (error) {
         // Tabela pode não existir ainda (migration não aplicada) → retorna vazio
         console.warn("servicos_extras_operacionais não disponível:", error.message);
@@ -221,7 +305,8 @@ const Fechamento = () => {
       Boolean(item.data) &&
       item.data! >= c.data_inicio &&
       item.data! <= c.data_fim &&
-      item.status_pagamento !== "RECEBIDO",
+      ["RECEBIDO", "EM_VALIDACAO"].includes(String(item.pipeline_status || "").toUpperCase()) &&
+      String(item.status_pagamento || "").toUpperCase() !== "CANCELADO",
     );
 
   const getServicosPendentesDoCiclo = (c: CicloOperacional) =>
@@ -271,12 +356,12 @@ const Fechamento = () => {
     storageKey: buildOperationalPipelineSeenKey({
       etapa: "fechamento_mensal_concluido",
       competencia: currentMonth,
-      empresa: "tenant",
+      empresa: selectedEmpresaNome || "tenant",
     }),
     trigger: fechamentoConcluidoParaFinanceiro
       ? buildOperationalStagePipeline({
         competencia: currentMonth,
-        empresa: "Operacao",
+        empresa: selectedEmpresaNome || "Operacao",
         completedStage: "fechamento_mensal",
       })
       : null,
@@ -284,14 +369,14 @@ const Fechamento = () => {
 
   const fechamentoReviewTrigger = buildOperationalStageReviewPipeline({
     competencia: currentMonth,
-    empresa: "Operacao",
+    empresa: selectedEmpresaNome || "Operacao",
     currentStage: "fechamento_mensal",
   });
 
   return (
     <AppShell
       title="Fechamento Mensal"
-      subtitle={`Ciclos Operacionais da Competência ${currentMonth}`}
+      subtitle={`Ciclos Operacionais da Competência ${competenciaFormatada}`}
       pipelineTrigger={fechamentoReviewTrigger}
     >
       {isLoading ? (
@@ -300,6 +385,52 @@ const Fechamento = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-6">
+          {/* Barra de Seleção Contextual: Competência e Empresa */}
+          <section className="esc-card p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-border/80 shadow-sm bg-card">
+            <div className="flex flex-wrap items-center gap-6">
+              <div className="flex items-center gap-2">
+                <span className="text-xs uppercase font-semibold text-muted-foreground">Competência:</span>
+                <Badge variant="outline" className="font-semibold text-sm px-3 py-1 bg-muted/40">
+                  {competenciaFormatada}
+                </Badge>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs uppercase font-semibold text-muted-foreground flex items-center gap-1.5">
+                  <Building2 className="h-3.5 w-3.5" />
+                  Empresa:
+                </span>
+                {empresas.length > 0 ? (
+                  <Select
+                    value={effectiveEmpresaId}
+                    onValueChange={(val) => setSelectedEmpresaId(val)}
+                  >
+                    <SelectTrigger className="w-[280px] h-9 text-sm font-medium bg-background border-border">
+                      <SelectValue placeholder="Selecione a empresa" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {empresas.map((emp) => (
+                        <SelectItem key={emp.id} value={emp.id} className="cursor-pointer">
+                          {emp.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <span className="text-sm text-muted-foreground italic">Nenhuma empresa encontrada</span>
+                )}
+              </div>
+            </div>
+
+            {selectedEmpresaNome && (
+              <Badge variant="secondary" className="text-xs font-semibold px-2.5 py-1 w-fit flex items-center gap-1.5">
+                <Building2 className="h-3 w-3 text-primary" />
+                Contexto: {selectedEmpresaNome}
+              </Badge>
+            )}
+          </section>
+
+          {/* Resumo da Competência */}
           <section className="esc-card p-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
               <div className="rounded-lg border border-border bg-muted/20 px-3 py-2">
@@ -342,9 +473,16 @@ const Fechamento = () => {
                       <CalendarCheck className="h-6 w-6" />
                     </div>
                     <div>
-                      <h3 className="font-display font-semibold text-lg text-foreground">
-                        Semana {c.semana_operacional}
-                      </h3>
+                      <div className="flex items-center gap-2 mb-1">
+                        <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 text-xs font-semibold px-2 py-0.5 flex items-center gap-1">
+                          <Building2 className="h-3 w-3" />
+                          {empresaNomeMap.get(c.empresa_id || '') || selectedEmpresaNome || "Empresa"}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">•</span>
+                        <h3 className="font-display font-semibold text-lg text-foreground">
+                          Semana {c.semana_operacional}
+                        </h3>
+                      </div>
                       <p className="text-sm text-muted-foreground">
                         {new Date(`${c.data_inicio}T12:00:00Z`).toLocaleDateString('pt-BR')} até {new Date(`${c.data_fim}T12:00:00Z`).toLocaleDateString('pt-BR')}
                       </p>
@@ -418,6 +556,19 @@ const Fechamento = () => {
                       Se RH Validado -> Fin aprovar/rejeitar
                   */}
 
+                    {c.status === "aberto" && c.status_automacao !== "pronto_para_fechamento" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={actionMutation.isPending}
+                        onClick={() => handleAction('revalidar', c.id)}
+                        className="border-primary/40 hover:bg-primary/5 text-primary"
+                      >
+                        <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", actionMutation.isPending && "animate-spin")} />
+                        Revalidar Semana
+                      </Button>
+                    )}
+
                     {c.status !== "fechado" && c.status !== "enviado_financeiro" && (
                       <Button
                         size="sm"
@@ -461,7 +612,7 @@ const Fechamento = () => {
           })}
           {list.length === 0 && (
             <div className="p-12 text-center text-muted-foreground italic esc-card">
-              Nenhuma semana processada para a competência selecionada.
+              Nenhuma semana processada para {selectedEmpresaNome || "a empresa selecionada"} na competência {competenciaFormatada}.
             </div>
           )}
         </div>

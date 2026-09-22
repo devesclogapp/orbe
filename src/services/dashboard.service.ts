@@ -233,6 +233,27 @@ function applyFolhaStatus(acc: FluxAccumulator, status: string, value: number) {
   }
 }
 
+export interface CustoExtraReconhecidoDREInput {
+  deleted_at?: string | null;
+  pipeline_status?: string | null;
+  status_pagamento?: string | null;
+}
+
+export const CUSTOS_EXTRAS_PIPELINE_STATUS_RECONHECIDOS_DRE = [
+  'APROVADO_OPERACAO',
+  'ENVIADO_FINANCEIRO',
+  'FINALIZADO',
+] as const;
+
+export function isCustoExtraReconhecidoDRE(item: CustoExtraReconhecidoDREInput): boolean {
+  if (item.deleted_at != null) return false;
+  const pipelineStatus = String(item.pipeline_status || '').toUpperCase();
+  if (!CUSTOS_EXTRAS_PIPELINE_STATUS_RECONHECIDOS_DRE.includes(pipelineStatus as any)) return false;
+  const statusPagamento = String(item.status_pagamento || '').toUpperCase();
+  if (statusPagamento === 'CANCELADO') return false;
+  return true;
+}
+
 export function normalizeCompetencia(value: string | undefined | null): string | null {
   if (!value) return null;
   if (value.includes('T')) return value.substring(0, 7);
@@ -343,7 +364,10 @@ class DashboardConsolidadoServiceClass {
 
     let qCustos = applySeg(supabase
       .from('custos_extras_operacionais')
-      .select('total, status_pagamento, criado_em, atualizado_em')
+      .select('total, status_pagamento, pipeline_status, criado_em, atualizado_em, deleted_at')
+      .is('deleted_at', null)
+      .in('pipeline_status', [...CUSTOS_EXTRAS_PIPELINE_STATUS_RECONHECIDOS_DRE])
+      .neq('status_pagamento', 'CANCELADO')
       .gte('data', startRange)
       .lt('data', endRange));
     if (empresaId) qCustos = qCustos.eq('empresa_id', empresaId);
@@ -486,9 +510,11 @@ class DashboardConsolidadoServiceClass {
     let custosPendentes = 0;
     let custosAtrasados = 0;
     custosData.forEach((item: any) => {
+      if (!isCustoExtraReconhecidoDRE(item)) return;
+
       custosGerais = addAmount(custosGerais, item.total);
       const statusPagamento = String(item.status_pagamento || '').toUpperCase();
-      if (statusPagamento === 'PENDENTE') custosPendentes += 1;
+      if (statusPagamento === 'PENDENTE' || statusPagamento === 'A_PAGAR') custosPendentes += 1;
       if (statusPagamento === 'ATRASADO') custosAtrasados += 1;
       custosUpdatedAt.push(
         String(item.atualizado_em || item.criado_em || consolidadoEm),
