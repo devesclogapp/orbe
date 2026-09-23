@@ -9,14 +9,13 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { getCurrentTenantId } from "@/services/domain/base.service";
 import { ReceitasService } from "@/services/receitas/receitas.service";
 import { ReceitaOperacional } from "@/types/receitas.types";
 import { useTenant } from "@/contexts/TenantContext";
+import { ConciliacaoReceitaDrawer } from "./ConciliacaoReceitaDrawer";
 
 const formatCurrency = (value?: number | null) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(value || 0));
@@ -37,17 +36,8 @@ export function ConciliacaoReceitasBlock({ highlightReceitaId }: ConciliacaoRece
     const [search, setSearch] = useState("");
     const [filtroStatus, setFiltroStatus] = useState<"todos" | "recebido" | "conciliado">("recebido");
 
-    const [dialogAcao, setDialogAcao] = useState<{
-        open: boolean;
-        item: (ReceitaOperacional & { empresas?: { nome: string } }) | null;
-        acao: "conciliado";
-        observacao: string;
-    }>({
-        open: false,
-        item: null,
-        acao: "conciliado",
-        observacao: "",
-    });
+    const [selectedReceita, setSelectedReceita] = useState<(ReceitaOperacional & { empresas?: { nome: string } }) | null>(null);
+    const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
     const { data: receitasRaw = [], isLoading } = useQuery({
         queryKey: ["receitas_para_conciliacao"],
@@ -133,23 +123,17 @@ export function ConciliacaoReceitasBlock({ highlightReceitaId }: ConciliacaoRece
             void queryClient.invalidateQueries({ queryKey: ["receita-detalhes"] });
             void queryClient.invalidateQueries({ queryKey: ["receitas"] });
             void queryClient.invalidateQueries({ queryKey: ["receitas-painel"] });
-            setDialogAcao({ open: false, item: null, acao: "conciliado", observacao: "" });
+            setIsDrawerOpen(false);
+            setSelectedReceita(null);
         },
         onError: (err: any) => {
             toast.error(err.message || "Erro ao processar a conciliação");
         }
     });
 
-    const submitAcaoDialog = () => {
-        if (!dialogAcao.item) return;
-        if (!canConciliar) {
-            toast.error("Apenas perfis admin ou financeiro podem conciliar receitas.");
-            return;
-        }
-
-        actionMutation.mutate({
-            id: dialogAcao.item.id,
-        });
+    const handleOpenDrawer = (item: ReceitaOperacional & { empresas?: { nome: string } }) => {
+        setSelectedReceita(item);
+        setIsDrawerOpen(true);
     };
 
     return (
@@ -161,8 +145,9 @@ export function ConciliacaoReceitasBlock({ highlightReceitaId }: ConciliacaoRece
                             <ArrowRightLeft className="h-4 w-4" /> Sobre a Conciliação
                         </h3>
 
-                        <div className="rounded-2xl border border-border/60 bg-background p-4 text-sm text-muted-foreground">
-                            Receitas marcadas como recebidas aguardam conferência manual no extrato bancário. Após verificar o crédito no banco, confirme a conciliação no ORBE.
+                        <div className="rounded-2xl border border-border/60 bg-background p-4 text-sm text-muted-foreground space-y-1">
+                            <p>Receitas marcadas como recebidas aguardam conferência manual no extrato bancário. Após verificar o crédito no banco, confirme a conciliação no ORBE.</p>
+                            <p className="text-xs text-muted-foreground/80">Confirme somente após verificar que este recebimento consta no extrato bancário real.</p>
                         </div>
 
                         <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
@@ -250,8 +235,9 @@ export function ConciliacaoReceitasBlock({ highlightReceitaId }: ConciliacaoRece
                                         return (
                                             <TableRow 
                                                 key={item.id}
+                                                onClick={() => handleOpenDrawer(item)}
                                                 className={cn(
-                                                    "transition-colors",
+                                                    "transition-colors cursor-pointer hover:bg-muted/50",
                                                     isHighlighted ? "bg-amber-50/80 border-l-4 border-l-amber-500 shadow-sm" : ""
                                                 )}
                                             >
@@ -287,7 +273,10 @@ export function ConciliacaoReceitasBlock({ highlightReceitaId }: ConciliacaoRece
                                                                     size="sm" 
                                                                     className="bg-green-600 hover:bg-green-700 text-white" 
                                                                     disabled={!canConciliar}
-                                                                    onClick={() => setDialogAcao({ open: true, item, acao: 'conciliado', observacao: '' })}
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleOpenDrawer(item);
+                                                                    }}
                                                                 >
                                                                     <CheckCircle2 className="mr-1 h-4 w-4" /> Confirmar Conciliação
                                                                 </Button>
@@ -310,39 +299,18 @@ export function ConciliacaoReceitasBlock({ highlightReceitaId }: ConciliacaoRece
                 </Card>
             </div>
 
-            <Dialog open={dialogAcao.open} onOpenChange={(open) => {
-                if (!open) setDialogAcao({ open: false, item: null, acao: "conciliado", observacao: "" });
-            }}>
-                <DialogContent className="sm:max-w-[460px]">
-                    <DialogHeader>
-                        <DialogTitle>Confirmar conciliação?</DialogTitle>
-                        <DialogDescription className="space-y-1 pt-1">
-                            <span className="block text-gray-700">Confirme somente após verificar que este recebimento consta no extrato bancário real.</span>
-                            <span className="block text-xs text-muted-foreground mt-1">Esta ação registrará a Receita como conciliada no ORBE.</span>
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    {dialogAcao.item && (
-                        <div className="space-y-4">
-                            <div className="rounded-xl border border-border/60 bg-muted/20 p-4">
-                                <div className="text-lg font-bold text-center text-emerald-700 mb-2">{formatCurrency(dialogAcao.item.valor_total)}</div>
-                                <div className="text-sm font-medium text-center">{dialogAcao.item.empresas?.nome || 'Operação Oculta'}</div>
-                            </div>
-                        </div>
-                    )}
-
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setDialogAcao({ open: false, item: null, acao: "conciliado", observacao: "" })}>Cancelar</Button>
-                        <Button 
-                            onClick={submitAcaoDialog} 
-                            disabled={actionMutation.isPending || !canConciliar} 
-                            className="bg-green-600 hover:bg-green-700 text-white"
-                        >
-                            {actionMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Confirmar Conciliação'}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            {/* Drawer 1 — Conferência e Confirmação Guiada da Conciliação (UX-2B.15) */}
+            <ConciliacaoReceitaDrawer
+                isOpen={isDrawerOpen}
+                onClose={() => {
+                    setIsDrawerOpen(false);
+                    setSelectedReceita(null);
+                }}
+                receita={selectedReceita}
+                onConfirmConciliacao={(id) => actionMutation.mutate({ id })}
+                isSubmitting={actionMutation.isPending}
+                canConciliar={canConciliar}
+            />
         </div>
     );
 }

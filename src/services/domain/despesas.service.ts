@@ -87,11 +87,17 @@ class CustoExtraOperacionalServiceClass {
     return responseData;
   }
 
-  async getByDate(date: string) {
-    const { data: rawData, error } = await operationalClient
+  async getByDate(date: string, empresaId?: string) {
+    let query = operationalClient
       .from('custos_extras_operacionais')
       .select('*, empresas:empresa_id(nome), forma_pagamento_ref:forma_pagamento_id(nome), unidades:unidade_id(nome)')
-      .eq('data', date)
+      .eq('data', date);
+
+    if (empresaId) {
+      query = query.eq('empresa_id', empresaId);
+    }
+
+    const { data: rawData, error } = await query
       .order('created_at', { ascending: false });
 
     if (error) {

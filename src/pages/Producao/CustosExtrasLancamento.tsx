@@ -205,6 +205,7 @@ const CustosExtrasLancamento = () => {
       });
       queryClient.invalidateQueries({ queryKey: ["custos-extras-hoje"] });
       queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
+      queryClient.invalidateQueries({ queryKey: ["lancamentos_hoje_portal"] });
       goBackUrl();
     },
     onError: (err: any) => toast.error("Erro ao salvar: " + err.message)

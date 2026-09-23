@@ -36,11 +36,11 @@ const LancamentoProducao = () => {
                         <h2 className="text-lg font-bold">Lançamentos de Hoje</h2>
                     </div>
 
-                    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                    <div>
                         <RecentLaunchesList
                             date={new Date().toLocaleDateString('en-CA')} // Formato YYYY-MM-DD local
-                            empresaId={empresaId}
-                            unidadeId={""} // Since it was fetching from form logic which was removed, leaving it empty is safer; it will query correctly by org id
+                            empresaId={empresaId || undefined}
+                            unidadeId={""}
                         />
                     </div>
                 </div>

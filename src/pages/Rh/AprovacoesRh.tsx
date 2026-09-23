@@ -67,7 +67,7 @@ import { AprovacoesService } from "@/services/domain/aprovacoes.service";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
-import { useOperationalPipeline, buildCustosExtrasPipeline } from "@/contexts/OperationalPipelineContext";
+import { useOperationalPipeline, buildCustosExtrasPipeline, buildServicosExtrasPipeline } from "@/contexts/OperationalPipelineContext";
 import {
     getOrigemRecursoBadge,
     getOrigemRecursoApprovalNotice,
@@ -114,13 +114,13 @@ const fmtDate = (d?: string) => {
 const situacaoMap = (status?: string): SituacaoItem => {
     if (!status) return "Em análise";
     const s = status.toUpperCase();
-    const emAnalise = ["EM_ABERTO", "PENDENTE", "AGUARDANDO_VALIDACAO_RH", "EM_ANALISE", "DETALHADO", "REGISTRADO"].some(k => s === k.toUpperCase());
+    const emAnalise = ["EM_ABERTO", "PENDENTE", "AGUARDANDO_VALIDACAO_RH", "EM_ANALISE", "DETALHADO", "REGISTRADO", "EM_VALIDACAO"].some(k => s === k.toUpperCase());
     if (emAnalise) return "Em análise";
 
     const aprovado = [
         "APROVADO", "VALIDADO_RH", "VALIDADO", "FECHADO_FINANCEIRO", "PAGO", "PROCESSADO",
         "CNAB_GERADO", "AGUARDANDO_PAGAMENTO", "CONCLUIDO", "FINALIZADO", "FECHADO",
-        "APROVADO_OPERACAO", "EM_VALIDACAO"
+        "APROVADO_OPERACAO"
     ].some(k => s === k.toUpperCase());
     if (aprovado) return "Aprovado";
 
@@ -310,11 +310,13 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
             }
             // Serviços extras
             if (item.tipo === "SERVIÇO EXTRA") {
-                const { error } = await supabase.from("servicos_extras_operacionais" as any)
+                const { data: updated, error } = await supabase.from("servicos_extras_operacionais" as any)
                     .update({ pipeline_status: "APROVADO_OPERACAO", atualizado_em: new Date().toISOString() })
-                    .eq("id", item.id);
+                    .eq("id", item.id)
+                    .select("id, empresa_id, data, descricao_servico, total, modalidade_financeira, pipeline_status")
+                    .maybeSingle();
                 if (error) throw error;
-                return;
+                return updated;
             }
             // Operações por Volume
             if (item.tipo === "OPERAÇÃO") {
@@ -441,6 +443,71 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
 
     const toggleSelectItem = (id: string) =>
         setSelectedItems(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+
+    // ── Continuidade de Serviço Extra ────────────────
+    const openServicoExtraContinuity = async (item: ApprovalItem) => {
+        // Fechar qualquer painel genérico ativo
+        setActiveItem(null);
+
+        // Derivar valores a partir do registro persistido
+        let modalidade = (item as any).modalidade_financeira;
+        let pipelineStatus = item.raw_status || "APROVADO_OPERACAO";
+        let descricao = item.descricao;
+        let valor = item.valor;
+        let dataRegistro: string | undefined = undefined;
+
+        try {
+            const { data: seData } = await supabase
+                .from("servicos_extras_operacionais" as any)
+                .select("id, empresa_id, data, descricao_servico, total, modalidade_financeira, pipeline_status")
+                .eq("id", item.id)
+                .maybeSingle();
+
+            if (seData) {
+                if (seData.modalidade_financeira) modalidade = seData.modalidade_financeira;
+                if (seData.pipeline_status) pipelineStatus = seData.pipeline_status;
+                if (seData.descricao_servico) descricao = seData.descricao_servico;
+                if (seData.total !== null && seData.total !== undefined) valor = Number(seData.total);
+                if (seData.data) dataRegistro = seData.data;
+            }
+        } catch (err) {
+            console.warn("Erro ao buscar dados persistidos de serviço extra para continuidade:", err);
+        }
+
+        const compCandidate = item.competencia || (item as any).data_recebimento || dataRegistro || "";
+        let competencia = format(new Date(), "yyyy-MM");
+        if (/^\d{4}-\d{2}/.test(compCandidate)) {
+            competencia = compCandidate.substring(0, 7);
+        }
+
+        openPipeline(
+            buildServicosExtrasPipeline({
+                competencia,
+                empresa: item.empresa || "Empresa",
+                currentStep: "aprovacao",
+                pipelineStatus,
+                modalidade_financeira: modalidade,
+                registroId: item.id,
+                descricao,
+                valor,
+                data: dataRegistro,
+            })
+        );
+    };
+
+    const handleRowClick = (item: ApprovalItem) => {
+        const isApproved =
+            activeTab === "aprovados" ||
+            item.situacao === "Aprovado" ||
+            ["APROVADO", "VALIDADO_RH", "VALIDADO", "FECHADO_FINANCEIRO", "PAGO", "PROCESSADO", "CNAB_GERADO", "AGUARDANDO_PAGAMENTO", "CONCLUIDO", "FINALIZADO", "FECHADO", "APROVADO_OPERACAO"].includes(String(item.raw_status || "").toUpperCase());
+
+        if (item.tipo === "SERVIÇO EXTRA" && isApproved) {
+            openServicoExtraContinuity(item);
+            return;
+        }
+
+        setActiveItem(prev => prev?.id === item.id ? null : item);
+    };
 
     // ── Período Rápido ───────────────────────────────
     const handlePeriodo = (value: string) => {
@@ -668,7 +735,7 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
                                         activeItem={activeItem}
                                         onSelectAll={toggleSelectAll}
                                         onSelectItem={toggleSelectItem}
-                                        onRowClick={item => setActiveItem(prev => prev?.id === item.id ? null : item)}
+                                        onRowClick={handleRowClick}
                                         currentPage={currentPage}
                                         itemsPerPage={itemsPerPage}
                                         totalPages={totalPages}
@@ -686,13 +753,18 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
                         <DetailPanel
                             item={activeItem}
                             onClose={() => setActiveItem(null)}
+                            onOpenServicoExtraContinuity={openServicoExtraContinuity}
                             onAprovar={() => {
                                 const currentItem = activeItem;
-                                aprovarMutation.mutate(currentItem, {
+                                aprovarMutation.mutate(activeItem, {
                                     onSuccess: (result: any) => {
                                         if (currentItem.tipo === "CUSTO EXTRA") {
                                             toast.success("Despesa aprovada operacionalmente.", {
                                                 description: "Encaminhada para Pagamentos."
+                                            });
+                                        } else if (currentItem.tipo === "SERVIÇO EXTRA") {
+                                            toast.success("Serviço extra aprovado com sucesso.", {
+                                                description: "Receita gerada e encaminhada para o Financeiro."
                                             });
                                         } else {
                                             toast.success("Item aprovado com sucesso!");
@@ -706,7 +778,7 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
                                         setActiveTab("aprovados");
                                         setCurrentPage(1);
 
-                                        // 3. Disparar o Drawer de Continuidade exclusivamente para CUSTO EXTRA
+                                        // 3. Disparar o Drawer de Continuidade exclusivamente para CUSTO EXTRA ou SERVIÇO EXTRA
                                         if (currentItem.tipo === "CUSTO EXTRA") {
                                             const compCandidate = currentItem.competencia || currentItem.data_recebimento || "";
                                             let competencia = format(new Date(), "yyyy-MM");
@@ -723,6 +795,26 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
                                                     statusPagamento: result?.status_pagamento || "A_PAGAR",
                                                     userRole: role,
                                                     isAdmin,
+                                                }));
+                                            }, 100);
+                                        } else if (currentItem.tipo === "SERVIÇO EXTRA") {
+                                            const compCandidate = currentItem.competencia || currentItem.data_recebimento || "";
+                                            let competencia = format(new Date(), "yyyy-MM");
+                                            if (/^\d{4}-\d{2}/.test(compCandidate)) {
+                                                competencia = compCandidate.substring(0, 7);
+                                            }
+
+                                            setTimeout(() => {
+                                                openPipeline(buildServicosExtrasPipeline({
+                                                    competencia,
+                                                    empresa: currentItem.empresa || "Empresa",
+                                                    currentStep: "aprovacao",
+                                                    pipelineStatus: result?.pipeline_status || "APROVADO_OPERACAO",
+                                                    modalidade_financeira: result?.modalidade_financeira || (currentItem as any).modalidade_financeira,
+                                                    registroId: currentItem.id,
+                                                    descricao: currentItem.descricao || result?.descricao_servico,
+                                                    valor: currentItem.valor || result?.total,
+                                                    data: result?.data,
                                                 }));
                                             }, 100);
                                         }
@@ -921,7 +1013,8 @@ function ItensTable({
 }
 
 function DetailPanel({
-    item, onClose, onAprovar, onDevolver, onSolicitarCorrecao, isAprovando, isDevolvendo, onRefresh
+    item, onClose, onAprovar, onDevolver, onSolicitarCorrecao, isAprovando, isDevolvendo, onRefresh,
+    onOpenServicoExtraContinuity
 }: {
     item: ApprovalItem;
     onClose: () => void;
@@ -931,6 +1024,7 @@ function DetailPanel({
     isAprovando: boolean;
     isDevolvendo: boolean;
     onRefresh?: () => void;
+    onOpenServicoExtraContinuity?: (item: ApprovalItem) => void;
 }) {
     const navigate = useNavigate();
     const [correcaoOpen, setCorrecaoOpen] = useState(false);
@@ -1367,6 +1461,30 @@ function DetailPanel({
                                             </Button>
                                         </div>
                                     )
+                                ) : item.tipo === "SERVIÇO EXTRA" ? (
+                                    <div className="p-3.5 rounded-lg bg-emerald-50/90 border border-emerald-200 text-emerald-950 space-y-2.5 shadow-sm">
+                                        <div className="flex items-center gap-2 font-bold text-xs text-emerald-800">
+                                            <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                                            <span>Serviço extra aprovado operacionalmente</span>
+                                        </div>
+                                        <p className="text-[11px] text-emerald-700 leading-relaxed">
+                                            A validação RH deste serviço foi concluída. Acompanhe a continuidade no pipeline operacional e financeiro de receitas.
+                                        </p>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="w-full bg-white hover:bg-emerald-100/60 text-emerald-900 border-emerald-300 font-semibold text-xs justify-center gap-1.5 h-8 shadow-xs"
+                                            onClick={() => {
+                                                onClose();
+                                                if (onOpenServicoExtraContinuity) {
+                                                    onOpenServicoExtraContinuity(item);
+                                                }
+                                            }}
+                                        >
+                                            Ver Pipeline e Continuidade Financeira
+                                            <ArrowRight className="h-3.5 w-3.5 text-emerald-700" />
+                                        </Button>
+                                    </div>
                                 ) : item.tipo !== "OPERAÇÃO" ? (
                                     <div className="p-3.5 rounded-lg bg-emerald-50/90 border border-emerald-200 text-emerald-950 space-y-1.5 shadow-sm">
                                         <div className="flex items-center gap-2 font-bold text-xs text-emerald-800">

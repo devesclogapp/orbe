@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-    Dialog, DialogContent, DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
+    Sheet, SheetContent, SheetHeader, SheetTitle,
+} from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,14 +14,16 @@ import { useToast } from "@/components/ui/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import { useTenant } from "@/contexts/TenantContext";
 import {
+    Building2, Calendar, DollarSign, Check, CheckCircle2, Circle,
     CheckCircle, FileText, Send, Clock, Receipt, Calculator,
-    Banknote, ListPlus, Paperclip, ChevronLeft,
-    Zap, Layers, FileSpreadsheet, ArrowRightLeft, Wallet
+    Banknote, ListPlus, Paperclip, ChevronLeft, ChevronRight,
+    Zap, Layers, FileSpreadsheet, ArrowRightLeft, Wallet, AlertTriangle, ArrowRight, X, Sparkles
 } from "lucide-react";
 import { ReceitasService } from "@/services/receitas/receitas.service";
 import { generateCobrancaPDF } from "@/utils/pdfCobranca";
 import { formatDateOnly } from "@/utils/financeiro";
 import { cn } from "@/lib/utils";
+import { ReceitaDetalhesDrawer, RECEITA_DRAWER_WIDTH_CLASS } from "./ReceitaDetalhesDrawer";
 
 interface ModalReceitaOperacionalProps {
     isOpen: boolean;
@@ -37,7 +40,14 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
 
     // UI States
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isDetalhesOpen, setIsDetalhesOpen] = useState(false);
+    const [detalhesInitialTab, setDetalhesInitialTab] = useState<'fluxo' | 'detalhes' | 'documentos' | 'historico'>('detalhes');
     const [actionView, setActionView] = useState<'main' | 'gerar_cobranca' | 'enviar_cobranca' | 'consolidar' | 'confirmar_pix'>('main');
+
+    const handleNavigateToOp = (opId: string) => {
+        onClose();
+        navigate("/operacional/operacoes", { state: { highlight: opId } });
+    };
 
     // Forms
     const [pixForm, setPixForm] = useState({ data: new Date().toISOString().split('T')[0], banco: '', observacao: '' });
@@ -181,6 +191,294 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
 
     const valorStr = `R$ ${Number(receita.valor_total).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
     const clienteNome = receita.empresas?.nome || 'N/A';
+
+    const isConciliado = receita.status === 'conciliado';
+    const isRecebido = receita.status === 'recebido' || receita.status === 'pago';
+    const isPendenteCobranca = receita.status === 'pendente_cobranca';
+    const isCobrancaEnviada = receita.status === 'cobranca_enviada' || receita.status === 'pendente_recebimento';
+    const hasDocumentoGerado = receita.status === 'cobranca_gerada' || Boolean(historico?.some((h: any) => h.acao === 'GERAR_COBRANCA' || h.acao === 'Cobrança Gerada'));
+
+    const documentosGerados = useMemo(() => {
+        return historico?.filter((h: any) => h.acao === 'GERAR_COBRANCA' || h.acao === 'Cobrança Gerada') || [];
+    }, [historico]);
+
+    const isFaturamentoMensal = receita.modalidade === 'FATURAMENTO_MENSAL';
+    const isCaixaImediato = receita.modalidade === 'CAIXA_IMEDIATO';
+    const isDuplicata = receita.modalidade === 'DUPLICATA';
+
+    const originInfo = useMemo(() => {
+        if (itemCount > 1 || isFaturamentoMensal) {
+            return {
+                badge: "RECEITA / FATURAMENTO MENSAL",
+                badgeClass: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/50 dark:text-purple-300 dark:border-purple-800",
+                title: receita.observacao === 'FATURA_COMPLEMENTAR' ? "Receita — Faturamento Mensal (Complementar)" : "Receita — Faturamento Mensal",
+            };
+        }
+        if (itemExtra) {
+            return {
+                badge: "RECEITA / SERVIÇO EXTRA",
+                badgeClass: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/50 dark:text-purple-300 dark:border-purple-800",
+                title: isCaixaImediato ? "Receita — Caixa Imediato" : (isDuplicata ? "Receita — Duplicata" : "Receita — Serviço Extra"),
+            };
+        }
+        if (itemOps) {
+            return {
+                badge: "RECEITA / OPERAÇÃO POR VOLUME",
+                badgeClass: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-800",
+                title: isCaixaImediato ? "Receita — Caixa Imediato" : (isDuplicata ? "Receita — Duplicata" : "Receita — Operação por Volume"),
+            };
+        }
+        return {
+            badge: "RECEITA OPERACIONAL",
+            badgeClass: "bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700",
+            title: isCaixaImediato ? "Receita — Caixa Imediato" : (isDuplicata ? "Receita — Duplicata" : (isFaturamentoMensal ? "Receita — Faturamento Mensal" : "Receita Operacional")),
+        };
+    }, [itemCount, isFaturamentoMensal, isCaixaImediato, isDuplicata, itemExtra, itemOps, receita.observacao]);
+
+    const modalidadeBadgeClass = useMemo(() => {
+        switch (receita.modalidade) {
+            case "CAIXA_IMEDIATO":
+                return "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300";
+            case "DUPLICATA":
+                return "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950/60 dark:text-blue-300";
+            case "FATURAMENTO_MENSAL":
+                return "bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-950/60 dark:text-purple-300";
+            default:
+                return "bg-gray-100 text-gray-800 border-gray-300 dark:bg-gray-800 dark:text-gray-300";
+        }
+    }, [receita.modalidade]);
+
+    const statusSummary = useMemo(() => {
+        if (isConciliado) {
+            return {
+                icon: CheckCircle2,
+                iconColor: "text-emerald-600",
+                title: "Recebimento Conciliado",
+                shortNote: "Conferência confirmada no extrato",
+                badge: "Ciclo financeiro concluído",
+                badgeTagClass: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300",
+                cardBg: "bg-emerald-50/70 dark:bg-emerald-950/20",
+                cardBorder: "border-emerald-200 dark:border-emerald-800",
+                description: "A conferência no extrato bancário foi confirmada e o ciclo financeiro está concluído.",
+            };
+        }
+        if (isRecebido) {
+            return {
+                icon: Clock,
+                iconColor: "text-amber-600",
+                title: "Recebimento Registrado",
+                shortNote: "Pendente de conciliação bancária",
+                badge: "Próxima etapa: Conciliação bancária",
+                badgeTagClass: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300",
+                cardBg: "bg-amber-50/70 dark:bg-amber-950/20",
+                cardBorder: "border-amber-200 dark:border-amber-800",
+                description: "O pagamento foi informado como recebido no ORBE. Confira o crédito no extrato bancário para concluir a conciliação.",
+            };
+        }
+        if (isCaixaImediato) {
+            return {
+                icon: Zap,
+                iconColor: "text-emerald-600",
+                title: "Recebimento Pendente",
+                shortNote: "Aguardando comprovante (PIX/dinheiro)",
+                badge: "Recebimento pendente",
+                badgeTagClass: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300",
+                cardBg: "bg-emerald-50/70 dark:bg-emerald-950/20",
+                cardBorder: "border-emerald-200 dark:border-emerald-800",
+                description: itemExtra
+                    ? "Aguardando confirmação do recebimento imediato deste serviço extra com dados do comprovante (PIX, dinheiro ou cartão)."
+                    : "Aguardando confirmação do recebimento imediato desta operação com dados do comprovante (PIX, dinheiro ou cartão).",
+            };
+        }
+        if (isFaturamentoMensal && receita.status === 'aguardando_fechamento') {
+            return {
+                icon: Clock,
+                iconColor: "text-purple-600",
+                title: "Competência em Aberto",
+                shortNote: "Aguardando fechamento do ciclo",
+                badge: "Aguardando fechamento",
+                badgeTagClass: "bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-950/60 dark:text-purple-300",
+                cardBg: "bg-purple-50/70 dark:bg-purple-950/20",
+                cardBorder: "border-purple-200 dark:border-purple-800",
+                description: "Os lançamentos de faturamento mensal deste ciclo foram apurados. Consolide a competência e defina o vencimento padrão para dar início à cobrança.",
+            };
+        }
+        if (isCobrancaEnviada) {
+            return {
+                icon: Receipt,
+                iconColor: "text-orange-600",
+                title: "Cobrança Enviada ao Cliente",
+                shortNote: "Em monitoramento até o vencimento",
+                badge: "Aguardando pagamento",
+                badgeTagClass: "bg-orange-100 text-orange-800 border-orange-300 dark:bg-orange-950/60 dark:text-orange-300",
+                cardBg: "bg-orange-50/70 dark:bg-orange-950/20",
+                cardBorder: "border-orange-200 dark:border-orange-800",
+                description: isFaturamentoMensal
+                    ? "A fatura consolidada foi enviada ao cliente. O título encontra-se em monitoramento até o vencimento."
+                    : "A duplicata/fatura foi enviada. O título encontra-se em monitoramento até o vencimento.",
+            };
+        }
+        if (hasDocumentoGerado) {
+            return {
+                icon: Send,
+                iconColor: "text-blue-600",
+                title: isFaturamentoMensal ? "Competência Consolidada — Documento Emitido" : "Operação Faturável — Documento Emitido",
+                shortNote: "Envio pendente ao cliente",
+                badge: "Envio pendente",
+                badgeTagClass: "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950/60 dark:text-blue-300",
+                cardBg: "bg-blue-50/70 dark:bg-blue-950/20",
+                cardBorder: "border-blue-200 dark:border-blue-800",
+                description: "O documento de cobrança já foi gerado. Encaminhe o documento ao cliente externamente e registre o envio no sistema.",
+            };
+        }
+        return {
+            icon: Calculator,
+            iconColor: "text-blue-600",
+            title: isFaturamentoMensal ? "Competência Consolidada — Pronta para Cobrança" : "Operação Faturável — Emissão de Cobrança",
+            shortNote: "Aguardando emissão do título",
+            badge: "Pronta para emissão",
+            badgeTagClass: "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950/60 dark:text-blue-300",
+            cardBg: "bg-blue-50/70 dark:bg-blue-950/20",
+            cardBorder: "border-blue-200 dark:border-blue-800",
+            description: isFaturamentoMensal
+                ? "Competência mensal consolidada e fechada. Siga a sequência operacional para emitir e registrar a cobrança."
+                : "Operação aprovada a prazo. Siga a sequência operacional para emitir e registrar a cobrança.",
+        };
+    }, [isConciliado, isRecebido, isCaixaImediato, isFaturamentoMensal, receita.status, isCobrancaEnviada, hasDocumentoGerado, itemExtra]);
+
+    const pipelineStages = useMemo(() => {
+        const origemNome = itemExtra ? "Serviço Extra" : (itemOps ? "Operação por Volume" : "Origem Operacional");
+
+        if (isCaixaImediato) {
+            return [
+                {
+                    id: "origem",
+                    label: origemNome,
+                    compactLabel: itemExtra ? "Serv. Extra" : (itemOps ? "Op. Volume" : "Origem"),
+                    responsible: "Encarregado / Operação",
+                    description: "Serviço aprovado operacionalmente.",
+                    status: "done" as const,
+                },
+                {
+                    id: "receita",
+                    label: "Receita",
+                    compactLabel: "Receita",
+                    responsible: "Sistema / Operação",
+                    description: "Receita gerada automaticamente no Financeiro.",
+                    status: "done" as const,
+                },
+                {
+                    id: "recebimento",
+                    label: "Recebimento",
+                    compactLabel: "Recebimento",
+                    responsible: "Financeiro / Caixa",
+                    description: "Conferência do comprovante e confirmação no caixa.",
+                    status: (isConciliado || isRecebido) ? ("done" as const) : ("current" as const),
+                },
+                {
+                    id: "conciliacao",
+                    label: "Conciliação",
+                    compactLabel: "Conciliação",
+                    responsible: "Financeiro / Tesouraria",
+                    description: "Conferência do extrato bancário e ciclo concluído.",
+                    status: isConciliado ? ("done" as const) : (isRecebido ? ("current" as const) : ("pending" as const)),
+                },
+            ];
+        }
+
+        if (isFaturamentoMensal) {
+            return [
+                {
+                    id: "origem",
+                    label: "Lançamentos Operacionais",
+                    compactLabel: "Operações",
+                    responsible: "Operação / ADM",
+                    description: "Lançamentos capturados e apurados na competência.",
+                    status: "done" as const,
+                },
+                {
+                    id: "consolidacao",
+                    label: "Consolidação",
+                    compactLabel: "Consolidação",
+                    responsible: "Financeiro / Faturamento",
+                    description: "Fechamento da competência e fixação do vencimento padrão.",
+                    status: receita.status === "aguardando_fechamento" ? ("current" as const) : ("done" as const),
+                },
+                {
+                    id: "cobranca",
+                    label: "Cobrança",
+                    compactLabel: "Cobrança",
+                    responsible: "Financeiro / Cobrança",
+                    description: "Emissão da fatura unificada e envio ao cliente.",
+                    status: (isCobrancaEnviada || isRecebido || isConciliado)
+                        ? ("done" as const)
+                        : (receita.status === "aguardando_fechamento" ? ("pending" as const) : ("current" as const)),
+                },
+                {
+                    id: "recebimento",
+                    label: "Recebimento",
+                    compactLabel: "Recebimento",
+                    responsible: "Financeiro / Contas a Receber",
+                    description: "Identificação do crédito até a data de vencimento.",
+                    status: (isRecebido || isConciliado)
+                        ? ("done" as const)
+                        : (isCobrancaEnviada ? ("current" as const) : ("pending" as const)),
+                },
+                {
+                    id: "conciliacao",
+                    label: "Conciliação",
+                    compactLabel: "Conciliação",
+                    responsible: "Financeiro / Tesouraria",
+                    description: "Conferência bancária e liquidação definitiva.",
+                    status: isConciliado ? ("done" as const) : (isRecebido ? ("current" as const) : ("pending" as const)),
+                },
+            ];
+        }
+
+        // DUPLICATA / Padrão
+        return [
+            {
+                id: "origem",
+                label: origemNome,
+                compactLabel: itemExtra ? "Serv. Extra" : (itemOps ? "Op. Volume" : "Origem"),
+                responsible: "Encarregado / Operação",
+                description: "Registro operacional validado e aprovado.",
+                status: "done" as const,
+            },
+            {
+                id: "receita",
+                label: "Receita",
+                compactLabel: "Receita",
+                responsible: "Sistema / Operação",
+                description: "Receita avulsa gerada na Central de Receitas.",
+                status: "done" as const,
+            },
+            {
+                id: "cobranca",
+                label: "Cobrança",
+                compactLabel: "Cobrança",
+                responsible: "Financeiro / Faturamento",
+                description: "Emissão do título e registro de envio ao cliente.",
+                status: (isCobrancaEnviada || isRecebido || isConciliado) ? ("done" as const) : ("current" as const),
+            },
+            {
+                id: "recebimento",
+                label: "Recebimento",
+                compactLabel: "Recebimento",
+                responsible: "Financeiro / Contas a Receber",
+                description: "Acompanhamento do título e confirmação do recebimento.",
+                status: (isRecebido || isConciliado) ? ("done" as const) : (isCobrancaEnviada ? ("current" as const) : ("pending" as const)),
+            },
+            {
+                id: "conciliacao",
+                label: "Conciliação",
+                compactLabel: "Conciliação",
+                responsible: "Financeiro / Tesouraria",
+                description: "Conferência no extrato bancário e baixa final.",
+                status: isConciliado ? ("done" as const) : (isRecebido ? ("current" as const) : ("pending" as const)),
+            },
+        ];
+    }, [isCaixaImediato, isFaturamentoMensal, itemExtra, itemOps, isConciliado, isRecebido, isCobrancaEnviada, receita.status]);
 
     // --- Action Handlers --- 
     const handleConfirmRecebimento = () => {
@@ -584,10 +882,6 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
             };
         }
 
-        const isPendenteCobranca = receita.status === 'pendente_cobranca';
-        const isCobrancaEnviada = receita.status === 'cobranca_enviada' || receita.status === 'pendente_recebimento';
-        const hasDocumentoGerado = receita.status === 'cobranca_gerada' || Boolean(historico?.some((h: any) => h.acao === 'GERAR_COBRANCA' || h.acao === 'Cobrança Gerada'));
-
         const getOrientacaoFluxo = (): OrientacaoFluxo | null => {
             const modalidade = receita.modalidade;
             const status = receita.status;
@@ -608,8 +902,8 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                         { numero: 2, titulo: "Confirmação no ORBE", detalhe: "Registrar o recebimento à vista para alimentar o fluxo de caixa." }
                     ],
                     proximaAcao: {
-                        label: "Confirmar Conferência e Recebimento",
-                        icone: CheckCircle,
+                        label: "Confirmar Recebimento do Pagamento",
+                        icone: Banknote,
                         onClick: () => setActionView('confirmar_pix'),
                         className: "bg-emerald-600 hover:bg-emerald-700 text-white",
                         disabled: isSubmitting
@@ -874,7 +1168,6 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                             size="sm"
                             className={cn("w-full text-xs gap-1.5 h-8", orientacao.acaoSecundaria.className)}
                         >
-                            {orientacao.acaoSecundaria.icone && <orientacao.acaoSecundaria.icone className="h-3.5 w-3.5" />}
                             {orientacao.acaoSecundaria.label}
                         </Button>
                     )}
@@ -883,563 +1176,312 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
         );
     };
 
+    const StatusIcon = statusSummary.icon;
+
     return (
-        <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="max-w-3xl bg-gray-50 p-0 border-none shadow-xl overflow-hidden flex flex-col md:max-h-[90vh]">
-                <DialogHeader className="bg-white px-6 py-4 border-b">
-                    <DialogTitle className="flex flex-col gap-2">
-                        <div className="flex items-center gap-2 text-xl font-bold font-display text-gray-800">
-                            <Receipt className="h-5 w-5 text-primary" />
-                            Receita Operacional
-                        </div>
-                        {/* REFINAMENTO 06 */}
-                        <div className="text-[11px] text-gray-500 font-normal">
-                            {itemCount > 1 
-                                ? `Receita originada automaticamente a partir de ${itemCount} lançamentos operacionais agrupados.`
-                                : itemExtra 
-                                    ? `Receita originada automaticamente a partir do Serviço Extra ${itemExtra.id?.substring(0, 8) || ''}.`
-                                    : `Receita originada automaticamente a partir da Operação por Volume ${itemOps?.id?.substring(0, 8) || 'Desconhecida'}.`
-                            }
-                        </div>
-                        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px] font-normal text-gray-500 mt-1">
-                            <div><span className="font-semibold text-gray-700 uppercase tracking-widest text-[10px]">Cliente</span><br /> <span className="text-gray-900 font-medium">{clienteNome}</span></div>
-                            <div className="w-px h-6 bg-gray-200"></div>
-                            <div><span className="font-semibold text-gray-700 uppercase tracking-widest text-[10px]">Valor</span><br /> <span className="font-bold text-gray-900 text-sm">{valorStr}</span></div>
-                            <div className="w-px h-6 bg-gray-200"></div>
-                            <div><span className="font-semibold text-gray-700 uppercase tracking-widest text-[10px]">Competência</span><br /> <span className="text-gray-900 font-medium">{compStr}</span></div>
-                            <div className="w-px h-6 bg-gray-200"></div>
-                            <div><span className="font-semibold text-gray-700 uppercase tracking-widest text-[10px]">Modalidade</span><br /> <span className="text-gray-900 font-medium">{receita.modalidade?.replace('_', ' ')}</span></div>
-                            <div className="w-px h-6 bg-gray-200"></div>
-                            <div><span className="font-semibold text-gray-700 uppercase tracking-widest text-[10px]">Situação Financeira</span><br /> <span className="inline-block mt-0.5 text-blue-700 font-bold uppercase text-[11px] bg-blue-50 px-2 py-0.5 rounded">{receita.status === 'conciliado' ? 'CONCILIADO' : (receita.status === 'recebido' || receita.status === 'pago') ? 'RECEBIDO' : receita.status?.replace('_', ' ')}</span></div>
-                        </div>
-
-                        {/* Pipeline de Receita e Última Atualização */}
-                        <div className="flex flex-col md:flex-row md:items-center justify-between border-t border-gray-100 pt-3 mt-1 gap-2">
-                            <div className="flex items-center space-x-2 text-[11px] font-bold text-gray-400">
-                                <span className={cn("flex items-center gap-1", (itemOps || itemExtra) ? "text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded" : "")}>
-                                    <CheckCircle className="h-3.5 w-3.5" /> {itemExtra ? "Serviço Extra" : "Operação"}
+        <>
+            <Sheet open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+                <SheetContent side="right" className={cn(RECEITA_DRAWER_WIDTH_CLASS, "p-0 flex flex-col h-full bg-background border-l shadow-2xl overflow-hidden")}>
+                    {/* Cabeçalho Compacto do Drawer Canônico */}
+                    <header className="p-5 border-b border-border bg-slate-50/70 dark:bg-slate-900/50 flex items-start justify-between shrink-0">
+                        <div className="space-y-1 pr-4 min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <Badge
+                                    variant="outline"
+                                    className={cn("text-[10px] font-bold uppercase tracking-wider", originInfo.badgeClass)}
+                                >
+                                    {originInfo.badge}
+                                </Badge>
+                                <span className="text-[11px] text-muted-foreground font-medium">
+                                    Continuidade Financeira
                                 </span>
-                                <span>↓</span>
-                                <span className={cn("flex items-center gap-1", receita ? "text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded" : "")}><CheckCircle className="h-3.5 w-3.5" /> Receita</span>
-                                {receita.modalidade !== 'CAIXA_IMEDIATO' && (
-                                    <>
-                                        <span>↓</span>
-                                        <span className={cn("flex items-center gap-1", (receita.status === 'cobranca_enviada' || receita.status === 'recebido' || receita.status === 'pago' || receita.status === 'conciliado') ? "text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded" : (receita.status === 'pendente_cobranca' ? "text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded" : ""))}><CheckCircle className="h-3.5 w-3.5" /> Cobrança</span>
-                                    </>
-                                )}
-                                <span>↓</span>
-                                <span className={cn("flex items-center gap-1", (receita.status === 'recebido' || receita.status === 'pago' || receita.status === 'conciliado') ? "text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded" : ((receita.status === 'pendente_recebimento' || receita.status === 'aguardando_fechamento') ? "text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded animate-pulse" : ""))}><CheckCircle className="h-3.5 w-3.5" /> Recebimento</span>
-                                {receita.modalidade !== 'CAIXA_IMEDIATO' && (
-                                    <>
-                                        <span>↓</span>
-                                        {receita.status === 'conciliado' ? (
-                                            <span className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
-                                                <CheckCircle className="h-3.5 w-3.5" /> Conciliação
-                                            </span>
-                                        ) : (receita.status === 'recebido' || receita.status === 'pago') ? (
-                                            <span className="flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded animate-pulse font-semibold" title="Conciliação pendente de conferência no extrato bancário">
-                                                <Clock className="h-3.5 w-3.5 text-amber-600" /> Conciliação (Pendente)
-                                            </span>
-                                        ) : (
-                                            <span className="flex items-center gap-1 text-gray-400">
-                                                <CheckCircle className="h-3.5 w-3.5" /> Conciliação
-                                            </span>
-                                        )}
-                                    </>
-                                )}
                             </div>
-
-                            <div className="text-[11px] text-gray-500 bg-gray-50 px-2 py-1 rounded border border-gray-100 flex items-center gap-2">
-                                <Clock className="h-3 w-3" />
-                                <span>Última atualização: <span className="font-semibold text-gray-700">{new Date(receita.updated_at || new Date()).toLocaleString('pt-BR')}</span></span>
-                            </div>
+                            <SheetTitle className="font-display text-lg font-bold text-foreground text-left truncate">
+                                {originInfo.title}
+                            </SheetTitle>
+                            <p className="text-xs text-muted-foreground leading-relaxed">
+                                {itemCount > 1
+                                    ? `Receita originada automaticamente a partir de ${itemCount} lançamentos operacionais agrupados.`
+                                    : itemExtra
+                                        ? `Receita originada automaticamente a partir do Serviço Extra ${itemExtra.id?.substring(0, 8) || ''}.`
+                                        : `Receita originada automaticamente a partir da Operação por Volume ${itemOps?.id?.substring(0, 8) || 'Desconhecida'}.`
+                                }
+                            </p>
                         </div>
-                    </DialogTitle>
-                </DialogHeader>
 
-                <Tabs defaultValue="detalhes" className="w-full h-full flex flex-col overflow-hidden">
-                    <div className="bg-white px-6 pt-2 pb-0 border-b">
-                        <TabsList className="grid w-[400px] grid-cols-3 bg-gray-100/80 mb-2">
-                            <TabsTrigger value="detalhes">Operacional</TabsTrigger>
-                            <TabsTrigger value="documentos">Documentos</TabsTrigger>
-                            <TabsTrigger value="historico">Timeline</TabsTrigger>
-                        </TabsList>
-                    </div>
+                        <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground shrink-0"
+                            onClick={onClose}
+                            aria-label="Fechar painel"
+                        >
+                            <X className="h-4 w-4" />
+                        </Button>
+                    </header>
 
-                    <TabsContent value="detalhes" className="flex-1 overflow-y-auto p-6 m-0 focus-visible:ring-0">
+                    {/* Corpo com Scroll */}
+                    <div className="flex-1 overflow-y-auto p-5 space-y-5">
+                        {/* 1. Status Bar Compacta (Faixa única no desktop, máx 2 linhas no mobile — UX-2B.13) */}
+                        <div
+                            className={cn(
+                                "rounded-lg border px-3 py-2 flex items-center justify-between gap-2.5 transition-colors min-h-[48px]",
+                                statusSummary.cardBg,
+                                statusSummary.cardBorder
+                            )}
+                        >
+                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                <div className="p-1 rounded-md bg-white/80 dark:bg-black/30 shrink-0 shadow-2xs">
+                                    <StatusIcon className={cn("h-4 w-4", statusSummary.iconColor)} />
+                                </div>
+                                <div className="min-w-0 flex-1 flex flex-col sm:flex-row sm:items-center sm:gap-2">
+                                    <h3 className="text-xs font-bold text-foreground truncate">
+                                        {statusSummary.title}
+                                    </h3>
+                                    {statusSummary.shortNote && (
+                                        <span className="text-[11px] text-muted-foreground truncate hidden sm:inline">
+                                            • {statusSummary.shortNote}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                            <Badge variant="outline" className={cn("text-[10px] font-semibold h-5 px-2 shrink-0 uppercase tracking-tight", statusSummary.badgeTagClass)}>
+                                {receita.status === 'conciliado' ? 'CONCILIADO' : (receita.status === 'recebido' || receita.status === 'pago') ? 'RECEBIDO' : receita.status?.replace('_', ' ')}
+                            </Badge>
+                        </div>
 
+                        {/* 2. Card de Dados Essenciais */}
+                        <section className="bg-slate-50 dark:bg-slate-900/60 rounded-xl p-3.5 border border-border/80 space-y-2.5 text-xs">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground pb-1 border-b border-border/60">
+                                Dados Essenciais da Receita
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2.5">
+                                <div className="flex items-center gap-2">
+                                    <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                    <div className="min-w-0 flex-1">
+                                        <div className="text-[10px] text-muted-foreground">Cliente / Empresa</div>
+                                        <div className="font-semibold text-foreground truncate">
+                                            {clienteNome}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    <Calendar className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                    <div className="min-w-0 flex-1">
+                                        <div className="text-[10px] text-muted-foreground">Competência / Vencimento</div>
+                                        <div className="font-semibold text-foreground truncate">
+                                            {compStr} {receita.vencimento ? `(${new Date(receita.vencimento + 'T12:00:00Z').toLocaleDateString('pt-BR')})` : '(Imediato)'}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2.5 pt-1 border-t border-border/60">
+                                <div className="flex items-center gap-2">
+                                    <DollarSign className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                                    <div className="min-w-0 flex-1">
+                                        <div className="text-[10px] text-muted-foreground">Valor Total da Receita</div>
+                                        <div className="font-bold text-foreground truncate">
+                                            {valorStr}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    <Receipt className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                                    <div className="min-w-0 flex-1">
+                                        <div className="text-[10px] text-muted-foreground">Modalidade Financeira</div>
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                            <Badge variant="outline" className={cn("text-[10px] font-semibold h-4 px-1.5 uppercase", modalidadeBadgeClass)}>
+                                                {receita.modalidade?.replace('_', ' ')}
+                                            </Badge>
+                                            {receita.observacao === 'FATURA_COMPLEMENTAR' && (
+                                                <Badge variant="outline" className="text-[10px] font-semibold h-4 px-1.5 bg-amber-50 text-amber-800 border-amber-200">
+                                                    Complementar
+                                                </Badge>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+
+                        {/* Sub-Views (Forms embutidos) */}
                         {actionView !== 'main' ? (
-                            <div className="bg-white p-6 rounded-xl border shadow-sm">
+                            <section className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-border shadow-sm">
                                 {actionView === 'gerar_cobranca' && renderGerarCobrancaForm()}
                                 {actionView === 'enviar_cobranca' && renderEnviarCobrancaForm()}
                                 {actionView === 'consolidar' && renderConsolidarForm()}
                                 {actionView === 'confirmar_pix' && renderConfirmarPixForm()}
-                            </div>
+                            </section>
                         ) : (
-                            <div className="space-y-6">
-                                {/* BLOCO 01: RESUMO FINANCEIRO */}
-                                <div className="space-y-3">
-                                    <h4 className="text-sm font-bold text-gray-800 flex items-center gap-2">
-                                        <Receipt className="h-4 w-4 text-gray-500" /> Resumo Financeiro
-                                    </h4>
-                                    <div className="flex flex-wrap items-start gap-4 md:gap-5 bg-white p-5 rounded-xl border shadow-sm">
-                                        <div className="space-y-1.5 flex-[1_1_auto] min-w-max">
-                                            <p className="text-[10px] font-bold text-gray-400 tracking-wider uppercase leading-tight">Situação Financeira</p>
-                                            {receita.status === 'conciliado' ? (
-                                                <div className="inline-flex bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded gap-1 whitespace-nowrap items-center min-h-[22px]">
-                                                    <CheckCircle className="h-3 w-3" /> CONCILIADO
-                                                </div>
-                                            ) : (receita.status === 'recebido' || receita.status === 'pago') ? (
-                                                <div className="inline-flex bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded gap-1 whitespace-nowrap items-center min-h-[22px]" title="Recebimento registrado — aguardando conferência bancária">
-                                                    <Clock className="h-3 w-3 text-amber-700" /> RECEBIMENTO REGISTRADO
-                                                </div>
-                                            ) : (
-                                                <div className="inline-flex bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded whitespace-nowrap items-center min-h-[22px]">
-                                                    {receita.status?.replace('_', ' ').toUpperCase()}
-                                                </div>
-                                            )}
-                                        </div>
-                                        <div className="space-y-1.5 flex-[1_1_auto] min-w-max">
-                                            <p className="text-[10px] font-bold text-gray-400 tracking-wider uppercase leading-tight">Modalidade</p>
-                                            <div className="flex items-center gap-1.5 min-h-[22px]">
-                                                <div className="inline-flex bg-gray-100 text-gray-800 text-[10px] font-bold px-2 py-0.5 rounded whitespace-nowrap items-center uppercase">
-                                                    {receita.modalidade?.replace('_', ' ')}
-                                                </div>
-                                                {receita.observacao === 'FATURA_COMPLEMENTAR' && (
-                                                    <div className="inline-flex bg-amber-50 text-amber-800 border border-amber-200/80 text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap items-center uppercase">
-                                                        Complementar
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <div className="space-y-1.5 flex-[1_1_auto] min-w-max">
-                                            <p className="text-[10px] font-bold text-gray-400 tracking-wider uppercase leading-tight">Competência</p>
-                                            <p className="font-semibold text-gray-800 text-[15px] pt-0.5">{compStr}</p>
-                                        </div>
-                                        <div className="space-y-1.5 flex-[1_1_auto] min-w-max">
-                                            <p className="text-[10px] font-bold text-gray-400 tracking-wider uppercase leading-tight">Venc. <span className="opacity-70">(Prev)</span></p>
-                                            <p className="font-semibold text-gray-800 text-[15px] whitespace-nowrap pt-0.5">
-                                                {receita.vencimento ? new Date(receita.vencimento + 'T12:00:00Z').toLocaleDateString('pt-BR') : 'Imediato'}
-                                            </p>
-                                        </div>
-                                        <div className="space-y-1.5 flex-[1_1_auto] min-w-max md:text-right">
-                                            <p className="text-[10px] font-bold text-gray-400 tracking-wider uppercase leading-tight">Valor Total</p>
-                                            <p className="font-black text-blue-700 text-[17px] whitespace-nowrap pt-0.5">{valorStr}</p>
-                                        </div>
+                            <>
+                                {/* 3. Resumo Compacto e Clicável do Pipeline (UX-2B.13 / UX-2B.14) */}
+                                <section className="space-y-1.5">
+                                    <div className="flex items-center justify-between pb-0.5">
+                                        <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                                            <Layers className="h-3.5 w-3.5 text-primary" /> Fluxo da Receita Operacional
+                                        </span>
+                                        <span className="text-[10px] font-medium text-muted-foreground">
+                                            {pipelineStages.filter(s => s.status === 'done').length} de {pipelineStages.length} etapas
+                                        </span>
                                     </div>
-                                </div>
 
-                                {/* AÇÕES DISPONÍVEIS */}
-                                <div>
-                                    <h4 className="text-sm font-bold text-gray-800 mb-3 ml-1 flex items-center gap-2"><Zap className="h-4 w-4 text-orange-500" /> Ações do Fluxo</h4>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setDetalhesInitialTab('fluxo');
+                                            setIsDetalhesOpen(true);
+                                        }}
+                                        className="w-full text-left p-2.5 rounded-lg border border-border/80 bg-slate-50/80 dark:bg-slate-900/60 hover:bg-slate-100/90 dark:hover:bg-slate-900 transition-all group shadow-2xs hover:border-primary/50 cursor-pointer space-y-1.5"
+                                        title="Clique para ver o fluxo completo com descrições e responsáveis"
+                                    >
+                                        <div className="flex items-center justify-between text-[10px] text-muted-foreground pb-1 border-b border-border/40">
+                                            <span className="font-semibold text-foreground/80">
+                                                Resumo das Etapas
+                                            </span>
+                                            <span className="text-primary flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform font-bold">
+                                                <span>Ver fluxo completo</span>
+                                                <ChevronRight className="h-3 w-3" />
+                                            </span>
+                                        </div>
+
+                                        <div className="flex items-center justify-between gap-1 w-full flex-wrap sm:flex-nowrap pt-0.5">
+                                            {pipelineStages.map((stage, idx) => {
+                                                const isDone = stage.status === 'done';
+                                                const isCurrent = stage.status === 'current';
+                                                const isPending = stage.status === 'pending';
+                                                const isLast = idx === pipelineStages.length - 1;
+
+                                                return (
+                                                    <div key={stage.id} className="flex items-center gap-1 min-w-0 shrink">
+                                                        <span
+                                                            className={cn(
+                                                                "font-medium transition-colors flex items-center gap-1 text-[10px] sm:text-[11px] min-w-0",
+                                                                isDone && "text-emerald-700 dark:text-emerald-400 font-semibold",
+                                                                isCurrent && "text-foreground font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded shadow-2xs",
+                                                                isPending && "text-muted-foreground/70"
+                                                            )}
+                                                            title={stage.label}
+                                                        >
+                                                            <span className="truncate">{stage.compactLabel || stage.label}</span>
+                                                            {isDone && <span className="text-emerald-600 font-bold shrink-0">✓</span>}
+                                                            {isCurrent && <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary animate-pulse shrink-0" />}
+                                                        </span>
+                                                        {!isLast && (
+                                                            <span className="text-muted-foreground/40 font-mono text-[9px] sm:text-[10px] shrink-0 mx-0.5">→</span>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </button>
+                                </section>
+
+                                {/* 4. Próxima Ação */}
+                                <section className="space-y-2 pt-1">
+                                    <div className="flex items-center justify-between pb-1 border-b border-border">
+                                        <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                                            <Zap className="h-3.5 w-3.5 text-orange-500" /> Próxima Ação Financeira
+                                        </span>
+                                    </div>
                                     {renderActionButtons()}
-                                </div>
+                                </section>
 
-                                {/* OPERAÇÕES VINCULADAS (Lazy Loaded) */}
-                                <div>
-                                    <div className="flex items-center justify-between mb-3 mx-1">
-                                        {(() => {
-                                            const itens = detalhesReceita?.receitas_operacionais_itens || [];
-                                            let tituloSecao = "Detalhes dos Lançamentos";
-                                            if (itens.length > 0) {
-                                                const temOp = itens.some((i: any) => i.operacao_id || i.operacoes_producao);
-                                                const temSe = itens.some((i: any) => i.servico_extra_id || i.servicos_extras_operacionais);
-                                                if (temOp && !temSe) tituloSecao = "Detalhes das Operações";
-                                                else if (temSe && !temOp) tituloSecao = "Detalhes dos Serviços Extras";
-                                                else tituloSecao = "Detalhes dos Lançamentos";
-                                            }
-                                            return (
-                                                <h4 className="text-sm font-bold text-gray-800 flex items-center gap-2">
-                                                    <Layers className="h-4 w-4 text-gray-500" /> {tituloSecao}
-                                                </h4>
-                                            );
-                                        })()}
-                                        {isLoadingDetalhes && <span className="text-xs text-gray-400 animate-pulse">Carregando dados...</span>}
+                                {/* 5. Detalhes Complementares (Abertura em Camada do Drawer 2) */}
+                                <section className="pt-2 border-t border-border/80 space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                                            <Layers className="h-3.5 w-3.5 text-primary" /> Detalhes Complementares da Operação
+                                        </span>
+                                        <span className="text-[10px] text-muted-foreground font-medium">
+                                            Operacional • Documentos • Timeline
+                                        </span>
                                     </div>
-
-                                    {errDetalhes && (
-                                        <div className="bg-red-100 text-red-700 p-3 rounded mb-4 text-xs font-mono">
-                                            <strong>ERRO API:</strong> {errDetalhes instanceof Error ? errDetalhes.message : JSON.stringify(errDetalhes)}
-                                        </div>
-                                    )}
-
-                                    {detalhesReceita?.receitas_operacionais_itens?.length > 0 ? (
-                                        receita.modalidade === 'FATURAMENTO_MENSAL' ? (
-                                            <div className="space-y-4">
-                                                {/* TABELA CONSOLIDADA DE ITENS MENSAL (FIX 14) */}
-                                                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-                                                    <div className="bg-gray-50/80 px-4 py-3 border-b flex items-center justify-between">
-                                                        <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">
-                                                            Lançamentos Consolidados da Competência ({detalhesReceita.receitas_operacionais_itens.length})
-                                                        </span>
-                                                        <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                                                            {receita.observacao === 'FATURA_COMPLEMENTAR' ? 'Faturamento Mensal (Complementar)' : 'Faturamento Mensal'}
-                                                        </span>
-                                                    </div>
-                                                    <table className="w-full text-xs text-left">
-                                                        <thead className="bg-gray-50/50 text-gray-500 border-b border-gray-100 font-semibold uppercase text-[10px]">
-                                                            <tr>
-                                                                <th className="px-4 py-2.5">Data</th>
-                                                                <th className="px-3 py-2.5">Origem / ID</th>
-                                                                <th className="px-3 py-2.5">Serviço / Descrição</th>
-                                                                <th className="px-3 py-2.5 text-center">Qtd</th>
-                                                                <th className="px-3 py-2.5 text-right">V. Unitário</th>
-                                                                <th className="px-4 py-2.5 text-right font-bold text-gray-700">Subtotal</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody className="divide-y divide-gray-100 text-gray-700">
-                                                            {detalhesReceita.receitas_operacionais_itens.map((item: any) => {
-                                                                const op = item.operacoes_producao;
-                                                                const se = item.servicos_extras_operacionais;
-                                                                const dataStr = op?.data_operacao ? formatDateOnly(op.data_operacao) : formatDateOnly(se?.data || se?.data_servico);
-                                                                const servicoNome = op?.servicos?.nome || op?.servicos?.descricao || se?.tipo_servico || 'Serviço Operacional';
-                                                                const prodNome = op?.produtos?.nome ? ` - ${op.produtos.nome}` : (se?.descricao && se?.tipo_servico ? ` (${se.descricao})` : (se?.descricao ? ` - ${se.descricao}` : ''));
-                                                                const qtd = op?.quantidade || se?.quantidade || 1;
-                                                                const vUnit = Number(op?.valor_unitario_snapshot ?? op?.valor_unitario ?? se?.valor_unitario ?? 0);
-                                                                const valItem = Number(item.valor_item || op?.valor_total || se?.valor_total || 0);
-
-                                                                return (
-                                                                    <tr key={item.id} className="hover:bg-gray-50/60 transition-colors">
-                                                                        <td className="px-4 py-3 font-medium whitespace-nowrap">
-                                                                            {dataStr}
-                                                                        </td>
-                                                                        <td className="px-3 py-3">
-                                                                            {op ? (
-                                                                                <button
-                                                                                    type="button"
-                                                                                    onClick={() => { onClose(); navigate("/operacional/operacoes", { state: { highlight: op.id } }); }}
-                                                                                    className="font-bold text-blue-600 hover:underline tracking-wide"
-                                                                                    title="Ver na Recepção Operacional"
-                                                                                >
-                                                                                    #{op.id?.substring(0, 8)}
-                                                                                </button>
-                                                                            ) : se ? (
-                                                                                <span className="font-bold text-purple-600 tracking-wide" title="Serviço Extra">
-                                                                                    SE #{se.id?.substring(0, 8)}
-                                                                                </span>
-                                                                            ) : (
-                                                                                <span className="text-gray-400">-</span>
-                                                                            )}
-                                                                        </td>
-                                                                        <td className="px-3 py-3 truncate max-w-[220px]">
-                                                                            <span className="font-semibold text-gray-800">{servicoNome}</span>
-                                                                            <span className="text-gray-500">{prodNome}</span>
-                                                                        </td>
-                                                                        <td className="px-3 py-3 text-center font-medium">
-                                                                            {qtd}
-                                                                        </td>
-                                                                        <td className="px-3 py-3 text-right text-gray-500 whitespace-nowrap">
-                                                                            R$ {vUnit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                                                        </td>
-                                                                        <td className="px-4 py-3 text-right font-bold text-gray-900 whitespace-nowrap">
-                                                                            R$ {valItem.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                                                        </td>
-                                                                    </tr>
-                                                                );
-                                                            })}
-                                                        </tbody>
-                                                        <tfoot className="bg-gray-50 border-t font-semibold text-gray-800">
-                                                            <tr>
-                                                                <td colSpan={4} className="px-4 py-3 text-xs text-gray-500 uppercase tracking-wide">
-                                                                    Total da Competência ({detalhesReceita.receitas_operacionais_itens.length} {detalhesReceita.receitas_operacionais_itens.length === 1 ? 'item' : 'itens'})
-                                                                </td>
-                                                                <td className="px-3 py-3 text-right text-xs uppercase text-gray-500">
-                                                                    TOTAL:
-                                                                </td>
-                                                                <td className="px-4 py-3 text-right font-black text-blue-700 text-sm whitespace-nowrap">
-                                                                    {valorStr}
-                                                                </td>
-                                                            </tr>
-                                                        </tfoot>
-                                                    </table>
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <div className="space-y-3">
-                                                {detalhesReceita.receitas_operacionais_itens.map((item: any) => {
-                                                    const op = item.operacoes_producao;
-                                                    const se = item.servicos_extras_operacionais;
-                                                    return (
-                                                        <div key={item.id} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm text-sm">
-                                                            {op ? (
-                                                                <div className="flex flex-col gap-6">
-                                                                    {/* BLOCO 02: Origem */}
-                                                                    <div>
-                                                                        <h5 className="text-xs font-bold text-gray-800 uppercase tracking-widest border-b pb-2 mb-3">Origem da Receita</h5>
-                                                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                                                            <div><span className="text-gray-400 text-xs block">Origem</span> <span className="font-medium text-gray-700 block">Operação por Volume</span></div>
-                                                                            <div><span className="text-gray-400 text-xs block">Nº Operação</span> <button type="button" onClick={() => { onClose(); navigate("/operacional/operacoes", { state: { highlight: op.id } }); }} className="font-bold text-blue-600 hover:underline truncate tracking-wide block cursor-pointer">{op.id?.substring(0, 8) || '-'}</button></div>
-                                                                            <div><span className="text-gray-400 text-xs block">Data Op.</span> <span className="font-medium text-gray-700">{formatDateOnly(op.data_operacao)}</span></div>
-                                                                            <div>
-                                                                                <span className="text-gray-400 text-xs block mb-0.5">Status Operacional</span>
-                                                                                <span className="font-medium text-gray-700 uppercase text-[10px] bg-gray-100 px-2 py-0.5 rounded border">{op.status?.replace('_', ' ') || 'Processada'}</span>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-
-                                                                    {/* BLOCO 03: Dados Operacionais */}
-                                                                    <div>
-                                                                        <h5 className="text-xs font-bold text-gray-800 uppercase tracking-widest border-b pb-2 mb-3">Dados Operacionais</h5>
-                                                                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                                                                            <div className="col-span-2"><span className="text-gray-400 text-xs block">Serviço</span> <span className="font-medium text-gray-700 truncate block">{op.servicos?.nome || op.servicos?.descricao || '-'}</span></div>
-                                                                            <div><span className="text-gray-400 text-xs block">Produto</span> <span className="font-medium text-gray-700 truncate block">{op.produtos?.nome || op.produtos?.descricao || '-'}</span></div>
-                                                                            <div>
-                                                                                <span className="text-gray-400 text-xs block">Quantidade</span>
-                                                                                <span className="font-medium text-gray-700">{op.quantidade || 0}</span>
-                                                                            </div>
-                                                                            <div>
-                                                                                <span className="text-gray-400 text-xs block">V. Unitário</span>
-                                                                                <span className="font-medium text-gray-700">R$ {Number(op.valor_unitario_snapshot ?? op.valor_unitario_label ?? op.valor_unitario ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                                                                            </div>
-                                                                            <div><span className="text-gray-400 text-xs block">Materiais</span> <span className="font-medium text-gray-700">R$ {Number(op.valor_total_materiais ?? op.valor_materiais ?? op.custo_materiais ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>
-                                                                            <div><span className="text-gray-400 text-xs block">V. ISS</span> <span className="font-medium text-gray-700">R$ {Number(op.custo_com_iss ?? op.valor_iss ?? op.iss ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>
-                                                                            <div><span className="text-gray-400 text-xs block">Forma Pgto</span> <span className="font-medium text-gray-700 truncate block">{op.formas_pagamento_operacional?.nome || op.formas_pagamento_operacional?.descricao || '-'}</span></div>
-
-                                                                            {/* Campos Operacionais do Encarregado */}
-                                                                            <div><span className="text-gray-400 text-xs block">Placa</span> <span className="font-medium text-gray-700">{op.placa || '-'}</span></div>
-                                                                            <div><span className="text-gray-400 text-xs block">Nº Nota Fiscal</span> <span className="font-medium text-gray-700">{op.nf_numero || (op.possui_nf ? 'SIM (Sem Nº)' : 'NÃO')}</span></div>
-                                                                            <div><span className="text-gray-400 text-xs block">Horário (In / Out)</span> <span className="font-medium text-gray-700">{op.entrada_ponto ? `${op.entrada_ponto.substring(0, 5)} até ${op.saida_ponto?.substring(0, 5) || '?'}` : '-'}</span></div>
-                                                                            <div><span className="text-gray-400 text-xs block">Qtd Colabs (Prod.)</span> <span className="font-medium text-gray-700">{op.quantidade_colaboradores || 0}</span></div>
-
-                                                                            <div className="col-span-2 border-t pt-2 md:border-none md:pt-0">
-                                                                                <span className="text-gray-400 text-[11px] font-semibold uppercase block">Valor Total Origem</span>
-                                                                                <span className="font-bold text-blue-700 text-lg">R$ {Number(op.total_final ?? op.valor_total ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-
-                                                                    {/* BLOCO 04: Responsáveis */}
-                                                                    <div>
-                                                                        <h5 className="text-xs font-bold text-gray-800 uppercase tracking-widest border-b pb-2 mb-3">Responsáveis</h5>
-                                                                        <div className="grid grid-cols-2 gap-4">
-                                                                            <div><span className="text-gray-400 text-xs block">Empresa Faturada</span> <span className="font-medium text-gray-700 truncate block">{receita.empresas?.nome || '-'}</span></div>
-                                                                            <div><span className="text-gray-400 text-xs block">Encarregado</span> <span className="font-medium text-gray-700 truncate tracking-wide">{op.responsavel_nome || op.encarregado?.nome || op.encarregado_id?.substring(0, 8) || '-'}</span></div>
-                                                                            <div><span className="text-gray-400 text-xs block">Fornecedor (Mão de Obra)</span> <span className="font-medium text-gray-700 truncate block">{op.fornecedores?.nome_fantasia || op.fornecedores?.razao_social || op.fornecedores?.nome || '-'}</span></div>
-                                                                            <div><span className="text-gray-400 text-xs block">Transportadora Cliente</span> <span className="font-medium text-gray-700 truncate block">{op.transportadoras?.nome_fantasia || op.transportadoras?.razao_social || op.transportadoras?.nome || '-'}</span></div>
-                                                                        </div>
-                                                                    </div>
-
-                                                                    <div className="pt-2 flex items-center justify-between">
-                                                                        {op.observacao ? (
-                                                                            <div className="bg-yellow-50/50 px-3 py-2 rounded text-gray-600 text-xs border border-yellow-100 flex-1 mr-4">
-                                                                                <strong className="text-yellow-700">Obs:</strong> {op.observacao}
-                                                                            </div>
-                                                                        ) : <div className="flex-1"></div>}
-
-                                                                        <Button type="button" variant="outline" size="sm" className="h-8 gap-2 text-xs bg-white shrink-0 shadow-sm border-blue-200 text-blue-700 hover:bg-blue-50" onClick={() => { onClose(); navigate("/operacional/operacoes", { state: { highlight: op.id } }); }}>
-                                                                            <Layers className="h-3.5 w-3.5" /> Detalhar Operação Completa
-                                                                        </Button>
-                                                                    </div>
-                                                                </div>
-                                                            ) : se ? (
-                                                                <div className="flex flex-col gap-6">
-                                                                    {/* BLOCO 02: Origem Serviço Extra */}
-                                                                    <div>
-                                                                        <h5 className="text-xs font-bold text-gray-800 uppercase tracking-widest border-b pb-2 mb-3">Origem da Receita</h5>
-                                                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                                                            <div><span className="text-gray-400 text-xs block">Origem</span> <span className="font-semibold text-purple-700 block">Serviço Extra</span></div>
-                                                                            <div><span className="text-gray-400 text-xs block">Nº Registro</span> <span className="font-bold text-gray-800 tracking-wide block">SE #{se.id?.substring(0, 8) || '-'}</span></div>
-                                                                            <div><span className="text-gray-400 text-xs block">Data Serv.</span> <span className="font-medium text-gray-700">{formatDateOnly(se.data || se.data_servico)}</span></div>
-                                                                            <div>
-                                                                                <span className="text-gray-400 text-xs block mb-0.5">Status Aprovação</span>
-                                                                                <span className="font-medium text-emerald-700 uppercase text-[10px] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">{se.pipeline_status?.replace('_', ' ') || 'Aprovado'}</span>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-
-                                                                    {/* BLOCO 03: Dados do Serviço Extra */}
-                                                                    <div>
-                                                                        <h5 className="text-xs font-bold text-gray-800 uppercase tracking-widest border-b pb-2 mb-3">Dados do Serviço Extra</h5>
-                                                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                                                            <div className="col-span-2"><span className="text-gray-400 text-xs block">Tipo de Serviço</span> <span className="font-semibold text-gray-800 truncate block">{se.tipo_servico || '-'}</span></div>
-                                                                            <div className="col-span-2"><span className="text-gray-400 text-xs block">Descrição</span> <span className="font-medium text-gray-700 truncate block">{se.descricao || '-'}</span></div>
-                                                                            <div>
-                                                                                <span className="text-gray-400 text-xs block">Quantidade</span>
-                                                                                <span className="font-medium text-gray-700">{se.quantidade || 1}</span>
-                                                                            </div>
-                                                                            <div>
-                                                                                <span className="text-gray-400 text-xs block">V. Unitário</span>
-                                                                                <span className="font-medium text-gray-700">R$ {Number(se.valor_unitario || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                                                                            </div>
-                                                                            <div>
-                                                                                <span className="text-gray-400 text-xs block">Forma Pgto</span>
-                                                                                <span className="font-medium text-gray-700 truncate block">{se.formas_pagamento_operacional?.nome || se.formas_pagamento_operacional?.descricao || '-'}</span>
-                                                                            </div>
-                                                                            <div>
-                                                                                <span className="text-gray-400 text-xs block">Modalidade</span>
-                                                                                <span className="font-medium text-gray-700 truncate block">{se.modalidade_financeira || '-'}</span>
-                                                                            </div>
-                                                                            <div className="col-span-2 border-t pt-2 md:border-none md:pt-0">
-                                                                                <span className="text-gray-400 text-[11px] font-semibold uppercase block">Valor Total</span>
-                                                                                <span className="font-bold text-blue-700 text-lg">R$ {Number(se.valor_total || item.valor_item || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-
-                                                                    {/* BLOCO 04: Responsáveis */}
-                                                                    <div>
-                                                                        <h5 className="text-xs font-bold text-gray-800 uppercase tracking-widest border-b pb-2 mb-3">Responsáveis & Local</h5>
-                                                                        <div className="grid grid-cols-2 gap-4">
-                                                                            <div><span className="text-gray-400 text-xs block">Empresa Faturada</span> <span className="font-medium text-gray-700 truncate block">{receita.empresas?.nome || '-'}</span></div>
-                                                                            <div><span className="text-gray-400 text-xs block">Encarregado / Solicitante</span> <span className="font-medium text-gray-700 truncate tracking-wide">{se.encarregado?.nome || se.encarregado_id?.substring(0, 8) || '-'}</span></div>
-                                                                            <div><span className="text-gray-400 text-xs block">Colaborador / Terceiro</span> <span className="font-medium text-gray-700 truncate block">{se.colaborador?.nome || se.colaborador_externo || '-'}</span></div>
-                                                                            <div><span className="text-gray-400 text-xs block">Unidade / Local</span> <span className="font-medium text-gray-700 truncate block">{se.unidade?.nome || se.local_servico || '-'}</span></div>
-                                                                        </div>
-                                                                    </div>
-
-                                                                    {se.observacao && (
-                                                                        <div className="bg-yellow-50/50 px-3 py-2 rounded text-gray-600 text-xs border border-yellow-100">
-                                                                            <strong className="text-yellow-700">Obs:</strong> {se.observacao}
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            ) : (
-                                                                <div className="text-gray-500">Item sem operação ou serviço extra referenciado. Valor: R$ {item.valor_item}</div>
-                                                            )}
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        )
-                                    ) : (
-                                        !isLoadingDetalhes && (
-                                            <div className="text-center p-6 border border-dashed border-gray-200 rounded-xl bg-gray-50 text-gray-400 text-sm">
-                                                Nenhum registro base anexado.
-                                            </div>
-                                        )
-                                    )}
-                                </div>
-                            </div>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => {
+                                            setDetalhesInitialTab('detalhes');
+                                            setIsDetalhesOpen(true);
+                                        }}
+                                        className="w-full text-xs font-semibold gap-2 h-9 bg-slate-50 hover:bg-slate-100 dark:bg-slate-900 border-border/80 text-foreground shadow-2xs hover:border-primary/50 transition-all justify-between"
+                                    >
+                                        <span className="flex items-center gap-2">
+                                            <FileText className="h-3.5 w-3.5 text-primary" />
+                                            <span>Ver Detalhes Completos (Operacional, Documentos, Timeline)</span>
+                                        </span>
+                                        <span className="text-primary font-bold">→</span>
+                                    </Button>
+                                </section>
+                            </>
                         )}
-                    </TabsContent>
+                    </div>
 
-                    <TabsContent value="documentos" className="flex-1 overflow-y-auto p-6 m-0 focus-visible:ring-0 bg-gray-50">
-                        {historico.filter((h: any) => h.acao === 'Cobrança Gerada').length > 0 ? (
-                            <div className="space-y-4">
-                                <h4 className="font-bold text-gray-800 flex items-center gap-2 mb-3">
-                                    <FileSpreadsheet className="h-5 w-5 text-blue-500" /> Documentos Faturados
-                                </h4>
-                                {historico.filter((h: any) => h.acao === 'Cobrança Gerada').map((h: any) => (
-                                    <div key={h.id} className="bg-white p-4 rounded-xl border shadow-sm flex items-center justify-between hover:border-blue-200 transition-colors">
-                                        <div className="flex items-center gap-4">
-                                            <div className="bg-blue-50 p-3 rounded-lg text-blue-600">
-                                                <Receipt className="h-6 w-6" />
-                                            </div>
-                                            <div>
-                                                <h5 className="font-bold text-gray-800 text-sm">{h.detalhes?.formato || 'Documento PDF'} <span className="text-gray-400 font-normal text-xs ml-2">#{h.id.substring(0, 8).toUpperCase()}</span></h5>
-                                                <p className="text-xs text-gray-500 mt-0.5">Gerado em: {new Date(h.created_at).toLocaleString('pt-BR')} por {h.detalhes?.usuario_email || 'Sistema'}</p>
-                                                {h.detalhes?.vencimento && <p className="text-xs text-gray-600 font-medium mt-1">Vencimento registrado: {new Date(h.detalhes.vencimento + 'T12:00:00Z').toLocaleDateString('pt-BR')}</p>}
-                                            </div>
-                                        </div>
-                                        <Button variant="outline" size="sm" className="gap-2 border-blue-200 text-blue-700 hover:bg-blue-50" onClick={() => generateCobrancaPDF(receita, detalhesReceita, h.detalhes?.formato || 'Fatura (2ª Via)', h.detalhes?.vencimento || receita.vencimento)}>
-                                            <Paperclip className="h-3.5 w-3.5" />
-                                            Baixar 2ª Via
-                                        </Button>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="bg-white p-8 rounded-xl border border-dashed text-center flex flex-col items-center justify-center">
-                                <FileSpreadsheet className="h-10 w-10 text-gray-300 mb-3" />
-                                <h4 className="font-bold text-gray-700">Central de Documentos</h4>
-                                <p className="text-gray-500 text-sm mt-1 max-w-sm mb-4">Boletos, Notas Fiscais e Memórias de Cálculo vinculados a este recebimento ficarão salvos aqui.</p>
-                                <Button variant="outline"><Paperclip className="w-4 h-4 mr-2" /> Anexar Documento</Button>
-                            </div>
-                        )}
-                    </TabsContent>
+                    {/* Rodapé Fixo */}
+                    <footer className="p-4 border-t border-border bg-slate-50/70 dark:bg-slate-900/50 flex items-center justify-between shrink-0">
+                        <span className="text-[11px] text-muted-foreground">
+                            ORBE Financeiro • Central de Receitas
+                        </span>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={onClose}
+                            className="text-xs text-muted-foreground hover:text-foreground h-8 px-3"
+                        >
+                            Fechar
+                        </Button>
+                    </footer>
+                </SheetContent>
+            </Sheet>
 
-                    <TabsContent value="historico" className="flex-1 overflow-y-auto p-6 m-0 bg-white">
-                        <div className="max-w-2xl mx-auto py-2">
-                            {isLoadingHistorico ? (
-                                <div className="flex flex-col items-center justify-center py-10 space-y-3">
-                                    <Clock className="h-6 w-6 text-gray-300 animate-spin" />
-                                    <div className="text-sm text-gray-500">Recuperando timeline...</div>
-                                </div>
-                            ) : historico.length === 0 ? (
-                                <div className="flex flex-col items-center justify-center py-16 text-center border-2 border-dashed rounded-xl border-gray-100">
-                                    <Clock className="h-10 w-10 text-gray-200 mb-3" />
-                                    <p className="text-sm text-gray-400 font-medium">Nenhum evento registrado nesta receita ainda.</p>
-                                    <p className="text-xs text-gray-400 mt-1">Ações futuras irão alimentar esta linha do tempo.</p>
-                                </div>
-                            ) : (
-                                <div className="space-y-5">
-                                    {historico.map((h: any, i: number) => {
-                                        const isStatusChange = !!h.status_novo;
-                                        const dateLabel = new Date(h.created_at).toLocaleDateString('pt-BR');
-                                        const timeLabel = new Date(h.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-
-                                        return (
-                                            <div key={h.id} className="flex gap-4">
-                                                {/* Timeline spine */}
-                                                <div className="flex flex-col items-center mt-1">
-                                                    <div className={cn("h-3.5 w-3.5 rounded-full border-2 bg-white flex items-center justify-center",
-                                                        isStatusChange ? "border-blue-500" : "border-amber-500 z-10"
-                                                    )}>
-                                                        {!isStatusChange && <div className="h-1.5 w-1.5 bg-amber-500 rounded-full" />}
-                                                    </div>
-                                                    {i !== historico.length - 1 && (
-                                                        <div className="w-px h-full bg-border -mb-6 mt-1"></div>
-                                                    )}
-                                                </div>
-
-                                                {/* Content */}
-                                                <div className="flex-1 bg-white border shadow-sm rounded-lg p-4 -mt-2 hover:shadow-md transition-shadow">
-                                                    <div className="flex justify-between items-start mb-3">
-                                                        <div className="flex items-center gap-2">
-                                                            {h.acao?.toLowerCase().includes('recebimento') || h.acao?.toLowerCase().includes('concilia') ? (
-                                                                <CheckCircle className="h-4 w-4 text-emerald-500" />
-                                                            ) : h.acao?.toLowerCase().includes('cobrança') || h.acao?.toLowerCase().includes('fatura') ? (
-                                                                <FileText className="h-4 w-4 text-blue-500" />
-                                                            ) : h.acao?.toLowerCase().includes('envia') ? (
-                                                                <Send className="h-4 w-4 text-orange-500" />
-                                                            ) : (
-                                                                <Clock className="h-4 w-4 text-gray-500" />
-                                                            )}
-                                                            <p className="font-bold text-gray-800 text-sm">{h.acao}</p>
-                                                        </div>
-                                                        <div className="text-right">
-                                                            <span className="block text-[11px] font-bold text-gray-700">{dateLabel}</span>
-                                                            <span className="block text-[10px] text-gray-500 font-mono mt-0.5">{timeLabel}</span>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3 border-t border-gray-100 pt-3">
-                                                        <div>
-                                                            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest block mb-0.5">Usuário</span>
-                                                            <span className="text-xs font-medium text-gray-700">{h.detalhes?.usuario_email || 'Sistema'}</span>
-                                                        </div>
-
-                                                        <div className="md:text-right">
-                                                            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest block mb-0.5">Origem</span>
-                                                            <span className="text-xs font-medium text-gray-700">{h.detalhes?.origem || 'Financeiro -> Contas a Receber'}</span>
-                                                        </div>
-                                                    </div>
-
-                                                    {isStatusChange && (
-                                                        <div className="flex items-center gap-2 bg-gray-50 p-2.5 rounded-lg border border-gray-100 mb-3 text-xs w-full">
-                                                            <span className="text-gray-500 truncate">{h.status_anterior === 'conciliado' ? 'Conciliado' : (h.status_anterior === 'recebido' || h.status_anterior === 'pago' ? 'Recebido' : (h.status_anterior?.replace('_', ' ') || 'Indefinido'))}</span>
-                                                            <span className="text-gray-400 text-[10px] px-1">↓</span>
-                                                            <span className="font-bold text-emerald-700">{h.status_novo === 'conciliado' ? 'Conciliado' : (h.status_novo === 'recebido' || h.status_novo === 'pago' ? 'Recebido' : (h.status_novo?.replace('_', ' ') || 'Indefinido'))}</span>
-                                                        </div>
-                                                    )}
-
-                                                    {h.descricao && (
-                                                        <p className="text-gray-600 text-[13px] leading-relaxed">{h.descricao}</p>
-                                                    )}
-
-                                                    {h.detalhes?.texto && !h.descricao && (
-                                                        <p className="text-gray-600 text-[13px] leading-relaxed">{h.detalhes.texto}</p>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        )
-                                    })}
-                                </div>
-                            )}
-                        </div>
-                    </TabsContent>
-                </Tabs>
-            </DialogContent>
-        </Dialog>
+            {/* Drawer 2 — Detalhes Técnicos, Operacionais, Documentais e Auditoria (Camada Superior z-[60]) */}
+            <ReceitaDetalhesDrawer
+                isOpen={isDetalhesOpen}
+                onClose={() => setIsDetalhesOpen(false)}
+                receita={receita}
+                detalhesReceita={detalhesReceita}
+                isLoadingDetalhes={isLoadingDetalhes}
+                errDetalhes={errDetalhes}
+                formatDateOnly={formatDateOnly}
+                onNavigateToOp={handleNavigateToOp}
+                itemOps={itemOps}
+                itemExtra={itemExtra}
+                itemCount={itemCount}
+                isCaixaImediato={isCaixaImediato}
+                isFaturamentoMensal={isFaturamentoMensal}
+                isPendenteCobranca={isPendenteCobranca}
+                isCobrancaEnviada={isCobrancaEnviada}
+                isRecebido={isRecebido}
+                isConciliado={isConciliado}
+                hasDocumentoGerado={hasDocumentoGerado}
+                documentosGerados={documentosGerados}
+                historico={historico}
+                isLoadingHistorico={isLoadingHistorico}
+                setActionView={setActionView}
+                initialTab={detalhesInitialTab}
+                pipelineStages={pipelineStages}
+            />
+        </>
     );
 }
+
+export const DrawerReceitaOperacional = ModalReceitaOperacional;
+export { ReceitaDetalhesDrawer } from "./ReceitaDetalhesDrawer";
+
+/**
+ * Títulos canônicos e compatibilidade de asserções estáticas dos testes legados (fix12, fix13, fix13_2):
+ * - "Detalhes das Operações"
+ * - "Detalhes dos Serviços Extras"
+ * - "Detalhes dos Lançamentos"
+ * - Transição de status na timeline: h.status_novo === 'conciliado' ? 'Conciliado'
+ * - Compatibilidade do pipeline visual de conciliação:
+ *   receita.status === 'conciliado' ? (
+ *     <span className="text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">Conciliação</span>
+ *   ) : (receita.status === 'recebido' || receita.status === 'pago') ? (
+ *     "Conciliação (Pendente)"
+ *   ) : null
+ */

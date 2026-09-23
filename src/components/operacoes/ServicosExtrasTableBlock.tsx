@@ -197,25 +197,26 @@ const getPipelineStatusConfig = (status?: string | null) => {
     switch (s) {
         case "PENDENTE":
         case "EM_ANALISE":
-            return { label: "🟡 Em análise RH", className: "bg-amber-50 text-amber-600 border-amber-100", opacity: "opacity-100" };
+            return { label: "Recebido", className: "bg-amber-50 text-amber-700 border-amber-200", opacity: "opacity-100" };
         case "EM_VALIDACAO":
-            return { label: "🟢 Validado RH", className: "bg-cyan-50 text-cyan-600 border-cyan-100", opacity: "opacity-[0.95]" };
+            return { label: "Em validação", className: "bg-cyan-50 text-cyan-700 border-cyan-200", opacity: "opacity-[0.95]" };
         case "APROVADO_OPERACAO":
-            return { label: "🔵 Financeiro", className: "bg-blue-50 text-blue-600 border-blue-100", opacity: "opacity-[0.90]" };
+            return { label: "Aprovado", className: "bg-blue-50 text-blue-700 border-blue-200", opacity: "opacity-[0.90]" };
         case "APROVADO_FINANCEIRO":
+            return { label: "A receber", className: "bg-emerald-50 text-emerald-700 border-emerald-200", opacity: "opacity-[0.85]" };
         case "FATURADO":
-            return { label: "🔵 Financeiro", className: "bg-emerald-50 text-emerald-600 border-emerald-100", opacity: "opacity-[0.85]" };
+            return { label: "Faturado", className: "bg-indigo-50 text-indigo-700 border-indigo-200", opacity: "opacity-[0.85]" };
         case "CNAB_GERADO":
-            return { label: "🟣 CNAB Gerado", className: "bg-indigo-50 text-indigo-600 border-indigo-100", opacity: "opacity-[0.80]" };
+            return { label: "CNAB Gerado", className: "bg-indigo-50 text-indigo-700 border-indigo-200", opacity: "opacity-[0.80]" };
         case "PAGO":
-            return { label: "💰 Pago", className: "bg-emerald-100 text-emerald-700", opacity: "opacity-[0.70]" };
+            return { label: "Pago", className: "bg-emerald-100 text-emerald-800 border-emerald-300", opacity: "opacity-[0.70]" };
         case "CONCLUIDO":
         case "FINALIZADO":
         case "FECHADO":
-            return { label: "⚫ Concluído", className: "bg-zinc-100 text-zinc-500 border-zinc-200", opacity: "opacity-[0.60]" };
+            return { label: "Recebido", className: "bg-zinc-100 text-zinc-600 border-zinc-200", opacity: "opacity-[0.60]" };
         case "DEVOLVIDO":
         case "RECUSADO":
-            return { label: "Devolvido", className: "bg-rose-50 text-rose-600 border-rose-100", opacity: "opacity-100" };
+            return { label: "Devolvido", className: "bg-rose-50 text-rose-700 border-rose-200", opacity: "opacity-100" };
         default:
             return { label: status || "Pendente", className: "bg-muted text-muted-foreground", opacity: "opacity-100" };
     }
@@ -332,6 +333,25 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
 
     // ─── Pipeline Handlers ────────────────────────────────────────────────────────
 
+    const handleRowClick = (item: ServicoExtraItem) => {
+        const currentStepId = pipelineStatusToStepId(item.pipeline_status);
+        const competencia = item.data ? format(new Date(item.data), "yyyy-MM") : format(new Date(), "yyyy-MM");
+
+        openPipeline(
+            buildServicosExtrasPipeline({
+                competencia,
+                empresa: item.empresas?.nome ?? item.empresa_nome ?? "Empresa",
+                currentStep: currentStepId,
+                pipelineStatus: item.pipeline_status || "PENDENTE",
+                modalidade_financeira: item.modalidade_financeira,
+                registroId: item.id,
+                descricao: item.descricao_servico,
+                valor: item.total !== null && item.total !== undefined ? Number(item.total) : undefined,
+                data: item.data || undefined,
+            })
+        );
+    };
+
     const handleAdvance = (item: ServicoExtraItem) => {
         const next = getNextStatus(item.pipeline_status);
         if (!next) return;
@@ -346,6 +366,12 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                 competencia,
                 empresa: item.empresas?.nome ?? item.empresa_nome ?? "Empresa",
                 currentStep: nextStepId,
+                pipelineStatus: next,
+                modalidade_financeira: item.modalidade_financeira,
+                registroId: item.id,
+                descricao: item.descricao_servico,
+                valor: item.total !== null && item.total !== undefined ? Number(item.total) : undefined,
+                data: item.data || undefined,
             })
         );
     };
@@ -556,8 +582,9 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                                 return (
                                     <tr
                                         key={item.id}
+                                        onClick={() => handleRowClick(item)}
                                         className={cn(
-                                            "border-b border-border last:border-0 hover:bg-muted/50 transition-colors",
+                                            "esc-table-row cursor-pointer border-b border-border last:border-0 hover:bg-muted/50 transition-colors",
                                             statusCfg.opacity
                                         )}
                                     >
@@ -609,7 +636,10 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                                                 {item.pipeline_status !== "CONCLUIDO" && canAdvance(item) && (
                                                     <button
                                                         className="h-7 w-7 rounded-md hover:bg-emerald-50 flex items-center justify-center text-emerald-600 hover:text-emerald-700"
-                                                        onClick={() => handleAdvance(item)}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleAdvance(item);
+                                                        }}
                                                         title="Avançar Pipeline"
                                                         disabled={updatePipelineMutation.isPending}
                                                     >
@@ -619,7 +649,10 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                                                 {item.pipeline_status && item.pipeline_status !== "PENDENTE" && item.pipeline_status !== "CONCLUIDO" && canDevolve(item) && (
                                                     <button
                                                         className="h-7 w-7 rounded-md hover:bg-orange-50 flex items-center justify-center text-orange-600 hover:text-orange-700"
-                                                        onClick={() => handleDevolve(item)}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleDevolve(item);
+                                                        }}
                                                         title="Devolver etapa"
                                                         disabled={updatePipelineMutation.isPending}
                                                     >
@@ -628,7 +661,8 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                                                 )}
                                                 <button
                                                     className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
-                                                    onClick={() => {
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
                                                         // Dispatch custom event passing the item, so NovoServicoExtraDialog can intercept and open in edit mode
                                                         const event = new CustomEvent('open-edit-servico-extra', { detail: item });
                                                         window.dispatchEvent(event);
@@ -640,7 +674,10 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                                                 {(isAdmin || item.pipeline_status === "PENDENTE") && (
                                                     <button
                                                         className="h-7 w-7 rounded-md hover:bg-red-50 flex items-center justify-center text-muted-foreground hover:text-destructive"
-                                                        onClick={() => deleteMutation.mutate(item.id)}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            deleteMutation.mutate(item.id);
+                                                        }}
                                                         title="Remover"
                                                         disabled={deleteMutation.isPending}
                                                     >

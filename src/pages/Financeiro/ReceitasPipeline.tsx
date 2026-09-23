@@ -1,16 +1,17 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
     Building2, Calendar, FileText, Search, Filter, RefreshCw, AlertTriangle,
     Wallet, TrendingUp, DollarSign, ArrowRight, Layers, Receipt, Zap, CheckCircle2,
     Clock, Package, AlertCircle, CreditCard, FileSpreadsheet, Lock, Plus,
-    LayoutList, LayoutGrid, Info
+    LayoutList, LayoutGrid, Info, List, Kanban
 } from "lucide-react";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { EmpresaService } from "@/services/domain/cadastros.service";
 import { ReceitasService } from "@/services/receitas/receitas.service";
 import { useTenant } from "@/contexts/TenantContext";
@@ -19,6 +20,7 @@ import { ModalReceitaOperacional } from "./components/ModalReceitaOperacional";
 import { ReceitaKanbanCard } from "./components/ReceitaKanbanCard";
 import { useToast } from "@/components/ui/use-toast";
 
+export const VIEW_MODE_STORAGE_KEY = 'orbe.financeiro.receitas.viewMode';
 export const DENSITY_STORAGE_KEY = 'orbe.financeiro.receitas.cardDensity';
 
 const KANBAN_CONFIGS = {
@@ -72,7 +74,25 @@ export default function ReceitasPipeline() {
     });
     const [selectedReceita, setSelectedReceita] = useState<any>(null);
 
-    // Controle de Densidade de Visualização dos Cards (Compacto vs Detalhado)
+    // Alternador Principal de Visualização: Lista (Padrão) vs Kanban
+    const [viewMode, setViewMode] = useState<'list' | 'kanban'>(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem(VIEW_MODE_STORAGE_KEY);
+            if (saved === 'list' || saved === 'kanban') {
+                return saved;
+            }
+        }
+        return 'list'; // Regra UX-2B.12: Lista deve ser o padrão
+    });
+
+    const handleViewModeChange = (mode: 'list' | 'kanban') => {
+        setViewMode(mode);
+        if (typeof window !== 'undefined') {
+            localStorage.setItem(VIEW_MODE_STORAGE_KEY, mode);
+        }
+    };
+
+    // Controle de Densidade de Visualização dos Cards (Compacto vs Detalhado no Kanban)
     const [density, setDensity] = useState<'compact' | 'detailed'>(() => {
         if (typeof window !== 'undefined') {
             const saved = localStorage.getItem(DENSITY_STORAGE_KEY);
@@ -124,6 +144,8 @@ export default function ReceitasPipeline() {
         queryClient.invalidateQueries({ queryKey: ["receita-detalhes"] });
     };
 
+    const handledHighlightRef = useRef<string | null>(null);
+
     useEffect(() => {
         const searchParams = new URLSearchParams(location.search);
         const tabParam = searchParams.get('tab');
@@ -132,9 +154,22 @@ export default function ReceitasPipeline() {
         } else if (location.state?.activeTab) {
             setActiveTab(location.state.activeTab as any);
         }
-        if (location.state?.highlightReceitaId && receitas && receitas.length > 0) {
-            const found = receitas.find((r: any) => r.id === location.state.highlightReceitaId);
+
+        const highlightRecId = location.state?.highlightReceitaId;
+        const highlightSeId = location.state?.highlightServicoExtraId;
+        const targetId = highlightRecId || highlightSeId;
+
+        if (targetId && handledHighlightRef.current !== targetId && receitas && receitas.length > 0) {
+            const found = receitas.find((r: any) => {
+                if (highlightRecId && r.id === highlightRecId) return true;
+                if (highlightSeId) {
+                    const itens = r.receitas_operacionais_itens || [];
+                    return itens.some((it: any) => it.servico_extra_id === highlightSeId);
+                }
+                return false;
+            });
             if (found) {
+                handledHighlightRef.current = targetId;
                 if (found.modalidade && found.modalidade !== activeTab) {
                     setActiveTab(found.modalidade);
                 }
@@ -377,7 +412,7 @@ export default function ReceitasPipeline() {
                             </div>
                         </div>
 
-                        {/* Seletor de Densidade de Visualização dos Cards */}
+                        {/* Alternador Principal: Lista (Padrão) | Kanban */}
                         <div className="flex items-center gap-2 self-start xl:self-auto shrink-0">
                             <span className="text-xs font-semibold text-gray-500 hidden sm:inline">Visualização:</span>
                             <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg border border-border/40">
@@ -385,85 +420,296 @@ export default function ReceitasPipeline() {
                                     type="button"
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => handleDensityChange('compact')}
-                                    aria-label="Visualização compacta dos cards"
+                                    onClick={() => handleViewModeChange('list')}
+                                    aria-label="Visualização em lista"
                                     className={cn(
                                         "h-8 px-3 gap-1.5 text-xs font-medium transition-all",
-                                        density === 'compact'
+                                        viewMode === 'list'
                                             ? 'bg-white shadow-sm text-gray-900 border border-gray-200'
                                             : 'text-gray-500 hover:text-gray-700'
                                     )}
                                 >
-                                    <LayoutList className="h-3.5 w-3.5" />
-                                    <span>Compacto</span>
+                                    <List className="h-3.5 w-3.5" />
+                                    <span>Lista</span>
                                 </Button>
                                 <Button
                                     type="button"
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => handleDensityChange('detailed')}
-                                    aria-label="Visualização detalhada dos cards"
+                                    onClick={() => handleViewModeChange('kanban')}
+                                    aria-label="Visualização em kanban"
                                     className={cn(
                                         "h-8 px-3 gap-1.5 text-xs font-medium transition-all",
-                                        density === 'detailed'
+                                        viewMode === 'kanban'
                                             ? 'bg-white shadow-sm text-gray-900 border border-gray-200'
                                             : 'text-gray-500 hover:text-gray-700'
                                     )}
                                 >
-                                    <LayoutGrid className="h-3.5 w-3.5" />
-                                    <span>Detalhado</span>
+                                    <Kanban className="h-3.5 w-3.5" />
+                                    <span>Kanban</span>
                                 </Button>
                             </div>
+
+                            {/* Sub-seletor de Densidade (exibido quando no modo Kanban) */}
+                            {viewMode === 'kanban' && (
+                                <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg border border-border/40 animate-in fade-in duration-200">
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleDensityChange('compact')}
+                                        aria-label="Visualização compacta dos cards"
+                                        className={cn(
+                                            "h-8 px-2.5 gap-1 text-xs font-medium transition-all",
+                                            density === 'compact'
+                                                ? 'bg-white shadow-sm text-gray-900 border border-gray-200'
+                                                : 'text-gray-500 hover:text-gray-700'
+                                        )}
+                                    >
+                                        <LayoutList className="h-3 w-3" />
+                                        <span className="hidden sm:inline">Compacto</span>
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleDensityChange('detailed')}
+                                        aria-label="Visualização detalhada dos cards"
+                                        className={cn(
+                                            "h-8 px-2.5 gap-1 text-xs font-medium transition-all",
+                                            density === 'detailed'
+                                                ? 'bg-white shadow-sm text-gray-900 border border-gray-200'
+                                                : 'text-gray-500 hover:text-gray-700'
+                                        )}
+                                    >
+                                        <LayoutGrid className="h-3 w-3" />
+                                        <span className="hidden sm:inline">Detalhado</span>
+                                    </Button>
+                                </div>
+                            )}
                         </div>
                     </div>
 
-                    <div className={cn("grid gap-6 items-start", currentKanbanStages.length <= 2 ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-2' : currentKanbanStages.length === 3 ? 'grid-cols-1 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-1 md:grid-cols-2 xl:grid-cols-4')}>
-                        {currentKanbanStages.map((col) => {
-                            const items = cardsByCols(col.id);
-                            const totalMoney = items.reduce((acc, curr) => acc + (Number(curr.valor_total) || 0), 0);
-
-                            return (
-                                <div key={col.id} className="flex flex-col bg-gray-50/50 rounded-2xl border border-border p-4 min-h-[500px]">
-                                    <div className="flex items-center justify-between mb-4 pb-2 border-b border-border/50">
-                                        <div className="flex items-center gap-2">
-                                            <col.icon className={cn("h-5 w-5", col.color.split(' ')[1])} />
-                                            <h3 className="font-semibold text-gray-700">{col.label}</h3>
-                                        </div>
-                                        <span className="bg-gray-200 text-gray-600 text-xs font-bold py-1 px-2.5 rounded-full">
-                                            {items.length}
-                                        </span>
-                                    </div>
-
-                                    <div className="mb-4">
-                                        <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold mb-1">Total</p>
-                                        <p className={cn("text-xl font-bold font-display", col.color.split(' ')[1])}>
-                                            R$ {totalMoney.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                        </p>
-                                    </div>
-
-                                    <div className="flex flex-col gap-3 h-full overflow-y-auto pr-1">
-                                        {items.length === 0 ? (
-                                            <div className="text-center p-6 border-2 border-dashed border-gray-200 rounded-xl text-gray-400">
-                                                Nenhum registro.
-                                            </div>
+                    {/* Visualização Lista (Padrão) ou Kanban */}
+                    {viewMode === 'list' ? (
+                        <div className="bg-white dark:bg-card rounded-xl shadow-sm border border-border overflow-hidden">
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-[13px] border-collapse">
+                                    <thead>
+                                        <tr className="border-b border-border/40 bg-muted/20">
+                                            <th className="px-4 py-3.5 text-left font-semibold text-muted-foreground uppercase tracking-wider text-[10px] whitespace-nowrap">Data</th>
+                                            <th className="px-4 py-3.5 text-left font-semibold text-muted-foreground uppercase tracking-wider text-[10px] whitespace-nowrap">Cliente</th>
+                                            <th className="px-4 py-3.5 text-left font-semibold text-muted-foreground uppercase tracking-wider text-[10px] whitespace-nowrap">Origem</th>
+                                            <th className="px-4 py-3.5 text-left font-semibold text-muted-foreground uppercase tracking-wider text-[10px] whitespace-nowrap">Competência / Vencimento</th>
+                                            <th className="px-4 py-3.5 text-left font-semibold text-muted-foreground uppercase tracking-wider text-[10px] whitespace-nowrap">Modalidade</th>
+                                            <th className="px-4 py-3.5 text-right font-semibold text-muted-foreground uppercase tracking-wider text-[10px] whitespace-nowrap">Valor</th>
+                                            <th className="px-4 py-3.5 text-center font-semibold text-muted-foreground uppercase tracking-wider text-[10px] whitespace-nowrap">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-border/20">
+                                        {filteredReceitas.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={7} className="px-6 py-16 text-center text-muted-foreground">
+                                                    <Receipt className="h-8 w-8 mx-auto mb-3 opacity-20" />
+                                                    <p className="text-sm font-medium">Nenhuma receita encontrada para os filtros selecionados.</p>
+                                                </td>
+                                            </tr>
                                         ) : (
-                                            items.map((r: any) => (
-                                                <ReceitaKanbanCard
-                                                    key={r.id}
-                                                    receita={r}
-                                                    density={density}
-                                                    isExpanded={expandedCardIds.has(r.id)}
-                                                    onToggleExpand={(e) => toggleCardExpansion(r.id, e)}
-                                                    onClick={() => setSelectedReceita(r)}
-                                                    isHighlighted={location.state?.highlightReceitaId === r.id}
-                                                />
-                                            ))
+                                            filteredReceitas.map((r: any) => {
+                                                const itens = r.receitas_operacionais_itens || [];
+                                                const temOp = itens.some((it: any) => it.operacao_id != null || it.operacoes_producao != null);
+                                                const temSe = itens.some((it: any) => it.servico_extra_id != null || it.servicos_extras_operacionais != null);
+
+                                                let origemBadge = {
+                                                    label: "Operação por Volume",
+                                                    badgeClass: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300",
+                                                };
+                                                if (temSe && !temOp) {
+                                                    origemBadge = {
+                                                        label: "Serviço Extra",
+                                                        badgeClass: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300",
+                                                    };
+                                                } else if (temSe && temOp) {
+                                                    origemBadge = {
+                                                        label: "Origem Mista",
+                                                        badgeClass: "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300",
+                                                    };
+                                                } else if (r.modalidade === 'FATURAMENTO_MENSAL' && itens.length > 1) {
+                                                    origemBadge = {
+                                                        label: "Faturamento Mensal",
+                                                        badgeClass: "bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300",
+                                                    };
+                                                }
+
+                                                let modBadge = {
+                                                    label: "Caixa Imediato",
+                                                    icon: Zap,
+                                                    badgeClass: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300",
+                                                };
+                                                if (r.modalidade === 'DUPLICATA') {
+                                                    modBadge = {
+                                                        label: "Duplicata",
+                                                        icon: FileText,
+                                                        badgeClass: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300",
+                                                    };
+                                                } else if (r.modalidade === 'FATURAMENTO_MENSAL') {
+                                                    modBadge = {
+                                                        label: "Faturamento Mensal",
+                                                        icon: Calendar,
+                                                        badgeClass: "bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300",
+                                                    };
+                                                }
+                                                const ModIcon = modBadge.icon;
+
+                                                const isLiquidado = r.status === 'recebido' || r.status === 'pago' || r.status === 'conciliado';
+                                                let statusBadge = {
+                                                    label: "Em aberto",
+                                                    badgeClass: "bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300",
+                                                };
+                                                if (isLiquidado) {
+                                                    statusBadge = {
+                                                        label: "Recebido",
+                                                        badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300",
+                                                    };
+                                                } else if (r.status === 'cobranca_enviada') {
+                                                    statusBadge = {
+                                                        label: "Cobrança enviada",
+                                                        badgeClass: "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/40 dark:text-orange-300",
+                                                    };
+                                                } else if (r.status === 'pendente_cobranca' || r.status === 'cobranca_gerada') {
+                                                    statusBadge = {
+                                                        label: "Cobrança gerada",
+                                                        badgeClass: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300",
+                                                    };
+                                                } else if (r.status === 'aguardando_fechamento') {
+                                                    statusBadge = {
+                                                        label: "Aguardando fechamento",
+                                                        badgeClass: "bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300",
+                                                    };
+                                                }
+
+                                                const rawDate = r.created_at || r.data;
+                                                let formattedDate = "-";
+                                                if (rawDate) {
+                                                    const clean = String(rawDate).split('T')[0];
+                                                    const parts = clean.split('-');
+                                                    if (parts.length === 3) {
+                                                        formattedDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                                                    }
+                                                }
+
+                                                let compVencStr = "-";
+                                                if (r.competencia && r.vencimento) {
+                                                    const [vy, vm, vd] = String(r.vencimento).split('-');
+                                                    compVencStr = `${r.competencia} • Venc: ${vd}/${vm}/${vy}`;
+                                                } else if (r.competencia) {
+                                                    compVencStr = r.competencia;
+                                                } else if (r.vencimento) {
+                                                    const [vy, vm, vd] = String(r.vencimento).split('-');
+                                                    compVencStr = `Venc: ${vd}/${vm}/${vy}`;
+                                                }
+
+                                                const isHighlighted = location.state?.highlightReceitaId === r.id ||
+                                                    Boolean(location.state?.highlightServicoExtraId && itens.some((it: any) => it.servico_extra_id === location.state.highlightServicoExtraId));
+                                                const isSelected = selectedReceita?.id === r.id;
+
+                                                return (
+                                                    <tr
+                                                        key={r.id}
+                                                        onClick={() => setSelectedReceita(r)}
+                                                        className={cn(
+                                                            "hover:bg-primary/[0.04] cursor-pointer transition-colors group",
+                                                            isSelected ? "bg-primary/[0.05] ring-1 ring-inset ring-primary/20" : "",
+                                                            isHighlighted ? "bg-amber-50/60 dark:bg-amber-950/20" : ""
+                                                        )}
+                                                    >
+                                                        <td className="px-4 py-3.5 whitespace-nowrap text-muted-foreground font-mono text-xs">
+                                                            {formattedDate}
+                                                        </td>
+                                                        <td className="px-4 py-3.5 whitespace-nowrap">
+                                                            <div className="font-semibold text-foreground group-hover:text-primary transition-colors">
+                                                                {r.empresas?.nome || "Cliente não informado"}
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-3.5 whitespace-nowrap">
+                                                            <Badge variant="outline" className={cn("text-[10px] font-semibold h-5 px-2", origemBadge.badgeClass)}>
+                                                                {origemBadge.label}
+                                                            </Badge>
+                                                        </td>
+                                                        <td className="px-4 py-3.5 whitespace-nowrap text-muted-foreground text-xs font-medium">
+                                                            {compVencStr}
+                                                        </td>
+                                                        <td className="px-4 py-3.5 whitespace-nowrap">
+                                                            <Badge variant="outline" className={cn("text-[10px] font-semibold h-5 px-2 gap-1", modBadge.badgeClass)}>
+                                                                <ModIcon className="h-3 w-3" />
+                                                                {modBadge.label}
+                                                            </Badge>
+                                                        </td>
+                                                        <td className="px-4 py-3.5 whitespace-nowrap text-right font-bold text-foreground font-display">
+                                                            R$ {Number(r.valor_total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                        </td>
+                                                        <td className="px-4 py-3.5 whitespace-nowrap text-center">
+                                                            <Badge variant="outline" className={cn("text-[10px] font-semibold h-5 px-2", statusBadge.badgeClass)}>
+                                                                {statusBadge.label}
+                                                            </Badge>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })
                                         )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className={cn("grid gap-6 items-start", currentKanbanStages.length <= 2 ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-2' : currentKanbanStages.length === 3 ? 'grid-cols-1 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-1 md:grid-cols-2 xl:grid-cols-4')}>
+                            {currentKanbanStages.map((col) => {
+                                const items = cardsByCols(col.id);
+                                const totalMoney = items.reduce((acc, curr) => acc + (Number(curr.valor_total) || 0), 0);
+
+                                return (
+                                    <div key={col.id} className="flex flex-col bg-gray-50/50 rounded-2xl border border-border p-4 min-h-[500px]">
+                                        <div className="flex items-center justify-between mb-4 pb-2 border-b border-border/50">
+                                            <div className="flex items-center gap-2">
+                                                <col.icon className={cn("h-5 w-5", col.color.split(' ')[1])} />
+                                                <h3 className="font-semibold text-gray-700">{col.label}</h3>
+                                            </div>
+                                            <span className="bg-gray-200 text-gray-600 text-xs font-bold py-1 px-2.5 rounded-full">
+                                                {items.length}
+                                            </span>
+                                        </div>
+
+                                        <div className="mb-4">
+                                            <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold mb-1">Total</p>
+                                            <p className={cn("text-xl font-bold font-display", col.color.split(' ')[1])}>
+                                                R$ {totalMoney.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                            </p>
+                                        </div>
+
+                                        <div className="flex flex-col gap-3 h-full overflow-y-auto pr-1">
+                                            {items.length === 0 ? (
+                                                <div className="text-center p-6 border-2 border-dashed border-gray-200 rounded-xl text-gray-400">
+                                                    Nenhum registro.
+                                                </div>
+                                            ) : (
+                                                items.map((r: any) => (
+                                                    <ReceitaKanbanCard
+                                                        key={r.id}
+                                                        receita={r}
+                                                        density={density}
+                                                        isExpanded={expandedCardIds.has(r.id)}
+                                                        onToggleExpand={(e) => toggleCardExpansion(r.id, e)}
+                                                        onClick={() => setSelectedReceita(r)}
+                                                        isHighlighted={location.state?.highlightReceitaId === r.id || Boolean(location.state?.highlightServicoExtraId && (r.receitas_operacionais_itens || []).some((it: any) => it.servico_extra_id === location.state.highlightServicoExtraId))}
+                                                    />
+                                                ))
+                                            )}
+                                        </div>
                                     </div>
-                                </div>
-                            );
-                        })}
-                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
 
                     {selectedReceita && (
                         <ModalReceitaOperacional

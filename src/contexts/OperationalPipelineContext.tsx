@@ -1197,29 +1197,133 @@ export const buildCustosExtrasPipeline = (params: {
     };
 };
 
-export type ServicoExtraStepId = "lancamento" | "validacao_operacional" | "aprovacao" | "financeiro" | "faturamento" | "concluido";
+export type ServicoExtraStepId = "lancamento" | "validacao_operacional" | "aprovacao" | "faturamento" | "concluido" | "financeiro";
 
-export const buildServicosExtrasPipeline = (params: {
+export interface BuildServicosExtrasPipelineParams {
     competencia: string;
     empresa: string;
-    currentStep: ServicoExtraStepId;
+    currentStep?: ServicoExtraStepId;
+    pipelineStatus?: string;
+    modalidade_financeira?: string | null;
+    registroId?: string;
+    descricao?: string;
+    valor?: number;
+    data?: string;
     devolucaoMotivo?: string;
-}): PipelineTrigger => {
-    const { competencia, empresa, currentStep, devolucaoMotivo } = params;
+}
+
+export function resolveServicoExtraModalidade(modalidade?: string | null): {
+    isValid: boolean;
+    modalidade: 'CAIXA_IMEDIATO' | 'DUPLICATA' | 'FATURAMENTO_MENSAL' | null;
+    label: string;
+    route: string;
+    description: string;
+} {
+    const norm = String(modalidade ?? '').trim().toUpperCase();
+    if (norm === 'CAIXA_IMEDIATO') {
+        return {
+            isValid: true,
+            modalidade: 'CAIXA_IMEDIATO',
+            label: 'Continuar para Caixa Imediato →',
+            route: '/financeiro/receitas?tab=CAIXA_IMEDIATO&origem=SERVICO_EXTRA',
+            description: 'Recebimento imediato gerado. Acesse a Central de Receitas para confirmar o recebimento no caixa.',
+        };
+    }
+    if (norm === 'DUPLICATA') {
+        return {
+            isValid: true,
+            modalidade: 'DUPLICATA',
+            label: 'Continuar para Duplicatas →',
+            route: '/financeiro/receitas?tab=DUPLICATA&origem=SERVICO_EXTRA',
+            description: 'Cobrança avulsa gerada. Acesse a Central de Receitas para emitir ou gerenciar a cobrança.',
+        };
+    }
+    if (norm === 'FATURAMENTO_MENSAL') {
+        return {
+            isValid: true,
+            modalidade: 'FATURAMENTO_MENSAL',
+            label: 'Continuar para Faturamento Mensal →',
+            route: '/financeiro/receitas?tab=FATURAMENTO_MENSAL&origem=SERVICO_EXTRA',
+            description: 'Integrado à fatura mensal da competência. Acompanhe a consolidação na Central de Receitas.',
+        };
+    }
+    return {
+        isValid: false,
+        modalidade: null,
+        label: '',
+        route: '',
+        description: 'Destino financeiro não pôde ser determinado. Verifique a modalidade de pagamento configurada.',
+    };
+}
+
+export const buildServicosExtrasPipeline = (params: BuildServicosExtrasPipelineParams): PipelineTrigger => {
+    const {
+        competencia,
+        empresa,
+        pipelineStatus,
+        modalidade_financeira,
+        registroId,
+        descricao,
+        valor,
+        data,
+        devolucaoMotivo
+    } = params;
+
+    let effectiveStep: ServicoExtraStepId = "lancamento";
+
+    if (pipelineStatus) {
+        switch (String(pipelineStatus).toUpperCase()) {
+            case "PENDENTE":
+            case "EM_ABERTO":
+                effectiveStep = "lancamento";
+                break;
+            case "EM_VALIDACAO":
+            case "EM_ANALISE":
+            case "EM_ANALISE_RH":
+                effectiveStep = "validacao_operacional";
+                break;
+            case "APROVADO_OPERACAO":
+                effectiveStep = "aprovacao";
+                break;
+            case "APROVADO_FINANCEIRO":
+            case "FATURADO":
+            case "AGUARDANDO_PAGAMENTO":
+                effectiveStep = "faturamento";
+                break;
+            case "CONCLUIDO":
+            case "RECEBIDO":
+            case "FINALIZADO":
+            case "PAGO":
+                effectiveStep = "concluido";
+                break;
+            case "DEVOLVIDO":
+            case "RECUSADO":
+                effectiveStep = "validacao_operacional";
+                break;
+            default:
+                if (params.currentStep) effectiveStep = params.currentStep;
+                break;
+        }
+    } else if (params.currentStep) {
+        effectiveStep = params.currentStep === "financeiro" ? "faturamento" : params.currentStep;
+    }
 
     const stepOrder: ServicoExtraStepId[] = [
         "lancamento",
         "validacao_operacional",
         "aprovacao",
-        "financeiro",
         "faturamento",
         "concluido"
     ];
 
-    const currentIndex = stepOrder.indexOf(currentStep);
+    const currentIndex = stepOrder.indexOf(effectiveStep);
+    const isDone = effectiveStep === "concluido";
+
+    const modalidadeResolved = resolveServicoExtraModalidade(modalidade_financeira);
 
     const getStatus = (index: number): PipelineStepStatus => {
         if (devolucaoMotivo && index === currentIndex) return "devolved";
+        if (isDone && index <= currentIndex) return "done";
         if (index < currentIndex) return "done";
         if (index === currentIndex) return "current";
         return "pending";
@@ -1228,13 +1332,15 @@ export const buildServicosExtrasPipeline = (params: {
     const getRoute = (id: ServicoExtraStepId) => {
         switch (id) {
             case "lancamento":
+                return "/servicos-extras/lancamentos";
             case "validacao_operacional":
             case "aprovacao":
-                return "/producao/servicos-extras";
-            case "financeiro":
-                return "/financeiro";
+                return "/servicos-extras/aprovacoes";
             case "faturamento":
-                return "/financeiro/receitas?tab=FATURAMENTO_MENSAL&origem=SERVICO_EXTRA";
+            case "financeiro":
+                return modalidadeResolved.isValid
+                    ? modalidadeResolved.route
+                    : "/financeiro/receitas?origem=SERVICO_EXTRA";
             default:
                 return undefined;
         }
@@ -1243,65 +1349,109 @@ export const buildServicosExtrasPipeline = (params: {
     const steps: PipelineStep[] = [
         {
             id: "lancamento",
-            label: "Lançamento Operacional",
-            description: "Entrada do serviço extra executado.",
+            label: "Recebido",
+            description: "Serviço extra registrado e capturado pelo sistema.",
             status: getStatus(0),
             route: getRoute("lancamento"),
-            responsible: "Encarregado",
+            responsible: "Encarregado / Operação",
         },
         {
             id: "validacao_operacional",
-            label: "Validação Operacional",
-            description: "Aprovação operacional do serviço.",
+            label: "Em validação",
+            description: "Conferência técnica e validação dos dados operacionais.",
             status: getStatus(1),
             route: getRoute("validacao_operacional"),
-            responsible: "Operação",
+            responsible: "Operação / ADM",
         },
         {
             id: "aprovacao",
-            label: "Aprovação",
-            description: "Aprovação financeira/gestão.",
+            label: "Aprovado",
+            description: "Serviço validado e aprovado. Receita gerada no financeiro.",
             status: getStatus(2),
             route: getRoute("aprovacao"),
-            responsible: "ADM/Gestor",
-        },
-        {
-            id: "financeiro",
-            label: "Central Financeira",
-            description: "Consolidação dos valores na central.",
-            status: getStatus(3),
-            route: getRoute("financeiro"),
-            responsible: "Financeiro",
+            responsible: "Gestor Operacional",
         },
         {
             id: "faturamento",
-            label: "Faturamento",
-            description: "Geração de títulos / Faturamento.",
-            status: getStatus(4),
+            label: "A receber / Faturamento",
+            description: "Disponível na Central de Receitas para cobrança e faturamento.",
+            status: getStatus(3),
             route: getRoute("faturamento"),
             responsible: "Financeiro",
         },
         {
             id: "concluido",
-            label: "Concluído",
-            description: "Refletido no Dashboard.",
-            status: getStatus(5),
+            label: "Recebido",
+            description: "Receita liquidada e fluxo de serviço extra concluído.",
+            status: getStatus(4),
             route: undefined,
+            responsible: "Financeiro / Tesouraria",
         },
     ];
 
-    const isDone = currentStep === "concluido";
+    const resolveNextAction = (): PipelineTrigger["nextAction"] => {
+        if (isDone) return undefined;
+
+        if (devolucaoMotivo) {
+            return {
+                label: "Ver Lançamentos para Correção →",
+                description: "Corrija a pendência indicada no lançamento.",
+                route: "/servicos-extras/lancamentos",
+            };
+        }
+
+        switch (effectiveStep) {
+            case "lancamento":
+                return {
+                    label: "Continuar para Lançamentos →",
+                    description: "Encaminhe o lançamento para validação operacional.",
+                    route: "/servicos-extras/lancamentos",
+                };
+            case "validacao_operacional":
+                return {
+                    label: "Continuar para Aprovações →",
+                    description: "Revise os dados e aprove ou devolva o serviço extra.",
+                    route: "/servicos-extras/aprovacoes",
+                };
+            case "aprovacao":
+            case "faturamento":
+                if (modalidadeResolved.isValid) {
+                    return {
+                        label: modalidadeResolved.label,
+                        description: modalidadeResolved.description,
+                        route: modalidadeResolved.route,
+                        actionPayload: {
+                            highlightServicoExtraId: registroId,
+                            registroId,
+                            modalidade: modalidadeResolved.modalidade,
+                        },
+                    };
+                }
+                // Se modalidade ausente ou inválida: NÃO direcionar arbitrariamente (sem CTA financeiro fantasma)
+                return undefined;
+            default:
+                return undefined;
+        }
+    };
 
     return {
-        context: { competencia, empresa, fluxo: "Serviços Extras" },
+        context: {
+            competencia,
+            empresa,
+            fluxo: "Serviços Extras",
+            registroId,
+            modalidade_financeira,
+            modalidade: modalidadeResolved.modalidade,
+            descricao,
+            valor,
+            data,
+            pipelineStatus,
+            isModalidadeValida: modalidadeResolved.isValid,
+        },
         steps,
         title: "Status do Serviço Extra",
-        subtitle: "Acompanhe o andamento da aprovação do serviço extra.",
-        nextAction: isDone ? undefined : {
-            label: "Próxima Etapa →",
-            description: "Siga para a próxima etapa do fluxo.",
-            route: getRoute(stepOrder[Math.min(currentIndex + 1, stepOrder.length - 1)]) || "/producao/servicos-extras",
-        }
+        subtitle: "Acompanhe a aprovação e a geração da receita financeira.",
+        nextAction: resolveNextAction(),
     };
 };
 

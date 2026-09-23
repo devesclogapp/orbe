@@ -310,6 +310,7 @@ const ServicosExtrasLancamento = () => {
             toast.success("Serviço extra registrado com sucesso!");
             queryClient.invalidateQueries({ queryKey: ["operacoes"] });
             queryClient.invalidateQueries({ queryKey: ["servicos_extras_hoje"] });
+            queryClient.invalidateQueries({ queryKey: ["lancamentos_hoje_portal"] });
             setForm({ ...INITIAL_FORM, responsavel_nome: form.responsavel_nome });
             setSelectedMateriais([]);
             setUsouMateriais(false);

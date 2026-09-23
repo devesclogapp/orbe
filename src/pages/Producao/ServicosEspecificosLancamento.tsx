@@ -105,6 +105,7 @@ export default function ServicosEspecificosLancamento() {
         onSuccess: () => {
             toast.success("Lançamento operacional salvo!");
             queryClient.invalidateQueries({ queryKey: ['servicos_especificos_lancamentos'] });
+            queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje_portal'] });
             navigate('/producao');
         },
         onError: (err) => {

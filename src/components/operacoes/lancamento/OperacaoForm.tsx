@@ -346,6 +346,7 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                 toast.success(data?.isEdit ? "Operação atualizada com sucesso!" : "Produção lançada com sucesso!");
             }
             queryClient.invalidateQueries({ queryKey: ["producao_recente"] });
+            queryClient.invalidateQueries({ queryKey: ["lancamentos_hoje_portal"] });
             queryClient.invalidateQueries({ queryKey: ["operacoes"] });
             queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
             queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
