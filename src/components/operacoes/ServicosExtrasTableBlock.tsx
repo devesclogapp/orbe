@@ -57,6 +57,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { ServicosExtrasOperacionaisService } from "@/services/base.service";
+import { ServicoExtraDetalhesDrawer } from "./ServicoExtraDetalhesDrawer";
+import { ServicosExtrasContinuityDrawer } from "./ServicosExtrasContinuityDrawer";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -245,6 +247,9 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
         itemId: string | null;
     }>({ open: false, itemId: null });
 
+    const [selectedItem, setSelectedItem] = useState<ServicoExtraItem | null>(null);
+    const [isFlowDrawerOpen, setIsFlowDrawerOpen] = useState(false);
+
     const scrollBy = useCallback((dir: "left" | "right") => {
         tableScrollRef.current?.scrollBy({ left: dir === "right" ? 220 : -220, behavior: "smooth" });
     }, []);
@@ -280,12 +285,15 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                 pipeline_status: status as any,
                 ...(justification ? { justificativa_devolucao: justification } : {}),
             }),
-        onSuccess: () => {
+        onSuccess: (_data, variables) => {
             queryClient.invalidateQueries({ queryKey: ["servicos-extras"] });
             queryClient.invalidateQueries({ queryKey: ["servicos_extras_historico"] });
             queryClient.invalidateQueries({ queryKey: ["servicos_extras_hoje"] });
             queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
             queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
+            if (selectedItem && variables.id === selectedItem.id) {
+                setSelectedItem((prev) => prev ? { ...prev, pipeline_status: variables.status as any } : null);
+            }
             toast.success("Pipeline atualizado com sucesso.");
         },
         onError: () => toast.error("Erro ao atualizar pipeline."),
@@ -334,23 +342,17 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
     // ─── Pipeline Handlers ────────────────────────────────────────────────────────
 
     const handleRowClick = (item: ServicoExtraItem) => {
-        const currentStepId = pipelineStatusToStepId(item.pipeline_status);
-        const competencia = item.data ? format(new Date(item.data), "yyyy-MM") : format(new Date(), "yyyy-MM");
-
-        openPipeline(
-            buildServicosExtrasPipeline({
-                competencia,
-                empresa: item.empresas?.nome ?? item.empresa_nome ?? "Empresa",
-                currentStep: currentStepId,
-                pipelineStatus: item.pipeline_status || "PENDENTE",
-                modalidade_financeira: item.modalidade_financeira,
-                registroId: item.id,
-                descricao: item.descricao_servico,
-                valor: item.total !== null && item.total !== undefined ? Number(item.total) : undefined,
-                data: item.data || undefined,
-            })
-        );
+        setSelectedItem(item);
+        setIsFlowDrawerOpen(false);
+        // Contrato Canônico de Navegação (Padronização Definitiva UX — Custos Extras & Serviços Extras):
+        // Clique na linha abre exclusivamente o Drawer Primário: Detalhes do Serviço Extra.
+        // O Drawer Secundário com a Linha do Tempo é disparado pelo link "Ver fluxo completo →".
+        // openPipeline(buildServicosExtrasPipeline({ modalidade_financeira: item.modalidade_financeira, registroId: item.id, descricao: item.descricao_servico, valor: item.total !== null && item.total !== undefined ? Number(item.total) : undefined }));
     };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Pipeline Advance & Devolve Handlers (Isolamento Arquitetural de Mutação)
+    // ─────────────────────────────────────────────────────────────────────────────
 
     const handleAdvance = (item: ServicoExtraItem) => {
         const next = getNextStatus(item.pipeline_status);
@@ -701,7 +703,38 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                 </div>
             </div>
 
-            {/* Edit Sheet removido, substituído por edição completa no Dialog principal */}
+            {/* Drawer Primário — Detalhes do Serviço Extra */}
+            <ServicoExtraDetalhesDrawer
+                item={selectedItem}
+                isOpen={Boolean(selectedItem)}
+                onClose={() => {
+                    setSelectedItem(null);
+                    setIsFlowDrawerOpen(false);
+                }}
+                onVerFluxoCompleto={() => setIsFlowDrawerOpen(true)}
+                onAdvance={selectedItem && canAdvance(selectedItem) ? () => handleAdvance(selectedItem) : undefined}
+                onDevolve={selectedItem && canDevolve(selectedItem) ? () => handleDevolve(selectedItem) : undefined}
+                onEdit={selectedItem ? () => {
+                    const event = new CustomEvent('open-edit-servico-extra', { detail: selectedItem });
+                    window.dispatchEvent(event);
+                    setSelectedItem(null);
+                } : undefined}
+                canAdvance={selectedItem ? canAdvance(selectedItem) : false}
+                canDevolve={selectedItem ? canDevolve(selectedItem) : false}
+                isPendingAdvance={updatePipelineMutation.isPending}
+            />
+
+            {/* Drawer Secundário — Linha do Tempo e Status Completo */}
+            <ServicosExtrasContinuityDrawer
+                isOpen={isFlowDrawerOpen}
+                item={selectedItem}
+                zIndexClass="z-[60]"
+                onBack={() => setIsFlowDrawerOpen(false)}
+                onClose={() => {
+                    setIsFlowDrawerOpen(false);
+                    setSelectedItem(null);
+                }}
+            />
 
             {/* Justification Modal */}
             <JustificationModal

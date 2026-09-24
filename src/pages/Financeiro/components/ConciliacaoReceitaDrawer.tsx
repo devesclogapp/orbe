@@ -171,7 +171,7 @@ export function ConciliacaoReceitaDrawer({
                     side="right"
                     className={cn(
                         RECEITA_DRAWER_WIDTH_CLASS,
-                        "p-0 flex flex-col h-full bg-background border-l shadow-2xl overflow-hidden"
+                        "p-0 flex flex-col h-full max-h-[100dvh] bg-background border-l shadow-2xl overflow-hidden"
                     )}
                 >
                     {/* Cabeçalho Compacto do Drawer Canônico */}
@@ -208,7 +208,7 @@ export function ConciliacaoReceitaDrawer({
                     </header>
 
                     {/* Corpo com Scroll */}
-                    <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                    <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-5 space-y-4">
                         {/* 1. Status Bar Compacta (Faixa única no desktop, máx 2 linhas no mobile — UX-2B.13 / UX-2B.15) */}
                         <div
                             className={cn(

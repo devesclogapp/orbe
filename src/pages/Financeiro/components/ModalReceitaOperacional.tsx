@@ -1181,7 +1181,7 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
     return (
         <>
             <Sheet open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
-                <SheetContent side="right" className={cn(RECEITA_DRAWER_WIDTH_CLASS, "p-0 flex flex-col h-full bg-background border-l shadow-2xl overflow-hidden")}>
+                <SheetContent side="right" className={cn(RECEITA_DRAWER_WIDTH_CLASS, "max-h-[100dvh] p-0 flex flex-col h-full bg-background border-l shadow-2xl overflow-hidden")}>
                     {/* Cabeçalho Compacto do Drawer Canônico */}
                     <header className="p-5 border-b border-border bg-slate-50/70 dark:bg-slate-900/50 flex items-start justify-between shrink-0">
                         <div className="space-y-1 pr-4 min-w-0 flex-1">
@@ -1221,7 +1221,7 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                     </header>
 
                     {/* Corpo com Scroll */}
-                    <div className="flex-1 overflow-y-auto p-5 space-y-5">
+                    <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-5 space-y-5">
                         {/* 1. Status Bar Compacta (Faixa única no desktop, máx 2 linhas no mobile — UX-2B.13) */}
                         <div
                             className={cn(

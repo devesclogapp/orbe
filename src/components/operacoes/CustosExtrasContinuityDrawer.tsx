@@ -222,13 +222,13 @@ export const CustosExtrasContinuityDrawer: React.FC = () => {
         aria-modal="true"
         aria-label="Status do Custo Extra"
         className={cn(
-          "relative z-[210] flex h-full w-full flex-col bg-card shadow-2xl border-l border-border",
+          "relative z-[210] flex h-[100dvh] max-h-[100dvh] w-full flex-col bg-card shadow-2xl border-l border-border overflow-hidden",
           "sm:max-w-[480px] lg:max-w-[500px]",
           "animate-in slide-in-from-right duration-300 ease-out"
         )}
       >
         {/* Header do Drawer */}
-        <header className="flex items-start justify-between border-b border-border/80 px-6 py-5 bg-muted/20">
+        <header className="flex items-start justify-between border-b border-border/80 px-6 py-5 bg-muted/20 shrink-0">
           <div>
             <div className="flex items-center gap-2">
               <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -271,7 +271,7 @@ export const CustosExtrasContinuityDrawer: React.FC = () => {
         </header>
 
         {/* Corpo Scrollável */}
-        <div className="flex-1 overflow-y-auto px-6 py-6 pb-8 space-y-6">
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-6 py-6 pb-8 space-y-6">
           {/* 1. RESUMO DO RESULTADO (O QUE ACONTECEU) */}
           <section className={cn("rounded-xl border p-4 transition-all shadow-xs", resultSummary.badgeClass)}>
             <div className="flex items-start gap-3">

@@ -224,4 +224,63 @@ describe("PORTAL UX-1 & UX-1.1 — Feed Operacional Unificado Mobile-First ('Lan
     expect(hookContent).toContain("const { tenantId } = useTenant();");
     expect(hookContent).toContain('queryKey: ["lancamentos_hoje_portal", effectiveDate, effectiveEmpresaId, tenantId]');
   });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 20 a 24. Regressão Cirúrgica do Feed de Custos Extras
+  // ──────────────────────────────────────────────────────────────────────────
+  it("20. CustoExtraOperacionalService.getByDate usa criado_em e NUNCA created_at", () => {
+    const servicePath = path.resolve(__dirname, "../services/domain/despesas.service.ts");
+    const serviceContent = fs.readFileSync(servicePath, "utf-8");
+
+    // Procura o método getByDate
+    const getByDateSnippet = serviceContent.substring(
+      serviceContent.indexOf("async getByDate("),
+      serviceContent.indexOf("async getAll(")
+    );
+
+    expect(getByDateSnippet).toContain(".order('criado_em', { ascending: false })");
+    expect(getByDateSnippet).not.toContain("created_at");
+  });
+
+  it("21. Feed utiliza pipeline_status como prioridade para Custos Extras", () => {
+    const hookPath = path.resolve(__dirname, "../hooks/useLancamentosHojePortal.ts");
+    const hookContent = fs.readFileSync(hookPath, "utf-8");
+
+    expect(hookContent).toContain("mapStatusCustoExtra(ce.pipeline_status || ce.status)");
+  });
+
+  it("22. Lançamento de Custo Extra invalida lancamentos_hoje_portal no Admin e Portal", () => {
+    const portalLancamentoPath = path.resolve(__dirname, "../pages/Producao/CustosExtrasLancamento.tsx");
+    const adminFormPath = path.resolve(__dirname, "../components/forms/CustosExtrasForm.tsx");
+
+    const portalContent = fs.readFileSync(portalLancamentoPath, "utf-8");
+    const adminContent = fs.readFileSync(adminFormPath, "utf-8");
+
+    expect(portalContent).toContain('queryClient.invalidateQueries({ queryKey: ["lancamentos_hoje_portal"] })');
+    expect(adminContent).toContain('queryClient.invalidateQueries({ queryKey: ["lancamentos_hoje_portal"] })');
+  });
+
+  it("23. Serviço Extra continua ordenando por criado_em e preservando integração", () => {
+    const receitasServicePath = path.resolve(__dirname, "../services/receitas/receitas.service.ts");
+    const receitasContent = fs.readFileSync(receitasServicePath, "utf-8");
+
+    expect(receitasContent).toContain(".order('criado_em', { ascending: false })");
+  });
+
+  it("24. Mapeamento de status preserva os 4 domínios sem alteração de estados", () => {
+    // Operação
+    expect(mapStatusOperacao("aprovado").label).toBe("Aprovado");
+    expect(mapStatusOperacao("em_validacao").label).toBe("Em validação");
+    // Serviço Extra
+    expect(mapStatusServicoExtra("APROVADO_OPERACAO").label).toBe("Aprovado");
+    expect(mapStatusServicoExtra("EM_VALIDACAO").label).toBe("Em validação");
+    // Custo Extra
+    expect(mapStatusCustoExtra("APROVADO_OPERACAO").label).toBe("Aprovado");
+    expect(mapStatusCustoExtra("EM_VALIDACAO").label).toBe("Em validação");
+    expect(mapStatusCustoExtra("RECEBIDO").label).toBe("Recebido");
+    expect(mapStatusCustoExtra("PAGO").label).toBe("Pago");
+    // Período Operacional
+    expect(mapStatusPeriodoOperacional("CONCLUIDO").label).toBe("Concluído");
+    expect(mapStatusPeriodoOperacional("EM_VALIDACAO").label).toBe("Em validação");
+  });
 });

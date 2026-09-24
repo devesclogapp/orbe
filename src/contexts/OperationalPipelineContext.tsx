@@ -1220,7 +1220,16 @@ export function resolveServicoExtraModalidade(modalidade?: string | null): {
     description: string;
 } {
     const norm = String(modalidade ?? '').trim().toUpperCase();
-    if (norm === 'CAIXA_IMEDIATO') {
+    if (
+        norm === 'CAIXA_IMEDIATO' ||
+        norm.includes('DINHEIRO') ||
+        norm.includes('PIX') ||
+        norm.includes('CART') ||
+        norm.includes('DEBITO') ||
+        norm.includes('DÉBITO') ||
+        norm.includes('À VISTA') ||
+        norm.includes('A VISTA')
+    ) {
         return {
             isValid: true,
             modalidade: 'CAIXA_IMEDIATO',
@@ -1229,7 +1238,7 @@ export function resolveServicoExtraModalidade(modalidade?: string | null): {
             description: 'Recebimento imediato gerado. Acesse a Central de Receitas para confirmar o recebimento no caixa.',
         };
     }
-    if (norm === 'DUPLICATA') {
+    if (norm === 'DUPLICATA' || norm.includes('BOLETO') || norm.includes('DUPLICATA')) {
         return {
             isValid: true,
             modalidade: 'DUPLICATA',
@@ -1238,7 +1247,7 @@ export function resolveServicoExtraModalidade(modalidade?: string | null): {
             description: 'Cobrança avulsa gerada. Acesse a Central de Receitas para emitir ou gerenciar a cobrança.',
         };
     }
-    if (norm === 'FATURAMENTO_MENSAL') {
+    if (norm === 'FATURAMENTO_MENSAL' || norm.includes('FATURAMENTO') || norm.includes('MENSAL')) {
         return {
             isValid: true,
             modalidade: 'FATURAMENTO_MENSAL',

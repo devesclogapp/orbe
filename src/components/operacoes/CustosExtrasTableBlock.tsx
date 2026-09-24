@@ -1159,8 +1159,9 @@ export function CustosExtrasTableBlock({
           }
         }}
       >
-        <SheetContent className="w-full sm:max-w-lg overflow-y-auto overflow-x-hidden flex flex-col justify-between">
-          <div className="space-y-5 min-w-0">
+        <SheetContent className="w-full sm:max-w-lg h-[100dvh] max-h-[100dvh] p-0 flex flex-col overflow-hidden overflow-x-hidden bg-background border-l border-border shadow-2xl">
+          {/* Header Fixo */}
+          <header className="p-6 pb-4 border-b border-border bg-card shrink-0">
             <SheetHeader>
               <SheetTitle className="text-xl font-bold text-foreground">
                 {detailsViewMode === "flow" ? "Linha do Tempo — Custo Extra" : "Detalhes do Custo Extra"}
@@ -1171,7 +1172,10 @@ export function CustosExtrasTableBlock({
                   : "Informações operacionais e financeiras consolidadas deste lançamento."}
               </SheetDescription>
             </SheetHeader>
+          </header>
 
+          {/* Área Central com Scroll Vertical e Proteção min-h-0 */}
+          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-6 space-y-5">
             {selectedItem && (() => {
               const item = selectedItem;
               const pipelineCfg = getDisplayPipelineStatus(item, isContextualCustosExtras);
@@ -1506,12 +1510,13 @@ export function CustosExtrasTableBlock({
             const BannerIcon = footerBanner.icon;
 
             return (
-              <SheetFooter className="mt-8 pt-4 border-t border-border flex-col gap-2.5 sm:flex-col sm:space-x-0 w-full min-w-0">
-                {/* Banner Contextual obrigatório em todos os estados */}
-                <div className={cn("w-full flex items-center gap-2 py-2 px-3 rounded-lg border text-xs font-medium", footerBanner.className)}>
-                  <BannerIcon className="h-4 w-4 shrink-0" />
-                  <span className="leading-snug">{footerBanner.text}</span>
-                </div>
+              <footer className="p-4 sm:p-5 border-t border-border bg-card/95 backdrop-blur-xs shrink-0 w-full">
+                <SheetFooter className="m-0 p-0 border-0 flex-col gap-2.5 sm:flex-col sm:space-x-0 w-full min-w-0">
+                  {/* Banner Contextual obrigatório em todos os estados */}
+                  <div className={cn("w-full flex items-center gap-2 py-2 px-3 rounded-lg border text-xs font-medium", footerBanner.className)}>
+                    <BannerIcon className="h-4 w-4 shrink-0" />
+                    <span className="leading-snug">{footerBanner.text}</span>
+                  </div>
 
                 {!isFinalizado && (
                   <div className="flex flex-col gap-2.5 w-full min-w-0">
@@ -1609,7 +1614,8 @@ export function CustosExtrasTableBlock({
                     </div>
                   </div>
                 )}
-              </SheetFooter>
+                </SheetFooter>
+              </footer>
             );
           })()}
         </SheetContent>
@@ -1701,7 +1707,7 @@ export function CustosExtrasTableBlock({
       </Dialog>
 
       <Sheet open={!!editingItem} onOpenChange={(value) => !value && setEditingItem(null)}>
-        <SheetContent className="sm:max-w-2xl overflow-y-auto">
+        <SheetContent className="sm:max-w-2xl max-h-[100dvh] overflow-y-auto">
           <SheetHeader>
             <SheetTitle>Editar custo extra</SheetTitle>
             <SheetDescription>Ajuste os campos do lancamento diretamente na tela operacional.</SheetDescription>
@@ -1783,7 +1789,7 @@ export function CustosExtrasTableBlock({
       </Sheet>
 
       <Sheet open={isBulkEditOpen} onOpenChange={(value) => !bulkUpdateMutation.isPending && setIsBulkEditOpen(value)}>
-        <SheetContent className="sm:max-w-xl overflow-y-auto">
+        <SheetContent className="sm:max-w-xl max-h-[100dvh] overflow-y-auto">
           <SheetHeader>
             <SheetTitle>Editar coluna em massa</SheetTitle>
             <SheetDescription>

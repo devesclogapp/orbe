@@ -236,7 +236,7 @@ export function useLancamentosHojePortal({ date, contextEmpresaId }: UseLancamen
 
       // Mapeamento: Custos / Despesas
       for (const ce of (custosExtras || []) as any[]) {
-        const statusInfo = mapStatusCustoExtra(ce.status);
+        const statusInfo = mapStatusCustoExtra(ce.pipeline_status || ce.status);
         const createdAt = ce.created_at || ce.criado_em || ce.data || new Date().toISOString();
         normalized.push({
           id: `ce-${ce.id}`,

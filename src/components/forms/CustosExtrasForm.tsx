@@ -192,6 +192,7 @@ export const CustosExtrasForm = ({ onSuccess, empresaPadraoId }: CustosExtrasFor
             });
             queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
             queryClient.invalidateQueries({ queryKey: ["custos-extras-hoje"] });
+            queryClient.invalidateQueries({ queryKey: ["lancamentos_hoje_portal"] });
             onSuccess?.();
 
             const empresaObj = empresas.find((e: any) => e.id === form.empresa_id);

@@ -95,7 +95,7 @@ export const ReceitaDetalhesDrawer: React.FC<ReceitaDetalhesDrawerProps> = ({
         <Sheet open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
             <SheetContent
                 side="right"
-                className={cn(RECEITA_DRAWER_WIDTH_CLASS, "z-[60] bg-background p-0 border-l border-border shadow-2xl flex flex-col h-full overflow-hidden")}
+                className={cn(RECEITA_DRAWER_WIDTH_CLASS, "max-h-[100dvh] z-[60] bg-background p-0 border-l border-border shadow-2xl flex flex-col h-full overflow-hidden")}
             >
                 {/* Cabeçalho do Drawer 2 com Ação de Voltar ao Drawer 1 */}
                 <header className="p-4 border-b border-border bg-slate-50/80 dark:bg-slate-900/60 flex items-center justify-between shrink-0">
@@ -132,7 +132,7 @@ export const ReceitaDetalhesDrawer: React.FC<ReceitaDetalhesDrawerProps> = ({
                 </header>
 
                 {/* Conteúdo com Abas Especializadas */}
-                <div className="flex-1 overflow-y-auto p-5">
+                <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-5">
                     <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="w-full space-y-4">
                         <TabsList className="grid w-full grid-cols-4 bg-slate-100 dark:bg-slate-900 mb-2">
                             <TabsTrigger value="fluxo">Fluxo</TabsTrigger>

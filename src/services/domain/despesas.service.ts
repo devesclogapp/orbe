@@ -98,7 +98,7 @@ class CustoExtraOperacionalServiceClass {
     }
 
     const { data: rawData, error } = await query
-      .order('created_at', { ascending: false });
+      .order('criado_em', { ascending: false });
 
     if (error) {
       console.error("[CustoExtraOperacionalService] Erro em getByDate:", error);

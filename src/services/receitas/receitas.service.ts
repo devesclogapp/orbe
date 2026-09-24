@@ -335,7 +335,7 @@ class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extra
         .select(`
           *, 
           empresas(nome),
-          formas_pagamento_operacional(nome),
+          formas_pagamento_operacional(nome, modalidade),
           tipos_servico_operacional(nome)
         `);
       
