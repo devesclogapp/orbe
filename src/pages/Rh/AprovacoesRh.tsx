@@ -742,6 +742,7 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
                                         onPageChange={setCurrentPage}
                                         onItemsPerPageChange={v => { setItemsPerPage(v); setCurrentPage(1); }}
                                         isLoading={isLoading}
+                                        filterType={filterType}
                                     />
                                 </TabsContent>
                             ))}
@@ -868,6 +869,7 @@ function ItensTable({
     onSelectAll, onSelectItem, onRowClick,
     currentPage, itemsPerPage, totalPages, onPageChange, onItemsPerPageChange,
     isLoading,
+    filterType,
 }: {
     items: ApprovalItem[];
     allItemsCount: number;
@@ -882,9 +884,12 @@ function ItensTable({
     onPageChange: (page: number) => void;
     onItemsPerPageChange: (n: number) => void;
     isLoading: boolean;
+    filterType?: string;
 }) {
     const start = (currentPage - 1) * itemsPerPage + 1;
     const end = Math.min(currentPage * itemsPerPage, allItemsCount);
+    const isDiaristasContext = filterType === "DIARISTA" || (items.length > 0 && items.every(i => i.tipo === "DIARISTA"));
+    const colValorHorasLabel = isDiaristasContext ? "Valor / Diárias" : "Valor / Horas";
 
     return (
         <div className="bg-white rounded-b-xl rounded-tr-xl shadow-sm border border-border/40 border-t-0 overflow-hidden">
@@ -895,7 +900,7 @@ function ItensTable({
                             <th className="w-12 px-5 py-4 text-left">
                                 <Checkbox checked={items.length > 0 && selectedItems.length === items.length} onCheckedChange={onSelectAll} />
                             </th>
-                            {["Tipo", "Referência / Lote", "Colaborador / Descrição", "Empresa / Operação", "Valor / Horas", "Competência", "Data Recebimento", "Situação"].map(h => (
+                            {["Tipo", "Referência / Lote", "Colaborador / Descrição", "Empresa / Operação", colValorHorasLabel, "Competência", "Data Recebimento", "Situação"].map(h => (
                                 <th key={h} className="px-4 py-4 text-left font-medium text-muted-foreground uppercase tracking-wider text-[10px] whitespace-nowrap">{h}</th>
                             ))}
                         </tr>

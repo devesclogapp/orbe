@@ -1593,13 +1593,14 @@ const CentralFinanceira = () => {
                 const rejeit = itens.filter((i: any) => i.status === "REJEITADO").length;
                 const pend = itens.filter((i: any) => i.status === "PENDENTE").length;
                 const valT = itens.reduce((a: number, i: any) => a + Number(i.valor_calculado || 0), 0);
+                const isDiaristasOuRh = rhLoteDetalhe.tipo === "DIARISTAS" || rhLoteDetalhe.tipo === "DIARISTA" || String(rhLoteDetalhe.origem_tipo || "").toUpperCase().includes("DIARISTA");
                 return (
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                     {[
-                      { label: "Total itens", value: String(total), cls: "" },
-                      { label: "Faturáveis", value: String(total - rejeit), cls: "text-success" },
+                      { label: isDiaristasOuRh ? "Total registros" : "Total itens", value: String(total), cls: "" },
+                      { label: isDiaristasOuRh ? "Diárias Aprovadas" : "Aptos para Pagamento", value: String(total - rejeit), cls: "text-success" },
                       { label: "Pendentes", value: String(pend), cls: "text-warning" },
-                      { label: "Valor faturável", value: `R$ ${valT.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`, cls: "text-primary" },
+                      { label: isDiaristasOuRh ? "Valor a pagar" : "Valor do lote", value: `R$ ${valT.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`, cls: "text-primary" },
                     ].map((s) => (
                       <div key={s.label} className="rounded-xl border border-border bg-muted/20 p-3 text-center">
                         <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{s.label}</div>

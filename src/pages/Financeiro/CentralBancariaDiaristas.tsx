@@ -50,6 +50,10 @@ import {
     Landmark,
     Clock,
 } from "lucide-react";
+import { DrawerPrimarioShell } from "@/components/continuity/DrawerPrimarioShell";
+import { DrawerSecundarioShell } from "@/components/continuity/DrawerSecundarioShell";
+import { PipelineHorizontalBar, type PipelineStageItem } from "@/components/continuity/PipelineHorizontalBar";
+import { TimelineVerticalStepper, type TimelineStageItem } from "@/components/continuity/TimelineVerticalStepper";
 
 const formatCurrency = (v: number) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
@@ -61,6 +65,111 @@ const canGenerateCnabForStatus = (status?: string | null) =>
     ["FECHADO_FINANCEIRO", "AGUARDANDO_PAGAMENTO"].includes(String(status || ""));
 
 const canMarkPaidForStatus = (_status?: string | null) => false;
+
+export const buildDiaristasStages = (lote: Lote | null) => {
+    if (!lote) {
+        return {
+            horizontalStages: [] as PipelineStageItem[],
+            verticalStages: [] as TimelineStageItem[],
+            isFlowDone: false,
+        };
+    }
+
+    const isPago = lote.status === "PAGO" || lote.status === "pago" || (lote as any).status_conciliacao === "conciliado";
+    const isCnabGerado = String(lote.status).toLowerCase() === "cnab_gerado";
+    const isAguardandoPagamento = lote.status === "AGUARDANDO_PAGAMENTO" || lote.status === "FECHADO_FINANCEIRO";
+    const isValidadoRh = lote.status === "VALIDADO_RH";
+    const isCancelado = lote.status === "CANCELADO" || lote.status === "cancelado";
+
+    if (isPago) {
+        const horizontalStages: PipelineStageItem[] = [
+            { id: "fechamento", label: "Fechamento", compactLabel: "Fechamento", status: "done" },
+            { id: "validacao_rh", label: "Validação RH", compactLabel: "RH", status: "done" },
+            { id: "financeiro", label: "Financeiro", compactLabel: "Financeiro", status: "done" },
+            { id: "cnab", label: "CNAB", compactLabel: "CNAB", status: "done" },
+            { id: "conciliacao", label: "Conciliação", compactLabel: "Conciliação", status: "done" },
+        ];
+        const verticalStages: TimelineStageItem[] = [
+            { id: "fechamento", label: "Fechamento Semanal", responsible: lote.fechado_por_nome || "Encarregado", description: "Lote fechado e diárias consolidadas pelo encarregado.", status: "done" },
+            { id: "validacao_rh", label: "Validação RH", responsible: "RH", description: "Diárias conferidas e aprovadas pelo setor de RH.", status: "done" },
+            { id: "financeiro", label: "Aprovação Financeira", responsible: "Financeiro", description: "Lote aprovado para geração de remessa bancária.", status: "done" },
+            { id: "cnab", label: "Remessa CNAB 240", responsible: "Financeiro", description: "Arquivo de remessa gerado e enviado ao banco.", status: "done" },
+            { id: "conciliacao", label: "Retorno e Conciliação Bancária", responsible: lote.paid_by_nome || "Retorno Bancário", description: "Títulos conciliados e pagamento liquidado no banco.", status: "done" },
+        ];
+        return { horizontalStages, verticalStages, isFlowDone: true };
+    }
+
+    if (isCnabGerado) {
+        const horizontalStages: PipelineStageItem[] = [
+            { id: "fechamento", label: "Fechamento", compactLabel: "Fechamento", status: "done" },
+            { id: "validacao_rh", label: "Validação RH", compactLabel: "RH", status: "done" },
+            { id: "financeiro", label: "Financeiro", compactLabel: "Financeiro", status: "done" },
+            { id: "cnab", label: "CNAB", compactLabel: "CNAB", status: "done" },
+            { id: "conciliacao", label: "Conciliação", compactLabel: "Conciliação", status: "current" },
+        ];
+        const verticalStages: TimelineStageItem[] = [
+            { id: "fechamento", label: "Fechamento Semanal", responsible: lote.fechado_por_nome || "Encarregado", description: "Lote fechado e diárias consolidadas pelo encarregado.", status: "done" },
+            { id: "validacao_rh", label: "Validação RH", responsible: "RH", description: "Diárias conferidas e aprovadas pelo setor de RH.", status: "done" },
+            { id: "financeiro", label: "Aprovação Financeira", responsible: "Financeiro", description: "Lote aprovado para geração de remessa bancária.", status: "done" },
+            { id: "cnab", label: "Remessa CNAB 240", responsible: "Financeiro", description: "Arquivo de remessa CNAB240 gerado com sucesso.", status: "done" },
+            { id: "conciliacao", label: "Retorno e Conciliação Bancária", responsible: "Financeiro", description: "Aguardando importação do arquivo de retorno (.RET) para conciliação e liquidação.", status: "current" },
+        ];
+        return { horizontalStages, verticalStages, isFlowDone: false };
+    }
+
+    if (isAguardandoPagamento) {
+        const horizontalStages: PipelineStageItem[] = [
+            { id: "fechamento", label: "Fechamento", compactLabel: "Fechamento", status: "done" },
+            { id: "validacao_rh", label: "Validação RH", compactLabel: "RH", status: "done" },
+            { id: "financeiro", label: "Financeiro", compactLabel: "Financeiro", status: "done" },
+            { id: "cnab", label: "CNAB", compactLabel: "CNAB", status: "current" },
+            { id: "conciliacao", label: "Conciliação", compactLabel: "Conciliação", status: "pending" },
+        ];
+        const verticalStages: TimelineStageItem[] = [
+            { id: "fechamento", label: "Fechamento Semanal", responsible: lote.fechado_por_nome || "Encarregado", description: "Lote fechado e diárias consolidadas pelo encarregado.", status: "done" },
+            { id: "validacao_rh", label: "Validação RH", responsible: "RH", description: "Diárias conferidas e aprovadas pelo setor de RH.", status: "done" },
+            { id: "financeiro", label: "Aprovação Financeira", responsible: "Financeiro", description: "Lote aprovado na Central Financeira. Liberado para CNAB.", status: "done" },
+            { id: "cnab", label: "Remessa CNAB 240", responsible: "Financeiro", description: "Pronto para geração do arquivo CNAB240 para envio ao banco.", status: "current" },
+            { id: "conciliacao", label: "Retorno e Conciliação Bancária", responsible: "Financeiro", description: "Aguardando geração da remessa.", status: "pending" },
+        ];
+        return { horizontalStages, verticalStages, isFlowDone: false };
+    }
+
+    if (isValidadoRh) {
+        const horizontalStages: PipelineStageItem[] = [
+            { id: "fechamento", label: "Fechamento", compactLabel: "Fechamento", status: "done" },
+            { id: "validacao_rh", label: "Validação RH", compactLabel: "RH", status: "done" },
+            { id: "financeiro", label: "Financeiro", compactLabel: "Financeiro", status: "current" },
+            { id: "cnab", label: "CNAB", compactLabel: "CNAB", status: "pending" },
+            { id: "conciliacao", label: "Conciliação", compactLabel: "Conciliação", status: "pending" },
+        ];
+        const verticalStages: TimelineStageItem[] = [
+            { id: "fechamento", label: "Fechamento Semanal", responsible: lote.fechado_por_nome || "Encarregado", description: "Lote fechado e diárias consolidadas pelo encarregado.", status: "done" },
+            { id: "validacao_rh", label: "Validação RH", responsible: "RH", description: "Diárias validadas com sucesso pelo RH.", status: "done" },
+            { id: "financeiro", label: "Aprovação Financeira", responsible: "Financeiro", description: "Aguardando análise e aprovação na Central Financeira.", status: "current" },
+            { id: "cnab", label: "Remessa CNAB 240", responsible: "Financeiro", description: "Pendente de aprovação financeira.", status: "pending" },
+            { id: "conciliacao", label: "Retorno e Conciliação Bancária", responsible: "Financeiro", description: "Aguardando remessa.", status: "pending" },
+        ];
+        return { horizontalStages, verticalStages, isFlowDone: false };
+    }
+
+    // Default: Aguardando Validação RH ou Em Aberto
+    const horizontalStages: PipelineStageItem[] = [
+        { id: "fechamento", label: "Fechamento", compactLabel: "Fechamento", status: "done" },
+        { id: "validacao_rh", label: "Validação RH", compactLabel: "RH", status: isCancelado ? "devolved" : "current" },
+        { id: "financeiro", label: "Financeiro", compactLabel: "Financeiro", status: "pending" },
+        { id: "cnab", label: "CNAB", compactLabel: "CNAB", status: "pending" },
+        { id: "conciliacao", label: "Conciliação", compactLabel: "Conciliação", status: "pending" },
+    ];
+    const verticalStages: TimelineStageItem[] = [
+        { id: "fechamento", label: "Fechamento Semanal", responsible: lote.fechado_por_nome || "Encarregado", description: "Lote fechado pelo encarregado.", status: "done" },
+        { id: "validacao_rh", label: "Validação RH", responsible: "RH", description: isCancelado ? "Lote cancelado ou devolvido." : "Aguardando conferência e validação das diárias pelo RH.", status: isCancelado ? "devolved" : "current" },
+        { id: "financeiro", label: "Aprovação Financeira", responsible: "Financeiro", description: "Pendente de validação RH.", status: "pending" },
+        { id: "cnab", label: "Remessa CNAB 240", responsible: "Financeiro", description: "Aguardando aprovação.", status: "pending" },
+        { id: "conciliacao", label: "Retorno e Conciliação Bancária", responsible: "Financeiro", description: "Aguardando remessa.", status: "pending" },
+    ];
+    return { horizontalStages, verticalStages, isFlowDone: false };
+};
 
 // ─────────────────────────────────────────────────────────────────────
 // Tipos locais
@@ -125,7 +234,8 @@ export const CentralBancariaDiaristas = ({
     const { openPipeline } = useOperationalPipeline();
 
     const [selectedLote, setSelectedLote] = useState<Lote | null>(null);
-    const [openDetalhe, setOpenDetalhe] = useState(false);
+    const [isPrimaryDrawerOpen, setIsPrimaryDrawerOpen] = useState(false);
+    const [isSecondaryDrawerOpen, setIsSecondaryDrawerOpen] = useState(false);
 
     // dialogs de governança
     const [openReabrir, setOpenReabrir] = useState(false);
@@ -148,10 +258,6 @@ export const CentralBancariaDiaristas = ({
     const [cnabEmpresaAgencia, setCnabEmpresaAgencia] = useState("");
     const [cnabEmpresaConta, setCnabEmpresaConta] = useState("");
     const [cnabEmpresaDigito, setCnabEmpresaDigito] = useState("");
-
-    // ── C2: estado do modal de confirmação de pagamento ──
-    const [openConfirmPago, setOpenConfirmPago] = useState(false);
-    const [loteParaPagar, setLoteParaPagar] = useState<Lote | null>(null);
 
     // ── paginação ──
     const PAGE_SIZE = 10;
@@ -212,11 +318,19 @@ export const CentralBancariaDiaristas = ({
     React.useEffect(() => {
         if (onMetricsUpdate && lotes) {
             const arr = lotes as Lote[];
+            // Pendentes de pagamento = todos os lotes que ainda NÃO estão quitados e não foram cancelados
+            // (inclui lotes com CNAB gerado que ainda estão aguardando conciliação bancária)
+            const pendentes = arr.filter(l => 
+                l.status !== "PAGO" && 
+                l.status !== "pago" && 
+                l.status !== "CANCELADO" && 
+                l.status !== "cancelado"
+            );
             onMetricsUpdate({
                 totalRemessas: arr.length,
                 totalTitulos: arr.reduce((acc, l) => acc + Number(l.total_registros || 0), 0),
                 totalValor: arr.reduce((acc, l) => acc + Number(l.valor_total || 0), 0),
-                remessasComErro: arr.filter(l => l.status === "AGUARDANDO_PAGAMENTO" || l.status === "EM_ABERTO" || l.status === "em_aberto").length,
+                remessasComErro: pendentes.length,
             });
         }
     }, [lotes, onMetricsUpdate]);
@@ -309,38 +423,7 @@ export const CentralBancariaDiaristas = ({
     // ─────────────────────────────────────────────────────────────────
     // Mutations
     // ─────────────────────────────────────────────────────────────────
-    const marcarPagoMutation = useMutation({
-        mutationFn: (id: string) =>
-            LoteFechamentoDiaristaService.marcarComoPago(id, user?.id, userName),
-        onSuccess: () => {
-            toast.success("Lote marcado como pago.");
-            queryClient.invalidateQueries({ queryKey: ["lotes_fechamento"] });
-            queryClient.invalidateQueries({ queryKey: ["lancamentos_lote"] });
-            // Invalidações globais para sincronizar RH e Mobile instantaneamente
-            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel_periodo"] });
-            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_painel_lotes"] });
-            queryClient.invalidateQueries({ queryKey: ["lotes_fechamento_painel"] });
-            queryClient.invalidateQueries({ queryKey: ["lotes_fechamento_producao"] });
-            queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_semana"] });
-            setOpenConfirmPago(false);
-            setOpenDetalhe(false);
 
-            // Pipeline: ciclo completo concluído
-            const empresa = (empresas as any[])[0];
-            const empresaNome = empresa?.nome || "Empresa";
-            const competencia = format(new Date(), "yyyy-MM");
-            openPipeline(buildDiaristasPipeline({
-                competencia,
-                empresa: empresaNome,
-                currentStep: "concluido",
-            }));
-
-            setSelectedLote(null);
-            setLoteParaPagar(null);
-        },
-
-        onError: (err: any) => toast.error("Erro ao marcar como pago", { description: err.message }),
-    });
 
     const reabrirMutation = useMutation({
         mutationFn: () =>
@@ -365,8 +448,7 @@ export const CentralBancariaDiaristas = ({
             queryClient.invalidateQueries({ queryKey: ["historico_recente_diaristas"] });
             queryClient.invalidateQueries({ queryKey: ["diaristas_lancamento"] });
             setOpenReabrir(false);
-            setOpenDetalhe(false);
-            setSelectedLote(null);
+            handleCloseDrawers();
             setMotivoReabrir("");
             setTipoReabertura("operacional");
         },
@@ -514,11 +596,29 @@ export const CentralBancariaDiaristas = ({
     };
 
     // ─────────────────────────────────────────────────────────────────
-    // Handlers
+    // Handlers e Estados Derivados
     // ─────────────────────────────────────────────────────────────────
+    const { horizontalStages, verticalStages, isFlowDone } = useMemo(() => {
+        return buildDiaristasStages(selectedLote);
+    }, [selectedLote]);
+
+    const empresaNomeSelecionada = useMemo(() => {
+        if (!selectedLote) return "";
+        const emp = (empresas as any[]).find((e: any) => e.id === selectedLote.empresa_id);
+        return emp?.nome || "";
+    }, [selectedLote, empresas]);
+
     const handleOpenDetalhe = (lote: Lote) => {
         setSelectedLote(lote);
-        setOpenDetalhe(true);
+        setIsPrimaryDrawerOpen(true);
+        setIsSecondaryDrawerOpen(false);
+    };
+
+    const handleCloseDrawers = () => {
+        setIsSecondaryDrawerOpen(false);
+        setIsPrimaryDrawerOpen(false);
+        setSelectedLote(null);
+        setExpandedIds(new Set());
     };
 
     const handleOpenAjuste = (lanc: Lancamento) => {
@@ -649,7 +749,11 @@ export const CentralBancariaDiaristas = ({
                             </thead>
                             <tbody>
                                 {lotesPaginados.map((l) => (
-                                    <tr key={l.id} className="border-t border-muted hover:bg-background">
+                                    <tr
+                                        key={l.id}
+                                        className="border-t border-muted hover:bg-background/80 cursor-pointer transition-colors"
+                                        onClick={() => handleOpenDetalhe(l)}
+                                    >
                                         <td className="px-5 h-14">
                                             <p className="font-mono text-xs text-muted-foreground mb-0.5">#{l.id.substring(0, 8)}</p>
                                             <p className="font-medium text-foreground">
@@ -671,7 +775,7 @@ export const CentralBancariaDiaristas = ({
                                         </td>
                                         <td className="px-5 text-center">{statusBadge(l.status)}</td>
                                         <td className="px-5 text-right">
-                                            <div className="flex justify-end gap-2">
+                                            <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
                                                 <Button variant="outline" size="sm" onClick={() => handleOpenDetalhe(l)}>
                                                     <Eye className="h-4 w-4 mr-1.5" /> Detalhes
                                                 </Button>
@@ -714,14 +818,12 @@ export const CentralBancariaDiaristas = ({
                                                         Aguardando conciliação bancária
                                                     </span>
                                                 ) : (
-                                                    <Button
-                                                        size="sm"
-                                                        className="bg-muted text-muted-foreground cursor-not-allowed opacity-60"
-                                                        disabled={true}
+                                                    <span
+                                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground border border-border"
                                                         title="Pagamento liberado exclusivamente via retorno bancário conciliado"
                                                     >
-                                                        <Lock className="h-3.5 w-3.5 mr-1.5" /> Baixa Bancária
-                                                    </Button>
+                                                        <Lock className="h-3 w-3 mr-1" /> Baixa Bancária
+                                                    </span>
                                                 )}
 
                                             </div>
@@ -770,52 +872,132 @@ export const CentralBancariaDiaristas = ({
                 </section>
             </div>
 
-            {/* ── MODAL DETALHES ── */}
-            <Dialog
-                open={openDetalhe}
-                onOpenChange={(v) => {
-                    setOpenDetalhe(v);
-                    if (!v) { setSelectedLote(null); setExpandedIds(new Set()); }
-                }}
-            >
-                <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
-                    <DialogHeader className="px-6 py-4 border-b bg-background z-10 shrink-0">
-                        <DialogTitle className="flex items-center gap-2">
-                            Detalhes do Lote
-                            {selectedLote && statusBadge(selectedLote.status)}
-                        </DialogTitle>
-                        <DialogDescription>
-                            {selectedLote && (
-                                <span>
-                                    Período: {formatDate(selectedLote.periodo_inicio)} até {formatDate(selectedLote.periodo_fim)}
-                                    {selectedLote.fechado_por_nome && (
-                                        <> · Fechado por: <strong>{selectedLote.fechado_por_nome}</strong></>
-                                    )}
-                                    {selectedLote.paid_by_nome && (
-                                        <> · Pago por: <strong>{selectedLote.paid_by_nome}</strong></>
-                                    )}
-                                    {selectedLote.reopened_by_nome && (
-                                        <> · Reaberto por: <strong className="text-amber-600">{selectedLote.reopened_by_nome}</strong></>
-                                    )}
+            {/* ── DRAWER PRIMÁRIO: DETALHES DO LOTE ── */}
+            <DrawerPrimarioShell
+                isOpen={isPrimaryDrawerOpen}
+                onClose={handleCloseDrawers}
+                title="Detalhes do Lote"
+                widthClass="w-full sm:max-w-2xl"
+                badge={selectedLote ? statusBadge(selectedLote.status) : null}
+                subtitle={selectedLote ? (
+                    <span>
+                        {empresaNomeSelecionada && <strong className="text-foreground">{empresaNomeSelecionada} · </strong>}
+                        Período: {formatDate(selectedLote.periodo_inicio)} até {formatDate(selectedLote.periodo_fim)}
+                    </span>
+                ) : undefined}
+                footer={
+                    <div className="flex items-center justify-between w-full">
+                        <div className="flex gap-2">
+                            <Button variant="outline" size="sm" onClick={exportarXlsx}>
+                                <Download className="h-4 w-4 mr-2" /> Exportar Planilha
+                            </Button>
+                            {selectedLote && !(selectedLote.status === "pago" || selectedLote.status === "PAGO") && selectedLote.status !== "cnab_gerado" && canGenerateCnabForStatus(selectedLote.status) && (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="border-indigo-400 text-indigo-700 hover:bg-indigo-50"
+                                    onClick={() => {
+                                        if (selectedLote) handleAbrirCnab(selectedLote);
+                                        handleCloseDrawers();
+                                    }}
+                                >
+                                    <FileCode2 className="h-4 w-4 mr-2" /> Gerar CNAB
+                                </Button>
+                            )}
+                        </div>
+                        <div className="flex gap-2 items-center">
+                            <Button variant="ghost" size="sm" onClick={handleCloseDrawers}>Fechar</Button>
+                            {(selectedLote?.status === "pago" || selectedLote?.status === "PAGO") ? (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-700 border border-emerald-500/30">
+                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                    Pagamento Concluído
+                                </span>
+                            ) : (String(selectedLote?.status).toLowerCase() === "cnab_gerado" || (selectedLote as any)?.status_conciliacao === "aguardando_conciliacao" || (selectedLote as any)?.status_conciliacao === "conciliacao_parcial") ? (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-amber-500/15 text-amber-700 border border-amber-500/30">
+                                    <Clock className="h-3.5 w-3.5" />
+                                    Aguardando conciliação bancária
+                                </span>
+                            ) : (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-muted text-muted-foreground border border-border">
+                                    <Lock className="h-3.5 w-3.5 mr-1" />
+                                    Baixa via Retorno Bancário
                                 </span>
                             )}
-                        </DialogDescription>
-                    </DialogHeader>
+                        </div>
+                    </div>
+                }
+            >
+                <div className="flex flex-col h-full">
+                    {/* Pipeline Horizontal Compacto */}
+                    <div className="p-4 border-b bg-muted/20">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                Pipeline Operacional e Financeiro
+                            </span>
+                            <button
+                                type="button"
+                                className="text-xs font-medium text-primary hover:underline flex items-center gap-1 cursor-pointer"
+                                onClick={() => setIsSecondaryDrawerOpen(true)}
+                            >
+                                Ver fluxo completo →
+                            </button>
+                        </div>
+                        <PipelineHorizontalBar stages={horizontalStages} />
+                    </div>
 
+                    {/* Cards de Resumo */}
+                    <div className="p-4 border-b bg-muted/10 grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                        <div className="p-2.5 rounded-lg bg-background border border-border/50">
+                            <p className="text-[10px] uppercase font-mono text-muted-foreground">Registros</p>
+                            <p className="text-base font-bold font-mono text-foreground">{selectedLote?.total_registros ?? 0}</p>
+                        </div>
+                        <div className="p-2.5 rounded-lg bg-background border border-border/50">
+                            <p className="text-[10px] uppercase font-mono text-muted-foreground">Diárias</p>
+                            <p className="text-base font-bold font-mono text-foreground">
+                                {dadosAgrupados.reduce((acc, g) => acc + g.totalDiarias, 0).toFixed(1)}
+                            </p>
+                        </div>
+                        <div className="p-2.5 rounded-lg bg-background border border-border/50">
+                            <p className="text-[10px] uppercase font-mono text-muted-foreground">Status</p>
+                            <div className="mt-0.5">{selectedLote && statusBadge(selectedLote.status)}</div>
+                        </div>
+                        <div className="p-2.5 rounded-lg bg-background border border-border/50">
+                            <p className="text-[10px] uppercase font-mono text-muted-foreground">Valor Total</p>
+                            <p className="text-base font-bold font-mono text-emerald-600">
+                                {formatCurrency(valorTotalComAjustes)}
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Metadados adicionais */}
+                    {selectedLote && (
+                        <div className="px-6 py-2 bg-muted/5 border-b text-xs text-muted-foreground">
+                            {selectedLote.fechado_por_nome && (
+                                <span>Fechado por: <strong className="text-foreground">{selectedLote.fechado_por_nome}</strong></span>
+                            )}
+                            {selectedLote.paid_by_nome && (
+                                <span className="ml-3">· Pago por: <strong className="text-foreground">{selectedLote.paid_by_nome}</strong></span>
+                            )}
+                            {selectedLote.reopened_by_nome && (
+                                <span className="ml-3">· Reaberto por: <strong className="text-amber-600">{selectedLote.reopened_by_nome}</strong></span>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Conteúdo rolável: Governança e Tabela de Diaristas */}
                     <div className="flex-1 overflow-y-auto p-6 bg-muted/10 relative group">
                         {/* Indicador de scroll */}
                         <div className="absolute top-0 inset-x-0 h-4 bg-gradient-to-b from-muted/20 to-transparent pointer-events-none opacity-0 transition-opacity group-hover:opacity-100" />
 
-                        {/* Barra de ações de governança (Admin + Financeiro podem criar ajustes; só Admin pode reabrir) */}
+                        {/* Barra de ações de governança */}
                         {canAdjust && selectedLote && (["FECHADO_FINANCEIRO", "AGUARDANDO_VALIDACAO_RH", "VALIDADO_RH", "cnab_gerado", "PAGO", "pago"].includes(selectedLote.status)) && (
-                            <div className="flex items-center gap-2 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+                            <div className="flex items-center gap-2 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg mb-4">
                                 <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
                                 <p className="text-xs text-amber-700 flex-1">
                                     {isAdmin
                                         ? "Ações de governança (Admin). Qualquer operação gera trilha de auditoria."
                                         : "Crie ajustes pontuais se necessário — cada ajuste é auditado."}
                                 </p>
-                                {/* Reabrir é exclusivo do Admin — S3/S4 segregação */}
                                 {isAdmin && (
                                     <Button
                                         variant="outline"
@@ -829,7 +1011,7 @@ export const CentralBancariaDiaristas = ({
                             </div>
                         )}
 
-                        <div className="py-2">
+                        <div className="py-1">
                             {isLoadingLancamentos ? (
                                 <div className="flex justify-center p-8">
                                     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -853,7 +1035,6 @@ export const CentralBancariaDiaristas = ({
                                                 const totalFinal = g.valorBase + g.valorAjustes;
                                                 const hasAjustes = g.ajustes.length > 0;
                                                 const expanded = expandedIds.has(g.diarista_id);
-                                                // Pega o primeiro lançamento normal para usar como referência no ajuste
                                                 const lancRef = g.lancamentosNormais[0] ?? null;
 
                                                 return (
@@ -949,59 +1130,59 @@ export const CentralBancariaDiaristas = ({
                                 </div>
                             )}
                         </div>
-                        <div className="absolute bottom-0 inset-x-0 h-8 bg-gradient-to-t from-muted/40 to-transparent pointer-events-none flex items-end justify-center pb-1">
-                            <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest opacity-0 transition-opacity group-hover:opacity-100 bg-background/80 px-2 rounded-full shadow-sm border">
-                                ↓ Role para ver mais
-                            </span>
+                    </div>
+                </div>
+            </DrawerPrimarioShell>
+
+            {/* ── DRAWER SECUNDÁRIO: LINHA DO TEMPO / FLUXO COMPLETO ── */}
+            <DrawerSecundarioShell
+                isOpen={isSecondaryDrawerOpen}
+                onBack={() => setIsSecondaryDrawerOpen(false)}
+                onClose={handleCloseDrawers}
+                title="Linha do Tempo — Diaristas"
+                widthClass="w-full sm:max-w-2xl"
+                badge={selectedLote ? statusBadge(selectedLote.status) : null}
+                hideOverlay={true}
+                subtitle={selectedLote ? (
+                    <span>
+                        Lote #{selectedLote.id.substring(0, 8)} · Período: {formatDate(selectedLote.periodo_inicio)} até {formatDate(selectedLote.periodo_fim)}
+                    </span>
+                ) : undefined}
+                footer={
+                    <div className="flex items-center justify-between w-full">
+                        <Button variant="outline" size="sm" onClick={() => setIsSecondaryDrawerOpen(false)}>
+                            ← Voltar aos detalhes
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={handleCloseDrawers}>
+                            Fechar
+                        </Button>
+                    </div>
+                }
+            >
+                <div className="p-6 space-y-6">
+                    <div className="p-4 bg-muted/30 rounded-lg border border-border/50">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-mono">Empresa / Lote</p>
+                                <p className="font-semibold text-sm text-foreground">{empresaNomeSelecionada || "Empresa"}</p>
+                                <p className="text-xs text-muted-foreground font-mono mt-0.5">#{selectedLote?.id.substring(0, 8)}</p>
+                            </div>
+                            <div className="text-right">
+                                <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-mono">Valor Total a Pagar</p>
+                                <p className="font-mono font-bold text-lg text-emerald-600">
+                                    {formatCurrency(valorTotalComAjustes)}
+                                </p>
+                            </div>
                         </div>
                     </div>
-
-                    <DialogFooter className="flex items-center justify-between sm:justify-between w-full px-6 py-4 border-t bg-background shrink-0">
-                        <div className="flex gap-2">
-                            <Button variant="outline" onClick={exportarXlsx}>
-                                <Download className="h-4 w-4 mr-2" /> Exportar Planilha
-                            </Button>
-                            {/* CNAB: bloqueado para lote já pago */}
-                            {selectedLote && !(selectedLote.status === "pago" || selectedLote.status === "PAGO") && selectedLote.status !== "cnab_gerado" && canGenerateCnabForStatus(selectedLote.status) && (
-                                <Button
-                                    variant="outline"
-                                    className="border-indigo-400 text-indigo-700 hover:bg-indigo-50"
-                                    onClick={() => {
-                                        if (selectedLote) handleAbrirCnab(selectedLote);
-                                        setOpenDetalhe(false);
-                                    }}
-                                >
-                                    <FileCode2 className="h-4 w-4 mr-2" /> Gerar CNAB
-                                </Button>
-                            )}
-                        </div>
-                        <div className="flex gap-2 items-center">
-                            <Button variant="ghost" onClick={() => setOpenDetalhe(false)}>Fechar</Button>
-                            {/* Botão Pago ou Badge Concluído / Aguardando Conciliação */}
-                            {(selectedLote?.status === "pago" || selectedLote?.status === "PAGO") ? (
-                                <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-bold bg-emerald-500/15 text-emerald-700 border border-emerald-500/30">
-                                    <CheckCircle2 className="h-4 w-4" />
-                                    Pagamento Concluído
-                                </span>
-                            ) : (String(selectedLote?.status).toLowerCase() === "cnab_gerado" || (selectedLote as any)?.status_conciliacao === "aguardando_conciliacao" || (selectedLote as any)?.status_conciliacao === "conciliacao_parcial") ? (
-                                <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium bg-amber-500/15 text-amber-700 border border-amber-500/30">
-                                    <Clock className="h-4 w-4" />
-                                    Aguardando conciliação bancária
-                                </span>
-                            ) : (
-                                <Button
-                                    className="bg-muted text-muted-foreground cursor-not-allowed opacity-60"
-                                    disabled={true}
-                                    title="Pagamento liberado exclusivamente via retorno bancário conciliado"
-                                >
-                                    <Lock className="h-4 w-4 mr-2" />
-                                    Baixa via Retorno Bancário
-                                </Button>
-                            )}
-                        </div>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+                    <div>
+                        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">
+                            Etapas do Ciclo Operacional e Financeiro
+                        </h4>
+                        <TimelineVerticalStepper stages={verticalStages} />
+                    </div>
+                </div>
+            </DrawerSecundarioShell>
 
             {/* ── MODAL REABRIR PERÍODO (Admin only) ── */}
             <Dialog
@@ -1304,63 +1485,9 @@ export const CentralBancariaDiaristas = ({
                 </DialogContent>
             </Dialog>
 
-            {/* ── C2: MODAL DE CONFIRMAÇÃO DE PAGAMENTO ── */}
-            <Dialog open={openConfirmPago} onOpenChange={(v) => { setOpenConfirmPago(v); if (!v) setLoteParaPagar(null); }}>
-                <DialogContent className="max-w-md">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2 text-emerald-700">
-                            <CheckCircle2 className="h-5 w-5" />
-                            Confirmar Pagamento
-                        </DialogTitle>
-                        <DialogDescription>
-                            Revise os dados abaixo antes de confirmar. Esta ação é auditada e não pode ser desfeita sem intervenção do Admin.
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    {loteParaPagar && (
-                        <div className="space-y-3 py-2">
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="esc-card p-3">
-                                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Período</p>
-                                    <p className="font-mono font-semibold text-sm">
-                                        {formatDate(loteParaPagar.periodo_inicio)} → {formatDate(loteParaPagar.periodo_fim)}
-                                    </p>
-                                </div>
-                                <div className="esc-card p-3">
-                                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Registros</p>
-                                    <p className="font-mono font-semibold text-sm">{loteParaPagar.total_registros} diaristas</p>
-                                </div>
-                            </div>
-                            <div className="esc-card p-4 flex justify-between items-center border-2 border-emerald-500/30">
-                                <span className="text-sm font-medium text-muted-foreground">Valor total a pagar</span>
-                                <span className="font-mono font-bold text-xl text-emerald-700">
-                                    {formatCurrency(Number(loteParaPagar.valor_total))}
-                                </span>
-                            </div>
-                            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs text-amber-700">
-                                ⚠️ Após confirmar, o lote será marcado como <strong>pago</strong> e não poderá ser editado sem reabertura pelo Admin.
-                            </div>
-                        </div>
-                    )}
-
-                    <DialogFooter>
-                        <Button variant="ghost" onClick={() => setOpenConfirmPago(false)} disabled={marcarPagoMutation.isPending}>
-                            Cancelar
-                        </Button>
-                        <Button
-                            className="bg-emerald-600 hover:bg-emerald-700"
-                            disabled={marcarPagoMutation.isPending}
-                            onClick={() => { if (loteParaPagar) marcarPagoMutation.mutate(loteParaPagar.id); }}
-                        >
-                            {marcarPagoMutation.isPending
-                                ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Salvando...</>
-                                : <><CheckCircle2 className="h-4 w-4 mr-2" />Confirmar Pagamento</>}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
         </div>
     );
 };
+
 
 

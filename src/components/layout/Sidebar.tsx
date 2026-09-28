@@ -158,8 +158,10 @@ const groups: MenuGroup[] = [
     items: [
       { icon: Users, label: "Recebidos / Lançamentos", to: "/operacional/diaristas", module: "diaristas_recebidos", pulseKey: "diaristas_recebidos" },
       { icon: AlertTriangle, label: "Pendências", to: "/inconsistencias", module: "operacoes_recebidas" },
-      { icon: Shield, label: "Aprovações", to: "/diaristas/aprovacoes", module: "processamento_rh" },
-      { icon: CalendarCheck, label: "Lotes / Pagamentos", to: "/fechamento", module: "fechamento_mensal" },
+      { icon: Shield, label: "Aprovações RH", to: "/diaristas/aprovacoes", module: "processamento_rh" },
+      { icon: CalendarCheck, label: "Fechamento / Lotes", to: "/fechamento", module: "fechamento_mensal" },
+      { icon: Banknote, label: "Pagamentos e Remessas", to: "/bancario?tab=diaristas&origem=DIARISTA", module: "pagamentos_remessas" },
+      { icon: ArrowRightLeft, label: "Conciliação Bancária", to: "/bancario?tab=retorno&origem=DIARISTA", module: "pagamentos_remessas" },
     ],
   },
   {
@@ -390,6 +392,28 @@ export const isRouteMatchingItem = (
     }
     // Evitar que itens residuais de outros submódulos fiquem acesos ao navegar no Fechamento canônico
     return false;
+  }
+
+  // 2.3 Regra Contextual para Central Bancária (/bancario)
+  if (itemPath === "/bancario") {
+    const currentTab = currentParams.get("tab");
+    const itemTab = itemParams.get("tab");
+    const currentOrigem = currentParams.get("origem");
+    const itemOrigem = itemParams.get("origem");
+
+    if (itemOrigem === "DIARISTA") {
+      return currentOrigem === "DIARISTA" && (!itemTab || currentTab === itemTab);
+    }
+
+    if (currentOrigem === "DIARISTA") {
+      return false;
+    }
+
+    if (itemTab) {
+      return currentTab === itemTab;
+    }
+
+    return !currentTab || currentTab === "remessa";
   }
 
   // 3. Regra Geral para itens com query params específicos (ex: ?action=nova-operacao)

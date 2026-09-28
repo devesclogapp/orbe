@@ -625,6 +625,7 @@ export const buildDiaristasPipeline = (params: {
     const currentIndex = stepKeys.indexOf(currentStep);
 
     const getStatus = (index: number): PipelineStepStatus => {
+        if (currentStep === "concluido") return "done";
         if (index < currentIndex) return "done";
         if (index === currentIndex) return "current";
         return "pending";

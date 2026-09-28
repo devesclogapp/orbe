@@ -123,7 +123,7 @@ const RetornoBancario = () => {
     }
   }, [searchParams, location.state]);
 
-  const [banco, setBanco] = useState("001");
+  const [banco, setBanco] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [resultado, setResultado] = useState<ProcessarRetornoResult | null>(null);
@@ -218,6 +218,10 @@ const RetornoBancario = () => {
   });
 
   const handleProcessar = async () => {
+    if (!banco) {
+      toast.error("Selecione o banco do arquivo antes de processar o retorno.");
+      return;
+    }
     if (!selectedFile) {
       toast.error("Selecione um arquivo .txt ou .ret para processar.");
       return;
@@ -352,9 +356,7 @@ const RetornoBancario = () => {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="001">001 - Banco do Brasil</SelectItem>
-                        <SelectItem value="237">237 - Bradesco</SelectItem>
-                        <SelectItem value="033">033 - Santander</SelectItem>
-                        <SelectItem value="341">341 - Itaú</SelectItem>
+                        <SelectItem value="341">341 - Itaú Unibanco</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -364,6 +366,7 @@ const RetornoBancario = () => {
                     type="file"
                     accept=".txt,.ret"
                     className="hidden"
+                    disabled={!banco}
                     onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
                   />
 
@@ -372,16 +375,16 @@ const RetornoBancario = () => {
                       Após enviar a remessa ao banco, aguarde o processamento. Quando o banco disponibilizar o arquivo de retorno (.RET), importe-o aqui para que o ORBE confirme automaticamente quais pagamentos foram realizados e quais apresentaram divergências.
                     </p>
 
-                    <Button variant="outline" className="w-full" onClick={() => fileInputRef.current?.click()}>
+                    <Button variant="outline" className="w-full" disabled={!banco} onClick={() => fileInputRef.current?.click()}>
                       <Upload className="mr-2 h-4 w-4" />
-                      {selectedFile ? "Trocar arquivo" : "Selecionar arquivo"}
+                      {!banco ? "Selecione o banco primeiro" : (selectedFile ? "Trocar arquivo" : "Selecionar arquivo")}
                     </Button>
 
                     <div className="break-all text-xs text-muted-foreground">
-                      {selectedFile ? selectedFile.name : "Nenhum arquivo selecionado"}
+                      {selectedFile ? selectedFile.name : (!banco ? "Aguardando seleção do banco" : "Nenhum arquivo selecionado")}
                     </div>
 
-                    <Button className="w-full" disabled={!selectedFile || isProcessing} onClick={handleProcessar}>
+                    <Button className="w-full" disabled={!selectedFile || isProcessing || !banco} onClick={handleProcessar}>
                       {isProcessing ? (
                         <>
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />

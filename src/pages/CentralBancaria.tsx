@@ -98,13 +98,47 @@ const CentralBancaria = () => {
   const [isValidating, setIsValidating] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [validation, setValidation] = useState<any>(null);
-  const [banco, setBanco] = useState("001");
+  const [banco, setBanco] = useState("");
   const [historySearch, setHistorySearch] = useState("");
   const [markingEnviadoId, setMarkingEnviadoId] = useState<string | null>(null);
   const [observacaoEnvio, setObservacaoEnvio] = useState("");
   const [loteRhSelecionadoId, setLoteRhSelecionadoId] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState("remessa");
+  const isContextDiaristas = searchParams.get("origem") === "DIARISTA";
+  const tabParam = searchParams.get("tab");
+  const validTabs = ["remessa", "diaristas", "retorno", "historico"];
+  const [activeTab, setActiveTab] = useState(() => {
+    if (searchParams.get("origem") === "DIARISTA") {
+      return tabParam === "retorno" ? "retorno" : "diaristas";
+    }
+    return tabParam && validTabs.includes(tabParam) ? tabParam : "remessa";
+  });
+
+  useEffect(() => {
+    const currentTab = searchParams.get("tab");
+    const isDiaristas = searchParams.get("origem") === "DIARISTA";
+    if (isDiaristas) {
+      if (currentTab === "retorno") {
+        if (activeTab !== "retorno") setActiveTab("retorno");
+      } else {
+        if (activeTab !== "diaristas") setActiveTab("diaristas");
+      }
+    } else {
+      if (currentTab && validTabs.includes(currentTab)) {
+        if (currentTab !== activeTab) setActiveTab(currentTab);
+      } else if (!currentTab && activeTab !== "remessa") {
+        setActiveTab("remessa");
+      }
+    }
+  }, [searchParams]);
+
+  const handleTabChange = (newTab: string) => {
+    setActiveTab(newTab);
+    const next = new URLSearchParams(searchParams);
+    next.set("tab", newTab);
+    setSearchParams(next, { replace: true });
+  };
+
   const [diaristasMetrics, setDiaristasMetrics] = useState({ totalRemessas: 0, totalTitulos: 0, totalValor: 0, remessasComErro: 0 });
 
   const [isUploadingRetorno, setIsUploadingRetorno] = useState(false);
@@ -113,6 +147,12 @@ const CentralBancaria = () => {
   const handleUploadRetorno = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (!banco) {
+      toast.error("Selecione o banco correspondente ao arquivo de retorno antes de prosseguir.");
+      e.target.value = '';
+      return;
+    }
 
     setIsUploadingRetorno(true);
     setRetornoResultado(null);
@@ -413,58 +453,250 @@ const CentralBancaria = () => {
     }
   };
 
+  const renderRetornoContent = () => (
+    <div className="max-w-4xl mx-auto space-y-6">
+      {isContextDiaristas && (
+        <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 flex items-center justify-between gap-3 text-xs text-foreground shadow-2xs">
+          <div className="flex items-center gap-2.5">
+            <div className="h-8 w-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+              <Banknote className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="font-semibold text-primary">Contexto: Conciliação de Diaristas</p>
+              <p className="text-muted-foreground">
+                Selecione o arquivo .RET fornecido pelo banco (Itaú 341 ou BB 001). A conciliação identificará automaticamente os títulos de diaristas e efetuará a liquidação do lote.
+              </p>
+            </div>
+          </div>
+          <Badge variant="outline" className="border-primary/40 text-primary font-semibold shrink-0">
+            Diaristas
+          </Badge>
+        </div>
+      )}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card className="p-6 md:col-span-1 space-y-6">
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase flex items-center gap-2">
+              <Banknote className="w-4 h-4" /> Configuração
+            </h3>
+
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-muted-foreground">Banco do arquivo</label>
+              <Select value={banco} onValueChange={setBanco}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o banco" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="001">001 - Banco do Brasil</SelectItem>
+                  <SelectItem value="341">341 - Itaú Unibanco</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="pt-4">
+              <div className="text-xs text-muted-foreground bg-muted/30 p-3 rounded border border-dashed border-border/50">
+                Selecione o modelo adequado do seu banco. A conciliação identificará automaticamente títulos pendentes em RH, Diaristas e Intermitentes e fará a baixa financeira.
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-10 md:col-span-2 border-2 border-dashed border-border/50 flex flex-col items-center justify-center text-center space-y-4">
+          <div className="w-16 h-16 bg-muted/50 text-muted-foreground rounded-full flex items-center justify-center">
+            <Upload className="w-8 h-8" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-foreground">Importar Retorno Bancário</h3>
+            <p className="text-sm text-muted-foreground mb-6 max-w-md mx-auto">
+              Selecione o arquivo de retorno (.ret) fornecido pelo banco para processar a conciliação automática e efetuar a baixa financeira.
+            </p>
+          </div>
+
+          {!banco && (
+            <div className="text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3.5 py-2 max-w-xs">
+              ⚠️ Selecione o banco acima para liberar o envio do arquivo.
+            </div>
+          )}
+
+          {retornoResultado ? (
+            <div className="w-full text-left bg-muted/20 p-4 rounded-lg border border-border space-y-4">
+              <div className="flex items-center gap-2 mb-2">
+                <ShieldCheck className="w-5 h-5 text-success" />
+                <span className="font-semibold text-sm">Arquivo Processado: {retornoResultado.arquivo.nome_arquivo}</span>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-background p-3 rounded border border-border">
+                  <p className="text-xs text-muted-foreground text-center">Processados</p>
+                  <p className="text-xl font-bold text-center text-foreground">{retornoResultado.resumo.totalProcessado}</p>
+                </div>
+                <div className="bg-success-soft p-3 rounded border border-success/20">
+                  <p className="text-xs text-success-strong text-center">Pagos</p>
+                  <p className="text-xl font-bold text-center text-success-strong">{retornoResultado.resumo.pagos}</p>
+                </div>
+                <div className="bg-destructive-soft p-3 rounded border border-destructive/20">
+                  <p className="text-xs text-destructive-strong text-center">Rejeitados</p>
+                  <p className="text-xl font-bold text-center text-destructive-strong">{retornoResultado.resumo.rejeitados}</p>
+                </div>
+                <div className="bg-warning-soft p-3 rounded border border-warning/20">
+                  <p className="text-xs text-warning-strong text-center">Divergentes</p>
+                  <p className="text-xl font-bold text-center text-warning-strong">{retornoResultado.resumo.divergentes}</p>
+                </div>
+              </div>
+              <div className="flex justify-center mt-4">
+                <Button variant="outline" onClick={() => setRetornoResultado(null)}>
+                  Importar outro arquivo
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="relative">
+              <input
+                type="file"
+                accept=".ret,.txt"
+                onChange={handleUploadRetorno}
+                disabled={isUploadingRetorno || !banco}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+              />
+              <Button disabled={isUploadingRetorno || !banco} className="min-w-[200px]">
+                {isUploadingRetorno ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Processando...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4 mr-2" />
+                    Selecionar arquivo
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
+        </Card>
+      </div>
+    </div>
+  );
+
   return (
     <>
       <AppShell
-        title="Pagamentos e Remessas"
-        subtitle="Remessa, histórico e retorno no mesmo fluxo operacional"
+        title={
+          isContextDiaristas
+            ? activeTab === "retorno"
+              ? "Conciliação Bancária"
+              : "Pagamentos e Remessas"
+            : "Pagamentos e Remessas"
+        }
+        subtitle={
+          isContextDiaristas
+            ? activeTab === "retorno"
+              ? "Retorno bancário e baixa financeira dos pagamentos de diaristas"
+              : "Gestão e remessas bancárias de diaristas"
+            : "Remessa, histórico e retorno no mesmo fluxo operacional"
+        }
         pipelineTrigger={bankPipelineReviewTrigger}
       >
         <div className="space-y-6">
           <section className="esc-card p-4 md:p-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <h2 className="font-display font-semibold text-foreground">Ciclo bancário consolidado</h2>
-                <p className="text-sm text-muted-foreground">
-                  Prepare, valide, gere e acompanhe a trilha CNAB sem trocar de módulo.
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <h2 className="font-display font-semibold text-foreground text-lg">
+                    {isContextDiaristas
+                      ? activeTab === "retorno"
+                        ? "Conciliação Bancária"
+                        : "Pagamentos e Remessas"
+                      : "Ciclo bancário consolidado"}
+                  </h2>
+                  {isContextDiaristas && (
+                    <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 text-xs px-2.5 py-0.5 font-medium">
+                      Contexto: Diaristas
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  {isContextDiaristas
+                    ? activeTab === "retorno"
+                      ? "Retorno bancário e baixa financeira dos pagamentos de diaristas."
+                      : "Gestão de lotes fechados, geração de remessa CNAB e liquidação de diaristas."
+                    : "Prepare, valide, gere e acompanhe a trilha CNAB sem trocar de módulo."}
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" onClick={() => navigate("/financeiro")}>
-                  <ExternalLink className="h-4 w-4 mr-2" />
-                  Voltar para financeiro
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => navigate("/financeiro/remessa/historico")}>
-                  <History className="h-4 w-4 mr-2" />
-                  Histórico detalhado
-                </Button>
+              <div className="flex flex-wrap gap-2 items-center">
+                {isContextDiaristas ? (
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="font-medium gap-1.5 shadow-sm"
+                    onClick={() => navigate("/bancario")}
+                  >
+                    Ir para Financeiro
+                    <span className="text-xs ml-0.5">→</span>
+                  </Button>
+                ) : (
+                  <>
+                    <Button variant="outline" size="sm" onClick={() => navigate("/financeiro")}>
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      Visão Geral Financeiro
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => navigate("/financeiro/remessa/historico")}>
+                      <History className="h-4 w-4 mr-2" />
+                      Histórico detalhado
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
           </section>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-            <MetricCard label={activeTab === "diaristas" ? "Lotes Fechados" : "Remessas"} value={totalRemessas.toString()} icon={FileText} />
-            <MetricCard label={activeTab === "diaristas" ? "Diaristas" : "Títulos"} value={totalTitulos.toString()} icon={FileCheck} />
+            <MetricCard
+              label={isContextDiaristas || activeTab === "diaristas" ? "Lotes Fechados" : "Remessas"}
+              value={(isContextDiaristas || activeTab === "diaristas" ? diaristasMetrics.totalRemessas : totalRemessas).toString()}
+              icon={FileText}
+            />
+            <MetricCard
+              label={isContextDiaristas || activeTab === "diaristas" ? "Diaristas" : "Títulos"}
+              value={(isContextDiaristas || activeTab === "diaristas" ? diaristasMetrics.totalTitulos : totalTitulos).toString()}
+              icon={FileCheck}
+            />
             <MetricCard
               label="Valor total"
-              value={new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(totalValor)}
+              value={new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                isContextDiaristas || activeTab === "diaristas" ? diaristasMetrics.totalValor : totalValor
+              )}
               icon={Banknote}
               accent
             />
             <MetricCard
-              label={activeTab === "diaristas" ? "Pendentes de Pgto" : "Lotes RH prontos CNAB"}
-              value={(activeTab === "diaristas" ? remessasComErro : totalLotesRhProntos).toString()}
+              label={isContextDiaristas || activeTab === "diaristas" ? "Pendentes de Pgto" : "Lotes RH prontos CNAB"}
+              value={(isContextDiaristas || activeTab === "diaristas" ? diaristasMetrics.remessasComErro : totalLotesRhProntos).toString()}
               icon={AlertCircle}
             />
           </div>
 
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-            <TabsList className="bg-muted/50 p-1 rounded-xl border border-border/50 flex flex-wrap h-auto">
-              <TabsTrigger value="remessa">Folha Oficial e CLT</TabsTrigger>
-              <TabsTrigger value="diaristas">Eventuais / Diaristas</TabsTrigger>
-              <TabsTrigger value="retorno">Conciliação Bancária (Retorno)</TabsTrigger>
-              <TabsTrigger value="historico">Auditoria e Arquivos Gerados</TabsTrigger>
-            </TabsList>
+          {isContextDiaristas ? (
+            activeTab === "retorno" ? (
+              <div className="mt-4">
+                {renderRetornoContent()}
+              </div>
+            ) : (
+              <div className="mt-4 bg-card text-card-foreground border border-border shadow-sm rounded-xl overflow-hidden">
+                <CentralBancariaDiaristas
+                  onMetricsUpdate={setDiaristasMetrics}
+                  empresaId={empresaId}
+                  competencia={competencia}
+                />
+              </div>
+            )
+          ) : (
+            <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
+              <TabsList className="bg-muted/50 p-1 rounded-xl border border-border/50 flex flex-wrap h-auto">
+                <TabsTrigger value="remessa">Folha Oficial e CLT</TabsTrigger>
+                <TabsTrigger value="diaristas">Eventuais / Diaristas</TabsTrigger>
+                <TabsTrigger value="retorno">Conciliação Bancária (Retorno)</TabsTrigger>
+                <TabsTrigger value="historico">Auditoria e Arquivos Gerados</TabsTrigger>
+              </TabsList>
 
             <TabsContent value="remessa">
               <div className="space-y-6">
@@ -909,105 +1141,7 @@ const CentralBancaria = () => {
             </TabsContent>
 
             <TabsContent value="retorno">
-              <div className="max-w-4xl mx-auto space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <Card className="p-6 md:col-span-1 space-y-6">
-                    <div className="space-y-4">
-                      <h3 className="text-sm font-semibold text-muted-foreground uppercase flex items-center gap-2">
-                        <Banknote className="w-4 h-4" /> Configuração
-                      </h3>
-
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium text-muted-foreground">Banco do arquivo</label>
-                        <Select value={banco} onValueChange={setBanco}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecione o banco" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="001">001 - Banco do Brasil</SelectItem>
-                            <SelectItem value="237">237 - Bradesco</SelectItem>
-                            <SelectItem value="033">033 - Santander</SelectItem>
-                            <SelectItem value="341">341 - Itaú</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="pt-4">
-                        <div className="text-xs text-muted-foreground bg-muted/30 p-3 rounded border border-dashed border-border/50">
-                          Selecione o modelo adequado do seu banco. A conciliação identificará automaticamente títulos pendentes em RH, Diaristas e Intermitentes e fará a baixa financeira.
-                        </div>
-                      </div>
-                    </div>
-                  </Card>
-
-                  <Card className="p-10 md:col-span-2 border-2 border-dashed border-border/50 flex flex-col items-center justify-center text-center space-y-4">
-                    <div className="w-16 h-16 bg-muted/50 text-muted-foreground rounded-full flex items-center justify-center">
-                      <Upload className="w-8 h-8" />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-foreground">Importar Retorno Bancário</h3>
-                      <p className="text-sm text-muted-foreground mb-6 max-w-md mx-auto">
-                        Selecione o arquivo de retorno (.ret) fornecido pelo banco para processar a conciliação automática e efetuar a baixa financeira.
-                      </p>
-                    </div>
-
-                    {retornoResultado ? (
-                      <div className="w-full text-left bg-muted/20 p-4 rounded-lg border border-border space-y-4">
-                        <div className="flex items-center gap-2 mb-2">
-                          <ShieldCheck className="w-5 h-5 text-success" />
-                          <span className="font-semibold text-sm">Arquivo Processado: {retornoResultado.arquivo.nome_arquivo}</span>
-                        </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                          <div className="bg-background p-3 rounded border border-border">
-                            <p className="text-xs text-muted-foreground text-center">Processados</p>
-                            <p className="text-xl font-bold text-center text-foreground">{retornoResultado.resumo.totalProcessado}</p>
-                          </div>
-                          <div className="bg-success-soft p-3 rounded border border-success/20">
-                            <p className="text-xs text-success-strong text-center">Pagos</p>
-                            <p className="text-xl font-bold text-center text-success-strong">{retornoResultado.resumo.pagos}</p>
-                          </div>
-                          <div className="bg-destructive-soft p-3 rounded border border-destructive/20">
-                            <p className="text-xs text-destructive-strong text-center">Rejeitados</p>
-                            <p className="text-xl font-bold text-center text-destructive-strong">{retornoResultado.resumo.rejeitados}</p>
-                          </div>
-                          <div className="bg-warning-soft p-3 rounded border border-warning/20">
-                            <p className="text-xs text-warning-strong text-center">Divergentes</p>
-                            <p className="text-xl font-bold text-center text-warning-strong">{retornoResultado.resumo.divergentes}</p>
-                          </div>
-                        </div>
-                        <div className="flex justify-center mt-4">
-                          <Button variant="outline" onClick={() => setRetornoResultado(null)}>
-                            Importar outro arquivo
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="relative">
-                        <input
-                          type="file"
-                          accept=".ret,.txt"
-                          onChange={handleUploadRetorno}
-                          disabled={isUploadingRetorno}
-                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
-                        />
-                        <Button disabled={isUploadingRetorno} className="min-w-[200px]">
-                          {isUploadingRetorno ? (
-                            <>
-                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                              Processando...
-                            </>
-                          ) : (
-                            <>
-                              <Upload className="w-4 h-4 mr-2" />
-                              Selecionar arquivo
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                    )}
-                  </Card>
-                </div>
-              </div>
+              {renderRetornoContent()}
             </TabsContent>
 
             <TabsContent value="diaristas">
@@ -1020,6 +1154,7 @@ const CentralBancaria = () => {
               </div>
             </TabsContent>
           </Tabs>
+          )}
         </div>
       </AppShell>
 
