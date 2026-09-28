@@ -60,7 +60,11 @@ export interface RegistrarRemessaParams {
   intermitentesLoteId?: string | null;
   nomeArquivo: string;
   conteudoArquivo: string; // texto do arquivo CNAB
-  totalRegistros: number;
+  totalRegistros: number; // quantidade_itens_financeiros (compatível com a RPC p_total_registros)
+  quantidadeItensFinanceiros?: number; // total de títulos / itens pagos (ex: 2)
+  quantidadeRegistrosCnab?: number; // total de linhas físicas do arquivo CNAB (ex: 6)
+  totalLinhasCnab?: number; // alias para quantidadeRegistrosCnab
+  quantidadeBeneficiarios?: number; // total de favorecidos consolidados (ex: 1)
   totalValor: number;
   bancoCodigo?: string;
   bancoNome?: string;
@@ -286,7 +290,17 @@ export const CnabRemessaArquivoService = {
       throw new Error('Empresa_id não resolvível via conta bancária.');
     }
 
+    // Resolução semântica dos contadores:
+    // - qtdItensFinanceiros: quantidade de pagamentos/títulos individuais (ex: 2 lançamentos P/MP)
+    // - qtdRegistrosCnab: quantidade de linhas físicas no arquivo posicional CNAB (ex: 6 linhas)
+    const qtdItensFinanceiros = params.quantidadeItensFinanceiros ?? params.itens?.length ?? params.totalRegistros;
+    const qtdRegistrosCnab = params.quantidadeRegistrosCnab ?? params.totalLinhasCnab ?? params.totalRegistros;
+
     // 6. Inserir registro Atômicamente usando a RPC!
+    // IMPORTANTE: p_total_registros na RPC é validado contra v_item_count (jsonb_array_elements(p_itens)).
+    // Portanto, p_total_registros DEVE ser a quantidade de itens financeiros (qtdItensFinanceiros),
+    // e NÃO a quantidade de linhas físicas do arquivo TXT (qtdRegistrosCnab),
+    // eliminando a divergência 6 x 2!
     const { data, error } = await supabase.rpc('rpc_registrar_cnab_remessa', {
        p_conta_bancaria_id: contaBancariaId,
        p_lote_id: loteId,
@@ -295,7 +309,7 @@ export const CnabRemessaArquivoService = {
        p_nome_arquivo: nomeArquivo,
        p_hash_arquivo: hash,
        p_total_valor: totalValor,
-       p_total_registros: totalRegistros,
+       p_total_registros: qtdItensFinanceiros,
        p_itens: params.itens
     });
 
@@ -307,18 +321,34 @@ export const CnabRemessaArquivoService = {
     const rpcResponse = data as any;
     const finalRemessaId = rpcResponse.remessa_id;
 
-    // Atualizar lote físico (legacy sync)
+    // Atualizar lote físico para cnab_gerado (NUNCA marcar como pago!)
     if (loteId) await sincronizarStatusLote(loteId, 'gerado');
     if (diaristasLoteId) {
-      await supabase.from('diaristas_lotes_fechamento').update({ status: 'FECHADO_FINANCEIRO' }).eq('id', diaristasLoteId);
+      await supabase.from('diaristas_lotes_fechamento').update({
+        status: 'cnab_gerado',
+        status_conciliacao: 'aguardando_conciliacao',
+        updated_at: new Date().toISOString()
+      }).eq('id', diaristasLoteId);
     }
     if (intermitentesLoteId) {
-      await supabase.from('intermitentes_lotes_fechamento').update({ status: 'FECHADO_FINANCEIRO' }).eq('id', intermitentesLoteId);
+      await supabase.from('intermitentes_lotes_fechamento').update({
+        status: 'cnab_gerado',
+        status_conciliacao: 'aguardando_conciliacao',
+        updated_at: new Date().toISOString()
+      }).eq('id', intermitentesLoteId);
     }
 
-    // 8. Opcional: Persistir o Conteudo Arquivo em Storage (No database já estamos sobrecarregando `cnab_remessas_arquivos`)
-    // Se precisarmos salvar o blob TXT bruto
-    await supabase.from('cnab_remessas_arquivos').update({ conteudo_arquivo: conteudoArquivo }).eq('id', finalRemessaId).eq('tenant_id', tenantId);
+    // 8. Opcional: Persistir o Conteudo Arquivo em Storage / BD com metadados semânticos
+    const observacoesJson = JSON.stringify({
+      quantidade_itens_financeiros: qtdItensFinanceiros,
+      quantidade_registros_cnab: qtdRegistrosCnab,
+      quantidade_beneficiarios: params.quantidadeBeneficiarios ?? null,
+    });
+
+    await supabase.from('cnab_remessas_arquivos').update({
+      conteudo_arquivo: conteudoArquivo,
+      observacoes: observacoesJson
+    }).eq('id', finalRemessaId).eq('tenant_id', tenantId);
 
     // 9. Registrar auditoria (complementar ao RPC)
     await this.registrarAuditoria({
@@ -328,7 +358,9 @@ export const CnabRemessaArquivoService = {
       detalhes: {
         nome_arquivo: nomeArquivo,
         sequencial,
-        total_registros: totalRegistros,
+        quantidade_itens_financeiros: qtdItensFinanceiros,
+        quantidade_registros_cnab: qtdRegistrosCnab,
+        quantidade_beneficiarios: params.quantidadeBeneficiarios,
         total_valor: totalValor,
         hash: hash.substring(0, 16) + '...',
         modo,

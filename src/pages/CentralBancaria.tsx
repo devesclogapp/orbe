@@ -117,8 +117,7 @@ const CentralBancaria = () => {
     setIsUploadingRetorno(true);
     setRetornoResultado(null);
     try {
-      const content = await file.text();
-      const resultado = await CnabRetornoService.processarArquivo(file.name, content, banco);
+      const resultado = await CnabRetornoService.processarArquivo(file, banco);
       setRetornoResultado(resultado);
       toast.success(`Retorno processado! ${resultado.resumo.totalProcessado} lido(s).`);
     } catch (err: any) {

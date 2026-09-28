@@ -51,7 +51,7 @@ export class SegmentoB {
     // 15.3 - Sufixo CEP [3 bytes]
     line += f.padLeftZero(cep.slice(5, 8) || 0, 3);
     // 16.3 - Estado [2 bytes]
-    line += f.padRightSpace(params.estadoFavorecido || 'SP', 2);
+    line += f.padRightSpace(params.estadoFavorecido || '', 2);
     // 17.3 - Data Vencimento [8 bytes]
     line += f.padLeftZero(0, 8);
     // 18.3 - Valor Documento [15 bytes]

@@ -18,6 +18,13 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import {
     LancamentoDiaristaService,
     LoteFechamentoDiaristaService,
     PerfilUsuarioService,
@@ -41,6 +48,7 @@ import {
     ChevronRight,
     FileCode2,
     Landmark,
+    Clock,
 } from "lucide-react";
 
 const formatCurrency = (v: number) =>
@@ -134,6 +142,8 @@ export const CentralBancariaDiaristas = ({
     // ── estado do modal CNAB ──
     const [openCnab, setOpenCnab] = useState(false);
     const [loteParaCnab, setLoteParaCnab] = useState<Lote | null>(null);
+    const [cnabContaBancariaId, setCnabContaBancariaId] = useState("");
+    const [cnabEmpresaCnpj, setCnabEmpresaCnpj] = useState("");
     const [cnabEmpresaBanco, setCnabEmpresaBanco] = useState("");
     const [cnabEmpresaAgencia, setCnabEmpresaAgencia] = useState("");
     const [cnabEmpresaConta, setCnabEmpresaConta] = useState("");
@@ -161,6 +171,21 @@ export const CentralBancariaDiaristas = ({
     const { data: empresas = [] } = useQuery({
         queryKey: ["empresas"],
         queryFn: () => EmpresaService.getAll(),
+    });
+
+    const { data: contasBancariasEmpresa = [] } = useQuery({
+        queryKey: ["contas_bancarias_empresa_cnab", loteParaCnab?.empresa_id],
+        queryFn: async () => {
+            if (!loteParaCnab?.empresa_id) return [];
+            const { data, error } = await supabase
+                .from("contas_bancarias_empresa")
+                .select("*")
+                .eq("empresa_id", loteParaCnab.empresa_id)
+                .eq("ativo", true);
+            if (error) return [];
+            return data ?? [];
+        },
+        enabled: !!loteParaCnab?.empresa_id,
     });
 
     const role = perfil?.role?.toLowerCase();
@@ -391,17 +416,20 @@ export const CentralBancariaDiaristas = ({
             if (!cnabEmpresaAgencia.trim()) throw new Error("Informe a agência da empresa.");
             if (!cnabEmpresaConta.trim()) throw new Error("Informe a conta da empresa.");
 
-            // Buscar CNPJ e nome da empresa
+            // Buscar CNPJ e dados cadastrais da empresa
             const empresa = (empresas as any[]).find((e: any) => e.id === loteParaCnab.empresa_id);
             if (!empresa) throw new Error("Empresa não encontrada.");
+
+            const cnpjFinal = cnabEmpresaCnpj.trim() || empresa.cnpj || "";
 
             return LoteFechamentoDiaristaService.gerarCNABParaLote({
                 loteId: loteParaCnab.id,
                 empresaId: loteParaCnab.empresa_id,
                 geradoPor: user!.id,
                 geradoPorNome: userName,
+                contaBancariaId: cnabContaBancariaId || undefined,
                 empresaRemetente: {
-                    cnpj: empresa.cnpj ?? "",
+                    cnpj: cnpjFinal,
                     razao_social: empresa.nome ?? "",
                     banco_codigo: cnabEmpresaBanco.trim(),
                     agencia: cnabEmpresaAgencia.trim(),
@@ -415,7 +443,7 @@ export const CentralBancariaDiaristas = ({
             });
         },
         onSuccess: (result) => {
-            toast.success(`CNAB gerado com sucesso! ${result.totalRegistros} registros — ${formatCurrency(result.valorTotal)}`, {
+            toast.success(`CNAB gerado com sucesso! ${result.totalRegistros} pagamentos — ${formatCurrency(result.valorTotal)}`, {
                 description: `Arquivo baixado: ${result.nomeArquivo}`,
             });
             queryClient.invalidateQueries({ queryKey: ["lotes_fechamento"] });
@@ -433,7 +461,6 @@ export const CentralBancariaDiaristas = ({
         },
 
         onError: (err: any) => {
-            // Mostrar erros de validação de forma amigável
             toast.error("Falha na geração do CNAB", {
                 description: err.message?.slice(0, 300),
                 duration: 8000,
@@ -441,19 +468,47 @@ export const CentralBancariaDiaristas = ({
         },
     });
 
-    const handleAbrirCnab = (lote: Lote) => {
+    const aplicarContaBancaria = (conta: any, emp?: any) => {
+        if (!conta) return;
+        setCnabContaBancariaId(conta.id || "");
+        setCnabEmpresaBanco(conta.banco_codigo || "341");
+        setCnabEmpresaAgencia(conta.agencia || "");
+        setCnabEmpresaConta(conta.conta || "");
+        setCnabEmpresaDigito(conta.conta_digito || "0");
+        setCnabEmpresaCnpj(conta.cedente_cnpj || emp?.cnpj || "");
+    };
+
+    const handleAbrirCnab = async (lote: Lote) => {
         setLoteParaCnab(lote);
         const empresa = (empresas as any[] || []).find((e: any) => e.id === lote.empresa_id);
-        if (empresa) {
-            setCnabEmpresaBanco(empresa.banco_codigo || "341");
-            setCnabEmpresaAgencia(empresa.agencia || "");
-            const digAgencia = empresa.agencia_digito ? `-${empresa.agencia_digito}` : "";
-            // We'll keep agencia and digito in text but our state has digito separate.
-            // Oh wait, our state has cnabEmpresaDigito for conta or agencia? 
-            // In the form: cnabEmpresaConta, cnabEmpresaDigito (conta).
-            // Let's set it properly according to existing state
-            setCnabEmpresaConta(empresa.conta || "");
-            setCnabEmpresaDigito(empresa.conta_digito || "0");
+
+        try {
+            const { data: contas } = await supabase
+                .from("contas_bancarias_empresa")
+                .select("*")
+                .eq("empresa_id", lote.empresa_id)
+                .eq("ativo", true);
+
+            const contaPadrao = (contas ?? []).find((c: any) => c.is_padrao) || (contas ?? [])[0];
+            if (contaPadrao) {
+                aplicarContaBancaria(contaPadrao, empresa);
+            } else if (empresa) {
+                setCnabContaBancariaId("");
+                setCnabEmpresaBanco(empresa.banco_codigo || "341");
+                setCnabEmpresaAgencia(empresa.agencia || "");
+                setCnabEmpresaConta(empresa.conta || "");
+                setCnabEmpresaDigito(empresa.conta_digito || "0");
+                setCnabEmpresaCnpj(empresa.cnpj || "");
+            }
+        } catch {
+            if (empresa) {
+                setCnabContaBancariaId("");
+                setCnabEmpresaBanco(empresa.banco_codigo || "341");
+                setCnabEmpresaAgencia(empresa.agencia || "");
+                setCnabEmpresaConta(empresa.conta || "");
+                setCnabEmpresaDigito(empresa.conta_digito || "0");
+                setCnabEmpresaCnpj(empresa.cnpj || "");
+            }
         }
         setOpenCnab(true);
     };
@@ -647,21 +702,25 @@ export const CentralBancariaDiaristas = ({
                                                     );
                                                 })()}
 
-                                                {/* Botão Pago ou Badge Concluído */}
+                                                {/* Botão Pago ou Badge Concluído / Aguardando Conciliação */}
                                                 {(l.status === "pago" || l.status === "PAGO") ? (
                                                     <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-700 border border-emerald-500/30">
                                                         <CheckCircle2 className="h-3.5 w-3.5" />
                                                         Pagamento Concluído
                                                     </span>
+                                                ) : (String(l.status).toLowerCase() === "cnab_gerado" || (l as any).status_conciliacao === "aguardando_conciliacao" || (l as any).status_conciliacao === "conciliacao_parcial") ? (
+                                                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-amber-500/15 text-amber-700 border border-amber-500/30">
+                                                        <Clock className="h-3.5 w-3.5" />
+                                                        Aguardando conciliação bancária
+                                                    </span>
                                                 ) : (
                                                     <Button
                                                         size="sm"
-                                                        className="bg-emerald-600 hover:bg-emerald-700"
-                                                        disabled={!canMarkPaidForStatus(l.status)}
-                                                        title={!canMarkPaidForStatus(l.status) ? "Pagamento liberado somente após CNAB gerado" : "Marcar como pago"}
-                                                        onClick={() => { setLoteParaPagar(l); setOpenConfirmPago(true); }}
+                                                        className="bg-muted text-muted-foreground cursor-not-allowed opacity-60"
+                                                        disabled={true}
+                                                        title="Pagamento liberado exclusivamente via retorno bancário conciliado"
                                                     >
-                                                        <CheckCircle2 className="h-4 w-4 mr-1.5" /> Pago
+                                                        <Lock className="h-3.5 w-3.5 mr-1.5" /> Baixa Bancária
                                                     </Button>
                                                 )}
 
@@ -918,20 +977,25 @@ export const CentralBancariaDiaristas = ({
                         </div>
                         <div className="flex gap-2 items-center">
                             <Button variant="ghost" onClick={() => setOpenDetalhe(false)}>Fechar</Button>
-                            {/* Botão Pago ou Badge Concluído */}
+                            {/* Botão Pago ou Badge Concluído / Aguardando Conciliação */}
                             {(selectedLote?.status === "pago" || selectedLote?.status === "PAGO") ? (
                                 <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-bold bg-emerald-500/15 text-emerald-700 border border-emerald-500/30">
                                     <CheckCircle2 className="h-4 w-4" />
                                     Pagamento Concluído
                                 </span>
+                            ) : (String(selectedLote?.status).toLowerCase() === "cnab_gerado" || (selectedLote as any)?.status_conciliacao === "aguardando_conciliacao" || (selectedLote as any)?.status_conciliacao === "conciliacao_parcial") ? (
+                                <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium bg-amber-500/15 text-amber-700 border border-amber-500/30">
+                                    <Clock className="h-4 w-4" />
+                                    Aguardando conciliação bancária
+                                </span>
                             ) : (
                                 <Button
-                                    className="bg-emerald-600 hover:bg-emerald-700"
-                                    disabled={marcarPagoMutation.isPending || !canMarkPaidForStatus(selectedLote?.status)}
-                                    onClick={() => { setLoteParaPagar(selectedLote); setOpenConfirmPago(true); }}
+                                    className="bg-muted text-muted-foreground cursor-not-allowed opacity-60"
+                                    disabled={true}
+                                    title="Pagamento liberado exclusivamente via retorno bancário conciliado"
                                 >
-                                    <CheckCircle2 className="h-4 w-4 mr-2" />
-                                    {marcarPagoMutation.isPending ? "Salvando..." : "Marcar como Pago"}
+                                    <Lock className="h-4 w-4 mr-2" />
+                                    Baixa via Retorno Bancário
                                 </Button>
                             )}
                         </div>
@@ -1104,10 +1168,50 @@ export const CentralBancariaDiaristas = ({
                     <div className="py-2 space-y-4">
                         <div className="p-3 bg-indigo-500/10 border border-indigo-500/30 rounded-lg text-xs text-indigo-700">
                             <Landmark className="inline h-3.5 w-3.5 mr-1" />
-                            Informe os dados bancários da <strong>empresa pagadora</strong> (quem envia o arquivo ao banco).
+                            Informe ou selecione a <strong>conta pagadora da empresa</strong>. O layout correspondente será selecionado automaticamente.
                         </div>
 
+                        {/* Seletor de Conta Bancária Cadastrada */}
+                        {contasBancariasEmpresa.length > 0 && (
+                            <div className="space-y-1.5">
+                                <Label htmlFor="cnab-conta-seletor" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                    Conta Bancária Cadastrada
+                                </Label>
+                                <Select
+                                    value={cnabContaBancariaId}
+                                    onValueChange={(val) => {
+                                        const selecionada = contasBancariasEmpresa.find((c: any) => c.id === val);
+                                        if (selecionada) {
+                                            aplicarContaBancaria(selecionada, (empresas as any[] || []).find((e: any) => e.id === loteParaCnab?.empresa_id));
+                                        }
+                                    }}
+                                >
+                                    <SelectTrigger id="cnab-conta-seletor">
+                                        <SelectValue placeholder="Selecione uma conta cadastrada..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {contasBancariasEmpresa.map((c: any) => (
+                                            <SelectItem key={c.id} value={c.id}>
+                                                {c.banco_nome || (c.banco_codigo === "341" ? "Itaú Unibanco" : "Banco do Brasil")} ({c.banco_codigo}) — Ag: {c.agencia} / CC: {c.conta}{c.conta_digito ? `-${c.conta_digito}` : ""} {c.is_padrao ? "(Padrão)" : ""}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        )}
+
                         <div className="space-y-3">
+                            {/* CNPJ da Empresa Pagadora (origem canônica) */}
+                            <div className="space-y-1.5">
+                                <Label htmlFor="cnab-cnpj">CNPJ / CPF da Empresa Pagadora</Label>
+                                <Input
+                                    id="cnab-cnpj"
+                                    placeholder="00.000.000/0000-00"
+                                    value={cnabEmpresaCnpj}
+                                    onChange={(e) => setCnabEmpresaCnpj(e.target.value)}
+                                />
+                            </div>
+
                             <div className="grid grid-cols-3 gap-3">
                                 <div className="space-y-1.5">
                                     <Label htmlFor="cnab-banco">Banco (código)</Label>
@@ -1150,9 +1254,29 @@ export const CentralBancariaDiaristas = ({
                             </div>
                         </div>
 
-                        <div className="p-3 bg-muted rounded-lg text-xs text-muted-foreground">
-                            ℹ️ O arquivo seguirá o padrão <strong>CNAB240 FEBRABAN</strong> com crédito em conta.
-                            A geração será registrada para auditoria.
+                        {/* Feedback visual dinâmico do layout multibanco */}
+                        <div className="p-3 bg-muted rounded-lg text-xs space-y-1.5">
+                            <div className="flex items-center justify-between">
+                                <span className="font-semibold text-foreground">Motor Multibanco:</span>
+                                {cnabEmpresaBanco === "341" ? (
+                                    <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-700 font-bold border border-amber-500/30">
+                                        Itaú (341) — SISPAG
+                                    </span>
+                                ) : cnabEmpresaBanco === "001" ? (
+                                    <span className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-700 font-bold border border-blue-500/30">
+                                        Banco do Brasil (001) — CNAB240
+                                    </span>
+                                ) : (
+                                    <span className="px-2 py-0.5 rounded bg-destructive/10 text-destructive font-bold border border-destructive/30">
+                                        Banco {cnabEmpresaBanco || "?"} — Não homologado
+                                    </span>
+                                )}
+                            </div>
+                            <p className="text-muted-foreground text-[11px] leading-relaxed">
+                                {cnabEmpresaBanco === "341" || cnabEmpresaBanco === "001"
+                                    ? "O arquivo seguirá o layout posicional oficial com 240 caracteres por linha. A geração é auditada e preserva rastreabilidade sem marcar pagamento antecipado."
+                                    : "Apenas os bancos 001 (BB) e 341 (Itaú) possuem layouts CNAB240 homologados no ORBE nesta versão. A geração será bloqueada para outros bancos."}
+                            </p>
                         </div>
                     </div>
 
@@ -1160,7 +1284,14 @@ export const CentralBancariaDiaristas = ({
                         <Button variant="ghost" onClick={() => setOpenCnab(false)} disabled={cnabMutation.isPending}>Cancelar</Button>
                         <Button
                             className="bg-indigo-600 hover:bg-indigo-700"
-                            disabled={!cnabEmpresaBanco || !cnabEmpresaAgencia || !cnabEmpresaConta || cnabMutation.isPending}
+                            disabled={
+                                !cnabEmpresaBanco ||
+                                !cnabEmpresaAgencia ||
+                                !cnabEmpresaConta ||
+                                !cnabEmpresaCnpj.trim() ||
+                                !["001", "341"].includes(cnabEmpresaBanco.padStart(3, "0")) ||
+                                cnabMutation.isPending
+                            }
                             onClick={() => cnabMutation.mutate()}
                         >
                             {cnabMutation.isPending

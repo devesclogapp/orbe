@@ -156,7 +156,7 @@ export class CNAB240ItauWriter implements ICNAB240Writer {
       strRight('', 11) +                // 177-187: Complemento
       strRight(conta.empresas?.cidade ?? 'SAO PAULO', 15) + // 188-202: Cidade
       ' ' +                             // 203-203: Branco
-      strRight(conta.empresas?.estado ?? 'SP', 2) + // 204-205: Estado
+      strRight(conta.empresas?.estado ?? '', 2) + // 204-205: Estado
       strRight('', 8) +                 // 206-213: CEP
       strRight('', 27);                 // 214-240: Brancos complementares
 
@@ -323,12 +323,12 @@ export class CNAB240ItauWriter implements ICNAB240Writer {
 
     const itensParaRpc = faturas.map(fura => {
       const rec = fura as any;
-      const tipo = rhLoteId ? 'RH_FINANCEIRO_ITEM' : 'FATURA';
+      const tipo = rhLoteId ? 'CLT' : 'FATURA';
       return {
         origem_tipo: tipo,
         origem_id: rec.id,
         fatura_id: tipo === 'FATURA' ? rec.id : undefined,
-        lote_item_id: tipo === 'RH_FINANCEIRO_ITEM' ? rec.id : undefined,
+        lote_item_id: tipo === 'CLT' ? rec.id : undefined,
         valor: Number(rec.valor ?? 0)
       };
     });

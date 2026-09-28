@@ -8,6 +8,7 @@ import {
   type EmpresaRemessa,
   type BeneficiarioPagamento,
 } from '../cnab/cnab240-posicional';
+import { MotorCNAB240 } from '../cnab/motorCNAB240.service';
 import { CnabRemessaArquivoService } from '../cnab/cnabRemessaArquivo.service';
 
 import { BaseService, sanitizePayload, cleanUuid, validateUuidFields, getCurrentTenantId, getTenantQueryFilter, extractReferencedTableFromFkError } from './base.service';
@@ -807,6 +808,7 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
     empresaId: string;
     geradoPor: string;
     geradoPorNome: string;
+    contaBancariaId?: string;
     empresaRemetente: {
       cnpj: string;
       razao_social: string;
@@ -820,7 +822,7 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
       nome_empresa_banco?: string;
     };
   }): Promise<{ nomeArquivo: string; totalRegistros: number; valorTotal: number }> {
-    const { loteId, empresaId, geradoPor, geradoPorNome, empresaRemetente } = params;
+    const { loteId, empresaId, geradoPor, geradoPorNome, empresaRemetente, contaBancariaId: propContaBancariaId } = params;
     const normalizeDigits = (value?: string | null) => String(value ?? '').replace(/\D/g, '');
 
     // ── 1. Buscar lote e validar Tenant ────────────────────────────────────────────────────────
@@ -857,7 +859,7 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
     }
 
     const itensParaRpc = lancamentos.map(l => ({
-       origem_tipo: 'LANCAMENTO_DIARISTA',
+       origem_tipo: 'DIARISTA',
        origem_id: l.id,
        fatura_id: null,
        lote_item_id: null,
@@ -952,6 +954,10 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
       if (faltando.length > 0) {
         pendencias.push(`${d.nome}: falta ${faltando.join(', ')}`);
       } else {
+        const cleanLote = (loteId || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase();
+        const cleanColab = (d.diarista_id || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase();
+        const seuNumeroDiarista = `DIA${cleanLote}${cleanColab}`;
+
         beneficiarios.push({
           nome:           col?.nome_completo?.trim() || d.nome,
           cpf,
@@ -963,6 +969,7 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
           conta_digito:   digito!,
           tipo_conta:     tipoConta,
           data_pagamento: now,
+          seu_numero:     seuNumeroDiarista,
         });
       }
     }
@@ -977,39 +984,59 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
     }
 
     // ── 6. Montar empresa remetente ───────────────────────────────────────────
-    const empresaRemessa: EmpresaRemessa = {
-      cnpj:           (empresaRemetente.cnpj || '').replace(/\D/g, ''),
-      razao_social:   empresaRemetente.razao_social,
-      agencia:        empresaRemetente.agencia,
-      agencia_digito: empresaRemetente.agencia_digito || ' ',
-      conta:          empresaRemetente.conta,
-      conta_digito:   empresaRemetente.digito_conta || ' ',
-      convenio:       empresaRemetente.convenio_bancario || '',
-    };
     const { data: contasEmpresaData } = await this.supabase
       .from('contas_bancarias_empresa')
-      .select('id, banco_codigo, banco_nome, agencia, agencia_digito, conta, conta_digito, convenio, ativo, is_padrao')
+      .select('id, banco_codigo, banco_nome, agencia, agencia_digito, conta, conta_digito, convenio, ativo, is_padrao, cedente_cnpj, cedente_nome')
       .eq('empresa_id', empresaId)
       .eq('ativo', true);
 
-    const contaBancariaSelecionada = (contasEmpresaData ?? []).find((conta: any) =>
-      normalizeDigits(conta?.banco_codigo) === normalizeDigits(empresaRemetente.banco_codigo) &&
-      normalizeDigits(conta?.agencia) === normalizeDigits(empresaRemetente.agencia) &&
-      normalizeDigits(conta?.conta) === normalizeDigits(empresaRemetente.conta) &&
-      normalizeDigits(conta?.convenio) === normalizeDigits(empresaRemetente.convenio_bancario)
-    ) ?? (contasEmpresaData ?? []).find((conta: any) => Boolean(conta?.is_padrao)) ?? null;
+    const contaBancariaSelecionada = (propContaBancariaId
+      ? (contasEmpresaData ?? []).find((c: any) => c.id === propContaBancariaId)
+      : null) ??
+      (contasEmpresaData ?? []).find((conta: any) =>
+        normalizeDigits(conta?.banco_codigo) === normalizeDigits(empresaRemetente.banco_codigo) &&
+        normalizeDigits(conta?.agencia) === normalizeDigits(empresaRemetente.agencia) &&
+        normalizeDigits(conta?.conta) === normalizeDigits(empresaRemetente.conta) &&
+        normalizeDigits(conta?.convenio) === normalizeDigits(empresaRemetente.convenio_bancario)
+      ) ?? (contasEmpresaData ?? []).find((conta: any) => Boolean(conta?.is_padrao)) ?? null;
+
+    // Resolução canônica de CNPJ/CPF da empresa pagadora (impede 00000000000000 e ausências)
+    const docCandidato = (
+      empresaRemetente.cnpj ||
+      contaBancariaSelecionada?.cedente_cnpj ||
+      ''
+    ).replace(/\D/g, '');
+
+    if (!docCandidato || (docCandidato.length !== 14 && docCandidato.length !== 11) || /^0+$/.test(docCandidato)) {
+      throw new Error(
+        `CNPJ/CPF da empresa pagadora ausente ou inválido (${docCandidato || 'não informado'}). Atualize os dados fiscais da empresa ou da conta bancária antes de gerar o CNAB.`
+      );
+    }
+
+    const bancoRemessa = empresaRemetente.banco_codigo || contaBancariaSelecionada?.banco_codigo || '001';
+
+    const empresaRemessa: EmpresaRemessa = {
+      cnpj:           docCandidato,
+      razao_social:   empresaRemetente.razao_social || contaBancariaSelecionada?.cedente_nome || 'EMPRESA',
+      banco_codigo:   bancoRemessa,
+      agencia:        empresaRemetente.agencia || contaBancariaSelecionada?.agencia || '',
+      agencia_digito: empresaRemetente.agencia_digito || contaBancariaSelecionada?.agencia_digito || ' ',
+      conta:          empresaRemetente.conta || contaBancariaSelecionada?.conta || '',
+      conta_digito:   empresaRemetente.digito_conta || contaBancariaSelecionada?.conta_digito || ' ',
+      convenio:       empresaRemetente.convenio_bancario || contaBancariaSelecionada?.convenio || '',
+    };
 
     let sequencialArquivo = 1;
     if (contaBancariaSelecionada?.id) {
       sequencialArquivo = await CnabRemessaArquivoService.getNextSequencial(
         contaBancariaSelecionada.id,
-        empresaRemetente.banco_codigo || '001'
+        bancoRemessa
       );
     } else {
       const { data: ultimoSequencial } = await this.supabase
         .from('cnab_remessas_arquivos')
         .select('sequencial_arquivo')
-        .eq('banco_codigo', empresaRemetente.banco_codigo || '001')
+        .eq('banco_codigo', bancoRemessa)
         .is('conta_bancaria_id', null)
         .order('sequencial_arquivo', { ascending: false })
         .limit(1)
@@ -1018,31 +1045,37 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
       sequencialArquivo = Math.max(1, Number(ultimoSequencial?.sequencial_arquivo || 0) + 1);
     }
 
-    // ── 7. Gerar CNAB240 posicional ───────────────────────────────────────────
+    // ── 7. Gerar CNAB240 posicional multibanco ────────────────────────────────
     // Tipo serviço: 20=Fornecedor (pagamentos a prestadores de serviço)
-    const resultado = gerarCNAB240BB(empresaRemessa, beneficiarios, {
+    const resultado = MotorCNAB240.gerar(empresaRemessa, beneficiarios, {
       tipo_servico: 20,
       numero_arquivo: sequencialArquivo,
     });
 
-    // ── 8. Disparar download ──────────────────────────────────────────────────
-    // Exportação em Windows-1252 (ANSI) — padrão bancário FEBRABAN
+    // ── 8. Disparar registro e download ───────────────────────────────────────
+    // IMPORTANTE: totalRegistros é a quantidade de itens financeiros (itensParaRpc.length),
+    // enquanto totalLinhasCnab é a quantidade de linhas físicas do arquivo posicional (resultado.total_linhas),
+    // eliminando a divergência 6 x 2!
     await CnabRemessaArquivoService.registrar({
       loteId: null,
       diaristasLoteId: loteId,
       nomeArquivo: resultado.nome_arquivo,
       conteudoArquivo: resultado.conteudo,
-      totalRegistros: resultado.total_linhas,
+      totalRegistros: itensParaRpc.length,
+      quantidadeItensFinanceiros: itensParaRpc.length,
+      totalLinhasCnab: resultado.total_linhas,
+      quantidadeRegistrosCnab: resultado.total_linhas,
+      quantidadeBeneficiarios: resultado.total_beneficiarios,
       totalValor: resultado.valor_total,
-      bancoCodigo: empresaRemetente.banco_codigo || '001',
-      bancoNome: empresaRemetente.nome_empresa_banco || contaBancariaSelecionada?.banco_nome || 'BANCO DO BRASIL',
+      bancoCodigo: bancoRemessa,
+      bancoNome: empresaRemetente.nome_empresa_banco || contaBancariaSelecionada?.banco_nome || (bancoRemessa === '341' ? 'BANCO ITAU SA' : 'BANCO DO BRASIL'),
       contaBancariaId: contaBancariaSelecionada?.id,
       competencia: lote.mes_referencia,
       modo: 'producao',
       sequencialArquivo,
       itens: itensParaRpc,
     });
-    downloadCNAB240(resultado);
+    MotorCNAB240.download(resultado);
 
     // ── 9. Atualizar status do lote ───────────────────────────────────────────
     await this.supabase

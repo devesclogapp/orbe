@@ -97,6 +97,8 @@ export interface ResultadoCNAB240 {
   valor_total: number;
   /** Total de beneficiários processados */
   total_beneficiarios: number;
+  /** Código do banco pagador da remessa (ex: '001', '341') */
+  banco_codigo?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -440,7 +442,7 @@ function buildSegmentoB(
   // Pos 123-125  (3) Sufixo CEP
   l += num(cepDigits.slice(5, 8) || '0', 3);
   // Pos 126-127  (2) Estado
-  l += alfa(ben.estado || 'SP', 2);
+  l += alfa(ben.estado || '', 2);
   // Pos 128-135  (8) Data vencimento (zeros = pagto imediato)
   l += zeros(8);
   // Pos 136-150 (15) Valor documento
@@ -757,3 +759,9 @@ export function verificarLinhas(conteudo: string): { ok: boolean; erros: string[
 
   return { ok: erros.length === 0, erros };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RE-EXPORTS MULTIBANCO
+// ─────────────────────────────────────────────────────────────────────────────
+export { MotorCNAB240, validarEmpresaPagadora } from './motorCNAB240.service';
+export { gerarCNAB240Itau } from './cnab240-itau';
