@@ -347,7 +347,9 @@ export const CnabRemessaArquivoService = {
 
     await supabase.from('cnab_remessas_arquivos').update({
       conteudo_arquivo: conteudoArquivo,
-      observacoes: observacoesJson
+      observacoes: observacoesJson,
+      competencia: params.competencia || null,
+      intermitentes_lote_id: params.intermitentesLoteId || null,
     }).eq('id', finalRemessaId).eq('tenant_id', tenantId);
 
     // 9. Registrar auditoria (complementar ao RPC)

@@ -699,4 +699,111 @@ describe('DESACOPLAMENTO CNAB CLT × INTERMITENTES × DIARISTAS', () => {
     // Ambas as RPCs impedem execução sem tenant
     expect(sqlContent).toContain('Tenant indisponível para o contexto atual.');
   });
+
+  // I) Remessa de Intermitentes persiste competencia e intermitentes_lote_id em cnab_remessas_arquivos
+  it('I. Remessa de Intermitentes persiste competencia e intermitentes_lote_id em cnab_remessas_arquivos', async () => {
+    const { CnabRemessaArquivoService } = await import('@/services/cnab/cnabRemessaArquivo.service');
+    const { supabase } = await import('@/lib/supabase');
+
+    let updateCnabRemessasPayload: any = null;
+
+    (supabase.rpc as any).mockImplementation((fn: string) => {
+      if (fn === 'rpc_registrar_cnab_remessa') {
+        return Promise.resolve({
+          data: { remessa_id: 'remessa-int-uuid-hml' },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: null, error: null });
+    });
+
+    (supabase.from as any).mockImplementation((table: string) => {
+      if (table === 'contas_bancarias_empresa') {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              single: vi.fn().mockResolvedValue({
+                data: { empresa_id: 'emp-hml-1' },
+                error: null,
+              }),
+            }),
+          }),
+        };
+      }
+      if (table === 'cnab_remessas_arquivos') {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            }),
+          }),
+          update: vi.fn().mockImplementation((payload: any) => {
+            updateCnabRemessasPayload = payload;
+            return {
+              eq: vi.fn().mockReturnValue({
+                eq: vi.fn().mockResolvedValue({ error: null }),
+              }),
+            };
+          }),
+        };
+      }
+      if (table === 'intermitentes_lotes_fechamento') {
+        return {
+          update: vi.fn().mockReturnValue({
+            eq: vi.fn().mockResolvedValue({ error: null }),
+          }),
+        };
+      }
+      return {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+          }),
+        }),
+        update: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            eq: vi.fn().mockResolvedValue({ error: null }),
+          }),
+        }),
+        insert: vi.fn().mockResolvedValue({ error: null }),
+      };
+    });
+
+    await CnabRemessaArquivoService.registrar({
+      loteId: null,
+      diaristasLoteId: null,
+      intermitentesLoteId: '930915d6-cb8f-4739-8001-7fa49d3009e4',
+      nomeArquivo: 'CB290901.REM',
+      conteudoArquivo: 'HEADER...',
+      totalRegistros: 2,
+      totalValor: 570,
+      bancoCodigo: '341',
+      bancoNome: 'ITAU',
+      contaBancariaId: 'conta-uuid',
+      competencia: '2026-10',
+      modo: 'producao',
+      sequencialArquivo: 1,
+      itens: [
+        {
+          origem_tipo: 'INTERMITENTE',
+          origem_id: 'lanc-1',
+          fatura_id: null,
+          lote_item_id: null,
+          valor: 240,
+        },
+        {
+          origem_tipo: 'INTERMITENTE',
+          origem_id: 'lanc-2',
+          fatura_id: null,
+          lote_item_id: null,
+          valor: 330,
+        },
+      ],
+    });
+
+    expect(updateCnabRemessasPayload).not.toBeNull();
+    expect(updateCnabRemessasPayload.competencia).toBe('2026-10');
+    expect(updateCnabRemessasPayload.intermitentes_lote_id).toBe('930915d6-cb8f-4739-8001-7fa49d3009e4');
+  });
 });
+

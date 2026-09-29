@@ -155,6 +155,8 @@ const getTipoFluxoLabel = (value?: OperationalIntegrityKPIs["tipoFluxo"]) => {
   switch (value) {
     case "folha_variavel":
       return "CLT";
+    case "intermitente":
+      return "Intermitente";
     case "diarista":
       return "Diarista";
     case "operacional":
@@ -301,7 +303,7 @@ const Dashboard = () => {
     error: kpisError,
   } = useQuery<OperationalIntegrityKPIs>({
     queryKey: ["dashboard-kpis-consolidados", tenantId, selectedYear, selectedMonthNumber, environment],
-    queryFn: () => DashboardConsolidadoService.getKpisAggregate(selectedYear, selectedMonthNumber, tenantId),
+    queryFn: () => DashboardConsolidadoService.getKpisAggregate(selectedYear, selectedMonthNumber),
     retry: 1,
     enabled: !isTenantLoading && !!tenantId,
   });

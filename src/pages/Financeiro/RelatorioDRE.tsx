@@ -198,16 +198,40 @@ export default function RelatorioDRE() {
                                         </td>
                                     </tr>
                                     <tr className="border-b border-gray-50 bg-gray-50/50">
-                                        <td className="px-6 py-2 pl-12 text-gray-600 flex items-center justify-between border-t border-gray-100/50">
-                                            <span>└─ Mão de Obra e Rateios (Folha + Diaristas)</span>
+                                        <td className="px-6 py-2 pl-12 font-medium text-gray-700 flex items-center justify-between border-t border-gray-100/50">
+                                            <span>└─ Mão de Obra (Subtotal Aprovado)</span>
                                             {dreData?.auditoriaCompetencia?.pendencias?.length ? (
                                                 <span className="text-[10px] text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-100">
                                                     Há pendências no controle RH
                                                 </span>
                                             ) : null}
                                         </td>
-                                        <td className="px-6 py-2 text-right text-gray-700">
+                                        <td className="px-6 py-2 text-right font-medium text-gray-800">
                                             {formatBRL((dreData?.finValorAprovado || 0) * -1)}
+                                        </td>
+                                    </tr>
+                                    <tr className="border-b border-gray-50 bg-gray-50/30 text-xs">
+                                        <td className="px-6 py-1.5 pl-16 text-gray-500">
+                                            ├─ Folha CLT
+                                        </td>
+                                        <td className="px-6 py-1.5 text-right text-gray-600">
+                                            {formatBRL((dreData?.folhaValorAprovado || 0) * -1)}
+                                        </td>
+                                    </tr>
+                                    <tr className="border-b border-gray-50 bg-gray-50/30 text-xs">
+                                        <td className="px-6 py-1.5 pl-16 text-gray-500">
+                                            ├─ Intermitentes
+                                        </td>
+                                        <td className="px-6 py-1.5 text-right text-gray-600">
+                                            {formatBRL((dreData?.intermitentesValorAprovado || 0) * -1)}
+                                        </td>
+                                    </tr>
+                                    <tr className="border-b border-gray-50 bg-gray-50/30 text-xs">
+                                        <td className="px-6 py-1.5 pl-16 text-gray-500">
+                                            └─ Diaristas
+                                        </td>
+                                        <td className="px-6 py-1.5 text-right text-gray-600">
+                                            {formatBRL((dreData?.diaristasValorAprovado || 0) * -1)}
                                         </td>
                                     </tr>
                                     <tr className="border-b border-gray-100 bg-gray-50/50">

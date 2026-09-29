@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabase';
 import { addMonths, format } from 'date-fns';
 
 export type AuditoriaCompetenciaStatus = 'ok' | 'divergente' | 'pendente' | 'sem_dados';
-export type TipoFluxo = 'folha_variavel' | 'diarista' | 'operacional';
+export type TipoFluxo = 'folha_variavel' | 'intermitente' | 'diarista' | 'operacional';
 export type TipoFluxoResumo = TipoFluxo | 'misto' | 'sem_fluxo';
 
 export interface KPIOrigin {
@@ -38,6 +38,14 @@ export interface OperationalIntegrityKPIs {
   rhValorFechado: number;
   finValorRecebidoRH: number;
   finValorAprovado: number;
+  folhaValorAprovado: number;
+  intermitentesValorAprovado: number;
+  diaristasValorAprovado: number;
+  flows?: {
+    folha: FluxAccumulator;
+    intermitente: FluxAccumulator;
+    diarista: FluxAccumulator;
+  };
   finValorEnviadoBanco: number;
   finValorHistoricoBanco: number;
   faturamentoTotal: number;
@@ -55,7 +63,7 @@ export interface OperationalIntegrityKPIs {
   };
 }
 
-interface FluxAccumulator {
+export interface FluxAccumulator {
   rhProcessado: number;
   rhValidado: number;
   rhFechado: number;
@@ -323,7 +331,7 @@ class DashboardConsolidadoServiceClass {
 
     let qLotesRh = applySeg(supabase
       .from('rh_financeiro_lotes')
-      .select('status, created_at, updated_at, lote_itens:rh_financeiro_lote_itens(valor_calculado)'));
+      .select('tipo, status, created_at, updated_at, lote_itens:rh_financeiro_lote_itens(valor_calculado)'));
     
     if (isAnual) {
       qLotesRh = qLotesRh.gte('competencia', `${yearPart}-01`).lt('competencia', `${yearPart + 1}-01`);
@@ -412,6 +420,7 @@ class DashboardConsolidadoServiceClass {
 
     const diaristaFlow = emptyFluxAccumulator();
     const folhaFlow = emptyFluxAccumulator();
+    const intermitenteFlow = emptyFluxAccumulator();
     const flowsPresentes: TipoFluxo[] = [];
 
     let faturamentoTotal = 0;
@@ -448,18 +457,26 @@ class DashboardConsolidadoServiceClass {
       const total = ((item.lote_itens || []) as Array<{ valor_calculado: number | null }>)
         .reduce((acc, current) => acc + (Number(current.valor_calculado) || 0), 0);
       const status = String(item.status || '').toUpperCase();
-      applyFolhaStatus(folhaFlow, status, total);
+      const tipo = String(item.tipo || '').toUpperCase();
+
+      if (tipo === 'INTERMITENTES') {
+        applyFolhaStatus(intermitenteFlow, status, total);
+        if (total > 0) flowsPresentes.push('intermitente');
+      } else {
+        applyFolhaStatus(folhaFlow, status, total);
+        if (total > 0) flowsPresentes.push('folha_variavel');
+      }
+
       lotesRhUpdatedAt.push(
         String(item.updated_at || item.created_at || consolidadoEm),
       );
-      if (total > 0) flowsPresentes.push('folha_variavel');
     });
 
-    const rhValorProcessado = folhaFlow.rhProcessado + diaristaFlow.rhProcessado;
-    const rhValorValidado = folhaFlow.rhValidado + diaristaFlow.rhValidado;
-    const rhValorFechado = folhaFlow.rhFechado + diaristaFlow.rhFechado;
-    const finValorRecebidoRH = folhaFlow.finRecebidoRh + diaristaFlow.finRecebidoRh;
-    const finValorAprovado = folhaFlow.finAprovado + diaristaFlow.finAprovado;
+    const rhValorProcessado = folhaFlow.rhProcessado + intermitenteFlow.rhProcessado + diaristaFlow.rhProcessado;
+    const rhValorValidado = folhaFlow.rhValidado + intermitenteFlow.rhValidado + diaristaFlow.rhValidado;
+    const rhValorFechado = folhaFlow.rhFechado + intermitenteFlow.rhFechado + diaristaFlow.rhFechado;
+    const finValorRecebidoRH = folhaFlow.finRecebidoRh + intermitenteFlow.finRecebidoRh + diaristaFlow.finRecebidoRh;
+    const finValorAprovado = folhaFlow.finAprovado + intermitenteFlow.finAprovado + diaristaFlow.finAprovado;
 
     let finValorEnviadoBanco = 0;
     const cnabUpdatedAt: string[] = [];
@@ -613,6 +630,14 @@ class DashboardConsolidadoServiceClass {
       rhValorFechado: Number(rhValorFechado.toFixed(2)),
       finValorRecebidoRH: Number(finValorRecebidoRH.toFixed(2)),
       finValorAprovado: Number(finValorAprovado.toFixed(2)),
+      folhaValorAprovado: Number(folhaFlow.finAprovado.toFixed(2)),
+      intermitentesValorAprovado: Number(intermitenteFlow.finAprovado.toFixed(2)),
+      diaristasValorAprovado: Number(diaristaFlow.finAprovado.toFixed(2)),
+      flows: {
+        folha: { ...folhaFlow },
+        intermitente: { ...intermitenteFlow },
+        diarista: { ...diaristaFlow },
+      },
       finValorEnviadoBanco: Number(finValorEnviadoBanco.toFixed(2)),
       finValorHistoricoBanco,
       faturamentoTotal: Number(faturamentoTotal.toFixed(2)),
@@ -646,7 +671,7 @@ class DashboardConsolidadoServiceClass {
           tiposFluxo,
         ),
         finValorAprovado: buildOrigin(
-          'Lotes RH aprovados + lotes diaristas fechados para pagamento',
+          'Lotes RH (CLT + Intermitentes) aprovados + lotes diaristas fechados para pagamento',
           canonicalCompetencia,
           maxIso([...lotesDUpdatedAt, ...lotesRhUpdatedAt], consolidadoEm),
           tiposFluxo.filter((tipo) => tipo !== 'operacional'),
@@ -702,6 +727,14 @@ class DashboardConsolidadoServiceClass {
       rhValorFechado: 0,
       finValorRecebidoRH: 0,
       finValorAprovado: 0,
+      folhaValorAprovado: 0,
+      intermitentesValorAprovado: 0,
+      diaristasValorAprovado: 0,
+      flows: {
+        folha: emptyFluxAccumulator(),
+        intermitente: emptyFluxAccumulator(),
+        diarista: emptyFluxAccumulator(),
+      },
       finValorEnviadoBanco: 0,
       finValorHistoricoBanco: 0,
       faturamentoTotal: 0,
@@ -769,6 +802,14 @@ class DashboardConsolidadoServiceClass {
       aggregate.rhValorFechado += item.rhValorFechado;
       aggregate.finValorRecebidoRH += item.finValorRecebidoRH;
       aggregate.finValorAprovado += item.finValorAprovado;
+      aggregate.folhaValorAprovado += item.folhaValorAprovado;
+      aggregate.intermitentesValorAprovado += item.intermitentesValorAprovado;
+      aggregate.diaristasValorAprovado += item.diaristasValorAprovado;
+      if (item.flows && aggregate.flows) {
+        aggregate.flows.folha.finAprovado += item.flows.folha.finAprovado;
+        aggregate.flows.intermitente.finAprovado += item.flows.intermitente.finAprovado;
+        aggregate.flows.diarista.finAprovado += item.flows.diarista.finAprovado;
+      }
       aggregate.finValorEnviadoBanco += item.finValorEnviadoBanco;
       aggregate.finValorHistoricoBanco += item.finValorHistoricoBanco;
       aggregate.faturamentoTotal += item.faturamentoTotal;
@@ -787,6 +828,9 @@ class DashboardConsolidadoServiceClass {
     aggregate.rhValorFechado = Number(aggregate.rhValorFechado.toFixed(2));
     aggregate.finValorRecebidoRH = Number(aggregate.finValorRecebidoRH.toFixed(2));
     aggregate.finValorAprovado = Number(aggregate.finValorAprovado.toFixed(2));
+    aggregate.folhaValorAprovado = Number(aggregate.folhaValorAprovado.toFixed(2));
+    aggregate.intermitentesValorAprovado = Number(aggregate.intermitentesValorAprovado.toFixed(2));
+    aggregate.diaristasValorAprovado = Number(aggregate.diaristasValorAprovado.toFixed(2));
     aggregate.finValorEnviadoBanco = Number(aggregate.finValorEnviadoBanco.toFixed(2));
     aggregate.finValorHistoricoBanco = Number(aggregate.finValorHistoricoBanco.toFixed(2));
     aggregate.faturamentoTotal = Number(aggregate.faturamentoTotal.toFixed(2));

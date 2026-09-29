@@ -1016,6 +1016,7 @@ const CentralFinanceira = () => {
                         <button onClick={() => setSubTabRh("todos")} className={cn("px-3 py-1 flex-1 text-xs font-medium rounded-sm transition-colors", subTabRh === "todos" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}>Todos</button>
                         <button onClick={() => setSubTabRh("folha")} className={cn("px-3 py-1 flex-1 text-xs font-medium rounded-sm transition-colors", subTabRh === "folha" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}>Folha Oficial</button>
                         <button onClick={() => setSubTabRh("diaristas")} className={cn("px-3 py-1 flex-1 text-xs font-medium rounded-sm transition-colors", subTabRh === "diaristas" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}>Diaristas</button>
+                        <button onClick={() => setSubTabRh("intermitentes")} className={cn("px-3 py-1 flex-1 text-xs font-medium rounded-sm transition-colors", subTabRh === "intermitentes" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}>Intermitentes</button>
                       </div>
                       <div className="flex items-center gap-2">
                         {(lotesRhPendentes.length > 0 || lotesRhProntosBancario.length > 0) && (
@@ -1075,12 +1076,13 @@ const CentralFinanceira = () => {
                             const isEmAnalise = lote.status === "EM_ANALISE_FINANCEIRA";
                             const isAguardandoPagamento = lote.status === "AGUARDANDO_PAGAMENTO";
                             const isDevolvido = lote.status === "DEVOLVIDO_RH";
+                            const isPago = lote.status === "PAGO";
                             return (
                               <tr key={lote.id} className="border-t border-muted hover:bg-background transition-colors">
                                 <td className="px-5 h-12 font-medium text-foreground">{lote.competencia}</td>
                                 <td className="px-3 text-muted-foreground text-xs">{lote.empresa?.nome || "-"}</td>
                                 <td className="px-3 text-muted-foreground">
-                                  {lote.tipo === "BANCO_HORAS" ? "Banco de Horas" : lote.tipo === "DIARISTAS" ? "Diaristas" : "Folha Variável"}
+                                  {lote.tipo === "BANCO_HORAS" ? "Banco de Horas" : lote.tipo === "DIARISTAS" ? "Diaristas" : lote.tipo === "INTERMITENTES" ? "Intermitentes" : "Folha Variável"}
                                 </td>
                                 <td className="px-3 text-center text-muted-foreground">{lote.total_colaboradores}</td>
                                 <td className="px-3 text-right font-display font-semibold">
@@ -1092,18 +1094,20 @@ const CentralFinanceira = () => {
                                     isEmAnalise && "bg-info-soft text-info-strong",
                                     isAguardandoPagamento && "bg-success-soft text-success-strong",
                                     isDevolvido && "bg-destructive/10 text-destructive",
-                                    !isAguardando && !isEmAnalise && !isAguardandoPagamento && !isDevolvido && "bg-muted text-muted-foreground",
+                                    isPago && "bg-success-soft text-success-strong",
+                                    !isAguardando && !isEmAnalise && !isAguardandoPagamento && !isDevolvido && !isPago && "bg-muted text-muted-foreground",
                                   )}>
                                     {lote.status === "AGUARDANDO_FINANCEIRO" ? "Aguardando Financeiro" :
                                       lote.status === "EM_ANALISE_FINANCEIRA" ? "Em Análise Financeira" :
                                         lote.status === "AGUARDANDO_PAGAMENTO" ? "Aguardando Pagamento" :
                                           lote.status === "DEVOLVIDO_RH" ? "Devolvido ao RH" :
-                                            lote.status}
+                                            lote.status === "PAGO" ? "Pago" :
+                                              lote.status}
                                   </Badge>
                                 </td>
                                 <td className="px-5 text-right">
                                   <Button variant="ghost" size="sm" onClick={() => setRhLoteSelecionado(lote)}>
-                                    Analisar
+                                    {isPago ? "Ver Detalhes" : "Analisar"}
                                   </Button>
                                 </td>
                               </tr>
@@ -1531,11 +1535,21 @@ const CentralFinanceira = () => {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileCheck className="h-5 w-5 text-primary" />
-              Análise do Lote - Financeiro
+              {rhLoteSelecionado?.tipo === "INTERMITENTES"
+                ? "Detalhamento do Lote - Intermitentes"
+                : "Análise do Lote - Financeiro"}
             </DialogTitle>
             <DialogDescription>
               {rhLoteSelecionado
-                ? `${rhLoteSelecionado.competencia} · ${rhLoteSelecionado.empresa?.nome || ""} · ${rhLoteSelecionado.tipo === "BANCO_HORAS" ? "Banco de Horas" : (rhLoteSelecionado.tipo === "DIARISTAS" ? "Diaristas" : "Folha Variável")}`
+                ? `${rhLoteSelecionado.competencia} · ${rhLoteSelecionado.empresa?.nome || ""} · ${
+                    rhLoteSelecionado.tipo === "BANCO_HORAS"
+                      ? "Banco de Horas"
+                      : rhLoteSelecionado.tipo === "DIARISTAS"
+                      ? "Diaristas"
+                      : rhLoteSelecionado.tipo === "INTERMITENTES"
+                      ? "Intermitentes"
+                      : "Folha Variável"
+                  }`
                 : "Carregando lote..."}
             </DialogDescription>
           </DialogHeader>
@@ -1557,6 +1571,8 @@ const CentralFinanceira = () => {
                   FECHADO_FINANCEIRO: { label: "Aprovado pelo Financeiro", cls: "bg-success-soft text-success-strong" },
                   AGUARDANDO_PAGAMENTO: { label: "Aguardando Pagamento/CNAB", cls: "bg-success-soft text-success-strong" },
                   DEVOLVIDO_RH: { label: "Devolvido ao RH", cls: "bg-destructive/10 text-destructive" },
+                  CNAB_GERADO: { label: "CNAB Gerado", cls: "bg-info-soft text-info-strong" },
+                  PAGO: { label: "Pago", cls: "bg-success-soft text-success-strong" },
                 };
                 const c = cfg[st] || { label: st, cls: "bg-muted text-muted-foreground" };
                 return (
@@ -1593,7 +1609,29 @@ const CentralFinanceira = () => {
                 const rejeit = itens.filter((i: any) => i.status === "REJEITADO").length;
                 const pend = itens.filter((i: any) => i.status === "PENDENTE").length;
                 const valT = itens.reduce((a: number, i: any) => a + Number(i.valor_calculado || 0), 0);
+                const isIntermitentes = rhLoteDetalhe.tipo === "INTERMITENTES" || rhLoteSelecionado?.tipo === "INTERMITENTES";
                 const isDiaristasOuRh = rhLoteDetalhe.tipo === "DIARISTAS" || rhLoteDetalhe.tipo === "DIARISTA" || String(rhLoteDetalhe.origem_tipo || "").toUpperCase().includes("DIARISTA");
+
+                if (isIntermitentes) {
+                  const horasTotais = itens.reduce((a: number, i: any) => a + Number(i.horas ?? Number(i.minutos || 0) / 60), 0);
+                  const isPago = rhLoteDetalhe.status === "PAGO";
+                  return (
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                      {[
+                        { label: "Colaboradores", value: String(rhLoteDetalhe.total_colaboradores || total), cls: "" },
+                        { label: "Horas Apuradas", value: `${horasTotais.toFixed(2)}h`, cls: "text-foreground font-mono" },
+                        { label: "Valor Total", value: `R$ ${Number(rhLoteDetalhe.valor_total || valT).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`, cls: "text-primary" },
+                        { label: "Situação", value: isPago ? "Pago" : (rhLoteDetalhe.status || "Pendente"), cls: isPago ? "text-success" : "text-warning" },
+                      ].map((s) => (
+                        <div key={s.label} className="rounded-xl border border-border bg-muted/20 p-3 text-center">
+                          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{s.label}</div>
+                          <div className={cn("mt-1.5 font-display text-lg font-bold", s.cls)}>{s.value}</div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                }
+
                 return (
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                     {[
@@ -1620,7 +1658,9 @@ const CentralFinanceira = () => {
               {/* Tabela de itens */}
               <div className="rounded-xl border border-border overflow-hidden">
                 <div className="px-4 py-2.5 border-b border-border bg-muted/20 flex items-center justify-between">
-                  <span className="text-sm font-semibold text-foreground">Itens do lote</span>
+                  <span className="text-sm font-semibold text-foreground">
+                    {rhLoteDetalhe.tipo === "INTERMITENTES" ? "Composição de Colaboradores" : "Itens do lote"}
+                  </span>
                   <span className="text-xs text-muted-foreground">{(rhLoteDetalhe.itens || []).length} registros</span>
                 </div>
                 <div className="overflow-x-auto max-h-56 overflow-y-auto">
@@ -1628,9 +1668,15 @@ const CentralFinanceira = () => {
                     <thead className="esc-table-header sticky top-0">
                       <tr className="text-left text-muted-foreground">
                         <th className="px-4 h-9 font-medium">Colaborador</th>
-                        <th className="px-3 h-9 font-medium">Evento</th>
-                        <th className="px-3 h-9 font-medium text-center">Horas</th>
-                        <th className="px-3 h-9 font-medium text-right">Valor</th>
+                        <th className="px-3 h-9 font-medium">
+                          {rhLoteDetalhe.tipo === "INTERMITENTES" ? "Evento / Origem" : "Evento"}
+                        </th>
+                        <th className="px-3 h-9 font-medium text-center">
+                          {rhLoteDetalhe.tipo === "INTERMITENTES" ? "Horas Apuradas" : "Horas"}
+                        </th>
+                        <th className="px-3 h-9 font-medium text-right">
+                          {rhLoteDetalhe.tipo === "INTERMITENTES" ? "Valor Calculado" : "Valor"}
+                        </th>
                         <th className="px-4 h-9 font-medium text-center">Status</th>
                       </tr>
                     </thead>
@@ -1638,26 +1684,36 @@ const CentralFinanceira = () => {
                       {(rhLoteDetalhe.itens || []).length === 0 ? (
                         <tr><td colSpan={5} className="p-8 text-center text-muted-foreground italic">Nenhum item neste lote.</td></tr>
                       ) : (
-                        (rhLoteDetalhe.itens || []).map((item: any) => (
-                          <tr key={item.id} className="border-t border-muted hover:bg-background transition-colors">
-                            <td className="px-4 py-2.5 font-medium text-foreground">{item.nome_colaborador}</td>
-                            <td className="px-3 py-2.5 text-muted-foreground text-xs capitalize">{String(item.tipo_evento || "").split("_").join(" ")}</td>
-                            <td className="px-3 py-2.5 text-center text-muted-foreground font-mono">
-                              {Number(item.horas ?? Number(item.minutos || 0) / 60).toFixed(2)}h
-                            </td>
-                            <td className="px-3 py-2.5 text-right font-display font-semibold">
-                              R$ {Number(item.valor_calculado || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                            </td>
-                            <td className="px-4 py-2.5 text-center">
-                              <Badge className={cn("text-[10px]",
-                                item.status === "APROVADO" && "bg-success-soft text-success-strong",
-                                item.status === "PENDENTE" && "bg-warning-soft text-warning-strong",
-                                item.status === "REJEITADO" && "bg-destructive/10 text-destructive",
-                                item.status === "EM_ANALISE" && "bg-info-soft text-info-strong",
-                              )}>{item.status}</Badge>
-                            </td>
-                          </tr>
-                        ))
+                        (rhLoteDetalhe.itens || []).map((item: any) => {
+                          const isIntermitente = rhLoteDetalhe.tipo === "INTERMITENTES";
+                          const loteIsPago = rhLoteDetalhe.status === "PAGO";
+                          const eventoLabel = isIntermitente
+                            ? (item.tipo_evento === "LANCAMENTO_INTERMITENTE" ? "Intermitente" : String(item.tipo_evento || "Intermitente").split("_").join(" "))
+                            : String(item.tipo_evento || "").split("_").join(" ");
+                          const statusLabel = (isIntermitente && loteIsPago) ? "PAGO" : item.status;
+                          const isItemPago = statusLabel === "PAGO" || statusLabel === "APROVADO";
+
+                          return (
+                            <tr key={item.id} className="border-t border-muted hover:bg-background transition-colors">
+                              <td className="px-4 py-2.5 font-medium text-foreground">{item.nome_colaborador}</td>
+                              <td className="px-3 py-2.5 text-muted-foreground text-xs capitalize">{eventoLabel}</td>
+                              <td className="px-3 py-2.5 text-center text-muted-foreground font-mono">
+                                {Number(item.horas ?? Number(item.minutos || 0) / 60).toFixed(2)}h
+                              </td>
+                              <td className="px-3 py-2.5 text-right font-display font-semibold">
+                                R$ {Number(item.valor_calculado || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                              </td>
+                              <td className="px-4 py-2.5 text-center">
+                                <Badge className={cn("text-[10px]",
+                                  isItemPago && "bg-success-soft text-success-strong",
+                                  statusLabel === "PENDENTE" && "bg-warning-soft text-warning-strong",
+                                  statusLabel === "REJEITADO" && "bg-destructive/10 text-destructive",
+                                  statusLabel === "EM_ANALISE" && "bg-info-soft text-info-strong",
+                                )}>{statusLabel === "PAGO" ? "Pago" : statusLabel}</Badge>
+                              </td>
+                            </tr>
+                          );
+                        })
                       )}
                     </tbody>
                   </table>
@@ -1769,6 +1825,11 @@ const CentralFinanceira = () => {
                     Ir para Bancário/CNAB
                   </Button>
                 </>
+              )}
+              {rhLoteDetalhe?.status === "PAGO" && (
+                <div className="flex items-center gap-2 rounded-lg bg-success-soft px-3 py-2 text-sm font-semibold text-success-strong">
+                  <CheckCircle2 className="h-4 w-4" /> Lote Pago / Concluído
+                </div>
               )}
             </div>
           </DialogFooter>

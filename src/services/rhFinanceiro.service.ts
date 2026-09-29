@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { EnvironmentQueryFilter } from "./environment/EnvironmentQueryFilter";
+import { EnvironmentService } from "./environment/EnvironmentService";
 
 type BloqueioItem = {
   id: string;
@@ -888,12 +889,13 @@ class RHFinanceiroServiceClass {
       .eq("tenant_id", tenantId)
       .order("created_at", { ascending: false });
 
-    // PILOTO: Uso do EnvironmentQueryFilter com a regra de null = true 
-    // já que o baseline considerava `or(empresa_id.not.in...,empresa_id.is.null)`
-    query = await EnvironmentQueryFilter.applyEmpresaScope(query, {
+    const testIds = await EnvironmentService.getTestEmpresaIds(tenantId);
+
+    query = EnvironmentQueryFilter.applyEmpresaScope(query, {
       tenantId,
       column: "empresa_id",
       includeNullInProduction: true,
+      testIds,
     });
 
     if (competencia) {
@@ -1128,11 +1130,13 @@ class RHFinanceiroServiceClass {
       .eq("status", RH_LOTE_STATUS)
       .order("created_at", { ascending: false });
 
-    // PILOTO: Uso do EnvironmentQueryFilter
-    query = await EnvironmentQueryFilter.applyEmpresaScope(query, {
+    const testIds = await EnvironmentService.getTestEmpresaIds(tenantId);
+
+    query = EnvironmentQueryFilter.applyEmpresaScope(query, {
       tenantId,
       column: "empresa_id",
       includeNullInProduction: true,
+      testIds,
     });
 
     const { data: lotes, error } = await query.limit(6);
