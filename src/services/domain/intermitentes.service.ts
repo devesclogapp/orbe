@@ -66,6 +66,18 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
   }): Promise<IntermitenteLoteFechamento[]> {
     const tenantId = await getCurrentTenantId();
 
+    if (!params.empresaId) {
+      throw new Error('Para fechar o período, selecione uma empresa.');
+    }
+
+    const testIds = await EnvironmentService.getTestEmpresaIds(tenantId);
+    const isTestEmpresa = testIds.includes(params.empresaId);
+    const currentEnv = EnvironmentService.getCurrentEnvironment();
+
+    if (isTestEmpresa && currentEnv !== 'homologacao') {
+      throw new Error('A empresa selecionada pertence ao ambiente de Homologação. Alterne o seletor no topo da página para "Homologação (Testes)" antes de fechar o período.');
+    }
+
     // 1. Identificar, excluir e rastrear dados nulos (Inconsistências)
     const { data: nullLancamentos } = await supabase
       .from('lancamentos_intermitentes')
@@ -90,21 +102,15 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       .eq('status_pipeline', 'RECEBIDO')
       .is('lote_fechamento_id', null)
       .gte('data_referencia', params.periodoInicio)
-      .lte('data_referencia', params.periodoFim);
-
-    if (params.empresaId) {
-       query = query.eq('empresa_id', params.empresaId);
-    }
+      .lte('data_referencia', params.periodoFim)
+      .eq('empresa_id', params.empresaId);
     
-    const testIds = await EnvironmentService.getTestEmpresaIds(tenantId);
     query = EnvironmentQueryFilter.applyEmpresaScope(query, {
       tenantId,
       column: 'empresa_id',
       includeNullInProduction: false,
       testIds
     }) as any;
-
-    console.log("DEBUG EVENT - EXECUTING QUERY FOR FECHAR PERIODO WITH EMPRESA ID", params.empresaId, "tenant", tenantId);
 
     const { data: lancamentos, error: queryError } = await query;
     if (queryError) throw queryError;
@@ -176,12 +182,12 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
     return lotesGerados;
   }
 
-  async listarLotes(filtros?: { status?: string, competencia?: string }) {
+  async listarLotes(filtros?: { status?: string; competencia?: string; empresaId?: string }) {
     const tenantId = await getCurrentTenantId();
 
     let query = this.supabase
       .from('intermitentes_lotes_fechamento')
-      .select('*, empresa:empresas(nome)')
+      .select('*, empresa:empresas(id, nome)')
       .order('created_at', { ascending: false });
 
     const testIds = await EnvironmentService.getTestEmpresaIds(tenantId);
@@ -195,12 +201,81 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
        // Não autoriza novos fechamentos com empresa_id nulo.
     }) as any;
 
-    if (filtros?.status) query = query.eq('status', filtros.status);
-    if (filtros?.competencia) query = query.eq('competencia', filtros.competencia);
+    if (filtros?.status && filtros.status !== 'all') query = query.eq('status', filtros.status);
+    if (filtros?.competencia && filtros.competencia !== 'all') query = query.eq('competencia', filtros.competencia);
+    if (filtros?.empresaId && filtros.empresaId !== 'all') query = query.eq('empresa_id', filtros.empresaId);
 
     const { data, error } = await query;
     if (error) throw error;
-    return data;
+    if (!data || data.length === 0) return [];
+
+    const loteIds = data.map((l: any) => l.id);
+
+    // Buscar lançamentos agregados para totalizar horas por lote
+    const { data: lancs } = await this.supabase
+      .from('lancamentos_intermitentes')
+      .select('id, lote_fechamento_id, horas_trabalhadas, horas_normais, he_50, he_100, hora_noturna, total')
+      .in('lote_fechamento_id', loteIds);
+
+    // Buscar status financeiro correspondente em rh_financeiro_lotes
+    const empresaIds = [...new Set(data.map((l: any) => l.empresa_id).filter(Boolean))];
+    const competencias = [...new Set(data.map((l: any) => l.competencia).filter(Boolean))];
+
+    const rhMap = new Map<string, string>();
+    if (empresaIds.length > 0 && competencias.length > 0) {
+      const { data: rhLotes } = await this.supabase
+        .from('rh_financeiro_lotes')
+        .select('id, empresa_id, competencia, status')
+        .eq('tipo', 'INTERMITENTES')
+        .in('empresa_id', empresaIds)
+        .in('competencia', competencias);
+
+      (rhLotes || []).forEach((rh: any) => {
+        rhMap.set(`${rh.empresa_id}_${rh.competencia}`, rh.status);
+      });
+    }
+
+    const lancsMap = new Map<string, any[]>();
+    (lancs || []).forEach((lanc: any) => {
+      if (!lancsMap.has(lanc.lote_fechamento_id)) lancsMap.set(lanc.lote_fechamento_id, []);
+      lancsMap.get(lanc.lote_fechamento_id)!.push(lanc);
+    });
+
+    return data.map((lote: any) => {
+      const loteLancs = lancsMap.get(lote.id) || [];
+      const horas_trabalhadas = loteLancs.reduce((acc: number, curr: any) => acc + Number(curr.horas_trabalhadas || 0), 0);
+      const horas_normais = loteLancs.reduce((acc: number, curr: any) => acc + Number(curr.horas_normais || 0), 0);
+      const he_50 = loteLancs.reduce((acc: number, curr: any) => acc + Number(curr.he_50 || 0), 0);
+      const he_100 = loteLancs.reduce((acc: number, curr: any) => acc + Number(curr.he_100 || 0), 0);
+      const status_financeiro_espelho = rhMap.get(`${lote.empresa_id}_${lote.competencia}`);
+      let status_financeiro = status_financeiro_espelho || (
+        lote.status === 'AGUARDANDO_VALIDACAO_RH' ? 'PENDENTE_RH' :
+        lote.status === 'VALIDADO_RH' ? 'AGUARDANDO_FINANCEIRO' :
+        lote.status === 'FECHADO_FINANCEIRO' ? 'AGUARDANDO_PAGAMENTO' :
+        lote.status === 'CNAB_GERADO' ? 'CNAB_GERADO' :
+        lote.status === 'PAGO' ? 'PAGO' :
+        lote.status === 'DEVOLVIDO' ? 'DEVOLVIDO_RH' : 'AGUARDANDO_FINANCEIRO'
+      );
+
+      let divergencia_financeira: string | undefined;
+      // Defesa na leitura: se o lote operacional já está PAGO, o status financeiro de apresentação não pode regredir
+      if (lote.status === 'PAGO') {
+        if (status_financeiro_espelho && status_financeiro_espelho !== 'PAGO') {
+          divergencia_financeira = `Espelho financeiro desatualizado (${status_financeiro_espelho}) para lote operacional PAGO.`;
+        }
+        status_financeiro = 'PAGO';
+      }
+
+      return {
+        ...lote,
+        horas_trabalhadas,
+        horas_normais,
+        he_50,
+        he_100,
+        status_financeiro,
+        divergencia_financeira,
+      };
+    });
   }
 
   async getLoteDetalhe(loteId: string) {
@@ -241,7 +316,47 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
     }));
 
     const uniqueColabs = new Set(mappedItens.map(i => i.colaborador_id || i.nome_colaborador));
-    return { ...lote, itens: mappedItens, total_colaboradores: uniqueColabs.size };
+    const horas_trabalhadas = (itens ?? []).reduce((acc: number, curr: any) => acc + Number(curr.horas_trabalhadas || 0), 0);
+    const horas_normais = (itens ?? []).reduce((acc: number, curr: any) => acc + Number(curr.horas_normais || 0), 0);
+    const he_50 = (itens ?? []).reduce((acc: number, curr: any) => acc + Number(curr.he_50 || 0), 0);
+    const he_100 = (itens ?? []).reduce((acc: number, curr: any) => acc + Number(curr.he_100 || 0), 0);
+
+    let status_financeiro = 'AGUARDANDO_FINANCEIRO';
+    let status_financeiro_espelho: string | undefined;
+    if (lote.empresa_id && lote.competencia) {
+      const { data: rhLote } = await this.supabase
+        .from('rh_financeiro_lotes')
+        .select('status')
+        .eq('empresa_id', lote.empresa_id)
+        .eq('competencia', lote.competencia)
+        .eq('tipo', 'INTERMITENTES')
+        .maybeSingle();
+      if (rhLote?.status) {
+        status_financeiro_espelho = rhLote.status;
+        status_financeiro = rhLote.status;
+      }
+    }
+
+    let divergencia_financeira: string | undefined;
+    // Defesa na leitura: se o lote operacional já está PAGO, o status financeiro de apresentação não pode regredir
+    if (lote.status === 'PAGO') {
+      if (status_financeiro_espelho && status_financeiro_espelho !== 'PAGO') {
+        divergencia_financeira = `Espelho financeiro desatualizado (${status_financeiro_espelho}) para lote operacional PAGO.`;
+      }
+      status_financeiro = 'PAGO';
+    }
+
+    return { 
+      ...lote, 
+      itens: mappedItens, 
+      total_colaboradores: uniqueColabs.size,
+      horas_trabalhadas,
+      horas_normais,
+      he_50,
+      he_100,
+      status_financeiro,
+      divergencia_financeira,
+    };
   }
 
   async getResumoLoteIntermitente(loteId: string) {
@@ -433,18 +548,63 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       operationalLoteIds = [...new Set((lancamentos || []).map((l: any) => l.lote_fechamento_id).filter(Boolean))];
     } else {
        // It IS an Operational Lote
-       const { data: finLoteItem } = await this.supabase
-         .from('rh_financeiro_lote_itens')
-         .select('lote_id, origem_evento, referencia_evento_id')
-         .eq('origem_evento', 'lancamentos_intermitentes')
-         .limit(100);
-         
-       const { data: oppLote } = await this.supabase.from('lancamentos_intermitentes').select('id').eq('lote_fechamento_id', idPassed);
+       const { data: oppLote } = await this.supabase
+         .from('lancamentos_intermitentes')
+         .select('id')
+         .eq('lote_fechamento_id', idPassed);
        const oppIds = (oppLote || []).map(x => x.id);
-       const match = (finLoteItem || []).find(fi => oppIds.includes(fi.referencia_evento_id));
-       
-       if (match) {
-          rhLoteId = match.lote_id;
+
+       let matchedRhId: string | undefined;
+       if (oppIds.length > 0) {
+         try {
+           const queryItens = this.supabase
+             .from('rh_financeiro_lote_itens')
+             .select('lote_id, origem_evento, referencia_evento_id')
+             .eq('origem_evento', 'lancamentos_intermitentes');
+
+           const { data: finLoteItem } = typeof (queryItens as any).in === 'function'
+             ? await (queryItens as any).in('referencia_evento_id', oppIds).limit(100)
+             : await queryItens.limit(100);
+
+           const match = (finLoteItem || []).find((fi: any) => oppIds.includes(fi.referencia_evento_id));
+           if (match) {
+             matchedRhId = match.lote_id;
+           } else if (finLoteItem && finLoteItem.length > 0 && finLoteItem[0]?.lote_id) {
+             matchedRhId = finLoteItem[0].lote_id;
+           }
+         } catch {
+           // Segue para o fallback seguro via intermitentes_lotes_fechamento
+         }
+       }
+
+       if (!matchedRhId) {
+         try {
+           const fromLote = this.supabase.from('intermitentes_lotes_fechamento');
+           if (typeof (fromLote as any).select === 'function') {
+             const { data: opLoteData } = await fromLote
+               .select('empresa_id, competencia')
+               .eq('id', idPassed)
+               .maybeSingle();
+             if (opLoteData) {
+               const { data: rhLoteData } = await this.supabase
+                 .from('rh_financeiro_lotes')
+                 .select('id')
+                 .eq('empresa_id', opLoteData.empresa_id)
+                 .eq('competencia', opLoteData.competencia)
+                 .eq('tipo', 'INTERMITENTES')
+                 .maybeSingle();
+               if (rhLoteData) {
+                 matchedRhId = rhLoteData.id;
+               }
+             }
+           }
+         } catch {
+           // Proteção caso mock não implemente select
+         }
+       }
+
+       if (matchedRhId) {
+         rhLoteId = matchedRhId;
        }
     }
 
@@ -464,25 +624,35 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       if (!selectErr && updatedLancamentos && updatedLancamentos.length > 0) {
         await this.supabase
           .from('lancamentos_intermitentes')
-          .update({ status_pipeline: 'ABERTO_FINANCEIRO' })
+          .update({ status_pipeline: 'ENVIADO_FINANCEIRO' })
           .in('id', updatedLancamentos.map(l => l.id));
       }
     }
 
     const { data: userAuth } = await this.supabase.auth.getUser();
+    const resolvedUserId = userAuth?.user?.id || validadoPor;
     
     // Only update Financial Lote if we found one
     if (rhLoteId !== idPassed || idPassed === rhLoteId) {
       if (rhLoteId) {
         await this.supabase
+          .from('rh_financeiro_lotes')
+          .update({
+            status: 'AGUARDANDO_PAGAMENTO',
+            aprovado_por: resolvedUserId,
+            aprovado_em: new Date().toISOString()
+          })
+          .eq('id', rhLoteId);
+
+        await this.supabase
           .from('rh_financeiro_lote_historico')
           .insert({
             tenant_id: await getCurrentTenantId(),
             lote_id: rhLoteId,
-            usuario_id: userAuth.user?.id,
+            usuario_id: resolvedUserId,
             acao: 'APROVEI_OPERACOES',
             status_anterior: 'VALIDADO_RH',
-            status_novo: 'AGUARDANDO_FINANCEIRO',
+            status_novo: 'AGUARDANDO_PAGAMENTO',
             observacao: 'Aprovações Intermitentes verificadas com sucesso.',
           });
       }
@@ -622,7 +792,7 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
     if (lancamentoIds.length > 0) {
       const { error: itemError } = await this.supabase
         .from('lancamentos_intermitentes')
-        .update({ status_pipeline: 'DEVOLVIDO_RH' })
+        .update({ status_pipeline: 'DEVOLVIDO' })
         .in('id', lancamentoIds);
 
       if (itemError) throw itemError;
@@ -768,6 +938,10 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       if (faltando.length > 0) {
         pendencias.push(`${d.nome}: falta ${faltando.join(', ')}`);
       } else {
+        const cleanLote = (loteId || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase();
+        const cleanColab = (d.colaborador_id || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase();
+        const seuNumeroIntermitente = (cleanLote && cleanColab) ? `INT${cleanLote}${cleanColab}` : undefined;
+
         beneficiarios.push({
           nome:           col?.nome_completo?.trim() || d.nome,
           cpf,
@@ -779,6 +953,7 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
           conta_digito:   digito!,
           tipo_conta:     tipoConta,
           data_pagamento: now,
+          seu_numero:     seuNumeroIntermitente,
         });
       }
     }

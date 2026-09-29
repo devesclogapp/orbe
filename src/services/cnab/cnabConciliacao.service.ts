@@ -106,8 +106,9 @@ export const CnabConciliacaoService = {
         const rel = rmMap.get(`${itemPago.remessa_arquivo_id}-${itemPago.fatura_id}`);
 
         // A) Origem DIARISTAS
-        const diaristaLoteId = itemPago.diaristas_lote_id || itemPago.lote_id || remMeta?.diaristas_lote_id || remMeta?.lote_id || rel?.lote_item_id;
-        if (diaristaLoteId || rel?.origem_tipo === 'DIARISTA') {
+        const diaristaLoteId = itemPago.diaristas_lote_id || remMeta?.diaristas_lote_id || (rel?.origem_tipo === 'DIARISTA' ? (itemPago.lote_id || remMeta?.lote_id || rel?.lote_item_id) : null);
+        const isDiarista = rel?.origem_tipo === 'DIARISTA' || (Boolean(diaristaLoteId) && rel?.origem_tipo !== 'CLT' && rel?.origem_tipo !== 'RH_FINANCEIRO_ITEM' && rel?.origem_tipo !== 'INTERMITENTE' && rel?.origem_tipo !== 'FATURA');
+        if (isDiarista) {
           const loteIdFinal = diaristaLoteId || rel?.lote_item_id;
           if (loteIdFinal) diaristasLotesAfetados.add(loteIdFinal);
 
@@ -152,7 +153,7 @@ export const CnabConciliacaoService = {
           if (itemPago.fatura_id) {
             await supabase
               .from('rh_financeiro_lote_itens')
-              .update({ status: 'PAGO', updated_at: new Date().toISOString() })
+              .update({ status: 'PAGO' })
               .eq('id', itemPago.fatura_id);
 
             const { data: rhItem } = await supabase
@@ -167,10 +168,33 @@ export const CnabConciliacaoService = {
         // C) Origem INTERMITENTE
         const intermitenteLoteId = itemPago.intermitentes_lote_id || remMeta?.intermitentes_lote_id;
         if (intermitenteLoteId || rel?.origem_tipo === 'INTERMITENTE') {
-          const loteIdFinal = intermitenteLoteId || rel?.lote_item_id;
+          let loteIdFinal = intermitenteLoteId || rel?.lote_item_id;
+          const targetOrigemId = itemPago.origem_id || rel?.origem_id;
+
+          // Se loteIdFinal ainda não foi resolvido, busca defensivamente pelo lançamento
+          if (!loteIdFinal && targetOrigemId) {
+            try {
+              const { data: lancData } = await supabase
+                .from('lancamentos_intermitentes')
+                .select('lote_fechamento_id')
+                .eq('id', targetOrigemId)
+                .maybeSingle();
+              if (lancData?.lote_fechamento_id) {
+                loteIdFinal = lancData.lote_fechamento_id;
+              }
+            } catch (_e) {
+              // fallback seguro
+            }
+          }
+
           if (loteIdFinal) intermitentesLotesAfetados.add(loteIdFinal);
 
-          if (loteIdFinal && itemPago.colaborador_id) {
+          if (targetOrigemId) {
+            await supabase
+              .from('lancamentos_intermitentes')
+              .update({ status_pipeline: 'PAGO', updated_at: new Date().toISOString() })
+              .eq('id', targetOrigemId);
+          } else if (loteIdFinal && itemPago.colaborador_id) {
             await supabase
               .from('lancamentos_intermitentes')
               .update({ status_pipeline: 'PAGO', updated_at: new Date().toISOString() })
@@ -330,16 +354,143 @@ export const CnabConciliacaoService = {
         const ativos = (lancamentosInt || []).filter((l: any) => l.status_pipeline !== 'CANCELADO');
         const pagos = ativos.filter((l: any) => l.status_pipeline === 'PAGO');
 
-        if (ativos.length > 0 && pagos.length === ativos.length) {
-          await supabase
+        // Buscar itens de remessa atrelados ao lote
+        const lancamentoIds = ativos.map((l: any) => l.id);
+        let remessaItens = remessaItensList.filter(
+          (r: any) => r.lote_item_id === loteId || lancamentoIds.includes(r.origem_id)
+        );
+        if (remessaItens.length === 0 && lancamentoIds.length > 0) {
+          try {
+            const { data: remessaQuery } = await supabase
+              .from('cnab_remessa_itens')
+              .select('id, status, origem_id')
+              .in('origem_id', lancamentoIds);
+            if (remessaQuery && remessaQuery.length > 0) {
+              remessaItens = remessaQuery;
+            }
+          } catch (_e) {
+            // fallback seguro
+          }
+        }
+        const temItemNaoConciliado = remessaItens.some(
+          (r: any) => r.status === 'remetido' || r.status === 'rejeitado' || r.status === 'divergente' || (r.status && r.status !== 'conciliado')
+        );
+
+        const todosLancamentosPagos = ativos.length > 0 && pagos.length === ativos.length;
+
+        if (todosLancamentosPagos && !temItemNaoConciliado) {
+          const { error: updateLoteErr } = await supabase
             .from('intermitentes_lotes_fechamento')
-            .update({ status: 'PAGO', updated_at: new Date().toISOString() })
+            .update({
+              status: 'PAGO',
+              updated_at: new Date().toISOString(),
+            })
             .eq('id', loteId);
+
+          if (updateLoteErr) {
+            console.error(`[CnabConciliacaoService] Falha crítica ao atualizar lote intermitentes ${loteId} para PAGO:`, updateLoteErr);
+            throw new Error(`Falha ao atualizar lote de intermitentes ${loteId} para PAGO: ${updateLoteErr.message}`);
+          }
+
+          try {
+            await supabase.rpc('log_audit', {
+              p_action: 'INTERMITENTES_LOTE_QUITADO_INTEGRAL',
+              p_details: JSON.stringify({
+                lote_id: loteId,
+                total_itens: ativos.length,
+                status: 'PAGO',
+              }),
+            });
+          } catch (_e) {
+            // audit non-blocking
+          }
+
+          // Sincronização do espelho financeiro (rh_financeiro_lotes)
+          try {
+            let rhLoteId: string | null = null;
+            if (lancamentoIds.length > 0) {
+              const { data: finItem, error: finItemErr } = await supabase
+                .from('rh_financeiro_lote_itens')
+                .select('lote_id')
+                .in('referencia_evento_id', lancamentoIds)
+                .eq('origem_evento', 'lancamentos_intermitentes')
+                .limit(1);
+
+              if (!finItemErr && finItem && finItem.length > 0 && finItem[0].lote_id) {
+                rhLoteId = finItem[0].lote_id;
+              }
+            }
+
+            // Fallback unívoco e seguro por tenant + empresa + competência + tipo INTERMITENTES
+            if (!rhLoteId) {
+              const { data: opLote } = await supabase
+                .from('intermitentes_lotes_fechamento')
+                .select('tenant_id, empresa_id, competencia')
+                .eq('id', loteId)
+                .maybeSingle();
+
+              if (opLote?.empresa_id && opLote?.competencia) {
+                let queryRh = supabase
+                  .from('rh_financeiro_lotes')
+                  .select('id')
+                  .eq('empresa_id', opLote.empresa_id)
+                  .eq('competencia', opLote.competencia)
+                  .eq('tipo', 'INTERMITENTES');
+
+                if (opLote.tenant_id) {
+                  queryRh = queryRh.eq('tenant_id', opLote.tenant_id);
+                }
+
+                const { data: rhLote, error: rhLoteErr } = await queryRh.maybeSingle();
+                if (!rhLoteErr && rhLote?.id) {
+                  rhLoteId = rhLote.id;
+                }
+              }
+            }
+
+            if (rhLoteId) {
+              const { error: rhUpdateErr } = await supabase
+                .from('rh_financeiro_lotes')
+                .update({
+                  status: 'PAGO',
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', rhLoteId);
+
+              if (rhUpdateErr) {
+                console.error(`[CnabConciliacaoService] Falha ao atualizar espelho financeiro ${rhLoteId} para PAGO:`, rhUpdateErr);
+                throw new Error(`Falha ao sincronizar espelho financeiro ${rhLoteId} para PAGO: ${rhUpdateErr.message}`);
+              }
+            }
+          } catch (syncErr: any) {
+            console.error(`[CnabConciliacaoService] Erro na sincronização do espelho financeiro do lote ${loteId}:`, syncErr);
+            throw syncErr;
+          }
         } else {
-          await supabase
+          const { error: partialUpdateErr } = await supabase
             .from('intermitentes_lotes_fechamento')
             .update({ status: 'CNAB_GERADO', updated_at: new Date().toISOString() })
             .eq('id', loteId);
+
+          if (partialUpdateErr) {
+            console.error(`[CnabConciliacaoService] Falha ao manter lote intermitentes ${loteId} em CNAB_GERADO:`, partialUpdateErr);
+            throw new Error(`Falha ao atualizar conciliação parcial do lote de intermitentes ${loteId}: ${partialUpdateErr.message}`);
+          }
+
+          try {
+            await supabase.rpc('log_audit', {
+              p_action: 'INTERMITENTES_LOTE_CONCILIACAO_PARCIAL',
+              p_details: JSON.stringify({
+                lote_id: loteId,
+                total_ativos: ativos.length,
+                total_pagos: pagos.length,
+                status: 'CNAB_GERADO',
+                pendentes_ou_rejeitados: ativos.length - pagos.length,
+              }),
+            });
+          } catch (_e) {
+            // audit non-blocking
+          }
         }
       }
 

@@ -25,6 +25,7 @@ import {
 import { toast } from "sonner";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { CentralBancariaDiaristas } from "./Financeiro/CentralBancariaDiaristas";
+import { CentralBancariaIntermitentes } from "./Financeiro/CentralBancariaIntermitentes";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { MetricCard } from "@/components/painel/MetricCard";
@@ -105,11 +106,15 @@ const CentralBancaria = () => {
   const [loteRhSelecionadoId, setLoteRhSelecionadoId] = useState<string | null>(null);
 
   const isContextDiaristas = searchParams.get("origem") === "DIARISTA";
+  const isContextIntermitentes = searchParams.get("origem") === "INTERMITENTE";
   const tabParam = searchParams.get("tab");
-  const validTabs = ["remessa", "diaristas", "retorno", "historico"];
+  const validTabs = ["remessa", "diaristas", "intermitentes", "retorno", "historico"];
   const [activeTab, setActiveTab] = useState(() => {
     if (searchParams.get("origem") === "DIARISTA") {
       return tabParam === "retorno" ? "retorno" : "diaristas";
+    }
+    if (searchParams.get("origem") === "INTERMITENTE") {
+      return tabParam === "retorno" ? "retorno" : "intermitentes";
     }
     return tabParam && validTabs.includes(tabParam) ? tabParam : "remessa";
   });
@@ -117,11 +122,18 @@ const CentralBancaria = () => {
   useEffect(() => {
     const currentTab = searchParams.get("tab");
     const isDiaristas = searchParams.get("origem") === "DIARISTA";
+    const isIntermitentes = searchParams.get("origem") === "INTERMITENTE";
     if (isDiaristas) {
       if (currentTab === "retorno") {
         if (activeTab !== "retorno") setActiveTab("retorno");
       } else {
         if (activeTab !== "diaristas") setActiveTab("diaristas");
+      }
+    } else if (isIntermitentes) {
+      if (currentTab === "retorno") {
+        if (activeTab !== "retorno") setActiveTab("retorno");
+      } else {
+        if (activeTab !== "intermitentes") setActiveTab("intermitentes");
       }
     } else {
       if (currentTab && validTabs.includes(currentTab)) {
@@ -140,6 +152,7 @@ const CentralBancaria = () => {
   };
 
   const [diaristasMetrics, setDiaristasMetrics] = useState({ totalRemessas: 0, totalTitulos: 0, totalValor: 0, remessasComErro: 0 });
+  const [intermitentesMetrics, setIntermitentesMetrics] = useState({ totalRemessas: 0, totalTitulos: 0, totalValor: 0, remessasComErro: 0 });
 
   const [isUploadingRetorno, setIsUploadingRetorno] = useState(false);
   const [retornoResultado, setRetornoResultado] = useState<any>(null);
@@ -585,6 +598,10 @@ const CentralBancaria = () => {
             ? activeTab === "retorno"
               ? "Conciliação Bancária"
               : "Pagamentos e Remessas"
+            : isContextIntermitentes
+            ? activeTab === "retorno"
+              ? "Conciliação Bancária"
+              : "Pagamentos e Remessas"
             : "Pagamentos e Remessas"
         }
         subtitle={
@@ -592,6 +609,10 @@ const CentralBancaria = () => {
             ? activeTab === "retorno"
               ? "Retorno bancário e baixa financeira dos pagamentos de diaristas"
               : "Gestão e remessas bancárias de diaristas"
+            : isContextIntermitentes
+            ? activeTab === "retorno"
+              ? "Retorno bancário e baixa financeira dos pagamentos de intermitentes"
+              : "Gestão e remessas bancárias de intermitentes"
             : "Remessa, histórico e retorno no mesmo fluxo operacional"
         }
         pipelineTrigger={bankPipelineReviewTrigger}
@@ -602,7 +623,7 @@ const CentralBancaria = () => {
               <div>
                 <div className="flex items-center gap-2.5 flex-wrap">
                   <h2 className="font-display font-semibold text-foreground text-lg">
-                    {isContextDiaristas
+                    {isContextDiaristas || isContextIntermitentes
                       ? activeTab === "retorno"
                         ? "Conciliação Bancária"
                         : "Pagamentos e Remessas"
@@ -613,17 +634,26 @@ const CentralBancaria = () => {
                       Contexto: Diaristas
                     </Badge>
                   )}
+                  {isContextIntermitentes && (
+                    <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 text-xs px-2.5 py-0.5 font-medium">
+                      Contexto: Intermitentes
+                    </Badge>
+                  )}
                 </div>
                 <p className="text-sm text-muted-foreground mt-0.5">
                   {isContextDiaristas
                     ? activeTab === "retorno"
                       ? "Retorno bancário e baixa financeira dos pagamentos de diaristas."
                       : "Gestão de lotes fechados, geração de remessa CNAB e liquidação de diaristas."
+                    : isContextIntermitentes
+                    ? activeTab === "retorno"
+                      ? "Retorno bancário e baixa financeira dos pagamentos de intermitentes."
+                      : "Gestão de lotes fechados, geração de remessa CNAB e liquidação de intermitentes."
                     : "Prepare, valide, gere e acompanhe a trilha CNAB sem trocar de módulo."}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2 items-center">
-                {isContextDiaristas ? (
+                {isContextDiaristas || isContextIntermitentes ? (
                   <Button
                     variant="default"
                     size="sm"
@@ -651,26 +681,69 @@ const CentralBancaria = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
             <MetricCard
-              label={isContextDiaristas || activeTab === "diaristas" ? "Lotes Fechados" : "Remessas"}
-              value={(isContextDiaristas || activeTab === "diaristas" ? diaristasMetrics.totalRemessas : totalRemessas).toString()}
+              label={
+                isContextDiaristas || activeTab === "diaristas"
+                  ? "Lotes Fechados"
+                  : isContextIntermitentes || activeTab === "intermitentes"
+                  ? "Lotes Fechados"
+                  : "Remessas"
+              }
+              value={
+                (isContextDiaristas || activeTab === "diaristas"
+                  ? diaristasMetrics.totalRemessas
+                  : isContextIntermitentes || activeTab === "intermitentes"
+                  ? intermitentesMetrics.totalRemessas
+                  : totalRemessas
+                ).toString()
+              }
               icon={FileText}
             />
             <MetricCard
-              label={isContextDiaristas || activeTab === "diaristas" ? "Diaristas" : "Títulos"}
-              value={(isContextDiaristas || activeTab === "diaristas" ? diaristasMetrics.totalTitulos : totalTitulos).toString()}
+              label={
+                isContextDiaristas || activeTab === "diaristas"
+                  ? "Diaristas"
+                  : isContextIntermitentes || activeTab === "intermitentes"
+                  ? "Intermitentes"
+                  : "Títulos"
+              }
+              value={
+                (isContextDiaristas || activeTab === "diaristas"
+                  ? diaristasMetrics.totalTitulos
+                  : isContextIntermitentes || activeTab === "intermitentes"
+                  ? intermitentesMetrics.totalTitulos
+                  : totalTitulos
+                ).toString()
+              }
               icon={FileCheck}
             />
             <MetricCard
               label="Valor total"
               value={new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
-                isContextDiaristas || activeTab === "diaristas" ? diaristasMetrics.totalValor : totalValor
+                isContextDiaristas || activeTab === "diaristas"
+                  ? diaristasMetrics.totalValor
+                  : isContextIntermitentes || activeTab === "intermitentes"
+                  ? intermitentesMetrics.totalValor
+                  : totalValor
               )}
               icon={Banknote}
               accent
             />
             <MetricCard
-              label={isContextDiaristas || activeTab === "diaristas" ? "Pendentes de Pgto" : "Lotes RH prontos CNAB"}
-              value={(isContextDiaristas || activeTab === "diaristas" ? diaristasMetrics.remessasComErro : totalLotesRhProntos).toString()}
+              label={
+                isContextDiaristas || activeTab === "diaristas"
+                  ? "Pendentes de Pgto"
+                  : isContextIntermitentes || activeTab === "intermitentes"
+                  ? "Pendentes de Pgto"
+                  : "Lotes RH prontos CNAB"
+              }
+              value={
+                (isContextDiaristas || activeTab === "diaristas"
+                  ? diaristasMetrics.remessasComErro
+                  : isContextIntermitentes || activeTab === "intermitentes"
+                  ? intermitentesMetrics.remessasComErro
+                  : totalLotesRhProntos
+                ).toString()
+              }
               icon={AlertCircle}
             />
           </div>
@@ -689,11 +762,26 @@ const CentralBancaria = () => {
                 />
               </div>
             )
+          ) : isContextIntermitentes ? (
+            activeTab === "retorno" ? (
+              <div className="mt-4">
+                {renderRetornoContent()}
+              </div>
+            ) : (
+              <div className="mt-4 bg-card text-card-foreground border border-border shadow-sm rounded-xl overflow-hidden">
+                <CentralBancariaIntermitentes
+                  onMetricsUpdate={setIntermitentesMetrics}
+                  empresaId={empresaId}
+                  competencia={competencia}
+                />
+              </div>
+            )
           ) : (
             <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
               <TabsList className="bg-muted/50 p-1 rounded-xl border border-border/50 flex flex-wrap h-auto">
                 <TabsTrigger value="remessa">Folha Oficial e CLT</TabsTrigger>
                 <TabsTrigger value="diaristas">Eventuais / Diaristas</TabsTrigger>
+                <TabsTrigger value="intermitentes">Trabalhadores Intermitentes</TabsTrigger>
                 <TabsTrigger value="retorno">Conciliação Bancária (Retorno)</TabsTrigger>
                 <TabsTrigger value="historico">Auditoria e Arquivos Gerados</TabsTrigger>
               </TabsList>
@@ -1148,6 +1236,16 @@ const CentralBancaria = () => {
               <div className="bg-card text-card-foreground border border-border shadow-sm rounded-xl overflow-hidden">
                 <CentralBancariaDiaristas
                   onMetricsUpdate={setDiaristasMetrics}
+                  empresaId={empresaId}
+                  competencia={competencia}
+                />
+              </div>
+            </TabsContent>
+
+            <TabsContent value="intermitentes">
+              <div className="bg-card text-card-foreground border border-border shadow-sm rounded-xl overflow-hidden">
+                <CentralBancariaIntermitentes
+                  onMetricsUpdate={setIntermitentesMetrics}
                   empresaId={empresaId}
                   competencia={competencia}
                 />

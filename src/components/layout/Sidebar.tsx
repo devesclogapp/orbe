@@ -143,12 +143,13 @@ const groups: MenuGroup[] = [
     label: "Intermitentes",
     stageKey: "entradas",
     items: [
-      { icon: ArrowDownRight, label: "Importações", to: "/importacoes", module: "operacoes_recebidas" },
+      { icon: ArrowDownRight, label: "Importações", to: "/importacoes?origem=INTERMITENTE", module: "operacoes_recebidas" },
       { icon: Clock, label: "Jornadas / Processamento", to: "/operacional/intermitentes", module: "operacoes_recebidas" },
       { icon: AlertTriangle, label: "Inconsistências", to: "/intermitentes/inconsistencias", module: "operacoes_recebidas" },
       { icon: Shield, label: "Aprovações", to: "/intermitentes/aprovacoes", module: "processamento_rh" },
-      { icon: CalendarCheck, label: "Lotes", to: "/fechamento", module: "fechamento_mensal", pulseKey: "fechamento_mensal" },
-      { icon: Banknote, label: "Pagamentos", to: "/bancario", module: "pagamentos_remessas" },
+      { icon: CalendarCheck, label: "Lotes", to: "/operacional/intermitentes/lotes", module: "fechamento_mensal", pulseKey: "fechamento_mensal" },
+      { icon: Banknote, label: "Pagamentos e Remessas", to: "/bancario?tab=intermitentes&origem=INTERMITENTE", module: "pagamentos_remessas" },
+      { icon: ArrowRightLeft, label: "Conciliação Bancária", to: "/bancario?tab=retorno&origem=INTERMITENTE", module: "pagamentos_remessas" },
     ],
   },
   {
@@ -406,6 +407,14 @@ export const isRouteMatchingItem = (
     }
 
     if (currentOrigem === "DIARISTA") {
+      return false;
+    }
+
+    if (itemOrigem === "INTERMITENTE") {
+      return currentOrigem === "INTERMITENTE" && (!itemTab || currentTab === itemTab);
+    }
+
+    if (currentOrigem === "INTERMITENTE") {
       return false;
     }
 

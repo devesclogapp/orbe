@@ -633,7 +633,8 @@ export const CnabRetornoService = {
 
     if (itensErr || !itensRemessa || itensRemessa.length === 0) return [];
 
-    const rhItemIds = itensRemessa.filter(i => i.origem_tipo === 'CLT' || i.origem_tipo === 'INTERMITENTE').map(i => i.origem_id);
+    const rhItemIds = itensRemessa.filter(i => i.origem_tipo === 'CLT').map(i => i.origem_id);
+    const intermitenteItemIds = itensRemessa.filter(i => i.origem_tipo === 'INTERMITENTE').map(i => i.origem_id);
     const faturaIds = itensRemessa.filter(i => i.origem_tipo === 'FATURA').map(i => i.origem_id);
     const diaristaItemIds = itensRemessa.filter(i => i.origem_tipo === 'DIARISTA').map(i => i.origem_id);
 
@@ -657,6 +658,57 @@ export const CnabRetornoService = {
           colaboradores: x.colaboradores,
           origem_tipo: 'CLT' as const,
         }));
+        resolvedFaturas = resolvedFaturas.concat(mapped as any);
+      }
+    }
+
+    // Suporte Canônico a Intermitentes (resolvendo via lancamentos_intermitentes)
+    if (intermitenteItemIds.length > 0) {
+      const { data: intermitentesData } = await supabase
+        .from('lancamentos_intermitentes')
+        .select('id, lote_fechamento_id, colaborador_id, total, nome_colaborador, cpf_colaborador')
+        .in('id', intermitenteItemIds);
+
+      if (intermitentesData && intermitentesData.length > 0) {
+        const colabIds = [...new Set(intermitentesData.map((d: any) => d.colaborador_id).filter(Boolean))];
+        const { data: colabs } = await supabase
+          .from('colaboradores')
+          .select('id, nome, cpf')
+          .in('id', colabIds.length > 0 ? colabIds : ['00000000-0000-0000-0000-000000000000']);
+        const colabMap = new Map((colabs || []).map((c: any) => [c.id, c]));
+
+        // Calcular a soma consolidada por intermitente dentro do lote
+        const somaPorColab = new Map<string, number>();
+        intermitentesData.forEach((d: any) => {
+          const colabId = d.colaborador_id || d.id;
+          somaPorColab.set(colabId, (somaPorColab.get(colabId) || 0) + Number(d.total || 0));
+        });
+
+        const mapped = intermitentesData.map((x: any) => {
+          const colab = colabMap.get(x.colaborador_id);
+          const cleanLote = (x.lote_fechamento_id || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase();
+          const cleanColab = (x.colaborador_id || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase();
+          const seuNumeroEsperado = (cleanLote && cleanColab) ? `INT${cleanLote}${cleanColab}` : null;
+          const valorConsolidado = somaPorColab.get(x.colaborador_id || x.id) || Number(x.total);
+
+          return {
+            id: x.id,
+            remessa_item_id: itensRemessa.find(i => i.origem_id === x.id)?.id || null,
+            lote_id: null,
+            diaristas_lote_id: null,
+            intermitentes_lote_id: x.lote_fechamento_id || remessaRelacionada?.intermitentes_lote_id || null,
+            colaborador_id: x.colaborador_id,
+            valor: Number(x.total),
+            valor_consolidado: valorConsolidado,
+            seu_numero_esperado: seuNumeroEsperado,
+            colaboradores: {
+              id: x.colaborador_id,
+              nome: x.nome_colaborador || colab?.nome || null,
+              cpf: x.cpf_colaborador || colab?.cpf || null,
+            },
+            origem_tipo: 'INTERMITENTE' as const,
+          };
+        });
         resolvedFaturas = resolvedFaturas.concat(mapped as any);
       }
     }
@@ -744,22 +796,22 @@ export const CnabRetornoService = {
 
     // 1. Identificador Forte (seu_numero determinístico: Diaristas DIA... ou CLT/Fatura PGT...)
     if (seuNumero) {
-      // 1A. Diarista seu_numero_esperado: DIA<Lote8><Colab8>
-      const diaristaMatches = faturas.filter((f) => f.seu_numero_esperado && f.seu_numero_esperado.toUpperCase() === seuNumero);
-      if (diaristaMatches.length > 0) {
+      // 1A. Identificador Forte (Diarista DIA<Lote8><Colab8> ou Intermitente INT<Lote8><Colab8>)
+      const identificadorForteMatches = faturas.filter((f) => f.seu_numero_esperado && f.seu_numero_esperado.toUpperCase() === seuNumero);
+      if (identificadorForteMatches.length > 0) {
         // Se temos N itens para esse seu_numero, verificar se a soma exata é igual ao valor retornado
-        const sumCents = diaristaMatches.reduce((acc, f) => acc + toCents(f.valor), 0);
+        const sumCents = identificadorForteMatches.reduce((acc, f) => acc + toCents(f.valor), 0);
         if (sumCents === detalheCents) {
           return {
-            fatura: diaristaMatches[0],
-            faturas: diaristaMatches,
-            isConsolidado: diaristaMatches.length > 1,
+            fatura: identificadorForteMatches[0],
+            faturas: identificadorForteMatches,
+            isConsolidado: identificadorForteMatches.length > 1,
             criterio: 'seu_numero_forte',
           };
         }
 
         // Se a soma total não bate com o valor retornado, verificar se o retorno corresponde a um item individual
-        const single = diaristaMatches.find((f) => toCents(f.valor) === detalheCents);
+        const single = identificadorForteMatches.find((f) => toCents(f.valor) === detalheCents);
         if (single) {
           return {
             fatura: single,
@@ -771,9 +823,9 @@ export const CnabRetornoService = {
 
         // Caso o valor divirja do total e dos unitários, retorna o conjunto para classificação divergente
         return {
-          fatura: diaristaMatches[0],
-          faturas: diaristaMatches,
-          isConsolidado: diaristaMatches.length > 1,
+          fatura: identificadorForteMatches[0],
+          faturas: identificadorForteMatches,
+          isConsolidado: identificadorForteMatches.length > 1,
           criterio: 'seu_numero_forte',
         };
       }

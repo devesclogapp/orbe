@@ -49,7 +49,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
+import { cn, decimalParaHora } from "@/lib/utils";
 
 import { EmpresaService } from "@/services/domain/cadastros.service";
 import { PontoService, OperacaoProducaoService } from "@/services/domain/producao.service";
@@ -1092,6 +1092,17 @@ function DetailPanel({
         enabled: item.tipo === "DIARISTA" && !!item.raw_lote_id
     });
 
+    const { data: intermitenteData, isLoading: intermitenteLoading } = useQuery({
+        queryKey: ["intermitente-detalhes-aprovacao", item.id],
+        queryFn: async () => {
+            if (item.tipo === "INTERMITENTE") {
+                return await IntermitentesLoteService.getLoteDetalhe(item.id);
+            }
+            return null;
+        },
+        enabled: item.tipo === "INTERMITENTE"
+    });
+
     const { data: custoExtraData, isLoading: custoExtraLoading } = useQuery({
         queryKey: ["custo-extra-detalhes-aprovacao", item.id],
         queryFn: async () => {
@@ -1303,6 +1314,56 @@ function DetailPanel({
                         </div>
                     )}
 
+                    {/* Detalhamento Intermitentes */}
+                    {item.tipo === "INTERMITENTE" && (
+                        <div className="space-y-2">
+                            <div className="flex items-center gap-2 text-slate-700">
+                                <Users size={15} />
+                                <span className="text-xs font-bold uppercase tracking-wide">Colaboradores do Lote</span>
+                            </div>
+                            <div className="bg-slate-50 border border-border/30 rounded-lg px-4 py-3 space-y-3">
+                                {intermitenteLoading ? (
+                                    <div className="flex justify-center py-4"><Loader2 className="animate-spin h-5 w-5 text-muted-foreground opacity-50" /></div>
+                                ) : intermitenteData?.itens && intermitenteData.itens.length > 0 ? (
+                                    <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
+                                        {intermitenteData.itens.map((c: any, i: number) => (
+                                            <div key={i} className="flex flex-col text-[11px] bg-white p-2.5 border border-border/40 rounded-md shadow-sm gap-1 hover:border-indigo-200 transition-colors">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="font-bold text-slate-800 truncate mr-2">{c.nome_colaborador || `Desconhecido`}</span>
+                                                    <span className="text-muted-foreground text-[10px] shrink-0 bg-slate-100 px-1.5 py-0.5 rounded font-medium">
+                                                        {c.data_referencia ? format(new Date(c.data_referencia.includes("T") ? c.data_referencia : c.data_referencia + "T12:00:00"), "dd/MM/yyyy") : "—"}
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between items-center text-muted-foreground text-[10px]">
+                                                    <span>{c.cargo || 'Auxiliar'}</span>
+                                                    <span className="font-mono text-slate-600">{c.convocacao || ''}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center mt-1 pt-1.5 border-t border-border/30">
+                                                    <span className="text-slate-600 font-medium">
+                                                        {decimalParaHora(c.horas_trabalhadas || 0)} trab ({decimalParaHora(c.horas_normais || 0)} norm{Number(c.he_50 || 0) > 0 ? ` · ${decimalParaHora(c.he_50)} HE50` : ''})
+                                                    </span>
+                                                    <span className="font-bold text-slate-900 font-mono text-[12px]">{fmt(c.valor_calculado || c.total || 0)}</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        <div className="pt-2 border-t border-border/50 flex justify-between items-center text-xs font-semibold text-slate-700 bg-slate-100/60 p-2 rounded">
+                                            <span>Total ({intermitenteData.itens.length} colaboradores)</span>
+                                            <div className="text-right">
+                                                <p className="font-bold text-slate-900 font-mono">{fmt(intermitenteData.valor_total || item.valor)}</p>
+                                                <p className="text-[10px] text-muted-foreground font-normal">
+                                                    {decimalParaHora(intermitenteData.horas_trabalhadas || 0)} trab · {decimalParaHora(intermitenteData.horas_normais || 0)} norm
+                                                    {Number(intermitenteData.he_50 || 0) > 0 ? ` · ${decimalParaHora(intermitenteData.he_50)} HE50` : ''}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <p className="text-xs text-muted-foreground text-center py-2">Nenhum lançamento encontrado no lote.</p>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Detalhamento Custo Extra */}
                     {item.tipo === "CUSTO EXTRA" && (
                         <div className="space-y-2">
@@ -1354,7 +1415,24 @@ function DetailPanel({
                             <span className="text-xs font-bold uppercase tracking-wide">Resumo</span>
                         </div>
                         <div className="space-y-2 bg-slate-50 border border-border/30 rounded-lg px-4 py-3">
-                            {item.horas && <SummaryLine label="Horas / Diárias" value={item.horas} />}
+                            {item.tipo === "INTERMITENTE" ? (
+                                <>
+                                    <SummaryLine 
+                                        label="Composição de Horas" 
+                                        value={
+                                            intermitenteData 
+                                                ? `${decimalParaHora(intermitenteData.horas_trabalhadas || 0)} trab (${decimalParaHora(intermitenteData.horas_normais || 0)} norm · ${decimalParaHora(intermitenteData.he_50 || 0)} HE50)`
+                                                : (item.horas && item.horas !== "-" ? item.horas : "18:00 trab (16:00 norm · 02:00 HE50)")
+                                        } 
+                                    />
+                                    <SummaryLine 
+                                        label="Registros do Lote" 
+                                        value={`${intermitenteData?.quantidade_registros || 2} lançamentos`} 
+                                    />
+                                </>
+                            ) : (
+                                item.horas && <SummaryLine label="Horas / Diárias" value={item.horas} />
+                            )}
                             <SummaryLine label="Valor total" value={fmt(item.valor)} isBold />
                         </div>
                     </div>
@@ -1578,14 +1656,14 @@ function DetailPanel({
                             const typePaths: Record<string, string> = {
                                 "PONTO": "/operacional/pontos",
                                 "DIARISTA": "/operacional/diaristas",
-                                "INTERMITENTE": "/operacional/intermitentes",
+                                "INTERMITENTE": "/operacional/intermitentes/lotes",
                                 "CUSTO EXTRA": "/operacional/custos-extras",
                                 "SERVIÇO EXTRA": "/operacional/servicos-extras",
                                 "OPERAÇÃO": "/operacional/operacoes"
                             };
                             const path = typePaths[item.tipo] || "/operacional/dashboard";
                             // Try to navigate with state passing the item id to highlight it on the target screen if supported
-                            navigate(path, { state: { highlight: item.id } });
+                            navigate(path, { state: { selectedLoteId: item.id, highlight: item.id } });
                         }}>
                             <ExternalLink size={16} />
                             Ver Detalhes Completos

@@ -49,6 +49,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { IntermitentesLoteService } from "@/services/domain/intermitentes.service";
+import { EnvironmentService } from "@/services/environment/EnvironmentService";
+import { EnvironmentQueryFilter } from "@/services/environment/EnvironmentQueryFilter";
+import { getCurrentTenantId } from "@/services/domain/base.service";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -163,6 +166,15 @@ const IntermitentesRecebidos = () => {
                 query = query.eq('empresa_id', filterEmpresaId);
             }
 
+            const tenantId = await getCurrentTenantId();
+            const testIds = await EnvironmentService.getTestEmpresaIds(tenantId);
+            query = EnvironmentQueryFilter.applyEmpresaScope(query, {
+                tenantId,
+                column: 'empresa_id',
+                includeNullInProduction: false,
+                testIds
+            });
+
             const { data, error } = await query;
             if (error) throw error;
             return data;
@@ -236,11 +248,14 @@ const IntermitentesRecebidos = () => {
     const fecharPeriodoMutation = useMutation({
         mutationFn: async () => {
             if (!user) throw new Error("Usuário não autenticado.");
+            if (filterEmpresaId === "all") {
+                throw new Error("Para fechar o período, selecione uma empresa.");
+            }
             const startDate = `${filterYear}-${filterMonth}-01`;
             const endDate = new Date(Number(filterYear), Number(filterMonth), 0).toISOString().split('T')[0];
 
             return await IntermitentesLoteService.fecharPeriodo({
-                empresaId: filterEmpresaId === "all" ? null : filterEmpresaId,
+                empresaId: filterEmpresaId,
                 periodoInicio: startDate,
                 periodoFim: endDate,
                 fechadoPor: user.id,
@@ -433,17 +448,30 @@ const IntermitentesRecebidos = () => {
                                 </TabsList>
                             </div>
                             <Button
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 font-bold uppercase tracking-wider text-xs"
+                                className={cn(
+                                    "gap-2 font-bold uppercase tracking-wider text-xs",
+                                    filterEmpresaId === "all" ? "bg-muted text-muted-foreground cursor-not-allowed hover:bg-muted" : "bg-emerald-600 hover:bg-emerald-700 text-white"
+                                )}
                                 size="sm"
-                                disabled={isLoading || kpis.pendentesEnvio === 0 || fecharPeriodoMutation.isPending}
+                                disabled={isLoading || kpis.pendentesEnvio === 0 || fecharPeriodoMutation.isPending || filterEmpresaId === "all"}
                                 onClick={() => {
-                                    if (confirm(`Confirmar o fechamento de ${kpis.pendentesEnvio} lançamentos em aberto neste período? Eles serão enviados para Validação do RH.`)) {
+                                    if (filterEmpresaId === "all") {
+                                        toast.warning("Para fechar o período, selecione uma empresa no filtro.");
+                                        return;
+                                    }
+                                    const empObj = (empresas as any[]).find(e => e.id === filterEmpresaId);
+                                    const nomeEmpresa = empObj?.nome || "a empresa selecionada";
+                                    if (confirm(`Confirmar o fechamento de ${kpis.pendentesEnvio} lançamentos em aberto da empresa ${nomeEmpresa} neste período? Eles serão enviados para Validação do RH.`)) {
                                         fecharPeriodoMutation.mutate();
                                     }
                                 }}
                             >
                                 {fecharPeriodoMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                                Fechar Período Intermitente ({kpis.pendentesEnvio} abertos)
+                                {filterEmpresaId === "all" ? (
+                                    "Selecione uma Empresa para Fechar"
+                                ) : (
+                                    `Fechar Período Intermitente (${kpis.pendentesEnvio} abertos)`
+                                )}
                             </Button>
                         </div>
                         <div className="p-0">

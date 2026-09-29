@@ -45,10 +45,49 @@ const getInconsistencyGravity = (item: any): "alta" | "média" => {
 const Inconsistencias = ({ flowType, lockedFlow }: { flowType?: string; lockedFlow?: boolean } = {}) => {
   const queryClient = useQueryClient();
   const [editingItem, setEditingItem] = useState<any | null>(null);
+  const isIntermitente = flowType === "INTERMITENTE";
 
   const { data: issues = [], isLoading } = useQuery({
-    queryKey: ["inconsistencias"],
-    queryFn: () => OperacaoProducaoService.getInconsistencies(),
+    queryKey: ["inconsistencias", flowType || "OPERAÇÃO"],
+    queryFn: async () => {
+      if (isIntermitente) {
+        const { supabase } = await import("@/lib/supabase");
+        const { data, error } = await supabase
+          .from("lancamentos_intermitentes")
+          .select("id, data_referencia, empresa_id, colaborador_id, nome_colaborador, cpf_colaborador, total, status_pipeline, observacoes, empresas(nome_fantasia, razao_social)")
+          .or("status_pipeline.eq.DEVOLVIDO,colaborador_id.is.null,empresa_id.is.null")
+          .order("data_referencia", { ascending: false });
+        if (error) throw error;
+        return (data || []).map((item: any) => ({
+          id: item.id,
+          tipo: "Intermitente",
+          origem: item.empresas?.nome_fantasia || item.empresas?.razao_social || "Sem empresa vinculada",
+          descricao: item.status_pipeline === "DEVOLVIDO"
+            ? `Devolvido pelo RH: ${item.observacoes || "Revisão necessária"}`
+            : !item.colaborador_id
+            ? `Colaborador não vinculado: ${item.nome_colaborador || "Sem nome"} (${item.cpf_colaborador || "Sem CPF"})`
+            : "Empresa não associada ao lançamento",
+          detalhe: `Data: ${item.data_referencia ? new Date(item.data_referencia + "T12:00:00").toLocaleDateString("pt-BR") : "—"} · Valor: ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(item.total || 0))}`,
+          gravidade: "alta" as const,
+          status: item.status_pipeline || "PENDENTE",
+          isIntermitente: true,
+          rawItem: item,
+        }));
+      }
+
+      const raw = await OperacaoProducaoService.getInconsistencies();
+      return (raw || []).map((it: any) => ({
+        id: it.id,
+        tipo: it.tipos_servico_operacional?.nome || "Operação por Volume",
+        origem: it.id.substring(0, 8),
+        descricao: getInconsistencyReason(it),
+        detalhe: `Volume: ${Number(it.quantidade || 0).toLocaleString("pt-BR")} un.${it.colaboradores?.nome ? ` · Colaborador: ${it.colaboradores.nome}` : ""}`,
+        gravidade: getInconsistencyGravity(it),
+        status: it.status,
+        isIntermitente: false,
+        rawItem: it,
+      }));
+    },
   });
 
   const {
@@ -66,15 +105,32 @@ const Inconsistencias = ({ flowType, lockedFlow }: { flowType?: string; lockedFl
   });
 
   const handleResolve = async (issue: any) => {
+    if (issue.isIntermitente) {
+      try {
+        const { supabase } = await import("@/lib/supabase");
+        const { error } = await supabase
+          .from("lancamentos_intermitentes")
+          .update({ status_pipeline: "RECEBIDO" })
+          .eq("id", issue.id);
+        if (error) throw error;
+        toast.success("Lançamento intermitente liberado para reavaliação");
+        queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
+      } catch (err: any) {
+        toast.error(`Erro ao liberar: ${err.message}`);
+      }
+      return;
+    }
+
+    const raw = issue.rawItem;
     // Defesa: Não liberar sem horários de início e término preenchidos
-    if (!issue.entrada_ponto || !issue.saida_ponto) {
+    if (!raw.entrada_ponto || !raw.saida_ponto) {
       toast.error("Horário de início e término não informado", {
         description: "Edite a operação para preencher os horários de início e término antes de liberá-la."
       });
       return;
     }
 
-    const id = issue.id;
+    const id = raw.id;
     // Retorna a operação para reavaliação no fluxo operacional regular
     const payload = {
       status: 'RECEBIDO',
@@ -82,7 +138,7 @@ const Inconsistencias = ({ flowType, lockedFlow }: { flowType?: string; lockedFl
     };
 
     // Tenta executar. Se retornar true, o hook abriu o modal de override.
-    const needsOverride = checkAndExecute(id, payload, issue.status);
+    const needsOverride = checkAndExecute(id, payload, raw.status);
 
     if (!needsOverride) {
       try {
@@ -98,7 +154,10 @@ const Inconsistencias = ({ flowType, lockedFlow }: { flowType?: string; lockedFl
   };
 
   return (
-    <AppShell title="Inconsistências" subtitle="Pendências operacionais e devoluções · Operações por Volume">
+    <AppShell
+      title={isIntermitente ? "Inconsistências — Intermitentes" : "Inconsistências"}
+      subtitle={isIntermitente ? "Pendências operacionais e devoluções · Trabalhadores Intermitentes" : "Pendências operacionais e devoluções · Operações por Volume"}
+    >
       <div className="space-y-4">
         {isLoading ? (
           <div className="flex items-center justify-center p-20">
@@ -110,7 +169,7 @@ const Inconsistencias = ({ flowType, lockedFlow }: { flowType?: string; lockedFl
               <thead className="esc-table-header">
                 <tr className="text-left">
                   <th className="px-5 h-11 font-medium">Tipo</th>
-                  <th className="px-3 h-11 font-medium">Origem</th>
+                  <th className="px-3 h-11 font-medium">Origem / ID</th>
                   <th className="px-3 h-11 font-medium">Descrição</th>
                   <th className="px-3 h-11 font-medium text-center">Gravidade</th>
                   <th className="px-3 h-11 font-medium text-center">Status</th>
@@ -119,23 +178,22 @@ const Inconsistencias = ({ flowType, lockedFlow }: { flowType?: string; lockedFl
               </thead>
               <tbody>
                 {issues.map((it: any, i: number) => {
-                  const grav = getInconsistencyGravity(it);
+                  const grav = it.gravidade;
                   return (
                     <tr key={it.id || i} className="border-t border-muted hover:bg-background">
                       <td className="px-5 h-[60px]">
                         <div className="flex items-center gap-2">
                           <AlertTriangle className={`h-4 w-4 ${grav === "alta" ? "text-destructive" : "text-warning"}`} />
-                          <span className="font-medium text-foreground">{it.tipos_servico_operacional?.nome || 'Operação por Volume'}</span>
+                          <span className="font-medium text-foreground">{it.tipo}</span>
                         </div>
                       </td>
-                      <td className="px-3 text-foreground">{it.id.substring(0, 8)}</td>
+                      <td className="px-3 text-foreground font-mono text-xs">{it.origem}</td>
                       <td className="px-3 py-3">
                         <div className="font-medium text-foreground">
-                          {getInconsistencyReason(it)}
+                          {it.descricao}
                         </div>
                         <div className="text-xs text-muted-foreground mt-0.5">
-                          Volume: {Number(it.quantidade || 0).toLocaleString("pt-BR")} un.
-                          {it.colaboradores?.nome ? ` · Colaborador: ${it.colaboradores.nome}` : ""}
+                          {it.detalhe}
                         </div>
                       </td>
                       <td className="px-3 text-center capitalize">
@@ -146,15 +204,17 @@ const Inconsistencias = ({ flowType, lockedFlow }: { flowType?: string; lockedFl
                       <td className="px-3 text-center"><StatusChip status={it.status} /></td>
                       <td className="px-5 text-center">
                         <div className="flex items-center justify-center gap-1.5">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 hover:bg-muted text-xs px-2"
-                            onClick={() => setEditingItem(it)}
-                            title="Editar horários e dados da operação"
-                          >
-                            <Pencil className="h-3 w-3 mr-1 text-slate-500" /> Editar
-                          </Button>
+                          {!it.isIntermitente && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 hover:bg-muted text-xs px-2"
+                              onClick={() => setEditingItem(it.rawItem)}
+                              title="Editar horários e dados da operação"
+                            >
+                              <Pencil className="h-3 w-3 mr-1 text-slate-500" /> Editar
+                            </Button>
+                          )}
                           <Button
                             size="sm"
                             variant="outline"
