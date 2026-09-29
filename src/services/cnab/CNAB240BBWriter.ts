@@ -33,7 +33,7 @@ export class CNAB240BBWriter implements ICNAB240Writer {
       competencia,
       contaBancariaId,
       rhLoteId,
-      modo = 'producao',
+      modo,
       salvarConteudo = true,
     } = opts;
 
@@ -285,6 +285,7 @@ export class CNAB240BBWriter implements ICNAB240Writer {
       sequencial: sequencialGlobal,
       hash,
       arquivoId: arquivoRegistrado.id,
+      modo: arquivoRegistrado.modo,
       inconsistencias,
     };
   }

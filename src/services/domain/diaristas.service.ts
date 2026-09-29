@@ -1059,6 +1059,7 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
     await CnabRemessaArquivoService.registrar({
       loteId: null,
       diaristasLoteId: loteId,
+      empresaId: lote.empresa_id,
       nomeArquivo: resultado.nome_arquivo,
       conteudoArquivo: resultado.conteudo,
       totalRegistros: itensParaRpc.length,
@@ -1071,7 +1072,6 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
       bancoNome: empresaRemetente.nome_empresa_banco || contaBancariaSelecionada?.banco_nome || (bancoRemessa === '341' ? 'BANCO ITAU SA' : 'BANCO DO BRASIL'),
       contaBancariaId: contaBancariaSelecionada?.id,
       competencia: lote.mes_referencia,
-      modo: 'producao',
       sequencialArquivo,
       itens: itensParaRpc,
     });

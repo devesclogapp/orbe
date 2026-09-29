@@ -48,6 +48,19 @@ vi.mock('@/lib/supabase', () => {
             }),
           };
         }
+        if (table === 'empresas') {
+          const empObj = { data: { id: 'empresa-test-id', is_teste: true, tenant_id: 'tenant-test-id' }, error: null };
+          const chain: any = {
+            maybeSingle: vi.fn().mockResolvedValue(empObj),
+            single: vi.fn().mockResolvedValue(empObj),
+          };
+          chain.eq = vi.fn().mockReturnValue(chain);
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue(chain),
+            }),
+          };
+        }
         if (table === 'contas_bancarias_empresa') {
           const resObj = { data: { empresa_id: 'empresa-test-id', banco_codigo: '001' }, error: null };
           return {

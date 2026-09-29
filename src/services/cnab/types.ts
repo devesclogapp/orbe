@@ -6,6 +6,7 @@ export interface CNAB240Result {
   sequencial: number;
   hash: string;
   arquivoId: string;
+  modo?: 'homologacao' | 'producao';
   inconsistencias?: string[];
 }
 

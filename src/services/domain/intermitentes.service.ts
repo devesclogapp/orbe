@@ -1036,6 +1036,7 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       loteId: null,
       diaristasLoteId: null,
       intermitentesLoteId: loteId,
+      empresaId: lote.empresa_id,
       nomeArquivo: resultado.nome_arquivo,
       conteudoArquivo: resultado.conteudo,
       totalRegistros: itensParaRpc.length,
@@ -1048,7 +1049,6 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       bancoNome: empresaRemetente.nome_empresa_banco || contaBancariaSelecionada?.banco_nome || (bancoRemessa === '341' ? 'BANCO ITAU SA' : 'BANCO DO BRASIL'),
       contaBancariaId: contaBancariaSelecionada?.id,
       competencia: lote.competencia,
-      modo: 'producao',
       sequencialArquivo,
       itens: itensParaRpc,
     });

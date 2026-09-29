@@ -188,6 +188,19 @@ describe('DESACOPLAMENTO CNAB CLT × INTERMITENTES × DIARISTAS', () => {
           }),
         };
       }
+      if (table === 'empresas') {
+        const empObj = { data: { id: 'emp-hml-1', is_teste: true, tenant_id: 'tenant-test-id' }, error: null };
+        const chain: any = {
+          maybeSingle: vi.fn().mockResolvedValue(empObj),
+          single: vi.fn().mockResolvedValue(empObj),
+        };
+        chain.eq = vi.fn().mockReturnValue(chain);
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue(chain),
+          }),
+        };
+      }
       return {
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockResolvedValue({ data: [], error: null }),
@@ -375,6 +388,19 @@ describe('DESACOPLAMENTO CNAB CLT × INTERMITENTES × DIARISTAS', () => {
           }),
         };
       }
+      if (table === 'empresas') {
+        const empObj = { data: { id: 'emp-1', is_teste: true, tenant_id: 'tenant-test-id' }, error: null };
+        const chain: any = {
+          maybeSingle: vi.fn().mockResolvedValue(empObj),
+          single: vi.fn().mockResolvedValue(empObj),
+        };
+        chain.eq = vi.fn().mockReturnValue(chain);
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue(chain),
+          }),
+        };
+      }
       return {
         update: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
@@ -552,6 +578,19 @@ describe('DESACOPLAMENTO CNAB CLT × INTERMITENTES × DIARISTAS', () => {
             eq: vi.fn().mockReturnValue({
               eq: vi.fn().mockResolvedValue({ error: null }),
             }),
+          }),
+        };
+      }
+      if (table === 'empresas') {
+        const empObj = { data: { id: 'emp-1', is_teste: true, tenant_id: 'tenant-test-id' }, error: null };
+        const chain: any = {
+          maybeSingle: vi.fn().mockResolvedValue(empObj),
+          single: vi.fn().mockResolvedValue(empObj),
+        };
+        chain.eq = vi.fn().mockReturnValue(chain);
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue(chain),
           }),
         };
       }
@@ -751,6 +790,19 @@ describe('DESACOPLAMENTO CNAB CLT × INTERMITENTES × DIARISTAS', () => {
         return {
           update: vi.fn().mockReturnValue({
             eq: vi.fn().mockResolvedValue({ error: null }),
+          }),
+        };
+      }
+      if (table === 'empresas') {
+        const empObj = { data: { id: 'emp-hml-1', is_teste: true, tenant_id: 'tenant-test-id' }, error: null };
+        const chain: any = {
+          maybeSingle: vi.fn().mockResolvedValue(empObj),
+          single: vi.fn().mockResolvedValue(empObj),
+        };
+        chain.eq = vi.fn().mockReturnValue(chain);
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue(chain),
           }),
         };
       }

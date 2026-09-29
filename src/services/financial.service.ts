@@ -159,7 +159,7 @@ export const CNABService = {
   },
 
   async generateRemessa(params: { competencia: string; empresaId: string; contaId: string; rhLoteId?: string; modo?: 'homologacao' | 'producao' }) {
-    const { competencia, empresaId, contaId, rhLoteId, modo = 'producao' } = params;
+    const { competencia, empresaId, contaId, rhLoteId, modo } = params;
 
     let faturasMock: any[] = [];
     if (rhLoteId) {
@@ -235,7 +235,7 @@ export const CNABService = {
           total_valor: result.totalValor,
           total_linhas: result.totalLinhas,
           hash: result.hash.substring(0, 16) + '...',
-          modo,
+          modo: result.modo || modo,
         }),
       });
     } catch {
@@ -249,6 +249,7 @@ export const CNABService = {
       arquivoId: result.arquivoId,
       sequencial: result.sequencial,
       hash: result.hash,
+      modo: result.modo,
       inconsistencias: result.inconsistencias,
     };
   },

@@ -58,6 +58,7 @@ export interface RegistrarRemessaParams {
   loteId: string | null;
   diaristasLoteId?: string | null;
   intermitentesLoteId?: string | null;
+  empresaId?: string | null;
   nomeArquivo: string;
   conteudoArquivo: string; // texto do arquivo CNAB
   totalRegistros: number; // quantidade_itens_financeiros (compatível com a RPC p_total_registros)
@@ -221,6 +222,7 @@ export const CnabRemessaArquivoService = {
       loteId,
       diaristasLoteId,
       intermitentesLoteId,
+      empresaId: paramEmpresaId,
       nomeArquivo,
       conteudoArquivo,
       totalRegistros,
@@ -229,7 +231,6 @@ export const CnabRemessaArquivoService = {
       bancoNome = 'BANCO DO BRASIL',
       contaBancariaId,
       competencia,
-      modo = 'producao',
       sequencialArquivo,
     } = params;
 
@@ -275,20 +276,95 @@ export const CnabRemessaArquivoService = {
     // 5. Obter usuário atual
     const { data: { user } } = await supabase.auth.getUser();
     
-    // Bloco 4 Segregation: Validate conta_bancaria_id aligns with current environment
+    // Resolução da Empresa e Segregação de Ambiente (Fail-Closed)
     const tenantId = await getCurrentTenantId();
-    let empresaId: string | null = null;
-    if (contaBancariaId) {
-      const { data: contaDados } = await supabase.from('contas_bancarias_empresa').select('empresa_id').eq('id', contaBancariaId).single();
-      if (contaDados?.empresa_id) {
-         empresaId = contaDados.empresa_id;
-         await EnvironmentService.assertEmpresaAllowed({ tenantId, empresaId: contaDados.empresa_id });
+    let empresaId: string | null = paramEmpresaId || null;
+
+    if (!empresaId && contaBancariaId) {
+      const q = supabase.from('contas_bancarias_empresa').select('empresa_id').eq('id', contaBancariaId);
+      const { data: contaDados } = typeof (q as any).single === 'function'
+        ? await (q as any).single()
+        : await (q as any);
+      const cRec = Array.isArray(contaDados) ? contaDados[0] : contaDados;
+      if (cRec?.empresa_id) {
+        empresaId = cRec.empresa_id;
+      }
+    }
+
+    if (!empresaId && loteId) {
+      const q = supabase.from('lotes_remessa').select('empresa_id').eq('id', loteId);
+      const { data: loteDados } = typeof (q as any).single === 'function'
+        ? await (q as any).single()
+        : await (q as any);
+      const lRec = Array.isArray(loteDados) ? loteDados[0] : loteDados;
+      if (lRec?.empresa_id) {
+        empresaId = lRec.empresa_id;
+      }
+    }
+
+    if (!empresaId && diaristasLoteId) {
+      const q = supabase.from('diaristas_lotes_fechamento').select('empresa_id').eq('id', diaristasLoteId);
+      const { data: dLote } = typeof (q as any).single === 'function'
+        ? await (q as any).single()
+        : await (q as any);
+      const dRec = Array.isArray(dLote) ? dLote[0] : dLote;
+      if (dRec?.empresa_id) {
+        empresaId = dRec.empresa_id;
+      }
+    }
+
+    if (!empresaId && intermitentesLoteId) {
+      const q = supabase.from('intermitentes_lotes_fechamento').select('empresa_id').eq('id', intermitentesLoteId);
+      const { data: iLote } = typeof (q as any).single === 'function'
+        ? await (q as any).single()
+        : await (q as any);
+      const iRec = Array.isArray(iLote) ? iLote[0] : iLote;
+      if (iRec?.empresa_id) {
+        empresaId = iRec.empresa_id;
       }
     }
 
     if (!empresaId) {
-      throw new Error('Empresa_id não resolvível via conta bancária.');
+      throw new Error('Empresa_id não resolvível via conta bancária ou lote associado.');
     }
+
+    // Validação estrita de ambiente (Fail-Closed: mismatch aborta operação)
+    await EnvironmentService.assertEmpresaAllowed({ tenantId, empresaId });
+
+    // Autoridade canônica e intrínseca do modo CNAB derivada de empresas.is_teste (Fail-Closed Estrito)
+    const selectQuery = supabase
+      .from('empresas')
+      .select('id, is_teste');
+
+    let qEmp = typeof (selectQuery as any)?.eq === 'function'
+      ? (selectQuery as any).eq('id', empresaId)
+      : selectQuery;
+
+    if (tenantId && typeof (qEmp as any)?.eq === 'function') {
+      qEmp = (qEmp as any).eq('tenant_id', tenantId);
+    }
+
+    const { data: empRes, error: empErr } = typeof (qEmp as any)?.single === 'function'
+      ? await (qEmp as any).single()
+      : typeof (qEmp as any)?.maybeSingle === 'function'
+      ? await (qEmp as any).maybeSingle()
+      : await (qEmp as any);
+
+    if (empErr) {
+      throw new Error(`Falha técnica ao verificar classificação da empresa para remessa CNAB: ${empErr.message || JSON.stringify(empErr)}`);
+    }
+
+    const empRecord = Array.isArray(empRes) ? empRes[0] : empRes;
+
+    if (!empRecord) {
+      throw new Error(`Falha de Segurança: Empresa ${empresaId} não encontrada para o tenant ${tenantId}.`);
+    }
+
+    if (typeof empRecord.is_teste !== 'boolean') {
+      throw new Error(`Falha de Integridade: Empresa ${empresaId} possui classificação de ambiente indefinida (is_teste nulo). Operação abortada.`);
+    }
+
+    const modo: CnabModo = empRecord.is_teste ? 'homologacao' : 'producao';
 
     // Resolução semântica dos contadores:
     // - qtdItensFinanceiros: quantidade de pagamentos/títulos individuais (ex: 2 lançamentos P/MP)
@@ -369,7 +445,7 @@ export const CnabRemessaArquivoService = {
       },
     });
 
-    return { id: finalRemessaId } as CnabRemessaArquivo;
+    return { id: finalRemessaId, modo } as CnabRemessaArquivo;
   },
 
   // ——— Atualização de status ———————————————————————————————
