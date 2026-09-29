@@ -18,18 +18,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // Get initial session
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            setSession(session);
-            setUser(session?.user ?? null);
-            setLoading(false);
+        // Obter e validar a sessão inicial com o servidor
+        supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+            if (error || !session) {
+                setSession(null);
+                setUser(null);
+                setLoading(false);
+                return;
+            }
+
+            try {
+                // Valida se o token não está expirado ou rejeitado (403/401)
+                const { data: userData, error: userError } = await supabase.auth.getUser();
+                if (userError || !userData?.user) {
+                    console.warn("[AuthContext] Token expirado ou rejeitado pelo servidor Supabase. Limpando sessão:", userError?.message);
+                    await supabase.auth.signOut().catch(() => {});
+                    setSession(null);
+                    setUser(null);
+                } else {
+                    setSession(session);
+                    setUser(userData.user);
+                }
+            } catch (err) {
+                console.error("[AuthContext] Erro ao validar usuário inicial:", err);
+                setSession(null);
+                setUser(null);
+            } finally {
+                setLoading(false);
+            }
         });
 
-        // Listen for auth changes
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            setSession(session);
-            setUser(session?.user ?? null);
-            setLoading(false);
+        // Ouvir mudanças de autenticação
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
+            if (event === "SIGNED_OUT" || !newSession) {
+                setSession(null);
+                setUser(null);
+                setLoading(false);
+            } else {
+                setSession(newSession);
+                setUser(newSession.user ?? null);
+                setLoading(false);
+            }
         });
 
         return () => {
@@ -38,7 +67,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, []);
 
     const signOut = async () => {
-        await supabase.auth.signOut();
+        try {
+            await supabase.auth.signOut();
+        } finally {
+            setSession(null);
+            setUser(null);
+            setLoading(false);
+        }
     };
 
     const updateProfile = async (data: { full_name?: string; avatar_url?: string }) => {

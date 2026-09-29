@@ -206,8 +206,9 @@ export default function PipelineOperacional() {
 
         (pontos || []).forEach((p: any) => {
             let stageId = "analise-rh";
-            if (p.status_processamento === "PROCESSADO") stageId = "concluido";
-            else if (p.status_processamento === "APROVADO_RH") stageId = "aprovado-rh";
+            const sProc = String(p.status_processamento || "").toUpperCase();
+            if (sProc === "PROCESSADO") stageId = "concluido";
+            else if (sProc === "APROVADO_RH") stageId = "aprovado-rh";
 
             const createdDate = new Date(p.created_at || p.data || Date.now());
 
@@ -223,7 +224,7 @@ export default function PipelineOperacional() {
                 lancamentos: 1,
                 dias_parado: stageId === "concluido" ? 0 : Math.max(0, differenceInDays(now, createdDate)),
                 responsavel: "RH",
-                critico: p.status_processamento === "INCONSISTENTE" || p.status_processamento === "ERRO" || !p.colaborador_id
+                critico: sProc === "INCONSISTENTE" || sProc === "ERRO" || !p.colaborador_id
             });
         });
 

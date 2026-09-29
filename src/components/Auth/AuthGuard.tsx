@@ -26,7 +26,14 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
         }
     }, [loading, accessLoading]);
 
-    const shouldBlockScreen = (!hasResolvedRoute.current && (loading || accessLoading)) || (!isDataLoaded && session != null);
+    // Redirecionamento imediato caso a autenticação termine e não haja sessão
+    if (!loading && !session) {
+        return <Navigate to="/login" state={{ from: location }} replace />;
+    }
+
+    const isAuthResolving = !hasResolvedRoute.current && (loading || accessLoading);
+    const isWaitingOnboarding = isOnboardingActive && !isOnboardingComplete && !isDataLoaded && (role === "admin" || role === "super_admin");
+    const shouldBlockScreen = isAuthResolving || isWaitingOnboarding;
 
     if (shouldBlockScreen) {
         return (

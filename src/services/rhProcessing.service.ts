@@ -547,14 +547,136 @@ const buildInconsistencias = (params: {
   return inconsistencias;
 };
 
-const calculateCompensation = (params: {
+export interface RemuneracaoColaborador {
+  valorHora: number;
+  valorDiaBase: number;
+  salarioMensal: number;
+  modeloAplicado: "CLT_MENSAL" | "DIARIA" | "HORISTA" | "PRODUCAO" | "OUTRO";
+}
+
+export const resolveRemuneracaoColaborador = (
+  colaborador: Colaborador | null | undefined,
+  jornadaHours: number = 8,
+): RemuneracaoColaborador => {
+  const modelo = String(colaborador?.modelo_calculo || "").trim().toUpperCase();
+  const contrato = String(colaborador?.tipo_contrato || "").trim().toUpperCase();
+  const tipoColab = String(colaborador?.tipo_colaborador || "").trim().toUpperCase();
+
+  const valorHoraDireto = Number(colaborador?.valor_hora ?? 0);
+  const salarioBase = Number(colaborador?.salario_base ?? 0);
+  const valorDiaria = Number(colaborador?.valor_diaria ?? 0);
+  const valorBase = Number(colaborador?.valor_base ?? 0);
+
+  // 1. DIARISTA / DIÁRIA (preserva semântica de diária)
+  if (
+    modelo === "DIÁRIA" ||
+    modelo === "DIARIA" ||
+    contrato === "DIARIA" ||
+    contrato === "DIÁRIA" ||
+    tipoColab === "DIARISTA"
+  ) {
+    const diaBase = valorDiaria > 0 ? valorDiaria : valorBase > 0 ? valorBase : 0;
+    const horaBase = jornadaHours > 0 ? diaBase / jornadaHours : 0;
+    return {
+      valorHora: Number(horaBase.toFixed(4)),
+      valorDiaBase: Number(diaBase.toFixed(2)),
+      salarioMensal: 0,
+      modeloAplicado: "DIARIA",
+    };
+  }
+
+  // 2. HORISTA / HORA (preserva semântica de hora)
+  if (modelo === "HORISTA" || contrato === "HORA") {
+    const horaBase = valorHoraDireto > 0 ? valorHoraDireto : valorBase > 0 ? valorBase : 0;
+    const diaBase = horaBase * jornadaHours;
+    return {
+      valorHora: Number(horaBase.toFixed(4)),
+      valorDiaBase: Number(diaBase.toFixed(2)),
+      salarioMensal: 0,
+      modeloAplicado: "HORISTA",
+    };
+  }
+
+  // 3. PRODUÇÃO / OPERAÇÃO (preserva semântica de produção/operação)
+  if (
+    modelo === "PRODUÇÃO" ||
+    modelo === "PRODUCAO" ||
+    contrato === "OPERAÇÃO" ||
+    contrato === "OPERACAO"
+  ) {
+    const diaBase = valorBase > 0 ? valorBase : 0;
+    const horaBase = jornadaHours > 0 ? diaBase / jornadaHours : 0;
+    return {
+      valorHora: Number(horaBase.toFixed(4)),
+      valorDiaBase: Number(diaBase.toFixed(2)),
+      salarioMensal: 0,
+      modeloAplicado: "PRODUCAO",
+    };
+  }
+
+  // 4. CLT MENSAL / MENSALISTA
+  const isMensal =
+    modelo === "CLT_MENSAL" ||
+    modelo === "MENSAL" ||
+    contrato === "MENSAL" ||
+    tipoColab === "CLT" ||
+    salarioBase > 0;
+
+  if (isMensal) {
+    const salario = salarioBase > 0 ? salarioBase : valorBase > 0 ? valorBase : 0;
+    const divisorMensal = 220; // 44h semanais padrão CLT
+    const divisorDiaFalta = 30; // art. 64 da CLT: 1/30 do salário mensal
+
+    let horaBase = 0;
+    if (valorHoraDireto > 0) {
+      horaBase = valorHoraDireto;
+    } else if (salario > 0) {
+      horaBase = salario / divisorMensal;
+    }
+
+    const diaBase =
+      salario > 0
+        ? salario / divisorDiaFalta
+        : horaBase > 0
+          ? horaBase * (divisorMensal / divisorDiaFalta)
+          : 0;
+
+    return {
+      valorHora: Number(horaBase.toFixed(4)),
+      valorDiaBase: Number(diaBase.toFixed(2)),
+      salarioMensal: salario,
+      modeloAplicado: "CLT_MENSAL",
+    };
+  }
+
+  // 5. FALLBACK GENÉRICO
+  const horaBase =
+    valorHoraDireto > 0
+      ? valorHoraDireto
+      : valorDiaria > 0 && jornadaHours > 0
+        ? valorDiaria / jornadaHours
+        : valorBase > 0 && jornadaHours > 0
+          ? valorBase / jornadaHours
+          : 0;
+
+  const diaBase = valorDiaria > 0 ? valorDiaria : horaBase * jornadaHours;
+
+  return {
+    valorHora: Number(horaBase.toFixed(4)),
+    valorDiaBase: Number(diaBase.toFixed(2)),
+    salarioMensal: 0,
+    modeloAplicado: "OUTRO",
+  };
+};
+
+export const calculateCompensation = (params: {
   ponto: Ponto;
   regra: Regra | null;
   colaborador: Colaborador | null;
 }) => {
   const { ponto, regra, colaborador } = params;
-  const workedMinutes =
-    ponto.status === "Ausente" || ponto.status === "Falta" ? 0 : calculateWorkedMinutes(ponto);
+  const isFalta = ponto.status === "Ausente" || ponto.status === "Falta";
+  const workedMinutes = isFalta ? 0 : calculateWorkedMinutes(ponto);
   const jornadaHours =
     Number(regra?.carga_horaria_diaria ?? regra?.jornada_contratada ?? 8) || 8;
   const jornadaMinutes = Math.round(jornadaHours * 60);
@@ -566,7 +688,7 @@ const calculateCompensation = (params: {
   let minutosExtra = 0;
   let minutosDebito = 0;
 
-  if (ponto.status === "Ausente" || ponto.status === "Falta") {
+  if (isFalta) {
     saldoBase = -jornadaMinutes;
     minutosDebito = jornadaMinutes;
   } else if (saldoBase > toleranciaExtra) {
@@ -576,27 +698,15 @@ const calculateCompensation = (params: {
   }
 
   const saldoDia = minutosExtra - minutosDebito;
-  const atrasoMinutes = saldoBase < 0 ? minutosDebito : 0;
+  const atrasoMinutes = !isFalta && saldoBase < 0 ? minutosDebito : 0;
 
-  const valorHoraBase =
-    Number(colaborador?.valor_hora ?? 0) ||
-    (Number(colaborador?.salario_base ?? 0) > 0
-      ? Number(colaborador?.salario_base) / (jornadaHours * 22)
-      : 0) ||
-    (Number(colaborador?.valor_diaria ?? 0) > 0
-      ? Number(colaborador?.valor_diaria) / jornadaHours
-      : 0) ||
-    (Number(colaborador?.valor_base ?? 0) > 0
-      ? Number(colaborador?.valor_base) / jornadaHours
-      : 0);
-
-  const valorDiaBase =
-    Number(colaborador?.valor_diaria ?? 0) ||
-    (valorHoraBase > 0 ? valorHoraBase * jornadaHours : 0);
+  const remuneracao = resolveRemuneracaoColaborador(colaborador, jornadaHours);
+  const valorHoraBase = remuneracao.valorHora;
+  const valorDiaBase = remuneracao.valorDiaBase;
 
   const valorExtras = minutesToHourDecimal(minutosExtra) * valorHoraBase * EXTRA_RATE;
   const valorAtraso = minutesToHourDecimal(atrasoMinutes) * valorHoraBase;
-  const valorFalta = ponto.status === "Ausente" || ponto.status === "Falta" ? valorDiaBase : 0;
+  const valorFalta = isFalta ? valorDiaBase : 0;
   const valorDia = Math.max(valorDiaBase + valorExtras - valorAtraso - valorFalta, 0);
 
   return {
@@ -633,7 +743,7 @@ const loadPontosPendentes = async ({
     .from("registros_ponto")
     .select("*")
     .eq("tenant_id", tenantId)
-    .eq("status_processamento", "PENDENTE_PROCESSAMENTO")
+    .in("status_processamento", ["pendente", "PENDENTE", "PENDENTE_PROCESSAMENTO"])
     .gte("data", startDate)
     .lte("data", endDate)
     .order("data", { ascending: true })
@@ -896,7 +1006,7 @@ const upsertFechamentoMensal = async ({
     .eq("colaborador_id", colaborador.id)
     .gte("data", startDate)
     .lte("data", endDate)
-    .in("status_processamento", ["processado", "inconsistente"]);
+    .in("status_processamento", ["processado", "inconsistente", "PROCESSADO", "INCONSISTENTE"]);
   if (pontosError) throw pontosError;
 
   const { data: eventos, error: eventosError } = await supabase
@@ -1346,7 +1456,7 @@ export const processRhPeriod = async ({
     }
 
     const updatePayload = {
-      status_processamento: inconsistencias.length > 0 ? "inconsistente" : "processado",
+      status_processamento: inconsistencias.length > 0 ? "INCONSISTENTE" : "PROCESSADO",
       processado_em: processedAt,
       ciclo_id: ponto.ciclo_id ?? null,
       competencia: ponto.competencia,
@@ -1429,13 +1539,13 @@ export const processRhPeriod = async ({
       .from("registros_ponto")
       .select("*", { count: "exact", head: true })
       .eq("ciclo_id", ciclo.id)
-      .in("status_processamento", ["processado", "inconsistente"]);
+      .in("status_processamento", ["processado", "inconsistente", "PROCESSADO", "INCONSISTENTE"]);
 
     const { count: totalInconsistenciasCiclo } = await supabase
       .from("registros_ponto")
       .select("*", { count: "exact", head: true })
       .eq("ciclo_id", ciclo.id)
-      .eq("status_processamento", "inconsistente");
+      .in("status_processamento", ["inconsistente", "INCONSISTENTE"]);
 
     await CicloOperacionalService.updateCiclo(ciclo.id, {
       total_registros: totalProcessados || 0,

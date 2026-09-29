@@ -158,11 +158,66 @@ const resolveRuleForPonto = (ponto: any, regras: any[]) => {
 };
 
 const buildRuleExplanation = (ponto: any, regra: any) => {
+  const statusProc = String(ponto?.status_processamento || "").toUpperCase();
+  const isPendente = statusProc === "PENDENTE" || statusProc === "PENDENTE_PROCESSAMENTO" || !statusProc;
+  const isInconsistente = statusProc === "INCONSISTENTE";
+  const isProcessado = statusProc === "PROCESSADO";
+
   const workedMinutes =
-    parseHourMinuteString(ponto.horas_calculadas) ?? rhProcessingUtils.calculateWorkedMinutes(ponto);
+    parseHourMinuteString(ponto?.horas_calculadas) ?? rhProcessingUtils.calculateWorkedMinutes(ponto);
   const jornadaHours =
-    Number(ponto.jornada_calculada ?? regra?.carga_horaria_diaria ?? regra?.jornada_contratada ?? 8) || 8;
+    Number(ponto?.jornada_calculada ?? regra?.carga_horaria_diaria ?? regra?.jornada_contratada ?? 8) || 8;
   const jornadaMinutes = Math.round(jornadaHours * 60);
+
+  if (isPendente) {
+    return {
+      isPendente: true,
+      isInconsistente: false,
+      isProcessado: false,
+      regraNome: "Aguardando processamento RH",
+      resumo: "Aguardando processamento RH",
+      workedMinutes,
+      jornadaHours,
+      jornadaMinutes,
+      saldoBase: 0,
+      saldoFinal: 0,
+      minutosExtra: 0,
+      minutosAtraso: 0,
+      excedente: 0,
+      deficit: 0,
+      toleranciaExtra: 0,
+      toleranciaAtraso: 0,
+      descontoTolerancia: 0,
+      descontoLimite: 0,
+      limiteDiarioBanco: 0,
+    };
+  }
+
+  if (isInconsistente) {
+    const inconsistenciasTexto = ponto?.inconsistencias || "Ponto inconsistente aguardando validação RH";
+    return {
+      isPendente: false,
+      isInconsistente: true,
+      isProcessado: false,
+      regraNome: ponto?.regra_aplicada || regra?.nome || "Inconsistente",
+      resumo: inconsistenciasTexto,
+      workedMinutes,
+      jornadaHours,
+      jornadaMinutes,
+      saldoBase: Number(ponto?.saldo_dia || 0),
+      saldoFinal: Number(ponto?.saldo_dia || 0),
+      minutosExtra: Number(ponto?.minutos_extra || 0),
+      minutosAtraso: Number(ponto?.minutos_atraso || 0),
+      excedente: 0,
+      deficit: 0,
+      toleranciaExtra: Number(regra?.tolerancia_hora_extra || 0),
+      toleranciaAtraso: Number(regra?.tolerancia_atraso || 0),
+      descontoTolerancia: 0,
+      descontoLimite: 0,
+      limiteDiarioBanco: Number(regra?.limite_diario_banco || 0),
+    };
+  }
+
   const toleranciaExtra = Number(regra?.tolerancia_hora_extra ?? (ponto.regra_aplicada === DEFAULT_RULE_NAME ? 10 : 0)) || 0;
   const toleranciaAtraso = Number(regra?.tolerancia_atraso ?? (ponto.regra_aplicada === DEFAULT_RULE_NAME ? 10 : 5)) || 0;
   const limiteDiarioBanco = Number(regra?.limite_diario_banco ?? (ponto.regra_aplicada === DEFAULT_RULE_NAME ? 120 : 480)) || 480;
@@ -191,6 +246,9 @@ const buildRuleExplanation = (ponto: any, regra: any) => {
   }
 
   return {
+    isPendente: false,
+    isInconsistente: false,
+    isProcessado: true,
     regraNome: ponto.regra_aplicada || regra?.nome || "—",
     resumo,
     workedMinutes,
@@ -602,7 +660,8 @@ const ProcessamentoRH = () => {
         ultimoProcessamento: null as string | null,
       };
 
-      if (ponto.status_processamento === "processado" || ponto.status_processamento === "inconsistente") {
+      const sProc = String(ponto.status_processamento || "").toUpperCase();
+      if (sProc === "PROCESSADO" || sProc === "INCONSISTENTE") {
         current.diasProcessados += 1;
       }
 
@@ -721,7 +780,11 @@ const ProcessamentoRH = () => {
   }, [selectedColaboradorEventos]);
 
   const pendingCount = useMemo(
-    () => filteredPontos.filter((ponto: any) => ponto.status_processamento === "PENDENTE_PROCESSAMENTO").length,
+    () =>
+      filteredPontos.filter((ponto: any) => {
+        const s = String(ponto.status_processamento || "").toUpperCase();
+        return s === "PENDENTE" || s === "PENDENTE_PROCESSAMENTO";
+      }).length,
     [filteredPontos],
   );
 
@@ -795,9 +858,18 @@ const ProcessamentoRH = () => {
   }, [profileNameMap, selectedColaboradorEventosHistorico, selectedColaboradorInconsistencias]);
 
   const stats = useMemo(() => {
-    const processados = (pontos as any[]).filter((ponto) => ponto.status_processamento === "PROCESSADO").length;
-    const inconsistentes = (pontos as any[]).filter((ponto) => ponto.status_processamento === "INCONSISTENTE").length;
-    const pendentes = (pontos as any[]).filter((ponto) => ponto.status_processamento === "PENDENTE_PROCESSAMENTO").length;
+    const processados = (pontos as any[]).filter((ponto) => {
+      const s = String(ponto.status_processamento || "").toUpperCase();
+      return s === "PROCESSADO";
+    }).length;
+    const inconsistentes = (pontos as any[]).filter((ponto) => {
+      const s = String(ponto.status_processamento || "").toUpperCase();
+      return s === "INCONSISTENTE";
+    }).length;
+    const pendentes = (pontos as any[]).filter((ponto) => {
+      const s = String(ponto.status_processamento || "").toUpperCase();
+      return s === "PENDENTE" || s === "PENDENTE_PROCESSAMENTO";
+    }).length;
     const horasPositivas = (pontos as any[]).reduce((acc, ponto) => acc + Math.max(Number(ponto.saldo_dia || 0), 0), 0);
     const horasNegativas = (pontos as any[]).reduce((acc, ponto) => acc + Math.max(-Number(ponto.saldo_dia || 0), 0), 0);
     const faltas = (pontos as any[]).filter((ponto) => ponto.status === "Ausente" || ponto.status === "Falta").length;
@@ -1668,7 +1740,9 @@ const ProcessamentoRH = () => {
                                         empresaNome,
                                       })}
                                     >
-                                      {ponto.regra_aplicada || "—"}
+                                      {ruleExplanation.isPendente
+                                        ? "Aguardando processamento RH"
+                                        : ponto.regra_aplicada || ruleExplanation.regraNome || "—"}
                                     </button>
                                   </TooltipTrigger>
                                   <TooltipContent className="max-w-sm text-left text-xs leading-5">
@@ -1683,17 +1757,29 @@ const ProcessamentoRH = () => {
                             <td className="px-4 py-3 text-center font-mono">{ponto.entrada?.slice(0, 5) || "-"}</td>
                             <td className="px-4 py-3 text-center font-mono">{ponto.saida?.slice(0, 5) || "-"}</td>
                             <td className="px-4 py-3 text-center">{minutesToTime(workedMinutes)}</td>
-                            <td className="px-4 py-3 text-center text-success">{minutesToTime(Number(ponto.minutos_extra || 0))}</td>
-                            <td className="px-4 py-3 text-center text-error">{minutesToTime(Number(ponto.minutos_atraso || 0))}</td>
-                            <td className="px-4 py-3 text-center">
-                              <span className={cn("font-display font-semibold", saldoDia > 0 ? "text-success" : saldoDia < 0 ? "text-error" : "text-muted-foreground")}>
-                                {minutesToTime(saldoDia)}
-                              </span>
+                            <td className="px-4 py-3 text-center text-success">
+                              {ruleExplanation.isPendente ? "—" : minutesToTime(Number(ponto.minutos_extra || 0))}
+                            </td>
+                            <td className="px-4 py-3 text-center text-error">
+                              {ruleExplanation.isPendente ? "—" : minutesToTime(Number(ponto.minutos_atraso || 0))}
                             </td>
                             <td className="px-4 py-3 text-center">
-                              <span className={cn("font-display font-semibold", saldoAcumulado > 0 ? "text-primary" : saldoAcumulado < 0 ? "text-error" : "text-muted-foreground")}>
-                                {minutesToTime(saldoAcumulado)}
-                              </span>
+                              {ruleExplanation.isPendente ? (
+                                <span className="text-muted-foreground">—</span>
+                              ) : (
+                                <span className={cn("font-display font-semibold", saldoDia > 0 ? "text-success" : saldoDia < 0 ? "text-error" : "text-muted-foreground")}>
+                                  {minutesToTime(saldoDia)}
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              {ruleExplanation.isPendente ? (
+                                <span className="text-muted-foreground">—</span>
+                              ) : (
+                                <span className={cn("font-display font-semibold", saldoAcumulado > 0 ? "text-primary" : saldoAcumulado < 0 ? "text-error" : "text-muted-foreground")}>
+                                  {minutesToTime(saldoAcumulado)}
+                                </span>
+                              )}
                             </td>
                             <td className="px-4 py-3 text-center">
                               <Badge
@@ -2073,16 +2159,28 @@ const ProcessamentoRH = () => {
                           <h3 className="font-semibold text-foreground">Transparência do cálculo</h3>
                         </div>
                         {selectedColaboradorRuleBreakdown ? (
-                          <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
-                            <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Tolerância</p><p className="mt-1 font-medium">{formatRuleMinutes(Number(selectedColaboradorRuleBreakdown.toleranciaExtra || 0))} extra / {formatRuleMinutes(Number(selectedColaboradorRuleBreakdown.toleranciaAtraso || 0))} atraso</p></div>
-                            <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Excedente</p><p className="mt-1 font-medium">{formatCompactMinutes(Number(selectedColaboradorRuleBreakdown.excedente || 0))}</p></div>
-                            <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Desconto</p><p className="mt-1 font-medium">{formatCompactMinutes(Number(selectedColaboradorRuleBreakdown.minutosAtraso || 0))}</p></div>
-                            <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Banco gerado</p><p className={cn("mt-1 font-medium", Number(selectedColaboradorRuleBreakdown.saldoFinal || 0) > 0 ? "text-success" : Number(selectedColaboradorRuleBreakdown.saldoFinal || 0) < 0 ? "text-error" : "text-muted-foreground")}>{minutesToTime(Number(selectedColaboradorRuleBreakdown.saldoFinal || 0))}</p></div>
-                            <div className="rounded-xl border border-muted bg-muted/20 p-3 md:col-span-2 xl:col-span-4">
-                              <p className="text-xs text-muted-foreground">Regra explicável</p>
-                              <p className="mt-1 text-sm leading-6 text-foreground">{selectedColaboradorRuleBreakdown.resumo}</p>
+                          selectedColaboradorRuleBreakdown.isPendente ? (
+                            <div className="p-4">
+                              <div className="rounded-xl border border-muted bg-muted/20 p-3">
+                                <p className="text-xs text-muted-foreground">Status do cálculo</p>
+                                <p className="mt-1 text-sm font-medium text-foreground">Aguardando processamento RH</p>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  A jornada contratual, tolerâncias e reflexos em Banco de Horas serão apurados quando o processamento RH for executado para este colaborador.
+                                </p>
+                              </div>
                             </div>
-                          </div>
+                          ) : (
+                            <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
+                              <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Tolerância</p><p className="mt-1 font-medium">{formatRuleMinutes(Number(selectedColaboradorRuleBreakdown.toleranciaExtra || 0))} extra / {formatRuleMinutes(Number(selectedColaboradorRuleBreakdown.toleranciaAtraso || 0))} atraso</p></div>
+                              <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Excedente</p><p className="mt-1 font-medium">{formatCompactMinutes(Number(selectedColaboradorRuleBreakdown.excedente || 0))}</p></div>
+                              <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Desconto</p><p className="mt-1 font-medium">{formatCompactMinutes(Number(selectedColaboradorRuleBreakdown.minutosAtraso || 0))}</p></div>
+                              <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Banco gerado</p><p className={cn("mt-1 font-medium", Number(selectedColaboradorRuleBreakdown.saldoFinal || 0) > 0 ? "text-success" : Number(selectedColaboradorRuleBreakdown.saldoFinal || 0) < 0 ? "text-error" : "text-muted-foreground")}>{minutesToTime(Number(selectedColaboradorRuleBreakdown.saldoFinal || 0))}</p></div>
+                              <div className="rounded-xl border border-muted bg-muted/20 p-3 md:col-span-2 xl:col-span-4">
+                                <p className="text-xs text-muted-foreground">Regra explicável</p>
+                                <p className="mt-1 text-sm leading-6 text-foreground">{selectedColaboradorRuleBreakdown.resumo}</p>
+                              </div>
+                            </div>
+                          )
                         ) : (
                           <div className="p-6 text-sm text-muted-foreground">O detalhamento da regra aparecerá aqui quando houver um dia selecionado.</div>
                         )}
@@ -2452,76 +2550,103 @@ const ProcessamentoRH = () => {
           </DialogHeader>
 
           {selectedRuleExplanation && (
-            <div className="space-y-4">
-              <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm text-foreground">
-                <div className="font-medium text-primary">{selectedRuleExplanation.regraNome}</div>
-                <p className="mt-1 leading-6">{selectedRuleExplanation.resumo}</p>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-xl border border-border bg-muted/20 p-4">
-                  <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Jornada base</div>
-                  <div className="mt-1 font-display text-xl font-bold text-foreground">
-                    {selectedRuleExplanation.jornadaHours}h
+            selectedRuleExplanation.isPendente ? (
+              <div className="space-y-4">
+                <div className="rounded-xl border border-muted bg-muted/30 p-4 text-sm text-foreground">
+                  <div className="font-medium text-foreground">Aguardando processamento RH</div>
+                  <p className="mt-1 leading-6 text-muted-foreground">
+                    Este registro de ponto foi importado e encontra-se pendente de processamento pelo Motor RH. As tolerâncias contratuais, apuração de horas extras, atrasos ou faltas, e os reflexos no Banco de Horas serão apurados exclusivamente após a execução do processamento RH.
+                  </p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-xl border border-border bg-muted/20 p-4">
+                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Horas brutas apuradas</div>
+                    <div className="mt-1 font-display text-xl font-bold text-foreground">
+                      {minutesToTime(selectedRuleExplanation.workedMinutes)}
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">Calculadas a partir das marcações reais recebidas.</p>
+                  </div>
+                  <div className="rounded-xl border border-border bg-muted/20 p-4">
+                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Status do cálculo</div>
+                    <div className="mt-1 font-display text-base font-semibold text-warning">
+                      Pendente de processamento
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">Nenhum débito, crédito ou tolerância foi aplicado ainda.</p>
                   </div>
                 </div>
-                <div className="rounded-xl border border-border bg-muted/20 p-4">
-                  <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Horas trabalhadas</div>
-                  <div className="mt-1 font-display text-xl font-bold text-foreground">
-                    {minutesToTime(selectedRuleExplanation.workedMinutes)}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm text-foreground">
+                  <div className="font-medium text-primary">{selectedRuleExplanation.regraNome}</div>
+                  <p className="mt-1 leading-6">{selectedRuleExplanation.resumo}</p>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-xl border border-border bg-muted/20 p-4">
+                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Jornada base</div>
+                    <div className="mt-1 font-display text-xl font-bold text-foreground">
+                      {selectedRuleExplanation.jornadaHours}h
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-border bg-muted/20 p-4">
+                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Horas trabalhadas</div>
+                    <div className="mt-1 font-display text-xl font-bold text-foreground">
+                      {minutesToTime(selectedRuleExplanation.workedMinutes)}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="rounded-xl border border-border overflow-hidden">
-                <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-2 sm:divide-x sm:divide-y-0">
-                  <div className="space-y-3 p-4">
-                    <div>
-                      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Tolerância extra</div>
-                      <div className="mt-1 text-sm font-medium text-foreground">{formatRuleMinutes(selectedRuleExplanation.toleranciaExtra)}</div>
-                    </div>
-                    <div>
-                      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Excedente bruto</div>
-                      <div className="mt-1 text-sm font-medium text-foreground">{minutesToTime(selectedRuleExplanation.excedente)}</div>
-                    </div>
-                    <div>
-                      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Desconto aplicado</div>
-                      <div className="mt-1 text-sm font-medium text-foreground">
-                        {minutesToTime(selectedRuleExplanation.descontoTolerancia)}
-                        {selectedRuleExplanation.descontoLimite > 0 ? ` + ${minutesToTime(selectedRuleExplanation.descontoLimite)} por limite diário` : ""}
+                <div className="rounded-xl border border-border overflow-hidden">
+                  <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+                    <div className="space-y-3 p-4">
+                      <div>
+                        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Tolerância extra</div>
+                        <div className="mt-1 text-sm font-medium text-foreground">{formatRuleMinutes(selectedRuleExplanation.toleranciaExtra)}</div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Excedente bruto</div>
+                        <div className="mt-1 text-sm font-medium text-foreground">{minutesToTime(selectedRuleExplanation.excedente)}</div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Desconto aplicado</div>
+                        <div className="mt-1 text-sm font-medium text-foreground">
+                          {minutesToTime(selectedRuleExplanation.descontoTolerancia)}
+                          {selectedRuleExplanation.descontoLimite > 0 ? ` + ${minutesToTime(selectedRuleExplanation.descontoLimite)} por limite diário` : ""}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Saldo final do dia</div>
+                        <div className="mt-1 text-sm font-semibold text-success">{minutesToTime(selectedRuleExplanation.saldoFinal)}</div>
                       </div>
                     </div>
-                    <div>
-                      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Saldo final do dia</div>
-                      <div className="mt-1 text-sm font-semibold text-success">{minutesToTime(selectedRuleExplanation.saldoFinal)}</div>
-                    </div>
-                  </div>
 
-                  <div className="space-y-3 p-4">
-                    <div>
-                      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Tolerância atraso</div>
-                      <div className="mt-1 text-sm font-medium text-foreground">{formatRuleMinutes(selectedRuleExplanation.toleranciaAtraso)}</div>
-                    </div>
-                    <div>
-                      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Déficit bruto</div>
-                      <div className="mt-1 text-sm font-medium text-foreground">{minutesToTime(selectedRuleExplanation.deficit)}</div>
-                    </div>
-                    <div>
-                      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Crédito em banco</div>
-                      <div className="mt-1 text-sm font-medium text-success">{minutesToTime(selectedRuleExplanation.minutosExtra)}</div>
-                    </div>
-                    <div>
-                      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Débito em banco</div>
-                      <div className="mt-1 text-sm font-medium text-destructive">{minutesToTime(selectedRuleExplanation.minutosAtraso)}</div>
+                    <div className="space-y-3 p-4">
+                      <div>
+                        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Tolerância atraso</div>
+                        <div className="mt-1 text-sm font-medium text-foreground">{formatRuleMinutes(selectedRuleExplanation.toleranciaAtraso)}</div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Déficit bruto</div>
+                        <div className="mt-1 text-sm font-medium text-foreground">{minutesToTime(selectedRuleExplanation.deficit)}</div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Crédito em banco</div>
+                        <div className="mt-1 text-sm font-medium text-success">{minutesToTime(selectedRuleExplanation.minutosExtra)}</div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Débito em banco</div>
+                        <div className="mt-1 text-sm font-medium text-destructive">{minutesToTime(selectedRuleExplanation.minutosAtraso)}</div>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="rounded-xl border border-border bg-muted/10 p-4 text-sm text-muted-foreground">
-                Limite diário para crédito em banco: <strong className="text-foreground">{formatRuleMinutes(selectedRuleExplanation.limiteDiarioBanco)}</strong>. O mesmo saldo processado aqui alimenta o Banco de Horas acumulado e os itens enviados ao Financeiro.
+                <div className="rounded-xl border border-border bg-muted/10 p-4 text-sm text-muted-foreground">
+                  Limite diário para crédito em banco: <strong className="text-foreground">{formatRuleMinutes(selectedRuleExplanation.limiteDiarioBanco)}</strong>. O mesmo saldo processado aqui alimenta o Banco de Horas acumulado e os itens enviados ao Financeiro.
+                </div>
               </div>
-            </div>
+            )
           )}
         </DialogContent>
       </Dialog>
