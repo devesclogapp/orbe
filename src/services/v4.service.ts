@@ -1,6 +1,8 @@
 import { supabase } from '@/lib/supabase';
 import { BaseService } from './domain/base.service';
 import { CicloOperacionalService } from './operationalEngine/CicloOperacionalService';
+import { RemuneracaoResolver } from './operationalEngine/RemuneracaoResolver';
+import { normalizeRole, normalizePermissionMatrix, canAccessModule } from '@/lib/access-control';
 
 const ALERT_WINDOW_DAYS = 30;
 const NEAR_DUE_WINDOW_DAYS = 7;
@@ -99,7 +101,7 @@ class BHEventoServiceClass extends BaseService<'banco_horas_eventos'> {
 
     const { data: profile, error } = await supabase
       .from('profiles')
-      .select('tenant_id, full_name')
+      .select('tenant_id, full_name, role')
       .eq('user_id', user.id)
       .single();
 
@@ -107,11 +109,39 @@ class BHEventoServiceClass extends BaseService<'banco_horas_eventos'> {
       throw new Error('Usuário sem tenant associado. Contate o administrador.');
     }
 
+    const { data: userPerm } = await supabase
+      .from('user_permissions')
+      .select('role, permissions, status')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    const effectiveRole = normalizeRole(userPerm?.role || profile?.role || 'user');
+
     return {
       userId: user.id,
       tenantId: profile.tenant_id as string,
       userName: String(profile.full_name ?? user.user_metadata?.full_name ?? user.email ?? 'Usuário interno'),
+      role: effectiveRole,
+      permissions: userPerm?.permissions,
     };
+  }
+
+  private assertAdminOrRh(contexto: { role: string; permissions?: any }, acao: string) {
+    if (contexto.role === 'encarregado') {
+      throw new Error(`Acesso negado: perfil operacional (encarregado) não possui autorização para ${acao}.`);
+    }
+
+    const isAuthorized = contexto.role === 'admin' || contexto.role === 'rh';
+    if (!isAuthorized) {
+      const permissions = normalizePermissionMatrix(contexto.permissions, contexto.role as any);
+      const hasPermission =
+        canAccessModule(permissions, 'banco_de_horas', 'editar') ||
+        canAccessModule(permissions, 'processamento_rh', 'processar');
+
+      if (!hasPermission) {
+        throw new Error(`Acesso negado: usuário não possui permissão para ${acao}.`);
+      }
+    }
   }
 
   private async assertPeriodoAberto(tenantId: string, dataEvento: string, label: string) {
@@ -193,6 +223,7 @@ class BHEventoServiceClass extends BaseService<'banco_horas_eventos'> {
     }
 
     const contexto = await this.getExecutionContext();
+    this.assertAdminOrRh(contexto, 'ações de extrato de banco de horas');
     const minutosOrigem = this.getEventMinutes(eventoOrigem);
     const statusOrigem = String(eventoOrigem.status ?? 'ativo').trim().toLowerCase();
     const dataOrigem = this.getEventDate(eventoOrigem).slice(0, 10);
@@ -385,6 +416,7 @@ class BHEventoServiceClass extends BaseService<'banco_horas_eventos'> {
     }
 
     const contexto = await this.getExecutionContext();
+    this.assertAdminOrRh(contexto, 'ações diretas de RH no banco de horas');
     const dataEventoBase = String(input.dataEvento ?? new Date().toISOString().slice(0, 10)).trim();
     const dataFolga = String(input.dataFolga ?? '').trim();
     const saldoAtual = await this.getSaldoAtual(contexto.tenantId, input.colaboradorId);
@@ -905,19 +937,7 @@ class BHEventoServiceClass extends BaseService<'banco_horas_eventos'> {
   }
 
   private getEstimatedHourlyValue(colaborador: any) {
-    const directValue = Number(colaborador?.valor_hora ?? 0);
-    if (directValue > 0) return directValue;
-
-    const salaryBase = Number(colaborador?.salario_base ?? 0);
-    if (salaryBase > 0) return salaryBase / 220;
-
-    const dailyValue = Number(colaborador?.valor_diaria ?? 0);
-    if (dailyValue > 0) return dailyValue / 8;
-
-    const baseValue = Number(colaborador?.valor_base ?? 0);
-    if (baseValue > 0) return baseValue / 8;
-
-    return 0;
+    return RemuneracaoResolver.resolve({ colaborador }).valorHora;
   }
 
   private getStatus(params: {

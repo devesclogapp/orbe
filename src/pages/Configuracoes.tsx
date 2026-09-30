@@ -1,4 +1,4 @@
-﻿import { AppShell } from "@/components/layout/AppShell";
+import { AppShell } from "@/components/layout/AppShell";
 import { usePreferences } from "@/contexts/PreferencesContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
@@ -55,6 +55,7 @@ import {
   StorageService
 } from "@/services/base.service";
 import ResetOperacional from "@/pages/Configuracoes/ResetOperacional";
+import JornadasTrabalhoSection from "@/pages/Configuracoes/JornadasTrabalhoSection";
 
 const IMPORTACAO_MODULOS = [
   { value: "colaboradores", label: "Colaboradores" },
@@ -601,6 +602,8 @@ const Configuracoes = () => {
                 </div>
               </section>
             </div>
+
+            <JornadasTrabalhoSection />
 
             <section className="esc-card p-6 mt-5">
               <div className="flex items-start justify-between gap-3">

@@ -41,6 +41,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { ColaboradorService } from "@/services/base.service";
 import { BHEventoService } from "@/services/v4.service";
+import { RemuneracaoResolver } from "@/services/operationalEngine/RemuneracaoResolver";
 
 const getEventMinutes = (evento: any) => Number(evento?.minutos ?? evento?.quantidade_minutos ?? 0);
 const getEventType = (evento: any) => String(evento?.tipo_evento ?? evento?.tipo ?? "").trim().toLowerCase();
@@ -324,21 +325,10 @@ const ExtratoColaborador = () => {
   const totalDebitosPeriodo = processedEventos
     .filter((evento) => getEventMinutes(evento) < 0)
     .reduce((acc, evento) => acc + Math.abs(getEventMinutes(evento)), 0);
-  const valorHoraEstimado = useMemo(() => {
-    const directValue = Number(colaborador?.valor_hora ?? 0);
-    if (directValue > 0) return directValue;
-
-    const salaryBase = Number(colaborador?.salario_base ?? 0);
-    if (salaryBase > 0) return salaryBase / 220;
-
-    const dailyValue = Number(colaborador?.valor_diaria ?? 0);
-    if (dailyValue > 0) return dailyValue / 8;
-
-    const baseValue = Number(colaborador?.valor_base ?? 0);
-    if (baseValue > 0) return baseValue / 8;
-
-    return 0;
+  const remuneracao = useMemo(() => {
+    return RemuneracaoResolver.resolve({ colaborador });
   }, [colaborador]);
+  const valorHoraEstimado = remuneracao.valorHora;
   const impactoFinanceiroAtual = Math.max(totalMinutos, 0) / 60 * valorHoraEstimado;
   const competenciaReferencia = processedEventos[0]?.displayDate ? processedEventos[0].displayDate.slice(3, 10) : "-";
 

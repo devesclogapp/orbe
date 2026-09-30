@@ -53,6 +53,15 @@ import { ColaboradorService, EmpresaService } from "@/services/base.service";
 import { BHEventoService, BHRegraService } from "@/services/v4.service";
 import { RHFinanceiroService } from "@/services/rhFinanceiro.service";
 import { processRhPeriod, reprocessRhPeriod, rhProcessingUtils } from "@/services/rhProcessing.service";
+import {
+  resolvePontoPresentation,
+  formatFactualPunches,
+  type PontoPresentationInfo,
+  type PontoStatusVisual,
+} from "@/services/rhPresentation.service";
+import { RegularizarMarcacaoModal } from "@/components/modals/RegularizarMarcacaoModal";
+import { PontoRegularizacaoService } from "@/services/operationalEngine/pontoRegularizacao.service";
+import type { PontoRegularizacao } from "@/types/pontoRegularizacao.types";
 import { buildFolhaVariavelPipeline, buildOperationalStagePipeline, useOperationalPipeline } from "@/contexts/OperationalPipelineContext";
 import { buildOperationalPipelineSeenKey, useOperationalPipelineAutoTrigger } from "@/hooks/useOperationalPipelineAutoTrigger";
 import { getOperationalStatus } from "@/constants/operationalStatus";
@@ -416,6 +425,7 @@ const ProcessamentoRH = () => {
   const [selectedEmpresa, setSelectedEmpresa] = useState("all");
   const [selectedMonth, setSelectedMonth] = useState(currentMonthDefault);
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState("all");
   const [processModalOpen, setProcessModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("pontos");
   const [isProcessing, setIsProcessing] = useState(false);
@@ -617,6 +627,27 @@ const ProcessamentoRH = () => {
     },
   });
 
+  const { data: regularizacoes = [], refetch: refetchRegularizacoes } = useQuery<PontoRegularizacao[]>({
+    queryKey: ["registros_ponto_regularizacoes", selectedMonth, selectedEmpresa, tenantId],
+    queryFn: async () => {
+      if (!tenantId) return [];
+      const [year, month] = selectedMonth.split("-").map(Number);
+      const startDate = new Date(year, month - 1, 1).toISOString().split("T")[0];
+      const endDate = new Date(year, month, 0).toISOString().split("T")[0];
+
+      return PontoRegularizacaoService.getRegularizacoesAtivasPorPeriodo({
+        tenantId,
+        startDate,
+        endDate,
+      });
+    },
+  });
+
+  const regularizacoesMap = useMemo(
+    () => PontoRegularizacaoService.mapearRegularizacoesPorPonto(regularizacoes),
+    [regularizacoes],
+  );
+
   const saldoMap = useMemo(
     () => new Map((saldos as any[]).map((saldo) => [saldo.colaborador_id, saldo])),
     [saldos],
@@ -632,15 +663,95 @@ const ProcessamentoRH = () => {
     [profiles],
   );
 
-  const filteredPontos = useMemo(() => {
-    return (pontos as any[]).filter((ponto) => {
-      const nome = ponto.nome_colaborador || "";
-      if (!searchTerm) return true;
-      return rhProcessingUtils
-        .normalizeText(nome)
-        .includes(rhProcessingUtils.normalizeText(searchTerm));
+  const { data: jornadas = [] } = useQuery({
+    queryKey: ["jornadas_trabalho_all", tenantId],
+    queryFn: async () => {
+      if (!tenantId) return [];
+      const { data, error } = await supabase
+        .from("jornadas_trabalho")
+        .select("*")
+        .eq("tenant_id", tenantId);
+      if (error) return [];
+      return data || [];
+    },
+  });
+
+  const activeCompetencia = selectedMonth;
+
+  const { data: reprocessGuard } = useQuery({
+    queryKey: ["rh_reprocess_guard", selectedEmpresa, activeCompetencia],
+    queryFn: () => RHFinanceiroService.validateReprocessPeriod(selectedEmpresa, activeCompetencia),
+    enabled: selectedEmpresa !== "all",
+    staleTime: 30_000,
+  });
+
+  const isPeriodoFechado = useMemo(() => {
+    if (selectedEmpresa === "all") return false;
+    return reprocessGuard?.permitido === false;
+  }, [reprocessGuard, selectedEmpresa]);
+
+  const colaboradorMap = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const c of colaboradores as any[]) {
+      if (c.id) map.set(c.id, c);
+      if (c.matricula) map.set(`mat:${c.matricula}`, c);
+      if (c.cpf) map.set(`cpf:${c.cpf}`, c);
+    }
+    return map;
+  }, [colaboradores]);
+
+  const pontosWithPresentation = useMemo(() => {
+    return (pontos as any[]).map((ponto) => {
+      const colab =
+        (ponto.colaborador_id ? colaboradorMap.get(ponto.colaborador_id) : null) ||
+        (ponto.matricula_colaborador ? colaboradorMap.get(`mat:${ponto.matricula_colaborador}`) : null) ||
+        (ponto.cpf_colaborador ? colaboradorMap.get(`cpf:${ponto.cpf_colaborador}`) : null) ||
+        null;
+
+      // FIX CP04.8: Anexa regularizações ativas existentes (marcações efetivas para Gate 4 e UI)
+      const pontoEfetivo = PontoRegularizacaoService.anexarRegularizacoes(
+        ponto,
+        regularizacoesMap.get(ponto.id),
+      );
+
+      const presentation = resolvePontoPresentation({
+        ponto: pontoEfetivo,
+        colaborador: colab,
+        regras: regras as any[],
+        jornadas: jornadas as any[],
+        tenantId: tenantId || undefined,
+        isPeriodoFechado,
+      });
+
+      return {
+        ...pontoEfetivo,
+        presentation,
+        colaboradorObj: colab,
+      };
     });
-  }, [pontos, searchTerm]);
+  }, [pontos, colaboradorMap, regras, jornadas, tenantId, isPeriodoFechado, regularizacoesMap]);
+
+  const filteredPontos = useMemo(() => {
+    return pontosWithPresentation.filter((ponto: any) => {
+      const nome = ponto.nome_colaborador || "";
+      if (searchTerm) {
+        const matchesSearch = rhProcessingUtils
+          .normalizeText(nome)
+          .includes(rhProcessingUtils.normalizeText(searchTerm));
+        if (!matchesSearch) return false;
+      }
+
+      if (selectedStatusFilter !== "all") {
+        if (selectedStatusFilter === "PROCESSADO") {
+          if (!ponto.presentation?.isProcessado) return false;
+        } else {
+          if (ponto.presentation?.statusVisual !== selectedStatusFilter) return false;
+        }
+      }
+
+      return true;
+    });
+  }, [pontosWithPresentation, searchTerm, selectedStatusFilter]);
 
   const groupedColaboradores = useMemo(() => {
     const groups = new Map<string, any>();
@@ -661,14 +772,13 @@ const ProcessamentoRH = () => {
       };
 
       const sProc = String(ponto.status_processamento || "").toUpperCase();
-      if (sProc === "PROCESSADO" || sProc === "INCONSISTENTE") {
+      if (sProc === "PROCESSADO" && !ponto.presentation?.isBloqueado) {
         current.diasProcessados += 1;
+        const saldoDia = Number(ponto.saldo_dia || 0);
+        current.positivas += Math.max(saldoDia, 0);
+        current.negativas += Math.max(-saldoDia, 0);
+        current.saldoPeriodo += saldoDia;
       }
-
-      const saldoDia = Number(ponto.saldo_dia || 0);
-      current.positivas += Math.max(saldoDia, 0);
-      current.negativas += Math.max(-saldoDia, 0);
-      current.saldoPeriodo += saldoDia;
 
       const saldoAtual = saldoMap.get(ponto.colaborador_id || "")?.saldo_atual_minutos;
       if (typeof saldoAtual === "number") {
@@ -852,36 +962,71 @@ const ProcessamentoRH = () => {
       status: item.observacao ? "justificada" : "aberta",
     }));
 
-    return [...eventos, ...inconsistenciasAudit].sort(
+    const regularizacoesAudit = regularizacoes
+      .filter((r) => r.colaborador_id === selectedColaborador?.colaborador_id)
+      .map((r) => ({
+        id: `reg-${r.id}`,
+        tipo: "regularizacao",
+        dataOrdenacao: r.created_at,
+        titulo: `Regularização RH: ${r.campo_alterado.replace("_", " ")} (${r.valor_regularizado})`,
+        detalhe: `Original: ${r.valor_original || "ausente"} → Efetivo: ${r.valor_regularizado} | Justificativa: ${r.justificativa}`,
+        responsavel: r.executado_por_nome || "RH",
+        origem: "registros_ponto_regularizacoes",
+        status: r.ativo ? "vigente" : "substituída",
+      }));
+
+    return [...eventos, ...inconsistenciasAudit, ...regularizacoesAudit].sort(
       (a, b) => new Date(b.dataOrdenacao || 0).getTime() - new Date(a.dataOrdenacao || 0).getTime(),
     );
-  }, [profileNameMap, selectedColaboradorEventosHistorico, selectedColaboradorInconsistencias]);
+  }, [profileNameMap, selectedColaboradorEventosHistorico, selectedColaboradorInconsistencias, regularizacoes, selectedColaborador]);
 
   const stats = useMemo(() => {
-    const processados = (pontos as any[]).filter((ponto) => {
-      const s = String(ponto.status_processamento || "").toUpperCase();
-      return s === "PROCESSADO";
-    }).length;
-    const inconsistentes = (pontos as any[]).filter((ponto) => {
-      const s = String(ponto.status_processamento || "").toUpperCase();
-      return s === "INCONSISTENTE";
-    }).length;
-    const pendentes = (pontos as any[]).filter((ponto) => {
-      const s = String(ponto.status_processamento || "").toUpperCase();
-      return s === "PENDENTE" || s === "PENDENTE_PROCESSAMENTO";
-    }).length;
-    const horasPositivas = (pontos as any[]).reduce((acc, ponto) => acc + Math.max(Number(ponto.saldo_dia || 0), 0), 0);
-    const horasNegativas = (pontos as any[]).reduce((acc, ponto) => acc + Math.max(-Number(ponto.saldo_dia || 0), 0), 0);
-    const faltas = (pontos as any[]).filter((ponto) => ponto.status === "Ausente" || ponto.status === "Falta").length;
+    let processados = 0;
+    let inconsistentes = 0;
+    let pendentes = 0;
+    let horasPositivas = 0;
+    let horasNegativas = 0;
+    let faltas = 0;
+    let pendenciasConfiguracao = 0;
+    let pendenciasMarcacao = 0;
+
+    for (const ponto of pontosWithPresentation) {
+      const pres: PontoPresentationInfo = ponto.presentation;
+      if (pres.isProcessado) {
+        processados++;
+        const sDia = Number(ponto.saldo_dia || 0);
+        if (sDia > 0) horasPositivas += sDia;
+        if (sDia < 0) horasNegativas += Math.abs(sDia);
+        if (ponto.status === "Ausente" || ponto.status === "Falta") {
+          faltas++;
+        }
+      } else if (pres.isBloqueado) {
+        inconsistentes++;
+        if (
+          pres.tipoBloqueio === "bloqueio_cadastral" ||
+          pres.tipoBloqueio === "jornada_nao_parametrizada" ||
+          pres.tipoBloqueio === "regra_banco_nao_parametrizada"
+        ) {
+          pendenciasConfiguracao++;
+        } else {
+          pendenciasMarcacao++;
+        }
+      } else {
+        pendentes++;
+      }
+    }
+
     const saldoAcumuladoTotal = (saldos as any[]).reduce((acc, saldo) => acc + Number(saldo.saldo_atual_minutos || 0), 0);
     const colaboradoresPositivos = (saldos as any[]).filter((saldo) => Number(saldo.saldo_atual_minutos || 0) > 0).length;
     const colaboradoresNegativos = (saldos as any[]).filter((saldo) => Number(saldo.saldo_atual_minutos || 0) < 0).length;
 
     return {
-      total: (pontos as any[]).length,
+      total: pontosWithPresentation.length,
       processados,
       inconsistentes,
       pendentes,
+      pendenciasConfiguracao,
+      pendenciasMarcacao,
       regrasAtivas: (regras as any[]).filter((regra) => regra.bh_ativo !== false).length,
       horasPositivas,
       horasNegativas,
@@ -890,7 +1035,7 @@ const ProcessamentoRH = () => {
       colaboradoresPositivos,
       colaboradoresNegativos,
     };
-  }, [pontos, regras, saldos]);
+  }, [pontosWithPresentation, regras, saldos]);
 
   const processamentoEmpresaNome = useMemo(
     () => (empresas as any[]).find((empresa) => empresa.id === selectedEmpresa)?.nome || "Empresa",
@@ -901,7 +1046,6 @@ const ProcessamentoRH = () => {
     () => formatCompetenciaLabel(selectedMonth),
     [selectedMonth],
   );
-  const activeCompetencia = selectedMonth;
   const importacaoTimestamp = useMemo(() => {
     const importedAt = (pontos as any[])
       .map((ponto) => ponto.created_at)
@@ -960,19 +1104,6 @@ const ProcessamentoRH = () => {
     }),
     trigger: processamentoRhTrigger,
   });
-
-  const { data: reprocessGuard } = useQuery({
-    queryKey: ["rh_reprocess_guard", selectedEmpresa, activeCompetencia],
-    queryFn: () => RHFinanceiroService.validateReprocessPeriod(selectedEmpresa, activeCompetencia),
-    enabled: selectedEmpresa !== "all",
-    staleTime: 30_000,
-  });
-
-  // O período passa a ser tratado como fechado quando já existe trilha persistida no fluxo financeiro.
-  const isPeriodoFechado = useMemo(() => {
-    if (selectedEmpresa === "all") return false;
-    return reprocessGuard?.permitido === false;
-  }, [reprocessGuard, selectedEmpresa]);
 
   const requiresAdminJustification = async (actionFn: (justificativa: string) => Promise<void>, actionLabel: string, actionType: string) => {
     // Se o período está fechado e a ação vai afetar dados financeiros passados
@@ -1220,6 +1351,14 @@ const ProcessamentoRH = () => {
     nextParams.delete("colaborador");
     nextParams.delete("ponto");
     setSearchParams(nextParams, { replace: true });
+  };
+
+  const [regularizacaoModalOpen, setRegularizacaoModalOpen] = useState(false);
+  const [regularizacaoPontoTarget, setRegularizacaoPontoTarget] = useState<any | null>(null);
+
+  const openRegularizacaoModal = (ponto: any) => {
+    setRegularizacaoPontoTarget(ponto);
+    setRegularizacaoModalOpen(true);
   };
 
   const openOperationalActionComposer = (evento: any, action: OperationalActionType) => {
@@ -1507,6 +1646,23 @@ const ProcessamentoRH = () => {
               </SelectContent>
             </Select>
 
+            <Select value={selectedStatusFilter} onValueChange={setSelectedStatusFilter}>
+              <SelectTrigger className="w-[210px] h-10">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os status</SelectItem>
+                <SelectItem value="PROCESSADO">Processados</SelectItem>
+                <SelectItem value="CADASTRO_PENDENTE">Cadastro Pendente</SelectItem>
+                <SelectItem value="JORNADA_NAO_PARAMETRIZADA">Jornada não parametrizada</SelectItem>
+                <SelectItem value="REGRA_BANCO_NAO_PARAMETRIZADA">Regra de Banco não parametrizada</SelectItem>
+                <SelectItem value="MARCACAO_INCOMPLETA">Marcação incompleta</SelectItem>
+                <SelectItem value="MARCACAO_INVALIDA">Marcação inválida</SelectItem>
+                <SelectItem value="FALTA_PENDENTE_JUSTIFICATIVA">Falta pendente de justificativa</SelectItem>
+                <SelectItem value="TRABALHO_EM_DIA_NAO_TRABALHAVEL">Trabalho em dia não trabalhável</SelectItem>
+              </SelectContent>
+            </Select>
+
             <Button
               onClick={() => setProcessModalOpen(true)}
               disabled={isLoading || pendingCount === 0 || isProcessing}
@@ -1596,8 +1752,13 @@ const ProcessamentoRH = () => {
               <AlertTriangle className="h-5 w-5 text-warning" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Inconsistências</p>
+              <p className="text-xs text-muted-foreground">Pendências / Bloqueios</p>
               <p className="text-xl font-bold font-display text-warning">{stats.inconsistentes}</p>
+              {(stats.pendenciasConfiguracao > 0 || stats.pendenciasMarcacao > 0) && (
+                <p className="text-[10px] text-muted-foreground mt-0.5 whitespace-nowrap">
+                  Configuração: {stats.pendenciasConfiguracao} · Marcações: {stats.pendenciasMarcacao}
+                </p>
+              )}
             </div>
           </div>
           <div className="esc-card p-4 flex items-center gap-3">
@@ -1698,7 +1859,7 @@ const ProcessamentoRH = () => {
                         <th className="px-4 py-3 font-medium text-center">Data</th>
                         <th className="px-4 py-3 font-medium text-center">Colaborador</th>
                         <th className="px-4 py-3 font-medium text-center">Empresa</th>
-                        <th className="px-4 py-3 font-medium text-center">Regra Aplicada</th>
+                        <th className="px-4 py-3 font-medium text-center">Regra / Diagnóstico</th>
                         <th className="px-4 py-3 font-medium text-center">Entrada</th>
                         <th className="px-4 py-3 font-medium text-center">Saída</th>
                         <th className="px-4 py-3 font-medium text-center">Horas</th>
@@ -1711,9 +1872,7 @@ const ProcessamentoRH = () => {
                     </thead>
                     <tbody>
                       {filteredPontos.map((ponto: any) => {
-                        const workedMinutes = rhProcessingUtils.calculateWorkedMinutes(ponto);
-                        const saldoDia = Number(ponto.saldo_dia || 0);
-                        const saldoAcumulado = Number(ponto.saldo_acumulado_minutos || 0);
+                        const presentation: PontoPresentationInfo = ponto.presentation;
                         const empresaNome =
                           empresaMap.get(ponto.empresa_id) || ponto.empresa_nome || ponto.nome_empresa || "—";
                         const regraRelacionada = resolveRuleForPonto(ponto, regras as any[]);
@@ -1733,60 +1892,59 @@ const ProcessamentoRH = () => {
                                   <TooltipTrigger asChild>
                                     <button
                                       type="button"
-                                      className="inline-flex rounded-full border border-muted-foreground/15 bg-muted px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/30 hover:bg-primary/5 hover:text-primary"
+                                      className="inline-flex rounded-full border border-muted-foreground/15 bg-muted px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/30 hover:bg-primary/5 hover:text-primary max-w-[200px] truncate"
                                       onClick={() => setSelectedRuleExplanation({
                                         ...ruleExplanation,
+                                        presentation,
                                         ponto,
                                         empresaNome,
                                       })}
                                     >
-                                      {ruleExplanation.isPendente
-                                        ? "Aguardando processamento RH"
-                                        : ponto.regra_aplicada || ruleExplanation.regraNome || "—"}
+                                      {presentation?.resumoRegra || "Aguardando RH"}
                                     </button>
                                   </TooltipTrigger>
                                   <TooltipContent className="max-w-sm text-left text-xs leading-5">
-                                    {ruleExplanation.resumo}
+                                    {presentation?.explicacao}
                                   </TooltipContent>
                                 </Tooltip>
-                                <span className="max-w-[240px] text-[11px] leading-4 text-muted-foreground">
-                                  {ruleExplanation.resumo}
+                                <span className="max-w-[240px] text-[11px] leading-4 text-muted-foreground truncate" title={presentation?.explicacao}>
+                                  {presentation?.explicacao}
                                 </span>
                               </div>
                             </td>
-                            <td className="px-4 py-3 text-center font-mono">{ponto.entrada?.slice(0, 5) || "-"}</td>
-                            <td className="px-4 py-3 text-center font-mono">{ponto.saida?.slice(0, 5) || "-"}</td>
-                            <td className="px-4 py-3 text-center">{minutesToTime(workedMinutes)}</td>
+                            <td className="px-4 py-3 text-center font-mono">{presentation?.marcacoes.entrada || "—"}</td>
+                            <td className="px-4 py-3 text-center font-mono">{presentation?.marcacoes.saida || "—"}</td>
+                            <td className="px-4 py-3 text-center">{presentation?.horasBrutas || "—"}</td>
                             <td className="px-4 py-3 text-center text-success">
-                              {ruleExplanation.isPendente ? "—" : minutesToTime(Number(ponto.minutos_extra || 0))}
+                              {presentation?.horasExtra || "—"}
                             </td>
                             <td className="px-4 py-3 text-center text-error">
-                              {ruleExplanation.isPendente ? "—" : minutesToTime(Number(ponto.minutos_atraso || 0))}
+                              {presentation?.atraso || "—"}
                             </td>
                             <td className="px-4 py-3 text-center">
-                              {ruleExplanation.isPendente ? (
+                              {presentation?.isBloqueado || !presentation?.isProcessado ? (
                                 <span className="text-muted-foreground">—</span>
                               ) : (
-                                <span className={cn("font-display font-semibold", saldoDia > 0 ? "text-success" : saldoDia < 0 ? "text-error" : "text-muted-foreground")}>
-                                  {minutesToTime(saldoDia)}
+                                <span className={cn("font-display font-semibold", Number(ponto.saldo_dia || 0) > 0 ? "text-success" : Number(ponto.saldo_dia || 0) < 0 ? "text-error" : "text-muted-foreground")}>
+                                  {presentation?.saldoDia}
                                 </span>
                               )}
                             </td>
                             <td className="px-4 py-3 text-center">
-                              {ruleExplanation.isPendente ? (
+                              {presentation?.isBloqueado || !presentation?.isProcessado ? (
                                 <span className="text-muted-foreground">—</span>
                               ) : (
-                                <span className={cn("font-display font-semibold", saldoAcumulado > 0 ? "text-primary" : saldoAcumulado < 0 ? "text-error" : "text-muted-foreground")}>
-                                  {minutesToTime(saldoAcumulado)}
+                                <span className={cn("font-display font-semibold", Number(ponto.saldo_acumulado_minutos || 0) > 0 ? "text-primary" : Number(ponto.saldo_acumulado_minutos || 0) < 0 ? "text-error" : "text-muted-foreground")}>
+                                  {presentation?.saldoAcumulado}
                                 </span>
                               )}
                             </td>
                             <td className="px-4 py-3 text-center">
                               <Badge
-                                variant={getOperationalStatus(ponto.status_processamento).variant as any}
-                                className={cn(getOperationalStatus(ponto.status_processamento).bg, getOperationalStatus(ponto.status_processamento).color, "shadow-none border-0 h-6 px-2 text-[11px] font-medium")}
+                                variant={(presentation?.badgeVariant || "outline") as any}
+                                className={cn(presentation?.badgeClassName, "shadow-none border h-6 px-2 text-[11px] font-medium whitespace-nowrap")}
                               >
-                                {getOperationalStatus(ponto.status_processamento).label}
+                                {presentation?.badgeLabel || "Pendente"}
                               </Badge>
                             </td>
                           </tr>
@@ -2069,6 +2227,16 @@ const ProcessamentoRH = () => {
                       <p className="text-xs text-muted-foreground">A operação individual acontece aqui, sem duplicação no Banco de Horas consolidado.</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-2 border-warning/50 text-warning hover:bg-warning-soft/30"
+                        onClick={() => openRegularizacaoModal(selectedPonto)}
+                        disabled={!selectedPonto}
+                      >
+                        <Edit3 className="h-4 w-4" />
+                        Regularizar marcação
+                      </Button>
                       <Button variant="outline" size="sm" className="gap-2" onClick={() => setJustificationTarget(selectedColaboradorInconsistencias[0] || null)} disabled={selectedColaboradorInconsistencias.length === 0}>
                         <MessageSquareQuote className="h-4 w-4" />
                         Justificar inconsistência
@@ -2107,7 +2275,7 @@ const ProcessamentoRH = () => {
                       <div className="space-y-2">
                         {selectedColaboradorPontos.map((ponto: any) => {
                           const isActive = selectedPonto?.id === ponto.id;
-                          const saldoDia = Number(ponto.saldo_dia || 0);
+                          const pres: PontoPresentationInfo = ponto.presentation;
                           return (
                             <button
                               key={ponto.id}
@@ -2121,11 +2289,17 @@ const ProcessamentoRH = () => {
                               <div className="flex items-start justify-between gap-3">
                                 <div>
                                   <p className="font-medium text-foreground">{format(new Date(ponto.data), "dd/MM/yyyy")}</p>
-                                  <p className="text-xs text-muted-foreground">{ponto.entrada?.slice(0, 5) || "--:--"} → {ponto.saida?.slice(0, 5) || "--:--"}</p>
+                                  <p className="text-xs text-muted-foreground">{pres?.marcacoes.entrada || "—"} → {pres?.marcacoes.saida || "—"}</p>
                                 </div>
-                                <Badge className={cn(saldoDia > 0 ? "bg-success-soft text-success" : saldoDia < 0 ? "bg-warning-soft text-warning" : "bg-muted text-muted-foreground")}>
-                                  {minutesToTime(saldoDia)}
-                                </Badge>
+                                {pres?.isProcessado ? (
+                                  <Badge className={cn(Number(ponto.saldo_dia || 0) > 0 ? "bg-success-soft text-success" : Number(ponto.saldo_dia || 0) < 0 ? "bg-warning-soft text-warning" : "bg-muted text-muted-foreground")}>
+                                    {minutesToTime(Number(ponto.saldo_dia || 0))}
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="outline" className={cn(pres?.badgeClassName, "text-[10px] px-1.5 py-0 whitespace-nowrap")}>
+                                    {pres?.badgeLabel || "Pendente"}
+                                  </Badge>
+                                )}
                               </div>
                             </button>
                           );
@@ -2139,15 +2313,90 @@ const ProcessamentoRH = () => {
                           <h3 className="font-semibold text-foreground">Dados do dia e processamento</h3>
                         </div>
                         {selectedPonto ? (
-                          <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
-                            <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Entrada</p><p className="mt-1 font-medium">{selectedPonto.entrada?.slice(0, 5) || "—"}</p></div>
-                            <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Saída</p><p className="mt-1 font-medium">{selectedPonto.saida?.slice(0, 5) || "—"}</p></div>
-                            <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Jornada</p><p className="mt-1 font-medium">{selectedColaboradorRuleBreakdown ? minutesToTime(selectedColaboradorRuleBreakdown.jornadaMinutes) : "—"}</p></div>
-                            <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Horas extras</p><p className="mt-1 font-medium text-success">{minutesToTime(Number(selectedPonto.minutos_extra || 0))}</p></div>
-                            <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Saldo do dia</p><p className={cn("mt-1 font-medium", Number(selectedPonto.saldo_dia || 0) > 0 ? "text-success" : Number(selectedPonto.saldo_dia || 0) < 0 ? "text-error" : "text-muted-foreground")}>{minutesToTime(Number(selectedPonto.saldo_dia || 0))}</p></div>
-                            <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Saldo acumulado</p><p className="mt-1 font-medium">{minutesToTime(Number(selectedPonto.saldo_acumulado_minutos || 0))}</p></div>
-                            <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Competência</p><p className="mt-1 font-medium">{formatCompetenciaLabel(selectedColaboradorCompetencia)}</p></div>
-                            <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Regra aplicada</p><p className="mt-1 font-medium">{selectedPonto.regra_aplicada || "—"}</p></div>
+                          <div className="space-y-4 p-4">
+                            <div>
+                              <div className="flex items-center justify-between mb-2">
+                                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Marcações Fatuais</p>
+                                {selectedPonto.presentation?.marcacoes?.possuiRegularizacao && (
+                                  <Badge variant="outline" className="text-[10px] bg-warning-soft text-warning border-warning/30 font-medium">
+                                    Contém regularização RH
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="grid gap-3 grid-cols-2 xl:grid-cols-4">
+                                {([
+                                  { label: "Entrada", campo: "entrada" as const },
+                                  { label: "Saída Almoço", campo: "saida_almoco" as const },
+                                  { label: "Retorno Almoço", campo: "retorno_almoco" as const },
+                                  { label: "Saída Final", campo: "saida" as const },
+                                ]).map(({ label, campo }) => {
+                                  const detalhe = selectedPonto.presentation?.marcacoes?.detalhes?.[campo];
+                                  const isReg = detalhe?.origem === "REGULARIZADA_RH";
+
+                                  return (
+                                    <div
+                                      key={campo}
+                                      className={cn(
+                                        "rounded-xl border p-3 transition-colors",
+                                        isReg ? "border-warning/50 bg-warning-soft/20 shadow-xs" : "border-muted bg-muted/20"
+                                      )}
+                                    >
+                                      <div className="flex items-center justify-between gap-1">
+                                        <p className="text-xs text-muted-foreground">{label}</p>
+                                        {isReg ? (
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 bg-warning/20 text-warning border-warning/40 font-semibold cursor-help">
+                                                RH
+                                              </Badge>
+                                            </TooltipTrigger>
+                                            <TooltipContent className="max-w-xs text-xs space-y-1 p-2.5 bg-popover text-popover-foreground border shadow-md">
+                                              <p className="font-semibold text-warning">Regularizada pelo RH</p>
+                                              <p><span className="text-muted-foreground">Original (RHiD):</span> {detalhe?.valorOriginal || "ausente"}</p>
+                                              <p><span className="text-muted-foreground">Efetivo RH:</span> {detalhe?.valor}</p>
+                                              <p><span className="text-muted-foreground">Responsável:</span> {detalhe?.executadoPorNome || "RH"}</p>
+                                              <p><span className="text-muted-foreground">Justificativa:</span> {detalhe?.justificativa || "—"}</p>
+                                              {detalhe?.dataIntervencao && (
+                                                <p><span className="text-muted-foreground">Data/Hora:</span> {format(new Date(detalhe.dataIntervencao), "dd/MM/yyyy HH:mm")}</p>
+                                              )}
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        ) : (
+                                          <span className="text-[9px] text-muted-foreground/60 uppercase font-mono">
+                                            RHiD
+                                          </span>
+                                        )}
+                                      </div>
+                                      <p className="mt-1 font-medium font-mono text-base">{detalhe?.valor || "—"}</p>
+                                      {isReg && (
+                                        <p className="text-[10px] text-warning/90 mt-1 truncate">
+                                          Orig: {detalhe?.valorOriginal || "ausente"}
+                                        </p>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            <div>
+                              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">Apuração Operacional</p>
+                              <div className="grid gap-3 grid-cols-2 xl:grid-cols-4">
+                                <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Horas brutas</p><p className="mt-1 font-medium">{selectedPonto.presentation?.horasBrutas || "—"}</p></div>
+                                <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Horas extras</p><p className="mt-1 font-medium text-success">{selectedPonto.presentation?.horasExtra || "—"}</p></div>
+                                <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Saldo do dia</p><p className={cn("mt-1 font-medium", selectedPonto.presentation?.saldoDia !== "—" && Number(selectedPonto.saldo_dia || 0) > 0 ? "text-success" : selectedPonto.presentation?.saldoDia !== "—" && Number(selectedPonto.saldo_dia || 0) < 0 ? "text-error" : "text-muted-foreground")}>{selectedPonto.presentation?.saldoDia || "—"}</p></div>
+                                <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Saldo acumulado</p><p className="mt-1 font-medium">{selectedPonto.presentation?.saldoAcumulado || "—"}</p></div>
+                                <div className="rounded-xl border border-muted bg-muted/20 p-3"><p className="text-xs text-muted-foreground">Competência</p><p className="mt-1 font-medium">{formatCompetenciaLabel(selectedColaboradorCompetencia)}</p></div>
+                                <div className="rounded-xl border border-muted bg-muted/20 p-3 xl:col-span-3">
+                                  <p className="text-xs text-muted-foreground">Status / Diagnóstico</p>
+                                  <div className="mt-1">
+                                    <Badge variant={selectedPonto.presentation?.badgeVariant as any} className={cn(selectedPonto.presentation?.badgeClassName, "text-xs px-2 py-0.5")}>
+                                      {selectedPonto.presentation?.badgeLabel || "—"}
+                                    </Badge>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
                           </div>
                         ) : (
                           <div className="p-6 text-sm text-muted-foreground">Selecione um dia para ver o detalhe operacional.</div>
@@ -2158,7 +2407,42 @@ const ProcessamentoRH = () => {
                         <div className="border-b border-muted px-4 py-3">
                           <h3 className="font-semibold text-foreground">Transparência do cálculo</h3>
                         </div>
-                        {selectedColaboradorRuleBreakdown ? (
+                        {selectedPonto?.presentation?.isBloqueado ? (
+                          <div className="p-4 space-y-3">
+                            <div className="rounded-xl border border-warning/40 bg-warning-soft/30 p-4">
+                              <div className="flex items-center gap-2">
+                                <Badge variant={selectedPonto.presentation.badgeVariant as any} className={cn(selectedPonto.presentation.badgeClassName, "text-xs font-semibold px-2 py-0.5")}>
+                                  {selectedPonto.presentation.badgeLabel}
+                                </Badge>
+                                <span className="font-semibold text-foreground">{selectedPonto.presentation.titulo}</span>
+                              </div>
+                              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{selectedPonto.presentation.explicacao}</p>
+                              {selectedPonto.presentation.acaoNecessaria && (
+                                <div className="mt-3 flex items-center gap-2 rounded-lg bg-background/80 p-2.5 text-xs text-foreground border border-border">
+                                  <span className="font-semibold text-primary">Ação necessária:</span>
+                                  <span>{selectedPonto.presentation.acaoNecessaria}</span>
+                                </div>
+                              )}
+                              {(selectedPonto.presentation.statusVisual === "MARCACAO_INCOMPLETA" ||
+                                selectedPonto.presentation.statusVisual === "MARCACAO_INVALIDA") && (
+                                <div className="mt-3 pt-2 border-t border-warning/20 flex justify-end">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="gap-1.5 text-xs border-warning/60 text-warning hover:bg-warning-soft/40"
+                                    onClick={() => openRegularizacaoModal(selectedPonto)}
+                                  >
+                                    <Edit3 className="h-3.5 w-3.5" />
+                                    Regularizar marcação deste dia
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                            <div className="rounded-xl border border-muted bg-muted/20 p-3 text-xs text-muted-foreground">
+                              Cálculo do dia isolado: nenhum saldo positivo, débito ou tolerância foi gerado para este lançamento enquanto bloqueado.
+                            </div>
+                          </div>
+                        ) : selectedColaboradorRuleBreakdown ? (
                           selectedColaboradorRuleBreakdown.isPendente ? (
                             <div className="p-4">
                               <div className="rounded-xl border border-muted bg-muted/20 p-3">
@@ -2550,28 +2834,82 @@ const ProcessamentoRH = () => {
           </DialogHeader>
 
           {selectedRuleExplanation && (
-            selectedRuleExplanation.isPendente ? (
-              <div className="space-y-4">
-                <div className="rounded-xl border border-muted bg-muted/30 p-4 text-sm text-foreground">
-                  <div className="font-medium text-foreground">Aguardando processamento RH</div>
-                  <p className="mt-1 leading-6 text-muted-foreground">
-                    Este registro de ponto foi importado e encontra-se pendente de processamento pelo Motor RH. As tolerâncias contratuais, apuração de horas extras, atrasos ou faltas, e os reflexos no Banco de Horas serão apurados exclusivamente após a execução do processamento RH.
+            selectedRuleExplanation.presentation?.isBloqueado || selectedRuleExplanation.isPendente ? (
+              <div className="space-y-5">
+                <div className={cn(
+                  "rounded-xl border p-4 text-sm",
+                  selectedRuleExplanation.presentation?.isBloqueado
+                    ? "border-warning/40 bg-warning-soft/30"
+                    : "border-muted bg-muted/30"
+                )}>
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant={(selectedRuleExplanation.presentation?.badgeVariant || "secondary") as any}
+                      className={cn(selectedRuleExplanation.presentation?.badgeClassName, "text-xs font-semibold px-2.5 py-0.5")}
+                    >
+                      {selectedRuleExplanation.presentation?.badgeLabel || "Pendente"}
+                    </Badge>
+                    <span className="font-semibold text-foreground">
+                      {selectedRuleExplanation.presentation?.titulo || "Detalhamento Operacional"}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                    {selectedRuleExplanation.presentation?.explicacao || selectedRuleExplanation.resumo}
                   </p>
+                  {selectedRuleExplanation.presentation?.acaoNecessaria && (
+                    <div className="mt-3 flex items-center gap-2 rounded-lg bg-background/80 p-2.5 text-xs text-foreground border border-border">
+                      <span className="font-semibold text-primary">Ação necessária:</span>
+                      <span>{selectedRuleExplanation.presentation.acaoNecessaria}</span>
+                    </div>
+                  )}
                 </div>
+
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
+                    Marcações Fatuais do Dia ({selectedRuleExplanation.ponto?.data ? format(new Date(selectedRuleExplanation.ponto.data), "dd/MM/yyyy") : "—"})
+                  </p>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    <div className="rounded-xl border border-border bg-muted/20 p-3 text-center">
+                      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Entrada</div>
+                      <div className="mt-1 font-mono text-base font-semibold text-foreground">
+                        {selectedRuleExplanation.presentation?.marcacoes.entrada || "—"}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-border bg-muted/20 p-3 text-center">
+                      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Saída Almoço</div>
+                      <div className="mt-1 font-mono text-base font-semibold text-foreground">
+                        {selectedRuleExplanation.presentation?.marcacoes.saidaAlmoco || "—"}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-border bg-muted/20 p-3 text-center">
+                      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Retorno Almoço</div>
+                      <div className="mt-1 font-mono text-base font-semibold text-foreground">
+                        {selectedRuleExplanation.presentation?.marcacoes.retornoAlmoco || "—"}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-border bg-muted/20 p-3 text-center">
+                      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Saída Final</div>
+                      <div className="mt-1 font-mono text-base font-semibold text-foreground">
+                        {selectedRuleExplanation.presentation?.marcacoes.saida || "—"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="rounded-xl border border-border bg-muted/20 p-4">
-                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Horas brutas apuradas</div>
+                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Horas brutas factuais</div>
                     <div className="mt-1 font-display text-xl font-bold text-foreground">
-                      {minutesToTime(selectedRuleExplanation.workedMinutes)}
+                      {selectedRuleExplanation.presentation?.horasBrutas || "—"}
                     </div>
-                    <p className="mt-1 text-xs text-muted-foreground">Calculadas a partir das marcações reais recebidas.</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Apuradas exclusivamente quando há batidas factuais suficientes.</p>
                   </div>
                   <div className="rounded-xl border border-border bg-muted/20 p-4">
                     <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Status do cálculo</div>
                     <div className="mt-1 font-display text-base font-semibold text-warning">
-                      Pendente de processamento
+                      {selectedRuleExplanation.presentation?.isBloqueado ? "Cálculo Bloqueado" : "Pendente de processamento"}
                     </div>
-                    <p className="mt-1 text-xs text-muted-foreground">Nenhum débito, crédito ou tolerância foi aplicado ainda.</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Nenhum débito, crédito ou reflexo no Banco de Horas foi gerado.</p>
                   </div>
                 </div>
               </div>
@@ -2994,6 +3332,27 @@ const ProcessamentoRH = () => {
           description="ATENÇÃO: A competência selecionada já possui validação e/ou fechamento. Esta alteração será registrada no log de auditoria operacional do Admin."
         />
       )}
+      <RegularizarMarcacaoModal
+        open={regularizacaoModalOpen}
+        onOpenChange={(open) => {
+          setRegularizacaoModalOpen(open);
+          if (!open) setRegularizacaoPontoTarget(null);
+        }}
+        ponto={regularizacaoPontoTarget}
+        colaboradorNome={
+          selectedColaborador?.nome ||
+          regularizacaoPontoTarget?.nome_colaborador ||
+          "Colaborador"
+        }
+        onSuccess={async () => {
+          await Promise.all([
+            refetchRegularizacoes(),
+            refetch(),
+            queryClient.invalidateQueries({ queryKey: ["registros_ponto_regularizacoes"] }),
+            queryClient.invalidateQueries({ queryKey: ["rh_pontos_periodo"] }),
+          ]);
+        }}
+      />
     </AppShell>
   );
 };

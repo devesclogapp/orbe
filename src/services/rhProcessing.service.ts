@@ -2,6 +2,17 @@ import { supabase } from "@/lib/supabase";
 import MotorExecutavel from "./operationalEngine/MotorIndex";
 import { CicloOperacionalService } from "./operationalEngine/CicloOperacionalService";
 import { ensurePreCadastroColaboradorFromPonto } from "./preCadastroColaborador.service";
+import { JornadaResolver } from "./operationalEngine/JornadaResolver";
+import { JornadaTrabalho, JornadaResolveResult } from "@/types/jornada.types";
+import { RemuneracaoResolver, RemuneracaoResult } from "./operationalEngine/RemuneracaoResolver";
+import {
+  avaliarMarcacoesPonto,
+  parseMarcacoesPonto,
+  parseTimeToMinutes,
+  AvaliacaoMarcacoesResult,
+  TipoInterpretacaoMarcacao,
+} from "./operationalEngine/MarcacoesPontoParser";
+import { PontoRegularizacaoService } from "./operationalEngine/pontoRegularizacao.service";
 
 type Empresa = {
   id: string;
@@ -16,6 +27,7 @@ type Colaborador = {
   id: string;
   tenant_id?: string | null;
   empresa_id?: string | null;
+  jornada_id?: string | null;
   nome?: string | null;
   matricula?: string | null;
   cpf?: string | null;
@@ -97,6 +109,7 @@ type ProcessParams = {
   empresas: Empresa[];
   colaboradores: Colaborador[];
   regras: Regra[];
+  jornadas?: JornadaTrabalho[];
   executionType?: "manual" | "automatica";
 };
 
@@ -110,6 +123,8 @@ type ProcessResult = {
   inconsistencias: string[];
   durationMs: number;
   pendentesCadastrais: number;
+  pendentesJornada?: number;
+  pendentesMarcacoes?: number;
   processedAt?: string;
 };
 
@@ -447,9 +462,10 @@ const buildInconsistencias = (params: {
   workedMinutes: number;
   jornadaMinutes: number;
   atrasoMinutes: number;
+  isDiaNaoTrabalhavel?: boolean;
 }) => {
   const inconsistencias: Array<{ tipo: string; descricao: string; gravidade: string }> = [];
-  const { ponto, empresaId, colaborador, regra, workedMinutes, jornadaMinutes, atrasoMinutes } = params;
+  const { ponto, empresaId, colaborador, regra, workedMinutes, jornadaMinutes, atrasoMinutes, isDiaNaoTrabalhavel } = params;
 
   if (!empresaId) {
     inconsistencias.push({
@@ -475,7 +491,7 @@ const buildInconsistencias = (params: {
     });
   }
 
-  if (!ponto.entrada && ponto.status !== "Ausente" && ponto.status !== "Falta") {
+  if (!ponto.entrada && ponto.status !== "Ausente" && ponto.status !== "Falta" && !isDiaNaoTrabalhavel) {
     inconsistencias.push({
       tipo: "entrada_ausente",
       descricao: "Registro sem horário de entrada.",
@@ -483,7 +499,7 @@ const buildInconsistencias = (params: {
     });
   }
 
-  if (!ponto.saida && ponto.status !== "Ausente" && ponto.status !== "Falta") {
+  if (!ponto.saida && ponto.status !== "Ausente" && ponto.status !== "Falta" && !isDiaNaoTrabalhavel) {
     inconsistencias.push({
       tipo: "saida_ausente",
       descricao: "Registro sem horário de saída.",
@@ -511,7 +527,7 @@ const buildInconsistencias = (params: {
     });
   }
 
-  if (jornadaMinutes <= 0) {
+  if (jornadaMinutes <= 0 && !isDiaNaoTrabalhavel) {
     inconsistencias.push({
       tipo: "jornada_invalida",
       descricao: "A regra de jornada diária está inválida para este colaborador.",
@@ -551,121 +567,33 @@ export interface RemuneracaoColaborador {
   valorHora: number;
   valorDiaBase: number;
   salarioMensal: number;
-  modeloAplicado: "CLT_MENSAL" | "DIARIA" | "HORISTA" | "PRODUCAO" | "OUTRO";
+  modeloAplicado: string;
+  origemValor?: string;
+  origemDivisor?: string;
+  divisorMensal?: number;
 }
 
 export const resolveRemuneracaoColaborador = (
   colaborador: Colaborador | null | undefined,
   jornadaHours: number = 8,
+  cargaSemanalMinutos?: number | null,
+  isJornadaConfigurada?: boolean,
 ): RemuneracaoColaborador => {
-  const modelo = String(colaborador?.modelo_calculo || "").trim().toUpperCase();
-  const contrato = String(colaborador?.tipo_contrato || "").trim().toUpperCase();
-  const tipoColab = String(colaborador?.tipo_colaborador || "").trim().toUpperCase();
-
-  const valorHoraDireto = Number(colaborador?.valor_hora ?? 0);
-  const salarioBase = Number(colaborador?.salario_base ?? 0);
-  const valorDiaria = Number(colaborador?.valor_diaria ?? 0);
-  const valorBase = Number(colaborador?.valor_base ?? 0);
-
-  // 1. DIARISTA / DIÁRIA (preserva semântica de diária)
-  if (
-    modelo === "DIÁRIA" ||
-    modelo === "DIARIA" ||
-    contrato === "DIARIA" ||
-    contrato === "DIÁRIA" ||
-    tipoColab === "DIARISTA"
-  ) {
-    const diaBase = valorDiaria > 0 ? valorDiaria : valorBase > 0 ? valorBase : 0;
-    const horaBase = jornadaHours > 0 ? diaBase / jornadaHours : 0;
-    return {
-      valorHora: Number(horaBase.toFixed(4)),
-      valorDiaBase: Number(diaBase.toFixed(2)),
-      salarioMensal: 0,
-      modeloAplicado: "DIARIA",
-    };
-  }
-
-  // 2. HORISTA / HORA (preserva semântica de hora)
-  if (modelo === "HORISTA" || contrato === "HORA") {
-    const horaBase = valorHoraDireto > 0 ? valorHoraDireto : valorBase > 0 ? valorBase : 0;
-    const diaBase = horaBase * jornadaHours;
-    return {
-      valorHora: Number(horaBase.toFixed(4)),
-      valorDiaBase: Number(diaBase.toFixed(2)),
-      salarioMensal: 0,
-      modeloAplicado: "HORISTA",
-    };
-  }
-
-  // 3. PRODUÇÃO / OPERAÇÃO (preserva semântica de produção/operação)
-  if (
-    modelo === "PRODUÇÃO" ||
-    modelo === "PRODUCAO" ||
-    contrato === "OPERAÇÃO" ||
-    contrato === "OPERACAO"
-  ) {
-    const diaBase = valorBase > 0 ? valorBase : 0;
-    const horaBase = jornadaHours > 0 ? diaBase / jornadaHours : 0;
-    return {
-      valorHora: Number(horaBase.toFixed(4)),
-      valorDiaBase: Number(diaBase.toFixed(2)),
-      salarioMensal: 0,
-      modeloAplicado: "PRODUCAO",
-    };
-  }
-
-  // 4. CLT MENSAL / MENSALISTA
-  const isMensal =
-    modelo === "CLT_MENSAL" ||
-    modelo === "MENSAL" ||
-    contrato === "MENSAL" ||
-    tipoColab === "CLT" ||
-    salarioBase > 0;
-
-  if (isMensal) {
-    const salario = salarioBase > 0 ? salarioBase : valorBase > 0 ? valorBase : 0;
-    const divisorMensal = 220; // 44h semanais padrão CLT
-    const divisorDiaFalta = 30; // art. 64 da CLT: 1/30 do salário mensal
-
-    let horaBase = 0;
-    if (valorHoraDireto > 0) {
-      horaBase = valorHoraDireto;
-    } else if (salario > 0) {
-      horaBase = salario / divisorMensal;
-    }
-
-    const diaBase =
-      salario > 0
-        ? salario / divisorDiaFalta
-        : horaBase > 0
-          ? horaBase * (divisorMensal / divisorDiaFalta)
-          : 0;
-
-    return {
-      valorHora: Number(horaBase.toFixed(4)),
-      valorDiaBase: Number(diaBase.toFixed(2)),
-      salarioMensal: salario,
-      modeloAplicado: "CLT_MENSAL",
-    };
-  }
-
-  // 5. FALLBACK GENÉRICO
-  const horaBase =
-    valorHoraDireto > 0
-      ? valorHoraDireto
-      : valorDiaria > 0 && jornadaHours > 0
-        ? valorDiaria / jornadaHours
-        : valorBase > 0 && jornadaHours > 0
-          ? valorBase / jornadaHours
-          : 0;
-
-  const diaBase = valorDiaria > 0 ? valorDiaria : horaBase * jornadaHours;
+  const res = RemuneracaoResolver.resolve({
+    colaborador,
+    minutosJornadaDia: Math.round(jornadaHours * 60),
+    cargaSemanalMinutos,
+    isJornadaConfigurada,
+  });
 
   return {
-    valorHora: Number(horaBase.toFixed(4)),
-    valorDiaBase: Number(diaBase.toFixed(2)),
-    salarioMensal: 0,
-    modeloAplicado: "OUTRO",
+    valorHora: res.valorHora,
+    valorDiaBase: res.valorDiaBase,
+    salarioMensal: res.salarioMensal,
+    modeloAplicado: res.modeloAplicado,
+    origemValor: res.origemValor,
+    origemDivisor: res.origemDivisor,
+    divisorMensal: res.divisorMensal,
   };
 };
 
@@ -673,13 +601,53 @@ export const calculateCompensation = (params: {
   ponto: Ponto;
   regra: Regra | null;
   colaborador: Colaborador | null;
+  minutosPrevistosJornada?: number | null;
+  avaliacaoMarcacoes?: AvaliacaoMarcacoesResult | null;
+  cargaSemanalMinutos?: number | null;
+  isJornadaConfigurada?: boolean;
 }) => {
-  const { ponto, regra, colaborador } = params;
+  const { ponto, regra, colaborador, minutosPrevistosJornada, avaliacaoMarcacoes } = params;
   const isFalta = ponto.status === "Ausente" || ponto.status === "Falta";
-  const workedMinutes = isFalta ? 0 : calculateWorkedMinutes(ponto);
-  const jornadaHours =
-    Number(regra?.carga_horaria_diaria ?? regra?.jornada_contratada ?? 8) || 8;
-  const jornadaMinutes = Math.round(jornadaHours * 60);
+
+  // FIX 04.2-D: Determinação segura dos minutos trabalhados via parser de marcações
+  let workedMinutes = 0;
+  if (!isFalta) {
+    if (avaliacaoMarcacoes) {
+      if (!avaliacaoMarcacoes.calculavel) {
+        throw new Error(
+          `calculateCompensation não pode ser invocado para marcações não calculáveis (${avaliacaoMarcacoes.tipo}): ${avaliacaoMarcacoes.motivo}`
+        );
+      }
+      workedMinutes = avaliacaoMarcacoes.minutosTrabalhados ?? 0;
+    } else {
+      const avaliacaoDireta = avaliarMarcacoesPonto({
+        ponto,
+        jornadaResolvida:
+          typeof minutosPrevistosJornada === "number"
+            ? {
+                temJornadaConfigurada: true,
+                trabalhavel: minutosPrevistosJornada > 0,
+                minutosPrevistos: minutosPrevistosJornada,
+              }
+            : null,
+      });
+
+      if (avaliacaoDireta.calculavel) {
+        workedMinutes = avaliacaoDireta.minutosTrabalhados ?? 0;
+      } else {
+        throw new Error(
+          `calculateCompensation impedido pelo Gate de Marcações (${avaliacaoDireta.tipo}): ${avaliacaoDireta.motivo}`
+        );
+      }
+    }
+  }
+  
+  // FIX 04.2-C: Prioriza os minutos previstos apurados deterministamente pelo JornadaResolver
+  const jornadaMinutes =
+    typeof minutosPrevistosJornada === "number" && minutosPrevistosJornada >= 0
+      ? minutosPrevistosJornada
+      : Math.round((Number(regra?.carga_horaria_diaria ?? regra?.jornada_contratada ?? 8) || 8) * 60);
+  const jornadaHours = Number((jornadaMinutes / 60).toFixed(4));
   const toleranciaAtraso = Number(regra?.tolerancia_atraso ?? 5) || 0;
   const toleranciaExtra = Number(regra?.tolerancia_hora_extra ?? 0) || 0;
   const limiteDiarioBanco = Number(regra?.limite_diario_banco ?? 480) || 480;
@@ -700,7 +668,12 @@ export const calculateCompensation = (params: {
   const saldoDia = minutosExtra - minutosDebito;
   const atrasoMinutes = !isFalta && saldoBase < 0 ? minutosDebito : 0;
 
-  const remuneracao = resolveRemuneracaoColaborador(colaborador, jornadaHours);
+  const remuneracao = resolveRemuneracaoColaborador(
+    colaborador,
+    jornadaHours,
+    params.cargaSemanalMinutos,
+    params.isJornadaConfigurada,
+  );
   const valorHoraBase = remuneracao.valorHora;
   const valorDiaBase = remuneracao.valorDiaBase;
 
@@ -1145,6 +1118,154 @@ const insertLog = async ({
   return executadoEm;
 };
 
+export interface GateEvaluationResult {
+  passouCadastral: boolean;
+  passouJornada: boolean;
+  passouRegraBanco: boolean;
+  passouConsistenciaMarcacoes: boolean;
+  bloqueado: boolean;
+  motivoBloqueio?: string | null;
+  tipoBloqueio?:
+    | "bloqueio_cadastral"
+    | "jornada_nao_parametrizada"
+    | "regra_banco_nao_parametrizada"
+    | "marcacao_incompleta"
+    | "marcacao_invalida"
+    | "sem_marcacoes"
+    | "falta_pendente_justificativa"
+    | "trabalho_em_dia_nao_trabalhavel"
+    | string
+    | null;
+  resolucaoJornada?: JornadaResolveResult | null;
+  regra?: Regra | null;
+  avaliacaoMarcacoes?: AvaliacaoMarcacoesResult | null;
+}
+
+/**
+ * Avalia em ordem estrita de precedência os Gates de Segurança do pipeline CLT:
+ * Gate 1: Gate Cadastral (Completude do colaborador)
+ * Gate 2: Gate de Jornada (JornadaResolver - escala/jornada configurada)
+ * Gate 3: Gate de Banco de Horas (Bloqueio de fallback 8h automático)
+ * Gate 4: Gate de Consistência das Marcações (Validação e interpretação segura das batidas)
+ */
+export const avaliarPontoGates = async (params: {
+  tenantId: string;
+  ponto: Ponto;
+  colaborador: Colaborador | null;
+  resolvedEmpresaId: string | null;
+  jornadasRuntime?: JornadaTrabalho[];
+  regrasRuntime?: Regra[];
+}): Promise<GateEvaluationResult> => {
+  const { tenantId, ponto, colaborador, resolvedEmpresaId, jornadasRuntime = [], regrasRuntime = [] } = params;
+
+  // 1. GATE CADASTRAL
+  const validacaoCadastral = validateColaboradorApto(colaborador);
+  if (!validacaoCadastral.apto) {
+    return {
+      passouCadastral: false,
+      passouJornada: false,
+      passouRegraBanco: false,
+      passouConsistenciaMarcacoes: false,
+      bloqueado: true,
+      tipoBloqueio: "bloqueio_cadastral",
+      motivoBloqueio: validacaoCadastral.motivos.join("; "),
+      resolucaoJornada: null,
+      regra: null,
+      avaliacaoMarcacoes: null,
+    };
+  }
+
+  // 2. GATE DE JORNADA (FIX 04.2-C)
+  const resolucaoJornada = await JornadaResolver.resolve({
+    tenantId,
+    data: ponto.data,
+    colaboradorId: colaborador?.id || null,
+    colaboradorJornadaId: colaborador?.jornada_id || null,
+    empresaId: resolvedEmpresaId,
+    jornadasDisponiveis: jornadasRuntime,
+  });
+
+  if (!resolucaoJornada.temJornadaConfigurada) {
+    return {
+      passouCadastral: true,
+      passouJornada: false,
+      passouRegraBanco: false,
+      passouConsistenciaMarcacoes: false,
+      bloqueado: true,
+      tipoBloqueio: "jornada_nao_parametrizada",
+      motivoBloqueio: "Jornada de trabalho não parametrizada para este colaborador/empresa.",
+      resolucaoJornada,
+      regra: null,
+      avaliacaoMarcacoes: null,
+    };
+  }
+
+  // 3. GATE DE BANCO DE HORAS (BLOQUEIO DEFINITIVO DE FALLBACK AUTOMÁTICO)
+  const tipoColab = colaborador?.tipo_colaborador || "CLT";
+  const calendario = MotorExecutavel.Calendar.getCalendario(ponto.data, tipoColab);
+
+  const motorCtx = {
+    tenantId,
+    empresaId: resolvedEmpresaId,
+    colaboradorId: colaborador?.id || null,
+    operacaoId: null,
+    dataProcessamento: ponto.data,
+    tipoColaborador: tipoColab,
+    calendario,
+  };
+
+  const { rule: abstractRegra, isFallback } = MotorExecutavel.resolveRule(motorCtx, regrasRuntime);
+
+  if (isFallback) {
+    return {
+      passouCadastral: true,
+      passouJornada: true,
+      passouRegraBanco: false,
+      passouConsistenciaMarcacoes: false,
+      bloqueado: true,
+      tipoBloqueio: "regra_banco_nao_parametrizada",
+      motivoBloqueio: "Regra de banco de horas/compensação não parametrizada para este colaborador/empresa.",
+      resolucaoJornada,
+      regra: null,
+      avaliacaoMarcacoes: null,
+    };
+  }
+
+  // 4. GATE DE CONSISTÊNCIA DAS MARCAÇÕES (FIX 04.2-D)
+  const avaliacaoMarcacoes = avaliarMarcacoesPonto({
+    ponto,
+    jornadaResolvida: resolucaoJornada,
+  });
+
+  if (!avaliacaoMarcacoes.calculavel) {
+    return {
+      passouCadastral: true,
+      passouJornada: true,
+      passouRegraBanco: true,
+      passouConsistenciaMarcacoes: false,
+      bloqueado: true,
+      tipoBloqueio: avaliacaoMarcacoes.tipo.toLowerCase(),
+      motivoBloqueio: avaliacaoMarcacoes.motivo,
+      resolucaoJornada,
+      regra: (abstractRegra.payload as Regra) ?? null,
+      avaliacaoMarcacoes,
+    };
+  }
+
+  return {
+    passouCadastral: true,
+    passouJornada: true,
+    passouRegraBanco: true,
+    passouConsistenciaMarcacoes: true,
+    bloqueado: false,
+    tipoBloqueio: null,
+    motivoBloqueio: null,
+    resolucaoJornada,
+    regra: (abstractRegra.payload as Regra) ?? null,
+    avaliacaoMarcacoes,
+  };
+};
+
 export const processRhPeriod = async ({
   tenantId,
   month,
@@ -1153,6 +1274,7 @@ export const processRhPeriod = async ({
   empresas,
   colaboradores,
   regras,
+  jornadas,
   executionType = "manual",
 }: ProcessParams): Promise<ProcessResult> => {
   const startedAt = Date.now();
@@ -1160,6 +1282,22 @@ export const processRhPeriod = async ({
   const empresasRuntime = [...empresas];
   const colaboradoresRuntime = [...colaboradores];
   const regrasRuntime = [...regras];
+
+  let jornadasRuntime: JornadaTrabalho[] = [];
+  if (jornadas) {
+    jornadasRuntime = [...jornadas];
+  } else {
+    try {
+      const { data: dbJornadas } = await (supabase as any)
+        .from("jornadas_trabalho")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .eq("status", "ativo");
+      jornadasRuntime = (dbJornadas || []) as JornadaTrabalho[];
+    } catch (err: any) {
+      console.warn("[rhProcessing] Não foi possível carregar jornadas do banco:", err?.message);
+    }
+  }
 
   if (pontos.length === 0) {
     return {
@@ -1172,6 +1310,7 @@ export const processRhPeriod = async ({
       inconsistencias: [],
       durationMs: Date.now() - startedAt,
       pendentesCadastrais: 0,
+      pendentesJornada: 0,
     };
   }
 
@@ -1219,6 +1358,8 @@ export const processRhPeriod = async ({
           : [],
       durationMs: Date.now() - startedAt,
       pendentesCadastrais: 0,
+      pendentesJornada: 0,
+      pendentesMarcacoes: 0,
     };
   }
 
@@ -1240,17 +1381,43 @@ export const processRhPeriod = async ({
   const inconsistenciasResumo: string[] = [];
   const colaboradoresAfetados = new Map<string, Colaborador>();
 
+  // FIX CP04.8: Carregar regularizações ativas para os pontos a processar
+  let regularizacoesPorPonto = new Map<string, any>();
+  try {
+    const { data: dbRegularizacoes } = await (supabase as any)
+      .from("registros_ponto_regularizacoes")
+      .select("*")
+      .eq("tenant_id", tenantId)
+      .eq("ativo", true)
+      .in("registro_ponto_id", pontoIds);
+
+    if (dbRegularizacoes && dbRegularizacoes.length > 0) {
+      regularizacoesPorPonto = PontoRegularizacaoService.mapearRegularizacoesPorPonto(dbRegularizacoes);
+    }
+  } catch (err: any) {
+    console.warn("[rhProcessing] Não foi possível carregar regularizações:", err?.message);
+  }
+
   let totalInconsistencias = 0;
   let totalCreditos = 0;
   let totalDebitos = 0;
   let pendentesCadastrais = 0;
+  let pendentesJornada = 0;
+  let pendentesMarcacoes = 0;
+  let totalProcessados = 0;
 
   for (const ponto of validPontosUnicos) {
     const alertas: Array<{ tipo: string; descricao: string }> = [];
 
-    let empresa = getEmpresaFromPonto(ponto, empresasRuntime);
-    if (!empresa && (ponto.empresa_nome || ponto.nome_empresa)) {
-      empresa = await createEmpresaFromPonto({ tenantId, ponto });
+    // FIX CP04.8: Anexa regularizações ativas existentes (marcações efetivas para Gate 4)
+    const pontoEfetivo = PontoRegularizacaoService.anexarRegularizacoes(
+      ponto,
+      regularizacoesPorPonto.get(ponto.id)
+    );
+
+    let empresa = getEmpresaFromPonto(pontoEfetivo, empresasRuntime);
+    if (!empresa && (pontoEfetivo.empresa_nome || pontoEfetivo.nome_empresa)) {
+      empresa = await createEmpresaFromPonto({ tenantId, ponto: pontoEfetivo });
       if (empresa) {
         empresasRuntime.push(empresa);
         alertas.push({
@@ -1260,14 +1427,14 @@ export const processRhPeriod = async ({
       }
     }
 
-    const resolvedEmpresaId = empresa?.id ?? ponto.empresa_id ?? null;
+    const resolvedEmpresaId = empresa?.id ?? pontoEfetivo.empresa_id ?? null;
 
-    let colaborador = findColaborador(ponto, colaboradoresRuntime, resolvedEmpresaId);
-    if (!colaborador && resolvedEmpresaId && (ponto.nome_colaborador || ponto.matricula_colaborador || ponto.cpf_colaborador)) {
+    let colaborador = findColaborador(pontoEfetivo, colaboradoresRuntime, resolvedEmpresaId);
+    if (!colaborador && resolvedEmpresaId && (pontoEfetivo.nome_colaborador || pontoEfetivo.matricula_colaborador || pontoEfetivo.cpf_colaborador)) {
       colaborador = await createColaboradorFromPonto({
         tenantId,
         empresaId: resolvedEmpresaId,
-        ponto,
+        ponto: pontoEfetivo,
         colaboradores: colaboradoresRuntime,
       });
 
@@ -1280,66 +1447,58 @@ export const processRhPeriod = async ({
       }
     }
 
-    // === GATE CADASTRAL — Bloqueia pontos de colaboradores não aptos ===
-    const validacaoCadastral = validateColaboradorApto(colaborador);
-    if (!validacaoCadastral.apto) {
-      pendentesCadastrais += 1;
+    // === GATES DE SEGURANÇA (FIX 04.2-C & FIX 04.2-D & FIX CP04.8) ===
+    const gateResult = await avaliarPontoGates({
+      tenantId,
+      ponto: pontoEfetivo,
+      colaborador,
+      resolvedEmpresaId,
+      jornadasRuntime,
+      regrasRuntime,
+    });
 
-      // Registrar motivos como inconsistência para rastreabilidade
-      const motivoDescricao = validacaoCadastral.motivos.join("; ");
-      const nomeColab = colaborador?.nome || ponto.nome_colaborador || "Colaborador";
-      inconsistenciasResumo.push(`${nomeColab}: ${motivoDescricao}`);
+    if (gateResult.bloqueado) {
+      const nomeColab = colaborador?.nome || pontoEfetivo.nome_colaborador || "Colaborador";
+      inconsistenciasResumo.push(`${nomeColab}: ${gateResult.motivoBloqueio}`);
 
-      await saveAlertas(tenantId, ponto, colaborador?.id ?? null, resolvedEmpresaId, [
+      if (gateResult.tipoBloqueio === "bloqueio_cadastral") {
+        pendentesCadastrais += 1;
+      } else if (gateResult.tipoBloqueio === "jornada_nao_parametrizada") {
+        pendentesJornada += 1;
+      } else {
+        pendentesMarcacoes += 1;
+      }
+
+      await saveAlertas(tenantId, pontoEfetivo, colaborador?.id ?? null, resolvedEmpresaId, [
         {
-          tipo: "bloqueio_cadastral",
-          descricao: `Ponto não processado — ${motivoDescricao}`,
+          tipo: gateResult.tipoBloqueio!,
+          descricao: gateResult.motivoBloqueio!,
         },
       ]);
 
-      // NÃO processar: manter status pendente, não gerar saldo/evento
+      // NUNCA processa: mantém ponto pendente, zero saldo, zero evento, zero regra de fallback no banco
       continue;
     }
 
-    const tipoColab = colaborador?.tipo_colaborador || "CLT";
-    const calendario = MotorExecutavel.Calendar.getCalendario(ponto.data, tipoColab);
+    const regra = gateResult.regra!;
+    const resolucaoJornada = gateResult.resolucaoJornada!;
+    const regraAplicadaNome = regra.nome || DEFAULT_RULE_NAME;
 
-    const motorCtx = {
-      tenantId: tenantId,
-      empresaId: resolvedEmpresaId,
-      colaboradorId: colaborador?.id || null,
-      operacaoId: null,
-      dataProcessamento: ponto.data,
-      tipoColaborador: tipoColab,
-      calendario
-    };
+    alertas.push({
+      tipo: "motor_regra_aplicada",
+      descricao: `Motor aplicou regra de jornada (${resolucaoJornada.jornadaId}) e banco (${regraAplicadaNome})`,
+    });
 
-    const { rule: abstractRegra, isFallback } = MotorExecutavel.resolveRule(motorCtx, regrasRuntime);
-    let regra = abstractRegra.payload as Regra;
-    let regraAplicadaNome = abstractRegra.nome || regra?.nome || DEFAULT_RULE_NAME;
-
-    if (isFallback) {
-      const existingFallback = regrasRuntime.find(r => r.nome === regra.nome && r.origem_ponto === "automatica");
-      if (!existingFallback) {
-        regra = await createFallbackRegra(tenantId);
-        regrasRuntime.push(regra);
-      } else {
-        regra = existingFallback as Regra;
-      }
-      regraAplicadaNome = regra?.nome || abstractRegra.nome || DEFAULT_RULE_NAME;
-      alertas.push({
-        tipo: "regra_padrao_aplicada",
-        descricao: `Regra resolvida via Motor Seguro: ${regraAplicadaNome}`,
-      });
-    } else {
-      regraAplicadaNome = regra?.nome || abstractRegra.nome || DEFAULT_RULE_NAME;
-      alertas.push({
-        tipo: "motor_regra_aplicada",
-        descricao: `Motor aplicou regra: ${regraAplicadaNome} via prioridade ${abstractRegra.prioridade}`,
-      });
-    }
-
-    const calculo = calculateCompensation({ ponto, regra, colaborador });
+    const calculo = calculateCompensation({
+      ponto: pontoEfetivo,
+      regra,
+      colaborador,
+      minutosPrevistosJornada: resolucaoJornada.minutosPrevistos,
+      avaliacaoMarcacoes: gateResult.avaliacaoMarcacoes,
+      cargaSemanalMinutos: resolucaoJornada.cargaSemanalMinutos,
+      isJornadaConfigurada: resolucaoJornada.temJornadaConfigurada,
+    });
+    totalProcessados += 1;
     const dataVencimentoCalculada =
       calculo.saldoDia > 0 ? calculateDataVencimento(ponto.data, regra) : null;
 
@@ -1560,7 +1719,7 @@ export const processRhPeriod = async ({
     month,
     empresaId,
     totalRegistros: validPontosUnicos.length + lockedPontosCount.total,
-    totalProcessados: validPontosUnicos.length,
+    totalProcessados,
     totalInconsistencias,
     totalCreditos,
     totalDebitos,
@@ -1570,7 +1729,7 @@ export const processRhPeriod = async ({
 
   return {
     totalRegistros: validPontosUnicos.length + lockedPontosCount.total,
-    totalProcessados: validPontosUnicos.length,
+    totalProcessados,
     totalInconsistencias,
     totalCreditos,
     totalDebitos,
@@ -1578,6 +1737,8 @@ export const processRhPeriod = async ({
     inconsistencias: inconsistenciasResumo.slice(0, 10),
     durationMs,
     pendentesCadastrais,
+    pendentesJornada,
+    pendentesMarcacoes,
     processedAt: executadoEm ?? processedAt,
   };
 };
@@ -1777,4 +1938,17 @@ export const rhProcessingUtils = {
   timeToMinutes,
   minutesToHourDecimal,
   calculateWorkedMinutes,
+  avaliarMarcacoesPonto,
+  parseMarcacoesPonto,
 };
+
+export {
+  avaliarMarcacoesPonto,
+  parseMarcacoesPonto,
+  parseTimeToMinutes,
+} from "./operationalEngine/MarcacoesPontoParser";
+export type {
+  TipoInterpretacaoMarcacao,
+  AvaliacaoMarcacoesResult,
+  MarcacaoPreservada,
+} from "./operationalEngine/MarcacoesPontoParser";

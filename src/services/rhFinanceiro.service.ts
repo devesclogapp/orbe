@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { EnvironmentQueryFilter } from "./environment/EnvironmentQueryFilter";
 import { EnvironmentService } from "./environment/EnvironmentService";
+import { RemuneracaoResolver } from "./operationalEngine/RemuneracaoResolver";
 
 type BloqueioItem = {
   id: string;
@@ -123,16 +124,7 @@ const getMinutesForEvent = (ponto: any, tipoEvento: string) => {
 };
 
 const resolveValorHora = (colaborador: any) => {
-  const valorHora = safeNumber(colaborador?.valor_hora);
-  if (valorHora > 0) return valorHora;
-
-  const salarioBase = safeNumber(colaborador?.salario_base);
-  if (salarioBase > 0) return salarioBase / 220;
-
-  const valorBase = safeNumber(colaborador?.valor_base);
-  if (valorBase > 0) return valorBase / 220;
-
-  return 0;
+  return RemuneracaoResolver.resolve({ colaborador }).valorHora;
 };
 
 const getCurrentSessionContext = async () => {
