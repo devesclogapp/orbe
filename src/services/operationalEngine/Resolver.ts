@@ -23,24 +23,52 @@ export class EngineResolver {
         tipoOrigem: "banco_horas_regras",
         prioridade: priority,
         status: r.status,
+        vigenciaInicio: r.vigencia_inicio || r.vigenciaInicio || null,
+        vigenciaFim: r.vigencia_fim || r.vigenciaFim || null,
+        adicionalHoraExtraPercentual: Number(r.adicional_hora_extra_percentual ?? r.adicionalHoraExtraPercentual ?? 50),
         payload: r
       };
     });
 
-    // Filtra vigência e status ativo
-    const dataProcDate = new Date(`${ctx.dataProcessamento}T00:00:00`);
+    // Filtra vigência temporal estrita e status ativo (comparação lexicográfica YYYY-MM-DD imune a fuso)
+    const dataProcStr = ctx.dataProcessamento ? String(ctx.dataProcessamento).slice(0, 10) : "";
     const validRules = rawToAbstract.filter((r) => {
       if (r.status !== "ativo") return false;
       if (r.payload.bh_ativo === false) return false;
 
-      // Se houver validade temporal na regra:
-      if (r.vigenciaInicio && new Date(`${r.vigenciaInicio}T00:00:00`) > dataProcDate) return false;
-      if (r.vigenciaFim && new Date(`${r.vigenciaFim}T00:00:00`) < dataProcDate) return false;
+      // Resolução temporal estrita (inclusiva no início e no fim):
+      if (dataProcStr) {
+        if (r.vigenciaInicio && dataProcStr < r.vigenciaInicio) return false;
+        if (r.vigenciaFim && dataProcStr > r.vigenciaFim) return false;
+      }
       return true;
     });
 
-    // Ordena pela maior prioridade
-    validRules.sort((a, b) => b.prioridade - a.prioridade);
+    // Ordenação e desempate determinístico:
+    // 1. Maior prioridade hierárquica (EMPRESA 80 > GLOBAL 20)
+    // 2. Vigência com início mais recente (política temporal mais específica)
+    // 3. Regra criada mais recentemente (created_at DESC)
+    validRules.sort((a, b) => {
+      if (b.prioridade !== a.prioridade) {
+        return b.prioridade - a.prioridade;
+      }
+      const inicioA = a.vigenciaInicio || "1900-01-01";
+      const inicioB = b.vigenciaInicio || "1900-01-01";
+      if (inicioB !== inicioA) {
+        return inicioB.localeCompare(inicioA);
+      }
+      const createdA = String(a.payload?.created_at || "");
+      const createdB = String(b.payload?.created_at || "");
+      return createdB.localeCompare(createdA);
+    });
+
+    // Auditoria de advertência caso haja regras concorrentes no mesmo escopo/data
+    if (validRules.length > 1 && validRules[0].prioridade === validRules[1].prioridade) {
+      EngineLogger.warn(
+        `[EngineResolver] Conflito de regras ativas concorrentes para o mesmo escopo (prioridade ${validRules[0].prioridade}) na data ${dataProcStr}. Regra selecionada deterministicamente: "${validRules[0].nome}" (${validRules[0].id}) sobreposta com "${validRules[1].nome}" (${validRules[1].id})`,
+        { component: "EngineResolver" }
+      );
+    }
 
     const hash = EngineLogger.buildContextHash(ctx);
     
@@ -68,7 +96,7 @@ export class EngineResolver {
       return { rule: bestRule, isFallback: false };
     }
 
-    // FALLBACK SEGURO
+    // FALLBACK SEGURO (BLOQUEIO NO GATE 3)
     EngineLogger.logDecision({
       ...baseLog,
       foiFallback: true,
@@ -85,10 +113,12 @@ export class EngineResolver {
       tipoOrigem: "banco_horas_fallback",
       prioridade: RulePriority.GLOBAL,
       status: "ativo",
+      vigenciaInicio: "2026-01-01",
+      vigenciaFim: null,
+      adicionalHoraExtraPercentual: 50,
       payload: {
         bh_ativo: true,
-        carga_horaria_diaria: 8,
-        jornada_contratada: 8,
+        adicional_hora_extra_percentual: 50,
         tolerancia_atraso: 10,
         tolerancia_hora_extra: 10,
         limite_diario_banco: 120,

@@ -41,6 +41,7 @@ export type AbstractRule = {
   status: "ativo" | "inativo" | "pendente" | string;
   vigenciaInicio?: string | null;
   vigenciaFim?: string | null;
+  adicionalHoraExtraPercentual?: number | null;
   // Generic fields that map the original table
   payload: Record<string, any>;
 };

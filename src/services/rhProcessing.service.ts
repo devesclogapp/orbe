@@ -58,7 +58,12 @@ type Regra = {
   empresa_id?: string | null;
   nome?: string | null;
   bh_ativo?: boolean | null;
+  vigencia_inicio?: string | null;
+  vigencia_fim?: string | null;
+  adicional_hora_extra_percentual?: number | null;
+  /** @deprecated Utilizar exclusivamente JornadaResolver */
   carga_horaria_diaria?: number | null;
+  /** @deprecated Utilizar exclusivamente JornadaResolver */
   jornada_contratada?: number | null;
   tolerancia_atraso?: number | null;
   tolerancia_hora_extra?: number | null;
@@ -180,8 +185,13 @@ const validateColaboradorApto = (colaborador: Colaborador | null): CadastralVali
   return { apto: motivos.length === 0, motivos };
 };
 
+export const getMultiplicadorHoraExtra = (regra?: Regra | null): number => {
+  const percentual = Number(regra?.adicional_hora_extra_percentual ?? 50);
+  return Number((1 + Math.max(percentual, 0) / 100).toFixed(4));
+};
+
 const RH_EVENT_ORIGIN = "processamento_rh";
-const EXTRA_RATE = 1.5;
+export const DEFAULT_EXTRA_RATE = 1.5;
 const AUTO_IMPORT_ORIGIN = "importacao_ponto";
 const DEFAULT_RULE_NAME = "Regra padrão automática 8h";
 const VENCIMENTO_ALERT_WINDOW_DAYS = 30;
@@ -677,7 +687,8 @@ export const calculateCompensation = (params: {
   const valorHoraBase = remuneracao.valorHora;
   const valorDiaBase = remuneracao.valorDiaBase;
 
-  const valorExtras = minutesToHourDecimal(minutosExtra) * valorHoraBase * EXTRA_RATE;
+  const multiplicadorExtra = getMultiplicadorHoraExtra(regra);
+  const valorExtras = minutesToHourDecimal(minutosExtra) * valorHoraBase * multiplicadorExtra;
   const valorAtraso = minutesToHourDecimal(atrasoMinutes) * valorHoraBase;
   const valorFalta = isFalta ? valorDiaBase : 0;
   const valorDia = Math.max(valorDiaBase + valorExtras - valorAtraso - valorFalta, 0);
@@ -696,6 +707,7 @@ export const calculateCompensation = (params: {
     valorAtraso,
     valorFalta,
     valorDia,
+    multiplicadorExtra,
   };
 };
 
@@ -1640,8 +1652,8 @@ export const processRhPeriod = async ({
         calculo.minutosExtra > 0
           ? {
               minutos: calculo.minutosExtra,
-              percentual: 50,
-              multiplicador: EXTRA_RATE,
+              percentual: Number(regra?.adicional_hora_extra_percentual ?? 50),
+              multiplicador: calculo.multiplicadorExtra,
               valor: Number(calculo.valorExtras.toFixed(2)),
             }
           : null,
