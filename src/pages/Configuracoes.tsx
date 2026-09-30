@@ -56,6 +56,7 @@ import {
 } from "@/services/base.service";
 import ResetOperacional from "@/pages/Configuracoes/ResetOperacional";
 import JornadasTrabalhoSection from "@/pages/Configuracoes/JornadasTrabalhoSection";
+import RegrasBancoHorasSection from "@/pages/Configuracoes/RegrasBancoHorasSection";
 
 const IMPORTACAO_MODULOS = [
   { value: "colaboradores", label: "Colaboradores" },
@@ -604,6 +605,8 @@ const Configuracoes = () => {
             </div>
 
             <JornadasTrabalhoSection />
+
+            <RegrasBancoHorasSection />
 
             <section className="esc-card p-6 mt-5">
               <div className="flex items-start justify-between gap-3">

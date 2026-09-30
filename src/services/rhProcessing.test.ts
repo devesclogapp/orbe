@@ -50,7 +50,7 @@ describe('FIX CP03.2 — Cálculo Monetário do CLT Mensal e Regressão de Regim
       };
       const res = calculateCompensation({
         ponto: pontoExtra,
-        regra: { id: 'r1', carga_horaria_diaria: 8, tolerancia_atraso: 0, tolerancia_hora_extra: 0, limite_diario_banco: 480 },
+        regra: { id: 'r1', carga_horaria_diaria: 8, tolerancia_atraso: 0, tolerancia_hora_extra: 0, limite_diario_banco: 0 },
         colaborador: cltColab
       });
 
@@ -135,7 +135,7 @@ describe('FIX CP03.2 — Cálculo Monetário do CLT Mensal e Regressão de Regim
       };
       const res = calculateCompensation({
         ponto: pontoExtra,
-        regra: { id: 'r1', carga_horaria_diaria: 8, tolerancia_atraso: 0, tolerancia_hora_extra: 0, limite_diario_banco: 480 },
+        regra: { id: 'r1', carga_horaria_diaria: 8, tolerancia_atraso: 0, tolerancia_hora_extra: 0, limite_diario_banco: 0 },
         colaborador: diaristaColab
       });
       expect(res.valorExtras).toBeCloseTo(26.25, 2); // 1.0 * 17.50 * 1.5
@@ -168,7 +168,7 @@ describe('FIX CP03.2 — Cálculo Monetário do CLT Mensal e Regressão de Regim
       };
       const res = calculateCompensation({
         ponto: pontoExtra,
-        regra: { id: 'r1', carga_horaria_diaria: 8, tolerancia_atraso: 0, tolerancia_hora_extra: 0, limite_diario_banco: 480 },
+        regra: { id: 'r1', carga_horaria_diaria: 8, tolerancia_atraso: 0, tolerancia_hora_extra: 0, limite_diario_banco: 0 },
         colaborador: horistaColab
       });
       expect(res.valorExtras).toBeCloseTo(37.50, 2); // 1.0 * 25 * 1.5

@@ -141,13 +141,19 @@ const resolveRuleForPonto = (ponto: any, regras: any[]) => {
   if (!regraAplicada) return null;
 
   const regraDaEmpresa = regras.find(
-    (regra: any) => regra.nome === regraAplicada && regra.empresa_id === (ponto.empresa_id || null),
+    (regra: any) =>
+      regra.nome === regraAplicada &&
+      (regra.empresa_id === (ponto.empresa_id || null) ||
+        (Array.isArray(regra.empresas_ids) && ponto.empresa_id && regra.empresas_ids.includes(ponto.empresa_id))),
   );
 
   if (regraDaEmpresa) return regraDaEmpresa;
 
   const regraGlobal = regras.find(
-    (regra: any) => regra.nome === regraAplicada && (regra.empresa_id === null || regra.empresa_id === undefined),
+    (regra: any) =>
+      regra.nome === regraAplicada &&
+      (regra.escopo === 'TODAS_EMPRESAS' ||
+        (!regra.empresa_id && (!regra.empresas_ids || regra.empresas_ids.length === 0))),
   );
 
   if (regraGlobal) return regraGlobal;
@@ -198,6 +204,8 @@ const buildRuleExplanation = (ponto: any, regra: any) => {
       toleranciaAtraso: 0,
       descontoTolerancia: 0,
       descontoLimite: 0,
+      parcelaBanco: 0,
+      parcelaPagar: 0,
       limiteDiarioBanco: 0,
     };
   }
@@ -223,6 +231,8 @@ const buildRuleExplanation = (ponto: any, regra: any) => {
       toleranciaAtraso: Number(regra?.tolerancia_atraso || 0),
       descontoTolerancia: 0,
       descontoLimite: 0,
+      parcelaBanco: 0,
+      parcelaPagar: 0,
       limiteDiarioBanco: Number(regra?.limite_diario_banco || 0),
     };
   }
@@ -237,16 +247,22 @@ const buildRuleExplanation = (ponto: any, regra: any) => {
   const excedente = Math.max(saldoBase, 0);
   const deficit = Math.max(-saldoBase, 0);
   const descontoTolerancia = excedente > 0 ? Math.min(excedente, toleranciaExtra) : Math.min(deficit, toleranciaAtraso);
-  const brutoPosTolerancia = excedente > 0 ? Math.max(excedente - toleranciaExtra, 0) : Math.max(deficit - toleranciaAtraso, 0);
-  const descontoLimite = excedente > 0 ? Math.max(brutoPosTolerancia - minutosExtra, 0) : 0;
+  const parcelaBanco = Math.max(saldoFinal, 0);
+  const parcelaPagar = minutosExtra;
+  const descontoLimite = 0;
 
   let resumo = `Jornada padrão ${jornadaHours}h sem desconto aplicado.`;
 
   if (excedente > 0) {
-    resumo =
-      minutosExtra > 0
-        ? `Jornada padrão ${jornadaHours}h com tolerância de ${formatRuleMinutes(toleranciaExtra)}. Excedente de ${formatCompactMinutes(excedente)} -> ${formatCompactMinutes(minutosExtra)} convertidos em banco.`
-        : `Jornada padrão ${jornadaHours}h com tolerância de ${formatRuleMinutes(toleranciaExtra)}. Excedente de ${formatCompactMinutes(excedente)} ficou dentro da política e não virou banco.`;
+    if (parcelaBanco > 0 || parcelaPagar > 0) {
+      if (parcelaPagar > 0) {
+        resumo = `Jornada padrão ${jornadaHours}h com tolerância de ${formatRuleMinutes(toleranciaExtra)}. Excedente de ${formatCompactMinutes(excedente)} -> Banco de Horas: ${formatCompactMinutes(parcelaBanco)} | HE destinada a pagamento: ${formatCompactMinutes(parcelaPagar)}.`;
+      } else {
+        resumo = `Jornada padrão ${jornadaHours}h com tolerância de ${formatRuleMinutes(toleranciaExtra)}. Excedente de ${formatCompactMinutes(excedente)} -> Banco de Horas: ${formatCompactMinutes(parcelaBanco)}.`;
+      }
+    } else {
+      resumo = `Jornada padrão ${jornadaHours}h com tolerância de ${formatRuleMinutes(toleranciaExtra)}. Excedente de ${formatCompactMinutes(excedente)} ficou dentro da política e não virou banco nem HE.`;
+    }
   } else if (deficit > 0) {
     resumo =
       minutosAtraso > 0
@@ -273,6 +289,8 @@ const buildRuleExplanation = (ponto: any, regra: any) => {
     toleranciaAtraso,
     descontoTolerancia,
     descontoLimite,
+    parcelaBanco,
+    parcelaPagar,
     limiteDiarioBanco,
   };
 };
@@ -2947,15 +2965,12 @@ const ProcessamentoRH = () => {
                         <div className="mt-1 text-sm font-medium text-foreground">{minutesToTime(selectedRuleExplanation.excedente)}</div>
                       </div>
                       <div>
-                        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Desconto aplicado</div>
-                        <div className="mt-1 text-sm font-medium text-foreground">
-                          {minutesToTime(selectedRuleExplanation.descontoTolerancia)}
-                          {selectedRuleExplanation.descontoLimite > 0 ? ` + ${minutesToTime(selectedRuleExplanation.descontoLimite)} por limite diário` : ""}
-                        </div>
+                        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Banco de Horas (Crédito)</div>
+                        <div className="mt-1 text-sm font-semibold text-success">{minutesToTime(selectedRuleExplanation.parcelaBanco)}</div>
                       </div>
                       <div>
-                        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Saldo final do dia</div>
-                        <div className="mt-1 text-sm font-semibold text-success">{minutesToTime(selectedRuleExplanation.saldoFinal)}</div>
+                        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">HE destinada a pagamento</div>
+                        <div className="mt-1 text-sm font-semibold text-primary">{minutesToTime(selectedRuleExplanation.parcelaPagar)}</div>
                       </div>
                     </div>
 
@@ -2969,19 +2984,21 @@ const ProcessamentoRH = () => {
                         <div className="mt-1 text-sm font-medium text-foreground">{minutesToTime(selectedRuleExplanation.deficit)}</div>
                       </div>
                       <div>
-                        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Crédito em banco</div>
-                        <div className="mt-1 text-sm font-medium text-success">{minutesToTime(selectedRuleExplanation.minutosExtra)}</div>
-                      </div>
-                      <div>
                         <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Débito em banco</div>
                         <div className="mt-1 text-sm font-medium text-destructive">{minutesToTime(selectedRuleExplanation.minutosAtraso)}</div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Saldo final do dia (BH)</div>
+                        <div className={`mt-1 text-sm font-semibold ${selectedRuleExplanation.saldoFinal >= 0 ? "text-success" : "text-destructive"}`}>
+                          {minutesToTime(selectedRuleExplanation.saldoFinal)}
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
 
                 <div className="rounded-xl border border-border bg-muted/10 p-4 text-sm text-muted-foreground">
-                  Limite diário para crédito em banco: <strong className="text-foreground">{formatRuleMinutes(selectedRuleExplanation.limiteDiarioBanco)}</strong>. O mesmo saldo processado aqui alimenta o Banco de Horas acumulado e os itens enviados ao Financeiro.
+                  Limite diário para crédito em banco: <strong className="text-foreground">{formatRuleMinutes(selectedRuleExplanation.limiteDiarioBanco)}</strong>. O excedente além do limite diário é segregado automaticamente como Hora Extra destinada a pagamento no fechamento mensal.
                 </div>
               </div>
             )

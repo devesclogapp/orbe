@@ -185,8 +185,13 @@ const validateColaboradorApto = (colaborador: Colaborador | null): CadastralVali
   return { apto: motivos.length === 0, motivos };
 };
 
-export const getMultiplicadorHoraExtra = (regra?: Regra | null): number => {
-  const percentual = Number(regra?.adicional_hora_extra_percentual ?? 50);
+export const getMultiplicadorHoraExtra = (regra?: Regra | null | any): number => {
+  const raw =
+    regra?.adicional_hora_extra_percentual ??
+    regra?.adicionalHoraExtraPercentual ??
+    regra?.payload?.adicional_hora_extra_percentual ??
+    regra?.payload?.adicionalHoraExtraPercentual;
+  const percentual = raw !== undefined && raw !== null && !isNaN(Number(raw)) ? Number(raw) : 50;
   return Number((1 + Math.max(percentual, 0) / 100).toFixed(4));
 };
 
@@ -278,17 +283,23 @@ const getQuarterEndDate = (dateStr: string) => {
 
 const formatIsoDate = (date: Date) => date.toISOString().split("T")[0];
 
-const calculateDataVencimento = (dateStr: string, regra: Regra | null) => {
-  const quarterEnd = getQuarterEndDate(dateStr);
+export const calculateDataVencimento = (dateStr: string, regra: Regra | null): string | null => {
+  if (!dateStr) return null;
   const prazoDias = Number(
     regra?.prazo_compensacao_dias ?? regra?.validade_horas ?? 0,
   );
 
-  if (prazoDias > 0) {
-    quarterEnd.setUTCDate(quarterEnd.getUTCDate() + prazoDias);
+  if (!prazoDias || prazoDias <= 0) {
+    return null;
   }
 
-  return formatIsoDate(quarterEnd);
+  const [year, month, day] = dateStr.split("-").map(Number);
+  if (!year || !month || !day) return null;
+
+  const baseDate = new Date(Date.UTC(year, month - 1, day));
+  baseDate.setUTCDate(baseDate.getUTCDate() + prazoDias);
+
+  return formatIsoDate(baseDate);
 };
 
 const isWithinAlertWindow = (dateStr?: string | null) => {
@@ -660,22 +671,31 @@ export const calculateCompensation = (params: {
   const jornadaHours = Number((jornadaMinutes / 60).toFixed(4));
   const toleranciaAtraso = Number(regra?.tolerancia_atraso ?? 5) || 0;
   const toleranciaExtra = Number(regra?.tolerancia_hora_extra ?? 0) || 0;
-  const limiteDiarioBanco = Number(regra?.limite_diario_banco ?? 480) || 480;
+  const bhAtivo = regra?.bh_ativo !== false;
+  const rawLimite = regra?.limite_diario_banco;
+  const limiteDiarioBanco = bhAtivo
+    ? (rawLimite !== undefined && rawLimite !== null && !isNaN(Number(rawLimite))
+        ? Number(rawLimite)
+        : 480)
+    : 0;
 
   let saldoBase = workedMinutes - jornadaMinutes;
-  let minutosExtra = 0;
+  let minutosBanco = 0;
+  let minutosExcedentePagar = 0;
   let minutosDebito = 0;
 
   if (isFalta) {
     saldoBase = -jornadaMinutes;
     minutosDebito = jornadaMinutes;
   } else if (saldoBase > toleranciaExtra) {
-    minutosExtra = Math.min(saldoBase, limiteDiarioBanco);
+    const saldoPositivoBruto = Math.max(0, saldoBase);
+    minutosBanco = Math.min(saldoPositivoBruto, limiteDiarioBanco);
+    minutosExcedentePagar = Math.max(0, saldoPositivoBruto - limiteDiarioBanco);
   } else if (saldoBase < -toleranciaAtraso) {
     minutosDebito = Math.abs(saldoBase);
   }
 
-  const saldoDia = minutosExtra - minutosDebito;
+  const saldoDia = minutosBanco - minutosDebito;
   const atrasoMinutes = !isFalta && saldoBase < 0 ? minutosDebito : 0;
 
   const remuneracao = resolveRemuneracaoColaborador(
@@ -688,7 +708,7 @@ export const calculateCompensation = (params: {
   const valorDiaBase = remuneracao.valorDiaBase;
 
   const multiplicadorExtra = getMultiplicadorHoraExtra(regra);
-  const valorExtras = minutesToHourDecimal(minutosExtra) * valorHoraBase * multiplicadorExtra;
+  const valorExtras = minutesToHourDecimal(minutosExcedentePagar) * valorHoraBase * multiplicadorExtra;
   const valorAtraso = minutesToHourDecimal(atrasoMinutes) * valorHoraBase;
   const valorFalta = isFalta ? valorDiaBase : 0;
   const valorDia = Math.max(valorDiaBase + valorExtras - valorAtraso - valorFalta, 0);
@@ -698,7 +718,9 @@ export const calculateCompensation = (params: {
     jornadaHours,
     jornadaMinutes,
     saldoDia,
-    minutosExtra,
+    minutosBanco,
+    minutosExcedentePagar,
+    minutosExtra: minutosExcedentePagar,
     minutosDebito,
     atrasoMinutes,
     valorHoraBase,
@@ -1652,7 +1674,14 @@ export const processRhPeriod = async ({
         calculo.minutosExtra > 0
           ? {
               minutos: calculo.minutosExtra,
-              percentual: Number(regra?.adicional_hora_extra_percentual ?? 50),
+              minutos_banco: calculo.minutosBanco,
+              percentual: (() => {
+                const raw =
+                  regra?.adicional_hora_extra_percentual ??
+                  (regra as any)?.adicionalHoraExtraPercentual ??
+                  (regra as any)?.payload?.adicional_hora_extra_percentual;
+                return raw !== undefined && raw !== null && !isNaN(Number(raw)) ? Number(raw) : 50;
+              })(),
               multiplicador: calculo.multiplicadorExtra,
               valor: Number(calculo.valorExtras.toFixed(2)),
             }

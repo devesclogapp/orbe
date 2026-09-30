@@ -26,11 +26,21 @@ export type OperationalContext = {
 };
 
 export enum RulePriority {
-  ESPECIFICA = 100, // Regra pontual de uma operação
-  EMPRESA = 80, // Regra para a empresa/cliente (ex: contrato)
+  ESPECIFICA = 100, // Regra específica de 1 única empresa
+  COMPARTILHADA = 80, // Regra compartilhada entre 2+ empresas selecionadas
+  EMPRESA = 80, // Compatibilidade com chamadas anteriores
   SERVICO = 60, // Regra para o tipo de serviço (ex: descarga padrão)
+  GERAL_TENANT = 40, // Regra geral para todas as empresas do tenant
   COLABORADOR = 40, // Regra específica por colaborador
   GLOBAL = 20, // Regra genérica / fallback
+}
+
+export type EscopoResolvido = "ESPECIFICA" | "COMPARTILHADA" | "GERAL_TENANT" | "SEM_REGRA";
+
+export interface RuleResolutionResult {
+  rule: AbstractRule;
+  isFallback: boolean;
+  escopoResolvido: EscopoResolvido;
 }
 
 export type AbstractRule = {
@@ -42,6 +52,8 @@ export type AbstractRule = {
   vigenciaInicio?: string | null;
   vigenciaFim?: string | null;
   adicionalHoraExtraPercentual?: number | null;
+  escopo?: "TODAS_EMPRESAS" | "COMPARTILHADA" | "ESPECIFICA" | null;
+  empresasIds?: string[];
   // Generic fields that map the original table
   payload: Record<string, any>;
 };

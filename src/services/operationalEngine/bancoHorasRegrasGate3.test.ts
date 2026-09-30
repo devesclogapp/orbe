@@ -352,7 +352,7 @@ describe('FIX CP04.10 — Estabilização da Regra de Banco de Horas / Gate 3', 
     const regra50: any = {
       id: 'regra-50',
       bh_ativo: true,
-      limite_diario_banco: 480,
+      limite_diario_banco: 0,
       prazo_compensacao_dias: 60,
       tipo: 'acumula',
       adicional_hora_extra_percentual: 50,
@@ -385,7 +385,7 @@ describe('FIX CP04.10 — Estabilização da Regra de Banco de Horas / Gate 3', 
     const regra100: any = {
       id: 'regra-100',
       bh_ativo: true,
-      limite_diario_banco: 480,
+      limite_diario_banco: 0,
       prazo_compensacao_dias: 60,
       tipo: 'acumula',
       adicional_hora_extra_percentual: 100,
@@ -559,7 +559,8 @@ describe('FIX CP04.10 — Estabilização da Regra de Banco de Horas / Gate 3', 
       colaborador: colabApto,
       minutosPrevistosJornada: 480,
     });
-    expect(compFora.minutosExtra).toBe(25);
+    expect(compFora.minutosBanco).toBe(25);
+    expect(compFora.saldoDia).toBe(25);
   });
 
   it('18. Tolerância NÃO é aplicada individualmente às batidas de ponto', () => {

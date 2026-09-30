@@ -1,54 +1,108 @@
-import { OperationalContext, AbstractRule, RulePriority } from "../../types/motor.types";
+import { OperationalContext, AbstractRule, RulePriority, RuleResolutionResult, EscopoResolvido } from "../../types/motor.types";
 import { EngineLogger } from "./Logger";
 
 export class EngineResolver {
   /**
    * Identifica a regra correta para o processamento dado o conjunto de regras já filtradas por tenant.
-   * Transforma as regras brutas num padrão de hierarquia aplicável.
+   * Hierarquia de Precedência Canônica (CP05.4):
+   * 1. REGRA ESPECÍFICA (Prioridade 100) — Aplicada a 1 única empresa
+   * 2. REGRA COMPARTILHADA (Prioridade 80) — Aplicada a 2+ empresas explicitamente selecionadas
+   * 3. REGRA GERAL DO TENANT (Prioridade 40) — Aplicada a todas as empresas do tenant
+   * 4. SEM REGRA (Fallback / Gate 3 Bloqueado)
    */
   static resolve(
     ctx: OperationalContext,
     bancoHorasRegras: any[]
-  ): { rule: AbstractRule; isFallback: boolean } {
-    const rawToAbstract = bancoHorasRegras.map((r): AbstractRule => {
-      // Identificando prioridade:
-      let priority = RulePriority.GLOBAL;
-      if (r.empresa_id && ctx.empresaId && r.empresa_id === ctx.empresaId) priority = RulePriority.EMPRESA;
-      // Adicionar outras heurísticas conforme serviço ou colaborador_id:
-      // if (r.colaborador_id === ctx.colaboradorId) priority = RulePriority.COLABORADOR;
+  ): RuleResolutionResult {
+    const dataProcStr = ctx.dataProcessamento ? String(ctx.dataProcessamento).slice(0, 10) : "";
+    const targetEmpresaId = ctx.empresaId || null;
 
-      return {
+    type CandidateWithEscopo = AbstractRule & { escopoResolvido: EscopoResolvido };
+
+    const candidates: CandidateWithEscopo[] = [];
+
+    for (const r of bancoHorasRegras) {
+      // 1. Verificação de status e ativação do banco
+      const status = r.status || "ativo";
+      const bhAtivo = r.bh_ativo !== false && r.payload?.bh_ativo !== false;
+      if (status !== "ativo" || !bhAtivo) {
+        continue;
+      }
+
+      // 2. Resolução temporal estrita (inclusiva no início e no fim)
+      const vigenciaInicio = r.vigencia_inicio || r.vigenciaInicio || null;
+      const vigenciaFim = r.vigencia_fim || r.vigenciaFim || null;
+      if (dataProcStr) {
+        if (vigenciaInicio && dataProcStr < vigenciaInicio) continue;
+        if (vigenciaFim && dataProcStr > vigenciaFim) continue;
+      }
+
+      // 3. Extração e normalização do escopo
+      const rawEscopo = r.escopo || r.payload?.escopo || null;
+      const singleEmpresaId = r.empresa_id || r.payload?.empresa_id || null;
+      const empresasIds: string[] = Array.isArray(r.empresas_ids)
+        ? r.empresas_ids
+        : Array.isArray(r.payload?.empresas_ids)
+        ? r.payload.empresas_ids
+        : (singleEmpresaId ? [singleEmpresaId] : []);
+
+      let priority: RulePriority;
+      let escopoResolvido: EscopoResolvido;
+
+      // Determinação de escopo e pertinência à empresa do contexto:
+      if (rawEscopo === "ESPECIFICA" || (!rawEscopo && singleEmpresaId && empresasIds.length <= 1)) {
+        // REGRA ESPECÍFICA: Só se aplica à empresa específica
+        if (targetEmpresaId && (singleEmpresaId === targetEmpresaId || (empresasIds.length === 1 && empresasIds[0] === targetEmpresaId))) {
+          priority = RulePriority.ESPECIFICA;
+          escopoResolvido = "ESPECIFICA";
+        } else {
+          // Não pertence a esta empresa específica
+          continue;
+        }
+      } else if (rawEscopo === "COMPARTILHADA" || (!rawEscopo && empresasIds.length > 1)) {
+        // REGRA COMPARTILHADA: Só se aplica se a empresa do contexto estiver explicitamente na lista
+        if (targetEmpresaId && empresasIds.includes(targetEmpresaId)) {
+          priority = RulePriority.COMPARTILHADA;
+          escopoResolvido = "COMPARTILHADA";
+        } else {
+          // Empresa do contexto não faz parte desta regra compartilhada
+          continue;
+        }
+      } else if (rawEscopo === "TODAS_EMPRESAS" || (!rawEscopo && !singleEmpresaId && empresasIds.length === 0)) {
+        // REGRA GERAL DO TENANT: Válida para qualquer empresa do tenant (atuais e futuras)
+        priority = RulePriority.GERAL_TENANT;
+        escopoResolvido = "GERAL_TENANT";
+      } else {
+        // Caso não se enquadre em nenhum escopo válido
+        continue;
+      }
+
+      candidates.push({
         id: r.id,
         nome: r.nome || "Regra Sem Nome",
         tipoOrigem: "banco_horas_regras",
         prioridade: priority,
-        status: r.status,
-        vigenciaInicio: r.vigencia_inicio || r.vigenciaInicio || null,
-        vigenciaFim: r.vigencia_fim || r.vigenciaFim || null,
-        adicionalHoraExtraPercentual: Number(r.adicional_hora_extra_percentual ?? r.adicionalHoraExtraPercentual ?? 50),
+        status: status,
+        vigenciaInicio: vigenciaInicio,
+        vigenciaFim: vigenciaFim,
+        adicionalHoraExtraPercentual: (() => {
+          const rawAdicional = r.adicional_hora_extra_percentual ?? r.adicionalHoraExtraPercentual ?? r.payload?.adicional_hora_extra_percentual;
+          return rawAdicional !== null && rawAdicional !== undefined && !isNaN(Number(rawAdicional))
+            ? Number(rawAdicional)
+            : 50;
+        })(),
+        escopo: rawEscopo,
+        empresasIds: empresasIds,
+        escopoResolvido: escopoResolvido,
         payload: r
-      };
-    });
-
-    // Filtra vigência temporal estrita e status ativo (comparação lexicográfica YYYY-MM-DD imune a fuso)
-    const dataProcStr = ctx.dataProcessamento ? String(ctx.dataProcessamento).slice(0, 10) : "";
-    const validRules = rawToAbstract.filter((r) => {
-      if (r.status !== "ativo") return false;
-      if (r.payload.bh_ativo === false) return false;
-
-      // Resolução temporal estrita (inclusiva no início e no fim):
-      if (dataProcStr) {
-        if (r.vigenciaInicio && dataProcStr < r.vigenciaInicio) return false;
-        if (r.vigenciaFim && dataProcStr > r.vigenciaFim) return false;
-      }
-      return true;
-    });
+      });
+    }
 
     // Ordenação e desempate determinístico:
-    // 1. Maior prioridade hierárquica (EMPRESA 80 > GLOBAL 20)
+    // 1. Maior prioridade hierárquica (ESPECIFICA 100 > COMPARTILHADA 80 > GERAL_TENANT 40)
     // 2. Vigência com início mais recente (política temporal mais específica)
     // 3. Regra criada mais recentemente (created_at DESC)
-    validRules.sort((a, b) => {
+    candidates.sort((a, b) => {
       if (b.prioridade !== a.prioridade) {
         return b.prioridade - a.prioridade;
       }
@@ -62,10 +116,10 @@ export class EngineResolver {
       return createdB.localeCompare(createdA);
     });
 
-    // Auditoria de advertência caso haja regras concorrentes no mesmo escopo/data
-    if (validRules.length > 1 && validRules[0].prioridade === validRules[1].prioridade) {
+    // Auditoria de advertência caso haja regras ativas de mesma precedência concorrentes no mesmo escopo/data
+    if (candidates.length > 1 && candidates[0].prioridade === candidates[1].prioridade) {
       EngineLogger.warn(
-        `[EngineResolver] Conflito de regras ativas concorrentes para o mesmo escopo (prioridade ${validRules[0].prioridade}) na data ${dataProcStr}. Regra selecionada deterministicamente: "${validRules[0].nome}" (${validRules[0].id}) sobreposta com "${validRules[1].nome}" (${validRules[1].id})`,
+        `[EngineResolver] Conflito de regras ativas concorrentes para o mesmo escopo (prioridade ${candidates[0].prioridade}) na data ${dataProcStr} para empresa ${targetEmpresaId}. Regra selecionada: "${candidates[0].nome}" (${candidates[0].id}) concorrendo com "${candidates[1].nome}" (${candidates[1].id})`,
         { component: "EngineResolver" }
       );
     }
@@ -83,27 +137,35 @@ export class EngineResolver {
       jornadaEsperada: hasCalendario ? ctx.calendario!.jornadaPrevistaDiaria : undefined,
     };
     
-    if (validRules.length > 0) {
-      const bestRule = validRules[0];
+    if (candidates.length > 0) {
+      const bestRule = candidates[0];
       EngineLogger.logDecision({
         ...baseLog,
         regraUsadaId: bestRule.id,
         regraOrigem: bestRule.tipoOrigem,
         prioridadeAplicada: bestRule.prioridade,
         foiFallback: false,
-        mensagem: `Regra aplicável encontrada (${bestRule.nome}) com prioridade ${bestRule.prioridade}`,
+        mensagem: `Regra aplicável encontrada (${bestRule.nome}) com escopo ${bestRule.escopoResolvido} e prioridade ${bestRule.prioridade}`,
       });
-      return { rule: bestRule, isFallback: false };
+      return {
+        rule: bestRule,
+        isFallback: false,
+        escopoResolvido: bestRule.escopoResolvido
+      };
     }
 
     // FALLBACK SEGURO (BLOQUEIO NO GATE 3)
     EngineLogger.logDecision({
       ...baseLog,
       foiFallback: true,
-      mensagem: "Nenhuma regra ativa encontrada para o contexto, assumindo Fallback Seguro.",
+      mensagem: "Nenhuma regra ativa encontrada para o contexto, assumindo Fallback Seguro (Gate 3 bloqueado).",
     });
 
-    return { rule: this.getGlobalFallbackRule(), isFallback: true };
+    return {
+      rule: this.getGlobalFallbackRule(),
+      isFallback: true,
+      escopoResolvido: "SEM_REGRA"
+    };
   }
 
   static getGlobalFallbackRule(): AbstractRule {
@@ -116,6 +178,8 @@ export class EngineResolver {
       vigenciaInicio: "2026-01-01",
       vigenciaFim: null,
       adicionalHoraExtraPercentual: 50,
+      escopo: "TODAS_EMPRESAS",
+      empresasIds: [],
       payload: {
         bh_ativo: true,
         adicional_hora_extra_percentual: 50,

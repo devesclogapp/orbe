@@ -38,6 +38,102 @@ interface DirectRhActionInput {
   dataFolga?: string | null;
 }
 
+export function checarSobreposicaoVigencia(
+  inicioA: string,
+  fimA: string | null | undefined,
+  inicioB: string,
+  fimB: string | null | undefined
+): boolean {
+  const aStart = inicioA || "1900-01-01";
+  const aEnd = fimA || "9999-12-31";
+  const bStart = inicioB || "1900-01-01";
+  const bEnd = fimB || "9999-12-31";
+
+  // Duas faixas temporais [A1, A2] e [B1, B2] se sobrepõem se e somente se:
+  // A1 <= B2 && B1 <= A2
+  return aStart <= bEnd && bStart <= aEnd;
+}
+
+export function validarConflitoRegrasBH(
+  regrasExistentes: any[],
+  novaRegra: {
+    id?: string;
+    nome?: string;
+    escopo?: "TODAS_EMPRESAS" | "COMPARTILHADA" | "ESPECIFICA" | null;
+    empresa_id?: string | null;
+    empresas_ids?: string[];
+    vigencia_inicio: string;
+    vigencia_fim?: string | null;
+    status?: string;
+    bh_ativo?: boolean;
+  },
+  regraIdSendoEditada?: string | null,
+  empresasMap?: Map<string, { id: string; nome: string }>
+): void {
+  // Apenas regras ativas geram conflito impeditivo
+  if (novaRegra.status && novaRegra.status !== "ativo") return;
+  if (novaRegra.bh_ativo === false) return;
+
+  const novoEscopo = novaRegra.escopo || (novaRegra.empresa_id ? "ESPECIFICA" : "TODAS_EMPRESAS");
+  const novoSingleEmpresa = novaRegra.empresa_id || null;
+  const novasEmpresasIds: string[] = Array.isArray(novaRegra.empresas_ids) && novaRegra.empresas_ids.length > 0
+    ? novaRegra.empresas_ids
+    : (novoSingleEmpresa ? [novoSingleEmpresa] : []);
+
+  for (const r of regrasExistentes) {
+    if (regraIdSendoEditada && r.id === regraIdSendoEditada) continue;
+    if (r.id && novaRegra.id && r.id === novaRegra.id) continue;
+    if (r.status !== "ativo") continue;
+    if (r.bh_ativo === false) continue;
+
+    // Verificar se há sobreposição temporal de vigência
+    const sobrepoe = checarSobreposicaoVigencia(
+      r.vigencia_inicio || "1900-01-01",
+      r.vigencia_fim || null,
+      novaRegra.vigencia_inicio,
+      novaRegra.vigencia_fim || null
+    );
+
+    if (!sobrepoe) continue;
+
+    const rEscopo = r.escopo || (r.empresa_id ? "ESPECIFICA" : "TODAS_EMPRESAS");
+    const rSingleEmpresa = r.empresa_id || null;
+    const rEmpresasIds: string[] = Array.isArray(r.empresas_ids) && r.empresas_ids.length > 0
+      ? r.empresas_ids
+      : (rSingleEmpresa ? [rSingleEmpresa] : []);
+
+    // Conflito só ocorre entre regras da MESMA precedência atingindo a mesma empresa!
+    // Caso 1: Ambas TODAS_EMPRESAS
+    if (novoEscopo === "TODAS_EMPRESAS" && rEscopo === "TODAS_EMPRESAS") {
+      throw new Error(
+        `Conflito de Regras: Já existe uma Regra Geral do tenant ("${r.nome}") ativa com período de vigência sobreposto (${r.vigencia_inicio} a ${r.vigencia_fim || "indeterminado"}). Duas regras gerais não podem concorrer.`
+      );
+    }
+
+    // Caso 2: Ambas ESPECIFICA para a mesma empresa
+    if (novoEscopo === "ESPECIFICA" && rEscopo === "ESPECIFICA") {
+      const matchEmpresa = novasEmpresasIds.find(id => rEmpresasIds.includes(id));
+      if (matchEmpresa) {
+        const nomeEmpresa = empresasMap?.get(matchEmpresa)?.nome || matchEmpresa;
+        throw new Error(
+          `Conflito de Regras: A empresa "${nomeEmpresa}" já possui uma Regra Específica ativa ("${r.nome}") com vigência sobreposta (${r.vigencia_inicio} a ${r.vigencia_fim || "indeterminado"}). Duas regras específicas da mesma empresa não podem concorrer.`
+        );
+      }
+    }
+
+    // Caso 3: Ambas COMPARTILHADA compartilhando 1 ou mais empresas
+    if (novoEscopo === "COMPARTILHADA" && rEscopo === "COMPARTILHADA") {
+      const matchEmpresa = novasEmpresasIds.find(id => rEmpresasIds.includes(id));
+      if (matchEmpresa) {
+        const nomeEmpresa = empresasMap?.get(matchEmpresa)?.nome || matchEmpresa;
+        throw new Error(
+          `Conflito de Regras: A empresa "${nomeEmpresa}" já está associada à Regra Compartilhada ativa ("${r.nome}") com vigência sobreposta (${r.vigencia_inicio} a ${r.vigencia_fim || "indeterminado"}). Duas regras compartilhadas não podem concorrer para a mesma empresa.`
+        );
+      }
+    }
+  }
+}
+
 class BHRegraServiceClass extends BaseService<'banco_horas_regras'> {
   constructor() { super('banco_horas_regras'); }
 
@@ -50,7 +146,200 @@ class BHRegraServiceClass extends BaseService<'banco_horas_regras'> {
     
     const { data: empresas } = await supabase.from('empresas').select('id, nome');
     const empresaMap = new Map((empresas || []).map(e => [e.id, e]));
-    return (regras || []).map(r => ({ ...r, empresas: empresaMap.get(r.empresa_id) || null }));
+
+    // Consultar vínculos em banco_horas_regras_empresas se a tabela existir
+    let vinculos: any[] = [];
+    try {
+      const { data: rels } = await (supabase as any)
+        .from('banco_horas_regras_empresas')
+        .select('*');
+      if (rels) vinculos = rels;
+    } catch {
+      vinculos = [];
+    }
+
+    const vinculosByRegra = new Map<string, string[]>();
+    for (const v of vinculos) {
+      const arr = vinculosByRegra.get(v.regra_id) || [];
+      arr.push(v.empresa_id);
+      vinculosByRegra.set(v.regra_id, arr);
+    }
+
+    return (regras || []).map(r => {
+      const empIds = vinculosByRegra.get(r.id) || (r.empresa_id ? [r.empresa_id] : []);
+      const empresasVinculadas = empIds.map(id => empresaMap.get(id)).filter(Boolean);
+      
+      let escopo = r.escopo;
+      if (!escopo) {
+        if (!r.empresa_id && empIds.length === 0) escopo = 'TODAS_EMPRESAS';
+        else if (empIds.length > 1) escopo = 'COMPARTILHADA';
+        else escopo = 'ESPECIFICA';
+      }
+
+      return {
+        ...r,
+        escopo,
+        empresas: empresaMap.get(r.empresa_id) || null,
+        empresas_ids: empIds,
+        empresas_vinculadas: empresasVinculadas,
+      };
+    });
+  }
+
+  async create(payload: any) {
+    const empresasIds: string[] = Array.isArray(payload.empresas_ids) ? payload.empresas_ids : [];
+    let escopo = payload.escopo;
+
+    if (!escopo) {
+      if (payload.empresa_id === 'global' || (!payload.empresa_id && empresasIds.length === 0)) {
+        escopo = 'TODAS_EMPRESAS';
+      } else if (empresasIds.length > 1) {
+        escopo = 'COMPARTILHADA';
+      } else {
+        escopo = 'ESPECIFICA';
+      }
+    }
+
+    let targetEmpresaId: string | null = null;
+    if (escopo === 'ESPECIFICA') {
+      targetEmpresaId = empresasIds[0] || (payload.empresa_id !== 'global' ? payload.empresa_id : null);
+    }
+
+    // Validar conflitos de mesma precedência com regras ativas existentes
+    const existingRules = await this.getWithEmpresa();
+    validarConflitoRegrasBH(existingRules, {
+      ...payload,
+      escopo,
+      empresa_id: targetEmpresaId,
+      empresas_ids: escopo === 'TODAS_EMPRESAS' ? [] : (escopo === 'ESPECIFICA' && targetEmpresaId ? [targetEmpresaId] : empresasIds)
+    });
+
+    const {
+      empresas_ids: _eIds,
+      empresas: _emp,
+      empresas_vinculadas: _eVinc,
+      ...dbPayload
+    } = payload;
+
+    dbPayload.escopo = escopo;
+    dbPayload.empresa_id = targetEmpresaId;
+
+    const created = await super.create(dbPayload);
+
+    // Persistir associações na tabela banco_horas_regras_empresas se houver
+    if (created && created.id && (escopo === 'COMPARTILHADA' || escopo === 'ESPECIFICA')) {
+      const idsToInsert = escopo === 'ESPECIFICA' && targetEmpresaId ? [targetEmpresaId] : empresasIds;
+      if (idsToInsert.length > 0) {
+        try {
+          await (supabase as any).from('banco_horas_regras_empresas').insert(
+            idsToInsert.map(empId => ({
+              regra_id: created.id,
+              empresa_id: empId
+            }))
+          );
+        } catch (err) {
+          console.warn('[BHRegraService] Aviso ao persistir banco_horas_regras_empresas:', err);
+        }
+      }
+    }
+
+    return created;
+  }
+
+  async update(id: string, payload: any) {
+    const empresasIds: string[] = Array.isArray(payload.empresas_ids) ? payload.empresas_ids : [];
+    let escopo = payload.escopo;
+
+    if (!escopo) {
+      if (payload.empresa_id === 'global' || (!payload.empresa_id && empresasIds.length === 0)) {
+        escopo = 'TODAS_EMPRESAS';
+      } else if (empresasIds.length > 1) {
+        escopo = 'COMPARTILHADA';
+      } else {
+        escopo = 'ESPECIFICA';
+      }
+    }
+
+    let targetEmpresaId: string | null = null;
+    if (escopo === 'ESPECIFICA') {
+      targetEmpresaId = empresasIds[0] || (payload.empresa_id !== 'global' ? payload.empresa_id : null);
+    }
+
+    // Validar conflitos de mesma precedência com regras ativas existentes
+    const existingRules = await this.getWithEmpresa();
+    validarConflitoRegrasBH(existingRules, {
+      id,
+      ...payload,
+      escopo,
+      empresa_id: targetEmpresaId,
+      empresas_ids: escopo === 'TODAS_EMPRESAS' ? [] : (escopo === 'ESPECIFICA' && targetEmpresaId ? [targetEmpresaId] : empresasIds)
+    }, id);
+
+    const {
+      empresas_ids: _eIds,
+      empresas: _emp,
+      empresas_vinculadas: _eVinc,
+      ...dbPayload
+    } = payload;
+
+    dbPayload.escopo = escopo;
+    dbPayload.empresa_id = targetEmpresaId;
+
+    const updated = await super.update(id, dbPayload);
+
+    // Sincronizar banco_horas_regras_empresas
+    try {
+      await (supabase as any).from('banco_horas_regras_empresas').delete().eq('regra_id', id);
+      const idsToInsert = escopo === 'ESPECIFICA' && targetEmpresaId ? [targetEmpresaId] : empresasIds;
+      if (idsToInsert.length > 0 && escopo !== 'TODAS_EMPRESAS') {
+        await (supabase as any).from('banco_horas_regras_empresas').insert(
+          idsToInsert.map(empId => ({
+            regra_id: id,
+            empresa_id: empId
+          }))
+        );
+      }
+    } catch (err) {
+      console.warn('[BHRegraService] Aviso ao sincronizar banco_horas_regras_empresas:', err);
+    }
+
+    return updated;
+  }
+
+  async delete(id: string) {
+    // 1. Verificar se a regra possui dependências históricas (eventos ou pontos)
+    const { data: regra } = await (supabase as any)
+      .from('banco_horas_regras')
+      .select('nome')
+      .eq('id', id)
+      .maybeSingle();
+
+    const { count: cEventos } = await (supabase as any)
+      .from('banco_horas_eventos')
+      .select('id', { count: 'exact', head: true })
+      .eq('regra_id', id);
+
+    const { count: cPontos } = regra?.nome
+      ? await (supabase as any)
+          .from('registros_ponto')
+          .select('id', { count: 'exact', head: true })
+          .eq('regra_aplicada', regra.nome)
+      : { count: 0 };
+
+    if ((cEventos && cEventos > 0) || (cPontos && cPontos > 0)) {
+      throw new Error(
+        'Não é permitido excluir fisicamente esta regra porque já existem eventos ou pontos processados associados a ela. Para desativá-la preservando a rastreabilidade histórica, altere o status para "Inativo" ou encerre a sua vigência.'
+      );
+    }
+
+    // 2. Deletar associações primeiro para não violar integridade
+    try {
+      await (supabase as any).from('banco_horas_regras_empresas').delete().eq('regra_id', id);
+    } catch {
+      // Ignora se tabela não existir
+    }
+
+    return await super.delete(id);
   }
 }
 export const BHRegraService = new BHRegraServiceClass();
