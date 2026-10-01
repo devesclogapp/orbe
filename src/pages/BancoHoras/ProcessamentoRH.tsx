@@ -30,6 +30,7 @@ import {
   TrendingUp,
   Users,
   XCircle,
+  ShieldCheck,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -60,8 +61,11 @@ import {
   type PontoStatusVisual,
 } from "@/services/rhPresentation.service";
 import { RegularizarMarcacaoModal } from "@/components/modals/RegularizarMarcacaoModal";
+import { DecidirPontoModal } from "@/components/modals/DecidirPontoModal";
 import { PontoRegularizacaoService } from "@/services/operationalEngine/pontoRegularizacao.service";
+import { PontoDecisaoService } from "@/services/operationalEngine/pontoDecisao.service";
 import type { PontoRegularizacao } from "@/types/pontoRegularizacao.types";
+import type { PontoDecisao, TipoDecisaoPonto } from "@/types/pontoDecisao.types";
 import { buildFolhaVariavelPipeline, buildOperationalStagePipeline, useOperationalPipeline } from "@/contexts/OperationalPipelineContext";
 import { buildOperationalPipelineSeenKey, useOperationalPipelineAutoTrigger } from "@/hooks/useOperationalPipelineAutoTrigger";
 import { getOperationalStatus } from "@/constants/operationalStatus";
@@ -661,9 +665,31 @@ const ProcessamentoRH = () => {
     },
   });
 
+  const { data: decisoes = [], refetch: refetchDecisoes } = useQuery<PontoDecisao[]>({
+    queryKey: ["registros_ponto_decisoes", selectedMonth, selectedEmpresa, tenantId],
+    queryFn: async () => {
+      if (!tenantId) return [];
+      const [year, month] = selectedMonth.split("-").map(Number);
+      const startDate = new Date(year, month - 1, 1).toISOString().split("T")[0];
+      const endDate = new Date(year, month, 0).toISOString().split("T")[0];
+
+      return PontoDecisaoService.getDecisoesAtivasPorPeriodo({
+        tenantId,
+        startDate,
+        endDate,
+      });
+    },
+    enabled: Boolean(tenantId),
+  });
+
   const regularizacoesMap = useMemo(
     () => PontoRegularizacaoService.mapearRegularizacoesPorPonto(regularizacoes),
     [regularizacoes],
+  );
+
+  const decisoesMap = useMemo(
+    () => PontoDecisaoService.mapearDecisoesPorPonto(decisoes),
+    [decisoes],
   );
 
   const saldoMap = useMemo(
@@ -727,9 +753,15 @@ const ProcessamentoRH = () => {
         null;
 
       // FIX CP04.8: Anexa regularizações ativas existentes (marcações efetivas para Gate 4 e UI)
-      const pontoEfetivo = PontoRegularizacaoService.anexarRegularizacoes(
+      let pontoEfetivo = PontoRegularizacaoService.anexarRegularizacoes(
         ponto,
         regularizacoesMap.get(ponto.id),
+      );
+
+      // FIX CP06.6-A: Anexa decisões RH ativas existentes (governança para Gate 4 e UI)
+      pontoEfetivo = PontoDecisaoService.anexarDecisao(
+        pontoEfetivo,
+        decisoesMap.get(ponto.id),
       );
 
       const presentation = resolvePontoPresentation({
@@ -747,7 +779,7 @@ const ProcessamentoRH = () => {
         colaboradorObj: colab,
       };
     });
-  }, [pontos, colaboradorMap, regras, jornadas, tenantId, isPeriodoFechado, regularizacoesMap]);
+  }, [pontos, colaboradorMap, regras, jornadas, tenantId, isPeriodoFechado, regularizacoesMap, decisoesMap]);
 
   const filteredPontos = useMemo(() => {
     return pontosWithPresentation.filter((ponto: any) => {
@@ -1377,6 +1409,16 @@ const ProcessamentoRH = () => {
   const openRegularizacaoModal = (ponto: any) => {
     setRegularizacaoPontoTarget(ponto);
     setRegularizacaoModalOpen(true);
+  };
+
+  const [decisaoModalOpen, setDecisaoModalOpen] = useState(false);
+  const [decisaoPontoTarget, setDecisaoPontoTarget] = useState<any | null>(null);
+  const [decisaoTipoDefault, setDecisaoTipoDefault] = useState<TipoDecisaoPonto | null>(null);
+
+  const openDecisaoModal = (ponto: any, defaultTipo?: TipoDecisaoPonto) => {
+    setDecisaoPontoTarget(ponto);
+    setDecisaoTipoDefault(defaultTipo || null);
+    setDecisaoModalOpen(true);
   };
 
   const openOperationalActionComposer = (evento: any, action: OperationalActionType) => {
@@ -2455,6 +2497,66 @@ const ProcessamentoRH = () => {
                                   </Button>
                                 </div>
                               )}
+                              {selectedPonto.presentation.statusVisual === "FALTA_PENDENTE_JUSTIFICATIVA" && (
+                                <div className="mt-3 pt-2 border-t border-warning/20 flex flex-wrap justify-end gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="gap-1.5 text-xs border-success/60 text-success hover:bg-success-soft/40"
+                                    onClick={() => openDecisaoModal(selectedPonto, "FALTA_JUSTIFICADA_ABONADA")}
+                                  >
+                                    <CheckCircle className="h-3.5 w-3.5" />
+                                    Abonar falta
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="gap-1.5 text-xs border-destructive/60 text-destructive hover:bg-destructive-soft/40"
+                                    onClick={() => openDecisaoModal(selectedPonto, "FALTA_INJUSTIFICADA_CONFIRMADA")}
+                                  >
+                                    <XCircle className="h-3.5 w-3.5" />
+                                    Confirmar falta
+                                  </Button>
+                                </div>
+                              )}
+                              {selectedPonto.presentation.statusVisual === "TRABALHO_EM_DIA_NAO_TRABALHAVEL" && (
+                                <div className="mt-3 pt-2 border-t border-primary/20 flex flex-wrap justify-end gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="gap-1.5 text-xs border-primary/60 text-primary hover:bg-primary-soft/40"
+                                    onClick={() => openDecisaoModal(selectedPonto, "DSR_DIRECIONADO_BANCO_HORAS")}
+                                  >
+                                    <Clock className="h-3.5 w-3.5" />
+                                    Direcionar para banco de horas
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="gap-1.5 text-xs border-warning/60 text-warning hover:bg-warning-soft/40"
+                                    onClick={() => openDecisaoModal(selectedPonto, "DSR_DIRECIONADO_HORA_EXTRA")}
+                                  >
+                                    <Banknote className="h-3.5 w-3.5" />
+                                    Direcionar para pagamento
+                                  </Button>
+                                </div>
+                              )}
+                              {selectedPonto.decisao && (
+                                <div className="mt-3 pt-2 border-t border-muted/30 flex items-center justify-between text-xs">
+                                  <div className="text-muted-foreground">
+                                    <span className="font-semibold text-foreground">Decisão ativa:</span>{" "}
+                                    {selectedPonto.decisao.tipo_decisao} por {selectedPonto.decisao.executado_por_nome}
+                                  </div>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 text-xs text-primary underline"
+                                    onClick={() => openDecisaoModal(selectedPonto, selectedPonto.decisao.tipo_decisao)}
+                                  >
+                                    Alterar decisão
+                                  </Button>
+                                </div>
+                              )}
                             </div>
                             <div className="rounded-xl border border-muted bg-muted/20 p-3 text-xs text-muted-foreground">
                               Cálculo do dia isolado: nenhum saldo positivo, débito ou tolerância foi gerado para este lançamento enquanto bloqueado.
@@ -3365,6 +3467,33 @@ const ProcessamentoRH = () => {
           await Promise.all([
             refetchRegularizacoes(),
             refetch(),
+            queryClient.invalidateQueries({ queryKey: ["registros_ponto_regularizacoes"] }),
+            queryClient.invalidateQueries({ queryKey: ["rh_pontos_periodo"] }),
+          ]);
+        }}
+      />
+      <DecidirPontoModal
+        open={decisaoModalOpen}
+        onOpenChange={(open) => {
+          setDecisaoModalOpen(open);
+          if (!open) {
+            setDecisaoPontoTarget(null);
+            setDecisaoTipoDefault(null);
+          }
+        }}
+        ponto={decisaoPontoTarget}
+        colaboradorNome={
+          selectedColaborador?.nome ||
+          decisaoPontoTarget?.nome_colaborador ||
+          "Colaborador"
+        }
+        defaultTipoDecisao={decisaoTipoDefault}
+        onSuccess={async () => {
+          await Promise.all([
+            refetchDecisoes(),
+            refetchRegularizacoes(),
+            refetch(),
+            queryClient.invalidateQueries({ queryKey: ["registros_ponto_decisoes"] }),
             queryClient.invalidateQueries({ queryKey: ["registros_ponto_regularizacoes"] }),
             queryClient.invalidateQueries({ queryKey: ["rh_pontos_periodo"] }),
           ]);

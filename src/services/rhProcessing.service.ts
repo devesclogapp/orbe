@@ -13,6 +13,7 @@ import {
   TipoInterpretacaoMarcacao,
 } from "./operationalEngine/MarcacoesPontoParser";
 import { PontoRegularizacaoService } from "./operationalEngine/pontoRegularizacao.service";
+import { PontoDecisaoService } from "./operationalEngine/pontoDecisao.service";
 
 type Empresa = {
   id: string;
@@ -318,7 +319,13 @@ const isWithinAlertWindow = (dateStr?: string | null) => {
 
 const resolveOperationalEventType = (ponto: Ponto, saldoDia: number) => {
   if (saldoDia > 0) return "hora_extra";
-  if (ponto.status === "Ausente" || ponto.status === "Falta") return "falta";
+  if (
+    ponto.status === "Ausente" ||
+    ponto.status === "Falta" ||
+    (ponto as any)?.decisao?.tipo_decisao === "FALTA_INJUSTIFICADA_CONFIRMADA"
+  ) {
+    return "falta";
+  }
   return "atraso";
 };
 
@@ -628,11 +635,30 @@ export const calculateCompensation = (params: {
   isJornadaConfigurada?: boolean;
 }) => {
   const { ponto, regra, colaborador, minutosPrevistosJornada, avaliacaoMarcacoes } = params;
-  const isFalta = ponto.status === "Ausente" || ponto.status === "Falta";
+  const decisaoAtiva = (ponto as any)?.decisao || avaliacaoMarcacoes?.decisaoRh || null;
+  const tipoDecisao = decisaoAtiva?.tipo_decisao || null;
+
+  const isFalta =
+    ponto.status === "Ausente" ||
+    ponto.status === "Falta" ||
+    tipoDecisao === "FALTA_INJUSTIFICADA_CONFIRMADA" ||
+    avaliacaoMarcacoes?.tipo === "FALTA_CONFIRMADA";
+
+  const isFaltaAbonada =
+    tipoDecisao === "FALTA_JUSTIFICADA_ABONADA" ||
+    avaliacaoMarcacoes?.tipo === "FALTA_ABONADA";
+
+  const isDsrBancoHoras =
+    tipoDecisao === "DSR_DIRECIONADO_BANCO_HORAS" ||
+    avaliacaoMarcacoes?.tipo === "DSR_DIRECIONADO_BH";
+
+  const isDsrHoraExtra =
+    tipoDecisao === "DSR_DIRECIONADO_HORA_EXTRA" ||
+    avaliacaoMarcacoes?.tipo === "DSR_DIRECIONADO_HE";
 
   // FIX 04.2-D: Determinação segura dos minutos trabalhados via parser de marcações
   let workedMinutes = 0;
-  if (!isFalta) {
+  if (!isFalta && !isFaltaAbonada) {
     if (avaliacaoMarcacoes) {
       if (!avaliacaoMarcacoes.calculavel) {
         throw new Error(
@@ -651,6 +677,7 @@ export const calculateCompensation = (params: {
                 minutosPrevistos: minutosPrevistosJornada,
               }
             : null,
+        decisao: decisaoAtiva,
       });
 
       if (avaliacaoDireta.calculavel) {
@@ -687,6 +714,24 @@ export const calculateCompensation = (params: {
   if (isFalta) {
     saldoBase = -jornadaMinutes;
     minutosDebito = jornadaMinutes;
+  } else if (isFaltaAbonada) {
+    // Falta Abonada pelo RH: jornada prevista preservada, sem débito BH, sem HE
+    saldoBase = 0;
+    minutosDebito = 0;
+    minutosBanco = 0;
+    minutosExcedentePagar = 0;
+  } else if (isDsrBancoHoras) {
+    // DSR direcionado para Banco de Horas: minutos factuais integralmente creditados no BH
+    saldoBase = workedMinutes;
+    minutosBanco = workedMinutes;
+    minutosExcedentePagar = 0;
+    minutosDebito = 0;
+  } else if (isDsrHoraExtra) {
+    // DSR direcionado para pagamento de Hora Extra: segrega para pagamento sem criar crédito BH simultaneamente
+    saldoBase = 0;
+    minutosBanco = 0;
+    minutosExcedentePagar = workedMinutes;
+    minutosDebito = 0;
   } else if (saldoBase > toleranciaExtra) {
     const saldoPositivoBruto = Math.max(0, saldoBase);
     minutosBanco = Math.min(saldoPositivoBruto, limiteDiarioBanco);
@@ -696,7 +741,10 @@ export const calculateCompensation = (params: {
   }
 
   const saldoDia = minutosBanco - minutosDebito;
-  const atrasoMinutes = !isFalta && saldoBase < 0 ? minutosDebito : 0;
+  const atrasoMinutes =
+    !isFalta && !isFaltaAbonada && !isDsrBancoHoras && !isDsrHoraExtra && saldoBase < 0
+      ? minutosDebito
+      : 0;
 
   const remuneracao = resolveRemuneracaoColaborador(
     colaborador,
@@ -1265,10 +1313,11 @@ export const avaliarPontoGates = async (params: {
     };
   }
 
-  // 4. GATE DE CONSISTÊNCIA DAS MARCAÇÕES (FIX 04.2-D)
+  // 4. GATE DE CONSISTÊNCIA DAS MARCAÇÕES (FIX 04.2-D & FIX CP06.6-A)
   const avaliacaoMarcacoes = avaliarMarcacoesPonto({
     ponto,
     jornadaResolvida: resolucaoJornada,
+    decisao: (ponto as any)?.decisao,
   });
 
   if (!avaliacaoMarcacoes.calculavel) {
@@ -1432,6 +1481,23 @@ export const processRhPeriod = async ({
     console.warn("[rhProcessing] Não foi possível carregar regularizações:", err?.message);
   }
 
+  // FIX CP06.6-A: Carregar decisões RH ativas para os pontos a processar
+  let decisoesPorPonto = new Map<string, any>();
+  try {
+    const { data: dbDecisoes } = await (supabase as any)
+      .from("registros_ponto_decisoes")
+      .select("*")
+      .eq("tenant_id", tenantId)
+      .eq("ativo", true)
+      .in("registro_ponto_id", pontoIds);
+
+    if (dbDecisoes && dbDecisoes.length > 0) {
+      decisoesPorPonto = PontoDecisaoService.mapearDecisoesPorPonto(dbDecisoes);
+    }
+  } catch (err: any) {
+    console.warn("[rhProcessing] Não foi possível carregar decisões RH:", err?.message);
+  }
+
   let totalInconsistencias = 0;
   let totalCreditos = 0;
   let totalDebitos = 0;
@@ -1444,9 +1510,15 @@ export const processRhPeriod = async ({
     const alertas: Array<{ tipo: string; descricao: string }> = [];
 
     // FIX CP04.8: Anexa regularizações ativas existentes (marcações efetivas para Gate 4)
-    const pontoEfetivo = PontoRegularizacaoService.anexarRegularizacoes(
+    let pontoEfetivo = PontoRegularizacaoService.anexarRegularizacoes(
       ponto,
       regularizacoesPorPonto.get(ponto.id)
+    );
+
+    // FIX CP06.6-A: Anexa decisões RH ativas existentes (governança para Gate 4)
+    pontoEfetivo = PontoDecisaoService.anexarDecisao(
+      pontoEfetivo,
+      decisoesPorPonto.get(ponto.id)
     );
 
     let empresa = getEmpresaFromPonto(pontoEfetivo, empresasRuntime);

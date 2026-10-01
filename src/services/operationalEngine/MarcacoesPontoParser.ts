@@ -18,7 +18,11 @@ export type TipoInterpretacaoMarcacao =
   | "MARCACAO_INVALIDA"
   | "SEM_MARCACOES"
   | "FALTA_PENDENTE_JUSTIFICATIVA"
-  | "TRABALHO_EM_DIA_NAO_TRABALHAVEL";
+  | "TRABALHO_EM_DIA_NAO_TRABALHAVEL"
+  | "FALTA_CONFIRMADA"
+  | "FALTA_ABONADA"
+  | "DSR_DIRECIONADO_BH"
+  | "DSR_DIRECIONADO_HE";
 
 export type CampoMarcacao = "entrada" | "saida_almoco" | "retorno_almoco" | "saida";
 
@@ -40,6 +44,8 @@ export interface AvaliacaoMarcacoesResult {
   motivo: string | null;
   marcacoesPreservadas: MarcacaoPreservada[];
   possuiRegularizacao?: boolean;
+  possuiDecisaoRh?: boolean;
+  decisaoRh?: any;
 }
 
 export interface PontoRegularizacaoItemLike {
@@ -57,6 +63,7 @@ export interface PontoLikeMarcacoes {
   saida?: string | null;
   status?: string | null;
   regularizacoes?: Partial<Record<CampoMarcacao, PontoRegularizacaoItemLike>> | null;
+  decisao?: any | null;
   [key: string]: any;
 }
 
@@ -72,6 +79,7 @@ export interface AvaliarMarcacoesPontoParams {
   ponto: PontoLikeMarcacoes;
   jornadaResolvida?: JornadaResolvidaLike | null;
   permiteJornadaSemIntervalo?: boolean;
+  decisao?: any | null;
 }
 
 /**
@@ -114,7 +122,9 @@ export function parseTimeToMinutes(timeStr: string): number | null {
  *    MARCACAO_INVALIDA (calculavel = false, minutos = null).
  */
 export function avaliarMarcacoesPonto(params: AvaliarMarcacoesPontoParams): AvaliacaoMarcacoesResult {
-  const { ponto, jornadaResolvida, permiteJornadaSemIntervalo = false } = params;
+  const { ponto, jornadaResolvida, permiteJornadaSemIntervalo = false, decisao } = params;
+  const decisaoAtiva = decisao || ponto?.decisao || null;
+  const tipoDecisao = decisaoAtiva?.tipo_decisao || null;
 
   const camposEstruturados: CampoMarcacao[] = [
     "entrada",
@@ -207,6 +217,36 @@ export function avaliarMarcacoesPonto(params: AvaliarMarcacoesPontoParams): Aval
       (jornadaResolvida.minutosPrevistos ?? 0) > 0;
 
     if (isTrabalhavel) {
+      // Governança RH: decisão formal de confirmar falta injustificada
+      if (tipoDecisao === "FALTA_INJUSTIFICADA_CONFIRMADA") {
+        return {
+          calculavel: true,
+          quantidadeMarcacoes: 0,
+          minutosTrabalhados: 0,
+          tipo: "FALTA_CONFIRMADA",
+          motivo: `Falta injustificada confirmada pelo RH: ${decisaoAtiva?.justificativa || ""}`.trim(),
+          marcacoesPreservadas,
+          possuiRegularizacao,
+          possuiDecisaoRh: true,
+          decisaoRh: decisaoAtiva,
+        };
+      }
+
+      // Governança RH: decisão formal de abonar/justificar falta
+      if (tipoDecisao === "FALTA_JUSTIFICADA_ABONADA") {
+        return {
+          calculavel: true,
+          quantidadeMarcacoes: 0,
+          minutosTrabalhados: 0,
+          tipo: "FALTA_ABONADA",
+          motivo: `Falta abonada/justificada pelo RH: ${decisaoAtiva?.justificativa || ""}`.trim(),
+          marcacoesPreservadas,
+          possuiRegularizacao,
+          possuiDecisaoRh: true,
+          decisaoRh: decisaoAtiva,
+        };
+      }
+
       return {
         calculavel: false,
         quantidadeMarcacoes: 0,
@@ -236,6 +276,108 @@ export function avaliarMarcacoesPonto(params: AvaliarMarcacoesPontoParams): Aval
     (jornadaResolvida.trabalhavel === false || jornadaResolvida.minutosPrevistos === 0);
 
   if (isDiaNaoTrabalhavel && count > 0) {
+    if (tipoDecisao === "DSR_DIRECIONADO_BANCO_HORAS" || tipoDecisao === "DSR_DIRECIONADO_HORA_EXTRA") {
+      // Se a marcação for ímpar/incompleta, mantém bloqueio por incompletude para regularização prévia
+      if (count === 1 || count === 3) {
+        return {
+          calculavel: false,
+          quantidadeMarcacoes: count,
+          minutosTrabalhados: null,
+          tipo: "MARCACAO_INCOMPLETA",
+          motivo:
+            count === 1
+              ? "Trabalho em repouso com apenas uma marcação. Regularize a batida faltante antes de processar o direcionamento."
+              : "Trabalho em repouso com três marcações. Regularize a batida faltante antes de processar o direcionamento.",
+          marcacoesPreservadas,
+          possuiRegularizacao,
+          possuiDecisaoRh: true,
+          decisaoRh: decisaoAtiva,
+        };
+      }
+
+      let minutosTrabalhadosFatuais: number | null = null;
+      let erroCronologico: string | null = null;
+
+      if (count === 4) {
+        const itemEntrada = marcacoesPreservadas.find((m) => m.campo === "entrada");
+        const itemSaidaAlmoco = marcacoesPreservadas.find((m) => m.campo === "saida_almoco");
+        const itemRetornoAlmoco = marcacoesPreservadas.find((m) => m.campo === "retorno_almoco");
+        const itemSaida = marcacoesPreservadas.find((m) => m.campo === "saida");
+
+        if (itemEntrada && itemSaidaAlmoco && itemRetornoAlmoco && itemSaida) {
+          const mEntrada = parseTimeToMinutes(itemEntrada.valor)!;
+          const mSaidaAlmoco = parseTimeToMinutes(itemSaidaAlmoco.valor)!;
+          const mRetornoAlmoco = parseTimeToMinutes(itemRetornoAlmoco.valor)!;
+          const mSaida = parseTimeToMinutes(itemSaida.valor)!;
+
+          if (mEntrada < mSaidaAlmoco && mSaidaAlmoco < mRetornoAlmoco && mRetornoAlmoco < mSaida) {
+            minutosTrabalhadosFatuais = (mSaidaAlmoco - mEntrada) + (mSaida - mRetornoAlmoco);
+          } else {
+            erroCronologico = "Ordem cronológica das marcações em repouso é inválida.";
+          }
+        } else {
+          return {
+            calculavel: false,
+            quantidadeMarcacoes: 4,
+            minutosTrabalhados: null,
+            tipo: "MARCACAO_INCOMPLETA",
+            motivo: "Campos de marcação estruturados em repouso não correspondem ao conjunto completo.",
+            marcacoesPreservadas,
+            possuiRegularizacao,
+            possuiDecisaoRh: true,
+            decisaoRh: decisaoAtiva,
+          };
+        }
+      } else if (count === 2) {
+        const itemEntrada = marcacoesPreservadas.find((m) => m.campo === "entrada");
+        const itemSaida = marcacoesPreservadas.find((m) => m.campo === "saida");
+
+        if (itemEntrada && itemSaida) {
+          const mEntrada = parseTimeToMinutes(itemEntrada.valor)!;
+          const mSaida = parseTimeToMinutes(itemSaida.valor)!;
+          if (mEntrada < mSaida) {
+            minutosTrabalhadosFatuais = mSaida - mEntrada;
+          } else {
+            erroCronologico = "Horário de saída anterior ou igual ao horário de entrada.";
+          }
+        }
+      }
+
+      if (erroCronologico) {
+        return {
+          calculavel: false,
+          quantidadeMarcacoes: count,
+          minutosTrabalhados: null,
+          tipo: "MARCACAO_INVALIDA",
+          motivo: erroCronologico,
+          marcacoesPreservadas,
+          possuiRegularizacao,
+          possuiDecisaoRh: true,
+          decisaoRh: decisaoAtiva,
+        };
+      }
+
+      if (minutosTrabalhadosFatuais !== null) {
+        return {
+          calculavel: true,
+          quantidadeMarcacoes: count,
+          minutosTrabalhados: minutosTrabalhadosFatuais,
+          tipo:
+            tipoDecisao === "DSR_DIRECIONADO_BANCO_HORAS"
+              ? "DSR_DIRECIONADO_BH"
+              : "DSR_DIRECIONADO_HE",
+          motivo:
+            tipoDecisao === "DSR_DIRECIONADO_BANCO_HORAS"
+              ? `Trabalho em repouso/DSR direcionado ao Banco de Horas pelo RH: ${decisaoAtiva?.justificativa || ""}`.trim()
+              : `Trabalho em repouso/DSR direcionado para pagamento de Hora Extra pelo RH: ${decisaoAtiva?.justificativa || ""}`.trim(),
+          marcacoesPreservadas,
+          possuiRegularizacao,
+          possuiDecisaoRh: true,
+          decisaoRh: decisaoAtiva,
+        };
+      }
+    }
+
     return {
       calculavel: false,
       quantidadeMarcacoes: count,

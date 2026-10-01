@@ -333,6 +333,7 @@ export function resolvePontoPresentation(
   const avaliacaoMarcacoes = avaliarMarcacoesPonto({
     ponto,
     jornadaResolvida: resolucaoJornada,
+    decisao: (ponto as any)?.decisao,
   });
 
   const jornadaPrevistaHours =
@@ -432,14 +433,37 @@ export function resolvePontoPresentation(
   // TODOS OS 4 GATES APROVADOS (APTO PARA PROCESSAMENTO)
   // -------------------------------------------------------------------------
   const workedMins = avaliacaoMarcacoes.minutosTrabalhados ?? 0;
+  const decisaoAtiva = (ponto as any)?.decisao || avaliacaoMarcacoes.decisaoRh;
+
+  const badgeLabel = decisaoAtiva
+    ? decisaoAtiva.tipo_decisao === "FALTA_INJUSTIFICADA_CONFIRMADA"
+      ? "Falta Confirmada"
+      : decisaoAtiva.tipo_decisao === "FALTA_JUSTIFICADA_ABONADA"
+        ? "Falta Abonada"
+        : decisaoAtiva.tipo_decisao === "DSR_DIRECIONADO_BANCO_HORAS"
+          ? "DSR → Banco de Horas"
+          : "DSR → Hora Extra"
+    : "Apto para Processamento";
+
+  const badgeClassName = decisaoAtiva
+    ? decisaoAtiva.tipo_decisao === "FALTA_INJUSTIFICADA_CONFIRMADA"
+      ? "bg-destructive/15 text-destructive border-0"
+      : decisaoAtiva.tipo_decisao === "FALTA_JUSTIFICADA_ABONADA"
+        ? "bg-success-soft text-success border-0"
+        : "bg-primary-soft text-primary border-0"
+    : "bg-info-soft text-info border-0";
+
+  const explicacao = decisaoAtiva
+    ? `Apto para processamento com Decisão RH ativa (${decisaoAtiva.tipo_decisao}). Justificativa: ${decisaoAtiva.justificativa}`
+    : "Todos os 4 Gates foram atendidos com sucesso. O ponto está pronto para ser processado pelo Motor RH.";
+
   return {
     statusVisual: "APTO_PROCESSAMENTO",
-    badgeLabel: "Apto para Processamento",
+    badgeLabel,
     badgeVariant: "secondary",
-    badgeClassName: "bg-info-soft text-info border-0",
-    titulo: "Apto para Processamento",
-    explicacao:
-      "Todos os 4 Gates foram atendidos com sucesso. O ponto está pronto para ser processado pelo Motor RH.",
+    badgeClassName,
+    titulo: decisaoAtiva ? `Decisão RH: ${badgeLabel}` : "Apto para Processamento",
+    explicacao,
     acaoNecessaria: "Ponto pronto para cálculo na execução do Motor RH.",
     isBloqueado: false,
     marcacoes,
@@ -448,6 +472,7 @@ export function resolvePontoPresentation(
     jornadaPrevistaHours,
     jornadaNome: resolucaoJornada.jornadaId || "Jornada Configurada",
     regraNome: abstractRegra.nome || "Regra Configurada",
-    resumoRegra: "Apto para processamento",
+    resumoRegra: decisaoAtiva ? `Decisão RH: ${decisaoAtiva.tipo_decisao}` : "Apto para processamento",
+    decisao: decisaoAtiva || null,
   };
 }
