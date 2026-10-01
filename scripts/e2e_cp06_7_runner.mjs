@@ -403,12 +403,13 @@ async function main() {
       regra_aplicada: regraDb.nome,
       jornada_calculada: 0,
       minutos_extra: c9MinutosExtra,
+      valor_hora_extra: 55.20,
       horas_extras_detalhadas: {
         minutos: c9MinutosExtra,
         minutos_banco: 0,
         percentual: 0,
         multiplicador: 1.0,
-        valor: 0, // Adicional HML é 0%
+        valor: 55.20, // 8h * R$ 6,90 * 1.0
       },
       status: 'Normal',
     })

@@ -1041,7 +1041,7 @@ const processarVencimentosPendentes = async ({
   };
 };
 
-const upsertFechamentoMensal = async ({
+export const upsertFechamentoMensal = async ({
   tenantId,
   colaborador,
   empresaId,

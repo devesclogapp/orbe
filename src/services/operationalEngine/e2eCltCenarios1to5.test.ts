@@ -233,6 +233,7 @@ describe('CP06.5-A — E2E CLT | Processamento controlado dos cenários determin
         regra_aplicada: regra.nome,
         jornada_calculada: calculo.jornadaHours,
         minutos_extra: calculo.minutosExtra,
+        valor_hora_extra: Number(calculo.valorExtras.toFixed(2)),
         horas_extras_detalhadas: calculo.minutosExtra > 0 ? {
           minutos: calculo.minutosExtra,
           minutos_banco: calculo.minutosBanco,

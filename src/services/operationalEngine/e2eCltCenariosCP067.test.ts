@@ -434,6 +434,7 @@ describe('CP06.7 — E2E FINAL | Intervenções RH CLT', () => {
         regra_aplicada: gateC9.regra?.nome,
         jornada_calculada: 0,
         minutos_extra: 480,
+        valor_hora_extra: Number(calcC9.valorExtras.toFixed(2)),
         horas_extras_detalhadas: {
           minutos: 480,
           minutos_banco: 0,
