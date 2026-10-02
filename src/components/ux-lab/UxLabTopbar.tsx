@@ -37,14 +37,14 @@ export const UxLabTopbar: React.FC<UxLabTopbarProps> = ({
   const { toggleTheme, isDark } = useUxLabTheme();
 
   return (
-    <header className="sticky top-0 z-30 flex flex-col justify-center border-b border-border bg-card/95 px-6 py-3 backdrop-blur supports-[backdrop-filter]:bg-card/85 transition-colors duration-200">
+    <header className="sticky top-0 z-30 flex flex-col justify-center border-b border-border bg-card/95 dark:bg-[#0D1014]/95 dark:border-white/[0.04] px-6 py-3 backdrop-blur supports-[backdrop-filter]:bg-card/85 transition-colors duration-200">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         {/* Título e Identificação do Módulo */}
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <Badge
               variant="outline"
-              className="border-blue-500/40 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 font-bold text-[10px] uppercase tracking-wider px-2 py-0.5"
+              className="border-blue-500/40 bg-blue-50 dark:bg-white/[0.04] text-blue-700 dark:text-blue-400 dark:border-blue-500/30 font-bold text-[10px] uppercase tracking-wider px-2 py-0.5"
             >
               <Sparkles className="mr-1 h-3 w-3" />
               UX LAB · PROTÓTIPO
@@ -64,15 +64,15 @@ export const UxLabTopbar: React.FC<UxLabTopbarProps> = ({
         </div>
 
         {/* Controles de Contexto: Empresa, Mês/Competência, Alternador Light/Dark e Ações */}
-        <div className="flex flex-wrap items-center gap-2 p-1 rounded-lg dark:bg-muted/20 dark:border dark:border-border/30">
+        <div className="flex flex-wrap items-center gap-2 p-1 rounded-lg dark:bg-[#111419] dark:border dark:border-white/[0.04]">
           {/* Seletor de Empresa / Unidade */}
           <div className="w-[190px] sm:w-[210px]">
             <Select value={empresa} onValueChange={onEmpresaChange}>
-              <SelectTrigger className="h-8 text-xs font-medium bg-card text-foreground border-border dark:border-border/20 dark:bg-card/80">
+              <SelectTrigger className="h-8 text-xs font-medium bg-card text-foreground border-border dark:border-white/[0.05] dark:bg-[#15191F] dark:text-[#F1F3F5]">
                 <Building2 className="mr-1.5 h-3.5 w-3.5 text-muted-foreground shrink-0" />
                 <SelectValue placeholder="Selecione Unidade" />
               </SelectTrigger>
-              <SelectContent className="bg-popover text-popover-foreground border-border dark:border-border/30">
+              <SelectContent className="bg-popover text-popover-foreground border-border dark:border-white/[0.06] dark:bg-[#1A1F27]">
                 {MOCK_EMPRESAS_OPTIONS.map((opt) => (
                   <SelectItem key={opt.value} value={opt.value} className="text-xs">
                     {opt.label}
@@ -85,11 +85,11 @@ export const UxLabTopbar: React.FC<UxLabTopbarProps> = ({
           {/* Seletor de Competência */}
           <div className="w-[160px] sm:w-[180px]">
             <Select value={competencia} onValueChange={onCompetenciaChange}>
-              <SelectTrigger className="h-8 text-xs font-medium bg-card text-foreground border-border dark:border-border/20 dark:bg-card/80">
+              <SelectTrigger className="h-8 text-xs font-medium bg-card text-foreground border-border dark:border-white/[0.05] dark:bg-[#15191F] dark:text-[#F1F3F5]">
                 <Calendar className="mr-1.5 h-3.5 w-3.5 text-muted-foreground shrink-0" />
                 <SelectValue placeholder="Competência" />
               </SelectTrigger>
-              <SelectContent className="bg-popover text-popover-foreground border-border dark:border-border/30">
+              <SelectContent className="bg-popover text-popover-foreground border-border dark:border-white/[0.06] dark:bg-[#1A1F27]">
                 {MOCK_COMPETENCIAS_OPTIONS.map((opt) => (
                   <SelectItem key={opt.value} value={opt.value} className="text-xs">
                     {opt.label}
@@ -104,7 +104,7 @@ export const UxLabTopbar: React.FC<UxLabTopbarProps> = ({
             variant="outline"
             size="sm"
             onClick={toggleTheme}
-            className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground border-border dark:border-border/20 dark:bg-card/80 hover:bg-muted/50 dark:hover:bg-muted/40"
+            className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground border-border dark:border-white/[0.05] dark:bg-[#15191F] dark:text-[#A0A7B2] dark:hover:text-[#F1F3F5] hover:bg-muted/50 dark:hover:bg-[#1A1F27]"
             title={isDark ? "Alternar para Modo Claro" : "Alternar para Modo Escuro"}
             aria-label={isDark ? "Alternar para Modo Claro" : "Alternar para Modo Escuro"}
           >
@@ -123,7 +123,7 @@ export const UxLabTopbar: React.FC<UxLabTopbarProps> = ({
             variant="outline"
             size="sm"
             onClick={onRefresh}
-            className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground border-border dark:border-border/20 dark:bg-card/80 hover:bg-muted/50 dark:hover:bg-muted/40"
+            className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground border-border dark:border-white/[0.05] dark:bg-[#15191F] dark:text-[#A0A7B2] dark:hover:text-[#F1F3F5] hover:bg-muted/50 dark:hover:bg-[#1A1F27]"
             title="Recarregar dados demonstrativos"
           >
             <RefreshCw className="h-3.5 w-3.5" />

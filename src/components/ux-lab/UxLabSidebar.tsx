@@ -50,6 +50,31 @@ interface LabNavSection {
   items: LabNavItem[];
 }
 
+/**
+ * REGRA ARQUITETURAL DA SIDEBAR (ORBE ERP):
+ * - Dashboard Executivo = visão executiva transversal de 1º nível;
+ * - Torre Operacional = visão operacional transversal de 1º nível (não pertence a Operações de Campo);
+ * - Seções abaixo (Operações, RH, Faturamento, etc.) = módulos especialistas e funcionais.
+ */
+interface LabTopLevelItem {
+  id: string;
+  label: string;
+  icon: LucideIcon;
+}
+
+const TOP_LEVEL_ITEMS: LabTopLevelItem[] = [
+  {
+    id: "dashboard",
+    label: "Dashboard Executivo",
+    icon: LayoutDashboard,
+  },
+  {
+    id: "torre-operacional",
+    label: "Torre Operacional",
+    icon: Layers,
+  },
+];
+
 const SECTIONS: LabNavSection[] = [
   {
     id: "operacoes",
@@ -71,11 +96,6 @@ const SECTIONS: LabNavSection[] = [
         label: "Custos Extras",
         icon: Wallet,
         badge: { count: 2, variant: "neutral" },
-      },
-      {
-        id: "torre-operacional",
-        label: "Torre Operacional",
-        icon: Layers,
       },
     ],
   },
@@ -239,7 +259,7 @@ export const UxLabSidebar: React.FC<UxLabSidebarProps> = ({
   return (
     <aside className="sticky top-0 flex h-screen w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-colors duration-200">
       {/* Header com Identificação do UX LAB */}
-      <div className="border-b border-sidebar-border/60 px-4 py-3.5">
+      <div className="border-b border-sidebar-border/60 px-4 py-3.5 dark:border-white/[0.04]">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600 text-white font-display font-black text-sm shadow-sm">
@@ -269,7 +289,7 @@ export const UxLabSidebar: React.FC<UxLabSidebarProps> = ({
             variant="outline"
             size="sm"
             onClick={() => navigate("/operacional/dashboard")}
-            className="w-full justify-start h-7 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 border-border/80"
+            className="w-full justify-start h-7 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 border-border/80 dark:border-white/[0.05] dark:bg-transparent dark:hover:bg-white/[0.04]"
           >
             <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
             Voltar ao ORBE Oficial
@@ -279,26 +299,34 @@ export const UxLabSidebar: React.FC<UxLabSidebarProps> = ({
 
       {/* Navegação Central Rolável */}
       <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-4">
-        {/* Top-Level: Dashboard Executivo */}
+        {/* Top-Level Transversal: Dashboard Executivo & Torre Operacional */}
         <div className="space-y-1">
-          <button
-            type="button"
-            onClick={() => onSelectItem?.("dashboard", "Dashboard Executivo")}
-            className={cn(
-              "flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-xs font-semibold transition-colors",
-              activeItem === "dashboard"
-                ? "bg-blue-600 text-white shadow-sm dark:bg-blue-600/15 dark:text-blue-400 dark:border-l-2 dark:border-blue-500 dark:shadow-none"
-                : "text-foreground hover:bg-muted dark:hover:bg-muted/30 text-left"
-            )}
-          >
-            <div className="flex items-center gap-2.5">
-              <LayoutDashboard className="h-4 w-4 shrink-0" />
-              <span>Dashboard Executivo</span>
-            </div>
-            {activeItem === "dashboard" && (
-              <span className="flex h-1.5 w-1.5 rounded-full bg-white dark:bg-blue-400 animate-pulse" />
-            )}
-          </button>
+          {TOP_LEVEL_ITEMS.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeItem === item.id;
+
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onSelectItem?.(item.id, item.label)}
+                className={cn(
+                  "flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-xs font-semibold transition-colors",
+                  isActive
+                    ? "bg-blue-600 text-white shadow-sm dark:bg-white/[0.05] dark:text-[#F1F3F5] dark:border-l-2 dark:border-blue-500 dark:shadow-none"
+                    : "text-foreground hover:bg-muted dark:text-muted-foreground dark:hover:text-[#F1F3F5] dark:hover:bg-white/[0.03] text-left"
+                )}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Icon className={cn("h-4 w-4 shrink-0", isActive && "dark:text-blue-400")} />
+                  <span>{item.label}</span>
+                </div>
+                {isActive && (
+                  <span className="flex h-1.5 w-1.5 rounded-full bg-white dark:bg-blue-400 animate-pulse" />
+                )}
+              </button>
+            );
+          })}
         </div>
 
         {/* Seções por Domínio */}
@@ -311,7 +339,7 @@ export const UxLabSidebar: React.FC<UxLabSidebarProps> = ({
               <button
                 type="button"
                 onClick={() => toggleSection(section.id)}
-                className="flex w-full items-center justify-between px-2 py-1 text-left text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80 hover:text-foreground"
+                className="flex w-full items-center justify-between px-2 py-1 text-left text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80 hover:text-foreground dark:hover:text-[#F1F3F5]"
               >
                 <span>{section.title}</span>
                 <ChevronDown
@@ -337,15 +365,15 @@ export const UxLabSidebar: React.FC<UxLabSidebarProps> = ({
                         className={cn(
                           "group flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-xs font-medium transition-all text-left",
                           isSelected
-                            ? "bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-semibold border-l-2 border-blue-600 pl-2"
-                            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                            ? "bg-blue-50 text-blue-700 font-semibold border-l-2 border-blue-600 pl-2 dark:bg-white/[0.05] dark:text-[#F1F3F5] dark:border-l-2 dark:border-blue-500"
+                            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground dark:hover:bg-white/[0.03] dark:hover:text-[#F1F3F5]"
                         )}
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
                           <Icon
                             className={cn(
                               "h-3.5 w-3.5 shrink-0 transition-colors",
-                              isSelected ? "text-blue-600 dark:text-blue-400" : "text-muted-foreground group-hover:text-foreground"
+                              isSelected ? "text-blue-600 dark:text-blue-400" : "text-muted-foreground group-hover:text-foreground dark:group-hover:text-[#F1F3F5]"
                             )}
                           />
                           <span className="truncate">{item.label}</span>
@@ -372,10 +400,10 @@ export const UxLabSidebar: React.FC<UxLabSidebarProps> = ({
       </nav>
 
       {/* Footer com Metadados e Instruções do Lab */}
-      <div className="border-t border-sidebar-border/80 p-3 text-xs bg-sidebar/50">
+      <div className="border-t border-sidebar-border/80 p-3 text-xs bg-sidebar/50 dark:border-white/[0.04]">
         <div className="flex items-center justify-between text-[11px] font-medium text-muted-foreground">
           <span>Ambiente Isolado</span>
-          <span className="font-mono text-[10px] text-primary">v0.1-proto</span>
+          <span className="font-mono text-[10px] text-blue-600 dark:text-blue-400 font-bold">v0.1-proto</span>
         </div>
         <p className="mt-1 text-[10px] text-muted-foreground/70 leading-tight">
           Nenhuma alteração no LAB impacta dados reais da produção.

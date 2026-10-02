@@ -64,6 +64,10 @@ export default function UxLabTorreOperacional() {
     if (id === "torre-operacional") {
       return;
     }
+    if (id === "dre") {
+      navigate("/ux-lab/dre");
+      return;
+    }
     toast.info(`Módulo em homologação: ${label}`, {
       description: "Este módulo será disponibilizado nas próximas etapas do UX LAB.",
     });
@@ -97,7 +101,7 @@ export default function UxLabTorreOperacional() {
         {/* ─── 1. RADAR OPERACIONAL COMPACTO (Superfície única horizontal) ─── */}
         <section
           aria-label="Radar Operacional"
-          className="rounded-xl border border-border bg-card p-3 px-4 shadow-xs transition-colors"
+          className="rounded-xl border border-border bg-card dark:bg-[#111419] dark:border-white/[0.05] p-3 px-4 shadow-xs transition-colors"
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             {/* Indicadores Semânticos em Linha */}
@@ -127,7 +131,7 @@ export default function UxLabTorreOperacional() {
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-blue-600 dark:bg-blue-400" />
+                <span className="h-2 w-2 rounded-full bg-blue-600 dark:bg-blue-500" />
                 <span className="font-semibold text-foreground">
                   {MOCK_RADAR_OPERACIONAL.emAndamento}
                 </span>
@@ -146,15 +150,15 @@ export default function UxLabTorreOperacional() {
         {/* ─── 2. SUB-CABEÇALHO OPERACIONAL: FILTROS RÁPIDOS E BUSCA ─── */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pt-1">
           {/* Pílulas de Seleção de Trilha */}
-          <div className="flex items-center gap-1.5 p-0.5 rounded-lg bg-muted/50 border border-border/60">
+          <div className="flex items-center gap-1.5 p-0.5 rounded-lg bg-muted/50 border border-border/60 dark:bg-[#111419] dark:border-white/[0.05]">
             <button
               type="button"
               onClick={() => setFluxoFiltro("todos")}
               className={cn(
                 "rounded-md px-3 py-1 text-xs font-medium transition-colors",
                 fluxoFiltro === "todos"
-                  ? "bg-card text-foreground font-semibold shadow-xs border border-border/80"
-                  : "text-muted-foreground hover:text-foreground"
+                  ? "bg-card text-foreground font-semibold shadow-xs border border-border/80 dark:bg-[#1A1F27] dark:border-white/[0.08] dark:shadow-none"
+                  : "text-muted-foreground hover:text-foreground dark:hover:text-[#F1F3F5]"
               )}
             >
               Todos os Fluxos (2 Trilhas)
@@ -165,8 +169,8 @@ export default function UxLabTorreOperacional() {
               className={cn(
                 "rounded-md px-3 py-1 text-xs font-medium transition-colors",
                 fluxoFiltro === "receitas"
-                  ? "bg-card text-foreground font-semibold shadow-xs border border-border/80"
-                  : "text-muted-foreground hover:text-foreground"
+                  ? "bg-card text-foreground font-semibold shadow-xs border border-border/80 dark:bg-[#1A1F27] dark:border-white/[0.08] dark:shadow-none"
+                  : "text-muted-foreground hover:text-foreground dark:hover:text-[#F1F3F5]"
               )}
             >
               Trilha A · Receitas
@@ -177,8 +181,8 @@ export default function UxLabTorreOperacional() {
               className={cn(
                 "rounded-md px-3 py-1 text-xs font-medium transition-colors",
                 fluxoFiltro === "custos"
-                  ? "bg-card text-foreground font-semibold shadow-xs border border-border/80"
-                  : "text-muted-foreground hover:text-foreground"
+                  ? "bg-card text-foreground font-semibold shadow-xs border border-border/80 dark:bg-[#1A1F27] dark:border-white/[0.08] dark:shadow-none"
+                  : "text-muted-foreground hover:text-foreground dark:hover:text-[#F1F3F5]"
               )}
             >
               Trilha B · Custos & Mão de Obra
@@ -192,7 +196,7 @@ export default function UxLabTorreOperacional() {
               placeholder="Buscar processo, lote ou cliente..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="h-8 pl-8 text-xs font-medium bg-card text-foreground border-border"
+              className="h-8 pl-8 text-xs font-medium bg-card text-foreground border-border dark:bg-[#111419] dark:border-white/[0.05] dark:text-[#F1F3F5] dark:focus:border-blue-500"
             />
             {searchTerm && (
               <button
@@ -216,15 +220,15 @@ export default function UxLabTorreOperacional() {
               <section
                 key={trilha.id}
                 aria-label={trilha.titulo}
-                className="rounded-xl border border-border bg-card p-4 md:p-5 shadow-xs transition-colors"
+                className="rounded-xl border border-border bg-card dark:bg-[#111419] dark:border-white/[0.05] p-4 md:p-5 shadow-xs transition-colors"
               >
                 {/* Cabeçalho da Trilha */}
-                <div className="flex flex-col gap-1 pb-4 sm:flex-row sm:items-center sm:justify-between border-b border-border/60">
+                <div className="flex flex-col gap-1 pb-4 sm:flex-row sm:items-center sm:justify-between border-b border-border/60 dark:border-white/[0.04]">
                   <div className="flex items-center gap-2.5">
                     <div
                       className={cn(
                         "flex h-7 w-7 items-center justify-center rounded-lg text-white font-bold text-xs shadow-xs",
-                        isReceita ? "bg-blue-600 dark:bg-blue-700" : "bg-slate-700 dark:bg-slate-800"
+                        isReceita ? "bg-blue-600 dark:bg-blue-600" : "bg-slate-700 dark:bg-slate-800"
                       )}
                     >
                       {isReceita ? "A" : "B"}
@@ -264,8 +268,8 @@ export default function UxLabTorreOperacional() {
                             className={cn(
                               "flex-1 rounded-xl border p-3.5 transition-all text-left flex flex-col justify-between cursor-pointer select-none",
                               isSelected
-                                ? "border-blue-600 bg-blue-50/30 ring-2 ring-blue-600/20 shadow-sm dark:border-blue-500 dark:bg-blue-950/20 dark:ring-blue-500/30"
-                                : "border-border bg-card/70 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-card shadow-xs"
+                                ? "border-blue-600 bg-blue-50/30 ring-2 ring-blue-600/20 shadow-sm dark:border-blue-500 dark:bg-[#15191F] dark:ring-1 dark:ring-blue-500/40 dark:shadow-none"
+                                : "border-border bg-card/70 hover:border-slate-300 hover:bg-card shadow-xs dark:bg-[#15191F] dark:border-white/[0.04] dark:hover:bg-[#1A1F27] dark:hover:border-white/[0.08] dark:shadow-none"
                             )}
                           >
                             {/* Topo do Nó: Ordem, Nome e Chip de Situação */}
@@ -286,7 +290,7 @@ export default function UxLabTorreOperacional() {
                             </div>
 
                             {/* Centro do Nó: Quantidade, Situação e Tempo */}
-                            <div className="my-3 py-2 border-y border-border/40 space-y-1">
+                            <div className="my-2.5 py-1.5 border-y border-border/40 dark:border-white/[0.03] space-y-1">
                               <div className="flex items-baseline justify-between">
                                 <span className="font-display text-lg font-black text-foreground">
                                   {etapa.totalProcessos}
@@ -322,9 +326,9 @@ export default function UxLabTorreOperacional() {
                                 <span
                                   className={cn(
                                     "font-semibold",
-                                    etapa.responsavelSetorial === "Operação" && "text-blue-700 dark:text-blue-300",
-                                    etapa.responsavelSetorial === "RH" && "text-purple-700 dark:text-purple-300",
-                                    etapa.responsavelSetorial === "Financeiro" && "text-emerald-700 dark:text-emerald-300"
+                                    etapa.responsavelSetorial === "Operação" && "text-blue-700 dark:text-blue-400",
+                                    etapa.responsavelSetorial === "RH" && "text-purple-700 dark:text-purple-400",
+                                    etapa.responsavelSetorial === "Financeiro" && "text-emerald-700 dark:text-emerald-400"
                                   )}
                                 >
                                   {etapa.responsavelSetorial}
@@ -370,28 +374,28 @@ function StageStatusBadge({ situacao }: { situacao: SituacaoEtapa }) {
   switch (situacao) {
     case "atrasado":
       return (
-        <span className="inline-flex items-center gap-1 rounded-full border border-rose-300 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-950/50 px-1.5 py-0.2 text-[9px] font-bold text-rose-700 dark:text-rose-400">
+        <span className="inline-flex items-center gap-1 rounded-full border border-rose-300 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/30 px-1.5 py-0.2 text-[9px] font-bold text-rose-700 dark:text-rose-400">
           <span className="h-1.5 w-1.5 rounded-full bg-rose-600 dark:bg-rose-400" />
           Fora SLA
         </span>
       );
     case "bloqueado":
       return (
-        <span className="inline-flex items-center gap-1 rounded-full border border-rose-300 dark:border-rose-800 bg-rose-100 dark:bg-rose-950/70 px-1.5 py-0.2 text-[9px] font-bold text-rose-800 dark:text-rose-300">
+        <span className="inline-flex items-center gap-1 rounded-full border border-rose-300 dark:border-rose-800/40 bg-rose-100 dark:bg-rose-950/40 px-1.5 py-0.2 text-[9px] font-bold text-rose-800 dark:text-rose-300">
           <AlertTriangle className="h-2.5 w-2.5" />
           Bloqueado
         </span>
       );
     case "atencao":
       return (
-        <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/50 px-1.5 py-0.2 text-[9px] font-bold text-amber-700 dark:text-amber-400">
+        <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-950/30 px-1.5 py-0.2 text-[9px] font-bold text-amber-700 dark:text-amber-400">
           <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
           Atenção
         </span>
       );
     case "concluido":
       return (
-        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300 dark:border-emerald-900/50 bg-emerald-50 dark:bg-emerald-950/50 px-1.5 py-0.2 text-[9px] font-bold text-emerald-700 dark:text-emerald-400">
+        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-950/30 px-1.5 py-0.2 text-[9px] font-bold text-emerald-700 dark:text-emerald-400">
           <CheckCircle2 className="h-2.5 w-2.5" />
           Concluído
         </span>
@@ -399,7 +403,7 @@ function StageStatusBadge({ situacao }: { situacao: SituacaoEtapa }) {
     case "normal":
     default:
       return (
-        <span className="inline-flex items-center gap-1 rounded-full border border-border/80 bg-muted/60 px-1.5 py-0.2 text-[9px] font-semibold text-muted-foreground">
+        <span className="inline-flex items-center gap-1 rounded-full border border-border/80 dark:border-white/[0.05] bg-muted/60 dark:bg-white/[0.03] px-1.5 py-0.2 text-[9px] font-semibold text-muted-foreground dark:text-[#A0A7B2]">
           <span className="h-1.5 w-1.5 rounded-full bg-blue-600 dark:bg-blue-400" />
           Regular
         </span>

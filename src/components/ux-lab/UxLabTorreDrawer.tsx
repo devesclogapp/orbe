@@ -144,10 +144,10 @@ const UxLabTorreDrawerContent: React.FC<UxLabTorreDrawerContentProps> = ({
   return (
     <SheetContent
       side="right"
-      className="w-full sm:max-w-xl md:max-w-2xl lg:max-w-[650px] p-0 flex flex-col gap-0 border-l border-border bg-card text-foreground overflow-hidden shadow-2xl transition-colors duration-200"
+      className="w-full sm:max-w-xl md:max-w-2xl lg:max-w-[650px] p-0 flex flex-col gap-0 border-l border-border bg-card dark:bg-[#111419] dark:border-white/[0.06] text-foreground overflow-hidden shadow-2xl transition-colors duration-200"
     >
       {/* ─── 1. CABEÇALHO DO DRAWER (DIAGNÓSTICO E RESPONSABILIDADE) ─── */}
-      <div className="border-b border-border/80 bg-muted/20 px-5 py-4 shrink-0 space-y-2.5">
+      <div className="border-b border-border/80 bg-muted/20 dark:bg-[#0D1014] dark:border-white/[0.04] px-5 py-4 shrink-0 space-y-2.5">
         <div className="flex items-start justify-between gap-3">
           <div className="space-y-1 min-w-0">
             {/* Trilha e Identificação do Nível */}
@@ -178,7 +178,7 @@ const UxLabTorreDrawerContent: React.FC<UxLabTorreDrawerContentProps> = ({
               variant="ghost"
               size="icon"
               onClick={onClose}
-              className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground"
+              className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground dark:hover:bg-white/[0.04]"
             >
               <X className="h-4 w-4" />
               <span className="sr-only">Fechar</span>
@@ -187,7 +187,7 @@ const UxLabTorreDrawerContent: React.FC<UxLabTorreDrawerContentProps> = ({
         </div>
 
         {/* Sub-cabeçalho de Métricas Rápidas & Responsabilidade Setorial */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-border/50 text-xs">
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-border/50 dark:border-white/[0.04] text-xs">
           <div className="flex items-center gap-2">
             <span className="font-semibold text-foreground">
               {stage.totalProcessos} processos nesta etapa
@@ -220,7 +220,7 @@ const UxLabTorreDrawerContent: React.FC<UxLabTorreDrawerContentProps> = ({
       </div>
 
       {/* ─── 2. BARRA DE FILTROS COMPACTOS & BUSCA DENTRO DO DRAWER ─── */}
-      <div className="border-b border-border/70 px-5 py-2.5 bg-card shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+      <div className="border-b border-border/70 dark:border-white/[0.04] px-5 py-2.5 bg-card dark:bg-[#111419] shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
         {/* Pílulas de Filtro */}
         <div className="flex items-center gap-1">
           <button
@@ -230,8 +230,8 @@ const UxLabTorreDrawerContent: React.FC<UxLabTorreDrawerContentProps> = ({
             className={cn(
               "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
               filterMode === "todos"
-                ? "bg-muted font-bold text-foreground"
-                : "text-muted-foreground hover:text-foreground",
+                ? "bg-muted font-bold text-foreground dark:bg-[#1A1F27] dark:text-[#F1F3F5] dark:border dark:border-white/[0.08]"
+                : "text-muted-foreground hover:text-foreground dark:hover:text-[#F1F3F5]",
               stage.itensExemplo.length === 0 && "opacity-40 cursor-not-allowed pointer-events-none"
             )}
           >
@@ -244,8 +244,8 @@ const UxLabTorreDrawerContent: React.FC<UxLabTorreDrawerContentProps> = ({
             className={cn(
               "rounded-md px-2.5 py-1 text-xs font-medium transition-colors flex items-center gap-1",
               filterMode === "atencao"
-                ? "bg-amber-100 dark:bg-amber-950/60 font-bold text-amber-800 dark:text-amber-300"
-                : "text-muted-foreground hover:text-foreground",
+                ? "bg-amber-100 dark:bg-[#1A1F27] dark:border dark:border-amber-500/30 font-bold text-amber-800 dark:text-amber-300"
+                : "text-muted-foreground hover:text-foreground dark:hover:text-[#F1F3F5]",
               countAtencao === 0 && "opacity-40 cursor-not-allowed pointer-events-none"
             )}
           >
@@ -259,8 +259,8 @@ const UxLabTorreDrawerContent: React.FC<UxLabTorreDrawerContentProps> = ({
             className={cn(
               "rounded-md px-2.5 py-1 text-xs font-medium transition-colors flex items-center gap-1",
               filterMode === "bloqueados"
-                ? "bg-rose-100 dark:bg-rose-950/60 font-bold text-rose-800 dark:text-rose-300"
-                : "text-muted-foreground hover:text-foreground",
+                ? "bg-rose-100 dark:bg-[#1A1F27] dark:border dark:border-rose-500/30 font-bold text-rose-800 dark:text-rose-300"
+                : "text-muted-foreground hover:text-foreground dark:hover:text-[#F1F3F5]",
               countBloqueados === 0 && "opacity-40 cursor-not-allowed pointer-events-none"
             )}
           >
@@ -276,7 +276,7 @@ const UxLabTorreDrawerContent: React.FC<UxLabTorreDrawerContentProps> = ({
             placeholder="Buscar processo, lote, cliente..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="h-7 pl-8 text-xs font-medium bg-muted/40 border-border"
+            className="h-7 pl-8 text-xs font-medium bg-muted/40 border-border dark:bg-[#15191F] dark:border-white/[0.05] dark:text-[#F1F3F5] dark:focus:border-blue-500"
           />
           {searchTerm && (
             <button
@@ -303,7 +303,7 @@ const UxLabTorreDrawerContent: React.FC<UxLabTorreDrawerContentProps> = ({
                 setFilterMode("todos");
                 setSearchTerm("");
               }}
-              className="h-7 text-xs"
+              className="h-7 text-xs dark:border-white/[0.06] dark:hover:bg-white/[0.04]"
             >
               Limpar filtros
             </Button>
@@ -320,7 +320,7 @@ const UxLabTorreDrawerContent: React.FC<UxLabTorreDrawerContentProps> = ({
       </div>
 
       {/* ─── 4. NOTA DIDÁTICA DE GOVERNANÇA (RODAPÉ) ─── */}
-      <div className="border-t border-border/80 bg-muted/30 px-5 py-3 shrink-0 flex items-center justify-between text-xs text-muted-foreground">
+      <div className="border-t border-border/80 dark:border-white/[0.04] bg-muted/30 dark:bg-[#0D1014] px-5 py-3 shrink-0 flex items-center justify-between text-xs text-muted-foreground">
         <div className="flex items-center gap-1.5">
           <Info className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
           <span className="text-[11px] leading-tight">
@@ -332,7 +332,7 @@ const UxLabTorreDrawerContent: React.FC<UxLabTorreDrawerContentProps> = ({
           variant="outline"
           size="sm"
           onClick={onClose}
-          className="h-7 text-xs font-medium"
+          className="h-7 text-xs font-medium dark:border-white/[0.06] dark:hover:bg-white/[0.04] dark:text-[#F1F3F5]"
         >
           Fechar Drawer
         </Button>
@@ -357,12 +357,12 @@ function ProcessoDrawerCard({
   return (
     <div
       className={cn(
-        "rounded-xl border p-3.5 space-y-2.5 transition-all text-left bg-card",
+        "rounded-xl border p-3.5 space-y-2.5 transition-all text-left bg-card dark:bg-[#15191F]",
         isBloqueado
-          ? "border-rose-300/80 dark:border-rose-900/50 bg-rose-50/20 dark:bg-rose-950/10 shadow-xs"
+          ? "border-rose-300/80 bg-rose-50/20 dark:border-rose-900/40 dark:border-l-2 dark:border-l-rose-500 shadow-xs"
           : isAguardando
-          ? "border-amber-300/80 dark:border-amber-900/50 bg-amber-50/20 dark:bg-amber-950/10 shadow-xs"
-          : "border-border/80 bg-card hover:border-slate-300 dark:hover:border-slate-700 shadow-xs"
+          ? "border-amber-300/80 bg-amber-50/20 dark:border-amber-900/40 dark:border-l-2 dark:border-l-amber-500 shadow-xs"
+          : "border-border/80 bg-card hover:border-slate-300 dark:border-white/[0.04] dark:hover:border-white/[0.08] dark:hover:bg-[#1A1F27] shadow-xs"
       )}
     >
       {/* Linha 1: Identificador, Tipo, Unidade e Tempo Parado */}
@@ -374,7 +374,7 @@ function ProcessoDrawerCard({
             </span>
             <Badge
               variant="outline"
-              className="text-[10px] font-medium px-1.5 py-0 border-border bg-muted/40 text-muted-foreground"
+              className="text-[10px] font-medium px-1.5 py-0 border-border bg-muted/40 dark:bg-white/[0.03] dark:border-white/[0.05] text-muted-foreground dark:text-[#A0A7B2]"
             >
               {item.tipo}
             </Badge>
@@ -394,20 +394,20 @@ function ProcessoDrawerCard({
       </div>
 
       {/* Linha 2: Situação e Motivo Detalhado */}
-      <div className="space-y-1.5 text-xs pt-1 border-t border-border/40">
+      <div className="space-y-1.5 text-xs pt-1 border-t border-border/40 dark:border-white/[0.03]">
         <div className="flex items-center gap-2">
           {isBloqueado ? (
-            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-700 dark:text-rose-400 bg-rose-100 dark:bg-rose-950/60 px-2 py-0.5 rounded border border-rose-300 dark:border-rose-800">
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-700 dark:text-rose-400 bg-rose-100 dark:bg-rose-950/40 px-2 py-0.5 rounded border border-rose-300 dark:border-rose-800/40">
               <AlertTriangle className="h-3 w-3" />
               {item.situacaoTexto}
             </span>
           ) : isAguardando ? (
-            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/60 px-2 py-0.5 rounded border border-amber-300 dark:border-amber-800">
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/40 px-2 py-0.5 rounded border border-amber-300 dark:border-amber-800/40">
               <Clock className="h-3 w-3" />
               {item.situacaoTexto}
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-600 dark:text-slate-400 bg-muted/60 px-2 py-0.5 rounded border border-border/60">
+            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-600 dark:text-[#A0A7B2] bg-muted/60 dark:bg-white/[0.03] px-2 py-0.5 rounded border border-border/60 dark:border-white/[0.04]">
               <CheckCircle2 className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
               {item.situacaoTexto}
             </span>
@@ -423,13 +423,13 @@ function ProcessoDrawerCard({
       </div>
 
       {/* Linha 3: Responsável Setorial e Botão CTA de Despacho */}
-      <div className="flex items-center justify-between pt-1.5 border-t border-border/40 text-xs">
+      <div className="flex items-center justify-between pt-1.5 border-t border-border/40 dark:border-white/[0.03] text-xs">
         <div className="text-[11px] text-muted-foreground">
           Responsável:{" "}
           <strong className={cn(
-            item.responsavelSetor === "Operação" && "text-blue-700 dark:text-blue-300",
-            item.responsavelSetor === "RH" && "text-purple-700 dark:text-purple-300",
-            item.responsavelSetor === "Financeiro" && "text-emerald-700 dark:text-emerald-300"
+            item.responsavelSetor === "Operação" && "text-blue-700 dark:text-blue-400",
+            item.responsavelSetor === "RH" && "text-purple-700 dark:text-purple-400",
+            item.responsavelSetor === "Financeiro" && "text-emerald-700 dark:text-emerald-400"
           )}>
             {item.responsavelSetor}
           </strong>
@@ -471,7 +471,7 @@ function ProcessoDrawerCard({
               variant="outline"
               size="sm"
               onClick={() => onDispatch(item)}
-              className="h-7 px-2.5 text-xs font-medium text-foreground hover:bg-muted gap-1 border-border"
+              className="h-7 px-2.5 text-xs font-medium text-foreground hover:bg-muted dark:hover:bg-white/[0.04] gap-1 border-border dark:border-white/[0.05]"
             >
               {item.ctaLabel}
               <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground" />
@@ -489,28 +489,28 @@ function StageStatusBadge({ situacao }: { situacao: SituacaoEtapa }) {
   switch (situacao) {
     case "atrasado":
       return (
-        <span className="inline-flex items-center gap-1 rounded-full border border-rose-300 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-950/50 px-2 py-0.5 text-[10px] font-bold text-rose-700 dark:text-rose-400">
+        <span className="inline-flex items-center gap-1 rounded-full border border-rose-300 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/30 px-2 py-0.5 text-[10px] font-bold text-rose-700 dark:text-rose-400">
           <span className="h-1.5 w-1.5 rounded-full bg-rose-600 dark:bg-rose-400" />
           Fora do SLA
         </span>
       );
     case "bloqueado":
       return (
-        <span className="inline-flex items-center gap-1 rounded-full border border-rose-300 dark:border-rose-800 bg-rose-100 dark:bg-rose-950/70 px-2 py-0.5 text-[10px] font-bold text-rose-800 dark:text-rose-300">
+        <span className="inline-flex items-center gap-1 rounded-full border border-rose-300 dark:border-rose-800/40 bg-rose-100 dark:bg-rose-950/40 px-2 py-0.5 text-[10px] font-bold text-rose-800 dark:text-rose-300">
           <AlertTriangle className="h-2.5 w-2.5" />
           Bloqueado
         </span>
       );
     case "atencao":
       return (
-        <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/50 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-400">
+        <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-950/30 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-400">
           <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
           Atenção
         </span>
       );
     case "concluido":
       return (
-        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300 dark:border-emerald-900/50 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-400">
+        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-950/30 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-400">
           <CheckCircle2 className="h-2.5 w-2.5" />
           Concluído
         </span>
@@ -518,7 +518,7 @@ function StageStatusBadge({ situacao }: { situacao: SituacaoEtapa }) {
     case "normal":
     default:
       return (
-        <span className="inline-flex items-center gap-1 rounded-full border border-border/80 bg-muted/60 px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+        <span className="inline-flex items-center gap-1 rounded-full border border-border/80 dark:border-white/[0.04] bg-muted/60 dark:bg-white/[0.03] px-2 py-0.5 text-[10px] font-semibold text-muted-foreground dark:text-[#A0A7B2]">
           <span className="h-1.5 w-1.5 rounded-full bg-blue-600 dark:bg-blue-400" />
           Regular
         </span>

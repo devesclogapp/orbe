@@ -37,4 +37,22 @@ describe("UX02 — Torre Operacional V2 (Protótipo 1.1 — Refinamentos)", () =
     expect(pageContent).toContain('selectedStageId');
     expect(pageContent).toContain('ring-2 ring-blue-600/20');
   });
+
+  it("5. A Torre Operacional é item independente de 1º nível (junto ao Dashboard) e foi removida de Operações de Campo", () => {
+    const sidebarPath = path.resolve(__dirname, "../components/ux-lab/UxLabSidebar.tsx");
+    const sidebarContent = fs.readFileSync(sidebarPath, "utf-8");
+
+    // Verifica que está nos itens de primeiro nível (TOP_LEVEL_ITEMS)
+    expect(sidebarContent).toContain('TOP_LEVEL_ITEMS');
+    expect(sidebarContent).toContain('id: "torre-operacional"');
+
+    // Verifica que a seção "operacoes" não possui mais torre-operacional
+    const operacoesSectionMatch = sidebarContent.match(/id:\s*"operacoes"[\s\S]*?items:\s*\[([\s\S]*?)\]/);
+    expect(operacoesSectionMatch).not.toBeNull();
+    const operacoesItems = operacoesSectionMatch ? operacoesSectionMatch[1] : "";
+    expect(operacoesItems).not.toContain("torre-operacional");
+    expect(operacoesItems).toContain("operacoes-volume");
+    expect(operacoesItems).toContain("servicos-extras");
+    expect(operacoesItems).toContain("custos-extras");
+  });
 });

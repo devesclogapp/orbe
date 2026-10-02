@@ -116,79 +116,83 @@
   }
 
   .dark {
-    /* Canvas / Fundo Geral: #11151C (Grafite profundo azulado/slate, não preto puro) */
-    --background: 218 24% 9%;
-    /* Texto Primário: #E2E8F0 (Off-white suave, sem emitir sensação de branco luminoso) */
-    --foreground: 215 20% 88%;
+    /* ─── DARK V4: RECONSTRUÇÃO DE PROFUNDIDADE POR LUMINÂNCIA ─── */
+    /* Canvas / Fundo Geral: #0B0D10 (Base neutra quase preta, livre de grafite azulado) */
+    --background: 216 19% 5.3%;
+    /* Texto Primário: #F1F3F5 (Off-white de alto contraste sereno) */
+    --foreground: 210 14% 95.3%;
 
-    /* Superfície Principal / Cards: #181D25 (Levemente elevada em relação ao fundo) */
-    --card: 218 21% 12%;
-    --card-foreground: 215 20% 88%;
+    /* Superfície de Nível 2 / Cards: #15191F */
+    --card: 216 19% 10.2%;
+    --card-foreground: 210 14% 95.3%;
 
-    /* Superfície Elevada / Modais / Drawers / Popovers: #1C222C */
-    --popover: 218 22% 14%;
-    --popover-foreground: 215 20% 88%;
+    /* Superfície Elevada / Modais / Drawers / Popovers: #1A1F27 */
+    --popover: 217 20% 12.7%;
+    --popover-foreground: 210 14% 95.3%;
 
-    --primary: 18 100% 55%;
+    /* Azul Royal ORBE (#2563EB) como Luz Funcional (foco, CTA, seleção, identidade) */
+    --primary: 221 83% 53%;
     --primary-foreground: 0 0% 100%;
-    --primary-soft: 18 60% 16%;
-    --primary-hover: 18 100% 50%;
+    --primary-soft: 221 60% 14%;
+    --primary-hover: 221 83% 48%;
 
-    --secondary: 216 20% 15%;
-    --secondary-foreground: 215 20% 88%;
+    /* Superfície Principal / Nível 1 (Trilhas, Radar, containers principais): #111419 */
+    --secondary: 218 19% 8.2%;
+    --secondary-foreground: 210 14% 95.3%;
 
-    /* Superfície Interna Sutil / Muted / Sub-blocos: #202630 */
-    --muted: 216 20% 16%;
-    /* Texto Secundário: #94A3B8 (Cinza claro/azulado de leitura confortável) */
-    --muted-foreground: 215 16% 65%;
+    /* Superfície Elevada / Hover / Muted: #1A1F27 */
+    --muted: 217 20% 12.7%;
+    /* Texto Secundário: #A0A7B2 */
+    --muted-foreground: 217 10% 66.3%;
 
-    --accent: 218 22% 14%;
-    --accent-foreground: 215 20% 88%;
+    --accent: 217 20% 12.7%;
+    --accent-foreground: 210 14% 95.3%;
 
+    /* Semânticos Reservados para Informação/Status */
     --info: 217 91% 60%;
     --info-foreground: 0 0% 100%;
-    --info-soft: 217 60% 18%;
+    --info-soft: 217 60% 16%;
 
     --success: 142 71% 45%;
     --success-foreground: 0 0% 100%;
-    --success-soft: 142 50% 15%;
+    --success-soft: 142 50% 14%;
     --success-strong: 142 70% 70%;
 
     --warning: 38 92% 55%;
     --warning-foreground: 0 0% 9%;
-    --warning-soft: 38 60% 16%;
+    --warning-soft: 38 60% 14%;
     --warning-strong: 38 90% 70%;
 
     --destructive: 0 75% 55%;
     --destructive-foreground: 0 0% 100%;
-    --destructive-soft: 0 60% 18%;
+    --destructive-soft: 0 60% 16%;
     --destructive-strong: 0 80% 75%;
 
-    /* Bordas Estruturais Sutis: #242C38 / Grafite sutil sem contorno de grade de planilha */
-    --border: 218 18% 18%;
-    --input: 218 18% 18%;
+    /* Bordas Estruturais Sutis: rgba(255,255,255,.06) ~ 216 10% 12% */
+    --border: 216 10% 12%;
+    --input: 216 10% 12%;
     --ring: 221 83% 53%;
 
-    --row-alert: 218 25% 12%;
+    --row-alert: 218 19% 7.5%;
 
-    /* Sidebar: #151A22 (Superfície escura intermediária com separação tranquila) */
-    --sidebar-background: 218 24% 11%;
-    --sidebar-foreground: 215 16% 70%;
+    /* Sidebar/Topbar: #0D1014 (Aproximado do fundo quase preto) */
+    --sidebar-background: 214 21% 6.5%;
+    --sidebar-foreground: 217 10% 66.3%;
     --sidebar-primary: 221 83% 53%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 218 20% 14%;
-    --sidebar-accent-foreground: 215 20% 88%;
-    --sidebar-border: 218 18% 15%;
+    --sidebar-accent: 217 20% 12.7%;
+    --sidebar-accent-foreground: 210 14% 95.3%;
+    --sidebar-border: 216 10% 9.5%;
     --sidebar-ring: 221 83% 53%;
 
-    /* Specific Grays Dark Refinados (Azulados/Slate) */
-    --gray-100: 218 24% 11%;
-    --gray-200: 218 21% 14%;
-    --gray-300: 216 20% 18%;
-    --gray-400: 215 16% 47%;
-    --gray-500: 215 16% 65%;
-    --gray-600: 215 18% 75%;
-    --gray-900: 215 20% 88%;
+    /* Specific Grays Dark Refinados (Luminância Pura) */
+    --gray-100: 214 21% 6.5%;   /* #0D1014 */
+    --gray-200: 218 19% 8.2%;   /* #111419 */
+    --gray-300: 216 19% 10.2%;  /* #15191F */
+    --gray-400: 216 9% 45.1%;   /* #69717D Texto terciário */
+    --gray-500: 217 10% 66.3%;  /* #A0A7B2 Texto secundário */
+    --gray-600: 210 14% 80%;
+    --gray-900: 210 14% 95.3%;  /* #F1F3F5 Texto primário */
   }
 }
 

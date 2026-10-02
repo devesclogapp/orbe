@@ -95,6 +95,10 @@ function UxLabDashboardContent() {
       navigate("/ux-lab/torre");
       return;
     }
+    if (id === "dre") {
+      navigate("/ux-lab/dre");
+      return;
+    }
 
     setSimulatedModal({
       open: true,
@@ -115,15 +119,15 @@ function UxLabDashboardContent() {
 
   // Paleta adaptativa para Recharts (garante alto contraste e sobriedade em Light e Dark mode)
   const chartTheme = {
-    receita: isDark ? "#e2e8f0" : "#0f172a", // #e2e8f0 (slate-200 sereno, neutro claro, off-white suave, não estourado)
-    custos: isDark ? "#94a3b8" : "#94a3b8", // #94a3b8 (slate-400 neutro intermediário ~65% luminosidade, nítido contra a superfície do card)
-    lucro: isDark ? "#3b82f6" : "#2563EB", // Azul Royal controlado sem neon
-    axisTick: isDark ? "#64748b" : "hsl(0 0% 45%)", // silêncio visual
-    axisLine: isDark ? "#1e293b" : "hsl(0 0% 87%)",
+    receita: isDark ? "#F1F3F5" : "#0f172a", // #F1F3F5 (primário off-white sereno)
+    custos: isDark ? "#A0A7B2" : "#94a3b8", // #A0A7B2 (secundário nítido)
+    lucro: isDark ? "#2563EB" : "#2563EB", // Azul Royal funcional
+    axisTick: isDark ? "#69717D" : "hsl(0 0% 45%)", // silêncio visual
+    axisLine: isDark ? "rgba(255, 255, 255, 0.06)" : "hsl(0 0% 87%)",
     gridLine: isDark ? "rgba(255, 255, 255, 0.03)" : "rgba(0, 0, 0, 0.05)",
-    tooltipBg: isDark ? "#1c222c" : "hsl(0 0% 100%)",
-    tooltipBorder: isDark ? "#28303e" : "hsl(0 0% 87%)",
-    tooltipText: isDark ? "#e2e8f0" : "hsl(0 0% 9%)",
+    tooltipBg: isDark ? "#1A1F27" : "hsl(0 0% 100%)",
+    tooltipBorder: isDark ? "rgba(255, 255, 255, 0.08)" : "hsl(0 0% 87%)",
+    tooltipText: isDark ? "#F1F3F5" : "hsl(0 0% 9%)",
   };
 
   return (
@@ -141,14 +145,14 @@ function UxLabDashboardContent() {
       <div className="space-y-4 pb-10 animate-in fade-in-50 duration-200">
         
         {/* BARRA DE CONTEXTO: ESTADO DOS CICLOS OPERACIONAIS */}
-        <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-border/80 dark:border-border/30 bg-card px-3.5 py-2 shadow-xs transition-colors duration-200">
+        <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-border/80 dark:border-white/[0.05] bg-card dark:bg-[#111419] px-3.5 py-2 shadow-xs transition-colors duration-200">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mr-1">
               Ciclos:
             </span>
 
             {/* Ciclo CLT: Neutro com status de prazo */}
-            <span className="inline-flex items-center gap-1.5 rounded-md border border-border/80 dark:border-border/30 bg-muted/40 dark:bg-muted/20 px-2 py-0.5 text-[11px] font-medium text-foreground">
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-border/80 dark:border-white/[0.04] bg-muted/40 dark:bg-white/[0.03] px-2 py-0.5 text-[11px] font-medium text-foreground">
               <Clock className="h-3 w-3 text-muted-foreground" />
               CLT: Aberto (fecha em 5d)
             </span>
@@ -160,7 +164,7 @@ function UxLabDashboardContent() {
             </span>
 
             {/* Ciclo Financeiro: Neutro saudável */}
-            <span className="inline-flex items-center gap-1.5 rounded-md border border-border/80 dark:border-border/30 bg-muted/40 dark:bg-muted/20 px-2 py-0.5 text-[11px] font-medium text-foreground">
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-border/80 dark:border-white/[0.04] bg-muted/40 dark:bg-white/[0.03] px-2 py-0.5 text-[11px] font-medium text-foreground">
               <CheckCircle2 className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
               Financeiro: Conciliação em Dia
             </span>
@@ -233,27 +237,27 @@ function UxLabDashboardContent() {
           {/* Card 5: Caixa & Contas (Clicável com Drawer Lateral Ativo) */}
           <div
             onClick={() => setActiveDrawer("caixa")}
-            className="group flex flex-col justify-between overflow-hidden rounded-xl border border-border/80 dark:border-border/40 bg-card p-3.5 shadow-xs dark:shadow-none transition-all duration-200 cursor-pointer hover:border-blue-500/40 hover:bg-muted/15 dark:hover:border-slate-700/50 dark:hover:bg-muted/25"
+            className="group flex flex-col justify-between overflow-hidden rounded-xl border border-border/80 dark:border-white/[0.05] bg-card dark:bg-[#15191F] p-3.5 shadow-xs dark:shadow-none transition-all duration-200 cursor-pointer hover:border-blue-500/40 hover:bg-muted/15 dark:hover:border-white/[0.08] dark:hover:bg-[#1A1F27]"
           >
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80 dark:text-[#A0A7B2]">
                 Caixa & Contas
               </span>
               <div className="flex items-center gap-1">
-                <Wallet className="h-3.5 w-3.5 text-muted-foreground/50" strokeWidth={1.75} />
+                <Wallet className="h-3.5 w-3.5 text-muted-foreground/50 dark:text-[#69717D]" strokeWidth={1.75} />
                 <ChevronRight className="h-3 w-3 text-muted-foreground/30 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-blue-600 dark:group-hover:text-blue-400" />
               </div>
             </div>
 
             <div className="mt-2 flex items-baseline justify-between gap-2">
-              <div className="font-display text-2xl font-bold tracking-tight text-foreground sm:text-[26px] leading-none">
+              <div className="font-display text-2xl font-bold tracking-tight text-foreground dark:text-[#F1F3F5] sm:text-[26px] leading-none">
                 {formatCurrency(kpis.caixaRecebido)}
               </div>
               <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Em conta</span>
             </div>
 
-            <div className="mt-2.5 flex items-center justify-between border-t border-border/40 dark:border-border/25 pt-1.5 text-[11px] text-muted-foreground/75 dark:text-muted-foreground/70">
-              <span>A receber: <strong className="text-foreground font-semibold">{formatCurrency(kpis.aReceber)}</strong></span>
+            <div className="mt-2.5 flex items-center justify-between border-t border-border/40 dark:border-white/[0.04] pt-1.5 text-[11px] text-muted-foreground/75 dark:text-[#69717D]">
+              <span>A receber: <strong className="text-foreground dark:text-[#F1F3F5] font-semibold">{formatCurrency(kpis.aReceber)}</strong></span>
               <span className="text-blue-600 dark:text-blue-400 text-[10px] font-medium group-hover:underline">Detalhar</span>
             </div>
           </div>
