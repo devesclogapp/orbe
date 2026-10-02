@@ -74,7 +74,7 @@ const SECTIONS: LabNavSection[] = [
       },
       {
         id: "torre-operacional",
-        label: "Torre Operacional (Esteira)",
+        label: "Torre Operacional",
         icon: Layers,
       },
     ],

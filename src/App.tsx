@@ -114,6 +114,7 @@ import Onboarding from "./pages/Onboarding";
 
 // UX LAB (Prototipação Experimental Isolada)
 import UxLabDashboard from "./pages/UxLab/UxLabDashboard";
+import UxLabTorreOperacional from "./pages/UxLab/UxLabTorreOperacional";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -268,6 +269,7 @@ const App = () => (
                             <Route path="/styleguide" element={<Styleguide />} />
                             <Route path="/diag-tenant" element={<DiagnosticoTenant />} />
                             <Route path="/ux-lab" element={<UxLabDashboard />} />
+                            <Route path="/ux-lab/torre" element={<UxLabTorreOperacional />} />
                             <Route path="/uxlab" element={<Navigate to="/ux-lab" replace />} />
 
                             <Route path="*" element={<NotFound />} />

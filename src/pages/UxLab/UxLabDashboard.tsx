@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   TrendingUp,
   DollarSign,
@@ -85,9 +86,15 @@ function UxLabDashboardContent() {
     });
   };
 
+  const navigate = useNavigate();
+
   const handleSidebarSelect = (id: string, label: string) => {
     setActiveItem(id);
     if (id === "dashboard") return;
+    if (id === "torre-operacional") {
+      navigate("/ux-lab/torre");
+      return;
+    }
 
     setSimulatedModal({
       open: true,
