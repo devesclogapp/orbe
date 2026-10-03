@@ -18,21 +18,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        let isMounted = true;
+
+        // Timeout de segurança: impede que tela fique eternamente travada se o Supabase estiver pausado ou offline
+        const safetyTimeout = setTimeout(() => {
+            if (isMounted) {
+                console.warn("[AuthContext] Timeout de inicialização (5s). Liberando estado de loading.");
+                setLoading(false);
+            }
+        }, 5000);
+
         // Obter e validar a sessão inicial com o servidor
         supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+            if (!isMounted) return;
+
             if (error || !session) {
                 setSession(null);
                 setUser(null);
                 setLoading(false);
+                clearTimeout(safetyTimeout);
                 return;
             }
 
             try {
                 // Valida se o token não está expirado ou rejeitado (403/401)
                 const { data: userData, error: userError } = await supabase.auth.getUser();
+                if (!isMounted) return;
+
                 if (userError || !userData?.user) {
-                    console.warn("[AuthContext] Token expirado ou rejeitado pelo servidor Supabase. Limpando sessão:", userError?.message);
-                    await supabase.auth.signOut().catch(() => {});
+                    console.warn("[AuthContext] Token expirado ou servidor Supabase inacessível:", userError?.message);
+                    // Limpeza local direta sem disparar requisição remota em loop quando a rede falha
+                    try {
+                        localStorage.removeItem('sb-lifgjtcflzmspilhryap-auth-token');
+                    } catch (_) {}
                     setSession(null);
                     setUser(null);
                 } else {
@@ -41,15 +59,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 }
             } catch (err) {
                 console.error("[AuthContext] Erro ao validar usuário inicial:", err);
+                if (isMounted) {
+                    setSession(null);
+                    setUser(null);
+                }
+            } finally {
+                if (isMounted) {
+                    clearTimeout(safetyTimeout);
+                    setLoading(false);
+                }
+            }
+        }).catch((err) => {
+            console.error("[AuthContext] Falha de conexão ao inicializar sessão:", err);
+            if (isMounted) {
+                clearTimeout(safetyTimeout);
                 setSession(null);
                 setUser(null);
-            } finally {
                 setLoading(false);
             }
         });
 
         // Ouvir mudanças de autenticação
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
+            if (!isMounted) return;
             if (event === "SIGNED_OUT" || !newSession) {
                 setSession(null);
                 setUser(null);
@@ -62,6 +94,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
 
         return () => {
+            isMounted = false;
+            clearTimeout(safetyTimeout);
             subscription.unsubscribe();
         };
     }, []);

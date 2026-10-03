@@ -286,17 +286,48 @@
     scrollbar-width: thin;
     scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;
   }
+
+  /* Scrollbar dedicada e visível para as seções do DRE */
+  .custom-scrollbar-dre {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.4) transparent;
+  }
+  .custom-scrollbar-dre::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .custom-scrollbar-dre::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar-dre::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.4);
+    border-radius: 9999px;
+  }
+  .custom-scrollbar-dre::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--primary) / 0.7);
+  }
 }
 
 /* Otimização de Impressão */
+.print-only {
+  display: none !important;
+}
+
 @media print {
   aside,
   header,
   nav,
   button,
   .no-print,
-  [role="button"] {
+  .dre-no-print,
+  [role="button"],
+  [data-sonner-toaster],
+  [data-sonner-toast] {
     display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
   }
 
   main,
@@ -308,6 +339,47 @@
     width: 100% !important;
     height: auto !important;
     overflow: visible !important;
+  }
+
+  /* ── IMPRESSÃO EXCLUSIVA DO DRAWER (DEMONSTRATIVO DETALHADO) ── */
+  body.printing-dre-drawer #root,
+  body.printing-dre-drawer main,
+  body.printing-dre-drawer .flex-1 {
+    display: none !important;
+  }
+
+  body.printing-dre-drawer [data-radix-dialog-overlay],
+  body.printing-dre-drawer [data-state][class*="inset-0"] {
+    display: none !important;
+  }
+
+  body.printing-dre-drawer .dre-drawer-sheet {
+    position: static !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 100% !important;
+    height: auto !important;
+    transform: none !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  body.printing-dre-drawer .dre-drawer-sheet * {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  body.printing-dre-drawer .dre-drawer-actions,
+  body.printing-dre-drawer button {
+    display: none !important;
   }
 
   .esc-card {
