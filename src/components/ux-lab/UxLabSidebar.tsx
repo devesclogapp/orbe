@@ -145,7 +145,8 @@ const SECTIONS: LabNavSection[] = [
         id: "aprovacoes",
         label: "Central de Aprovações",
         icon: Shield,
-        badge: { count: 6, variant: "warning" },
+        badge: { count: 11, variant: "warning" },
+        isActiveLabTarget: true,
       },
       {
         id: "inconsistencias",
@@ -249,6 +250,7 @@ export const UX_LAB_ROUTES: Record<string, string> = {
   "operacoes-volume": "/ux-lab/operacoes-volume",
   "servicos-extras": "/ux-lab/servicos-extras",
   "custos-extras": "/ux-lab/custos-extras",
+  aprovacoes: "/ux-lab/aprovacoes",
   dre: "/ux-lab/dre",
   relatorios: "/ux-lab/relatorios",
   "design-system": "/ux-lab/design-system",

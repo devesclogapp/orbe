@@ -1046,12 +1046,12 @@ export function UxLabRelatorioView() {
               <p>
                 Período:{" "}
                 {report.id === "r01-operacoes-volume" ||
-                report.id === "r04-custos-extras" ||
-                report.id === "r07-servicos-extras"
+                  report.id === "r04-custos-extras" ||
+                  report.id === "r07-servicos-extras"
                   ? `${dataDe} a ${dataAte}`
                   : report.id === "r02-fechamento-diaristas"
-                  ? (filtroCiclo === "all" ? "Todos os Ciclos da Empresa" : filtroCiclo)
-                  : competencia}
+                    ? (filtroCiclo === "all" ? "Todos os Ciclos da Empresa" : filtroCiclo)
+                    : competencia}
               </p>
             </div>
           </div>
@@ -1086,12 +1086,12 @@ export function UxLabRelatorioView() {
           <div
             className={
               report.id === "r01-operacoes-volume" ||
-              report.id === "r04-custos-extras" ||
-              report.id === "r07-servicos-extras"
+                report.id === "r04-custos-extras" ||
+                report.id === "r07-servicos-extras"
                 ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 items-end"
                 : report.id === "r05-banco-horas"
-                ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 items-end"
-                : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 items-end"
+                  ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 items-end"
+                  : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 items-end"
             }
           >
             {/* 1. Empresa (Obrigatória em todos) */}
@@ -1116,8 +1116,8 @@ export function UxLabRelatorioView() {
 
             {/* 2. Parâmetro Temporal Semântico */}
             {report.id === "r01-operacoes-volume" ||
-            report.id === "r04-custos-extras" ||
-            report.id === "r07-servicos-extras" ? (
+              report.id === "r04-custos-extras" ||
+              report.id === "r07-servicos-extras" ? (
               <>
                 <div className="space-y-1">
                   <label
@@ -1755,7 +1755,7 @@ export function UxLabRelatorioView() {
                   {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
                     r02Data.length > 0
                       ? r02Data.reduce((acc, r) => acc + r.total, 0) /
-                          Math.max(1, r02Data.reduce((acc, r) => acc + r.quantidadeDiarias, 0))
+                      Math.max(1, r02Data.reduce((acc, r) => acc + r.quantidadeDiarias, 0))
                       : 0
                   )}
                 </span>
@@ -3348,14 +3348,14 @@ export function UxLabRelatorioView() {
               report.id === "r01-operacoes-volume"
                 ? r01Data.length
                 : report.id === "r05-banco-horas"
-                ? r05Data.length
-                : report.id === "r03-faturamento-receitas"
-                ? r03Data.length
-                : report.id === "r02-fechamento-diaristas"
-                ? r02Data.length
-                : report.id === "r04-custos-extras"
-                ? r04Data.length
-                : r07Data.length
+                  ? r05Data.length
+                  : report.id === "r03-faturamento-receitas"
+                    ? r03Data.length
+                    : report.id === "r02-fechamento-diaristas"
+                      ? r02Data.length
+                      : report.id === "r04-custos-extras"
+                        ? r04Data.length
+                        : r07Data.length
             }
             currentPage={currentPage}
             pageSize={PAGE_SIZE}
@@ -3380,14 +3380,14 @@ export function UxLabRelatorioView() {
                 {report.id === "r01-operacoes-volume"
                   ? `${r01Data.length} operações apuradas`
                   : report.id === "r05-banco-horas"
-                  ? `${r05Data.length} colaboradores`
-                  : report.id === "r03-faturamento-receitas"
-                  ? `${r03Data.length} faturas`
-                  : report.id === "r02-fechamento-diaristas"
-                  ? `${r02Data.length} apontamentos`
-                  : report.id === "r04-custos-extras"
-                  ? `${r04Data.length} custos extras`
-                  : `${r07Data.length} serviços extras`}
+                    ? `${r05Data.length} colaboradores`
+                    : report.id === "r03-faturamento-receitas"
+                      ? `${r03Data.length} faturas`
+                      : report.id === "r02-fechamento-diaristas"
+                        ? `${r02Data.length} apontamentos`
+                        : report.id === "r04-custos-extras"
+                          ? `${r04Data.length} custos extras`
+                          : `${r07Data.length} serviços extras`}
               </span>
               <span className="text-border">·</span>
               <span className="text-[11px] text-muted-foreground">
@@ -3420,14 +3420,14 @@ export function UxLabRelatorioView() {
                 {report.id === "r05-banco-horas"
                   ? "Critérios aplicados: apuração CLT conforme registro de ponto diário, limite D+180 e compensações em horas."
                   : report.id === "r02-fechamento-diaristas"
-                  ? "Critérios aplicados: fechamento de lote semanal, validação por encarregado e autorização RH."
-                  : report.id === "r03-faturamento-receitas"
-                  ? "Critérios aplicados: competência contábil, conciliação de recebíveis operacionais e baixas bancárias."
-                  : report.id === "r04-custos-extras"
-                  ? "Critérios aplicados: auditoria de comprovantes de despesa, prestação de contas de caixinha e aprovação gerencial."
-                  : report.id === "r07-servicos-extras"
-                  ? "Critérios aplicados: ordens de serviços avulsos validadas em doca e integradas ao faturamento."
-                  : "Critérios aplicados: validação por encarregado, conciliação de docas e governança auditada no ERP ORBE."}
+                    ? "Critérios aplicados: fechamento de lote semanal, validação por encarregado e autorização RH."
+                    : report.id === "r03-faturamento-receitas"
+                      ? "Critérios aplicados: competência contábil, conciliação de recebíveis operacionais e baixas bancárias."
+                      : report.id === "r04-custos-extras"
+                        ? "Critérios aplicados: auditoria de comprovantes de despesa, prestação de contas de caixinha e aprovação gerencial."
+                        : report.id === "r07-servicos-extras"
+                          ? "Critérios aplicados: ordens de serviços avulsos validadas em doca e integradas ao faturamento."
+                          : "Critérios aplicados: validação por encarregado, conciliação de docas e governança auditada no ERP ORBE."}
               </span>
             </div>
           </div>
@@ -3573,11 +3573,10 @@ function KpiSummaryCard({
           onClick?.();
         }
       }}
-      className={`bg-muted/20 border border-border/60 rounded-lg p-3 space-y-1 transition-all ${
-        isClickable
+      className={`bg-muted/20 border border-border/60 rounded-lg p-3 space-y-1 transition-all ${isClickable
           ? "cursor-pointer hover:border-blue-500/50 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500 group"
           : ""
-      }`}
+        }`}
     >
       <div className="flex items-center justify-between">
         <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -3588,17 +3587,16 @@ function KpiSummaryCard({
         )}
       </div>
       <div
-        className={`text-xl font-bold font-mono ${
-          status === "danger"
+        className={`text-xl font-bold font-mono ${status === "danger"
             ? "text-rose-600 dark:text-rose-400"
             : status === "warning"
-            ? "text-amber-600 dark:text-amber-400"
-            : status === "success"
-            ? "text-emerald-600 dark:text-emerald-400"
-            : highlight
-            ? "text-blue-600 dark:text-blue-400"
-            : "text-foreground"
-        }`}
+              ? "text-amber-600 dark:text-amber-400"
+              : status === "success"
+                ? "text-emerald-600 dark:text-emerald-400"
+                : highlight
+                  ? "text-blue-600 dark:text-blue-400"
+                  : "text-foreground"
+          }`}
       >
         {value}
       </div>
