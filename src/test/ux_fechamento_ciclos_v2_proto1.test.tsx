@@ -145,6 +145,21 @@ describe("UX10 — Hub Transversal de Fechamento de Ciclos (Protótipo UX Lab V2
     expect(screen.getByText("Checklist de Prontidão")).toBeInTheDocument();
     expect(screen.getByText("Efeito do Fechamento")).toBeInTheDocument();
     expect(screen.getByText("Rastreabilidade & Governança")).toBeInTheDocument();
+
+    // Hotfix 02.2: Botão secundário "Cancelar" e ausência de jargão técnico "Fechar Drawer"
+    expect(screen.getByRole("button", { name: "Cancelar" })).toBeInTheDocument();
+    expect(screen.queryByText("Fechar Drawer")).toBeNull();
+
+    // Hotfix 02.2: Competência humanizada "Outubro / 2026" na apresentação
+    expect(screen.getAllByText("Outubro / 2026").length).toBeGreaterThanOrEqual(1);
+
+    // Hotfix 02.2: Efeito do fechamento voltado para continuidade do processamento financeiro (sem envio imediato ao CNAB)
+    expect(
+      screen.getByText(/continuidade do processamento financeiro/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/encaminhará para a fila de remessa CNAB240/i)
+    ).toBeNull();
   });
 
   it("11. Drawer de Fechamento exibe o checklist e os dados da consolidação", () => {

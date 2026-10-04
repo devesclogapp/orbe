@@ -240,7 +240,7 @@ export const MOCK_CICLOS_FECHAMENTO: CicloFechamentoItemMock[] = [
       },
     ],
     efeitoFechamento:
-      "Este fechamento consolidará o lote semanal de Diaristas (R$ 2.160,00) e o encaminhará para a fila de remessa CNAB240 do Financeiro.",
+      "Este fechamento consolidará o lote semanal de Diaristas (R$ 2.160,00) e o disponibilizará para continuidade do processamento financeiro.",
     rastreabilidade: {
       empresa: "ESC Logística — Matriz Castanhal",
       competencia: "Outubro / 2026",

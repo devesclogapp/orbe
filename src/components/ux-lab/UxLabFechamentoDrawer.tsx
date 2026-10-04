@@ -79,6 +79,23 @@ export function UxLabFechamentoDrawer({
     }
   };
 
+  const formatCompetencia = (compStr?: string) => {
+    if (!compStr) return "—";
+    const match = compStr.match(/^(\d{4})-(\d{2})$/);
+    if (match) {
+      const [_, year, month] = match;
+      const months = [
+        "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+        "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+      ];
+      const monthIdx = parseInt(month, 10) - 1;
+      if (monthIdx >= 0 && monthIdx < 12) {
+        return `${months[monthIdx]} / ${year}`;
+      }
+    }
+    return compStr;
+  };
+
   const getDominioBadge = (dom: DominioFechamento) => {
     switch (dom) {
       case "OPERACIONAL":
@@ -194,7 +211,7 @@ export function UxLabFechamentoDrawer({
               <div className="p-2.5 rounded-md bg-muted/40 border border-border/60">
                 <span className="text-[11px] text-muted-foreground block">Competência</span>
                 <span className="text-sm font-semibold text-foreground mt-0.5 block">
-                  {ciclo.competencia}
+                  {formatCompetencia(ciclo.competencia)}
                 </span>
               </div>
             </div>
@@ -236,7 +253,7 @@ export function UxLabFechamentoDrawer({
                     key={chk.id}
                     className={`p-2.5 rounded-md border text-xs flex items-start gap-2.5 transition-colors ${
                       isSucesso
-                        ? "bg-emerald-500/5 border-emerald-500/20 text-foreground"
+                        ? "bg-muted/30 border-border text-foreground"
                         : isBloqueio
                         ? "bg-rose-500/5 border-rose-500/20 text-foreground"
                         : "bg-amber-500/5 border-amber-500/20 text-foreground"
@@ -252,7 +269,7 @@ export function UxLabFechamentoDrawer({
                       <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
                     )}
                     <div className="flex-1 min-w-0">
-                      <span className="font-medium block">{chk.titulo}</span>
+                      <span className="font-medium block text-foreground">{chk.titulo}</span>
                       {chk.descricao && (
                         <span className="text-[11px] text-muted-foreground block mt-0.5">
                           {chk.descricao}
@@ -368,7 +385,7 @@ export function UxLabFechamentoDrawer({
             onClick={() => onOpenChange(false)}
             className="text-xs"
           >
-            Fechar Drawer
+            Cancelar
           </Button>
 
           {ciclo.estadoVisual === "PRONTO_PARA_FECHAR" && !confirmando && (
