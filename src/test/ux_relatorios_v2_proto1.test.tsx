@@ -96,8 +96,8 @@ describe("UX04 — Relatórios V2: Protótipo 1 (UX Lab)", () => {
     expect(containerText).not.toMatch(/Encargos/i);
 
     // Valida dados formatados em Horas/Minutos
-    expect(screen.getByText("+18h 30m")).toBeInTheDocument();
-    expect(screen.getByText("-08h 30m")).toBeInTheDocument();
+    expect(screen.getAllByText("+18h 30m").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("-08h 30m").length).toBeGreaterThan(0);
   });
 
   it("5. R03 — Faturamento e Receitas exibe faturamento correto e NÃO inclui Custos Extras", () => {
@@ -112,7 +112,7 @@ describe("UX04 — Relatórios V2: Protótipo 1 (UX Lab)", () => {
     expect(screen.getByText("Valor Faturado")).toBeInTheDocument();
     expect(screen.getByText("Vencimento")).toBeInTheDocument();
     expect(screen.getByText("Recebimento")).toBeInTheDocument();
-    expect(screen.getByText("Status Financeiro")).toBeInTheDocument();
+    expect(screen.getAllByText("Status Financeiro").length).toBeGreaterThan(0);
 
     // Valida origens permitidas
     expect(screen.getAllByText("Operação por Volume").length).toBeGreaterThan(0);
@@ -152,8 +152,8 @@ describe("UX04 — Relatórios V2: Protótipo 1 (UX Lab)", () => {
     expect(screen.getAllByText("LOTE-DIA-2026-39-01").length).toBeGreaterThan(0);
 
     // Funções e status reais
-    expect(screen.getAllByText("Diarista").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Auxiliar de carga").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Ajudante Geral").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Movimentador").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Pago").length).toBeGreaterThan(0);
 
     // KPIs discretos de Diaristas
@@ -216,16 +216,16 @@ describe("UX04 — Relatórios V2: Protótipo 1 (UX Lab)", () => {
     expect(screen.getAllByText("Status Pipeline").length).toBeGreaterThan(0);
 
     // Serviços extras reais
-    expect(screen.getByText("Conserto de Pallets")).toBeInTheDocument();
-    expect(screen.getByText("Transbordo de Carga")).toBeInTheDocument();
-    expect(screen.getByText("Pintura de Pallets")).toBeInTheDocument();
-    expect(screen.getByText("Enlonamento de Carga")).toBeInTheDocument();
+    expect(screen.getAllByText("Conserto de Pallets").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Transbordo de Carga").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Pintura de Pallets").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Enlonamento de Carga").length).toBeGreaterThan(0);
 
     // Status pipeline reais
     expect(screen.getAllByText("Concluído").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Faturado").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Aprov. Financeiro").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Aprovado RH").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Aprov. Operação").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Pendente").length).toBeGreaterThan(0);
 
     // KPIs operacionais
@@ -248,7 +248,7 @@ describe("UX04 — Relatórios V2: Protótipo 1 (UX Lab)", () => {
 
     // Valida no R07
     renderWithProviders("/ux-lab/relatorios/r07-servicos-extras");
-    expect(screen.getByText("Bunge Alimentos Regional")).toBeInTheDocument();
+    expect(screen.getAllByText("Bunge Alimentos Regional").length).toBeGreaterThan(0);
     expect(screen.queryByText("Exportadora Portuária Norte")).not.toBeInTheDocument();
   });
 

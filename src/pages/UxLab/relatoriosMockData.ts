@@ -770,12 +770,11 @@ export const MOCK_R03_DATA: FaturamentoReceitaRow[] = [
 // ============================================================
 
 export type FuncaoDiarista =
-  | "Diarista"
-  | "Auxiliar de carga"
-  | "Ajudante"
+  | "Ajudante Geral"
   | "Conferente"
-  | "Operador eventual"
-  | "Serviço extra";
+  | "Movimentador"
+  | "Empilhador"
+  | "Operador Paleteira";
 
 export type StatusLoteDiarista =
   | "em_aberto"
@@ -849,7 +848,7 @@ export const MOCK_R02_DATA: DiaristaFechamentoRow[] = [
     dataLancamento: "2026-09-21",
     colaboradorNome: "Raimundo Nonato Silva",
     cpfMascarado: "***.***.812-44",
-    funcao: "Diarista",
+    funcao: "Ajudante Geral",
     codigoMarcacao: "P",
     quantidadeDiarias: 1.0,
     valorDiariaBase: 120.00,
@@ -865,7 +864,7 @@ export const MOCK_R02_DATA: DiaristaFechamentoRow[] = [
     dataLancamento: "2026-09-22",
     colaboradorNome: "Raimundo Nonato Silva",
     cpfMascarado: "***.***.812-44",
-    funcao: "Diarista",
+    funcao: "Ajudante Geral",
     codigoMarcacao: "P",
     quantidadeDiarias: 1.0,
     valorDiariaBase: 120.00,
@@ -881,7 +880,7 @@ export const MOCK_R02_DATA: DiaristaFechamentoRow[] = [
     dataLancamento: "2026-09-23",
     colaboradorNome: "Raimundo Nonato Silva",
     cpfMascarado: "***.***.812-44",
-    funcao: "Diarista",
+    funcao: "Ajudante Geral",
     codigoMarcacao: "MP",
     quantidadeDiarias: 0.5,
     valorDiariaBase: 120.00,
@@ -897,7 +896,7 @@ export const MOCK_R02_DATA: DiaristaFechamentoRow[] = [
     dataLancamento: "2026-09-21",
     colaboradorNome: "José Ribamar Souza",
     cpfMascarado: "***.***.329-15",
-    funcao: "Auxiliar de carga",
+    funcao: "Movimentador",
     codigoMarcacao: "P",
     quantidadeDiarias: 1.0,
     valorDiariaBase: 130.00,
@@ -913,7 +912,7 @@ export const MOCK_R02_DATA: DiaristaFechamentoRow[] = [
     dataLancamento: "2026-09-22",
     colaboradorNome: "José Ribamar Souza",
     cpfMascarado: "***.***.329-15",
-    funcao: "Auxiliar de carga",
+    funcao: "Movimentador",
     codigoMarcacao: "P",
     quantidadeDiarias: 1.0,
     valorDiariaBase: 130.00,
@@ -961,7 +960,7 @@ export const MOCK_R02_DATA: DiaristaFechamentoRow[] = [
     dataLancamento: "2026-09-24",
     colaboradorNome: "Manoel Messias Pinheiro",
     cpfMascarado: "***.***.118-80",
-    funcao: "Ajudante",
+    funcao: "Ajudante Geral",
     codigoMarcacao: "P",
     quantidadeDiarias: 1.0,
     valorDiariaBase: 110.00,
@@ -977,7 +976,7 @@ export const MOCK_R02_DATA: DiaristaFechamentoRow[] = [
     dataLancamento: "2026-09-25",
     colaboradorNome: "Francisco Aldemir Santos",
     cpfMascarado: "***.***.602-09",
-    funcao: "Operador eventual",
+    funcao: "Operador Paleteira",
     codigoMarcacao: "P",
     quantidadeDiarias: 1.0,
     valorDiariaBase: 150.00,
@@ -994,7 +993,7 @@ export const MOCK_R02_DATA: DiaristaFechamentoRow[] = [
     dataLancamento: "2026-09-15",
     colaboradorNome: "Raimundo Nonato Silva",
     cpfMascarado: "***.***.812-44",
-    funcao: "Diarista",
+    funcao: "Ajudante Geral",
     codigoMarcacao: "P",
     quantidadeDiarias: 1.0,
     valorDiariaBase: 120.00,
@@ -1010,7 +1009,7 @@ export const MOCK_R02_DATA: DiaristaFechamentoRow[] = [
     dataLancamento: "2026-09-16",
     colaboradorNome: "José Ribamar Souza",
     cpfMascarado: "***.***.329-15",
-    funcao: "Auxiliar de carga",
+    funcao: "Movimentador",
     codigoMarcacao: "P",
     quantidadeDiarias: 1.0,
     valorDiariaBase: 130.00,
@@ -1028,7 +1027,7 @@ export const MOCK_R02_DATA: DiaristaFechamentoRow[] = [
     dataLancamento: "2026-09-22",
     colaboradorNome: "Edilson Barbosa Lima",
     cpfMascarado: "***.***.431-77",
-    funcao: "Diarista",
+    funcao: "Ajudante Geral",
     codigoMarcacao: "P",
     quantidadeDiarias: 1.0,
     valorDiariaBase: 125.00,
@@ -1060,7 +1059,7 @@ export const MOCK_R02_DATA: DiaristaFechamentoRow[] = [
     dataLancamento: "2026-09-24",
     colaboradorNome: "Lucas Gabriel Alencar",
     cpfMascarado: "***.***.210-98",
-    funcao: "Ajudante",
+    funcao: "Empilhador",
     codigoMarcacao: "MP",
     quantidadeDiarias: 0.5,
     valorDiariaBase: 110.00,
@@ -1078,7 +1077,7 @@ export const MOCK_R02_DATA: DiaristaFechamentoRow[] = [
     dataLancamento: "2026-09-21",
     colaboradorNome: "Waldir Souza Ramos",
     cpfMascarado: "***.***.773-12",
-    funcao: "Auxiliar de carga",
+    funcao: "Movimentador",
     codigoMarcacao: "P",
     quantidadeDiarias: 1.0,
     valorDiariaBase: 135.00,
@@ -1094,7 +1093,7 @@ export const MOCK_R02_DATA: DiaristaFechamentoRow[] = [
     dataLancamento: "2026-09-23",
     colaboradorNome: "Benedito Nazareno Silva",
     cpfMascarado: "***.***.644-83",
-    funcao: "Operador eventual",
+    funcao: "Operador Paleteira",
     codigoMarcacao: "P",
     quantidadeDiarias: 1.0,
     valorDiariaBase: 155.00,
@@ -1336,10 +1335,12 @@ export type ModalidadeServicoExtra =
 
 export type PipelineStatusServicoExtra =
   | "PENDENTE"
-  | "APROVADO_RH"
+  | "EM_VALIDACAO"
+  | "APROVADO_OPERACAO"
   | "APROVADO_FINANCEIRO"
   | "FATURADO"
-  | "CONCLUIDO";
+  | "CONCLUIDO"
+  | "DEVOLVIDO";
 
 export interface ServicoExtraRow {
   id: string;
@@ -1376,15 +1377,25 @@ export function getPipelineStatusServicoExtraLabel(status: PipelineStatusServico
         label: "Aprov. Financeiro",
         className: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/30",
       };
-    case "APROVADO_RH":
+    case "APROVADO_OPERACAO":
       return {
-        label: "Aprovado RH",
+        label: "Aprov. Operação",
         className: "bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/30",
+      };
+    case "EM_VALIDACAO":
+      return {
+        label: "Em Validação",
+        className: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/30",
       };
     case "PENDENTE":
       return {
         label: "Pendente",
         className: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30",
+      };
+    case "DEVOLVIDO":
+      return {
+        label: "Devolvido",
+        className: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30",
       };
     default:
       return {
@@ -1464,7 +1475,7 @@ export const MOCK_R07_DATA: ServicoExtraRow[] = [
     total: 1500.00,
     modalidadeFinanceira: "DUPLICATA",
     nfNumero: null,
-    pipelineStatus: "APROVADO_RH",
+    pipelineStatus: "APROVADO_OPERACAO",
   },
   {
     id: "se-106",
