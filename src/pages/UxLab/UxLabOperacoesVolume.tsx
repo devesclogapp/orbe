@@ -47,7 +47,9 @@ import {
   MOCK_STATUS_OPTIONS,
   MOCK_STATUS_RH_OPTIONS,
   OperacaoVolumeMock,
+  OPERACOES_VOLUME_PIPELINE_STEPS,
 } from "./operacoesVolumeMockData";
+import { UxPipelineStepper } from "@/components/ux-lab/UxPipelineStepper";
 
 export default function UxLabOperacoesVolume() {
   // Filtros de Trabalho
@@ -672,16 +674,16 @@ export default function UxLabOperacoesVolume() {
             <table className="w-full text-xs text-left border-collapse">
               <thead className="bg-muted/50 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider sticky top-0 z-10 border-b border-border">
                 <tr>
-                  <th className="py-2.5 px-3">Operação</th>
-                  <th className="py-2.5 px-3">Data</th>
-                  <th className="py-2.5 px-3">Unidade / Contexto</th>
-                  <th className="py-2.5 px-3">Fornecedor & Transporte</th>
-                  <th className="py-2.5 px-3">Serviço & Volume</th>
-                  <th className="py-2.5 px-3">Equipe</th>
-                  <th className="py-2.5 px-3">Status Operação</th>
-                  <th className="py-2.5 px-3">Status RH</th>
-                  <th className="py-2.5 px-3">Pendência</th>
-                  <th className="py-2.5 px-3 text-right">Ação</th>
+                  <th className="py-2 px-2.5 w-[90px] whitespace-nowrap">Operação</th>
+                  <th className="py-2 px-2 w-[75px] whitespace-nowrap">Data</th>
+                  <th className="py-2 px-2.5 max-w-[140px] truncate">Unidade / Contexto</th>
+                  <th className="py-2 px-2.5 max-w-[160px] truncate">Fornecedor & Transporte</th>
+                  <th className="py-2 px-2.5 whitespace-nowrap">Serviço & Volume</th>
+                  <th className="py-2 px-2 whitespace-nowrap">Equipe</th>
+                  <th className="py-2 px-2 w-[115px] whitespace-nowrap">Pipeline Operação</th>
+                  <th className="py-2 px-2 whitespace-nowrap">Status RH</th>
+                  <th className="py-2 px-2.5 max-w-[130px] truncate">Pendência</th>
+                  <th className="py-2 px-2 text-right whitespace-nowrap">Ação</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border text-foreground font-sans">
@@ -699,17 +701,17 @@ export default function UxLabOperacoesVolume() {
                         className={`cursor-pointer transition-all duration-200 group ${rowHighlightClass}`}
                       >
                         {/* Código */}
-                        <td className="py-2.5 px-3 font-mono font-bold text-royal-blue dark:text-royal-blue-light group-hover:underline">
+                        <td className="py-2 px-2.5 w-[90px] font-mono font-bold text-royal-blue dark:text-royal-blue-light group-hover:underline whitespace-nowrap">
                           {op.codigo}
                         </td>
 
                       {/* Data */}
-                      <td className="py-2.5 px-3 font-mono text-muted-foreground whitespace-nowrap">
+                      <td className="py-2 px-2 w-[75px] font-mono text-muted-foreground whitespace-nowrap">
                         {new Date(op.data_operacao + "T12:00:00").toLocaleDateString("pt-BR")}
                       </td>
 
                       {/* Unidade */}
-                      <td className="py-2.5 px-3 whitespace-nowrap">
+                      <td className="py-2 px-2.5 whitespace-nowrap">
                         <div className="font-medium text-foreground truncate max-w-[140px]" title={op.unidade_nome}>
                           {op.unidade_nome.split(" - ")[0]}
                         </div>
@@ -719,7 +721,7 @@ export default function UxLabOperacoesVolume() {
                       </td>
 
                       {/* Fornecedor & Transportadora */}
-                      <td className="py-2.5 px-3">
+                      <td className="py-2 px-2.5">
                         <div className="font-medium text-foreground truncate max-w-[160px]" title={op.fornecedor_nome}>
                           {op.fornecedor_nome}
                         </div>
@@ -731,7 +733,7 @@ export default function UxLabOperacoesVolume() {
                       </td>
 
                       {/* Serviço & Volume */}
-                      <td className="py-2.5 px-3 whitespace-nowrap">
+                      <td className="py-2 px-2.5 whitespace-nowrap">
                         <div className="font-medium text-foreground">
                           {op.tipo_servico_nome}
                         </div>
@@ -741,7 +743,7 @@ export default function UxLabOperacoesVolume() {
                       </td>
 
                       {/* Equipe (Headcount vs Vinculados) */}
-                      <td className="py-2.5 px-3 whitespace-nowrap">
+                      <td className="py-2 px-2 whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
                           <span className="font-semibold text-foreground">
                             {op.quantidade_colaboradores} pess.
@@ -752,26 +754,40 @@ export default function UxLabOperacoesVolume() {
                         </div>
                       </td>
 
-                      {/* Status Operacional */}
-                      <td className="py-2.5 px-3 whitespace-nowrap">
-                        {renderStatusBadge(op.status)}
+                      {/* Pipeline Operacional (Stepper Compacto Transversal) */}
+                      <td className="py-2 px-2 w-[115px] whitespace-nowrap">
+                        <UxPipelineStepper
+                          steps={OPERACOES_VOLUME_PIPELINE_STEPS}
+                          currentStepKey={op.status}
+                          exceptionState={
+                            op.status === "EM_RESTRICAO"
+                              ? {
+                                  isException: true,
+                                  label: "Em Restrição",
+                                  stepKey: "EM_VALIDACAO",
+                                  description: op.motivo_restricao || "Operação em restrição — bloqueio operacional",
+                                }
+                              : null
+                          }
+                          variant="compact"
+                        />
                       </td>
 
                       {/* Status RH */}
-                      <td className="py-2.5 px-3 whitespace-nowrap">
+                      <td className="py-2 px-2 whitespace-nowrap">
                         {renderStatusRhBadge(op.status_rh)}
                       </td>
 
                       {/* Pendência / Restrição Localizada */}
-                      <td className="py-2.5 px-3 whitespace-nowrap">
+                      <td className="py-2 px-2.5 max-w-[130px] whitespace-nowrap">
                         {op.status === "EM_RESTRICAO" ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400">
-                            <AlertTriangle className="w-3 h-3" />
-                            {op.motivo_restricao?.slice(0, 24)}...
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400 truncate" title={op.motivo_restricao || "Restrição"}>
+                            <AlertTriangle className="w-3 h-3 shrink-0" />
+                            {op.motivo_restricao?.slice(0, 18)}...
                           </span>
                         ) : op.status_rh === "DEVOLVIDO_RH" ? (
                           <span className="inline-flex items-center gap-1 text-[11px] font-medium text-rose-600 dark:text-rose-400">
-                            <ShieldAlert className="w-3 h-3" />
+                            <ShieldAlert className="w-3 h-3 shrink-0" />
                             Devolvido RH
                           </span>
                         ) : (
@@ -780,7 +796,7 @@ export default function UxLabOperacoesVolume() {
                       </td>
 
                       {/* Ação */}
-                      <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                      <td className="py-2 px-2 text-right whitespace-nowrap">
                         <Button
                           variant="ghost"
                           size="sm"

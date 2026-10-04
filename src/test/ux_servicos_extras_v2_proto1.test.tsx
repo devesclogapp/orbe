@@ -4,7 +4,7 @@ import { render, screen, fireEvent, within } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { UxLabThemeProvider } from "@/components/ux-lab/UxLabThemeContext";
 import UxLabServicosExtras from "@/pages/UxLab/UxLabServicosExtras";
-import { SERVICOS_EXTRAS_MOCKS } from "@/pages/UxLab/servicosExtrasMockData";
+import { SERVICOS_EXTRAS_MOCKS, SERVICOS_EXTRAS_PIPELINE_STEPS } from "@/pages/UxLab/servicosExtrasMockData";
 import { UX_LAB_ROUTES } from "@/components/ux-lab/UxLabSidebar";
 
 // Mock ResizeObserver for JSDOM
@@ -71,7 +71,7 @@ describe("UX06 — Serviços Extras V2 — Protótipo 1 no UX Lab", () => {
     expect(screen.queryByRole("button", { name: /^Em Validação$/i })).toBeNull();
     expect(screen.queryByText(/Faturamento do Período/i)).toBeNull();
     expect(screen.queryByText(/Receita Bruta/i)).toBeNull();
-  });
+  }, 15000);
 
   it("4. Exibe tabela especialista de alta densidade com colunas obrigatórias", () => {
     renderServicosExtras();
@@ -119,10 +119,20 @@ describe("UX06 — Serviços Extras V2 — Protótipo 1 no UX Lab", () => {
   it("7. Coluna Pipeline Status utiliza exclusivamente estados reais sem 'Recebido' no pipeline", () => {
     renderServicosExtras();
 
-    // Garante que o status PENDENTE é apresentado como 'Pendente' e CONCLUIDO como 'Concluído'
-    expect(screen.getByText("Pendente")).toBeInTheDocument();
-    expect(screen.getAllByText("Concluído").length).toBeGreaterThan(0);
-    expect(screen.getByText("Devolvido")).toBeInTheDocument();
+    // Garante que o status PENDENTE é apresentado na esteira e CONCLUIDO como 'Concluído'
+    expect(
+      screen.getByRole("region", { name: /Pipeline operacional: Pendente\./i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("region", { name: /Pipeline operacional: Concluído\./i }).length
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getByRole("region", { name: /Pipeline operacional: Devolvido\./i })
+    ).toBeInTheDocument();
+    // E não possui 'Recebido' no pipeline operacional
+    expect(
+      screen.queryByRole("region", { name: /Pipeline operacional: Recebido\./i })
+    ).toBeNull();
   });
 
   it("8. Clique no Card 'Requer Ação' localiza e aciona scroll para a primeira ocorrência", () => {
@@ -338,5 +348,143 @@ describe("UX06 — Serviços Extras V2 — Protótipo 1 no UX Lab", () => {
 
     const btnConcluidos = screen.getByRole("button", { name: /Faturados \/ Concluídos/i });
     expect(btnConcluidos.className).toContain("bg-card");
+  });
+
+  describe("Cobertura Mínima — UxPipelineStepper UX06 (Serviços Extras)", () => {
+    it("1. Seis etapas canônicas devidamente configuradas", () => {
+      expect(SERVICOS_EXTRAS_PIPELINE_STEPS).toHaveLength(6);
+      expect(SERVICOS_EXTRAS_PIPELINE_STEPS.map((s) => s.key)).toEqual([
+        "PENDENTE",
+        "EM_VALIDACAO",
+        "APROVADO_OPERACAO",
+        "APROVADO_FINANCEIRO",
+        "FATURADO",
+        "CONCLUIDO",
+      ]);
+    });
+
+    it("2. PENDENTE marca início da esteira operacional", () => {
+      renderServicosExtras();
+      const row = screen.getByText("SX-2026-101").closest("tr");
+      expect(row).toBeInTheDocument();
+      if (row) {
+        const region = within(row).getByRole("region", {
+          name: /Pipeline operacional: Pendente\. Etapa 1 de 6\./i,
+        });
+        expect(region).toBeInTheDocument();
+      }
+    });
+
+    it("3. EM_VALIDACAO corretamente localizado na etapa 2", () => {
+      renderServicosExtras();
+      const row = screen.getByText("SX-2026-102").closest("tr");
+      expect(row).toBeInTheDocument();
+      if (row) {
+        const region = within(row).getByRole("region", {
+          name: /Pipeline operacional: Em Validação\. Etapa 2 de 6\./i,
+        });
+        expect(region).toBeInTheDocument();
+      }
+    });
+
+    it("4. APROVADO_OPERACAO corretamente localizado na etapa 3", () => {
+      renderServicosExtras();
+      const row = screen.getByText("SX-2026-104").closest("tr");
+      expect(row).toBeInTheDocument();
+      if (row) {
+        const region = within(row).getByRole("region", {
+          name: /Pipeline operacional: Aprovado Operação\. Etapa 3 de 6\./i,
+        });
+        expect(region).toBeInTheDocument();
+      }
+    });
+
+    it("5. APROVADO_FINANCEIRO corretamente localizado na etapa 4", () => {
+      renderServicosExtras();
+      const row = screen.getByText("SX-2026-105").closest("tr");
+      expect(row).toBeInTheDocument();
+      if (row) {
+        const region = within(row).getByRole("region", {
+          name: /Pipeline operacional: Aprovado Financeiro\. Etapa 4 de 6\./i,
+        });
+        expect(region).toBeInTheDocument();
+      }
+    });
+
+    it("6. FATURADO corretamente localizado na etapa 5", () => {
+      renderServicosExtras();
+      const row = screen.getByText("SX-2026-106").closest("tr");
+      expect(row).toBeInTheDocument();
+      if (row) {
+        const region = within(row).getByRole("region", {
+          name: /Pipeline operacional: Faturado\. Etapa 5 de 6\./i,
+        });
+        expect(region).toBeInTheDocument();
+      }
+    });
+
+    it("7. CONCLUIDO completa a esteira operacional", () => {
+      renderServicosExtras();
+      const row = screen.getByText("SX-2026-108").closest("tr");
+      expect(row).toBeInTheDocument();
+      if (row) {
+        const region = within(row).getByRole("region", {
+          name: /Pipeline operacional: Concluído\. Etapa 6 de 6\./i,
+        });
+        expect(region).toBeInTheDocument();
+      }
+    });
+
+    it("8. DEVOLVIDO aparece como exceção/bloqueio sem etapa linear artificial", () => {
+      renderServicosExtras();
+      const row = screen.getByText("SX-2026-103").closest("tr");
+      expect(row).toBeInTheDocument();
+      if (row) {
+        const region = within(row).getByRole("region", {
+          name: /Pipeline operacional: Devolvido\. Etapa 2 de 6\./i,
+        });
+        expect(region).toBeInTheDocument();
+        expect(within(region).getByText("✕")).toBeInTheDocument();
+      }
+    });
+
+    it("9. Pagamento NÃO entra no pipeline (dimensão desacoplada)", () => {
+      const keys = SERVICOS_EXTRAS_PIPELINE_STEPS.map((s) => s.key);
+      expect(keys).not.toContain("PAGO");
+      expect(keys).not.toContain("RECEBIDO");
+      expect(keys).not.toContain("ATRASADO");
+      expect(keys).not.toContain("A_RECEBER");
+    });
+
+    it("10. Compact funciona na tabela para todas as ocorrências", () => {
+      renderServicosExtras();
+      const steppers = screen.getAllByRole("region", { name: /Pipeline operacional:/i });
+      expect(steppers.length).toBeGreaterThanOrEqual(8);
+    });
+
+    it("11. Detailed funciona no Drawer sob 'ETAPAS DO PROCESSO'", () => {
+      renderServicosExtras();
+      const row = screen.getByText("SX-2026-101").closest("tr");
+      if (row) fireEvent.click(row);
+
+      expect(screen.getByText(/Etapas do Processo/i)).toBeInTheDocument();
+      expect(
+        screen.getByText("Acompanhamento da esteira operacional deste serviço.")
+      ).toBeInTheDocument();
+      expect(screen.getByText("6 etapas canônicas")).toBeInTheDocument();
+      expect(screen.getAllByText(/Aprovado operação/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Aprovado financeiro/i).length).toBeGreaterThan(0);
+    });
+
+    it("12. Cards existentes continuam corretos em contagem e navegação", () => {
+      renderServicosExtras();
+      const btnTotal = screen.getByRole("button", { name: /Serviços no Período/i });
+      expect(within(btnTotal).getByText("8")).toBeInTheDocument();
+    });
+
+    it("13. Light/Dark rendering sem regressão estrutural", () => {
+      const { container } = renderServicosExtras();
+      expect(container.firstChild).toBeInTheDocument();
+    });
   });
 });

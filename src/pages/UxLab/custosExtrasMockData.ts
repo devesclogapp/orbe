@@ -517,6 +517,48 @@ export function getFriendlyPipelineStatus(status: PipelineStatusCustoExtra): str
   }
 }
 
+/**
+ * 5 Etapas Canônicas da Esteira Operacional de Custos Extras
+ * Padrão Transversal ORBE utilizado pelo UxPipelineStepper
+ */
+export const CUSTOS_EXTRAS_PIPELINE_STEPS = [
+  {
+    key: "RECEBIDO",
+    label: "Recebido",
+    shortLabel: "Recebido",
+    responsible: "Encarregado",
+    description: "Custo extra registrado e capturado pelo sistema.",
+  },
+  {
+    key: "EM_VALIDACAO",
+    label: "Em validação",
+    shortLabel: "Validação",
+    responsible: "Operação / ADM",
+    description: "Análise técnica operacional e conferência de dados.",
+  },
+  {
+    key: "APROVADO_OPERACAO",
+    label: "Aprovado",
+    shortLabel: "Aprovado",
+    responsible: "Gestor Operacional",
+    description: "Despesa aprovada operacionalmente para pagamento.",
+  },
+  {
+    key: "ENVIADO_FINANCEIRO",
+    label: "Financeiro",
+    shortLabel: "Financeiro",
+    responsible: "Financeiro",
+    description: "Disponível na Central de Pagamentos para liquidação.",
+  },
+  {
+    key: "FINALIZADO",
+    label: "Finalizado",
+    shortLabel: "Finalizado",
+    responsible: "Financeiro",
+    description: "Despesa liquidada e fluxo operacional concluído.",
+  },
+] as const;
+
 export function getFriendlyStatusPagamento(status: StatusPagamentoCustoExtra): string {
   switch (status) {
     case "A_PAGAR":

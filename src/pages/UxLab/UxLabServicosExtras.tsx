@@ -43,7 +43,9 @@ import {
   MOCK_PIPELINE_STATUS_OPTIONS,
   ServicoExtraMock,
   PipelineStatusServicoExtra,
+  SERVICOS_EXTRAS_PIPELINE_STEPS,
 } from "./servicosExtrasMockData";
+import { UxPipelineStepper } from "@/components/ux-lab/UxPipelineStepper";
 
 export default function UxLabServicosExtras() {
   // Filtros de Trabalho
@@ -626,17 +628,17 @@ export default function UxLabServicosExtras() {
             <table className="w-full text-xs text-left border-collapse">
               <thead>
                 <tr className="border-b border-border bg-muted/50 text-muted-foreground uppercase text-[10px] tracking-wider font-semibold">
-                  <th className="py-2.5 px-3 whitespace-nowrap">Código</th>
-                  <th className="py-2.5 px-3 whitespace-nowrap">Data</th>
-                  <th className="py-2.5 px-3 whitespace-nowrap">Empresa / Tomador</th>
-                  <th className="py-2.5 px-3 whitespace-nowrap">Tipo de Serviço Extra</th>
-                  <th className="py-2.5 px-3 text-right whitespace-nowrap">Qtd. Executada</th>
-                  <th className="py-2.5 px-3 whitespace-nowrap">Headcount</th>
-                  <th className="py-2.5 px-3 text-right whitespace-nowrap">Valor Total</th>
-                  <th className="py-2.5 px-3 whitespace-nowrap">Pipeline Status</th>
-                  <th className="py-2.5 px-3 whitespace-nowrap">Modalidade / Pgto</th>
-                  <th className="py-2.5 px-3 whitespace-nowrap">Pendência / Diagnóstico</th>
-                  <th className="py-2.5 px-3 text-center whitespace-nowrap">Ação</th>
+                  <th className="py-2 px-2 w-[85px] whitespace-nowrap">Código</th>
+                  <th className="py-2 px-2 w-[75px] whitespace-nowrap">Data</th>
+                  <th className="py-2 px-2 max-w-[140px] truncate">Empresa / Tomador</th>
+                  <th className="py-2 px-2 max-w-[150px] truncate">Tipo de Serviço Extra</th>
+                  <th className="py-2 px-2 w-[80px] text-left whitespace-nowrap">Qtd. Executada</th>
+                  <th className="py-2 px-2 w-[80px] whitespace-nowrap">Headcount</th>
+                  <th className="py-2 px-2 w-[85px] text-left whitespace-nowrap">Valor Total</th>
+                  <th className="py-2 px-2 w-[110px] text-left whitespace-nowrap">Pipeline Status</th>
+                  <th className="py-2 px-2 w-[100px] whitespace-nowrap">Modalidade / Pgto</th>
+                  <th className="py-2 px-2 max-w-[130px] truncate">Pendência / Diagnóstico</th>
+                  <th className="py-2 px-2 w-[75px] text-center whitespace-nowrap">Ação</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -686,54 +688,68 @@ export default function UxLabServicosExtras() {
                         }`}
                       >
                         {/* Código */}
-                        <td className="py-2 px-3 font-mono font-bold text-royal-blue dark:text-royal-blue-light whitespace-nowrap">
+                        <td className="py-2 px-2 w-[85px] font-mono font-bold text-royal-blue dark:text-royal-blue-light whitespace-nowrap">
                           {s.codigo}
                         </td>
 
                         {/* Data */}
-                        <td className="py-2 px-3 font-mono text-muted-foreground whitespace-nowrap">
+                        <td className="py-2 px-2 w-[75px] font-mono text-muted-foreground whitespace-nowrap">
                           {formatDate(s.data)}
                         </td>
 
                         {/* Empresa / Tomador */}
-                        <td className="py-2 px-3 max-w-[200px]">
-                          <div className="font-medium text-foreground truncate">{s.tomador_nome}</div>
-                          <div className="text-[10px] text-muted-foreground truncate">{s.empresa_nome}</div>
+                        <td className="py-2 px-2 max-w-[140px]">
+                          <div className="font-medium text-foreground truncate" title={s.tomador_nome}>{s.tomador_nome}</div>
+                          <div className="text-[10px] text-muted-foreground truncate" title={s.empresa_nome}>{s.empresa_nome}</div>
                         </td>
 
                         {/* Tipo de Serviço Extra */}
-                        <td className="py-2 px-3 max-w-[220px]">
-                          <div className="font-semibold text-foreground truncate">{s.tipo_servico_nome}</div>
+                        <td className="py-2 px-2 max-w-[150px]">
+                          <div className="font-semibold text-foreground truncate" title={s.tipo_servico_nome}>{s.tipo_servico_nome}</div>
                           <div className="text-[10px] text-muted-foreground truncate" title={s.descricao_servico}>
                             {s.descricao_servico}
                           </div>
                         </td>
 
                         {/* Qtd. Executada */}
-                        <td className="py-2 px-3 text-right font-mono font-medium whitespace-nowrap">
+                        <td className="py-2 px-2 w-[80px] text-left font-mono font-medium whitespace-nowrap">
                           {s.quantidade} {s.unidade_cobranca_snapshot}
                         </td>
 
                         {/* Headcount (Regra estrita: "X pessoas", sem nomes/CPFs) */}
-                        <td className="py-2 px-3 whitespace-nowrap">
-                          <span className="inline-flex items-center gap-1 font-mono text-[11px] font-semibold text-foreground bg-muted/60 px-2 py-0.5 rounded">
+                        <td className="py-2 px-2 w-[80px] whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1 font-mono text-[10.5px] font-semibold text-foreground bg-muted/60 px-1.5 py-0.5 rounded">
                             <Users className="w-3 h-3 text-muted-foreground" />
                             {s.quantidade_colaboradores} pessoas
                           </span>
                         </td>
 
                         {/* Valor Total */}
-                        <td className="py-2 px-3 text-right font-mono font-bold text-foreground whitespace-nowrap">
+                        <td className="py-2 px-2 w-[85px] text-left font-mono font-bold text-foreground whitespace-nowrap">
                           {formatCurrency(s.total)}
                         </td>
 
-                        {/* Pipeline Status */}
-                        <td className="py-2 px-3 whitespace-nowrap">
-                          {renderPipelineBadgeTable(s.pipeline_status)}
+                        {/* Pipeline Status (Stepper Compacto Transversal) */}
+                        <td className="py-2 px-2 w-[110px] whitespace-nowrap">
+                          <UxPipelineStepper
+                            steps={SERVICOS_EXTRAS_PIPELINE_STEPS}
+                            currentStepKey={s.pipeline_status}
+                            exceptionState={
+                              s.pipeline_status === "DEVOLVIDO"
+                                ? {
+                                    isException: true,
+                                    label: "Devolvido",
+                                    stepKey: "EM_VALIDACAO",
+                                    description: s.justificativa_devolucao || undefined,
+                                  }
+                                : null
+                            }
+                            variant="compact"
+                          />
                         </td>
 
                         {/* Modalidade / Pagamento (Leitura protegida, sem dropdown solto) */}
-                        <td className="py-2 px-3 whitespace-nowrap">
+                        <td className="py-2 px-2 w-[100px] whitespace-nowrap">
                           <div className="text-[11px] font-medium text-foreground">
                             {s.modalidade_financeira === "CAIXA_IMEDIATO"
                               ? "Caixa Imediato"
@@ -754,38 +770,38 @@ export default function UxLabServicosExtras() {
                         </td>
 
                         {/* Pendência / Diagnóstico */}
-                        <td className="py-2 px-3 max-w-[200px]">
+                        <td className="py-2 px-2 max-w-[130px]">
                           {s.pipeline_status === "DEVOLVIDO" ? (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-700 dark:text-rose-400 truncate">
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-700 dark:text-rose-400 truncate" title={s.justificativa_devolucao || "Ajuste necessário"}>
                               <AlertTriangle className="w-3 h-3 shrink-0" />
                               Ajuste necessário
                             </span>
                           ) : s.pipeline_status === "PENDENTE" ? (
-                            <span className="text-[11px] text-amber-700 dark:text-amber-400 font-medium truncate">
+                            <span className="text-[11px] text-amber-700 dark:text-amber-400 font-medium truncate" title="Triagem operacional">
                               Triagem operacional
                             </span>
                           ) : s.pipeline_status === "EM_VALIDACAO" ? (
-                            <span className="text-[11px] text-blue-700 dark:text-blue-400 font-medium truncate">
+                            <span className="text-[11px] text-blue-700 dark:text-blue-400 font-medium truncate" title="Conferência técnica">
                               Conferência técnica
                             </span>
                           ) : s.pipeline_status === "CONCLUIDO" ? (
-                            <span className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium flex items-center gap-1">
-                              <ShieldCheck className="w-3 h-3" />
+                            <span className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium flex items-center gap-1 truncate" title="Liquidado">
+                              <ShieldCheck className="w-3 h-3 shrink-0" />
                               Liquidado
                             </span>
                           ) : (
-                            <span className="text-[11px] text-muted-foreground truncate">
+                            <span className="text-[11px] text-muted-foreground truncate" title="Regular em esteira">
                               Regular em esteira
                             </span>
                           )}
                         </td>
 
                         {/* Ação: Diagnosticar */}
-                        <td className="py-2 px-3 text-center whitespace-nowrap">
+                        <td className="py-2 px-2 w-[75px] text-center whitespace-nowrap">
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-7 px-2 text-[11px] text-royal-blue hover:text-royal-blue hover:bg-royal-blue/10 flex items-center gap-1 mx-auto"
+                            className="h-6 px-1.5 text-[10px] text-royal-blue hover:text-royal-blue hover:bg-royal-blue/10 flex items-center gap-0.5 mx-auto"
                             onClick={(e) => {
                               e.stopPropagation();
                               setSelectedServico(s);

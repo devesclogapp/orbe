@@ -383,11 +383,176 @@ describe("UX07 — Custos Extras V2 — Protótipo 1 no UX Lab", () => {
     expect(screen.queryByText(/Competência:/i)).toBeNull();
   });
 
-  it("28. [HOTFIX 02.1] Coluna Descrição / Favorecido possui largura expandida evitando truncamento precoce", () => {
+  it("28. [HOTFIX 02.3] Coluna Descrição / Favorecido possui largura recalibrada e truncamento em uma linha sem scroll horizontal", () => {
     renderCustosExtras();
 
     const thDescricao = screen.getByRole("columnheader", { name: /Descrição \/ Favorecido/i });
-    expect(thDescricao.className).toContain("min-w-[300px]");
-    expect(thDescricao.className).toContain("max-w-[460px]");
+    expect(thDescricao.className).toContain("max-w-[240px]");
+    expect(thDescricao.className).not.toContain("min-w-[300px]");
+
+    // Verifica truncamento em uma linha e presença de title acessível
+    const row = screen.getByText("CE-2026-001").closest("tr");
+    const descCell = within(row!).getByText(/Lanche noturno para equipe/i);
+    expect(descCell.className).toContain("truncate");
+    expect(descCell.className).toContain("whitespace-nowrap");
+    expect(descCell).toHaveAttribute("title", "Lanche noturno para equipe de descarga emergencial");
+  });
+
+  describe("HOTFIX 02.2 — Pipeline Stepper (Padrão Transversal ORBE)", () => {
+    it("1. RECEBIDO marca o primeiro estágio como atual (etapa 1 de 5)", () => {
+      renderCustosExtras();
+      // CE-2026-001 tem pipeline_status: 'RECEBIDO'
+      const row = screen.getByText("CE-2026-001").closest("tr");
+      expect(row).toBeInTheDocument();
+      const stepperRegion = within(row!).getByRole("region", {
+        name: /Pipeline operacional: Recebido\. Etapa 1 de 5\./i,
+      });
+      expect(stepperRegion).toBeInTheDocument();
+    });
+
+    it("2. EM_VALIDACAO marca o segundo estágio como atual (etapa 2 de 5)", () => {
+      renderCustosExtras();
+      // CE-2026-002 tem pipeline_status: 'EM_VALIDACAO'
+      const row = screen.getByText("CE-2026-002").closest("tr");
+      expect(row).toBeInTheDocument();
+      const stepperRegion = within(row!).getByRole("region", {
+        name: /Pipeline operacional: Em validação\. Etapa 2 de 5\./i,
+      });
+      expect(stepperRegion).toBeInTheDocument();
+    });
+
+    it("3. APROVADO_OPERACAO marca o terceiro estágio como atual (etapa 3 de 5)", () => {
+      renderCustosExtras();
+      // CE-2026-004 tem pipeline_status: 'APROVADO_OPERACAO'
+      const row = screen.getByText("CE-2026-004").closest("tr");
+      expect(row).toBeInTheDocument();
+      const stepperRegion = within(row!).getByRole("region", {
+        name: /Pipeline operacional: Aprovado\. Etapa 3 de 5\./i,
+      });
+      expect(stepperRegion).toBeInTheDocument();
+    });
+
+    it("4. ENVIADO_FINANCEIRO marca o quarto estágio como atual (etapa 4 de 5)", () => {
+      renderCustosExtras();
+      // CE-2026-005 tem pipeline_status: 'ENVIADO_FINANCEIRO'
+      const row = screen.getByText("CE-2026-005").closest("tr");
+      expect(row).toBeInTheDocument();
+      const stepperRegion = within(row!).getByRole("region", {
+        name: /Pipeline operacional: Financeiro\. Etapa 4 de 5\./i,
+      });
+      expect(stepperRegion).toBeInTheDocument();
+    });
+
+    it("5. FINALIZADO completa a esteira com todos os nós em sucesso", () => {
+      renderCustosExtras();
+      // CE-2026-007 tem pipeline_status: 'FINALIZADO'
+      const row = screen.getByText("CE-2026-007").closest("tr");
+      expect(row).toBeInTheDocument();
+      const stepperRegion = within(row!).getByRole("region", {
+        name: /Pipeline operacional: Finalizado\. Etapa 5 de 5\./i,
+      });
+      expect(stepperRegion).toBeInTheDocument();
+    });
+
+    it("6. REPROVADO apresenta exceção sem simular 6ª etapa linear", () => {
+      renderCustosExtras();
+      // CE-2026-003 tem pipeline_status: 'REPROVADO'
+      const row = screen.getByText("CE-2026-003").closest("tr");
+      expect(row).toBeInTheDocument();
+      const stepperRegion = within(row!).getByRole("region", {
+        name: /Pipeline operacional: Reprovado\./i,
+      });
+      expect(stepperRegion).toBeInTheDocument();
+
+      // No compact stepper, o botão do nó atual contém o caractere de exceção ✕
+      expect(within(stepperRegion).getByText("✕")).toBeInTheDocument();
+    });
+
+    it("7. Compact renderiza exatamente cinco nós na esteira", () => {
+      renderCustosExtras();
+      const row = screen.getByText("CE-2026-001").closest("tr");
+      const stepperRegion = within(row!).getByRole("region", {
+        name: /Pipeline operacional:/i,
+      });
+      const nodes = within(stepperRegion).getAllByRole("button");
+      expect(nodes).toHaveLength(5);
+    });
+
+    it("8. Detailed renderiza labels canônicos e alçadas institucionais", () => {
+      renderCustosExtras();
+      const row = screen.getByText("CE-2026-004").closest("tr");
+      fireEvent.click(row!);
+
+      // Título da seção no Drawer
+      expect(screen.getByText(/Etapas do Processo/i)).toBeInTheDocument();
+      expect(
+        screen.getByText("Acompanhamento da esteira operacional deste lançamento.")
+      ).toBeInTheDocument();
+
+      // Labels das etapas
+      expect(screen.getByText("Recebido")).toBeInTheDocument();
+      expect(screen.getByText("Em validação")).toBeInTheDocument();
+      expect(screen.getByText("Aprovado")).toBeInTheDocument();
+      expect(screen.getAllByText("Financeiro").length).toBeGreaterThan(0);
+      expect(screen.getByText("Finalizado")).toBeInTheDocument();
+
+      // Alçadas institucionais
+      expect(screen.getByText("Encarregado")).toBeInTheDocument();
+      expect(screen.getByText("Operação / ADM")).toBeInTheDocument();
+      expect(screen.getByText("Gestor Operacional")).toBeInTheDocument();
+    });
+
+    it("9. Detailed apresenta marcador explícito 'Você está aqui'", () => {
+      renderCustosExtras();
+      const row = screen.getByText("CE-2026-004").closest("tr");
+      fireEvent.click(row!);
+
+      expect(screen.getByText("Você está aqui")).toBeInTheDocument();
+    });
+
+    it("10. Nenhuma data histórica fictícia nem usuário fictício é exibido como evento", () => {
+      renderCustosExtras();
+      const row = screen.getByText("CE-2026-004").closest("tr");
+      fireEvent.click(row!);
+
+      // Certifica que não foi inventado histórico cronológico de transições
+      expect(screen.queryByText(/Transicionado por/i)).toBeNull();
+      expect(screen.queryByText(/Horário da aprovação/i)).toBeNull();
+      expect(screen.queryByText(/Histórico de Eventos/i)).toBeNull();
+    });
+
+    it("11. Pagamento não aparece como etapa da esteira do pipeline", () => {
+      renderCustosExtras();
+      const row = screen.getByText("CE-2026-001").closest("tr");
+      const stepperRegion = within(row!).getByRole("region", {
+        name: /Pipeline operacional:/i,
+      });
+
+      // A esteira só contém etapas operacionais
+      expect(within(stepperRegion).queryByText(/A Pagar/i)).toBeNull();
+      expect(within(stepperRegion).queryByText(/Pago/i)).toBeNull();
+      expect(within(stepperRegion).queryByText(/Liquidado/i)).toBeNull();
+    });
+
+    it("12. Tooltip / aria-label estão disponíveis em cada nó do compact stepper", () => {
+      renderCustosExtras();
+      const row = screen.getByText("CE-2026-001").closest("tr");
+      const stepperRegion = within(row!).getByRole("region", {
+        name: /Pipeline operacional:/i,
+      });
+      const nodes = within(stepperRegion).getAllByRole("button");
+
+      expect(nodes[0]).toHaveAttribute("aria-label", expect.stringMatching(/Recebido — Etapa atual/i));
+      expect(nodes[1]).toHaveAttribute("aria-label", expect.stringMatching(/Em validação — Pendente/i));
+      expect(nodes[2]).toHaveAttribute("aria-label", expect.stringMatching(/Aprovado — Pendente/i));
+      expect(nodes[3]).toHaveAttribute("aria-label", expect.stringMatching(/Financeiro — Pendente/i));
+      expect(nodes[4]).toHaveAttribute("aria-label", expect.stringMatching(/Finalizado — Pendente/i));
+    });
+
+    it("13. Suporta temas Light e Dark mantendo legibilidade sem quebra", () => {
+      const { container } = renderCustosExtras();
+      expect(container.innerHTML).toContain("dark:bg-zinc-800");
+    });
   });
 });
+

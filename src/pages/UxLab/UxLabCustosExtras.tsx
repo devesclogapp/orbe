@@ -38,6 +38,7 @@ import {
   UxLabFiltroTemporal,
   FiltroTemporalValue,
 } from "@/components/ux-lab/UxLabFiltroTemporal";
+import { UxPipelineStepper } from "@/components/ux-lab/UxPipelineStepper";
 import {
   CUSTOS_EXTRAS_MOCKS,
   MOCK_EMPRESAS_CUSTOS_EXTRAS,
@@ -55,6 +56,7 @@ import {
   isRequerAcao,
   isObrigacaoAberta,
   isPagoLiquidado,
+  CUSTOS_EXTRAS_PIPELINE_STEPS,
 } from "./custosExtrasMockData";
 
 export default function UxLabCustosExtras() {
@@ -652,16 +654,16 @@ export default function UxLabCustosExtras() {
             <table className="w-full text-left text-xs border-collapse">
               <thead className="bg-muted border-b border-border text-[11px] font-bold uppercase tracking-wider text-muted-foreground sticky top-0 z-20 shadow-[0_1px_0_0_hsl(var(--border))]">
                 <tr>
-                  <th className="py-3 px-3.5 w-[105px]">Código</th>
-                  <th className="py-3 px-3.5 w-[90px]">Data</th>
-                  <th className="py-3 px-3.5 w-[170px]">Empresa / Unidade</th>
-                  <th className="py-3 px-3.5 w-[110px]">Categoria</th>
-                  <th className="py-3 px-3.5 min-w-[300px] max-w-[460px]">Descrição / Favorecido</th>
-                  <th className="py-3 px-3.5 w-[140px]">Origem do Recurso</th>
-                  <th className="py-3 px-3.5 w-[110px] text-right">Valor Total</th>
-                  <th className="py-3 px-3.5 w-[120px] text-center">Pipeline</th>
-                  <th className="py-3 px-3.5 w-[105px] text-center">Pagamento</th>
-                  <th className="py-3 px-3 w-[50px] text-center">Ação</th>
+                  <th className="py-2.5 px-3 w-[95px] whitespace-nowrap">Código</th>
+                  <th className="py-2.5 px-3 w-[85px] whitespace-nowrap">Data</th>
+                  <th className="py-2.5 px-3 w-[150px] max-w-[150px]">Empresa / Unidade</th>
+                  <th className="py-2.5 px-3 w-[110px] whitespace-nowrap">Categoria</th>
+                  <th className="py-2.5 px-3 min-w-[160px] max-w-[240px]">Descrição / Favorecido</th>
+                  <th className="py-2.5 px-3 w-[135px] whitespace-nowrap">Origem do Recurso</th>
+                  <th className="py-2.5 px-3 w-[100px] text-left whitespace-nowrap">Valor Total</th>
+                  <th className="py-2.5 px-2.5 w-[115px] text-left whitespace-nowrap">Pipeline</th>
+                  <th className="py-2.5 px-2.5 w-[95px] text-left whitespace-nowrap">Pagamento</th>
+                  <th className="py-2.5 px-2 w-[40px] text-center whitespace-nowrap">Ação</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60">
@@ -688,28 +690,28 @@ export default function UxLabCustosExtras() {
                           isHighlighted ? getHighlightClasses(c) : ""
                         }`}
                       >
-                        {/* 1. Código */}
-                        <td className="py-3 px-3.5 w-[105px] font-mono font-bold text-royal-blue dark:text-royal-blue-light whitespace-nowrap">
+                        {/* 1. Código (Prioridade Alta) */}
+                        <td className="py-2.5 px-3 w-[95px] font-mono font-bold text-royal-blue dark:text-royal-blue-light whitespace-nowrap">
                           {c.codigo}
                         </td>
 
-                        {/* 2. Data */}
-                        <td className="py-3 px-3.5 w-[90px] whitespace-nowrap text-foreground">
+                        {/* 2. Data (Prioridade Alta) */}
+                        <td className="py-2.5 px-3 w-[85px] whitespace-nowrap text-foreground">
                           {formatDate(c.data)}
                         </td>
 
-                        {/* 3. Empresa / Unidade */}
-                        <td className="py-3 px-3.5 w-[170px] max-w-[170px]">
-                          <div className="font-semibold text-foreground truncate">
+                        {/* 3. Empresa / Unidade (Prioridade Média) */}
+                        <td className="py-2.5 px-3 w-[150px] max-w-[150px]">
+                          <div className="font-semibold text-foreground truncate" title={c.empresa_nome}>
                             {c.empresa_nome}
                           </div>
-                          <div className="text-[11px] text-muted-foreground truncate">
+                          <div className="text-[11px] text-muted-foreground truncate" title={c.unidade_nome}>
                             {c.unidade_nome}
                           </div>
                         </td>
 
-                        {/* 4. Categoria (Monocromático Institucional) */}
-                        <td className="py-3 px-3.5 w-[110px] whitespace-nowrap">
+                        {/* 4. Categoria (Prioridade Média - Monocromático Institucional) */}
+                        <td className="py-2.5 px-3 w-[110px] whitespace-nowrap">
                           <Badge
                             variant="outline"
                             className="bg-muted/60 text-foreground border-border text-[10px] font-medium"
@@ -718,35 +720,46 @@ export default function UxLabCustosExtras() {
                           </Badge>
                         </td>
 
-                        {/* 5. Descrição / Favorecido */}
-                        <td className="py-3 px-3.5 min-w-[300px] max-w-[460px]">
-                          <div className="font-medium text-foreground truncate" title={c.descricao}>
+                        {/* 5. Descrição / Favorecido (Flexível / Truncável com Tooltip/Title em 1 linha) */}
+                        <td className="py-2.5 px-3 min-w-[160px] max-w-[240px]">
+                          <div
+                            className="font-medium text-foreground truncate whitespace-nowrap overflow-hidden text-ellipsis"
+                            title={c.descricao}
+                          >
                             {c.descricao}
                           </div>
-                          <div className="text-[11px] text-muted-foreground truncate flex items-center gap-1 mt-0.5">
+                          <div className="text-[11px] text-muted-foreground truncate whitespace-nowrap overflow-hidden text-ellipsis flex items-center gap-1 mt-0.5 min-w-0">
                             {c.origem_recurso === "REEMBOLSO_COLABORADOR" && (
                               <>
                                 <User className="w-3 h-3 text-amber-600 dark:text-amber-400 shrink-0" />
-                                <span>{c.favorecido_colaborador_nome || "Colaborador"}</span>
+                                <span className="truncate" title={c.favorecido_colaborador_nome || "Colaborador"}>
+                                  {c.favorecido_colaborador_nome || "Colaborador"}
+                                </span>
                               </>
                             )}
                             {c.origem_recurso === "PAGAMENTO_PENDENTE" && (
                               <>
                                 <Building className="w-3 h-3 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                                <span>{c.favorecido_fornecedor_nome || "Fornecedor"}</span>
+                                <span className="truncate" title={c.favorecido_fornecedor_nome || "Fornecedor"}>
+                                  {c.favorecido_fornecedor_nome || "Fornecedor"}
+                                </span>
                               </>
                             )}
                             {c.origem_recurso === "PAGO_EMPRESA" && (
-                              <span className="text-muted-foreground/80">Pago no ato ({c.forma_pagamento_nome})</span>
+                              <span className="truncate" title={`Pago no ato (${c.forma_pagamento_nome})`}>
+                                Pago no ato ({c.forma_pagamento_nome})
+                              </span>
                             )}
                             {c.origem_recurso === "LEGACY" && (
-                              <span className="text-muted-foreground/80">Histórico migrado</span>
+                              <span className="truncate" title="Histórico migrado">
+                                Histórico migrado
+                              </span>
                             )}
                           </div>
                         </td>
 
-                        {/* 6. Origem do Recurso */}
-                        <td className="py-3 px-3.5 whitespace-nowrap">
+                        {/* 6. Origem do Recurso (Prioridade Média) */}
+                        <td className="py-2.5 px-3 w-[135px] whitespace-nowrap">
                           <span
                             className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium border ${
                               c.origem_recurso === "PAGO_EMPRESA"
@@ -762,53 +775,32 @@ export default function UxLabCustosExtras() {
                           </span>
                         </td>
 
-                        {/* 7. Valor Total */}
-                        <td className="py-3 px-3.5 text-right font-mono font-bold text-foreground whitespace-nowrap">
+                        {/* 7. Valor Total (Prioridade Alta) */}
+                        <td className="py-2.5 px-3 w-[100px] text-left font-mono font-bold text-foreground whitespace-nowrap">
                           {formatCurrency(c.total)}
                         </td>
 
-                        {/* 8. Pipeline Status */}
-                        <td className="py-3 px-3.5 text-center whitespace-nowrap">
-                          {c.pipeline_status === "RECEBIDO" && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 border border-blue-200 dark:border-blue-900/40">
-                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-                              Recebido
-                            </span>
-                          )}
-                          {c.pipeline_status === "EM_VALIDACAO" && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-900/40">
-                              <Clock className="w-3 h-3 text-amber-600 dark:text-amber-400" />
-                              Em Validação
-                            </span>
-                          )}
-                          {c.pipeline_status === "REPROVADO" && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-200 dark:border-rose-900/40">
-                              <AlertTriangle className="w-3 h-3 text-rose-600 dark:text-rose-400" />
-                              Reprovado
-                            </span>
-                          )}
-                          {c.pipeline_status === "APROVADO_OPERACAO" && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/40">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                              Aprovado Op.
-                            </span>
-                          )}
-                          {c.pipeline_status === "ENVIADO_FINANCEIRO" && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-900/40">
-                              <Receipt className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
-                              Enviado Fin.
-                            </span>
-                          )}
-                          {c.pipeline_status === "FINALIZADO" && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-zinc-100 text-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                              Finalizado
-                            </span>
-                          )}
+                        {/* 8. Pipeline Status (Prioridade Alta - Stepper Compacto Transversal) */}
+                        <td className="py-2.5 px-2.5 w-[115px] text-left whitespace-nowrap">
+                          <UxPipelineStepper
+                            steps={CUSTOS_EXTRAS_PIPELINE_STEPS}
+                            currentStepKey={c.pipeline_status}
+                            exceptionState={
+                              c.pipeline_status === "REPROVADO"
+                                ? {
+                                    isException: true,
+                                    label: "Reprovado",
+                                    stepKey: "EM_VALIDACAO",
+                                    description: c.justificativa_devolucao || undefined,
+                                  }
+                                : null
+                            }
+                            variant="compact"
+                          />
                         </td>
 
-                        {/* 9. Status Pagamento (Desacoplado) */}
-                        <td className="py-3 px-3.5 w-[105px] text-center whitespace-nowrap">
+                        {/* 9. Status Pagamento (Prioridade Alta - Desacoplado da Esteira) */}
+                        <td className="py-2.5 px-2.5 w-[95px] text-left whitespace-nowrap">
                           {c.origem_recurso === "PAGO_EMPRESA" || c.status_pagamento === "PAGO" ? (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900/40">
                               <CheckCircle2 className="w-3 h-3 text-emerald-600" />
@@ -831,7 +823,7 @@ export default function UxLabCustosExtras() {
                         </td>
 
                         {/* 10. Ação */}
-                        <td className="py-3 px-3 w-[50px] text-center whitespace-nowrap">
+                        <td className="py-2.5 px-2 w-[40px] text-center whitespace-nowrap">
                           <button
                             type="button"
                             onClick={(e) => {

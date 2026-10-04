@@ -33,7 +33,8 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { OperacaoVolumeMock } from "@/pages/UxLab/operacoesVolumeMockData";
+import { OperacaoVolumeMock, OPERACOES_VOLUME_PIPELINE_STEPS } from "@/pages/UxLab/operacoesVolumeMockData";
+import { UxPipelineStepper } from "@/components/ux-lab/UxPipelineStepper";
 
 interface UxLabOperacaoDrawerProps {
   operacao: OperacaoVolumeMock | null;
@@ -251,6 +252,26 @@ export function UxLabOperacaoDrawer({
               </p>
             </div>
           )}
+
+          {/* ETAPAS DO PROCESSO (ESTEIRA HORIZONTAL DETALHADA) */}
+          <div className="rounded-lg border border-border bg-card p-4">
+            <UxPipelineStepper
+              steps={OPERACOES_VOLUME_PIPELINE_STEPS}
+              currentStepKey={operacao.status}
+              exceptionState={
+                operacao.status === "EM_RESTRICAO"
+                  ? {
+                      isException: true,
+                      label: "Em Restrição",
+                      stepKey: "EM_VALIDACAO",
+                      description: operacao.motivo_restricao || "Operação em restrição — bloqueio operacional",
+                    }
+                  : null
+              }
+              variant="detailed"
+              subtitle="Acompanhamento da esteira operacional desta operação."
+            />
+          </div>
 
           {/* 1. CONTEXTO OPERACIONAL */}
           <div className="space-y-3">

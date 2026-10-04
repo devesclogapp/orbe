@@ -29,14 +29,17 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { UxPipelineStepper } from "@/components/ux-lab/UxPipelineStepper";
 import {
   CustoExtraMock,
   PipelineStatusCustoExtra,
   StatusPagamentoCustoExtra,
+  OrigemRecursoCustoExtra,
   getFriendlyOrigemRecurso,
   getFriendlyPipelineStatus,
   getFriendlyStatusPagamento,
-  getFriendlyCategoria
+  getFriendlyCategoria,
+  CUSTOS_EXTRAS_PIPELINE_STEPS,
 } from "@/pages/UxLab/custosExtrasMockData";
 
 interface UxLabCustoExtraDrawerProps {
@@ -273,7 +276,26 @@ export function UxLabCustoExtraDrawer({
             </div>
           </div>
 
-          {/* SEÇÃO 2: ORIGEM DO RECURSO (DESTAQUE CRÍTICO) */}
+          {/* SEÇÃO 2: ETAPAS DO PROCESSO (ESTEIRA HORIZONTAL DETALHADA) */}
+          <div className="rounded-lg border border-border bg-card p-4">
+            <UxPipelineStepper
+              steps={CUSTOS_EXTRAS_PIPELINE_STEPS}
+              currentStepKey={custo.pipeline_status}
+              exceptionState={
+                custo.pipeline_status === "REPROVADO"
+                  ? {
+                      isException: true,
+                      label: "Reprovado",
+                      stepKey: "EM_VALIDACAO",
+                      description: custo.justificativa_devolucao || undefined,
+                    }
+                  : null
+              }
+              variant="detailed"
+            />
+          </div>
+
+          {/* SEÇÃO 3: ORIGEM DO RECURSO (DESTAQUE CRÍTICO) */}
           <div className="rounded-lg border border-border bg-card p-4 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">

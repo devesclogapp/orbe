@@ -479,3 +479,46 @@ export const MOCK_STATUS_RH_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "VALIDADO_RH", label: "Validado RH" },
   { value: "DEVOLVIDO_RH", label: "Devolvido RH" }
 ];
+
+// CANONICAL PIPELINE STEPS — UX05 OPERAÇÕES POR VOLUME (6 ETAPAS)
+// Exceção: EM_RESTRICAO tratada como bloqueio na esteira de validação
+export const OPERACOES_VOLUME_PIPELINE_STEPS = [
+  {
+    key: "RECEBIDO",
+    label: "Recebido",
+    responsible: "Encarregado",
+    description: "Operação lançada com apontamento inicial registrado",
+  },
+  {
+    key: "EM_VALIDACAO",
+    label: "Em validação",
+    responsible: "Operação / ADM",
+    description: "Conferência de horários, equipe e dados da operação",
+  },
+  {
+    key: "AGUARDANDO_FATURAMENTO",
+    label: "Aguardando faturamento",
+    shortLabel: "Faturamento",
+    responsible: "Gestor Operacional",
+    description: "Operação aprovada na esteira pronta para envio comercial",
+  },
+  {
+    key: "FATURADO",
+    label: "Faturado",
+    responsible: "Faturamento / Financeiro",
+    description: "Fatura emitida para o cliente tomador",
+  },
+  {
+    key: "RECEBIDO_FINANCEIRO",
+    label: "Recebido financeiro",
+    shortLabel: "Recebido Fin.",
+    responsible: "Financeiro / Tesouraria",
+    description: "Pagamento do cliente identificado e liquidado",
+  },
+  {
+    key: "CONCLUIDO",
+    label: "Concluído",
+    responsible: "Faturamento & Financeiro",
+    description: "Ciclo operacional e financeiro totalmente finalizado",
+  },
+];

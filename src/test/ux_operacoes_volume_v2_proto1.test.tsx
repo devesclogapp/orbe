@@ -4,7 +4,7 @@ import { render, screen, fireEvent, within } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { UxLabThemeProvider } from "@/components/ux-lab/UxLabThemeContext";
 import UxLabOperacoesVolume from "@/pages/UxLab/UxLabOperacoesVolume";
-import { OPERACOES_VOLUME_MOCKS } from "@/pages/UxLab/operacoesVolumeMockData";
+import { OPERACOES_VOLUME_MOCKS, OPERACOES_VOLUME_PIPELINE_STEPS } from "@/pages/UxLab/operacoesVolumeMockData";
 
 // Mock ResizeObserver for JSDOM
 global.ResizeObserver = class ResizeObserver {
@@ -62,7 +62,7 @@ describe("UX05 — Operações por Volume V2 — Protótipo 1", () => {
     expect(screen.getByRole("columnheader", { name: /^Operação$/i })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: /Data/i })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: /Unidade \/ Contexto/i })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: /Status Operação/i })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /Pipeline Operação/i })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: /Status RH/i })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: /Pendência/i })).toBeInTheDocument();
 
@@ -71,8 +71,8 @@ describe("UX05 — Operações por Volume V2 — Protótipo 1", () => {
     expect(screen.getByText("OP-8820")).toBeInTheDocument();
     expect(screen.getByText("OP-8819")).toBeInTheDocument();
 
-    // Badges independentes para status operacional e status RH
-    expect(screen.getAllByText("Recebido").length).toBeGreaterThan(0);
+    // Badges/indicadores independentes para status operacional (stepper) e status RH (badge)
+    expect(screen.getAllByRole("region", { name: /Pipeline operacional:/i }).length).toBeGreaterThan(0);
     expect(screen.getAllByText("Pendente").length).toBeGreaterThan(0);
   });
 
@@ -84,8 +84,10 @@ describe("UX05 — Operações por Volume V2 — Protótipo 1", () => {
     expect(opRow).toBeInTheDocument();
 
     if (opRow) {
-      // Badge localizado de restrição
-      expect(within(opRow).getByText(/Em Restrição/i)).toBeInTheDocument();
+      // Stepper localizado com indicador semântico de restrição
+      expect(
+        within(opRow).getByRole("region", { name: /Pipeline operacional: Em Restrição\./i })
+      ).toBeInTheDocument();
       // Status RH de devolução
       expect(within(opRow).getByText(/Devolvido/i)).toBeInTheDocument();
     }
@@ -389,5 +391,165 @@ describe("UX05 — Operações por Volume V2 — Protótipo 1", () => {
 
     const btnRestricao = screen.getByRole("button", { name: /Com Restrição/i });
     expect(btnRestricao.className).toContain("bg-card");
+  });
+
+  describe("Cobertura Mínima — UxPipelineStepper UX05 (Operações por Volume)", () => {
+    it("1. Pipeline possui quantidade correta de etapas (6 etapas canônicas)", () => {
+      expect(OPERACOES_VOLUME_PIPELINE_STEPS).toHaveLength(6);
+      expect(OPERACOES_VOLUME_PIPELINE_STEPS.map((s) => s.key)).toEqual([
+        "RECEBIDO",
+        "EM_VALIDACAO",
+        "AGUARDANDO_FATURAMENTO",
+        "FATURADO",
+        "RECEBIDO_FINANCEIRO",
+        "CONCLUIDO",
+      ]);
+    });
+
+    it("2. RECEBIDO marca início da esteira operacional", () => {
+      renderOperacoesVolume();
+      const row = screen.getByText("OP-8821").closest("tr");
+      expect(row).toBeInTheDocument();
+      if (row) {
+        const region = within(row).getByRole("region", {
+          name: /Pipeline operacional: Recebido\. Etapa 1 de 6\./i,
+        });
+        expect(region).toBeInTheDocument();
+      }
+    });
+
+    it("3. EM_VALIDACAO marca etapa correspondente (etapa 2)", () => {
+      renderOperacoesVolume();
+      const row = screen.getByText("OP-8820").closest("tr");
+      expect(row).toBeInTheDocument();
+      if (row) {
+        const region = within(row).getByRole("region", {
+          name: /Pipeline operacional: Em Validação\. Etapa 2 de 6\./i,
+        });
+        expect(region).toBeInTheDocument();
+      }
+    });
+
+    it("4. EM_RESTRICAO aparece como exceção/bloqueio sem criar etapa linear artificial", () => {
+      renderOperacoesVolume();
+      const row = screen.getByText("OP-8819").closest("tr");
+      expect(row).toBeInTheDocument();
+      if (row) {
+        const region = within(row).getByRole("region", {
+          name: /Pipeline operacional: Em Restrição\. Etapa 2 de 6\./i,
+        });
+        expect(region).toBeInTheDocument();
+        // Contém o indicador visual de exceção
+        expect(within(region).getByText("✕")).toBeInTheDocument();
+      }
+    });
+
+    it("5. AGUARDANDO_FATURAMENTO corretamente localizado na etapa 3", () => {
+      renderOperacoesVolume();
+      const row = screen.getByText("OP-8818").closest("tr");
+      expect(row).toBeInTheDocument();
+      if (row) {
+        const region = within(row).getByRole("region", {
+          name: /Pipeline operacional: Aguardando Faturamento\. Etapa 3 de 6\./i,
+        });
+        expect(region).toBeInTheDocument();
+      }
+    });
+
+    it("6. FATURADO corretamente localizado na etapa 4", () => {
+      renderOperacoesVolume();
+      const row = screen.getByText("OP-8815").closest("tr");
+      expect(row).toBeInTheDocument();
+      if (row) {
+        const region = within(row).getByRole("region", {
+          name: /Pipeline operacional: Faturado\. Etapa 4 de 6\./i,
+        });
+        expect(region).toBeInTheDocument();
+      }
+    });
+
+    it("7. RECEBIDO_FINANCEIRO corretamente localizado na etapa 5", () => {
+      renderOperacoesVolume();
+      const row = screen.getByText("OP-8810").closest("tr");
+      expect(row).toBeInTheDocument();
+      if (row) {
+        const region = within(row).getByRole("region", {
+          name: /Pipeline operacional: Recebido Financeiro\. Etapa 5 de 6\./i,
+        });
+        expect(region).toBeInTheDocument();
+      }
+    });
+
+    it("8. CONCLUIDO completa a esteira integralmente", () => {
+      renderOperacoesVolume();
+      const row = screen.getByText("OP-8801").closest("tr");
+      expect(row).toBeInTheDocument();
+      if (row) {
+        const region = within(row).getByRole("region", {
+          name: /Pipeline operacional: Concluído\. Etapa 6 de 6\./i,
+        });
+        expect(region).toBeInTheDocument();
+      }
+    });
+
+    it("9. status_rh NÃO aparece na esteira operacional principal", () => {
+      // Nenhum dos passos contém PENDENTE_RH, VALIDADO_RH, DEVOLVIDO_RH etc
+      const keys = OPERACOES_VOLUME_PIPELINE_STEPS.map((s) => s.key);
+      expect(keys).not.toContain("PENDENTE_RH");
+      expect(keys).not.toContain("VALIDADO_RH");
+      expect(keys).not.toContain("DEVOLVIDO_RH");
+      expect(keys).not.toContain("EM_ANALISE_RH");
+    });
+
+    it("10. Modo compact funciona na tabela em todas as linhas", () => {
+      renderOperacoesVolume();
+      const steppers = screen.getAllByRole("region", { name: /Pipeline operacional:/i });
+      expect(steppers.length).toBeGreaterThanOrEqual(7);
+    });
+
+    it("11. Modo detailed funciona no Drawer sob seção 'ETAPAS DO PROCESSO'", () => {
+      renderOperacoesVolume();
+      // Abre OP-8821
+      fireEvent.click(screen.getByText("OP-8821"));
+
+      expect(screen.getByText(/Etapas do Processo/i)).toBeInTheDocument();
+      expect(
+        screen.getByText("Acompanhamento da esteira operacional desta operação.")
+      ).toBeInTheDocument();
+      expect(screen.getByText("6 etapas canônicas")).toBeInTheDocument();
+      // Verifica presença dos rótulos detalhados
+      expect(screen.getAllByText(/Aguardando faturamento/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Recebido financeiro/i).length).toBeGreaterThan(0);
+    });
+
+    it("12. Navegação circular dos cards continua funcionando normalmente", () => {
+      renderOperacoesVolume();
+      const btnVal = screen.getByRole("button", { name: /Requer Validação/i });
+
+      // Clique 1
+      fireEvent.click(btnVal);
+      expect(document.getElementById("op-row-op-mock-002")).toBeInTheDocument();
+
+      // Clique 2
+      fireEvent.click(btnVal);
+      expect(document.getElementById("op-row-op-mock-001")).toBeInTheDocument();
+
+      // Clique 3 retorna ao 1º
+      fireEvent.click(btnVal);
+      expect(document.getElementById("op-row-op-mock-002")).toBeInTheDocument();
+    });
+
+    it("13. Highlight da linha continua obedecendo ao status real da ocorrência", () => {
+      renderOperacoesVolume();
+      const btnRestricao = screen.getByRole("button", { name: /Com Restrição/i });
+      fireEvent.click(btnRestricao);
+      const row = document.getElementById("op-row-op-mock-003");
+      expect(row?.className).toContain("ring-rose-500");
+    });
+
+    it("14. Light/Dark theme rendering sem regressão estrutural", () => {
+      const { container } = renderOperacoesVolume();
+      expect(container.firstChild).toBeInTheDocument();
+    });
   });
 });

@@ -464,3 +464,46 @@ export const SERVICOS_EXTRAS_MOCKS: ServicoExtraMock[] = [
     },
   },
 ];
+
+// CANONICAL PIPELINE STEPS — UX06 SERVIÇOS EXTRAS (6 ETAPAS)
+// Exceção: DEVOLVIDO tratada como bloqueio na esteira de validação
+export const SERVICOS_EXTRAS_PIPELINE_STEPS = [
+  {
+    key: "PENDENTE",
+    label: "Pendente",
+    responsible: "Encarregado",
+    description: "Serviço extra registrado aguardando triagem operacional",
+  },
+  {
+    key: "EM_VALIDACAO",
+    label: "Em validação",
+    responsible: "Operação / ADM",
+    description: "Conferência de escopo, headcount e materiais consumidos",
+  },
+  {
+    key: "APROVADO_OPERACAO",
+    label: "Aprovado operação",
+    shortLabel: "Aprov. Operação",
+    responsible: "Gestor Operacional",
+    description: "Aprovação técnica e liberação para faturamento comercial",
+  },
+  {
+    key: "APROVADO_FINANCEIRO",
+    label: "Aprovado financeiro",
+    shortLabel: "Aprov. Fin.",
+    responsible: "Financeiro",
+    description: "Aprovação financeira e geração de contas a receber",
+  },
+  {
+    key: "FATURADO",
+    label: "Faturado",
+    responsible: "Faturamento",
+    description: "Fatura ou duplicata emitida ao cliente",
+  },
+  {
+    key: "CONCLUIDO",
+    label: "Concluído",
+    responsible: "Financeiro",
+    description: "Serviço extra faturado e liquidado financeiramente",
+  },
+];

@@ -36,8 +36,10 @@ import { toast } from "sonner";
 import {
   ServicoExtraMock,
   PipelineStatusServicoExtra,
-  ModalidadeFinanceiraServicoExtra
+  ModalidadeFinanceiraServicoExtra,
+  SERVICOS_EXTRAS_PIPELINE_STEPS,
 } from "@/pages/UxLab/servicosExtrasMockData";
+import { UxPipelineStepper } from "@/components/ux-lab/UxPipelineStepper";
 
 interface UxLabServicoExtraDrawerProps {
   servico: ServicoExtraMock | null;
@@ -268,6 +270,26 @@ export function UxLabServicoExtraDrawer({
               </p>
             </div>
           </section>
+
+          {/* ETAPAS DO PROCESSO (ESTEIRA HORIZONTAL DETALHADA) */}
+          <div className="rounded-lg border border-border bg-card p-4">
+            <UxPipelineStepper
+              steps={SERVICOS_EXTRAS_PIPELINE_STEPS}
+              currentStepKey={servico.pipeline_status}
+              exceptionState={
+                servico.pipeline_status === "DEVOLVIDO"
+                  ? {
+                      isException: true,
+                      label: "Devolvido",
+                      stepKey: "EM_VALIDACAO",
+                      description: servico.justificativa_devolucao || "Serviço extra devolvido para saneamento de apontamentos",
+                    }
+                  : null
+              }
+              variant="detailed"
+              subtitle="Acompanhamento da esteira operacional deste serviço."
+            />
+          </div>
 
           {/* 2. CONTEXTO & ESCOPO DO SERVIÇO */}
           <section className="space-y-3">
