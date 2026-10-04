@@ -172,6 +172,7 @@ const SECTIONS: LabNavSection[] = [
         id: "receitas",
         label: "Receitas Operacionais",
         icon: Receipt,
+        isActiveLabTarget: true,
       },
       {
         id: "despesas",
@@ -257,6 +258,7 @@ export const UX_LAB_ROUTES: Record<string, string> = {
   inconsistencias: "/ux-lab/inconsistencias",
   "fechamento-ciclos": "/ux-lab/fechamento-ciclos",
   "fechamento-operacional": "/ux-lab/fechamento-ciclos",
+  receitas: "/ux-lab/receitas",
   dre: "/ux-lab/dre",
   relatorios: "/ux-lab/relatorios",
   "design-system": "/ux-lab/design-system",
