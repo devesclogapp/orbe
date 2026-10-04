@@ -215,6 +215,13 @@ const SECTIONS: LabNavSection[] = [
         isActiveLabTarget: true,
       },
       {
+        id: "design-system",
+        label: "Design System & Tokens",
+        icon: Sparkles,
+        badge: { count: "DS-01", variant: "info" },
+        isActiveLabTarget: true,
+      },
+      {
         id: "auditoria",
         label: "Auditoria & Segurança",
         icon: Database,
@@ -244,6 +251,7 @@ export const UX_LAB_ROUTES: Record<string, string> = {
   "custos-extras": "/ux-lab/custos-extras",
   dre: "/ux-lab/dre",
   relatorios: "/ux-lab/relatorios",
+  "design-system": "/ux-lab/design-system",
 };
 
 interface UxLabSidebarProps {

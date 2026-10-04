@@ -404,7 +404,7 @@ export default function UxLabCustosExtras() {
 
   return (
     <UxLabShell activeItem="custos-extras">
-      <div className="max-w-[1560px] mx-auto px-4 sm:px-6 py-6 space-y-6">
+      <div className="space-y-6 pb-16">
         {/* CABEÇALHO ESPECIALISTA */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">

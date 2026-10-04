@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import UxLabRelatoriosHub from "@/pages/UxLab/UxLabRelatoriosHub";
 import UxLabRelatorioView from "@/pages/UxLab/UxLabRelatorioView";
@@ -29,13 +29,14 @@ describe("UX04 — Relatórios V2: Protótipo 1 (UX Lab)", () => {
     expect(screen.getByText("PESSOAS & RH")).toBeInTheDocument();
     expect(screen.getByText("FINANCEIRO & FATURAMENTO")).toBeInTheDocument();
 
-    // Valida os 6 relatórios autorizados
-    expect(screen.getByText("Analítico de Operações por Volume")).toBeInTheDocument();
-    expect(screen.getByText("Custos Extras Operacionais")).toBeInTheDocument();
-    expect(screen.getByText("Analítico de Serviços Extras")).toBeInTheDocument();
-    expect(screen.getByText("Fechamento de Diaristas")).toBeInTheDocument();
-    expect(screen.getByText("Consolidado de Banco de Horas")).toBeInTheDocument();
-    expect(screen.getByText("Faturamento e Receitas")).toBeInTheDocument();
+    // Valida os 6 relatórios autorizados no catálogo
+    const catalogSection = screen.getByText("Relatórios Oficiais").closest("section");
+    expect(within(catalogSection!).getByText("Analítico de Operações por Volume")).toBeInTheDocument();
+    expect(within(catalogSection!).getByText("Custos Extras Operacionais")).toBeInTheDocument();
+    expect(within(catalogSection!).getByText("Analítico de Serviços Extras")).toBeInTheDocument();
+    expect(within(catalogSection!).getByText("Fechamento de Diaristas")).toBeInTheDocument();
+    expect(within(catalogSection!).getByText("Consolidado de Banco de Horas")).toBeInTheDocument();
+    expect(within(catalogSection!).getByText("Faturamento e Receitas")).toBeInTheDocument();
 
     // Valida que R06 (Produtividade) está categoricamente BLOQUEADO / inexistente
     expect(screen.queryByText(/Produtividade da Equipe/i)).not.toBeInTheDocument();
@@ -48,9 +49,10 @@ describe("UX04 — Relatórios V2: Protótipo 1 (UX Lab)", () => {
     const searchInput = screen.getByPlaceholderText(/Buscar por código, nome ou palavra-chave/i);
     fireEvent.change(searchInput, { target: { value: "Banco de Horas" } });
 
-    expect(screen.getByText("Consolidado de Banco de Horas")).toBeInTheDocument();
-    expect(screen.queryByText("Analítico de Operações por Volume")).not.toBeInTheDocument();
-    expect(screen.queryByText("Fechamento de Diaristas")).not.toBeInTheDocument();
+    const catalogSection = screen.getByText("Relatórios Oficiais").closest("section");
+    expect(within(catalogSection!).getByText("Consolidado de Banco de Horas")).toBeInTheDocument();
+    expect(within(catalogSection!).queryByText("Analítico de Operações por Volume")).not.toBeInTheDocument();
+    expect(within(catalogSection!).queryByText("Fechamento de Diaristas")).not.toBeInTheDocument();
   });
 
   it("3. R01 — Operações por Volume renderiza colunas homologadas e totalizadores", () => {
@@ -352,7 +354,7 @@ describe("UX04 — Relatórios V2: Protótipo 1 (UX Lab)", () => {
     reportIds.forEach((id) => {
       const { unmount } = renderWithProviders(`/ux-lab/relatorios/${id}`);
       expect(screen.getByText("Dataset de Consulta")).toBeInTheDocument();
-      expect(screen.getByText("Exportar")).toBeInTheDocument();
+      expect(screen.getByText(/Exportar/i)).toBeInTheDocument();
       expect(screen.getByText(/Página 1 de/i)).toBeInTheDocument();
       unmount();
     });

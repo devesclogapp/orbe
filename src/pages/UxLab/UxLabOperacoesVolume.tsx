@@ -415,7 +415,7 @@ export default function UxLabOperacoesVolume() {
         // Redirecionamento canônico tratado pela Sidebar
       }}
     >
-      <div className="flex-1 min-h-0 flex flex-col p-4 md:p-6 max-w-[1560px] mx-auto w-full space-y-4">
+      <div className="flex-1 min-h-0 flex flex-col w-full space-y-4">
         {/* CABEÇALHO OPERACIONAL */}
         <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-border pb-4">
           <div className="space-y-0.5">

@@ -99,12 +99,24 @@ function UxLabDashboardContent() {
       navigate("/ux-lab/operacoes-volume");
       return;
     }
+    if (id === "servicos-extras") {
+      navigate("/ux-lab/servicos-extras");
+      return;
+    }
+    if (id === "custos-extras") {
+      navigate("/ux-lab/custos-extras");
+      return;
+    }
     if (id === "dre") {
       navigate("/ux-lab/dre");
       return;
     }
     if (id === "relatorios") {
       navigate("/ux-lab/relatorios");
+      return;
+    }
+    if (id === "design-system") {
+      navigate("/ux-lab/design-system");
       return;
     }
 

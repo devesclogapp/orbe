@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
 import {
   ChevronLeft,
   Download,
@@ -20,6 +20,7 @@ import {
   RotateCcw,
   X,
   RefreshCw,
+  ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { UxLabShell } from "@/components/ux-lab/UxLabShell";
@@ -65,18 +66,22 @@ import {
 export default function UxLabRelatorioView() {
   const { reportId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  const urlEmpresa = searchParams.get("empresa");
+  const urlCompetencia = searchParams.get("competencia");
 
   const report = useMemo(() => {
     return RELATORIOS_CATALOGO.find((r) => r.id === reportId) || RELATORIOS_CATALOGO[0];
   }, [reportId]);
 
   // Filtro Estrutural Obrigatório 1: Empresa
-  const [empresaId, setEmpresaId] = useState("emp-01");
+  const [empresaId, setEmpresaId] = useState(urlEmpresa || "emp-01");
 
   // Filtro Estrutural 2: Período / Competência
-  const [dataDe, setDataDe] = useState("2026-09-01");
-  const [dataAte, setDataAte] = useState("2026-09-30");
-  const [competencia, setCompetencia] = useState("2026-09");
+  const [dataDe, setDataDe] = useState(urlCompetencia ? `${urlCompetencia}-01` : "2026-09-01");
+  const [dataAte, setDataAte] = useState(urlCompetencia ? `${urlCompetencia}-30` : "2026-09-30");
+  const [competencia, setCompetencia] = useState(urlCompetencia || "2026-09");
 
   // Filtros Específicos por Relatório
   const [filtroStatus, setFiltroStatus] = useState("all");
@@ -107,6 +112,15 @@ export default function UxLabRelatorioView() {
   const PAGE_SIZE = 10;
 
   // Detecção de filtros ativos (recorte em relação ao padrão)
+  React.useEffect(() => {
+    if (searchParams.get("print") === "true") {
+      const timer = setTimeout(() => {
+        window.print();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [searchParams]);
+
   const hasActiveFilters = useMemo(() => {
     if (report.id === "r01-operacoes-volume") {
       return (
@@ -268,6 +282,83 @@ export default function UxLabRelatorioView() {
       return true;
     });
   }, [empresaId, dataDe, dataAte, filtroTipoServicoExtra, filtroPipelineStatusExtra]);
+
+  // ----------------------------------------------------
+  // METADADOS DOCUMENTAIS E DISTRIBUIÇÕES ANALÍTICAS
+  // ----------------------------------------------------
+  const dataEmissaoFormatada = useMemo(() => {
+    const agora = new Date();
+    const data = agora.toLocaleDateString("pt-BR");
+    const hora = agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    return `${data} às ${hora}`;
+  }, []);
+
+  const competenciaLabel = useMemo(() => {
+    if (report.id === "r01-operacoes-volume" || report.id === "r04-custos-extras" || report.id === "r07-servicos-extras") {
+      if (dataDe.startsWith("2026-09") && dataAte.startsWith("2026-09")) {
+        return "Setembro/2026";
+      }
+      return `${formatDateBR(dataDe)} a ${formatDateBR(dataAte)}`;
+    }
+    if (report.id === "r02-fechamento-diaristas") {
+      return filtroCiclo === "all" ? "Setembro/2026" : filtroCiclo;
+    }
+    const [ano, mes] = competencia.split("-");
+    const meses = [
+      "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+      "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+    ];
+    const mesIndex = parseInt(mes, 10) - 1;
+    return `${meses[mesIndex] || mes}/${ano}`;
+  }, [report.id, dataDe, dataAte, filtroCiclo, competencia]);
+
+  const r01DistribuicaoServico = useMemo(() => {
+    const map = new Map<string, { tipoServico: string; volume: number; totalBruto: number; count: number }>();
+    r01Data.forEach((row) => {
+      const existing = map.get(row.tipoServico) || { tipoServico: row.tipoServico, volume: 0, totalBruto: 0, count: 0 };
+      existing.volume += row.quantidade;
+      existing.totalBruto += row.totalBruto;
+      existing.count += 1;
+      map.set(row.tipoServico, existing);
+    });
+    const totalVol = r01Data.reduce((acc, r) => acc + r.quantidade, 0);
+    return Array.from(map.values())
+      .map((item) => ({
+        ...item,
+        percentual: totalVol > 0 ? (item.volume / totalVol) * 100 : 0,
+      }))
+      .sort((a, b) => b.volume - a.volume);
+  }, [r01Data]);
+
+  const r01DistribuicaoTransportadora = useMemo(() => {
+    const map = new Map<string, { transportadora: string; volume: number; totalBruto: number; count: number }>();
+    r01Data.forEach((row) => {
+      const existing = map.get(row.transportadora) || { transportadora: row.transportadora, volume: 0, totalBruto: 0, count: 0 };
+      existing.volume += row.quantidade;
+      existing.totalBruto += row.totalBruto;
+      existing.count += 1;
+      map.set(row.transportadora, existing);
+    });
+    const totalVol = r01Data.reduce((acc, r) => acc + r.quantidade, 0);
+    return Array.from(map.values())
+      .map((item) => ({
+        ...item,
+        percentual: totalVol > 0 ? (item.volume / totalVol) * 100 : 0,
+      }))
+      .sort((a, b) => b.volume - a.volume);
+  }, [r01Data]);
+
+  const r01DistribuicaoStatus = useMemo(() => {
+    const map = new Map<string, { status: string; count: number; totalBruto: number; volume: number }>();
+    r01Data.forEach((row) => {
+      const existing = map.get(row.status) || { status: row.status, count: 0, totalBruto: 0, volume: 0 };
+      existing.count += 1;
+      existing.totalBruto += row.totalBruto;
+      existing.volume += row.quantidade;
+      map.set(row.status, existing);
+    });
+    return Array.from(map.values()).sort((a, b) => b.count - a.count);
+  }, [r01Data]);
 
   // ----------------------------------------------------
   // EXPORTAÇÃO CSV CLIENT-SIDE (UTF-8 BOM, DELIMITADOR ;)
@@ -500,11 +591,15 @@ export default function UxLabRelatorioView() {
     >
       {/* Estilo dedicado de Impressão @media print */}
       <style>{`
+        @page {
+          size: A4 portrait;
+          margin: 15mm 12mm 15mm 12mm;
+        }
         @media print {
           body {
             background: white !important;
             color: black !important;
-            font-size: 10pt !important;
+            font-size: 9pt !important;
           }
           aside, header, nav, .no-print {
             display: none !important;
@@ -514,6 +609,12 @@ export default function UxLabRelatorioView() {
             margin-bottom: 16px;
             border-bottom: 2px solid #000;
             padding-bottom: 8px;
+          }
+          .print-footer {
+            display: block !important;
+            margin-top: 20px;
+            border-top: 1px solid #777;
+            padding-top: 8px;
           }
           .print-table {
             width: 100% !important;
@@ -528,52 +629,111 @@ export default function UxLabRelatorioView() {
             background-color: #f2f2f2 !important;
             color: #000 !important;
           }
+          thead {
+            display: table-header-group;
+          }
+          tr {
+            page-break-inside: avoid;
+          }
         }
-        .print-header {
+        .print-header, .print-footer {
           display: none;
         }
       `}</style>
 
-      <div className="max-w-[1440px] mx-auto space-y-6 pb-20">
-        {/* Breadcrumb e Ações */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 no-print">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Link
-              to="/ux-lab/relatorios"
-              className="inline-flex items-center gap-1 hover:text-foreground transition-colors font-medium"
-            >
-              <ChevronLeft className="h-3.5 w-3.5" />
-              <span>Central de Relatórios</span>
-            </Link>
-            <span>/</span>
-            <span className="font-semibold text-foreground">{report.category}</span>
-            <span>/</span>
-            <Badge variant="outline" className="font-mono text-[10px] uppercase">
-              {report.code}
-            </Badge>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size="sm" className="h-9 gap-1.5 font-semibold shadow-xs">
-                  <Download className="h-3.5 w-3.5" />
-                  <span>Exportar</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onClick={handleExportCSV} className="gap-2 cursor-pointer">
-                  <FileSpreadsheet className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                  <span>Exportar CSV (Excel)</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handlePrint} className="gap-2 cursor-pointer">
-                  <Printer className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                  <span>Imprimir / Salvar PDF</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+      <div className="w-full space-y-4 pb-12 animate-in fade-in-50 duration-200">
+        {/* Breadcrumb Navegação */}
+        <div className="flex items-center gap-2 text-xs text-muted-foreground no-print">
+          <Link
+            to={`/ux-lab/relatorios?empresa=${empresaId}&competencia=${competencia}`}
+            className="inline-flex items-center gap-1 hover:text-foreground transition-colors font-medium"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+            <span>Central de Relatórios</span>
+          </Link>
+          <span>/</span>
+          <span className="font-semibold text-foreground">{report.category}</span>
+          <span>/</span>
+          <Badge variant="outline" className="font-mono text-[10px] uppercase">
+            {report.code}
+          </Badge>
         </div>
+
+        {/* ============================================================ */}
+        {/* FAIXA DOCUMENTAL OFICIAL (SEM H1 DUPLICADO)                  */}
+        {/* ============================================================ */}
+        <section className="bg-card border border-border/80 rounded-xl px-4 sm:px-5 py-3.5 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge className="font-mono text-xs px-2.5 py-0.5 font-bold bg-blue-600 text-white tracking-wider">
+                  {report.code}
+                </Badge>
+                <span className="text-xs font-bold uppercase tracking-wider text-foreground">
+                  RELATÓRIO ANALÍTICO OFICIAL
+                </span>
+                <span className="text-border hidden sm:inline">·</span>
+                <span className="text-xs text-muted-foreground hidden sm:inline">
+                  {report.category}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground pt-0.5">
+                <span className="font-semibold text-foreground">ESC Logística</span>
+                <span className="text-border">·</span>
+                <span>
+                  Empresa:{" "}
+                  <strong className="text-foreground font-medium">
+                    {empresaSelecionada.name.replace(/^ESC LOG — /, "")}
+                  </strong>
+                </span>
+                <span className="text-border">·</span>
+                <span>
+                  Competência:{" "}
+                  <strong className="text-foreground font-medium">
+                    {competenciaLabel}
+                  </strong>
+                </span>
+                <span className="text-border">·</span>
+                <span>
+                  Emitido em:{" "}
+                  <strong className="text-foreground font-medium font-mono">
+                    {dataEmissaoFormatada}
+                  </strong>
+                </span>
+              </div>
+            </div>
+
+            {/* Ações Documentais Diretas e Únicas */}
+            <div className="flex items-center gap-2 self-start sm:self-center no-print shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportCSV}
+                className="h-8 px-3 text-xs gap-1.5 font-medium border-border shadow-xs hover:bg-muted"
+              >
+                <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>Exportar CSV</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handlePrint}
+                className="h-8 px-3 text-xs gap-1.5 font-medium border-border shadow-xs hover:bg-muted"
+              >
+                <Download className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                <span>Gerar PDF</span>
+              </Button>
+              <Button
+                size="sm"
+                onClick={handlePrint}
+                className="h-8 px-3 text-xs gap-1.5 font-medium shadow-xs bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                <Printer className="h-3.5 w-3.5" />
+                <span>Imprimir</span>
+              </Button>
+            </div>
+          </div>
+        </section>
 
         {/* CABEÇALHO PARA IMPRESSÃO (@media print) */}
         <div className="print-header">
@@ -601,24 +761,24 @@ export default function UxLabRelatorioView() {
           </div>
         </div>
 
-        {/* BARRA DE FILTROS ESTRUTURAIS */}
-        <section className="bg-card border border-border rounded-xl p-4 sm:p-5 shadow-xs space-y-4 no-print">
+        {/* BARRA DE FILTROS ESTRUTURAIS — UMA LINHA EM DESKTOP PARA R01 */}
+        <section className="bg-card border border-border/80 rounded-xl px-4 py-3 shadow-xs space-y-2.5 no-print">
           <div className="flex items-center justify-between gap-2 border-b border-border/40 pb-2">
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              <Filter className="h-3.5 w-3.5" />
+              <Filter className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
               <span>Parâmetros de Consulta</span>
             </div>
 
             {hasActiveFilters && (
               <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-primary/10 text-primary border border-primary/20">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
                   Filtros Ativos
                 </span>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={handleClearFilters}
-                  className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground gap-1"
+                  className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground gap-1"
                 >
                   <RotateCcw className="h-3 w-3" />
                   <span>Limpar filtros</span>
@@ -627,15 +787,15 @@ export default function UxLabRelatorioView() {
             )}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+          <div className={report.id === "r01-operacoes-volume" ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 items-end" : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5"}>
             {/* 1. Empresa (Obrigatória em todos) */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-semibold text-foreground flex items-center gap-1.5">
+            <div className="space-y-1">
+              <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                 <Building2 className="h-3 w-3 text-muted-foreground" />
                 <span>Empresa / Filial</span>
               </label>
               <Select value={empresaId} onValueChange={setEmpresaId}>
-                <SelectTrigger className="h-9 text-xs bg-background">
+                <SelectTrigger className="h-8 text-xs bg-background">
                   <SelectValue placeholder="Selecione a empresa..." />
                 </SelectTrigger>
                 <SelectContent>
@@ -653,10 +813,10 @@ export default function UxLabRelatorioView() {
             report.id === "r04-custos-extras" ||
             report.id === "r07-servicos-extras" ? (
               <>
-                <div className="space-y-1.5">
+                <div className="space-y-1">
                   <label
                     htmlFor="filtro-data-de"
-                    className="text-[11px] font-semibold text-foreground flex items-center gap-1.5"
+                    className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1"
                   >
                     <Calendar className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
                     <span>Data Inicial (De)</span>
@@ -665,15 +825,15 @@ export default function UxLabRelatorioView() {
                     id="filtro-data-de"
                     aria-label="Data Inicial (De)"
                     type="date"
-                    className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    className="w-full h-8 rounded-md border border-input bg-background px-2.5 py-1 text-xs shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     value={dataDe}
                     onChange={(e) => setDataDe(e.target.value)}
                   />
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-1">
                   <label
                     htmlFor="filtro-data-ate"
-                    className="text-[11px] font-semibold text-foreground flex items-center gap-1.5"
+                    className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1"
                   >
                     <Calendar className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
                     <span>Data Final (Até)</span>
@@ -682,7 +842,7 @@ export default function UxLabRelatorioView() {
                     id="filtro-data-ate"
                     aria-label="Data Final (Até)"
                     type="date"
-                    className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    className="w-full h-8 rounded-md border border-input bg-background px-2.5 py-1 text-xs shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     value={dataAte}
                     onChange={(e) => setDataAte(e.target.value)}
                   />
@@ -727,10 +887,12 @@ export default function UxLabRelatorioView() {
             {/* 3. Filtros Específicos por Entidade */}
             {report.id === "r01-operacoes-volume" && (
               <>
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold text-foreground">Serviço</label>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                    Serviço
+                  </label>
                   <Select value={filtroServico} onValueChange={setFiltroServico}>
-                    <SelectTrigger className="h-9 text-xs bg-background">
+                    <SelectTrigger className="h-8 text-xs bg-background">
                       <SelectValue placeholder="Todos os serviços" />
                     </SelectTrigger>
                     <SelectContent>
@@ -744,10 +906,12 @@ export default function UxLabRelatorioView() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold text-foreground">Status da Operação</label>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                    Status
+                  </label>
                   <Select value={filtroStatus} onValueChange={setFiltroStatus}>
-                    <SelectTrigger className="h-9 text-xs bg-background">
+                    <SelectTrigger className="h-8 text-xs bg-background">
                       <SelectValue placeholder="Todos os status" />
                     </SelectTrigger>
                     <SelectContent>
@@ -932,160 +1096,414 @@ export default function UxLabRelatorioView() {
         </section>
 
         {/* ============================================================ */}
-        {/* RESUMO CONTEXTUAL DISCRETO (2 a 4 INDICADORES)               */}
+        {/* FAIXA ANALÍTICA INTEGRADA 50 / 50 (PILOTO OFICIAL R01)       */}
         {/* ============================================================ */}
-        {report.status === "ready" && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 no-print">
-            {report.id === "r01-operacoes-volume" && (
-              <>
-                <KpiSummaryBox label="Total de Operações" value={String(r01Data.length)} />
-                <KpiSummaryBox
-                  label="Volume Movimentado"
-                  value={`${r01Data.reduce((acc, r) => acc + r.quantidade, 0).toLocaleString("pt-BR")} unid.`}
-                />
-                <KpiSummaryBox
-                  label="Total Bruto Apurado"
-                  value={new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
-                    r01Data.reduce((acc, r) => acc + r.totalBruto, 0)
-                  )}
-                  highlight
-                />
-                <KpiSummaryBox
-                  label="Materiais Agregados"
-                  value={new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
-                    r01Data.reduce((acc, r) => acc + r.materiais, 0)
-                  )}
-                />
-              </>
-            )}
+        {report.status === "ready" && report.id === "r01-operacoes-volume" && (
+          <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* -------------------------------------------------------- */}
+            {/* COLUNA ESQUERDA (50%) — RESUMO DO PERÍODO                */}
+            {/* -------------------------------------------------------- */}
+            <div className="bg-card border border-border/80 rounded-xl p-4 sm:p-5 shadow-xs flex flex-col justify-between space-y-3">
+              <div className="flex items-center justify-between border-b border-border/40 pb-2">
+                <div className="flex items-center gap-2">
+                  <div className="h-2 w-2 rounded-full bg-blue-600 dark:bg-blue-400" />
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">
+                    Resumo do Período
+                  </h3>
+                </div>
+                <div className="flex items-center gap-1.5 text-xs font-mono text-muted-foreground">
+                  <span className="font-semibold text-foreground">{r01Data.length} operações</span>
+                  <span className="text-border">·</span>
+                  <span>{r01Data.reduce((acc, r) => acc + r.quantidade, 0).toLocaleString("pt-BR")} unidades</span>
+                </div>
+              </div>
 
-            {report.id === "r05-banco-horas" && (
-              <>
-                <KpiSummaryBox label="Colaboradores no Período" value={String(r05Data.length)} />
-                <KpiSummaryBox
-                  label="Saldo Líquido da Empresa"
-                  value={formatMinutosToHourString(r05Data.reduce((acc, r) => acc + r.saldoMinutos, 0))}
-                  highlight
-                />
-                <KpiSummaryBox
-                  label="Horas em Alerta (30d)"
-                  value={formatMinutosToHourString(r05Data.reduce((acc, r) => acc + r.aVencer30dMinutos, 0))}
-                  status="warning"
-                />
-                <KpiSummaryBox
-                  label="Débito Crítico"
-                  value={`${r05Data.filter((r) => r.status === "Débito Crítico").length} colab.`}
-                  status="danger"
-                />
-              </>
-            )}
+              {/* Grid 2x2 de Indicadores Compactos */}
+              <div className="grid grid-cols-2 gap-2.5">
+                {/* Linha 1 */}
+                <div className="bg-muted/20 border border-border/60 rounded-lg p-3 space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Total de Operações
+                  </span>
+                  <div className="text-xl font-bold font-mono text-foreground">
+                    {r01Data.length}
+                  </div>
+                </div>
 
-            {report.id === "r03-faturamento-receitas" && (
-              <>
-                <KpiSummaryBox label="Faturas Emitidas" value={String(r03Data.length)} />
-                <KpiSummaryBox
-                  label="Faturamento Total"
-                  value={new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
-                    r03Data.reduce((acc, r) => acc + r.valorFaturado, 0)
-                  )}
-                  highlight
-                />
-                <KpiSummaryBox
-                  label="Recebido / Liquidado"
-                  value={new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
-                    r03Data
-                      .filter((r) => r.status === "recebido" || r.status === "conciliado")
-                      .reduce((acc, r) => acc + r.valorFaturado, 0)
-                  )}
-                  status="success"
-                />
-                <KpiSummaryBox
-                  label="Aguardando Liquidação"
-                  value={new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
-                    r03Data
-                      .filter((r) => r.status !== "recebido" && r.status !== "conciliado" && r.status !== "cancelado")
-                      .reduce((acc, r) => acc + r.valorFaturado, 0)
-                  )}
-                />
-              </>
-            )}
+                <div className="bg-muted/20 border border-border/60 rounded-lg p-3 space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Volume Movimentado
+                  </span>
+                  <div className="text-xl font-bold font-mono text-foreground">
+                    {r01Data.reduce((acc, r) => acc + r.quantidade, 0).toLocaleString("pt-BR")}{" "}
+                    <span className="text-xs font-normal text-muted-foreground">un</span>
+                  </div>
+                </div>
 
-            {report.id === "r02-fechamento-diaristas" && (
-              <>
-                <KpiSummaryBox
-                  label="Diaristas no Período"
-                  value={`${new Set(r02Data.map((r) => r.colaboradorNome)).size} colab.`}
-                />
-                <KpiSummaryBox
-                  label="Total de Diárias"
-                  value={`${r02Data.reduce((acc, r) => acc + r.quantidadeDiarias, 0).toFixed(1)} diárias`}
-                />
-                <KpiSummaryBox
-                  label="Valor Consolidado"
-                  value={new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
-                    r02Data.reduce((acc, r) => acc + r.total, 0)
-                  )}
-                  highlight
-                />
-                <KpiSummaryBox
-                  label="Lotes de Pagamento"
-                  value={`${new Set(r02Data.map((r) => r.loteCodigo)).size} lotes`}
-                />
-              </>
-            )}
+                {/* Linha 2 */}
+                <div className="bg-muted/20 border border-border/60 rounded-lg p-3 space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Total Bruto Apurado
+                  </span>
+                  <div className="text-xl font-bold font-mono text-blue-600 dark:text-blue-400">
+                    {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                      r01Data.reduce((acc, r) => acc + r.totalBruto, 0)
+                    )}
+                  </div>
+                </div>
 
-            {report.id === "r04-custos-extras" && (
-              <>
-                <KpiSummaryBox label="Lançamentos de Custos" value={String(r04Data.length)} />
-                <KpiSummaryBox
-                  label="Despesas Consolidadas"
-                  value={new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
-                    r04Data.reduce((acc, r) => acc + r.total, 0)
-                  )}
-                  highlight
-                />
-                <KpiSummaryBox
-                  label="Categorias Ativas"
-                  value={`${new Set(r04Data.map((r) => r.categoriaCusto)).size} categ.`}
-                />
-                <KpiSummaryBox
-                  label="Despesas Pendentes"
-                  value={new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
-                    r04Data
-                      .filter((r) => r.status === "PENDENTE" || r.status === "ATRASADO")
-                      .reduce((acc, r) => acc + r.total, 0)
-                  )}
-                  status="warning"
-                />
-              </>
-            )}
+                <div className="bg-muted/20 border border-border/60 rounded-lg p-3 space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Materiais Agregados
+                  </span>
+                  <div className="text-xl font-bold font-mono text-foreground">
+                    {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                      r01Data.reduce((acc, r) => acc + r.materiais, 0)
+                    )}
+                  </div>
+                </div>
+              </div>
 
-            {report.id === "r07-servicos-extras" && (
-              <>
-                <KpiSummaryBox label="Total de Serviços" value={String(r07Data.length)} />
-                <KpiSummaryBox
-                  label="Volume / Unidades"
-                  value={`${r07Data.reduce((acc, r) => acc + r.quantidade, 0).toLocaleString("pt-BR")} unid.`}
-                />
-                <KpiSummaryBox
-                  label="Total Operacional"
-                  value={new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
-                    r07Data.reduce((acc, r) => acc + r.total, 0)
+              {/* Linha sintética com ISS e métricas complementares */}
+              <div className="pt-2 border-t border-border/40 flex items-center justify-between text-[11px] text-muted-foreground">
+                <span>ISS Retido Estimado:</span>
+                <span className="font-mono font-medium text-foreground">
+                  {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                    r01Data.reduce((acc, r) => acc + r.iss, 0)
                   )}
-                  highlight
-                />
-                <KpiSummaryBox
-                  label="Faturado / Concluído"
-                  value={new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
-                    r07Data
-                      .filter((r) => r.pipelineStatus === "FATURADO" || r.pipelineStatus === "CONCLUIDO")
-                      .reduce((acc, r) => acc + r.total, 0)
-                  )}
-                  status="success"
-                />
-              </>
-            )}
-          </div>
+                </span>
+              </div>
+            </div>
+
+            {/* -------------------------------------------------------- */}
+            {/* COLUNA DIREITA (50%) — ANÁLISE / DISTRIBUIÇÃO            */}
+            {/* -------------------------------------------------------- */}
+            <div className="bg-card border border-border/80 rounded-xl p-4 sm:p-5 shadow-xs flex flex-col justify-between space-y-3">
+              <div className="flex items-center justify-between border-b border-border/40 pb-2">
+                <div className="flex items-center gap-2">
+                  <Layers className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">
+                    Análise / Distribuição
+                  </h3>
+                </div>
+                <span className="text-[10px] text-muted-foreground font-mono">
+                  {r01Data.length} registros analisados
+                </span>
+              </div>
+
+              {/* Linha 1 da Coluna Direita: Serviço + Cliente lado a lado */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {/* 1. Por Tipo de Serviço */}
+                <div className="p-2.5 rounded-lg border border-border/50 bg-muted/15 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-foreground">
+                      Por Tipo de Serviço
+                    </span>
+                    <span className="text-[9px] font-mono text-muted-foreground">
+                      {r01DistribuicaoServico.length} tipos
+                    </span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {r01DistribuicaoServico.slice(0, 3).map((item) => (
+                      <div key={item.tipoServico} className="space-y-0.5">
+                        <div className="flex justify-between items-center text-[11px]">
+                          <span className="font-medium text-foreground truncate max-w-[110px]" title={item.tipoServico}>
+                            {item.tipoServico}
+                          </span>
+                          <span className="font-mono text-muted-foreground text-[10px]">
+                            {item.volume.toLocaleString("pt-BR")} ({item.percentual.toFixed(0)}%)
+                          </span>
+                        </div>
+                        <div className="h-1 w-full bg-muted rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-blue-600 rounded-full transition-all"
+                            style={{ width: `${Math.min(100, Math.max(5, item.percentual))}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 2. Por Cliente / Transportadora */}
+                <div className="p-2.5 rounded-lg border border-border/50 bg-muted/15 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-foreground">
+                      Por Cliente / Transportadora
+                    </span>
+                    <span className="text-[9px] font-mono text-muted-foreground">
+                      {r01DistribuicaoTransportadora.length} tomadores
+                    </span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {r01DistribuicaoTransportadora.slice(0, 3).map((item) => (
+                      <div key={item.transportadora} className="space-y-0.5">
+                        <div className="flex justify-between items-center text-[11px]">
+                          <span className="font-medium text-foreground truncate max-w-[110px]" title={item.transportadora}>
+                            {item.transportadora}
+                          </span>
+                          <span className="font-mono text-muted-foreground text-[10px]">
+                            {item.volume.toLocaleString("pt-BR")} ({item.percentual.toFixed(0)}%)
+                          </span>
+                        </div>
+                        <div className="h-1 w-full bg-muted rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-blue-400 dark:bg-blue-500 rounded-full transition-all"
+                            style={{ width: `${Math.min(100, Math.max(5, item.percentual))}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Linha 2 da Coluna Direita: Status Operacional (100% da coluna direita) */}
+              <div className="p-2.5 rounded-lg border border-border/50 bg-muted/15 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-foreground">
+                    Status Operacional
+                  </span>
+                  <span className="text-[9px] font-mono text-muted-foreground">
+                    distribuição por estágio
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                  {r01DistribuicaoStatus.map((item) => (
+                    <div
+                      key={item.status}
+                      className="p-1.5 rounded-md bg-background border border-border/40 text-center space-y-0.5"
+                    >
+                      <StatusBadge status={item.status} />
+                      <div className="text-[10px] font-mono font-bold text-foreground">
+                        {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(
+                          item.totalBruto
+                        )}
+                      </div>
+                      <div className="text-[9px] font-mono text-muted-foreground">
+                        {item.count} {item.count === 1 ? "op" : "ops"}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* RESUMO DOS DEMAIS RELATÓRIOS (PRESERVADOS ATÉ SUAS RESPECTIVAS FASES) */}
+        {report.status === "ready" && report.id !== "r01-operacoes-volume" && (
+          <section className="bg-card border border-border rounded-xl p-5 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/40 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full bg-blue-600 dark:bg-blue-400" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">
+                  Resumo do Período
+                </h3>
+              </div>
+
+              {/* Faixa sintética com separadores verticais no estilo editorial */}
+              <div className="flex flex-wrap items-center gap-x-2 text-xs font-mono text-muted-foreground">
+                {report.id === "r05-banco-horas" && (
+                  <>
+                    <span className="font-semibold text-foreground">{r05Data.length} colaboradores</span>
+                    <span className="text-border">|</span>
+                    <span className="font-semibold text-primary">
+                      Saldo {formatMinutosToHourString(r05Data.reduce((acc, r) => acc + r.saldoMinutos, 0))}
+                    </span>
+                    <span className="text-border">|</span>
+                    <span className="text-amber-600 dark:text-amber-400">
+                      {formatMinutosToHourString(r05Data.reduce((acc, r) => acc + r.aVencer30dMinutos, 0))} em alerta
+                    </span>
+                  </>
+                )}
+                {report.id === "r03-faturamento-receitas" && (
+                  <>
+                    <span className="font-semibold text-foreground">{r03Data.length} faturas</span>
+                    <span className="text-border">|</span>
+                    <span className="font-semibold text-primary">
+                      {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                        r03Data.reduce((acc, r) => acc + r.valorFaturado, 0)
+                      )} faturado
+                    </span>
+                  </>
+                )}
+                {report.id === "r02-fechamento-diaristas" && (
+                  <>
+                    <span className="font-semibold text-foreground">
+                      {new Set(r02Data.map((r) => r.colaboradorNome)).size} diaristas
+                    </span>
+                    <span className="text-border">|</span>
+                    <span className="font-semibold text-foreground">
+                      {r02Data.reduce((acc, r) => acc + r.quantidadeDiarias, 0).toFixed(1)} diárias
+                    </span>
+                    <span className="text-border">|</span>
+                    <span className="font-semibold text-primary">
+                      {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                        r02Data.reduce((acc, r) => acc + r.total, 0)
+                      )}
+                    </span>
+                  </>
+                )}
+                {report.id === "r04-custos-extras" && (
+                  <>
+                    <span className="font-semibold text-foreground">{r04Data.length} custos</span>
+                    <span className="text-border">|</span>
+                    <span className="font-semibold text-primary">
+                      {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                        r04Data.reduce((acc, r) => acc + r.total, 0)
+                      )} despesas
+                    </span>
+                  </>
+                )}
+                {report.id === "r07-servicos-extras" && (
+                  <>
+                    <span className="font-semibold text-foreground">{r07Data.length} serviços extras</span>
+                    <span className="text-border">|</span>
+                    <span className="font-semibold text-foreground">
+                      {r07Data.reduce((acc, r) => acc + r.quantidade, 0).toLocaleString("pt-BR")} unidades
+                    </span>
+                    <span className="text-border">|</span>
+                    <span className="font-semibold text-primary">
+                      {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                        r07Data.reduce((acc, r) => acc + r.total, 0)
+                      )}
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Totalizadores Contextuais */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {report.id === "r05-banco-horas" && (
+                <>
+                  <KpiSummaryBox label="Colaboradores no Período" value={String(r05Data.length)} />
+                  <KpiSummaryBox
+                    label="Saldo Líquido da Empresa"
+                    value={formatMinutosToHourString(r05Data.reduce((acc, r) => acc + r.saldoMinutos, 0))}
+                    highlight
+                  />
+                  <KpiSummaryBox
+                    label="Horas em Alerta (30d)"
+                    value={formatMinutosToHourString(r05Data.reduce((acc, r) => acc + r.aVencer30dMinutos, 0))}
+                    status="warning"
+                  />
+                  <KpiSummaryBox
+                    label="Débito Crítico"
+                    value={`${r05Data.filter((r) => r.status === "Débito Crítico").length} colab.`}
+                    status="danger"
+                  />
+                </>
+              )}
+
+              {report.id === "r03-faturamento-receitas" && (
+                <>
+                  <KpiSummaryBox label="Faturas Emitidas" value={String(r03Data.length)} />
+                  <KpiSummaryBox
+                    label="Faturamento Total"
+                    value={new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                      r03Data.reduce((acc, r) => acc + r.valorFaturado, 0)
+                    )}
+                    highlight
+                  />
+                  <KpiSummaryBox
+                    label="Recebido / Liquidado"
+                    value={new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                      r03Data
+                        .filter((r) => r.status === "recebido" || r.status === "conciliado")
+                        .reduce((acc, r) => acc + r.valorFaturado, 0)
+                    )}
+                    status="success"
+                  />
+                  <KpiSummaryBox
+                    label="Aguardando Liquidação"
+                    value={new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                      r03Data
+                        .filter((r) => r.status !== "recebido" && r.status !== "conciliado" && r.status !== "cancelado")
+                        .reduce((acc, r) => acc + r.valorFaturado, 0)
+                    )}
+                  />
+                </>
+              )}
+
+              {report.id === "r02-fechamento-diaristas" && (
+                <>
+                  <KpiSummaryBox
+                    label="Diaristas no Período"
+                    value={`${new Set(r02Data.map((r) => r.colaboradorNome)).size} colab.`}
+                  />
+                  <KpiSummaryBox
+                    label="Total de Diárias"
+                    value={`${r02Data.reduce((acc, r) => acc + r.quantidadeDiarias, 0).toFixed(1)} diárias`}
+                  />
+                  <KpiSummaryBox
+                    label="Valor Consolidado"
+                    value={new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                      r02Data.reduce((acc, r) => acc + r.total, 0)
+                    )}
+                    highlight
+                  />
+                  <KpiSummaryBox
+                    label="Lotes de Pagamento"
+                    value={`${new Set(r02Data.map((r) => r.loteCodigo)).size} lotes`}
+                  />
+                </>
+              )}
+
+              {report.id === "r04-custos-extras" && (
+                <>
+                  <KpiSummaryBox label="Lançamentos de Custos" value={String(r04Data.length)} />
+                  <KpiSummaryBox
+                    label="Despesas Consolidadas"
+                    value={new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                      r04Data.reduce((acc, r) => acc + r.total, 0)
+                    )}
+                    highlight
+                  />
+                  <KpiSummaryBox
+                    label="Categorias Ativas"
+                    value={`${new Set(r04Data.map((r) => r.categoriaCusto)).size} categ.`}
+                  />
+                  <KpiSummaryBox
+                    label="Despesas Pendentes"
+                    value={new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                      r04Data
+                        .filter((r) => r.status === "PENDENTE" || r.status === "ATRASADO")
+                        .reduce((acc, r) => acc + r.total, 0)
+                    )}
+                    status="warning"
+                  />
+                </>
+              )}
+
+              {report.id === "r07-servicos-extras" && (
+                <>
+                  <KpiSummaryBox label="Total de Serviços" value={String(r07Data.length)} />
+                  <KpiSummaryBox
+                    label="Volume / Unidades"
+                    value={`${r07Data.reduce((acc, r) => acc + r.quantidade, 0).toLocaleString("pt-BR")} unid.`}
+                  />
+                  <KpiSummaryBox
+                    label="Total Operacional"
+                    value={new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                      r07Data.reduce((acc, r) => acc + r.total, 0)
+                    )}
+                    highlight
+                  />
+                  <KpiSummaryBox
+                    label="Faturado / Concluído"
+                    value={new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                      r07Data
+                        .filter((r) => r.pipelineStatus === "FATURADO" || r.pipelineStatus === "CONCLUIDO")
+                        .reduce((acc, r) => acc + r.total, 0)
+                    )}
+                    status="success"
+                  />
+                </>
+              )}
+            </div>
+          </section>
         )}
 
         {/* ============================================================ */}
@@ -1112,14 +1530,21 @@ export default function UxLabRelatorioView() {
         ) : (
           <section className="bg-card border border-border rounded-xl shadow-xs overflow-hidden">
             {/* Header da Tabela */}
-            <div className="px-5 py-3.5 border-b border-border bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2 no-print">
-              <div className="flex items-center gap-2">
+            <div className="px-5 py-4 border-b border-border bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2 no-print">
+              <div className="flex items-center gap-2.5">
                 <FileSpreadsheet className="h-4 w-4 text-primary" />
-                <h3 className="text-xs font-bold text-foreground uppercase tracking-wider">
-                  Dataset de Consulta
-                </h3>
+                <div>
+                  <h3 className="text-xs font-bold text-foreground uppercase tracking-wider">
+                    Registros que Compõem o Relatório
+                  </h3>
+                  <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <span className="font-semibold text-foreground/80">Dataset de Consulta</span>
+                    <span>·</span>
+                    <span>Registros oficiais apurados na competência</span>
+                  </div>
+                </div>
               </div>
-              <span className="text-xs text-muted-foreground font-medium">
+              <span className="text-xs text-muted-foreground font-medium font-mono">
                 {report.id === "r01-operacoes-volume" && `${r01Data.length} operações encontradas`}
                 {report.id === "r05-banco-horas" && `${r05Data.length} colaboradores apurados`}
                 {report.id === "r03-faturamento-receitas" && `${r03Data.length} faturas localizadas`}
@@ -1132,23 +1557,32 @@ export default function UxLabRelatorioView() {
             {/* TABELA R01 — OPERAÇÕES POR VOLUME */}
             {report.id === "r01-operacoes-volume" && (
               <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse print-table">
+                <table className="w-full text-left border-collapse print-table text-xs">
                   <thead>
-                    <tr className="border-b border-border bg-muted/40 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                      <th className="py-2.5 px-3 whitespace-nowrap">Data</th>
-                      <th className="py-2.5 px-3 whitespace-nowrap">Código</th>
-                      <th className="py-2.5 px-3 whitespace-nowrap">Unidade</th>
-                      <th className="py-2.5 px-3 whitespace-nowrap">Transportadora</th>
-                      <th className="py-2.5 px-3 whitespace-nowrap">Tipo Serviço</th>
-                      <th className="py-2.5 px-3 whitespace-nowrap">Produto / Carga</th>
-                      <th className="py-2.5 px-3 text-right whitespace-nowrap">Qtd</th>
-                      <th className="py-2.5 px-3 text-right whitespace-nowrap">Unitário</th>
-                      <th className="py-2.5 px-3 text-right whitespace-nowrap font-bold text-foreground">Total Bruto</th>
-                      <th className="py-2.5 px-3 text-right whitespace-nowrap">Materiais</th>
-                      <th className="py-2.5 px-3 text-right whitespace-nowrap">ISS</th>
-                      <th className="py-2.5 px-3 whitespace-nowrap">Placa</th>
-                      <th className="py-2.5 px-3 whitespace-nowrap">NF</th>
-                      <th className="py-2.5 px-3 text-center whitespace-nowrap">Status</th>
+                    <tr className="border-b border-border bg-muted/40 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                      <th className="py-2 px-2.5 whitespace-nowrap text-left">Data</th>
+                      <th className="py-2 px-2.5 whitespace-nowrap text-left">
+                        <span className="hidden sm:inline">Operação / </span>
+                        <span>Código</span>
+                      </th>
+                      <th className="py-2 px-2.5 whitespace-nowrap text-left">Unidade</th>
+                      <th className="py-2 px-2.5 whitespace-nowrap text-left">
+                        <span className="hidden sm:inline">Cliente / </span>
+                        <span>Transportadora</span>
+                      </th>
+                      <th className="py-2 px-2.5 whitespace-nowrap text-left">Serviço</th>
+                      <th className="py-2 px-2.5 whitespace-nowrap text-left">Produto / Carga</th>
+                      <th className="py-2 px-2.5 text-right whitespace-nowrap">
+                        <span>Volume</span>{" "}
+                        <span className="text-[9px] text-muted-foreground font-normal">(Qtd)</span>
+                      </th>
+                      <th className="py-2 px-2.5 text-right whitespace-nowrap">Unitário</th>
+                      <th className="py-2 px-2.5 text-right whitespace-nowrap font-bold text-foreground">Total Bruto</th>
+                      <th className="py-2 px-2.5 text-right whitespace-nowrap">Materiais</th>
+                      <th className="py-2 px-2.5 text-right whitespace-nowrap">ISS</th>
+                      <th className="py-2 px-2.5 whitespace-nowrap text-left">Placa</th>
+                      <th className="py-2 px-2.5 whitespace-nowrap text-left">NF</th>
+                      <th className="py-2 px-2.5 text-center whitespace-nowrap">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/60 text-xs">
@@ -1159,42 +1593,44 @@ export default function UxLabRelatorioView() {
                           key={row.id}
                           className={`${isVisible ? "" : "hidden print:table-row"} hover:bg-muted/30 transition-colors`}
                         >
-                          <td className="py-2 px-3 whitespace-nowrap text-muted-foreground font-mono">
+                          <td className="py-2 px-2.5 whitespace-nowrap text-muted-foreground font-mono text-left">
                             {formatDateBR(row.dataOperacao)}
                           </td>
-                          <td className="py-2 px-3 whitespace-nowrap font-mono font-medium text-foreground">
+                          <td className="py-2 px-2.5 whitespace-nowrap font-mono font-medium text-foreground text-left">
                             {row.codigoOperacional}
                           </td>
-                          <td className="py-2 px-3 whitespace-nowrap">{row.unidade}</td>
-                          <td className="py-2 px-3 whitespace-nowrap font-medium text-foreground">
+                          <td className="py-2 px-2.5 whitespace-nowrap text-left">{row.unidade}</td>
+                          <td className="py-2 px-2.5 whitespace-nowrap font-medium text-foreground text-left truncate max-w-[160px]" title={row.transportadora}>
                             {row.transportadora}
                           </td>
-                          <td className="py-2 px-3 whitespace-nowrap">{row.tipoServico}</td>
-                          <td className="py-2 px-3 whitespace-nowrap text-muted-foreground">{row.produtoCarga}</td>
-                          <td className="py-2 px-3 text-right font-mono font-medium">
+                          <td className="py-2 px-2.5 whitespace-nowrap text-left">{row.tipoServico}</td>
+                          <td className="py-2 px-2.5 whitespace-nowrap text-muted-foreground text-left truncate max-w-[150px]" title={row.produtoCarga}>
+                            {row.produtoCarga}
+                          </td>
+                          <td className="py-2 px-2.5 text-right font-mono font-medium">
                             {row.quantidade.toLocaleString("pt-BR")}
                           </td>
-                          <td className="py-2 px-3 text-right font-mono text-muted-foreground">
+                          <td className="py-2 px-2.5 text-right font-mono text-muted-foreground">
                             R$ {row.valorUnitario.toFixed(2)}
                           </td>
-                          <td className="py-2 px-3 text-right font-mono font-bold text-foreground">
+                          <td className="py-2 px-2.5 text-right font-mono font-bold text-foreground">
                             R$ {row.totalBruto.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                           </td>
-                          <td className="py-2 px-3 text-right font-mono text-muted-foreground">
+                          <td className="py-2 px-2.5 text-right font-mono text-muted-foreground">
                             {row.materiais > 0 ? `R$ ${row.materiais.toFixed(2)}` : "-"}
                           </td>
-                          <td className="py-2 px-3 text-right font-mono text-muted-foreground">
+                          <td className="py-2 px-2.5 text-right font-mono text-muted-foreground">
                             R$ {row.iss.toFixed(2)}
                           </td>
-                          <td className="py-2 px-3 whitespace-nowrap font-mono text-[11px]">{row.placa}</td>
-                          <td className="py-2 px-3 whitespace-nowrap font-mono text-[11px]">
+                          <td className="py-2 px-2.5 whitespace-nowrap font-mono text-[11px] text-left">{row.placa}</td>
+                          <td className="py-2 px-2.5 whitespace-nowrap font-mono text-[11px] text-left">
                             {row.nfNumero ? (
                               <span className="font-semibold text-foreground">{row.nfNumero}</span>
                             ) : (
                               <span className="text-muted-foreground/50">—</span>
                             )}
                           </td>
-                          <td className="py-2 px-3 text-center whitespace-nowrap">
+                          <td className="py-2 px-2.5 text-center whitespace-nowrap">
                             <StatusBadge status={row.status} />
                           </td>
                         </tr>
@@ -1585,6 +2021,74 @@ export default function UxLabRelatorioView() {
             />
           </section>
         )}
+
+        {/* ============================================================ */}
+        {/* CONTROLE DOCUMENTAL COMPACTO (FINAL DO DOCUMENTO)            */}
+        {/* ============================================================ */}
+        {report.status === "ready" && (
+          <section className="bg-card border border-border/80 rounded-xl px-4 py-3 shadow-2xs space-y-2 text-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 border-b border-border/40 pb-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <ShieldCheck className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                <h4 className="text-[10px] font-bold uppercase tracking-wider text-foreground">
+                  Controle Documental
+                </h4>
+                <span className="text-border">·</span>
+                <span className="font-mono text-[11px] text-muted-foreground font-semibold">
+                  {report.code} ·{" "}
+                  {report.id === "r01-operacoes-volume"
+                    ? `${r01Data.length} operações apuradas`
+                    : report.id === "r05-banco-horas"
+                    ? `${r05Data.length} colaboradores`
+                    : report.id === "r03-faturamento-receitas"
+                    ? `${r03Data.length} faturas`
+                    : report.id === "r02-fechamento-diaristas"
+                    ? `${r02Data.length} apontamentos`
+                    : report.id === "r04-custos-extras"
+                    ? `${r04Data.length} custos extras`
+                    : `${r07Data.length} serviços extras`}
+                </span>
+                <span className="text-border">·</span>
+                <span className="text-[11px] text-muted-foreground">
+                  {report.id === "r01-operacoes-volume" && "Operações por Volume (operacoes_producao)"}
+                  {report.id === "r05-banco-horas" && "Banco de Horas (banco_horas_consolidado)"}
+                  {report.id === "r03-faturamento-receitas" && "Faturamento e Receitas (financeiro_receitas)"}
+                  {report.id === "r02-fechamento-diaristas" && "Fechamento de Diaristas (diaristas_fechamento_lotes)"}
+                  {report.id === "r04-custos-extras" && "Custos Extras (custos_extras)"}
+                  {report.id === "r07-servicos-extras" && "Serviços Extras (servicos_extras)"}
+                </span>
+              </div>
+              <div className="text-[10px] font-mono text-muted-foreground shrink-0">
+                Rastreabilidade: ORBE-DOC-{report.code}-202609-0841
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span>
+                  Empresa: <strong className="text-foreground">{empresaSelecionada.name} ({empresaSelecionada.document})</strong>
+                </span>
+                <span className="text-border">·</span>
+                <span>
+                  Competência: <strong className="text-foreground font-mono">{competenciaLabel}</strong>
+                </span>
+              </div>
+              <div className="text-[10px] text-muted-foreground/80 flex items-center gap-1">
+                <Info className="h-3 w-3 text-blue-600 dark:text-blue-400 shrink-0" />
+                <span>Critérios aplicados: validação por encarregado, conciliação de docas e governança auditada no ERP ORBE.</span>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* RODAPÉ EXCLUSIVO PARA IMPRESSÃO (@media print) */}
+        <div className="print-footer hidden">
+          <div className="flex justify-between items-center text-[8pt] text-gray-600 border-t border-gray-400 pt-2 mt-6">
+            <span>ORBE ERP — Relatório Gerencial de Uso Interno · ESC Logística</span>
+            <span>{empresaSelecionada.name} · {competencia}</span>
+            <span>Documento gerencial emitido em {new Date().toLocaleDateString("pt-BR")} às {new Date().toLocaleTimeString("pt-BR")}</span>
+          </div>
+        </div>
       </div>
     </UxLabShell>
   );

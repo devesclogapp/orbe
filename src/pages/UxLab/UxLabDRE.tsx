@@ -178,7 +178,7 @@ function LedgerRow({
           <div className="flex items-center gap-1.5">
             <span
               className={cn(
-                "font-semibold text-foreground dark:text-[#F1F3F5] truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors",
+                "font-semibold text-foreground truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors",
                 isReceita ? "text-sm md:text-base" : "text-sm"
               )}
             >
@@ -206,7 +206,7 @@ function LedgerRow({
               <div className="text-right">
                 <span
                   className={cn(
-                    "font-display font-bold text-xs sm:text-sm text-foreground dark:text-[#F1F3F5]"
+                    "font-display font-bold text-xs sm:text-sm text-foreground"
                   )}
                 >
                   {fmt(item.valor)}
@@ -222,7 +222,7 @@ function LedgerRow({
                     "inline-flex items-center text-[11px] font-bold font-mono",
                     isRevenuePositive && "text-emerald-600 dark:text-emerald-400",
                     isRevenueNegative && "text-rose-600 dark:text-rose-400",
-                    !isReceita && "text-muted-foreground dark:text-[#A0A7B2]"
+                    !isReceita && "text-muted-foreground"
                   )}
                 >
                   {diffNominal >= 0 ? "+" : ""}
@@ -243,13 +243,13 @@ function LedgerRow({
             </div>
           ) : (
             <>
-              <span className="hidden xl:block text-xs text-muted-foreground/60 dark:text-[#69717D] font-mono w-12 text-right">
+              <span className="hidden xl:block text-xs text-muted-foreground/70 font-mono w-12 text-right">
                 {fmtPct(item.percentualReceita)}
               </span>
 
               <span
                 className={cn(
-                  "font-display font-bold text-right text-foreground dark:text-[#F1F3F5]",
+                  "font-display font-bold text-right text-foreground",
                   isReceita
                     ? "text-sm sm:text-base min-w-[95px]"
                     : "text-xs sm:text-sm min-w-[85px]"
@@ -315,15 +315,15 @@ function ResultadoRow({
     resultadoComp > 0 ? (diffResultado / resultadoComp) * 100 : 0;
 
   return (
-    <div className="rounded-xl border border-border/70 dark:border-white/[0.08] bg-muted/20 dark:bg-[#151921] p-3.5 sm:p-4 shadow-2xs">
+    <div className="rounded-xl border border-border/80 bg-muted/20 p-3.5 sm:p-4 shadow-2xs">
       {/* Linha principal do resultado — Superfície Neutra e Hierarquia Tipográfica */}
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2.5">
-          <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-muted dark:bg-white/[0.08] text-foreground dark:text-[#F1F3F5] font-black text-sm font-mono shrink-0 border border-border/50 dark:border-white/[0.05]">
+          <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-muted text-foreground font-black text-sm font-mono shrink-0 border border-border/50">
             =
           </span>
           <div>
-            <div className="font-display text-sm sm:text-base font-bold text-foreground dark:text-[#F1F3F5]">
+            <div className="font-display text-sm sm:text-base font-bold text-foreground">
               Resultado Operacional
             </div>
             <div className="text-[11px] text-muted-foreground">
@@ -333,7 +333,7 @@ function ResultadoRow({
         </div>
 
         <div className="text-right shrink-0">
-          <div className="font-display text-xl sm:text-2xl font-black text-foreground dark:text-[#F1F3F5] leading-none">
+          <div className="font-display text-xl sm:text-2xl font-black text-foreground leading-none">
             {fmt(resultadoBase)}
           </div>
           {isComparing ? (
@@ -455,12 +455,12 @@ function InvestigationSection({
   ];
 
   return (
-    <div className="rounded-2xl border border-border dark:border-white/[0.06] bg-card dark:bg-[#111419] overflow-hidden shadow-xs flex flex-col flex-1 h-full min-h-0">
+    <div className="rounded-xl border border-border bg-card overflow-hidden shadow-xs flex flex-col flex-1 h-full min-h-0">
       {/* Cabeçalho + Tabs Fixo */}
-      <div className="shrink-0 border-b border-border/60 dark:border-white/[0.05] px-4 md:px-6 pt-4 pb-0 bg-muted/10 dark:bg-white/[0.01]">
+      <div className="shrink-0 border-b border-border/60 px-4 md:px-6 pt-4 pb-0 bg-muted/10">
         <div className="flex items-center justify-between mb-3">
           <div>
-            <h3 className="font-display text-sm font-bold text-foreground dark:text-[#F1F3F5]">
+            <h3 className="font-display text-sm font-bold text-foreground">
               Análise por Dimensão
             </h3>
             <p className="text-xs text-muted-foreground mt-0.5">
@@ -488,7 +488,7 @@ function InvestigationSection({
                   "flex items-center gap-1.5 px-2.5 md:px-3 py-2 text-xs font-semibold rounded-t-lg border-b-2 transition-all duration-150",
                   isActive
                     ? "text-blue-700 dark:text-blue-400 border-b-blue-600 dark:border-b-blue-500 bg-blue-50/60 dark:bg-white/[0.04]"
-                    : "text-muted-foreground border-b-transparent hover:text-foreground dark:hover:text-[#F1F3F5] hover:border-b-border/40 dark:hover:border-b-white/[0.08]"
+                    : "text-muted-foreground border-b-transparent hover:text-foreground hover:border-b-border/40"
                 )}
               >
                 <Icon className="h-3.5 w-3.5 shrink-0" />
@@ -982,8 +982,20 @@ function UxLabDREContent() {
       navigate("/ux-lab/operacoes-volume");
       return;
     }
+    if (id === "servicos-extras") {
+      navigate("/ux-lab/servicos-extras");
+      return;
+    }
+    if (id === "custos-extras") {
+      navigate("/ux-lab/custos-extras");
+      return;
+    }
     if (id === "relatorios") {
       navigate("/ux-lab/relatorios");
+      return;
+    }
+    if (id === "design-system") {
+      navigate("/ux-lab/design-system");
       return;
     }
     toast.info(`Módulo em planejamento: ${label}`, {
@@ -1220,7 +1232,7 @@ function UxLabDREContent() {
         </div>
 
         {/* ── BARRA DE AÇÕES GERENCIAIS DO DRE (PROTÓTIPO 2) ─────────── */}
-        <div className="dre-no-print flex flex-col md:flex-row md:items-center justify-between gap-3 rounded-xl border border-border/60 dark:border-white/[0.06] bg-card dark:bg-[#111419] px-4 py-2.5 shadow-xs">
+        <div className="dre-no-print flex flex-col md:flex-row md:items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-2.5 shadow-xs">
           {/* Esquerda: Identificação de Contexto e Estado de Consistência */}
           <div className="flex flex-wrap items-center gap-2 text-xs">
             {/* Estado de Consistência Discreto */}
@@ -1232,7 +1244,7 @@ function UxLabDREContent() {
             <span className="text-muted-foreground/40 hidden sm:inline">·</span>
 
             {/* Competência e Unidade Ativa */}
-            <div className="flex items-center gap-1.5 font-medium text-foreground dark:text-[#F1F3F5]">
+            <div className="flex items-center gap-1.5 font-medium text-foreground">
               <span className="font-semibold text-blue-600 dark:text-blue-400">
                 {competenciaLabel}
               </span>
@@ -1515,11 +1527,11 @@ function UxLabDREContent() {
               <span className="h-px flex-1 bg-border/40 dark:bg-white/[0.04]" />
             </div>
 
-            <div className="rounded-2xl border border-border dark:border-white/[0.06] bg-card dark:bg-[#111419] overflow-hidden shadow-xs flex flex-col flex-1 h-full min-h-0">
+            <div className="rounded-xl border border-border bg-card overflow-hidden shadow-xs flex flex-col flex-1 h-full min-h-0">
               {/* Cabeçalho Fixo */}
-              <div className="shrink-0 flex items-center justify-between px-4 sm:px-5 py-3 bg-muted/30 dark:bg-white/[0.02] border-b border-border/40 dark:border-white/[0.05]">
+              <div className="shrink-0 flex items-center justify-between px-4 sm:px-5 py-3 bg-muted/30 border-b border-border/40">
                 <div>
-                  <h2 className="text-sm font-bold text-foreground dark:text-[#F1F3F5]">
+                  <h2 className="text-sm font-bold text-foreground">
                     Demonstrativo — {competenciaLabel}
                   </h2>
                   <p className="text-xs text-muted-foreground mt-0.5">
@@ -1528,7 +1540,7 @@ function UxLabDREContent() {
                       : "Clique em qualquer linha para expandir no Drawer lateral."}
                   </p>
                 </div>
-                <div className="hidden sm:flex items-center gap-2 text-[10px] text-muted-foreground/50 dark:text-[#69717D] shrink-0">
+                <div className="hidden sm:flex items-center gap-2 text-[10px] text-muted-foreground/60 shrink-0">
                   {isComparing ? (
                     <>
                       <span>BASE</span>
@@ -1566,10 +1578,10 @@ function UxLabDREContent() {
               </div>
 
               {/* Separador visual Fixo */}
-              <div className="shrink-0 mx-3 sm:mx-5 border-t-2 border-dashed border-border/50 dark:border-white/[0.08]" />
+              <div className="shrink-0 mx-3 sm:mx-5 border-t-2 border-dashed border-border/50" />
 
               {/* Resultado — Linha Final Fixa no rodapé */}
-              <div className="shrink-0 px-2 sm:px-4 pb-3.5 pt-2.5 bg-card dark:bg-[#111419] border-t border-border/10 dark:border-white/[0.03]">
+              <div className="shrink-0 px-2 sm:px-4 pb-3.5 pt-2.5 bg-card border-t border-border/20">
                 <ResultadoRow
                   animate={animateBars}
                   isComparing={isComparing}

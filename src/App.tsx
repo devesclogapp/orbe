@@ -121,6 +121,7 @@ import UxLabRelatorioView from "./pages/UxLab/UxLabRelatorioView";
 import UxLabOperacoesVolume from "./pages/UxLab/UxLabOperacoesVolume";
 import UxLabServicosExtras from "./pages/UxLab/UxLabServicosExtras";
 import UxLabCustosExtras from "./pages/UxLab/UxLabCustosExtras";
+import UxLabDesignSystemShowcase from "./pages/UxLab/UxLabDesignSystemShowcase";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -282,6 +283,7 @@ const App = () => (
                             <Route path="/ux-lab/dre" element={<UxLabDRE />} />
                             <Route path="/ux-lab/relatorios" element={<UxLabRelatoriosHub />} />
                             <Route path="/ux-lab/relatorios/:reportId" element={<UxLabRelatorioView />} />
+                            <Route path="/ux-lab/design-system" element={<UxLabDesignSystemShowcase />} />
                             <Route path="/uxlab" element={<Navigate to="/ux-lab" replace />} />
 
                             <Route path="*" element={<NotFound />} />

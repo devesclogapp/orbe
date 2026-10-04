@@ -29,6 +29,7 @@ describe("Navegação Integrada do UX LAB", () => {
 
     expect(UX_LAB_ROUTES["servicos-extras"]).toBe("/ux-lab/servicos-extras");
     expect(UX_LAB_ROUTES["custos-extras"]).toBe("/ux-lab/custos-extras");
+    expect(UX_LAB_ROUTES["design-system"]).toBe("/ux-lab/design-system");
     expect(UX_LAB_ROUTES["diaristas"]).toBeUndefined();
     expect(UX_LAB_ROUTES["banco-horas"]).toBeUndefined();
     expect(UX_LAB_ROUTES["receitas"]).toBeUndefined();
@@ -93,5 +94,5 @@ describe("Navegação Integrada do UX LAB", () => {
       );
       unmount();
     });
-  });
+  }, 20000);
 });

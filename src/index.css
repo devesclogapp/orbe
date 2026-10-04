@@ -24,10 +24,10 @@
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 9%;
 
-    --primary: 18 100% 50%;
+    --primary: 221 83% 53%;
     --primary-foreground: 0 0% 100%;
-    --primary-soft: 18 100% 96%;
-    --primary-hover: 18 100% 45%;
+    --primary-soft: 214 95% 93%;
+    --primary-hover: 221 83% 45%;
 
     --secondary: 0 0% 94%;
     --secondary-foreground: 0 0% 9%;
@@ -76,7 +76,7 @@
 
     --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 0 0% 30%;
-    --sidebar-primary: 18 100% 50%;
+    --sidebar-primary: 221 83% 53%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 0 0% 94%;
     --sidebar-accent-foreground: 0 0% 9%;
@@ -92,6 +92,19 @@
     --gray-600: 0 0% 30%;
     --gray-900: 0 0% 9%;
 
+    /* ORBE DS — Layout Tokens */
+    --orbe-workspace-max: 1560px;
+    --orbe-page-padding-x: 1.5rem;
+    --orbe-page-padding-y: 1.5rem;
+    --orbe-section-gap: 1.5rem;
+
+    /* ORBE DS — Radius Scale */
+    --radius-xs: 4px;
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --radius-xl: 16px;
+
     /* Spacing Scale (4px) */
     --space-1: 4px;
     --space-2: 8px;
@@ -100,6 +113,8 @@
     --space-5: 20px;
     --space-6: 24px;
     --space-8: 32px;
+    --space-10: 40px;
+    --space-12: 48px;
 
     /* Aliases for Design System Compatibility */
     --color-brand: var(--primary);

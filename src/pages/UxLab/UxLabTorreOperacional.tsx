@@ -109,7 +109,7 @@ export default function UxLabTorreOperacional() {
         {/* ─── 1. RADAR OPERACIONAL COMPACTO (Superfície única horizontal) ─── */}
         <section
           aria-label="Radar Operacional"
-          className="rounded-xl border border-border bg-card dark:bg-[#111419] dark:border-white/[0.05] p-3 px-4 shadow-xs transition-colors"
+          className="rounded-xl border border-border bg-card p-3 px-4 shadow-xs transition-colors"
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             {/* Indicadores Semânticos em Linha */}
@@ -158,15 +158,15 @@ export default function UxLabTorreOperacional() {
         {/* ─── 2. SUB-CABEÇALHO OPERACIONAL: FILTROS RÁPIDOS E BUSCA ─── */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pt-1">
           {/* Pílulas de Seleção de Trilha */}
-          <div className="flex items-center gap-1.5 p-0.5 rounded-lg bg-muted/50 border border-border/60 dark:bg-[#111419] dark:border-white/[0.05]">
+          <div className="flex items-center gap-1.5 p-0.5 rounded-lg bg-muted/50 border border-border/60">
             <button
               type="button"
               onClick={() => setFluxoFiltro("todos")}
               className={cn(
                 "rounded-md px-3 py-1 text-xs font-medium transition-colors",
                 fluxoFiltro === "todos"
-                  ? "bg-card text-foreground font-semibold shadow-xs border border-border/80 dark:bg-[#1A1F27] dark:border-white/[0.08] dark:shadow-none"
-                  : "text-muted-foreground hover:text-foreground dark:hover:text-[#F1F3F5]"
+                  ? "bg-card text-foreground font-semibold shadow-xs border border-border/80"
+                  : "text-muted-foreground hover:text-foreground"
               )}
             >
               Todos os Fluxos (2 Trilhas)
@@ -177,8 +177,8 @@ export default function UxLabTorreOperacional() {
               className={cn(
                 "rounded-md px-3 py-1 text-xs font-medium transition-colors",
                 fluxoFiltro === "receitas"
-                  ? "bg-card text-foreground font-semibold shadow-xs border border-border/80 dark:bg-[#1A1F27] dark:border-white/[0.08] dark:shadow-none"
-                  : "text-muted-foreground hover:text-foreground dark:hover:text-[#F1F3F5]"
+                  ? "bg-card text-foreground font-semibold shadow-xs border border-border/80"
+                  : "text-muted-foreground hover:text-foreground"
               )}
             >
               Trilha A · Receitas
@@ -189,8 +189,8 @@ export default function UxLabTorreOperacional() {
               className={cn(
                 "rounded-md px-3 py-1 text-xs font-medium transition-colors",
                 fluxoFiltro === "custos"
-                  ? "bg-card text-foreground font-semibold shadow-xs border border-border/80 dark:bg-[#1A1F27] dark:border-white/[0.08] dark:shadow-none"
-                  : "text-muted-foreground hover:text-foreground dark:hover:text-[#F1F3F5]"
+                  ? "bg-card text-foreground font-semibold shadow-xs border border-border/80"
+                  : "text-muted-foreground hover:text-foreground"
               )}
             >
               Trilha B · Custos & Mão de Obra
@@ -204,7 +204,7 @@ export default function UxLabTorreOperacional() {
               placeholder="Buscar processo, lote ou cliente..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="h-8 pl-8 text-xs font-medium bg-card text-foreground border-border dark:bg-[#111419] dark:border-white/[0.05] dark:text-[#F1F3F5] dark:focus:border-blue-500"
+              className="h-8 pl-8 text-xs font-medium bg-card text-foreground border-border dark:focus:border-blue-500"
             />
             {searchTerm && (
               <button
@@ -228,10 +228,10 @@ export default function UxLabTorreOperacional() {
               <section
                 key={trilha.id}
                 aria-label={trilha.titulo}
-                className="rounded-xl border border-border bg-card dark:bg-[#111419] dark:border-white/[0.05] p-4 md:p-5 shadow-xs transition-colors"
+                className="rounded-xl border border-border bg-card p-4 md:p-5 shadow-xs transition-colors"
               >
                 {/* Cabeçalho da Trilha */}
-                <div className="flex flex-col gap-1 pb-4 sm:flex-row sm:items-center sm:justify-between border-b border-border/60 dark:border-white/[0.04]">
+                <div className="flex flex-col gap-1 pb-4 sm:flex-row sm:items-center sm:justify-between border-b border-border/60">
                   <div className="flex items-center gap-2.5">
                     <div
                       className={cn(
@@ -276,8 +276,8 @@ export default function UxLabTorreOperacional() {
                             className={cn(
                               "flex-1 rounded-xl border p-3.5 transition-all text-left flex flex-col justify-between cursor-pointer select-none",
                               isSelected
-                                ? "border-blue-600 bg-blue-50/30 ring-2 ring-blue-600/20 shadow-sm dark:border-blue-500 dark:bg-[#15191F] dark:ring-1 dark:ring-blue-500/40 dark:shadow-none"
-                                : "border-border bg-card/70 hover:border-slate-300 hover:bg-card shadow-xs dark:bg-[#15191F] dark:border-white/[0.04] dark:hover:bg-[#1A1F27] dark:hover:border-white/[0.08] dark:shadow-none"
+                                ? "border-blue-600 bg-blue-50/30 ring-2 ring-blue-600/20 shadow-sm dark:border-blue-500 dark:bg-card dark:ring-1 dark:ring-blue-500/40 dark:shadow-none"
+                                : "border-border bg-card/70 hover:border-slate-300 hover:bg-card shadow-xs dark:bg-card dark:hover:bg-muted/40 dark:shadow-none"
                             )}
                           >
                             {/* Topo do Nó: Ordem, Nome e Chip de Situação */}
@@ -411,7 +411,7 @@ function StageStatusBadge({ situacao }: { situacao: SituacaoEtapa }) {
     case "normal":
     default:
       return (
-        <span className="inline-flex items-center gap-1 rounded-full border border-border/80 dark:border-white/[0.05] bg-muted/60 dark:bg-white/[0.03] px-1.5 py-0.2 text-[9px] font-semibold text-muted-foreground dark:text-[#A0A7B2]">
+        <span className="inline-flex items-center gap-1 rounded-full border border-border/80 bg-muted/60 px-1.5 py-0.2 text-[9px] font-semibold text-muted-foreground">
           <span className="h-1.5 w-1.5 rounded-full bg-blue-600 dark:bg-blue-400" />
           Regular
         </span>
