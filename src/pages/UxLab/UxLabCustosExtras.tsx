@@ -51,7 +51,10 @@ import {
   getFriendlyOrigemRecurso,
   getFriendlyPipelineStatus,
   getFriendlyStatusPagamento,
-  getFriendlyCategoria
+  getFriendlyCategoria,
+  isRequerAcao,
+  isObrigacaoAberta,
+  isPagoLiquidado,
 } from "./custosExtrasMockData";
 
 export default function UxLabCustosExtras() {
@@ -195,32 +198,21 @@ export default function UxLabCustosExtras() {
     const totalValor = custosFiltrados.reduce((acc, curr) => acc + curr.total, 0);
 
     // 2. Requer Ação: REPROVADO | EM_VALIDACAO | RECEBIDO
-    const itensRequerAcao = custosFiltrados.filter((c) =>
-      ["REPROVADO", "EM_VALIDACAO", "RECEBIDO"].includes(c.pipeline_status)
-    );
+    const itensRequerAcao = custosFiltrados.filter(isRequerAcao);
     const requerAcaoCount = itensRequerAcao.length;
     const requerAcaoValor = itensRequerAcao.reduce((acc, curr) => acc + curr.total, 0);
     const reprovadosCount = custosFiltrados.filter((c) => c.pipeline_status === "REPROVADO").length;
 
     // 3. A Pagar / Financeiro:
     // Obrigação financeira real aberta (APROVADO_OPERACAO ou ENVIADO_FINANCEIRO com status_pagamento = A_PAGAR ou ATRASADO)
-    // EXCLUI ESTRITAMENTE PAGO_EMPRESA (gasto já desembolsado pela empresa que não gera passivo futuro)
-    const itensAPagar = custosFiltrados.filter((c) => {
-      const isObrigacaoAberta = c.status_pagamento === "A_PAGAR" || c.status_pagamento === "ATRASADO";
-      const isOrigemPassivo = c.origem_recurso !== "PAGO_EMPRESA";
-      const isAprovado = ["APROVADO_OPERACAO", "ENVIADO_FINANCEIRO"].includes(c.pipeline_status);
-      return isObrigacaoAberta && isOrigemPassivo && isAprovado;
-    });
+    // EXCLUI TERMINANTEMENTE PAGO_EMPRESA (gasto já desembolsado pela empresa que nunca gera passivo futuro)
+    const itensAPagar = custosFiltrados.filter(isObrigacaoAberta);
     const aPagarCount = itensAPagar.length;
     const aPagarValor = itensAPagar.reduce((acc, curr) => acc + curr.total, 0);
 
     // 4. Pagos / Liquidados:
     // Desembolso já ocorrido: PAGO_EMPRESA (gasto direto da empresa) OU obrigação liquidada com status_pagamento = PAGO
-    const itensPagos = custosFiltrados.filter((c) => {
-      const isPagoEmpresa = c.origem_recurso === "PAGO_EMPRESA" && c.pipeline_status === "FINALIZADO";
-      const isLiquidado = c.status_pagamento === "PAGO";
-      return isPagoEmpresa || isLiquidado;
-    });
+    const itensPagos = custosFiltrados.filter(isPagoLiquidado);
     const pagosCount = itensPagos.length;
     const pagosValor = itensPagos.reduce((acc, curr) => acc + curr.total, 0);
 
@@ -339,26 +331,15 @@ export default function UxLabCustosExtras() {
 
   const handleCardClickAPagar = () => {
     setActiveKpiNav("a_pagar");
-    // Obrigações em aberto (exclui PAGO_EMPRESA)
-    const atrasados = custosFiltrados.filter(
-      (c) =>
-        c.status_pagamento === "ATRASADO" &&
-        c.origem_recurso !== "PAGO_EMPRESA" &&
-        ["APROVADO_OPERACAO", "ENVIADO_FINANCEIRO"].includes(c.pipeline_status)
-    );
-    const enviadosFin = custosFiltrados.filter(
-      (c) =>
-        c.status_pagamento === "A_PAGAR" &&
-        c.origem_recurso !== "PAGO_EMPRESA" &&
-        c.pipeline_status === "ENVIADO_FINANCEIRO"
-    );
-    const aprovadosOp = custosFiltrados.filter(
-      (c) =>
-        c.status_pagamento === "A_PAGAR" &&
-        c.origem_recurso !== "PAGO_EMPRESA" &&
-        c.pipeline_status === "APROVADO_OPERACAO"
-    );
-    const alvos = [...atrasados, ...enviadosFin, ...aprovadosOp];
+    // Obrigações em aberto (EXCLUI TERMINANTEMENTE PAGO_EMPRESA)
+    const alvos = custosFiltrados.filter(isObrigacaoAberta).sort((a, b) => {
+      // Prioridade 1: ATRASADO, Prioridade 2: ENVIADO_FINANCEIRO, Prioridade 3: APROVADO_OPERACAO
+      if (a.status_pagamento === "ATRASADO" && b.status_pagamento !== "ATRASADO") return -1;
+      if (a.status_pagamento !== "ATRASADO" && b.status_pagamento === "ATRASADO") return 1;
+      if (a.pipeline_status === "ENVIADO_FINANCEIRO" && b.pipeline_status !== "ENVIADO_FINANCEIRO") return -1;
+      if (a.pipeline_status !== "ENVIADO_FINANCEIRO" && b.pipeline_status === "ENVIADO_FINANCEIRO") return 1;
+      return 0;
+    });
 
     if (alvos.length === 0) {
       toast.info("Nenhuma obrigação a pagar nos filtros atuais.");
@@ -671,16 +652,16 @@ export default function UxLabCustosExtras() {
             <table className="w-full text-left text-xs border-collapse">
               <thead className="bg-muted border-b border-border text-[11px] font-bold uppercase tracking-wider text-muted-foreground sticky top-0 z-20 shadow-[0_1px_0_0_hsl(var(--border))]">
                 <tr>
-                  <th className="py-3 px-3.5">Código</th>
-                  <th className="py-3 px-3.5">Data</th>
-                  <th className="py-3 px-3.5">Empresa / Unidade</th>
-                  <th className="py-3 px-3.5">Categoria</th>
-                  <th className="py-3 px-3.5">Descrição / Favorecido</th>
-                  <th className="py-3 px-3.5">Origem do Recurso</th>
-                  <th className="py-3 px-3.5 text-right">Valor Total</th>
-                  <th className="py-3 px-3.5 text-center">Pipeline</th>
-                  <th className="py-3 px-3.5 text-center">Pagamento</th>
-                  <th className="py-3 px-3 text-center">Ação</th>
+                  <th className="py-3 px-3.5 w-[105px]">Código</th>
+                  <th className="py-3 px-3.5 w-[90px]">Data</th>
+                  <th className="py-3 px-3.5 w-[170px]">Empresa / Unidade</th>
+                  <th className="py-3 px-3.5 w-[110px]">Categoria</th>
+                  <th className="py-3 px-3.5 min-w-[300px] max-w-[460px]">Descrição / Favorecido</th>
+                  <th className="py-3 px-3.5 w-[140px]">Origem do Recurso</th>
+                  <th className="py-3 px-3.5 w-[110px] text-right">Valor Total</th>
+                  <th className="py-3 px-3.5 w-[120px] text-center">Pipeline</th>
+                  <th className="py-3 px-3.5 w-[105px] text-center">Pagamento</th>
+                  <th className="py-3 px-3 w-[50px] text-center">Ação</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60">
@@ -708,17 +689,17 @@ export default function UxLabCustosExtras() {
                         }`}
                       >
                         {/* 1. Código */}
-                        <td className="py-3 px-3.5 font-mono font-bold text-royal-blue dark:text-royal-blue-light whitespace-nowrap">
+                        <td className="py-3 px-3.5 w-[105px] font-mono font-bold text-royal-blue dark:text-royal-blue-light whitespace-nowrap">
                           {c.codigo}
                         </td>
 
                         {/* 2. Data */}
-                        <td className="py-3 px-3.5 whitespace-nowrap text-foreground">
+                        <td className="py-3 px-3.5 w-[90px] whitespace-nowrap text-foreground">
                           {formatDate(c.data)}
                         </td>
 
                         {/* 3. Empresa / Unidade */}
-                        <td className="py-3 px-3.5 max-w-[200px]">
+                        <td className="py-3 px-3.5 w-[170px] max-w-[170px]">
                           <div className="font-semibold text-foreground truncate">
                             {c.empresa_nome}
                           </div>
@@ -728,7 +709,7 @@ export default function UxLabCustosExtras() {
                         </td>
 
                         {/* 4. Categoria (Monocromático Institucional) */}
-                        <td className="py-3 px-3.5 whitespace-nowrap">
+                        <td className="py-3 px-3.5 w-[110px] whitespace-nowrap">
                           <Badge
                             variant="outline"
                             className="bg-muted/60 text-foreground border-border text-[10px] font-medium"
@@ -738,7 +719,7 @@ export default function UxLabCustosExtras() {
                         </td>
 
                         {/* 5. Descrição / Favorecido */}
-                        <td className="py-3 px-3.5 max-w-[280px]">
+                        <td className="py-3 px-3.5 min-w-[300px] max-w-[460px]">
                           <div className="font-medium text-foreground truncate" title={c.descricao}>
                             {c.descricao}
                           </div>
@@ -827,33 +808,30 @@ export default function UxLabCustosExtras() {
                         </td>
 
                         {/* 9. Status Pagamento (Desacoplado) */}
-                        <td className="py-3 px-3.5 text-center whitespace-nowrap">
-                          {c.status_pagamento === "PAGO" && (
+                        <td className="py-3 px-3.5 w-[105px] text-center whitespace-nowrap">
+                          {c.origem_recurso === "PAGO_EMPRESA" || c.status_pagamento === "PAGO" ? (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900/40">
                               <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                               Pago
                             </span>
-                          )}
-                          {c.status_pagamento === "A_PAGAR" && (
+                          ) : c.status_pagamento === "A_PAGAR" ? (
                             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-900/40">
                               A Pagar
                             </span>
-                          )}
-                          {c.status_pagamento === "ATRASADO" && (
+                          ) : c.status_pagamento === "ATRASADO" ? (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-900/40">
                               <AlertTriangle className="w-3 h-3 text-rose-600" />
                               Atrasado
                             </span>
-                          )}
-                          {c.status_pagamento === "CANCELADO" && (
+                          ) : c.status_pagamento === "CANCELADO" ? (
                             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-zinc-100 text-zinc-600 border border-zinc-200 dark:bg-zinc-800/60 dark:text-zinc-400 dark:border-zinc-700">
                               Cancelado
                             </span>
-                          )}
+                          ) : null}
                         </td>
 
                         {/* 10. Ação */}
-                        <td className="py-3 px-3 text-center whitespace-nowrap">
+                        <td className="py-3 px-3 w-[50px] text-center whitespace-nowrap">
                           <button
                             type="button"
                             onClick={(e) => {

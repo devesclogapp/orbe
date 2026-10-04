@@ -124,7 +124,15 @@ export function UxLabCustoExtraDrawer({
   };
 
   // Helper de Badge de Status Pagamento (Semântico e Desacoplado)
-  const renderPagamentoBadge = (pag: StatusPagamentoCustoExtra) => {
+  const renderPagamentoBadge = (pag: StatusPagamentoCustoExtra, origem?: OrigemRecursoCustoExtra) => {
+    if (origem === "PAGO_EMPRESA") {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/40">
+          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+          Pago
+        </span>
+      );
+    }
     switch (pag) {
       case "PAGO":
         return (
@@ -192,7 +200,7 @@ export function UxLabCustoExtraDrawer({
                 <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
                   Pagamento:
                 </span>
-                {renderPagamentoBadge(custo.status_pagamento)}
+                {renderPagamentoBadge(custo.status_pagamento, custo.origem_recurso)}
               </div>
             </div>
           </div>
@@ -205,7 +213,7 @@ export function UxLabCustoExtraDrawer({
             <span>•</span>
             <div className="flex items-center gap-1">
               <Calendar className="w-3.5 h-3.5 text-muted-foreground/70" />
-              <span>Competência: <strong className="text-foreground">{formatDate(custo.data)}</strong></span>
+              <span>Data do custo: <strong className="text-foreground">{formatDate(custo.data)}</strong></span>
             </div>
             <span>•</span>
             <span>{custo.unidade_nome}</span>

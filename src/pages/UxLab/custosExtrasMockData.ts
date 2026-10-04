@@ -216,7 +216,7 @@ export const CUSTOS_EXTRAS_MOCKS: CustoExtraMock[] = [
     favorecido_colaborador_id: "colab-001",
     favorecido_colaborador_nome: "Alexandre Barreto (Supervisor)",
     pipeline_status: "REPROVADO",
-    status_pagamento: "A_PAGAR",
+    status_pagamento: "CANCELADO", // Reprovado no operacional nunca permanece como A_PAGAR
     justificativa_devolucao: "Despesa sem cupom fiscal discriminado e fora da política de refeições operacionais. Necessário apresentar recibo fiscal válido e autorização prévia da gerência.",
     responsavel_nome: "Mariana Alencar (Controladoria RH)",
     observacao: "Devolvido ao supervisor para reapresentação do comprovante adequado.",

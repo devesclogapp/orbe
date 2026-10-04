@@ -4,7 +4,12 @@ import { render, screen, fireEvent, within } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { UxLabThemeProvider } from "@/components/ux-lab/UxLabThemeContext";
 import UxLabCustosExtras from "@/pages/UxLab/UxLabCustosExtras";
-import { CUSTOS_EXTRAS_MOCKS } from "@/pages/UxLab/custosExtrasMockData";
+import {
+  CUSTOS_EXTRAS_MOCKS,
+  isObrigacaoAberta,
+  isRequerAcao,
+  isPagoLiquidado,
+} from "@/pages/UxLab/custosExtrasMockData";
 import { UX_LAB_ROUTES } from "@/components/ux-lab/UxLabSidebar";
 
 // Mock ResizeObserver for JSDOM
@@ -80,14 +85,14 @@ describe("UX07 — Custos Extras V2 — Protótipo 1 no UX Lab", () => {
     expect(within(btnRequerAcao).getByText(/1 reprovada/i)).toBeInTheDocument();
     // Card 3: 3 obrigações abertas (exclui PAGO_EMPRESA)
     expect(within(btnAPagar).getByText(/3 obrigações abertas/i)).toBeInTheDocument();
-    // Card 4: 4 despesas liquidadas
-    expect(within(btnPagos).getByText(/4 despesas liquidadas/i)).toBeInTheDocument();
+    // Card 4: 6 despesas liquidadas (desembolsos efetuados PAGO_EMPRESA + obrigações quitadas)
+    expect(within(btnPagos).getByText(/6 despesas liquidadas/i)).toBeInTheDocument();
 
     // Valores em R$ presentes com formatação em moeda
     expect(within(btnPeriodo).getByText(/R\$\s*6\.455,00/i)).toBeInTheDocument();
     expect(within(btnRequerAcao).getByText(/R\$\s*1\.775,00/i)).toBeInTheDocument();
     expect(within(btnAPagar).getByText(/R\$\s*2\.600,00/i)).toBeInTheDocument();
-    expect(within(btnPagos).getByText(/R\$\s*2\.080,00/i)).toBeInTheDocument();
+    expect(within(btnPagos).getByText(/R\$\s*2\.610,00/i)).toBeInTheDocument();
   });
 
   it("5. Filtro temporal permite selecionar períodos e filtra a competência 'data'", () => {
@@ -334,5 +339,55 @@ describe("UX07 — Custos Extras V2 — Protótipo 1 no UX Lab", () => {
 
   it("24. Navegação integrada do UX Lab reconhece /ux-lab/custos-extras", () => {
     expect(UX_LAB_ROUTES["custos-extras"]).toBe("/ux-lab/custos-extras");
+  });
+
+  it("25. [HOTFIX 02.1] PAGO_EMPRESA não aparece como obrigação A_PAGAR no dataset mock", () => {
+    const itensPagoEmpresa = CUSTOS_EXTRAS_MOCKS.filter((c) => c.origem_recurso === "PAGO_EMPRESA");
+    expect(itensPagoEmpresa.length).toBeGreaterThan(0);
+    for (const item of itensPagoEmpresa) {
+      expect(item.status_pagamento).not.toBe("A_PAGAR");
+      expect(item.status_pagamento).not.toBe("ATRASADO");
+      expect(isObrigacaoAberta(item)).toBe(false);
+    }
+  });
+
+  it("26. [HOTFIX 02.1] Card A Pagar nunca navega para PAGO_EMPRESA e percorre exclusivamente obrigações abertas", () => {
+    renderCustosExtras();
+
+    const scrollIntoViewMock = vi.fn();
+    window.HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
+
+    const btnAPagar = screen.getByRole("button", { name: /A Pagar \/ Financeiro/i });
+    
+    // Clica 5 vezes no card A Pagar para testar o ciclo completo
+    for (let i = 0; i < 5; i++) {
+      fireEvent.click(btnAPagar);
+      // Nenhum item focado pode ser PAGO_EMPRESA
+      const focusedPagoEmpresa1 = document.getElementById("row-custo-ce-mock-001");
+      const focusedPagoEmpresa2 = document.getElementById("row-custo-ce-mock-002");
+      const focusedPagoEmpresa7 = document.getElementById("row-custo-ce-mock-007");
+
+      expect(focusedPagoEmpresa1?.className || "").not.toContain("ring-");
+      expect(focusedPagoEmpresa2?.className || "").not.toContain("ring-");
+      expect(focusedPagoEmpresa7?.className || "").not.toContain("ring-");
+    }
+  });
+
+  it("27. [HOTFIX 02.1] Drawer header exibe 'Data do custo' e não apresenta data diária como 'Competência'", () => {
+    renderCustosExtras();
+
+    const row = screen.getByText("CE-2026-001").closest("tr");
+    if (row) fireEvent.click(row);
+
+    expect(screen.getByText(/Data do custo:/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Competência:/i)).toBeNull();
+  });
+
+  it("28. [HOTFIX 02.1] Coluna Descrição / Favorecido possui largura expandida evitando truncamento precoce", () => {
+    renderCustosExtras();
+
+    const thDescricao = screen.getByRole("columnheader", { name: /Descrição \/ Favorecido/i });
+    expect(thDescricao.className).toContain("min-w-[300px]");
+    expect(thDescricao.className).toContain("max-w-[460px]");
   });
 });
