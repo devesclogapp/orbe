@@ -116,6 +116,11 @@ import Onboarding from "./pages/Onboarding";
 import UxLabDashboard from "./pages/UxLab/UxLabDashboard";
 import UxLabTorreOperacional from "./pages/UxLab/UxLabTorreOperacional";
 import UxLabDRE from "./pages/UxLab/UxLabDRE";
+import UxLabRelatoriosHub from "./pages/UxLab/UxLabRelatoriosHub";
+import UxLabRelatorioView from "./pages/UxLab/UxLabRelatorioView";
+import UxLabOperacoesVolume from "./pages/UxLab/UxLabOperacoesVolume";
+import UxLabServicosExtras from "./pages/UxLab/UxLabServicosExtras";
+import UxLabCustosExtras from "./pages/UxLab/UxLabCustosExtras";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -271,7 +276,12 @@ const App = () => (
                             <Route path="/diag-tenant" element={<DiagnosticoTenant />} />
                             <Route path="/ux-lab" element={<UxLabDashboard />} />
                             <Route path="/ux-lab/torre" element={<UxLabTorreOperacional />} />
+                            <Route path="/ux-lab/operacoes-volume" element={<UxLabOperacoesVolume />} />
+                            <Route path="/ux-lab/servicos-extras" element={<UxLabServicosExtras />} />
+                            <Route path="/ux-lab/custos-extras" element={<UxLabCustosExtras />} />
                             <Route path="/ux-lab/dre" element={<UxLabDRE />} />
+                            <Route path="/ux-lab/relatorios" element={<UxLabRelatoriosHub />} />
+                            <Route path="/ux-lab/relatorios/:reportId" element={<UxLabRelatorioView />} />
                             <Route path="/uxlab" element={<Navigate to="/ux-lab" replace />} />
 
                             <Route path="*" element={<NotFound />} />

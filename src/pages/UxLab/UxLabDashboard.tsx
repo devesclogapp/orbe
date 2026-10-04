@@ -95,15 +95,23 @@ function UxLabDashboardContent() {
       navigate("/ux-lab/torre");
       return;
     }
+    if (id === "operacoes-volume") {
+      navigate("/ux-lab/operacoes-volume");
+      return;
+    }
     if (id === "dre") {
       navigate("/ux-lab/dre");
+      return;
+    }
+    if (id === "relatorios") {
+      navigate("/ux-lab/relatorios");
       return;
     }
 
     setSimulatedModal({
       open: true,
       title: label,
-      description: `O módulo "${label}" foi reorganizado na arquitetura da Sidebar do UX LAB e será homologado nas próximas etapas da evolução do ORBE.`,
+      description: `O módulo especialista "${label}" será homologado em sua fase própria no UX LAB e não deve ser confundido com relatórios analíticos.`,
     });
   };
 

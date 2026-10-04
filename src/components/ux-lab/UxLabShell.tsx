@@ -8,11 +8,13 @@ interface UxLabShellProps {
   title: string;
   subtitle?: string;
   activeItem?: string;
+  activeSidebarItem?: string;
   onSelectItem?: (id: string, label: string) => void;
-  competencia: string;
-  onCompetenciaChange: (val: string) => void;
-  empresa: string;
-  onEmpresaChange: (val: string) => void;
+  onSelectSidebarItem?: (id: string, label: string) => void;
+  competencia?: string;
+  onCompetenciaChange?: (val: string) => void;
+  empresa?: string;
+  onEmpresaChange?: (val: string) => void;
   onRefresh?: () => void;
 }
 
@@ -20,19 +22,23 @@ export const UxLabShell: React.FC<UxLabShellProps> = ({
   children,
   title,
   subtitle,
-  activeItem = "dashboard",
+  activeItem,
+  activeSidebarItem,
   onSelectItem,
-  competencia,
-  onCompetenciaChange,
-  empresa,
-  onEmpresaChange,
+  onSelectSidebarItem,
+  competencia = "2026-10",
+  onCompetenciaChange = () => {},
+  empresa = "all",
+  onEmpresaChange = () => {},
   onRefresh,
 }) => {
+  const resolvedActiveItem = activeItem || activeSidebarItem || "dashboard";
+  const resolvedOnSelectItem = onSelectItem || onSelectSidebarItem;
   return (
     <UxLabThemeProvider>
       <div className="flex min-h-screen bg-background text-foreground transition-colors duration-200">
         {/* Sidebar Experimental */}
-        <UxLabSidebar activeItem={activeItem} onSelectItem={onSelectItem} />
+        <UxLabSidebar activeItem={resolvedActiveItem} onSelectItem={resolvedOnSelectItem} />
 
         {/* Conteúdo Principal com Topbar */}
         <div className="flex flex-1 flex-col min-w-0">

@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { toast } from "sonner";
 
 interface LabNavItem {
   id: string;
@@ -85,17 +86,21 @@ const SECTIONS: LabNavSection[] = [
         label: "Operações por Volume",
         icon: Package,
         badge: { count: 14, variant: "neutral" },
+        isActiveLabTarget: true,
       },
       {
         id: "servicos-extras",
         label: "Serviços Extras",
         icon: Wrench,
+        badge: { count: 8, variant: "neutral" },
+        isActiveLabTarget: true,
       },
       {
         id: "custos-extras",
         label: "Custos Extras",
         icon: Wallet,
-        badge: { count: 2, variant: "neutral" },
+        badge: { count: 12, variant: "neutral" },
+        isActiveLabTarget: true,
       },
     ],
   },
@@ -185,6 +190,7 @@ const SECTIONS: LabNavSection[] = [
         id: "dre",
         label: "Resultado Operacional (DRE)",
         icon: TrendingUp,
+        isActiveLabTarget: true,
       },
     ],
   },
@@ -206,6 +212,7 @@ const SECTIONS: LabNavSection[] = [
         id: "relatorios",
         label: "Relatórios Gerenciais",
         icon: FileSpreadsheet,
+        isActiveLabTarget: true,
       },
       {
         id: "auditoria",
@@ -229,6 +236,16 @@ const badgeColors = {
   neutral: "bg-muted/60 dark:bg-muted/30 text-muted-foreground border-border/60 dark:border-border/30",
 };
 
+export const UX_LAB_ROUTES: Record<string, string> = {
+  dashboard: "/ux-lab",
+  "torre-operacional": "/ux-lab/torre",
+  "operacoes-volume": "/ux-lab/operacoes-volume",
+  "servicos-extras": "/ux-lab/servicos-extras",
+  "custos-extras": "/ux-lab/custos-extras",
+  dre: "/ux-lab/dre",
+  relatorios: "/ux-lab/relatorios",
+};
+
 interface UxLabSidebarProps {
   activeItem?: string;
   onSelectItem?: (id: string, label: string) => void;
@@ -250,9 +267,27 @@ export const UxLabSidebar: React.FC<UxLabSidebarProps> = ({
     }));
   };
 
+  const handleTopLevelClick = (item: LabTopLevelItem) => {
+    if (onSelectItem) {
+      onSelectItem(item.id, item.label);
+    }
+    const targetRoute = UX_LAB_ROUTES[item.id];
+    if (targetRoute) {
+      navigate(targetRoute);
+    }
+  };
+
   const handleItemClick = (item: LabNavItem) => {
     if (onSelectItem) {
       onSelectItem(item.id, item.label);
+    }
+    const targetRoute = UX_LAB_ROUTES[item.id];
+    if (targetRoute) {
+      navigate(targetRoute);
+    } else {
+      toast.info(`Módulo em planejamento: ${item.label}`, {
+        description: "Este módulo do ERP oficial terá seu protótipo disponibilizado em breve no UX Lab.",
+      });
     }
   };
 
@@ -309,7 +344,7 @@ export const UxLabSidebar: React.FC<UxLabSidebarProps> = ({
               <button
                 key={item.id}
                 type="button"
-                onClick={() => onSelectItem?.(item.id, item.label)}
+                onClick={() => handleTopLevelClick(item)}
                 className={cn(
                   "flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-xs font-semibold transition-colors",
                   isActive

@@ -64,12 +64,20 @@ export default function UxLabTorreOperacional() {
     if (id === "torre-operacional") {
       return;
     }
+    if (id === "operacoes-volume") {
+      navigate("/ux-lab/operacoes-volume");
+      return;
+    }
     if (id === "dre") {
       navigate("/ux-lab/dre");
       return;
     }
-    toast.info(`Módulo em homologação: ${label}`, {
-      description: "Este módulo será disponibilizado nas próximas etapas do UX LAB.",
+    if (id === "relatorios") {
+      navigate("/ux-lab/relatorios");
+      return;
+    }
+    toast.info(`Módulo em planejamento: ${label}`, {
+      description: "Este módulo especialista será prototipado em sua própria fase do UX Lab.",
     });
   };
 
