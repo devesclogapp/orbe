@@ -1,1812 +1,1188 @@
-import { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-    Clock,
-    CheckCircle2,
-    Lightbulb,
-    AlertTriangle,
-    Users,
-    Search,
-    Activity,
-    DollarSign,
-    RefreshCw,
-    ChevronRight,
-    History,
-    CalendarDays,
-    Download,
-    Check,
-    RotateCcw,
-    Info,
-    Calendar,
-    Loader2,
-    ExternalLink,
-    Layers,
-    Pencil,
-    X,
-    ArrowRight
+  Clock,
+  CheckCircle2,
+  AlertTriangle,
+  Users,
+  Search,
+  RotateCcw,
+  Coins,
+  Package,
+  Wrench,
+  Wallet,
+  Layers,
+  Building2,
+  Filter,
+  Check,
+  Ban,
+  ArrowRight,
+  ExternalLink,
+  ChevronRight,
+  Eye,
+  RefreshCw,
+  Loader2
 } from "lucide-react";
 import { toast } from "sonner";
-import { format, startOfWeek, endOfWeek, subWeeks } from "date-fns";
+import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { formatDateTime } from "@/utils/financeiro";
 
 import { AppShell } from "@/components/layout/AppShell";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Sheet, SheetContent } from "@/components/ui/sheet";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
 import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
-import { cn, decimalParaHora } from "@/lib/utils";
-
+import {
+  UxLabFiltroTemporal,
+  FiltroTemporalValue,
+} from "@/components/ux-lab/UxLabFiltroTemporal";
+import {
+  AprovacaoDecisaoDrawer,
+  ApprovalItem,
+  TipoItem,
+  SituacaoItem,
+  renderDominioBadge,
+  SITUACAO_BADGES,
+} from "@/components/aprovacoes/AprovacaoDecisaoDrawer";
 import { EmpresaService } from "@/services/domain/cadastros.service";
-import { PontoService, OperacaoProducaoService } from "@/services/domain/producao.service";
-import { OperacaoService } from "@/services/domain/core.service";
-import {
-    CustoExtraOperacionalService,
-    ServicosExtrasOperacionaisService
-} from "@/services/domain/despesas.service";
-import {
-    LancamentoDiaristaService,
-    LoteFechamentoDiaristaService
-} from "@/services/domain/diaristas.service";
+import { OperacaoProducaoService } from "@/services/domain/producao.service";
 import { IntermitentesLoteService } from "@/services/domain/intermitentes.service";
 import { AprovacoesService } from "@/services/domain/aprovacoes.service";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
-import { useOperationalPipeline, buildCustosExtrasPipeline, buildServicosExtrasPipeline } from "@/contexts/OperationalPipelineContext";
-import {
-    getOrigemRecursoBadge,
-    getOrigemRecursoApprovalNotice,
-    getOrigemRecursoStatusNotice,
-    type OrigemRecursoBanco
-} from "@/types/custosExtrasForm";
-
-// ────────────────────────────────────────────────────
-// Tipo unificado de item de aprovação
-// ────────────────────────────────────────────────────
-type TipoItem = "PONTO" | "DIARISTA" | "INTERMITENTE" | "CUSTO EXTRA" | "SERVIÇO EXTRA" | "OPERAÇÃO";
-type SituacaoItem = "Em análise" | "Aprovado" | "Devolvido" | "Pendente";
-
-interface ApprovalItem {
-    id: string;
-    tipo: TipoItem;
-    referencia: string;
-    colaborador: string;
-    descricao: string;
-    empresa: string;
-    operacao: string;
-    valor: number;
-    horas?: string;
-    competencia: string;
-    data_recebimento: string;
-    situacao: SituacaoItem;
-    raw_status?: string;
-    raw_lote_id?: string;
-    origem_recurso?: OrigemRecursoBanco;
-}
+import { useOperationalPipeline, buildServicosExtrasPipeline } from "@/contexts/OperationalPipelineContext";
+import { cn } from "@/lib/utils";
 
 // ────────────────────────────────────────────────────
 // Formatadores
 // ────────────────────────────────────────────────────
-const fmt = (v: number) => v?.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const fmt = (v?: number) => v?.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) || "R$ 0,00";
+
 const fmtDate = (d?: string) => {
-    if (!d) return "—";
-    try { return format(new Date(d.includes("T") ? d : d + "T12:00:00"), "dd/MM/yyyy HH:mm", { locale: ptBR }); } catch { return d; }
+  if (!d) return "—";
+  try {
+    return format(new Date(d.includes("T") ? d : d + "T12:00:00"), "dd/MM/yyyy HH:mm", { locale: ptBR });
+  } catch {
+    return d;
+  }
 };
 
-// ────────────────────────────────────────────────────
-// Mapeamento de situação
-// ────────────────────────────────────────────────────
-const situacaoMap = (status?: string): SituacaoItem => {
-    if (!status) return "Em análise";
-    const s = status.toUpperCase();
-    const emAnalise = ["EM_ABERTO", "PENDENTE", "AGUARDANDO_VALIDACAO_RH", "EM_ANALISE", "DETALHADO", "REGISTRADO", "EM_VALIDACAO"].some(k => s === k.toUpperCase());
-    if (emAnalise) return "Em análise";
+const getMaisAntigoInfo = (pendentes: ApprovalItem[]) => {
+  if (!pendentes || pendentes.length === 0) {
+    return {
+      valor: "—",
+      descricao: "Nenhum item aguardando decisão",
+    };
+  }
 
-    const aprovado = [
-        "APROVADO", "VALIDADO_RH", "VALIDADO", "FECHADO_FINANCEIRO", "PAGO", "PROCESSADO",
-        "CNAB_GERADO", "AGUARDANDO_PAGAMENTO", "CONCLUIDO", "FINALIZADO", "FECHADO",
-        "APROVADO_OPERACAO"
-    ].some(k => s === k.toUpperCase());
-    if (aprovado) return "Aprovado";
+  // Ordena por data_recebimento ascendente (mais antigo primeiro)
+  const sorted = [...pendentes].sort((a, b) => {
+    const timeA = a.data_recebimento ? new Date(a.data_recebimento.includes("T") ? a.data_recebimento : a.data_recebimento + "T12:00:00").getTime() : Infinity;
+    const timeB = b.data_recebimento ? new Date(b.data_recebimento.includes("T") ? b.data_recebimento : b.data_recebimento + "T12:00:00").getTime() : Infinity;
+    return timeA - timeB;
+  });
 
-    if (["DEVOLVIDO", "CANCELADO", "CANCELADO_RH", "RETORNADO", "RECUSADO", "REPROVADO", "DEVOLVIDO_RH"].some(k => s === k.toUpperCase())) return "Devolvido";
+  const oldest = sorted[0];
+  if (!oldest || !oldest.data_recebimento) {
+    return {
+      valor: "—",
+      descricao: "Data de recebimento indisponível",
+    };
+  }
 
-    return "Em análise";
+  try {
+    const oldestDate = new Date(oldest.data_recebimento.includes("T") ? oldest.data_recebimento : oldest.data_recebimento + "T12:00:00");
+    if (isNaN(oldestDate.getTime())) {
+      return {
+        valor: "—",
+        descricao: "Data de recebimento indisponível",
+      };
+    }
+
+    const now = new Date();
+    const diffMs = now.getTime() - oldestDate.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    let valor = "Hoje";
+    if (diffDays === 1) valor = "1 dia";
+    else if (diffDays > 1) valor = `${diffDays} dias`;
+
+    const formattedDate = format(oldestDate, "dd/MM/yyyy", { locale: ptBR });
+    return {
+      valor,
+      descricao: `Recebido em ${formattedDate}`,
+    };
+  } catch {
+    return {
+      valor: "—",
+      descricao: "Data de recebimento indisponível",
+    };
+  }
 };
 
-const SITUACAO_COLORS: Record<SituacaoItem, string> = {
-    "Em análise": "bg-amber-100 text-amber-700 border-amber-200",
-    "Aprovado": "bg-emerald-100 text-emerald-700 border-emerald-200",
-    "Devolvido": "bg-rose-100 text-rose-700 border-rose-200",
-    "Pendente": "bg-slate-100 text-slate-600 border-slate-200",
-};
-
-const TIPO_COLORS: Record<TipoItem, string> = {
-    "PONTO": "bg-blue-100 text-blue-700",
-    "DIARISTA": "bg-emerald-100 text-emerald-700",
-    "INTERMITENTE": "bg-indigo-100 text-indigo-700",
-    "CUSTO EXTRA": "bg-orange-100 text-orange-700",
-    "SERVIÇO EXTRA": "bg-purple-100 text-purple-700",
-    "OPERAÇÃO": "bg-cyan-100 text-cyan-700",
-};
-
-// ────────────────────────────────────────────────────
-// Página principal
-// ────────────────────────────────────────────────────
 export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: string; lockedFlow?: boolean } = {}) {
-    const { user } = useAuth();
-    const { role, isAdmin } = useTenant();
-    const { openPipeline } = useOperationalPipeline();
-    const queryClient = useQueryClient();
-    const navigate = useNavigate();
-    const [searchParams] = useSearchParams();
+  const { user } = useAuth();
+  const { role, isAdmin } = useTenant();
+  const { openPipeline } = useOperationalPipeline();
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
-    // ── Context Mode (Props ou URL SearchParams) ──
-    const effectiveFlowType = flowType || searchParams.get("tipo") || searchParams.get("flowType") || undefined;
-    const isLocked = lockedFlow ?? (searchParams.get("locked") === "true" || !!effectiveFlowType);
+  // ── Context Mode (Props ou URL SearchParams) ──
+  const effectiveFlowType = flowType || searchParams.get("tipo") || searchParams.get("flowType") || undefined;
+  const isLocked = lockedFlow ?? (searchParams.get("locked") === "true" || !!effectiveFlowType);
 
-    // ── Filtros ──────────────────────────────────────
-    const [periodo, setPeriodo] = useState<string>("semana-atual");
-    const [inicio, setInicio] = useState(format(startOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd"));
-    const [fim, setFim] = useState(format(endOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd"));
-    const [filterEmpresaId, setFilterEmpresaId] = useState("all");
-    const [filterType, setFilterType] = useState<string>(effectiveFlowType || "all");
-    const [searchTerm, setSearchTerm] = useState("");
-    const [activeTab, setActiveTab] = useState<string>("fila");
-    const [currentPage, setCurrentPage] = useState(1);
-    const [itemsPerPage, setItemsPerPage] = useState(10);
+  // ── Filtros de Trabalho ──
+  const [empresaFiltro, setEmpresaFiltro] = useState<string>("all");
+  const [filtroTemporal, setFiltroTemporal] = useState<FiltroTemporalValue>({
+    type: "preset",
+    preset: "todos",
+  });
+  const [dominioFiltro, setDominioFiltro] = useState<string>(effectiveFlowType || "TODAS");
+  const [situacaoFiltro, setSituacaoFiltro] = useState<string>("PENDENTE");
+  const [busca, setBusca] = useState<string>("");
 
-    useEffect(() => {
-        if (effectiveFlowType) {
-            setFilterType(effectiveFlowType);
-            setCurrentPage(1);
+  // ── Filtro Rápido por KPI ──
+  const [filtroRapidoKpi, setFiltroRapidoKpi] = useState<string | null>(null);
+
+  // ── Paginação ──
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  // ── Seleção e Drawer ──
+  const [selectedItems, setSelectedItems] = useState<string[]>([]);
+  const [activeItem, setActiveItem] = useState<ApprovalItem | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  useEffect(() => {
+    if (effectiveFlowType) {
+      setDominioFiltro(effectiveFlowType);
+      setCurrentPage(1);
+    }
+  }, [effectiveFlowType]);
+
+  // ── Queries de Dados Reais ──
+  const { data: empresas = [] } = useQuery({
+    queryKey: ["empresas"],
+    queryFn: () => EmpresaService.getAll(),
+  });
+
+  const { data: results, isLoading, isFetching, refetch } = useQuery({
+    queryKey: ["aprovacoes-rh", empresaFiltro],
+    queryFn: async () => {
+      const res = await AprovacoesService.getAprovacoesRh({
+        page: 1,
+        itemsPerPage: 1000,
+        tipo: "all",
+        empresaId: empresaFiltro === "all" ? "" : empresaFiltro,
+        searchTerm: "",
+        situacao: undefined as any,
+      });
+      return (res?.data || []) as unknown as ApprovalItem[];
+    },
+  });
+
+  const itensRaw = useMemo(() => results || [], [results]);
+
+  // ── Contexto Macro (Empresa + Filtro Temporal) ──
+  const aprovacoesContextuais = useMemo(() => {
+    return itensRaw.filter((item) => {
+      // 1. Filtro Temporal
+      if (filtroTemporal.type === "preset") {
+        if (filtroTemporal.preset === "hoje") {
+          const today = format(new Date(), "yyyy-MM-dd");
+          if (!String(item.data_recebimento || "").startsWith(today)) return false;
+        } else if (filtroTemporal.preset === "setembro") {
+          if (!String(item.data_recebimento || "").includes("-09-") && !String(item.competencia || "").includes("-09")) return false;
+        } else if (filtroTemporal.preset === "outubro" || filtroTemporal.preset === "mes-atual") {
+          if (!String(item.data_recebimento || "").includes("-10-") && !String(item.competencia || "").includes("-10")) return false;
         }
-    }, [effectiveFlowType]);
-
-    const [selectedItems, setSelectedItems] = useState<string[]>([]);
-    const [activeItem, setActiveItem] = useState<ApprovalItem | null>(null);
-
-    // ── Derivar mês da competência a partir do período ──
-    const competenciaMes = useMemo(() => inicio.substring(0, 7), [inicio]);
-
-    // ════ QUERIES ════════════════════════════════════
-
-    const { data: empresas = [] } = useQuery({ queryKey: ["empresas"], queryFn: () => EmpresaService.getAll() });
-
-    const empresaFiltro = filterEmpresaId === "all" ? undefined : filterEmpresaId;
-    const mappedSituacao: SituacaoItem = activeTab === "fila" ? "Em análise" : (activeTab === "aprovados" ? "Aprovado" : "Devolvido");
-
-    const { data: results, isLoading: loadData } = useQuery({
-        queryKey: ["aprovacoes-rh", currentPage, itemsPerPage, filterType, filterEmpresaId, searchTerm, activeTab, inicio, fim],
-        queryFn: async () => {
-            if (activeTab === "historico") {
-                // historico fetches all without situacao filter
-                return AprovacoesService.getAprovacoesRh({
-                    page: currentPage,
-                    itemsPerPage,
-                    tipo: filterType,
-                    empresaId: filterEmpresaId,
-                    searchTerm,
-                    situacao: undefined as any,
-                    inicioCompetencia: inicio,
-                    fimCompetencia: fim
-                });
-            }
-            return AprovacoesService.getAprovacoesRh({
-                page: currentPage,
-                itemsPerPage,
-                tipo: filterType,
-                empresaId: filterEmpresaId,
-                searchTerm,
-                situacao: mappedSituacao,
-                inicioCompetencia: inicio,
-                fimCompetencia: fim
-            });
+      } else if (filtroTemporal.type === "data" && filtroTemporal.data) {
+        const itemDate = new Date(item.data_recebimento);
+        const target = filtroTemporal.data;
+        if (
+          itemDate.getFullYear() !== target.getFullYear() ||
+          itemDate.getMonth() !== target.getMonth() ||
+          itemDate.getDate() !== target.getDate()
+        ) {
+          return false;
         }
+      } else if (filtroTemporal.type === "range" && filtroTemporal.range?.from) {
+        const itemDate = new Date(item.data_recebimento);
+        const fromDate = new Date(filtroTemporal.range.from);
+        fromDate.setHours(0, 0, 0, 0);
+        const toDate = filtroTemporal.range.to ? new Date(filtroTemporal.range.to) : new Date(filtroTemporal.range.from);
+        toDate.setHours(23, 59, 59, 999);
+        if (itemDate < fromDate || itemDate > toDate) return false;
+      }
+
+      return true;
     });
+  }, [itensRaw, filtroTemporal]);
 
-    const { data: kpisData, isLoading: loadKpis } = useQuery({
-        queryKey: ["aprovacoes-kpis", filterType, filterEmpresaId, inicio, fim],
-        queryFn: () => AprovacoesService.getKpis({
-            tipo: filterType,
-            empresaId: filterEmpresaId,
-            inicioCompetencia: inicio,
-            fimCompetencia: fim
-        })
-    });
-
-    const isLoading = loadData || loadKpis;
-
-    const currentTabItems = (results?.data || []) as unknown as ApprovalItem[];
-    const allItems = currentTabItems;
-    const totalPages = Math.ceil((results?.count || 0) / itemsPerPage);
-    const paginatedItems = currentTabItems;
-
-    const kpis = {
-        pontos: kpisData?.pontos || 0,
-        pontosValor: undefined,
-        diaristas: kpisData?.diaristas || 0,
-        diaristasValor: undefined,
-        intermitentes: kpisData?.intermitentes || 0,
-        intermitentesValor: undefined,
-        custos: kpisData?.custos || 0,
-        custosValor: undefined,
-        servicos: kpisData?.servicos || 0,
-        servicosValor: undefined,
-        atrasados: kpisData?.devolvidos || 0,
-        atrasadosValor: undefined,
-    };
-
-    // ────────────────────────────────────────────────────
-    // Mutações de aprovação/devolução
-    // ────────────────────────────────────────────────────
-    const invalidate = () => {
-        queryClient.invalidateQueries({ queryKey: ["aprovacoes-rh"] });
-        queryClient.invalidateQueries({ queryKey: ["aprovacoes-kpis"] });
-        queryClient.invalidateQueries({ queryKey: ["custos-extras"], refetchType: "all" });
-        queryClient.invalidateQueries({ queryKey: ["dashboard-custos-extras"] });
-        queryClient.invalidateQueries({ queryKey: ["financeiro-despesas"] });
-        queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
-    };
-
-    const aprovarMutation = useMutation({
-        mutationFn: async (item: ApprovalItem) => {
-            // Diaristas: valida via LoteFechamento
-            if (item.tipo === "DIARISTA" && item.raw_lote_id) {
-                const { error } = await supabase.from("diaristas_lotes_fechamento" as any)
-                    .update({ status: "VALIDADO_RH", updated_at: new Date().toISOString() })
-                    .eq("id", item.raw_lote_id);
-                if (error) throw error;
-
-                await supabase.from("lancamentos_diaristas")
-                    .update({ status: "VALIDADO_RH" })
-                    .eq("lote_fechamento_id", item.raw_lote_id);
-                return;
-            }
-            if (item.tipo === "INTERMITENTE") {
-                await IntermitentesLoteService.validarLote(item.id, user?.id || "");
-                return;
-            }
-            // Pontos
-            if (item.tipo === "PONTO") {
-                const { error } = await supabase.from("registros_ponto")
-                    .update({ status_processamento: "PROCESSADO" })
-                    .eq("id", item.id);
-                if (error) throw error;
-                return;
-            }
-            // Custos extras
-            if (item.tipo === "CUSTO EXTRA") {
-                const { data: custoData, error: fetchErr } = await supabase
-                    .from("custos_extras_operacionais" as any)
-                    .select("id, atualizado_em")
-                    .eq("id", item.id)
-                    .single();
-                if (fetchErr) throw fetchErr;
-
-                const { data: result, error } = await supabase.rpc("rpc_custo_extra_transicionar" as any, {
-                    p_id: item.id,
-                    p_acao: "aprovar",
-                    p_updated_at: custoData?.atualizado_em || null,
-                    p_justificativa: null,
-                });
-                if (error) throw error;
-                return result;
-            }
-            // Serviços extras
-            if (item.tipo === "SERVIÇO EXTRA") {
-                const { data: updated, error } = await supabase.from("servicos_extras_operacionais" as any)
-                    .update({ pipeline_status: "APROVADO_OPERACAO", atualizado_em: new Date().toISOString() })
-                    .eq("id", item.id)
-                    .select("id, empresa_id, data, descricao_servico, total, modalidade_financeira, pipeline_status")
-                    .maybeSingle();
-                if (error) throw error;
-                return updated;
-            }
-            // Operações por Volume
-            if (item.tipo === "OPERAÇÃO") {
-                // Defesa de domínio (FIX 05): Operação em restrição ou sem horários de início/fim não pode ser aprovada
-                const { data: opData, error: opCheckErr } = await supabase
-                    .from("operacoes_producao")
-                    .select("id, status, entrada_ponto, saida_ponto")
-                    .eq("id", item.id)
-                    .single();
-
-                if (opCheckErr) throw opCheckErr;
-
-                if (opData?.status === "EM_RESTRICAO" || !opData?.entrada_ponto || !opData?.saida_ponto) {
-                    throw new Error("Esta operação possui restrições de horários e deve ser corrigida em Pendências antes de ser aprovada pelo RH.");
-                }
-
-                const { error } = await supabase.rpc("rpc_rh_aprovar_operacao", {
-                    p_operacao_id: item.id
-                });
-                if (error) throw error;
-                return;
-            }
-        },
-        onSuccess: () => {
-            invalidate();
-        },
-        onError: (err: any) => toast.error("Erro ao aprovar.", { description: err?.message }),
-    });
-
-    const devolverMutation = useMutation({
-        mutationFn: async ({ item, motivo }: { item: ApprovalItem, motivo?: string }) => {
-            if (item.tipo === "DIARISTA" && item.raw_lote_id) {
-                const { error } = await supabase.from("diaristas_lotes_fechamento" as any)
-                    .update({ status: "AGUARDANDO_VALIDACAO_RH", updated_at: new Date().toISOString() })
-                    .eq("id", item.raw_lote_id);
-                if (error) throw error;
-
-                await supabase.from("lancamentos_diaristas")
-                    .update({ status: "AGUARDANDO_VALIDACAO_RH" })
-                    .eq("lote_fechamento_id", item.raw_lote_id);
-                return;
-            }
-            if (item.tipo === "INTERMITENTE") {
-                await IntermitentesLoteService.devolverLote(item.id, "Devolvido pelo RH via Painel Global");
-                return;
-            }
-            if (item.tipo === "PONTO") {
-                const { error } = await supabase.from("registros_ponto")
-                    .update({ status_processamento: "INCONSISTENTE" })
-                    .eq("id", item.id);
-                if (error) throw error;
-                return;
-            }
-            if (item.tipo === "CUSTO EXTRA") {
-                const { error } = await supabase.from("custos_extras_operacionais" as any)
-                    .update({ pipeline_status: "REPROVADO", atualizado_em: new Date().toISOString() })
-                    .eq("id", item.id);
-                if (error) throw error;
-                return;
-            }
-            if (item.tipo === "SERVIÇO EXTRA") {
-                const { error } = await supabase.from("servicos_extras_operacionais" as any)
-                    .update({ pipeline_status: "DEVOLVIDO", atualizado_em: new Date().toISOString() })
-                    .eq("id", item.id);
-                if (error) throw error;
-                return;
-            }
-            // Operações por Volume
-            if (item.tipo === "OPERAÇÃO") {
-                const { error } = await supabase.rpc("rpc_rh_devolver_operacao", {
-                    p_operacao_id: item.id,
-                    p_motivo: motivo || null
-                });
-                if (error) throw error;
-                return;
-            }
-        },
-        onSuccess: () => {
-            invalidate();
-        },
-        onError: (err: any) => toast.error("Erro ao devolver.", { description: err?.message }),
-    });
-
-    // Ações em lote
-    const handleBulkAprovar = async () => {
-        const items = paginatedItems.filter(i => selectedItems.includes(i.id));
-        const aprovados: string[] = [];
-        const parciais: string[] = [];
-
-        for (const item of items) {
-            try {
-                await aprovarMutation.mutateAsync(item);
-                aprovados.push(item.referencia);
-            } catch (err: any) {
-                parciais.push(`[${item.referencia}] ${err?.message || "Erro desconhecido"}`);
-            }
-        }
-
-        if (parciais.length > 0) {
-            toast.warning(`${aprovados.length} aprovado(s). ${parciais.length} falharam.`, {
-                description: parciais.join(" | ")
-            });
-        } else if (aprovados.length > 0) {
-            toast.success(`${aprovados.length} itens aprovados com sucesso!`);
-        }
-
-        invalidate();
-        setSelectedItems([]);
-    };
-
-    const handleBulkDevolver = async () => {
-        const items = paginatedItems.filter(i => selectedItems.includes(i.id));
-        for (const item of items) await devolverMutation.mutateAsync({ item }).catch(() => null);
-        toast.success("Itens devolvidos com sucesso.");
-        invalidate();
-        setSelectedItems([]);
-    };
-
-    // ── Seleção ──────────────────────────────────────
-    const toggleSelectAll = () => {
-        if (selectedItems.length === paginatedItems.length) setSelectedItems([]);
-        else setSelectedItems(paginatedItems.map(i => i.id));
-    };
-
-    const toggleSelectItem = (id: string) =>
-        setSelectedItems(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
-
-    // ── Continuidade de Serviço Extra ────────────────
-    const openServicoExtraContinuity = async (item: ApprovalItem) => {
-        // Fechar qualquer painel genérico ativo
-        setActiveItem(null);
-
-        // Derivar valores a partir do registro persistido
-        let modalidade = (item as any).modalidade_financeira;
-        let pipelineStatus = item.raw_status || "APROVADO_OPERACAO";
-        let descricao = item.descricao;
-        let valor = item.valor;
-        let dataRegistro: string | undefined = undefined;
-
-        try {
-            const { data: seData } = await supabase
-                .from("servicos_extras_operacionais" as any)
-                .select("id, empresa_id, data, descricao_servico, total, modalidade_financeira, pipeline_status")
-                .eq("id", item.id)
-                .maybeSingle();
-
-            if (seData) {
-                if (seData.modalidade_financeira) modalidade = seData.modalidade_financeira;
-                if (seData.pipeline_status) pipelineStatus = seData.pipeline_status;
-                if (seData.descricao_servico) descricao = seData.descricao_servico;
-                if (seData.total !== null && seData.total !== undefined) valor = Number(seData.total);
-                if (seData.data) dataRegistro = seData.data;
-            }
-        } catch (err) {
-            console.warn("Erro ao buscar dados persistidos de serviço extra para continuidade:", err);
-        }
-
-        const compCandidate = item.competencia || (item as any).data_recebimento || dataRegistro || "";
-        let competencia = format(new Date(), "yyyy-MM");
-        if (/^\d{4}-\d{2}/.test(compCandidate)) {
-            competencia = compCandidate.substring(0, 7);
-        }
-
-        openPipeline(
-            buildServicosExtrasPipeline({
-                competencia,
-                empresa: item.empresa || "Empresa",
-                currentStep: "aprovacao",
-                pipelineStatus,
-                modalidade_financeira: modalidade,
-                registroId: item.id,
-                descricao,
-                valor,
-                data: dataRegistro,
-            })
-        );
-    };
-
-    const handleRowClick = (item: ApprovalItem) => {
-        const isApproved =
-            activeTab === "aprovados" ||
-            item.situacao === "Aprovado" ||
-            ["APROVADO", "VALIDADO_RH", "VALIDADO", "FECHADO_FINANCEIRO", "PAGO", "PROCESSADO", "CNAB_GERADO", "AGUARDANDO_PAGAMENTO", "CONCLUIDO", "FINALIZADO", "FECHADO", "APROVADO_OPERACAO"].includes(String(item.raw_status || "").toUpperCase());
-
-        if (item.tipo === "SERVIÇO EXTRA" && isApproved) {
-            openServicoExtraContinuity(item);
-            return;
-        }
-
-        setActiveItem(prev => prev?.id === item.id ? null : item);
-    };
-
-    // ── Período Rápido ───────────────────────────────
-    const handlePeriodo = (value: string) => {
-        setPeriodo(value);
-        const hoje = new Date();
-        if (value === "semana-atual") {
-            setInicio(format(startOfWeek(hoje, { weekStartsOn: 1 }), "yyyy-MM-dd"));
-            setFim(format(endOfWeek(hoje, { weekStartsOn: 1 }), "yyyy-MM-dd"));
-        } else if (value === "semana-anterior") {
-            const ant = subWeeks(hoje, 1);
-            setInicio(format(startOfWeek(ant, { weekStartsOn: 1 }), "yyyy-MM-dd"));
-            setFim(format(endOfWeek(ant, { weekStartsOn: 1 }), "yyyy-MM-dd"));
-        } else if (value === "mes-atual") {
-            setInicio(format(new Date(hoje.getFullYear(), hoje.getMonth(), 1), "yyyy-MM-dd"));
-            setFim(format(new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0), "yyyy-MM-dd"));
-        }
-        setCurrentPage(1);
-    };
-
-    const handleRefresh = () => {
-        invalidate();
-        toast.success("Dados atualizados.");
-    };
-
-    // ── Exportar ─────────────────────────────────────
-    const handleExport = async () => {
-        try {
-            const { utils, writeFile } = await import("xlsx");
-            const rows = currentTabItems.map(i => ({
-                Tipo: i.tipo,
-                Referência: i.referencia,
-                Colaborador: i.colaborador,
-                Empresa: i.empresa,
-                Operação: i.operacao,
-                "Valor (R$)": i.valor,
-                Competência: i.competencia,
-                "Data Recebimento": fmtDate(i.data_recebimento),
-                Situação: i.situacao,
-            }));
-            const ws = utils.json_to_sheet(rows);
-            const wb = utils.book_new();
-            utils.book_append_sheet(wb, ws, "Aprovações");
-            writeFile(wb, `Aprovacoes_RH_${format(new Date(), "yyyyMMdd_HHmm")}.xlsx`);
-            toast.success("Exportado com sucesso!");
-        } catch {
-            toast.error("Erro ao exportar.");
-        }
-    };
-
-    const APPROVAL_TYPES = [
-        { id: "all", label: "Fila Geral", icon: Layers, color: "text-primary" },
-        { id: "PONTO", label: "Folha de Ponto", icon: Clock, color: "text-blue-500" },
-        { id: "DIARISTA", label: "Diaristas", icon: Users, color: "text-emerald-500" },
-        { id: "INTERMITENTE", label: "Intermitentes", icon: Users, color: "text-indigo-500" },
-        { id: "CUSTO EXTRA", label: "Custos Extras", icon: DollarSign, color: "text-orange-500" },
-        { id: "SERVIÇO EXTRA", label: "Serviços Extras", icon: Activity, color: "text-purple-500" },
-        { id: "OPERAÇÃO", label: "Operações", icon: CheckCircle2, color: "text-cyan-500" },
-    ];
-
-    const currentTypeObj = APPROVAL_TYPES.find(t => t.id === filterType);
-    const currentTypeLabel = currentTypeObj?.label || filterType;
-    const isContextMode = isLocked && filterType !== "all";
-    const pageTitle = isContextMode ? `Aprovações — ${currentTypeLabel}` : "Aprovações";
-    const pageSubtitle = isContextMode 
-        ? `Fila de aprovações contextuais para ${currentTypeLabel}` 
-        : "Central de validação e decisões pendentes";
-    const pageBadge = isContextMode ? `${currentTypeLabel.toUpperCase()} / APROVAÇÕES` : "PROCESSAMENTO / PIPELINE";
-
-    // ── Render ───────────────────────────────────────
-    return (
-        <AppShell
-            title={pageTitle}
-            subtitle={pageSubtitle}
-            badge={pageBadge}
-        >
-            <div className="flex flex-col gap-6 max-w-[1700px] mx-auto pb-12 px-4 md:px-6">
-
-                {/* FILTROS TIPO (Pills horizontais) */}
-                {!isLocked && (
-                    <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                        {APPROVAL_TYPES.map((type) => {
-                            const Icon = type.icon;
-                            const isActive = filterType === type.id;
-                            const count = type.id === "all"
-                                ? allItems.filter(i => i.situacao === "Em análise").length
-                                : allItems.filter(i => i.tipo === type.id && i.situacao === "Em análise").length;
-
-                            return (
-                                <button
-                                    key={type.id}
-                                    onClick={() => {
-                                        setFilterType(type.id);
-                                        setCurrentPage(1);
-                                    }}
-                                    className={cn(
-                                        "h-9 px-4 rounded-full flex items-center gap-2 border transition-all whitespace-nowrap text-xs font-medium",
-                                        isActive
-                                            ? "bg-[#FFF1EC] text-[#FD4C00] border-[#FD4C00]/20 shadow-sm"
-                                            : "bg-white text-muted-foreground border-border hover:bg-bg-subtle"
-                                    )}
-                                >
-                                    <Icon className={cn("h-3.5 w-3.5", isActive ? "text-[#FD4C00]" : "text-muted-foreground/60")} />
-                                    <span>{type.label}</span>
-                                    {count > 0 && (
-                                        <span className={cn(
-                                            "ml-1 h-4 min-w-[16px] px-1 rounded-full text-[9px] flex items-center justify-center font-bold",
-                                            isActive ? "bg-[#FD4C00] text-white" : "bg-gray-100 text-gray-600"
-                                        )}>
-                                            {count}
-                                        </span>
-                                    )}
-                                </button>
-                            );
-                        })}
-                    </div>
-                )}
-
-                {/* KPI Grid */}
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
-                    <KPICard label="Pontos Pendentes" value={String(kpis.pontos)} subtext={fmt(kpis.pontosValor)} icon={Clock} iconColor="text-blue-600" iconBg="bg-blue-50" loading={isLoading} />
-                    <KPICard label="Diaristas" value={String(kpis.diaristas)} subtext={fmt(kpis.diaristasValor)} icon={Users} iconColor="text-emerald-600" iconBg="bg-emerald-50" loading={isLoading} />
-                    <KPICard label="Intermitentes" value={String(kpis.intermitentes)} subtext={fmt(kpis.intermitentesValor)} icon={Users} iconColor="text-indigo-600" iconBg="bg-indigo-50" loading={isLoading} />
-                    <KPICard label="Custos Extras" value={String(kpis.custos)} subtext={fmt(kpis.custosValor)} icon={DollarSign} iconColor="text-orange-600" iconBg="bg-orange-50" loading={isLoading} />
-                    <KPICard label="Serviços Extras" value={String(kpis.servicos)} subtext={fmt(kpis.servicosValor)} icon={Activity} iconColor="text-purple-600" iconBg="bg-purple-50" loading={isLoading} />
-                    <KPICard label="Devolvidos" value={String(kpis.atrasados)} subtext={fmt(kpis.atrasadosValor)} icon={AlertTriangle} iconColor="text-rose-600" iconBg="bg-rose-50" isAlert />
-                    <KPICard label="Atualização" value={format(new Date(), "HH:mm", { locale: ptBR })} subtext={format(new Date(), "dd/MM/yyyy", { locale: ptBR })} icon={CalendarDays} iconColor="text-slate-600" iconBg="bg-slate-50" />
-                </div>
-
-                {/* Filters Row */}
-                <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 py-4 border-y border-border/60">
-                    <div className="flex flex-wrap items-center gap-3">
-                        <div className="flex items-center gap-2">
-                            <Select value={periodo} onValueChange={handlePeriodo}>
-                                <SelectTrigger className="h-10 px-4 rounded-lg border border-border bg-card text-sm font-medium text-foreground cursor-pointer min-w-[160px]">
-                                    <SelectValue placeholder="Período" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="semana-atual">Semana atual</SelectItem>
-                                    <SelectItem value="semana-anterior">Semana anterior</SelectItem>
-                                    <SelectItem value="mes-atual">Mês atual</SelectItem>
-                                    <SelectItem value="personalizado">Personalizado</SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <Input type="date" value={inicio} onChange={e => { setInicio(e.target.value); setPeriodo("personalizado"); setCurrentPage(1); }} className="h-10 w-[140px] font-medium" />
-                            <Input type="date" value={fim} onChange={e => { setFim(e.target.value); setPeriodo("personalizado"); setCurrentPage(1); }} className="h-10 w-[140px] font-medium" />
-                        </div>
-
-                        <Select value={filterEmpresaId} onValueChange={v => { setFilterEmpresaId(v); setCurrentPage(1); }}>
-                            <SelectTrigger className="h-10 px-4 rounded-lg border border-border bg-card text-sm font-medium text-foreground cursor-pointer min-w-[200px]">
-                                <SelectValue placeholder="Todas as empresas" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">Todas as empresas</SelectItem>
-                                {(empresas as any[]).map(e => (
-                                    <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-
-                        <div className="relative group min-w-[240px]">
-                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60" />
-                            <Input
-                                placeholder="Pesquisa rápida..."
-                                value={searchTerm}
-                                onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-                                className="pl-10 h-10 w-full rounded-lg border-border bg-card font-medium"
-                            />
-                        </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                        <Button variant="outline" size="sm" onClick={handleRefresh} className="h-10 gap-2 border-border/40 hover:bg-white shadow-sm" disabled={isLoading}>
-                            <RotateCcw size={14} className={cn("text-muted-foreground", isLoading && "animate-spin")} />
-                            <span>Sincronizar</span>
-                        </Button>
-                    </div>
-                </div>
-
-                {/* Content Area */}
-                <div className="flex flex-col lg:flex-row gap-6 items-start">
-                    <div className="flex-1 min-w-0 w-full">
-                        <Tabs value={activeTab} onValueChange={v => { setActiveTab(v); setCurrentPage(1); setSelectedItems([]); }} className="w-full">
-                            <div className="flex flex-col md:flex-row items-center justify-between border-b border-border/40 mb-0 bg-white/60 backdrop-blur-sm rounded-t-xl px-4 gap-4 py-2 md:py-0">
-                                <TabsList className="bg-transparent h-14 p-0 gap-6">
-                                    {[
-                                        { value: "fila", label: "Fila de Aprovação", icon: Activity, count: kpisData?.filaTotal, color: "data-[state=active]:border-orange-500 data-[state=active]:text-orange-600" },
-                                        { value: "aprovados", label: "Aprovados", icon: CheckCircle2, count: kpisData?.aprovadosTotal, color: "data-[state=active]:border-emerald-500 data-[state=active]:text-emerald-700" },
-                                        { value: "devolvidos", label: "Devolvidos", icon: RotateCcw, count: kpisData?.devolvidosTabTotal, color: "data-[state=active]:border-rose-500 data-[state=active]:text-rose-600" },
-                                        { value: "historico", label: "Histórico", icon: History, count: activeTab === "historico" ? results?.count : undefined, color: "data-[state=active]:border-primary" },
-                                    ].map(tab => (
-                                        <TabsTrigger key={tab.value} value={tab.value} className={cn("bg-transparent border-b-2 border-transparent data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none text-[11px] uppercase tracking-wider font-bold px-0 h-14 gap-2 transition-all opacity-70 data-[state=active]:opacity-100", tab.color)}>
-                                            <tab.icon size={14} />
-                                            {tab.label}
-                                            {tab.count !== undefined && <span className="ml-1 text-[9px] bg-muted/60 rounded-full px-1.5 py-0.5 font-bold">{tab.count}</span>}
-                                        </TabsTrigger>
-                                    ))}
-                                </TabsList>
-
-                                <div className="flex items-center gap-2 pb-2 md:pb-0">
-                                    {activeTab === "fila" && (
-                                        <>
-                                            <Button size="sm" className="h-9 bg-emerald-600 hover:bg-emerald-700 text-white gap-2 px-4 shadow-sm font-bold text-xs" disabled={selectedItems.length === 0 || aprovarMutation.isPending} onClick={handleBulkAprovar}>
-                                                {aprovarMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                                                Aprovar Selecionados
-                                            </Button>
-                                            <Button variant="outline" size="sm" className="h-9 border-orange-200 text-orange-600 hover:bg-orange-50 gap-2 px-4 font-bold text-xs" disabled={selectedItems.length === 0 || devolverMutation.isPending} onClick={handleBulkDevolver}>
-                                                {devolverMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
-                                                Devolver
-                                            </Button>
-                                        </>
-                                    )}
-                                    <Button variant="outline" size="sm" className="h-9 gap-2 px-4 font-bold text-xs border-border/60" onClick={handleExport}>
-                                        <Download size={14} className="text-muted-foreground" />
-                                        Excel
-                                    </Button>
-                                </div>
-                            </div>
-
-                            {["fila", "aprovados", "devolvidos", "historico"].map(tabValue => (
-                                <TabsContent key={tabValue} value={tabValue} className="mt-0">
-                                    <ItensTable
-                                        items={paginatedItems}
-                                        allItemsCount={currentTabItems.length}
-                                        selectedItems={selectedItems}
-                                        activeItem={activeItem}
-                                        onSelectAll={toggleSelectAll}
-                                        onSelectItem={toggleSelectItem}
-                                        onRowClick={handleRowClick}
-                                        currentPage={currentPage}
-                                        itemsPerPage={itemsPerPage}
-                                        totalPages={totalPages}
-                                        onPageChange={setCurrentPage}
-                                        onItemsPerPageChange={v => { setItemsPerPage(v); setCurrentPage(1); }}
-                                        isLoading={isLoading}
-                                        filterType={filterType}
-                                    />
-                                </TabsContent>
-                            ))}
-                        </Tabs>
-                    </div>
-
-                    {/* Detail Panel */}
-                    {activeItem && (
-                        <DetailPanel
-                            item={activeItem}
-                            onClose={() => setActiveItem(null)}
-                            onOpenServicoExtraContinuity={openServicoExtraContinuity}
-                            onAprovar={() => {
-                                const currentItem = activeItem;
-                                aprovarMutation.mutate(activeItem, {
-                                    onSuccess: (result: any) => {
-                                        if (currentItem.tipo === "CUSTO EXTRA") {
-                                            toast.success("Despesa aprovada operacionalmente.", {
-                                                description: "Encaminhada para Pagamentos."
-                                            });
-                                        } else if (currentItem.tipo === "SERVIÇO EXTRA") {
-                                            toast.success("Serviço extra aprovado com sucesso.", {
-                                                description: "Receita gerada e encaminhada para o Financeiro."
-                                            });
-                                        } else {
-                                            toast.success("Item aprovado com sucesso!");
-                                        }
-                                        invalidate();
-                                        setSelectedItems([]);
-                                        // 1. Fechar primeiro o Drawer de Detalhes atual
-                                        setActiveItem(null);
-
-                                        // 2. Selecionar automaticamente a aba "Aprovados" e resetar página
-                                        setActiveTab("aprovados");
-                                        setCurrentPage(1);
-
-                                        // 3. Disparar o Drawer de Continuidade exclusivamente para CUSTO EXTRA ou SERVIÇO EXTRA
-                                        if (currentItem.tipo === "CUSTO EXTRA") {
-                                            const compCandidate = currentItem.competencia || currentItem.data_recebimento || "";
-                                            let competencia = format(new Date(), "yyyy-MM");
-                                            if (/^\d{4}-\d{2}/.test(compCandidate)) {
-                                                competencia = compCandidate.substring(0, 7);
-                                            }
-
-                                            setTimeout(() => {
-                                                openPipeline(buildCustosExtrasPipeline({
-                                                    competencia,
-                                                    empresa: currentItem.empresa || "Empresa",
-                                                    currentStep: "financeiro",
-                                                    pipelineStatus: result?.pipeline_status || "APROVADO_OPERACAO",
-                                                    statusPagamento: result?.status_pagamento || "A_PAGAR",
-                                                    userRole: role,
-                                                    isAdmin,
-                                                }));
-                                            }, 100);
-                                        } else if (currentItem.tipo === "SERVIÇO EXTRA") {
-                                            const compCandidate = currentItem.competencia || currentItem.data_recebimento || "";
-                                            let competencia = format(new Date(), "yyyy-MM");
-                                            if (/^\d{4}-\d{2}/.test(compCandidate)) {
-                                                competencia = compCandidate.substring(0, 7);
-                                            }
-
-                                            setTimeout(() => {
-                                                openPipeline(buildServicosExtrasPipeline({
-                                                    competencia,
-                                                    empresa: currentItem.empresa || "Empresa",
-                                                    currentStep: "aprovacao",
-                                                    pipelineStatus: result?.pipeline_status || "APROVADO_OPERACAO",
-                                                    modalidade_financeira: result?.modalidade_financeira || (currentItem as any).modalidade_financeira,
-                                                    registroId: currentItem.id,
-                                                    descricao: currentItem.descricao || result?.descricao_servico,
-                                                    valor: currentItem.valor || result?.total,
-                                                    data: result?.data,
-                                                }));
-                                            }, 100);
-                                        }
-                                    }
-                                });
-                            }}
-                            onDevolver={() => {
-                                const currentItem = activeItem;
-                                if (!currentItem) return;
-                                devolverMutation.mutate({ item: currentItem }, {
-                                    onSuccess: () => {
-                                        toast.success("Item devolvido.");
-                                        invalidate();
-                                        setSelectedItems([]);
-                                        setActiveItem(null);
-                                        setActiveTab("devolvidos");
-                                        setCurrentPage(1);
-                                    }
-                                });
-                            }}
-                            onSolicitarCorrecao={(motivo) => {
-                                const currentItem = activeItem;
-                                if (!currentItem) return;
-                                devolverMutation.mutate({ item: currentItem, motivo }, {
-                                    onSuccess: () => {
-                                        toast.success("Correção solicitada com sucesso.");
-                                        invalidate();
-                                        setSelectedItems([]);
-                                        setActiveItem(null);
-                                        setActiveTab("devolvidos");
-                                        setCurrentPage(1);
-                                    }
-                                });
-                            }}
-                            isAprovando={aprovarMutation.isPending}
-                            isDevolvendo={devolverMutation.isPending}
-                        />
-                    )}
-                </div>
-            </div>
-        </AppShell>
+  // ── 4 KPIs Oficiais UX08 (Calculados sobre o Contexto Macro) ──
+  const kpis = useMemo(() => {
+    // 1. Aguardando Decisão
+    const pendentes = aprovacoesContextuais.filter(
+      (i) => i.situacao !== "Aprovado" && i.situacao !== "Devolvido"
     );
-}
+    const aguardandoDecisao = pendentes.length;
 
-// ──────────────────────────────────────────────────────────────
-// Sub-componentes
-// ──────────────────────────────────────────────────────────────
+    // 2. Mais Antigo na Fila (Antiguidade factual do item mais antigo)
+    const maisAntigo = getMaisAntigoInfo(pendentes);
 
-function ItensTable({
-    items, allItemsCount, selectedItems, activeItem,
-    onSelectAll, onSelectItem, onRowClick,
-    currentPage, itemsPerPage, totalPages, onPageChange, onItemsPerPageChange,
-    isLoading,
-    filterType,
-}: {
-    items: ApprovalItem[];
-    allItemsCount: number;
-    selectedItems: string[];
-    activeItem: ApprovalItem | null;
-    onSelectAll: () => void;
-    onSelectItem: (id: string) => void;
-    onRowClick: (item: ApprovalItem) => void;
-    currentPage: number;
-    itemsPerPage: number;
-    totalPages: number;
-    onPageChange: (page: number) => void;
-    onItemsPerPageChange: (n: number) => void;
-    isLoading: boolean;
-    filterType?: string;
-}) {
-    const start = (currentPage - 1) * itemsPerPage + 1;
-    const end = Math.min(currentPage * itemsPerPage, allItemsCount);
-    const isDiaristasContext = filterType === "DIARISTA" || (items.length > 0 && items.every(i => i.tipo === "DIARISTA"));
-    const colValorHorasLabel = isDiaristasContext ? "Valor / Diárias" : "Valor / Horas";
+    // 3. Devolvidos
+    const devolvidos = aprovacoesContextuais.filter((i) => i.situacao === "Devolvido").length;
 
-    return (
-        <div className="bg-white rounded-b-xl rounded-tr-xl shadow-sm border border-border/40 border-t-0 overflow-hidden">
-            <div className="overflow-x-auto">
-                <table className="w-full text-[13px]">
-                    <thead>
-                        <tr className="border-b border-border/40 bg-muted/15">
-                            <th className="w-12 px-5 py-4 text-left">
-                                <Checkbox checked={items.length > 0 && selectedItems.length === items.length} onCheckedChange={onSelectAll} />
-                            </th>
-                            {["Tipo", "Referência / Lote", "Colaborador / Descrição", "Empresa / Operação", colValorHorasLabel, "Competência", "Data Recebimento", "Situação"].map(h => (
-                                <th key={h} className="px-4 py-4 text-left font-medium text-muted-foreground uppercase tracking-wider text-[10px] whitespace-nowrap">{h}</th>
-                            ))}
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/20">
-                        {isLoading ? (
-                            <tr><td colSpan={9} className="px-6 py-12 text-center text-muted-foreground">
-                                <Loader2 className="h-8 w-8 mx-auto mb-3 animate-spin opacity-30" />
-                                <p className="text-sm font-medium">Carregando dados...</p>
-                            </td></tr>
-                        ) : items.length === 0 ? (
-                            <tr><td colSpan={9} className="px-6 py-12 text-center text-muted-foreground">
-                                <Activity className="h-8 w-8 mx-auto mb-3 opacity-20" />
-                                <p className="text-sm font-medium">Nenhum registro encontrado.</p>
-                            </td></tr>
-                        ) : items.map(item => (
-                            <tr
-                                key={item.id}
-                                className={cn(
-                                    "hover:bg-primary/[0.04] cursor-pointer transition-colors",
-                                    activeItem?.id === item.id ? "bg-primary/[0.03] ring-1 ring-inset ring-primary/10" : ""
-                                )}
-                                onClick={() => onRowClick(item)}
-                            >
-                                <td className="px-5 py-4" onClick={e => e.stopPropagation()}>
-                                    <Checkbox checked={selectedItems.includes(item.id)} onCheckedChange={() => onSelectItem(item.id)} />
-                                </td>
-                                <td className="px-4 py-3">
-                                    <Badge variant="outline" className={cn("text-[10px] font-black uppercase border-none px-2 py-0.5 whitespace-nowrap", TIPO_COLORS[item.tipo])}>
-                                        {item.tipo}
-                                    </Badge>
-                                </td>
-                                <td className="px-4 py-3">
-                                    <span className="font-medium text-slate-700 whitespace-nowrap">{item.referencia}</span>
-                                </td>
-                                <td className="px-4 py-3 max-w-[200px]">
-                                    <div className="flex flex-col">
-                                        <span className="font-medium text-foreground truncate">{item.colaborador}</span>
-                                        <span className="text-[11px] text-muted-foreground uppercase">{item.descricao}</span>
-                                    </div>
-                                </td>
-                                <td className="px-4 py-3 max-w-[180px]">
-                                    <div className="flex flex-col">
-                                        <span className="font-medium text-slate-800 text-[11px] uppercase truncate">{item.empresa}</span>
-                                        <span className="text-[11px] text-muted-foreground truncate">{item.operacao}</span>
-                                    </div>
-                                </td>
-                                <td className="px-4 py-3 text-right whitespace-nowrap">
-                                    <div className="flex flex-col items-end">
-                                        {item.horas && <span className="font-medium text-slate-700 text-[11px]">{item.horas}</span>}
-                                        <span className="font-medium text-slate-900">{fmt(item.valor)}</span>
-                                    </div>
-                                </td>
-                                <td className="px-4 py-3 text-center whitespace-nowrap">
-                                    <span className="font-medium text-slate-600">{item.competencia}</span>
-                                </td>
-                                <td className="px-4 py-3 whitespace-nowrap">
-                                    <span className="text-[12px] font-medium text-slate-700">{item.dataRecebimento}</span>
-                                </td>
-                                <td className="px-4 py-3 text-center whitespace-nowrap">
-                                    <Badge className={cn("border px-3 font-bold text-[10px] shadow-none hover:opacity-80", SITUACAO_COLORS[item.situacao])}>
-                                        <div className="flex items-center gap-1.5">
-                                            {item.situacao === "Em análise" && <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />}
-                                            {item.situacao}
-                                        </div>
-                                    </Badge>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+    // 4. Impacto Financeiro (Apenas registros com valor monetário real)
+    const impactoFinanceiro = pendentes.reduce((acc, curr) => acc + (Number(curr.valor) || 0), 0);
+
+    return {
+      aguardandoDecisao,
+      maisAntigo,
+      devolvidos,
+      impactoFinanceiro,
+    };
+  }, [aprovacoesContextuais]);
+
+  // ── Contadores por Domínio (Pílulas de Fila) ──
+  const contadoresPorDominio = useMemo(() => {
+    const pendentes = aprovacoesContextuais.filter(
+      (i) => i.situacao !== "Aprovado" && i.situacao !== "Devolvido"
+    );
+
+    return {
+      TODAS: pendentes.length,
+      OPERACAO: pendentes.filter((i) => i.tipo === "OPERAÇÃO").length,
+      SERVICO_EXTRA: pendentes.filter((i) => i.tipo === "SERVIÇO EXTRA").length,
+      CUSTO_EXTRA: pendentes.filter((i) => i.tipo === "CUSTO EXTRA").length,
+      DIARISTA: pendentes.filter((i) => i.tipo === "DIARISTA").length,
+      INTERMITENTE: pendentes.filter((i) => i.tipo === "INTERMITENTE").length,
+      PONTO: pendentes.filter((i) => i.tipo === "PONTO").length,
+    };
+  }, [aprovacoesContextuais]);
+
+  // ── Filtragem Exploratória para a Tabela ──
+  const aprovacoesFiltradas = useMemo(() => {
+    return aprovacoesContextuais.filter((item) => {
+      // 1. Domínio (Pílulas)
+      if (dominioFiltro !== "TODAS" && item.tipo !== dominioFiltro) {
+        return false;
+      }
+
+      // 2. Filtro Rápido por KPI Card
+      if (filtroRapidoKpi === "aguardando_decisao") {
+        if (item.situacao === "Aprovado" || item.situacao === "Devolvido") return false;
+      } else if (filtroRapidoKpi === "mais_antigos") {
+        if (item.situacao === "Aprovado" || item.situacao === "Devolvido") return false;
+      } else if (filtroRapidoKpi === "devolvidos") {
+        if (item.situacao !== "Devolvido") return false;
+      } else {
+        // 3. Situação / Visão
+        if (situacaoFiltro === "PENDENTE") {
+          if (item.situacao === "Aprovado" || item.situacao === "Devolvido") return false;
+        } else if (situacaoFiltro === "DEVOLVIDO") {
+          if (item.situacao !== "Devolvido") return false;
+        } else if (situacaoFiltro === "MAIS_ANTIGOS") {
+          if (item.situacao === "Aprovado" || item.situacao === "Devolvido") return false;
+        }
+      }
+
+      // 4. Busca Textual
+      if (busca.trim()) {
+        const query = busca.toLowerCase().trim();
+        const matchRef = String(item.referencia || "").toLowerCase().includes(query);
+        const matchColab = String(item.colaborador || "").toLowerCase().includes(query);
+        const matchEmp = String(item.empresa || "").toLowerCase().includes(query);
+        const matchOp = String(item.operacao || "").toLowerCase().includes(query);
+        const matchDesc = String(item.descricao || "").toLowerCase().includes(query);
+        const matchTipo = String(item.tipo || "").toLowerCase().includes(query);
+
+        if (!matchRef && !matchColab && !matchEmp && !matchOp && !matchDesc && !matchTipo) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [aprovacoesContextuais, dominioFiltro, situacaoFiltro, filtroRapidoKpi, busca]);
+
+  // ── Paginação ──
+  const totalPages = Math.ceil((aprovacoesFiltradas.length || 0) / itemsPerPage);
+  const paginatedItems = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return aprovacoesFiltradas.slice(start, start + itemsPerPage);
+  }, [aprovacoesFiltradas, currentPage, itemsPerPage]);
+
+  // ── Mutações de Domínio Homologadas (Preservadas com Fail-Closed) ──
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["aprovacoes-rh"] });
+    queryClient.invalidateQueries({ queryKey: ["aprovacoes-kpis"] });
+    queryClient.invalidateQueries({ queryKey: ["custos-extras"], refetchType: "all" });
+    queryClient.invalidateQueries({ queryKey: ["dashboard-custos-extras"] });
+    queryClient.invalidateQueries({ queryKey: ["financeiro-despesas"] });
+    queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+  };
+
+  const openServicoExtraContinuity = async (item: ApprovalItem) => {
+    setActiveItem(null);
+    setDrawerOpen(false);
+
+    const { data: seData, error: seErr } = await supabase
+      .from("servicos_extras_operacionais" as any)
+      .select("id, empresa_id, data, descricao_servico, total, modalidade_financeira, pipeline_status")
+      .eq("id", item.id)
+      .maybeSingle();
+
+    if (seErr || !seData) {
+      toast.error("Não foi possível carregar os detalhes do serviço extra.");
+      return;
+    }
+
+    const candidateCompetencia = item.competencia || item.data_recebimento || "";
+    const parsedData = (seData as any).data || (candidateCompetencia ? candidateCompetencia.substring(0, 10) : "");
+
+    openPipeline(
+      buildServicosExtrasPipeline({
+        registroId: (seData as any).id,
+        empresaId: (seData as any).empresa_id || "",
+        data: parsedData,
+        descricao: (seData as any).descricao_servico || "",
+        valorTotal: Number((seData as any).total || 0),
+        modalidade: (seData as any).modalidade_financeira || "CAIXA_IMEDIATO",
+        pipelineStatus: (seData as any).pipeline_status || "APROVADO_OPERACAO",
+      })
+    );
+  };
+
+  const aprovarMutation = useMutation({
+    mutationFn: async (item: ApprovalItem) => {
+      // 1. DIARISTA
+      if (item.tipo === "DIARISTA" && item.raw_lote_id) {
+        const { error } = await supabase
+          .from("diaristas_lotes_fechamento" as any)
+          .update({ status: "VALIDADO_RH", updated_at: new Date().toISOString() })
+          .eq("id", item.raw_lote_id);
+        if (error) throw error;
+
+        await supabase
+          .from("lancamentos_diaristas")
+          .update({ status: "VALIDADO_RH" })
+          .eq("lote_fechamento_id", item.raw_lote_id);
+        return;
+      }
+
+      // 2. INTERMITENTE
+      if (item.tipo === "INTERMITENTE") {
+        await IntermitentesLoteService.validarLote(item.id, user?.id || "");
+        return;
+      }
+
+      // 3. PONTO
+      if (item.tipo === "PONTO") {
+        const { error } = await supabase
+          .from("registros_ponto")
+          .update({ status_processamento: "PROCESSADO" })
+          .eq("id", item.id);
+        if (error) throw error;
+        return;
+      }
+
+      // 4. CUSTO EXTRA
+      if (item.tipo === "CUSTO EXTRA") {
+        const { data: custoData, error: fetchErr } = await supabase
+          .from("custos_extras_operacionais" as any)
+          .select("id, atualizado_em")
+          .eq("id", item.id)
+          .single();
+        if (fetchErr) throw fetchErr;
+
+        const { data: result, error } = await supabase.rpc("rpc_custo_extra_transicionar" as any, {
+          p_id: item.id,
+          p_acao: "aprovar",
+          p_updated_at: custoData?.atualizado_em || null,
+          p_justificativa: null,
+        });
+        if (error) throw error;
+        return result;
+      }
+
+      // 5. SERVIÇO EXTRA
+      if (item.tipo === "SERVIÇO EXTRA") {
+        const { data: updated, error } = await supabase
+          .from("servicos_extras_operacionais" as any)
+          .update({ pipeline_status: "APROVADO_OPERACAO", atualizado_em: new Date().toISOString() })
+          .eq("id", item.id)
+          .select("id, empresa_id, data, descricao_servico, total, modalidade_financeira, pipeline_status")
+          .maybeSingle();
+        if (error) throw error;
+
+        const currentItem = item;
+        openPipeline(
+          buildServicosExtrasPipeline({
+            registroId: currentItem.id,
+            empresaId: (updated as any)?.empresa_id || "",
+            data: (updated as any)?.data || "",
+            descricao: (updated as any)?.descricao_servico || "",
+            valorTotal: Number((updated as any)?.total || 0),
+            modalidade: (updated as any)?.modalidade_financeira || "CAIXA_IMEDIATO",
+            pipelineStatus: (updated as any)?.pipeline_status || "APROVADO_OPERACAO",
+          })
+        );
+        return updated;
+      }
+
+      // 6. OPERAÇÃO
+      if (item.tipo === "OPERAÇÃO") {
+        const { data: opData, error: opCheckErr } = await supabase
+          .from("operacoes_producao")
+          .select("id, status, entrada_ponto, saida_ponto")
+          .eq("id", item.id)
+          .single();
+
+        if (opCheckErr) throw opCheckErr;
+
+        if (opData?.status === "EM_RESTRICAO" || !opData?.entrada_ponto || !opData?.saida_ponto) {
+          throw new Error("Esta operação possui restrições de horários e deve ser corrigida em Pendências antes de ser aprovada pelo RH.");
+        }
+
+        const { error } = await supabase.rpc("rpc_rh_aprovar_operacao", {
+          p_operacao_id: item.id,
+        });
+        if (error) throw error;
+        return;
+      }
+
+      // Fail-Closed para tipos não mapeados
+      throw new Error(`Não foi possível identificar o fluxo de aprovação deste registro (tipo: "${(item as any)?.tipo || 'desconhecido'}"). Nenhuma alteração foi realizada.`);
+    },
+    onSuccess: () => {
+      invalidate();
+      toast.success("Decisão aprovada com sucesso!", {
+        description: "O registro avançou no fluxo operacional.",
+      });
+      setDrawerOpen(false);
+    },
+    onError: (err: any) => {
+      toast.error("Erro ao aprovar.", { description: err?.message });
+    },
+  });
+
+  const devolverMutation = useMutation({
+    mutationFn: async ({ item, motivo }: { item: ApprovalItem; motivo?: string }) => {
+      // 1. DIARISTA
+      if (item.tipo === "DIARISTA" && item.raw_lote_id) {
+        const { error } = await supabase
+          .from("diaristas_lotes_fechamento" as any)
+          .update({ status: "AGUARDANDO_VALIDACAO_RH", updated_at: new Date().toISOString() })
+          .eq("id", item.raw_lote_id);
+        if (error) throw error;
+
+        await supabase
+          .from("lancamentos_diaristas")
+          .update({ status: "AGUARDANDO_VALIDACAO_RH" })
+          .eq("lote_fechamento_id", item.raw_lote_id);
+        return;
+      }
+
+      // 2. INTERMITENTE
+      if (item.tipo === "INTERMITENTE") {
+        await IntermitentesLoteService.devolverLote(item.id, motivo || "Devolvido pelo RH via Painel Global");
+        return;
+      }
+
+      // 3. PONTO
+      if (item.tipo === "PONTO") {
+        const { error } = await supabase
+          .from("registros_ponto")
+          .update({ status_processamento: "INCONSISTENTE" })
+          .eq("id", item.id);
+        if (error) throw error;
+        return;
+      }
+
+      // 4. CUSTO EXTRA
+      if (item.tipo === "CUSTO EXTRA") {
+        const { error } = await supabase
+          .from("custos_extras_operacionais" as any)
+          .update({ pipeline_status: "REPROVADO", atualizado_em: new Date().toISOString() })
+          .eq("id", item.id);
+        if (error) throw error;
+        return;
+      }
+
+      // 5. SERVIÇO EXTRA
+      if (item.tipo === "SERVIÇO EXTRA") {
+        const { error } = await supabase
+          .from("servicos_extras_operacionais" as any)
+          .update({ pipeline_status: "DEVOLVIDO", atualizado_em: new Date().toISOString() })
+          .eq("id", item.id);
+        if (error) throw error;
+        return;
+      }
+
+      // 6. OPERAÇÃO
+      if (item.tipo === "OPERAÇÃO") {
+        const { error } = await supabase.rpc("rpc_rh_devolver_operacao", {
+          p_operacao_id: item.id,
+          p_motivo: motivo || null,
+        });
+        if (error) throw error;
+        return;
+      }
+
+      // Fail-Closed para tipos não mapeados
+      throw new Error(`Não foi possível identificar o fluxo de devolução deste registro (tipo: "${(item as any)?.tipo || 'desconhecido'}"). Nenhuma alteração foi realizada.`);
+    },
+    onSuccess: () => {
+      invalidate();
+      toast.warning("Registro devolvido para correção na origem.");
+      setDrawerOpen(false);
+    },
+    onError: (err: any) => {
+      toast.error("Erro ao devolver.", { description: err?.message });
+    },
+  });
+
+  // ── Ações em Lote ──
+  const handleBulkAprovar = async () => {
+    const items = paginatedItems.filter((i) => selectedItems.includes(i.id));
+    const aprovados: string[] = [];
+    const falhas: string[] = [];
+
+    for (const item of items) {
+      try {
+        await aprovarMutation.mutateAsync(item);
+        aprovados.push(item.referencia);
+      } catch (err: any) {
+        falhas.push(`[${item.referencia}] ${err?.message || "Erro"}`);
+      }
+    }
+
+    if (falhas.length > 0) {
+      toast.warning(`${aprovados.length} aprovado(s). ${falhas.length} falharam.`, {
+        description: falhas.join(" | "),
+      });
+    } else if (aprovados.length > 0) {
+      toast.success(`${aprovados.length} itens aprovados com sucesso!`);
+    }
+
+    invalidate();
+    setSelectedItems([]);
+  };
+
+  const handleBulkDevolver = async () => {
+    const items = paginatedItems.filter((i) => selectedItems.includes(i.id));
+    for (const item of items) {
+      await devolverMutation.mutateAsync({ item }).catch(() => null);
+    }
+    toast.success("Itens devolvidos com sucesso.");
+    invalidate();
+    setSelectedItems([]);
+  };
+
+  // ── Seleção ──
+  const toggleSelectAll = () => {
+    if (selectedItems.length === paginatedItems.length) setSelectedItems([]);
+    else setSelectedItems(paginatedItems.map((i) => i.id));
+  };
+
+  const toggleSelectItem = (id: string) => {
+    setSelectedItems((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    );
+  };
+
+  const handleRowClick = (item: ApprovalItem) => {
+    const isApproved = item.situacao === "Aprovado" || String(item.raw_status || "").toUpperCase() === "APROVADO_OPERACAO";
+    if (item.tipo === "SERVIÇO EXTRA" && isApproved) {
+      openServicoExtraContinuity(item);
+      return;
+    }
+    setActiveItem(item);
+    setDrawerOpen(true);
+  };
+
+  // ── 6 Pílulas de Domínio ──
+  const DOMINIOS_TABS: Array<{ id: string; label: string; count: number; icon: any }> = [
+    { id: "TODAS", label: "Todas as Filas", count: contadoresPorDominio.TODAS, icon: Layers },
+    { id: "SERVIÇO EXTRA", label: "Serviços Extras", count: contadoresPorDominio.SERVICO_EXTRA, icon: Wrench },
+    { id: "CUSTO EXTRA", label: "Custos Extras", count: contadoresPorDominio.CUSTO_EXTRA, icon: Wallet },
+    { id: "DIARISTA", label: "Diaristas (Lotes)", count: contadoresPorDominio.DIARISTA, icon: Users },
+    { id: "INTERMITENTE", label: "Intermitentes", count: contadoresPorDominio.INTERMITENTE, icon: Users },
+    { id: "OPERAÇÃO", label: "Operações", count: contadoresPorDominio.OPERACAO, icon: Package },
+    { id: "PONTO", label: "Pontos CLT", count: contadoresPorDominio.PONTO, icon: Clock },
+  ];
+
+  const isDevolvidosView = filtroRapidoKpi === "devolvidos" || situacaoFiltro === "DEVOLVIDO";
+
+  return (
+    <AppShell>
+      <div className="max-w-[1560px] mx-auto p-4 md:p-6 space-y-5">
+        {/* Page Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-border/40">
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-display font-bold text-foreground tracking-tight">
+                Central de Aprovações
+              </h1>
+              {isLocked && (
+                <Badge variant="outline" className="text-[10px] font-bold uppercase bg-blue-50 text-blue-700 dark:bg-blue-950/40 border-blue-200">
+                  Modo Contextual: {dominioFiltro}
+                </Badge>
+              )}
             </div>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Fila transversal de decisões que aguardam autorização para o fluxo continuar.
+            </p>
+          </div>
 
-            {/* Pagination */}
-            <div className="px-5 py-4 flex items-center justify-between border-t border-border/30 bg-slate-50/50">
+          <div className="flex items-center gap-2">
+            {selectedItems.length > 0 && (
+              <div className="flex items-center gap-2 bg-muted/60 p-1 rounded-lg border border-border">
+                <span className="text-xs font-semibold px-2 text-muted-foreground">
+                  {selectedItems.length} selecionado(s)
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleBulkDevolver}
+                  disabled={devolverMutation.isPending}
+                  className="h-8 text-xs font-bold text-rose-700 border-rose-200 hover:bg-rose-50 dark:text-rose-400"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 mr-1" />
+                  Devolver
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleBulkAprovar}
+                  disabled={aprovarMutation.isPending}
+                  className="h-8 text-xs font-bold bg-[#2563EB] hover:bg-[#2563EB]/90 text-white"
+                >
+                  <Check className="w-3.5 h-3.5 mr-1" />
+                  Aprovar
+                </Button>
+              </div>
+            )}
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetch()}
+              disabled={isFetching}
+              className="h-9 text-xs font-semibold"
+            >
+              <RefreshCw className={cn("w-3.5 h-3.5 mr-1.5", isFetching && "animate-spin")} />
+              Sincronizar
+            </Button>
+          </div>
+        </div>
+
+        {/* 1. Indicadores Operacionais Compactos (4 Cards UX08) */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
+          {/* Card 1: Aguardando Decisão */}
+          <button
+            type="button"
+            onClick={() => {
+              setFiltroRapidoKpi(filtroRapidoKpi === "aguardando_decisao" ? null : "aguardando_decisao");
+              setSituacaoFiltro("PENDENTE");
+            }}
+            className={cn(
+              "text-left p-3.5 rounded-xl border transition-all duration-200 bg-card hover:bg-muted/40",
+              filtroRapidoKpi === "aguardando_decisao" || (situacaoFiltro === "PENDENTE" && !filtroRapidoKpi)
+                ? "border-[#2563EB] ring-2 ring-[#2563EB]/20 shadow-sm"
+                : "border-border shadow-xs"
+            )}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                Aguardando Decisão
+              </span>
+              <Clock className="w-4 h-4 text-[#2563EB] dark:text-blue-400" />
+            </div>
+            <div className="mt-2 flex items-baseline gap-1.5">
+              <span className="text-2xl font-display font-extrabold text-foreground">
+                {kpis.aguardandoDecisao}
+              </span>
+              <span className="text-xs font-semibold text-muted-foreground">decisões</span>
+            </div>
+            <span className="text-[11px] text-muted-foreground block mt-0.5">
+              Itens aptos para autorização imediata
+            </span>
+          </button>
+
+          {/* Card 2: Mais Antigo na Fila */}
+          <button
+            type="button"
+            onClick={() => setFiltroRapidoKpi(filtroRapidoKpi === "mais_antigos" ? null : "mais_antigos")}
+            className={cn(
+              "text-left p-3.5 rounded-xl border transition-all duration-200 bg-card hover:bg-muted/40",
+              filtroRapidoKpi === "mais_antigos"
+                ? "border-amber-500 ring-2 ring-amber-500/20 shadow-sm"
+                : "border-border shadow-xs"
+            )}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                Mais Antigo na Fila
+              </span>
+              <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+            </div>
+            <div className="mt-2 flex items-baseline gap-1.5">
+              <span className="text-2xl font-display font-extrabold text-amber-700 dark:text-amber-400">
+                {kpis.maisAntigo.valor}
+              </span>
+            </div>
+            <span className="text-[11px] text-muted-foreground block mt-0.5">
+              {kpis.maisAntigo.descricao}
+            </span>
+          </button>
+
+          {/* Card 3: Devolvidos */}
+          <button
+            type="button"
+            onClick={() => {
+              const next = filtroRapidoKpi === "devolvidos" ? null : "devolvidos";
+              setFiltroRapidoKpi(next);
+              setSituacaoFiltro(next ? "DEVOLVIDO" : "PENDENTE");
+            }}
+            className={cn(
+              "text-left p-3.5 rounded-xl border transition-all duration-200 bg-card hover:bg-muted/40",
+              filtroRapidoKpi === "devolvidos" || situacaoFiltro === "DEVOLVIDO"
+                ? "border-rose-500 ring-2 ring-rose-500/20 shadow-sm"
+                : "border-border shadow-xs"
+            )}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                Devolvidos
+              </span>
+              <RotateCcw className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+            </div>
+            <div className="mt-2 flex items-baseline gap-1.5">
+              <span className="text-2xl font-display font-extrabold text-rose-700 dark:text-rose-400">
+                {kpis.devolvidos}
+              </span>
+              <span className="text-xs font-semibold text-muted-foreground">em correção</span>
+            </div>
+            <span className="text-[11px] text-muted-foreground block mt-0.5">
+              Registros devolvidos para ajuste
+            </span>
+          </button>
+
+          {/* Card 4: Impacto Financeiro da Fila */}
+          <div className="p-3.5 rounded-xl border border-border bg-card shadow-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                Impacto Financeiro
+              </span>
+              <Coins className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <div className="mt-2 flex items-baseline gap-1.5">
+              <span className="text-2xl font-display font-extrabold text-foreground font-mono">
+                {fmt(kpis.impactoFinanceiro)}
+              </span>
+            </div>
+            <span className="text-[11px] text-muted-foreground block mt-0.5">
+              Soma real dos itens com valor monetário
+            </span>
+          </div>
+        </div>
+
+        {/* 2. Pílulas de Domínio (6 Domínios Reais) */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
+          {DOMINIOS_TABS.map((tab) => {
+            const Icon = tab.icon;
+            const isSelected = dominioFiltro === tab.id;
+            const isTabDisabled = isLocked && tab.id !== dominioFiltro;
+
+            if (isTabDisabled) return null;
+
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                disabled={isTabDisabled}
+                onClick={() => {
+                  if (!isLocked) {
+                    setDominioFiltro(tab.id);
+                    setCurrentPage(1);
+                  }
+                }}
+                className={cn(
+                  "h-9 px-3.5 rounded-lg flex items-center gap-2 border text-xs font-semibold whitespace-nowrap transition-all duration-200",
+                  isSelected
+                    ? "bg-[#2563EB] text-white border-[#2563EB] shadow-xs dark:bg-blue-600 dark:border-blue-600"
+                    : "bg-card text-muted-foreground border-border hover:bg-muted/60 hover:text-foreground"
+                )}
+              >
+                <Icon className={cn("w-3.5 h-3.5", isSelected ? "text-white" : "text-muted-foreground")} />
+                <span>{tab.label}</span>
+                <span
+                  className={cn(
+                    "ml-1 text-[10px] font-bold px-1.5 py-0.2 rounded-full",
+                    isSelected ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
+                  )}
+                >
+                  {tab.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* 3. Barra de Filtros Transversais */}
+        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 p-3.5 rounded-xl border border-border bg-card">
+          <div className="flex flex-wrap items-center gap-2.5 flex-1">
+            {/* Seletor de Empresa */}
+            <Select value={empresaFiltro} onValueChange={setEmpresaFiltro}>
+              <SelectTrigger className="h-9 w-[190px] text-xs font-semibold bg-background border-border">
+                <Building2 className="w-3.5 h-3.5 mr-1.5 text-muted-foreground shrink-0" />
+                <SelectValue placeholder="Empresa" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="text-xs font-semibold">Todas as Empresas</SelectItem>
+                {empresas.map((emp) => (
+                  <SelectItem key={emp.id} value={emp.id} className="text-xs">
+                    {emp.nome}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Filtro Temporal */}
+            <UxLabFiltroTemporal
+              value={filtroTemporal}
+              onChange={setFiltroTemporal}
+              compact
+            />
+
+            {/* Seletor de Situação / Visão */}
+            <Select
+              value={situacaoFiltro}
+              onValueChange={(v) => {
+                setSituacaoFiltro(v);
+                if (v === "DEVOLVIDO") setFiltroRapidoKpi("devolvidos");
+                else if (v === "MAIS_ANTIGOS") setFiltroRapidoKpi("mais_antigos");
+                else if (v === "PENDENTE") setFiltroRapidoKpi(null);
+                setCurrentPage(1);
+              }}
+            >
+              <SelectTrigger className="h-9 w-[200px] text-xs font-semibold bg-background border-border">
+                <Filter className="w-3.5 h-3.5 mr-1.5 text-muted-foreground shrink-0" />
+                <SelectValue placeholder="Situação" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="PENDENTE" className="text-xs font-bold text-[#2563EB] dark:text-blue-400">
+                  Aguardando Decisão (Padrão)
+                </SelectItem>
+                <SelectItem value="MAIS_ANTIGOS" className="text-xs">
+                  Aguardando há mais tempo
+                </SelectItem>
+                <SelectItem value="DEVOLVIDO" className="text-xs text-rose-600 dark:text-rose-400">
+                  Devolvidos (Histórico)
+                </SelectItem>
+                <SelectItem value="todos" className="text-xs">
+                  Todos os Registros
+                </SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Busca Rápida */}
+            <div className="relative min-w-[200px] flex-1">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Buscar por referência, colaborador, empresa, operação..."
+                value={busca}
+                onChange={(e) => {
+                  setBusca(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="pl-8 h-9 text-xs bg-background border-border"
+              />
+            </div>
+          </div>
+
+          {/* Reset de Filtros Rápidos */}
+          {(filtroRapidoKpi || situacaoFiltro !== "PENDENTE" || busca || empresaFiltro !== "all") && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setFiltroRapidoKpi(null);
+                setSituacaoFiltro("PENDENTE");
+                setBusca("");
+                setEmpresaFiltro("all");
+                if (!isLocked) setDominioFiltro("TODAS");
+              }}
+              className="h-9 text-xs font-medium text-muted-foreground hover:text-foreground"
+            >
+              <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
+              Restaurar Fila Padrão
+            </Button>
+          )}
+        </div>
+
+        {/* Banner Contextual para Devolvidos */}
+        {isDevolvidosView && (
+          <div className="p-3.5 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/50 dark:bg-rose-950/20 flex items-start gap-3 text-xs text-rose-800 dark:text-rose-300 font-medium">
+            <RotateCcw className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-bold">VISÃO CONTEXTUAL DE HISTÓRICO:</span> Registros devolvidos para ajuste no ponto de origem. Itens devolvidos não possuem aprovação direta sem nova validação.
+            </div>
+          </div>
+        )}
+
+        {/* 4. Tabela Densa de Alta Densidade (Fila Dominante) */}
+        <div className="rounded-xl border border-border bg-card overflow-hidden shadow-xs">
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center space-y-3">
+              <Loader2 className="w-8 h-8 text-[#2563EB] animate-spin" />
+              <p className="text-xs text-muted-foreground font-medium">Carregando decisões da Central de Aprovações...</p>
+            </div>
+          ) : paginatedItems.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center space-y-3">
+              <div className="p-3 rounded-full bg-muted/60 text-muted-foreground">
+                <CheckCircle2 className="w-8 h-8" />
+              </div>
+              <p className="text-sm font-semibold text-foreground">
+                {busca || situacaoFiltro !== "PENDENTE"
+                  ? "Nenhum registro encontrado com os filtros selecionados."
+                  : "Nenhuma aprovação pendente para o contexto selecionado."}
+              </p>
+              {(busca || situacaoFiltro !== "PENDENTE" || empresaFiltro !== "all") && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setBusca("");
+                    setSituacaoFiltro("PENDENTE");
+                    setFiltroRapidoKpi(null);
+                    setEmpresaFiltro("all");
+                  }}
+                  className="text-xs font-semibold"
+                >
+                  Restaurar Fila Padrão
+                </Button>
+              )}
+            </div>
+          ) : (
+            <>
+              {/* Header Desktop */}
+              <div className="hidden lg:grid grid-cols-12 gap-3 px-4 py-3 bg-muted/50 border-b border-border text-[11px] font-bold text-muted-foreground uppercase tracking-wider items-center">
+                <div className="col-span-1 flex items-center gap-2">
+                  <Checkbox
+                    checked={selectedItems.length === paginatedItems.length && paginatedItems.length > 0}
+                    onCheckedChange={toggleSelectAll}
+                  />
+                  <span>Ref</span>
+                </div>
+                <div className="col-span-2">Domínio</div>
+                <div className="col-span-2">Empresa / Unidade</div>
+                <div className="col-span-3">O que está sendo aprovado</div>
+                <div className="col-span-2">Valor / Horas</div>
+                <div className="col-span-1">Recebido</div>
+                <div className="col-span-1 text-right">Ação</div>
+              </div>
+
+              {/* Linhas */}
+              <div className="divide-y divide-border">
+                {paginatedItems.map((item) => {
+                  const isSelected = selectedItems.includes(item.id);
+                  const sitBadge = SITUACAO_BADGES[item.situacao] || SITUACAO_BADGES["Em análise"];
+
+                  return (
+                    <div
+                      key={item.id}
+                      onClick={() => handleRowClick(item)}
+                      className={cn(
+                        "group p-4 lg:px-4 lg:py-3 transition-colors cursor-pointer hover:bg-muted/30",
+                        isSelected && "bg-muted/40"
+                      )}
+                    >
+                      {/* Layout Desktop */}
+                      <div className="hidden lg:grid grid-cols-12 gap-3 items-center text-xs">
+                        {/* Col 1: Checkbox + Código */}
+                        <div className="col-span-1 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => toggleSelectItem(item.id)}
+                          />
+                          <span className="font-mono text-xs font-bold text-foreground">
+                            {item.referencia}
+                          </span>
+                        </div>
+
+                        {/* Col 2: Domínio Badge */}
+                        <div className="col-span-2">
+                          {renderDominioBadge(item.tipo)}
+                        </div>
+
+                        {/* Col 3: Empresa / Unidade */}
+                        <div className="col-span-2">
+                          <span className="font-semibold text-foreground block truncate">
+                            {item.empresa}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground block truncate">
+                            {item.operacao || "Operacional"}
+                          </span>
+                        </div>
+
+                        {/* Col 4: Colaborador + Descrição */}
+                        <div className="col-span-3 space-y-0.5">
+                          <span className="font-bold text-foreground block leading-tight truncate">
+                            {item.colaborador}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground block line-clamp-1">
+                            {item.descricao}
+                          </span>
+                        </div>
+
+                        {/* Col 5: Valor / Horas */}
+                        <div className="col-span-2 space-y-0.5">
+                          <span className="font-mono font-bold text-sm text-foreground block">
+                            {fmt(item.valor)}
+                          </span>
+                          {item.horas && (
+                            <span className="text-[11px] text-muted-foreground font-medium block">
+                              {item.horas}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Col 6: Data Recebimento */}
+                        <div className="col-span-1">
+                          <span className="text-[11px] text-muted-foreground block">
+                            {fmtDate(item.data_recebimento)}
+                          </span>
+                        </div>
+
+                        {/* Col 7: Ação Rápida */}
+                        <div className="col-span-1 text-right" onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRowClick(item)}
+                            className="h-8 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted"
+                          >
+                            <Eye className="w-3.5 h-3.5 mr-1" />
+                            Ver
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Layout Mobile */}
+                      <div className="lg:hidden space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            {renderDominioBadge(item.tipo)}
+                            <span className="font-mono text-xs font-bold">{item.referencia}</span>
+                          </div>
+                          <span className="font-mono font-bold text-sm text-foreground">
+                            {fmt(item.valor)}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="font-bold text-foreground text-xs block">{item.colaborador}</span>
+                          <span className="text-xs text-muted-foreground block">{item.empresa} · {item.descricao}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Paginação */}
+              <div className="px-5 py-3.5 flex flex-col sm:flex-row items-center justify-between border-t border-border bg-muted/20 gap-3">
                 <span className="text-xs text-muted-foreground font-medium">
-                    {allItemsCount === 0 ? "Nenhum registro" : `Mostrando ${start} a ${end} de ${allItemsCount} registros`}
+                  Mostrando {paginatedItems.length} de {aprovacoesFiltradas.length} decisões
                 </span>
                 <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground">Registros por página</span>
-                        <Select value={String(itemsPerPage)} onValueChange={v => onItemsPerPageChange(Number(v))}>
-                            <SelectTrigger className="h-8 w-20 bg-white border-muted font-medium text-xs cursor-pointer w-full">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {[10, 25, 50, 100].map(n => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Itens por página</span>
+                    <Select value={String(itemsPerPage)} onValueChange={(v) => setItemsPerPage(Number(v))}>
+                      <SelectTrigger className="h-8 w-16 text-xs bg-background">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[10, 25, 50].map((n) => (
+                          <SelectItem key={n} value={String(n)}>
+                            {n}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {totalPages > 1 && (
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8"
+                        disabled={currentPage === 1}
+                        onClick={() => setCurrentPage(1)}
+                      >
+                        «
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8"
+                        disabled={currentPage === 1}
+                        onClick={() => setCurrentPage((p) => p - 1)}
+                      >
+                        <ChevronRight className="h-4 w-4 rotate-180" />
+                      </Button>
+                      <span className="text-xs font-semibold px-2">
+                        {currentPage} / {totalPages}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8"
+                        disabled={currentPage >= totalPages}
+                        onClick={() => setCurrentPage((p) => p + 1)}
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8"
+                        disabled={currentPage >= totalPages}
+                        onClick={() => setCurrentPage(totalPages)}
+                      >
+                        »
+                      </Button>
                     </div>
-                    {totalPages > 1 && (
-                        <div className="flex items-center gap-1">
-                            <Button variant="outline" size="icon" className="h-8 w-8 bg-white" disabled={currentPage === 1} onClick={() => onPageChange(1)}>«</Button>
-                            <Button variant="outline" size="icon" className="h-8 w-8 bg-white" disabled={currentPage === 1} onClick={() => onPageChange(currentPage - 1)}>
-                                <ChevronRight className="h-4 w-4 rotate-180" />
-                            </Button>
-                            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                                const pg = Math.max(1, Math.min(totalPages - 4, currentPage - 2)) + i;
-                                return (
-                                    <Button key={pg} variant={currentPage === pg ? "default" : "ghost"} className={cn("h-8 w-8 p-0 text-xs font-medium", currentPage === pg && "bg-orange-600 border-none")} onClick={() => onPageChange(pg)}>
-                                        {pg}
-                                    </Button>
-                                );
-                            })}
-                            <Button variant="outline" size="icon" className="h-8 w-8 bg-white" disabled={currentPage >= totalPages} onClick={() => onPageChange(currentPage + 1)}>
-                                <ChevronRight className="h-4 w-4" />
-                            </Button>
-                            <Button variant="outline" size="icon" className="h-8 w-8 bg-white" disabled={currentPage >= totalPages} onClick={() => onPageChange(totalPages)}>»</Button>
-                        </div>
-                    )}
+                  )}
                 </div>
-            </div>
+              </div>
+            </>
+          )}
         </div>
-    );
-}
+      </div>
 
-function DetailPanel({
-    item, onClose, onAprovar, onDevolver, onSolicitarCorrecao, isAprovando, isDevolvendo, onRefresh,
-    onOpenServicoExtraContinuity
-}: {
-    item: ApprovalItem;
-    onClose: () => void;
-    onAprovar: () => void;
-    onDevolver: () => void;
-    onSolicitarCorrecao: (motivo: string) => void;
-    isAprovando: boolean;
-    isDevolvendo: boolean;
-    onRefresh?: () => void;
-    onOpenServicoExtraContinuity?: (item: ApprovalItem) => void;
-}) {
-    const navigate = useNavigate();
-    const [correcaoOpen, setCorrecaoOpen] = useState(false);
-    const [motivo, setMotivo] = useState("");
-    const { user } = useAuth();
-
-    // States para edicao de diarista
-    const [editingDiarista, setEditingDiarista] = useState<any>(null);
-    const [diaristaValor, setDiaristaValor] = useState<string>("");
-    const [diaristaMotivo, setDiaristaMotivo] = useState<string>("");
-
-    // Validação de completude apenas para intermitentes em análise
-    const { data: valData, isLoading: valLoading } = useQuery({
-        queryKey: ["completude-lote", item.id],
-        queryFn: async () => {
-            if (item.tipo === "INTERMITENTE" && item.situacao === "Em análise") {
-                return await IntermitentesLoteService.verificarCompletudeLote(item.id);
-            }
-            return { podeAprovar: true, pendencias: [] };
-        }
-    });
-
-    const { data: opData, isLoading: opLoading } = useQuery({
-        queryKey: ["operacao-detalhes", item.id],
-        queryFn: async () => {
-            if (item.tipo === "OPERAÇÃO") {
-                return await OperacaoProducaoService.getByIdWithDetails(item.id);
-            }
-            return null;
-        },
-        enabled: item.tipo === "OPERAÇÃO"
-    });
-
-    const { data: receitaVinculada } = useQuery({
-        queryKey: ["receita-vinculada-op", item.id],
-        queryFn: async () => {
-            if (item.tipo !== "OPERAÇÃO") return null;
-            const { data, error } = await supabase
-                .from("receitas_operacionais_itens")
-                .select("receita_id, receitas_operacionais(id, status, modalidade, valor_total)")
-                .eq("operacao_id", item.id)
-                .maybeSingle();
-            if (error) {
-                console.warn("Nenhuma receita vinculada encontrada:", error);
-                return null;
-            }
-            return data;
-        },
-        enabled: item.tipo === "OPERAÇÃO"
-    });
-
-    const { data: diaristaData, isLoading: diaristaLoading, refetch: refetchDiarista } = useQuery({
-        queryKey: ["diarista-detalhes", item.raw_lote_id],
-        queryFn: async () => {
-            if (item.tipo === "DIARISTA" && item.raw_lote_id) {
-                return await LoteFechamentoDiaristaService.getLoteDetalhe(item.raw_lote_id);
-            }
-            return null;
-        },
-        enabled: item.tipo === "DIARISTA" && !!item.raw_lote_id
-    });
-
-    const { data: intermitenteData, isLoading: intermitenteLoading } = useQuery({
-        queryKey: ["intermitente-detalhes-aprovacao", item.id],
-        queryFn: async () => {
-            if (item.tipo === "INTERMITENTE") {
-                return await IntermitentesLoteService.getLoteDetalhe(item.id);
-            }
-            return null;
-        },
-        enabled: item.tipo === "INTERMITENTE"
-    });
-
-    const { data: custoExtraData, isLoading: custoExtraLoading } = useQuery({
-        queryKey: ["custo-extra-detalhes-aprovacao", item.id],
-        queryFn: async () => {
-            if (item.tipo !== "CUSTO EXTRA") return null;
-            const { data, error } = await supabase
-                .from("custos_extras_operacionais" as any)
-                .select("id, origem_recurso, atualizado_em, pipeline_status, status_pagamento, favorecido_colaborador_id, favorecido_fornecedor_id, colaboradores:favorecido_colaborador_id(nome), fornecedores:favorecido_fornecedor_id(nome)")
-                .eq("id", item.id)
-                .maybeSingle();
-            if (error) {
-                console.warn("Erro ao buscar detalhes de custo extra:", error);
-                return null;
-            }
-            return data;
-        },
-        enabled: item.tipo === "CUSTO EXTRA"
-    });
-
-    const isItemAprovado =
-        item.situacao === "Aprovado" ||
-        (item.tipo === "CUSTO EXTRA" && (
-            (custoExtraData as any)?.pipeline_status === "FINALIZADO" ||
-            (custoExtraData as any)?.pipeline_status === "ENVIADO_FINANCEIRO" ||
-            (custoExtraData as any)?.pipeline_status === "APROVADO_OPERACAO" ||
-            (custoExtraData as any)?.status_pagamento === "PAGO" ||
-            item.raw_status === "PAGO" ||
-            item.raw_status === "FINALIZADO"
-        )) ||
-        ["APROVADO", "VALIDADO_RH", "VALIDADO", "FECHADO_FINANCEIRO", "PAGO", "PROCESSADO", "CNAB_GERADO", "AGUARDANDO_PAGAMENTO", "CONCLUIDO", "FINALIZADO", "FECHADO", "APROVADO_OPERACAO"].includes(String(item.raw_status || "").toUpperCase());
-
-    const isItemDevolvido =
-        item.situacao === "Devolvido" ||
-        (item.tipo === "CUSTO EXTRA" && (custoExtraData as any)?.pipeline_status === "REPROVADO") ||
-        ["DEVOLVIDO", "CANCELADO", "CANCELADO_RH", "RETORNADO", "RECUSADO", "REPROVADO", "DEVOLVIDO_RH"].includes(String(item.raw_status || "").toUpperCase());
-
-    const isItemEmAnalise = !isItemAprovado && !isItemDevolvido;
-
-    const displaySituacao: SituacaoItem = isItemAprovado ? "Aprovado" : (isItemDevolvido ? "Devolvido" : item.situacao);
-
-    const origemRecurso = ((custoExtraData as any)?.origem_recurso || item.origem_recurso) as OrigemRecursoBanco | undefined;
-    const origemBadge = getOrigemRecursoBadge(origemRecurso);
-    const detailNotice = getOrigemRecursoStatusNotice(origemRecurso, isItemAprovado);
-    const approvalNotice = getOrigemRecursoApprovalNotice(origemRecurso);
-
-    const editDiaristaMutation = useMutation({
-        mutationFn: async (payload: { id: string; valor: number; motivo: string }) => {
-            if (!item.raw_lote_id) throw new Error("Lote ID is missing");
-            await LancamentoDiaristaService.updateAdminWithRecalculate(
-                payload.id,
-                item.raw_lote_id,
-                { valor_calculado: payload.valor, motivo_edicao: payload.motivo, editado_admin: true, editado_por: user?.id || "", editado_por_nome: user?.full_name || "", editado_por_role: "RH", editado_em: new Date().toISOString() }
-            );
-        },
-        onSuccess: () => {
-            toast.success("Diarista corrigido com sucesso e valor do lote recalculado!");
-            refetchDiarista();
-            if (onRefresh) onRefresh();
-            setEditingDiarista(null);
-            setDiaristaMotivo("");
-            setDiaristaValor("");
-        },
-        onError: (err: any) => toast.error("Falha ao ajustar diarista", { description: err?.message })
-    });
-
-    const isBlocked = valData?.podeAprovar === false;
-
-    return (
-        <Sheet open={true} onOpenChange={(open) => { if (!open) onClose() }}>
-            <SheetContent side="right" className="w-[500px] sm:max-w-xl p-0 flex flex-col shadow-2xl bg-white overflow-hidden">
-                <div className="p-5 pr-14 border-b border-border/40 bg-slate-50/60 flex items-center justify-between shadow-sm relative z-10">
-                    <h3 className="font-bold text-slate-800 tracking-tight">Detalhes do Item</h3>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-5 space-y-5">
-                    {/* Type + status */}
-                    <div>
-                        <div className="flex items-center justify-between mb-3">
-                            <Badge variant="outline" className={cn("text-[10px] font-black uppercase border-none px-2 py-0.5", TIPO_COLORS[item.tipo])}>
-                                {item.tipo}
-                            </Badge>
-                            <Badge className={cn("border text-[10px] font-bold uppercase", SITUACAO_COLORS[displaySituacao])}>
-                                {displaySituacao}
-                            </Badge>
-                        </div>
-                        <h2 className="text-xl font-bold text-slate-900 leading-tight mb-2">{item.colaborador}</h2>
-                        <div className="space-y-1">
-                            {[
-                                { label: "Referência", v: item.referencia },
-                                { label: "Empresa", v: item.empresa },
-                                { label: "Operação", v: item.operacao },
-                            ].map(r => (
-                                <p key={r.label} className="text-xs text-muted-foreground font-medium uppercase flex gap-2">
-                                    {r.label}: <span className="text-slate-800 normal-case font-medium">{r.v}</span>
-                                </p>
-                            ))}
-                        </div>
-                    </div>
-
-                    <Separator className="bg-border/40" />
-
-                    {/* Período */}
-                    <div className="space-y-2">
-                        <div className="flex items-center gap-2 text-slate-700">
-                            <Calendar size={15} />
-                            <span className="text-xs font-bold uppercase tracking-wide">Período / Competência</span>
-                        </div>
-                        <div className="bg-slate-50 border border-border/30 rounded-lg px-4 py-3">
-                            <span className="text-[13px] font-medium text-slate-800">{item.competencia}</span>
-                        </div>
-                    </div>
-
-                    {/* Detalhamento Operacional */}
-                    {item.tipo === "OPERAÇÃO" && (
-                        <div className="space-y-2">
-                            <div className="flex items-center gap-2 text-slate-700">
-                                <Layers size={15} />
-                                <span className="text-xs font-bold uppercase tracking-wide">Detalhamento Operacional</span>
-                            </div>
-                            <div className="bg-slate-50 border border-border/30 rounded-lg px-4 py-3 space-y-3">
-                                {opLoading ? (
-                                    <div className="flex justify-center py-4"><Loader2 className="animate-spin h-5 w-5 text-muted-foreground opacity-50" /></div>
-                                ) : opData ? (
-                                    <>
-                                        <div className="space-y-1.5">
-                                            {opData.tipos_servico_operacional && (
-                                                <p className="text-[12px] flex justify-between"><span className="text-muted-foreground font-medium">Serviço</span> <span className="font-semibold text-slate-800 text-right">{opData.tipos_servico_operacional.nome}</span></p>
-                                            )}
-                                            {opData.transportadoras_clientes && (
-                                                <p className="text-[12px] flex justify-between"><span className="text-muted-foreground font-medium">Transportadora</span> <span className="font-semibold text-slate-800 text-right">{opData.transportadoras_clientes.nome}</span></p>
-                                            )}
-                                            {opData.produtos_carga && (
-                                                <p className="text-[12px] flex justify-between"><span className="text-muted-foreground font-medium">Produto</span> <span className="font-semibold text-slate-800 text-right">{opData.produtos_carga.nome}</span></p>
-                                            )}
-                                            {(opData.placa || opData.nf_numero || opData.quantidade) && (
-                                                <div className="flex flex-wrap gap-4 pt-2 border-t border-border/50">
-                                                    {opData.quantidade != null && <p className="text-[12px]"><span className="text-muted-foreground font-medium">Qtd/Vol:</span> <span className="font-semibold text-slate-800">{opData.quantidade}</span></p>}
-                                                    {opData.placa && <p className="text-[12px]"><span className="text-muted-foreground font-medium">Placa:</span> <span className="font-semibold text-slate-800">{opData.placa}</span></p>}
-                                                    {opData.nf_numero && <p className="text-[12px]"><span className="text-muted-foreground font-medium">NF:</span> <span className="font-semibold text-slate-800">{opData.nf_numero}</span></p>}
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {opData.production_entry_collaborators && opData.production_entry_collaborators.length > 0 && (
-                                            <div className="pt-3 border-t border-border/50 mt-1">
-                                                <p className="text-[10px] font-bold text-slate-500 uppercase mb-2 tracking-wide">Colaboradores Vinculados ({opData.production_entry_collaborators.length})</p>
-                                                <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
-                                                    {opData.production_entry_collaborators.map((c: any, i: number) => (
-                                                        <div key={i} className="flex justify-between items-center text-[11px] bg-white p-2 border border-border/40 rounded-md shadow-sm">
-                                                            <span className="font-bold text-slate-800 truncate mr-2">{c.colaboradores?.nome || `Desconhecido`}</span>
-                                                            <span className="text-muted-foreground text-[10px] shrink-0 bg-slate-50 px-1.5 py-0.5 rounded">{c.colaboradores?.cargo || 'Sem Cargo'}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-                                    </>
-                                ) : (
-                                    <p className="text-xs text-muted-foreground text-center py-2">Detalhes não encontrados.</p>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Detalhamento Diaristas */}
-                    {item.tipo === "DIARISTA" && (
-                        <div className="space-y-2">
-                            <div className="flex items-center gap-2 text-slate-700">
-                                <Users size={15} />
-                                <span className="text-xs font-bold uppercase tracking-wide">Colaboradores do Lote</span>
-                            </div>
-                            <div className="bg-slate-50 border border-border/30 rounded-lg px-4 py-3 space-y-3">
-                                {diaristaLoading ? (
-                                    <div className="flex justify-center py-4"><Loader2 className="animate-spin h-5 w-5 text-muted-foreground opacity-50" /></div>
-                                ) : diaristaData?.itens && diaristaData.itens.length > 0 ? (
-                                    <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-1">
-                                        {diaristaData.itens.map((c: any, i: number) => (
-                                            <div key={i} className="flex flex-col text-[11px] bg-white p-2 border border-border/40 rounded-md shadow-sm gap-1 hover:border-indigo-200 transition-colors">
-                                                <div className="flex justify-between items-center">
-                                                    <span className="font-bold text-slate-800 truncate mr-2">{c.nome_colaborador || `Desconhecido`}</span>
-                                                    <span className="text-muted-foreground text-[10px] shrink-0 bg-slate-50 px-1.5 py-0.5 rounded uppercase">{c.tipo_evento}</span>
-                                                </div>
-                                                <div className="flex justify-between items-center mt-0.5 pt-1 border-t border-border/30">
-                                                    <span className="text-muted-foreground font-medium">{c.horas} diárias</span>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="font-bold text-slate-900">{fmt(c.valor_calculado)}</span>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="h-6 w-6 text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50 shrink-0 shadow-sm border border-transparent hover:border-indigo-100"
-                                                            disabled={!isItemEmAnalise}
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setEditingDiarista(c);
-                                                                setDiaristaValor(String(c.valor_calculado || 0));
-                                                                setDiaristaMotivo("");
-                                                            }}
-                                                        >
-                                                            <Pencil size={12} />
-                                                        </Button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <p className="text-xs text-muted-foreground text-center py-2">Nenhum diarista encontrado no lote.</p>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Detalhamento Intermitentes */}
-                    {item.tipo === "INTERMITENTE" && (
-                        <div className="space-y-2">
-                            <div className="flex items-center gap-2 text-slate-700">
-                                <Users size={15} />
-                                <span className="text-xs font-bold uppercase tracking-wide">Colaboradores do Lote</span>
-                            </div>
-                            <div className="bg-slate-50 border border-border/30 rounded-lg px-4 py-3 space-y-3">
-                                {intermitenteLoading ? (
-                                    <div className="flex justify-center py-4"><Loader2 className="animate-spin h-5 w-5 text-muted-foreground opacity-50" /></div>
-                                ) : intermitenteData?.itens && intermitenteData.itens.length > 0 ? (
-                                    <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
-                                        {intermitenteData.itens.map((c: any, i: number) => (
-                                            <div key={i} className="flex flex-col text-[11px] bg-white p-2.5 border border-border/40 rounded-md shadow-sm gap-1 hover:border-indigo-200 transition-colors">
-                                                <div className="flex justify-between items-center">
-                                                    <span className="font-bold text-slate-800 truncate mr-2">{c.nome_colaborador || `Desconhecido`}</span>
-                                                    <span className="text-muted-foreground text-[10px] shrink-0 bg-slate-100 px-1.5 py-0.5 rounded font-medium">
-                                                        {c.data_referencia ? format(new Date(c.data_referencia.includes("T") ? c.data_referencia : c.data_referencia + "T12:00:00"), "dd/MM/yyyy") : "—"}
-                                                    </span>
-                                                </div>
-                                                <div className="flex justify-between items-center text-muted-foreground text-[10px]">
-                                                    <span>{c.cargo || 'Auxiliar'}</span>
-                                                    <span className="font-mono text-slate-600">{c.convocacao || ''}</span>
-                                                </div>
-                                                <div className="flex justify-between items-center mt-1 pt-1.5 border-t border-border/30">
-                                                    <span className="text-slate-600 font-medium">
-                                                        {decimalParaHora(c.horas_trabalhadas || 0)} trab ({decimalParaHora(c.horas_normais || 0)} norm{Number(c.he_50 || 0) > 0 ? ` · ${decimalParaHora(c.he_50)} HE50` : ''})
-                                                    </span>
-                                                    <span className="font-bold text-slate-900 font-mono text-[12px]">{fmt(c.valor_calculado || c.total || 0)}</span>
-                                                </div>
-                                            </div>
-                                        ))}
-                                        <div className="pt-2 border-t border-border/50 flex justify-between items-center text-xs font-semibold text-slate-700 bg-slate-100/60 p-2 rounded">
-                                            <span>Total ({intermitenteData.itens.length} colaboradores)</span>
-                                            <div className="text-right">
-                                                <p className="font-bold text-slate-900 font-mono">{fmt(intermitenteData.valor_total || item.valor)}</p>
-                                                <p className="text-[10px] text-muted-foreground font-normal">
-                                                    {decimalParaHora(intermitenteData.horas_trabalhadas || 0)} trab · {decimalParaHora(intermitenteData.horas_normais || 0)} norm
-                                                    {Number(intermitenteData.he_50 || 0) > 0 ? ` · ${decimalParaHora(intermitenteData.he_50)} HE50` : ''}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <p className="text-xs text-muted-foreground text-center py-2">Nenhum lançamento encontrado no lote.</p>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Detalhamento Custo Extra */}
-                    {item.tipo === "CUSTO EXTRA" && (
-                        <div className="space-y-2">
-                            <div className="flex items-center gap-2 text-slate-700">
-                                <DollarSign size={15} />
-                                <span className="text-xs font-bold uppercase tracking-wide">Origem do Recurso</span>
-                            </div>
-                            <div className="bg-slate-50 border border-border/30 rounded-lg px-4 py-3 space-y-2.5">
-                                {custoExtraLoading ? (
-                                    <div className="flex justify-center py-2"><Loader2 className="animate-spin h-4 w-4 text-muted-foreground opacity-50" /></div>
-                                ) : (
-                                    <>
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-xs text-muted-foreground font-medium">Quem pagou:</span>
-                                            <Badge variant={origemBadge.variant} className={cn("text-xs font-medium px-2.5 py-0.5", origemBadge.className)}>
-                                                {origemBadge.labelCompleto}
-                                            </Badge>
-                                        </div>
-                                        {detailNotice && (
-                                            <div className="p-2.5 rounded-md bg-blue-50/80 border border-blue-200/80 text-xs text-blue-900 leading-relaxed">
-                                                <div className="flex items-start gap-2">
-                                                    <Info className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
-                                                    <span className="font-medium">{detailNotice}</span>
-                                                </div>
-                                            </div>
-                                        )}
-                                        {origemRecurso === "REEMBOLSO_COLABORADOR" && (custoExtraData as any)?.colaboradores?.nome && (
-                                            <div className="flex justify-between items-center text-xs pt-2 border-t border-border/40">
-                                                <span className="text-muted-foreground font-medium">Colaborador a reembolsar:</span>
-                                                <span className="font-semibold text-slate-800">{(custoExtraData as any).colaboradores.nome}</span>
-                                            </div>
-                                        )}
-                                        {origemRecurso === "PAGAMENTO_PENDENTE" && (custoExtraData as any)?.fornecedores?.nome && (
-                                            <div className="flex justify-between items-center text-xs pt-2 border-t border-border/40">
-                                                <span className="text-muted-foreground font-medium">Fornecedor a pagar:</span>
-                                                <span className="font-semibold text-slate-800">{(custoExtraData as any).fornecedores.nome}</span>
-                                            </div>
-                                        )}
-                                    </>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Resumo */}
-                    <div className="space-y-2">
-                        <div className="flex items-center gap-2 text-slate-700">
-                            <Activity size={15} />
-                            <span className="text-xs font-bold uppercase tracking-wide">Resumo</span>
-                        </div>
-                        <div className="space-y-2 bg-slate-50 border border-border/30 rounded-lg px-4 py-3">
-                            {item.tipo === "INTERMITENTE" ? (
-                                <>
-                                    <SummaryLine 
-                                        label="Composição de Horas" 
-                                        value={
-                                            intermitenteData 
-                                                ? `${decimalParaHora(intermitenteData.horas_trabalhadas || 0)} trab (${decimalParaHora(intermitenteData.horas_normais || 0)} norm · ${decimalParaHora(intermitenteData.he_50 || 0)} HE50)`
-                                                : (item.horas && item.horas !== "-" ? item.horas : "18:00 trab (16:00 norm · 02:00 HE50)")
-                                        } 
-                                    />
-                                    <SummaryLine 
-                                        label="Registros do Lote" 
-                                        value={`${intermitenteData?.quantidade_registros || 2} lançamentos`} 
-                                    />
-                                </>
-                            ) : (
-                                item.horas && <SummaryLine label="Horas / Diárias" value={item.horas} />
-                            )}
-                            <SummaryLine label="Valor total" value={fmt(item.valor)} isBold />
-                        </div>
-                    </div>
-
-                    {/* Informações */}
-                    <div className="space-y-2">
-                        <div className="flex items-center gap-2 text-slate-700">
-                            <Info size={15} />
-                            <span className="text-xs font-bold uppercase tracking-wide">Informações</span>
-                        </div>
-                        <div className="space-y-2 bg-slate-50 border border-border/30 rounded-lg px-4 py-3">
-                            <SummaryLine label="Recebido em" value={formatDateTime((item as any).dataRecebimento || item.data_recebimento)} />
-                            <SummaryLine label="Referência" value={item.referencia} />
-                        </div>
-                    </div>
-
-                    {/* Ações */}
-                    <div className="pt-2 flex flex-col gap-2">
-                        {/* Contexto Operacional RH x Financeiro */}
-                        {item.tipo === "OPERAÇÃO" && isItemAprovado && (
-                            <div className="bg-emerald-50/80 border border-emerald-200/80 rounded-lg p-3.5 space-y-2.5">
-                                <div className="flex items-start gap-2.5">
-                                    <CheckCircle2 className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
-                                    <div className="text-xs text-emerald-950 leading-relaxed">
-                                        <p className="font-bold">Validação RH Concluída</p>
-                                        <p className="text-emerald-700 text-[11px] mt-0.5">
-                                            A validação RH desta operação está finalizada. A quitação e cobrança financeira são gerenciadas no pipeline de Receitas Operacionais.
-                                        </p>
-                                    </div>
-                                </div>
-                                {receitaVinculada?.receita_id && (
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="w-full bg-white hover:bg-emerald-50 border-emerald-300 text-emerald-800 font-semibold h-9 text-xs gap-1.5 shadow-sm"
-                                        onClick={() => {
-                                            const rec = receitaVinculada.receitas_operacionais as any;
-                                            navigate("/financeiro/receitas", {
-                                                state: {
-                                                    highlightReceitaId: receitaVinculada.receita_id,
-                                                    activeTab: rec?.modalidade || "CAIXA_IMEDIATO"
-                                                }
-                                            });
-                                        }}
-                                    >
-                                        <DollarSign className="h-3.5 w-3.5 text-emerald-600" />
-                                        Ver Receita Operacional
-                                    </Button>
-                                )}
-                            </div>
-                        )}
-
-                        {item.tipo === "OPERAÇÃO" && receitaVinculada?.receita_id && !isItemAprovado && (
-                            <Button
-                                variant="outline"
-                                className="w-full border-emerald-200 text-emerald-700 hover:bg-emerald-50 font-bold h-11 gap-2"
-                                onClick={() => {
-                                    const rec = receitaVinculada.receitas_operacionais as any;
-                                    navigate("/financeiro/receitas", {
-                                        state: {
-                                            highlightReceitaId: receitaVinculada.receita_id,
-                                            activeTab: rec?.modalidade || "CAIXA_IMEDIATO"
-                                        }
-                                    });
-                                }}
-                            >
-                                <DollarSign size={16} className="text-emerald-600" />
-                                Ver Receita Vinculada
-                            </Button>
-                        )}
-
-                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.15em]">
-                            {isItemAprovado ? "Situação do Registro" : "Ações"}
-                        </label>
-
-                        {/* ESTADO 1: Item Aprovado (Somente Consulta) */}
-                        {isItemAprovado && (
-                            <>
-                                {item.tipo === "CUSTO EXTRA" ? (
-                                    origemRecurso === "PAGO_EMPRESA" ? (
-                                        <div className="p-3.5 rounded-lg bg-emerald-50/90 border border-emerald-200 text-emerald-950 space-y-1.5 shadow-sm">
-                                            <div className="flex items-center gap-2 font-bold text-xs text-emerald-800">
-                                                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-                                                <span>Custo Extra Concluído — Pago pela Empresa</span>
-                                            </div>
-                                            <p className="text-[11px] text-emerald-700 leading-relaxed">
-                                                Este lançamento foi pago diretamente pela empresa e finalizado. Registro em modo somente leitura (sem repasse financeiro pendente).
-                                            </p>
-                                        </div>
-                                    ) : (
-                                        <div className="p-3.5 rounded-lg bg-emerald-50/90 border border-emerald-200 text-emerald-950 space-y-2.5 shadow-sm">
-                                            <div className="flex items-center gap-2 font-bold text-xs text-emerald-800">
-                                                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-                                                <span>Despesa aprovada operacionalmente</span>
-                                            </div>
-                                            <p className="text-[11px] text-emerald-700 leading-relaxed">
-                                                {origemRecurso === "REEMBOLSO_COLABORADOR"
-                                                    ? "Despesa aprovada operacionalmente. Encaminhada para reembolso ao colaborador em Pagamentos."
-                                                    : "Despesa aprovada operacionalmente. Existe valor a pagar; a próxima etapa é Pagamentos."}
-                                            </p>
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                className="w-full bg-white hover:bg-emerald-100/60 text-emerald-900 border-emerald-300 font-semibold text-xs justify-center gap-1.5 h-8 shadow-xs"
-                                                onClick={() => navigate("/financeiro?tab=custos-extras&origem=CUSTOS_EXTRAS")}
-                                            >
-                                                Continuar para Pagamentos
-                                                <ArrowRight className="h-3.5 w-3.5 text-emerald-700" />
-                                            </Button>
-                                        </div>
-                                    )
-                                ) : item.tipo === "SERVIÇO EXTRA" ? (
-                                    <div className="p-3.5 rounded-lg bg-emerald-50/90 border border-emerald-200 text-emerald-950 space-y-2.5 shadow-sm">
-                                        <div className="flex items-center gap-2 font-bold text-xs text-emerald-800">
-                                            <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-                                            <span>Serviço extra aprovado operacionalmente</span>
-                                        </div>
-                                        <p className="text-[11px] text-emerald-700 leading-relaxed">
-                                            A validação RH deste serviço foi concluída. Acompanhe a continuidade no pipeline operacional e financeiro de receitas.
-                                        </p>
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="w-full bg-white hover:bg-emerald-100/60 text-emerald-900 border-emerald-300 font-semibold text-xs justify-center gap-1.5 h-8 shadow-xs"
-                                            onClick={() => {
-                                                onClose();
-                                                if (onOpenServicoExtraContinuity) {
-                                                    onOpenServicoExtraContinuity(item);
-                                                }
-                                            }}
-                                        >
-                                            Ver Pipeline e Continuidade Financeira
-                                            <ArrowRight className="h-3.5 w-3.5 text-emerald-700" />
-                                        </Button>
-                                    </div>
-                                ) : item.tipo !== "OPERAÇÃO" ? (
-                                    <div className="p-3.5 rounded-lg bg-emerald-50/90 border border-emerald-200 text-emerald-950 space-y-1.5 shadow-sm">
-                                        <div className="flex items-center gap-2 font-bold text-xs text-emerald-800">
-                                            <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-                                            <span>Validação RH Concluída</span>
-                                        </div>
-                                        <p className="text-[11px] text-emerald-700 leading-relaxed">
-                                            A validação deste lançamento foi concluída com sucesso. O registro encontra-se em modo de somente consulta.
-                                        </p>
-                                    </div>
-                                ) : null}
-                            </>
-                        )}
-
-                        {/* ESTADO 2: Item Devolvido */}
-                        {isItemDevolvido && !isItemAprovado && (
-                            <div className="p-3.5 rounded-lg bg-amber-50/90 border border-amber-200 text-amber-950 space-y-1.5 shadow-sm">
-                                <div className="flex items-center gap-2 font-bold text-xs text-amber-800">
-                                    <RotateCcw className="h-4 w-4 text-amber-600 shrink-0" />
-                                    <span>Lançamento Devolvido</span>
-                                </div>
-                                <p className="text-[11px] text-amber-700 leading-relaxed">
-                                    Este lançamento foi devolvido ao responsável para correção. Ações de aprovação direta estão desabilitadas nesta etapa.
-                                </p>
-                            </div>
-                        )}
-
-                        {/* ESTADO 3: Item Em Análise / Pendente (Ações Ativas) */}
-                        {isItemEmAnalise && (
-                            <>
-                                {isBlocked && valData.pendencias.length > 0 && (
-                                    <div className="mb-2 bg-rose-50 border border-rose-200 rounded-md p-3">
-                                        <div className="flex items-center gap-2 text-rose-700 font-bold mb-2">
-                                            <AlertTriangle size={16} />
-                                            <span>Bloqueio de Aprovação</span>
-                                        </div>
-                                        <ul className="text-xs text-rose-600 space-y-1 ml-2">
-                                            {valData.pendencias.map((p: any, idx: number) => (
-                                                <li key={idx} className="list-disc list-inside">
-                                                    <span className="font-semibold">{p.colaborador}:</span> {p.pendencias.join(', ')}
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    </div>
-                                )}
-
-                                {item.tipo === "CUSTO EXTRA" && approvalNotice && (
-                                    <div className="p-2.5 rounded-lg bg-slate-50 border border-border/60 text-[11px] text-slate-700 leading-snug">
-                                        <div className="flex items-start gap-2">
-                                            <Info className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
-                                            <span>{approvalNotice}</span>
-                                        </div>
-                                    </div>
-                                )}
-
-                                <Button
-                                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-11 gap-2"
-                                    onClick={onAprovar}
-                                    disabled={isBlocked || valLoading || isAprovando}
-                                >
-                                    {(isAprovando || valLoading) ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-                                    Aprovar
-                                </Button>
-                                <Button
-                                    variant="outline"
-                                    className="w-full border-orange-200 text-orange-600 hover:bg-orange-50 font-bold h-11 gap-2"
-                                    onClick={onDevolver}
-                                    disabled={isDevolvendo}
-                                >
-                                    {isDevolvendo ? <Loader2 size={16} className="animate-spin" /> : <RotateCcw size={16} />}
-                                    Devolver
-                                </Button>
-                                <Button
-                                    variant="outline"
-                                    className="w-full border-rose-200 text-rose-500 hover:bg-rose-50 font-bold h-11 gap-2"
-                                    onClick={() => setCorrecaoOpen(true)}
-                                    disabled={isDevolvendo}
-                                >
-                                    <AlertTriangle size={16} />
-                                    Solicitar Correção
-                                </Button>
-                            </>
-                        )}
-
-                        <Button variant="ghost" className="w-full text-muted-foreground font-bold h-11 gap-2" onClick={() => {
-                            const typePaths: Record<string, string> = {
-                                "PONTO": "/operacional/pontos",
-                                "DIARISTA": "/operacional/diaristas",
-                                "INTERMITENTE": "/operacional/intermitentes/lotes",
-                                "CUSTO EXTRA": "/operacional/custos-extras",
-                                "SERVIÇO EXTRA": "/operacional/servicos-extras",
-                                "OPERAÇÃO": "/operacional/operacoes"
-                            };
-                            const path = typePaths[item.tipo] || "/operacional/dashboard";
-                            // Try to navigate with state passing the item id to highlight it on the target screen if supported
-                            navigate(path, { state: { selectedLoteId: item.id, highlight: item.id } });
-                        }}>
-                            <ExternalLink size={16} />
-                            Ver Detalhes Completos
-                        </Button>
-                    </div>
-                </div>
-            </SheetContent>
-            <Dialog open={correcaoOpen} onOpenChange={setCorrecaoOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Solicitar Correção</DialogTitle>
-                        <DialogDescription>
-                            Ao solicitar correção, a operação será devolvida ao Encarregado com um status de Restrição e a sua nota será salva para visualização e ajuste.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="py-4">
-                        <Textarea
-                            placeholder="Descreva detalhadamente o que precisa ser corrigido pelo Encarregado..."
-                            className="min-h-[120px]"
-                            value={motivo}
-                            onChange={(e) => setMotivo(e.target.value)}
-                        />
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setCorrecaoOpen(false)} disabled={isDevolvendo}>Cancelar</Button>
-                        <Button variant="destructive" onClick={() => {
-                            if (motivo.trim().length === 0) {
-                                toast.error("Por favor, preencha o motivo da correção.");
-                                return;
-                            }
-                            setCorrecaoOpen(false);
-                            onSolicitarCorrecao(motivo);
-                        }} disabled={isDevolvendo}>
-                            {isDevolvendo ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
-                            Confirmar Solicitação
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            <Dialog open={!!editingDiarista} onOpenChange={(v) => { if (!v) setEditingDiarista(null) }}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Editar Lançamento: {editingDiarista?.nome_colaborador}</DialogTitle>
-                        <DialogDescription>
-                            Faça a correção no valor repassado ao colaborador. Esta alteração constará nos registros de auditoria financeira do RH.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                        <div className="space-y-2">
-                            <label className="text-sm font-semibold">Valor Corrigido (R$)</label>
-                            <Input
-                                type="number"
-                                step="0.01"
-                                value={diaristaValor}
-                                onChange={(e) => setDiaristaValor(e.target.value)}
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-sm font-semibold">Motivo da Edição (Auditoria)</label>
-                            <Textarea
-                                placeholder="Justifique a mudança no valor..."
-                                className="min-h-[80px]"
-                                value={diaristaMotivo}
-                                onChange={(e) => setDiaristaMotivo(e.target.value)}
-                            />
-                        </div>
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setEditingDiarista(null)} disabled={editDiaristaMutation.isPending}>Cancelar</Button>
-                        <Button className="bg-indigo-600 hover:bg-indigo-700 text-white" onClick={() => {
-                            if (!diaristaMotivo.trim()) {
-                                toast.error("O motivo da edição é obrigatório para auditoria.");
-                                return;
-                            }
-                            editDiaristaMutation.mutate({
-                                id: editingDiarista.id,
-                                valor: Number(diaristaValor),
-                                motivo: diaristaMotivo
-                            });
-                        }} disabled={editDiaristaMutation.isPending}>
-                            {editDiaristaMutation.isPending ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
-                            Salvar Alterações
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-        </Sheet>
-    );
-}
-
-function KPICard({ label, value, subtext, icon: Icon, iconColor, iconBg, isAlert, loading }: {
-    label: string;
-    value: string;
-    subtext: string;
-    icon: any;
-    iconColor: string;
-    iconBg: string;
-    isAlert?: boolean;
-    loading?: boolean;
-}) {
-    return (
-        <Card className={cn(
-            "esc-card p-5 transition-all hover:shadow-md hover:-translate-y-0.5 bg-white",
-            isAlert ? "border-l-4 border-l-rose-500" : ""
-        )}>
-            <div className="flex items-start justify-between">
-                <div className="flex flex-col">
-                    <span className={cn(
-                        "text-[10px] font-bold uppercase tracking-[0.1em]",
-                        isAlert ? "text-rose-600" : "text-slate-500"
-                    )}>{label}</span>
-                    <div className="mt-3">
-                        {loading ? (
-                            <div className="h-9 w-16 bg-slate-100 animate-pulse rounded" />
-                        ) : (
-                            <span className={cn(
-                                "text-3xl font-bold font-display leading-none",
-                                isAlert ? "text-rose-600" : "text-slate-900"
-                            )}>
-                                {value}
-                            </span>
-                        )}
-                    </div>
-                </div>
-                <div className={cn("p-2 rounded-lg opacity-40 shrink-0", iconColor)}>
-                    <Icon size={24} strokeWidth={1.5} />
-                </div>
-            </div>
-            <div className="mt-4 pt-3 border-t border-slate-50">
-                <span className="text-xs font-bold text-slate-400">
-                    {loading ? "Sincronizando..." : subtext}
-                </span>
-            </div>
-        </Card>
-    );
-}
-
-function SummaryLine({ label, value, isBold }: { label: string; value: string; isBold?: boolean }) {
-    return (
-        <div className="flex justify-between items-center text-[13px]">
-            <span className="text-muted-foreground font-medium">{label}</span>
-            <span className={cn("text-slate-800", isBold ? "font-black text-sm" : "font-bold")}>{value}</span>
-        </div>
-    );
+      {/* Drawer Decisório Oficial */}
+      <AprovacaoDecisaoDrawer
+        item={activeItem}
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+        onAprovar={(item) => aprovarMutation.mutate(item)}
+        onDevolver={(item, motivo) => devolverMutation.mutate({ item, motivo })}
+        isAprovando={aprovarMutation.isPending}
+        isDevolvendo={devolverMutation.isPending}
+      />
+    </AppShell>
+  );
 }
