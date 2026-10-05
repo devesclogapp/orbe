@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { UxLabShell } from "@/components/ux-lab/UxLabShell";
+import { UX_LAB_ROUTES } from "@/components/ux-lab/UxLabSidebar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -841,32 +842,9 @@ export function UxLabRelatorioView() {
   };
 
   const handleSidebarSelect = (id: string, label: string) => {
-    if (id === "relatorios") {
-      navigate("/ux-lab/relatorios");
-      return;
-    }
-    if (id === "dashboard") {
-      navigate("/ux-lab");
-      return;
-    }
-    if (id === "torre-operacional") {
-      navigate("/ux-lab/torre");
-      return;
-    }
-    if (id === "operacoes-volume") {
-      navigate("/ux-lab/operacoes-volume");
-      return;
-    }
-    if (id === "servicos-extras") {
-      navigate("/ux-lab/servicos-extras");
-      return;
-    }
-    if (id === "custos-extras") {
-      navigate("/ux-lab/custos-extras");
-      return;
-    }
-    if (id === "dre") {
-      navigate("/ux-lab/dre");
+    const targetRoute = UX_LAB_ROUTES[id];
+    if (targetRoute) {
+      navigate(targetRoute);
       return;
     }
     toast.info(`Módulo em planejamento: ${label}`, {

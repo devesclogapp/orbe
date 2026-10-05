@@ -71,6 +71,9 @@ import Configuracoes from "./pages/Configuracoes";
 import Styleguide from "./pages/Styleguide";
 import NotFound from "./pages/NotFound";
 
+// CLT — Ponto & Jornadas CLT Oficial
+import PontoJornadasClt from "./pages/Clt/PontoJornadasClt";
+
 // V4 — Banco de Horas
 import PainelGeralBH from "./pages/BancoHoras/PainelGeral";
 import RegrasBH from "./pages/BancoHoras/Regras";
@@ -177,6 +180,9 @@ const App = () => (
                             <Route path="/verificar-email" element={<VerificarEmail />} />
 
                             {/* Protected Routes */}
+                            {/* RH-01: ROTA CANÔNICA PONTO & JORNADAS CLT */}
+                            <Route path="/clt/pontos" element={<AuthGuard><PontoJornadasClt /></AuthGuard>} />
+
                             {/* ALIASES ROTAS CONTEXTUAIS (FASE 1A) */}
                             <Route path="/diaristas/aprovacoes" element={<AuthGuard><AprovacoesRh flowType="DIARISTA" lockedFlow={true} /></AuthGuard>} />
                             <Route path="/intermitentes/aprovacoes" element={<AuthGuard><AprovacoesRh flowType="INTERMITENTE" lockedFlow={true} /></AuthGuard>} />

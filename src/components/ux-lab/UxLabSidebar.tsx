@@ -112,12 +112,14 @@ const SECTIONS: LabNavSection[] = [
         id: "ponto-clt",
         label: "Ponto & Jornadas CLT",
         icon: Clock,
+        isActiveLabTarget: true,
       },
       {
         id: "banco-horas",
         label: "Banco de Horas",
         icon: LayoutGrid,
         badge: { count: 3, variant: "critical" },
+        isActiveLabTarget: true,
       },
       {
         id: "fechamento-clt",
@@ -257,6 +259,8 @@ export const UX_LAB_ROUTES: Record<string, string> = {
   "operacoes-volume": "/ux-lab/operacoes-volume",
   "servicos-extras": "/ux-lab/servicos-extras",
   "custos-extras": "/ux-lab/custos-extras",
+  "ponto-clt": "/clt/pontos",
+  "banco-horas": "/clt/pontos?tab=saldos_bh",
   aprovacoes: "/ux-lab/aprovacoes",
   inconsistencias: "/ux-lab/inconsistencias",
   "fechamento-ciclos": "/ux-lab/fechamento-ciclos",

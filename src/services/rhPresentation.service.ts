@@ -230,21 +230,28 @@ export function resolvePontoPresentation(
     !colaborador.valor_base;
 
   if (isColaboradorInvalido) {
+    const isPreCadastro =
+      colaborador?.cadastro_provisorio === true ||
+      colaborador?.status_cadastro === "pendente_complemento";
+
+    const explicacao = isPreCadastro
+      ? "Pré-cadastro importado — aguardando complemento cadastral pelo RH."
+      : "Cadastro do colaborador pendente de complemento (dados cadastrais ou contratuais incompletos).";
+
     return {
       statusVisual: "CADASTRO_PENDENTE",
       badgeLabel: "Cadastro Pendente",
       badgeVariant: "warning",
       badgeClassName: "bg-warning-soft text-warning border-0",
       titulo: "Cadastro Pendente",
-      explicacao:
-        "Cadastro do colaborador pendente de complemento (dados cadastrais ou contratuais incompletos).",
+      explicacao,
       acaoNecessaria: "Completar dados contratuais na Central de Cadastros.",
       isBloqueado: true,
       marcacoes,
       horasBrutas: "—",
       ...emptyFinance,
       jornadaPrevistaHours: null,
-      jornadaNome: "—",
+      jornadaNome: "Aguardando cadastro",
       regraNome: "Aguardando Cadastro",
       resumoRegra: "Cadastro pendente de complemento",
     };

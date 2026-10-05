@@ -39,6 +39,7 @@ import {
 } from "recharts";
 import { toast } from "sonner";
 import { UxLabShell } from "@/components/ux-lab/UxLabShell";
+import { UX_LAB_ROUTES } from "@/components/ux-lab/UxLabSidebar";
 import { UxLabMetricCard } from "@/components/ux-lab/UxLabMetricCard";
 import {
   UxLabThemeProvider,
@@ -970,32 +971,9 @@ function UxLabDREContent() {
 
   const handleSidebarSelect = (id: string, label: string) => {
     if (id === "dre") return;
-    if (id === "dashboard") {
-      navigate("/ux-lab");
-      return;
-    }
-    if (id === "torre-operacional") {
-      navigate("/ux-lab/torre");
-      return;
-    }
-    if (id === "operacoes-volume") {
-      navigate("/ux-lab/operacoes-volume");
-      return;
-    }
-    if (id === "servicos-extras") {
-      navigate("/ux-lab/servicos-extras");
-      return;
-    }
-    if (id === "custos-extras") {
-      navigate("/ux-lab/custos-extras");
-      return;
-    }
-    if (id === "relatorios") {
-      navigate("/ux-lab/relatorios");
-      return;
-    }
-    if (id === "design-system") {
-      navigate("/ux-lab/design-system");
+    const targetRoute = UX_LAB_ROUTES[id];
+    if (targetRoute) {
+      navigate(targetRoute);
       return;
     }
     toast.info(`Módulo em planejamento: ${label}`, {
