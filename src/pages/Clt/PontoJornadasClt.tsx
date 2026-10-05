@@ -695,7 +695,7 @@ export const PontoJornadasClt: React.FC = () => {
       header: "Colaborador",
       render: (row: any) => (
         <div className="flex flex-col min-w-[160px]">
-          <span className="font-semibold text-foreground text-xs">{row.nome_colaborador || "—"}</span>
+          <span className="font-semibold text-foreground text-xs">{row.nome_colaborador || row.colaboradorObj?.nome || "—"}</span>
           <span className="text-[10px] text-muted-foreground font-mono">
             {row.matricula ? `Mat: ${row.matricula}` : empresaMap.get(row.empresa_id) || "ESC Log"}
           </span>
@@ -1414,22 +1414,75 @@ export const PontoJornadasClt: React.FC = () => {
                       </h4>
 
                       {selectedPontoDia.presentation?.isBloqueado && (
-                        <OrbeButton
-                          variant="outline"
-                          size="sm"
-                          icon={Edit3}
-                          onClick={() => handleOpenRegularizacao(selectedPontoDia)}
-                          className="h-7 text-xs border-amber-300 text-amber-700 dark:text-amber-400"
-                        >
-                          Regularizar este dia
-                        </OrbeButton>
+                        selectedPontoDia.presentation?.statusVisual === "CADASTRO_PENDENTE" ? (
+                          // Primary CTA for cadastral block: navigate to CentralCadastros with deep-link
+                          selectedColaboradorItem?.colaborador_id ? (
+                            <OrbeButton
+                              variant="outline"
+                              size="sm"
+                              icon={ArrowRight}
+                              onClick={() =>
+                                navigate(
+                                  `/cadastros?tab=colaboradores&colaboradorId=${selectedColaboradorItem.colaborador_id}&openModal=true&from=clt-pontos`
+                                )
+                              }
+                              className="h-7 text-xs border-blue-300 text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950"
+                            >
+                              Completar Cadastro
+                            </OrbeButton>
+                          ) : (
+                            <OrbeButton
+                              variant="outline"
+                              size="sm"
+                              icon={ArrowRight}
+                              onClick={() => {
+                                toast.warning("Cadastro do colaborador não localizado", {
+                                  description: "Redirecionando para a Central de Cadastros.",
+                                });
+                                navigate("/cadastros?tab=colaboradores&from=clt-pontos");
+                              }}
+                              className="h-7 text-xs border-blue-300 text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950"
+                            >
+                              Completar Cadastro
+                            </OrbeButton>
+                          )
+                        ) : (
+                          // Default CTA for other blocked states (MARCACAO_INCOMPLETA etc.)
+                          <OrbeButton
+                            variant="outline"
+                            size="sm"
+                            icon={Edit3}
+                            onClick={() => handleOpenRegularizacao(selectedPontoDia)}
+                            className="h-7 text-xs border-amber-300 text-amber-700 dark:text-amber-400"
+                          >
+                            Regularizar este dia
+                          </OrbeButton>
+                        )
                       )}
                     </div>
 
-                    <p className="text-xs text-muted-foreground leading-relaxed">
-                      {selectedPontoDia.presentation?.explicacao ||
-                        `Jornada padrão aplicada. Horas apuradas: ${minutesToTime(rhProcessingUtils.calculateWorkedMinutes(selectedPontoDia))}.`}
-                    </p>
+                    {/* Contextual explanation for CADASTRO_PENDENTE */}
+                    {selectedPontoDia.presentation?.statusVisual === "CADASTRO_PENDENTE" && (
+                      <div className="flex items-start gap-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-md p-2.5">
+                        <ShieldAlert className="h-3.5 w-3.5 text-blue-600 mt-0.5 shrink-0" />
+                        <div className="space-y-0.5">
+                          <p className="text-xs font-semibold text-blue-800 dark:text-blue-300">
+                            Cadastro incompleto — processamento bloqueado
+                          </p>
+                          <p className="text-[11px] text-blue-700 dark:text-blue-400 leading-relaxed">
+                            {selectedPontoDia.presentation?.explicacao ||
+                              "Pré-cadastro importado. Complete os dados do colaborador na Central de Cadastros para liberar o processamento RH."}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedPontoDia.presentation?.statusVisual !== "CADASTRO_PENDENTE" && (
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        {selectedPontoDia.presentation?.explicacao ||
+                          `Jornada padrão aplicada. Horas apuradas: ${minutesToTime(rhProcessingUtils.calculateWorkedMinutes(selectedPontoDia))}.`}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -1438,6 +1491,24 @@ export const PontoJornadasClt: React.FC = () => {
             {/* TAB 2: Ações RH */}
             {drawerTab === "acoes_rh" && (
               <div className="space-y-4">
+                {/* Informational banner when cadastro is pending — no fifth card, no functional block */}
+                {selectedColaboradorItem?.pontos?.some(
+                  (p: any) => p.presentation?.statusVisual === "CADASTRO_PENDENTE"
+                ) && (
+                  <div className="flex items-start gap-2.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+                    <ShieldAlert className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                    <div className="space-y-1 flex-1">
+                      <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+                        Pendência cadastral ativa
+                      </p>
+                      <p className="text-[11px] text-amber-700 dark:text-amber-400 leading-relaxed">
+                        Intervenções de ponto podem ser registradas, mas não serão processadas até o cadastro ser completado.
+                        Use a aba <strong>Apuração</strong> para acessar o botão "Completar Cadastro".
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 <div className="bg-muted/20 border border-border rounded-lg p-3 space-y-2">
                   <h4 className="text-xs font-bold text-foreground">Ações Especialistas Homologadas</h4>
                   <p className="text-xs text-muted-foreground">

@@ -1,4 +1,4 @@
-﻿import { type ElementType, type ReactNode, useState, useMemo, useEffect } from "react";
+import { type ElementType, type ReactNode, useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -531,7 +531,7 @@ const CentralCadastros = () => {
   const empresaId = user?.user_metadata?.empresa_id;
   const operationalCompetencia = new Date().toISOString().slice(0, 7);
 
-  const [returnToContext, setReturnToContext] = useState<"processamento-rh" | null>(null);
+  const [returnToContext, setReturnToContext] = useState<"processamento-rh" | "clt-pontos" | null>(null);
 
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -895,8 +895,8 @@ const CentralCadastros = () => {
       const colab = colaboradores.find((c: any) => c.id === targetColaboradorId);
       if (colab) {
         setEditingColaborador(colab);
-        if (fromContext === "processamento-rh") {
-          setReturnToContext("processamento-rh");
+        if (fromContext === "processamento-rh" || fromContext === "clt-pontos") {
+          setReturnToContext(fromContext as "processamento-rh" | "clt-pontos");
           toast.info("Ação necessária", {
             description: "Resolva este bloqueio nesta tela para liberar o processamento.",
             duration: 6000,
@@ -4928,7 +4928,7 @@ const CentralCadastros = () => {
             </DialogDescription>
           </DialogHeader>
 
-          {returnToContext === "processamento-rh" && (
+          {returnToContext && (
             <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 -mt-2">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 text-amber-600" />
@@ -4938,10 +4938,10 @@ const CentralCadastros = () => {
                 variant="outline"
                 size="sm"
                 className="h-7 text-[10px] gap-1 px-2 border-amber-300 text-amber-700 hover:bg-amber-100"
-                onClick={() => navigate("/banco-horas/processamento")}
+                onClick={() => navigate(returnToContext === "clt-pontos" ? "/clt/pontos" : "/banco-horas/processamento")}
               >
                 <ArrowLeft className="h-3 w-3" />
-                Voltar ao Processamento
+                {returnToContext === "clt-pontos" ? "Voltar ao Ponto & Jornadas CLT" : "Voltar ao Processamento"}
               </Button>
             </div>
           )}
