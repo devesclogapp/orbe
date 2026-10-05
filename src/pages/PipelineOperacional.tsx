@@ -1,685 +1,576 @@
-import { useState, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "react-router-dom";
 import {
-    Activity, Clock, CheckCircle2, AlertTriangle, ArrowRight, Layers,
-    Search, Filter, Settings, DollarSign, Timer, RefreshCw, ChevronRight,
-    Building2, Calendar, FileText, Users, PieChart, BarChart3, AlertCircle,
-    Zap, Flag, Target, ShieldAlert, ArrowUpRight, Rocket, ClipboardCheck,
-    UserCheck, Wallet, Wrench
+  Activity,
+  AlertTriangle,
+  ArrowRight,
+  Building2,
+  Calendar,
+  CheckCircle2,
+  Clock,
+  Layers,
+  RefreshCw,
+  Search,
 } from "lucide-react";
-
-import { format, differenceInDays } from "date-fns";
+import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/layout/AppShell";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-
-import { EmpresaService } from "@/services/domain/cadastros.service";
-import { OperacaoService } from "@/services/domain/core.service";
-import { CustoExtraOperacionalService } from "@/services/domain/despesas.service";
-import { ServicosExtrasOperacionaisService } from "@/services/receitas/receitas.service";
-import { PontoService } from "@/services/domain/producao.service";
-import { LoteFechamentoDiaristaService } from "@/services/domain/diaristas.service";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
-const STAGES = [
-    { id: "recebido", label: "Recebido", tone: "blue" },
-    { id: "analise-rh", label: "Em Análise RH", tone: "amber" },
-    { id: "aprovado-rh", label: "Aprovado RH", tone: "cyan" },
-    { id: "financeiro", label: "Financeiro", tone: "purple" },
-    { id: "pronto-cnab", label: "Pronto p/ CNAB", tone: "indigo" },
-    { id: "remetido", label: "Remetido", tone: "orange" },
-    { id: "concluido", label: "Concluído", tone: "emerald" },
-];
-
-const STAGE_ICONS: Record<string, any> = {
-    "recebido": FileText,
-    "analise-rh": Timer,
-    "aprovado-rh": CheckCircle2,
-    "financeiro": DollarSign,
-    "pronto-cnab": Layers,
-    "remetido": Activity,
-    "concluido": Target
-};
-
-function SimpleBar({ value, max, colorClass }: { value: number, max: number, colorClass: string }) {
-    const percent = max > 0 ? Math.min(100, Math.max(0, (value / max) * 100)) : 0;
-    return (
-        <div className="w-full h-1.5 rounded-full bg-muted overflow-hidden">
-            <div className={cn("h-full rounded-full transition-all duration-500", colorClass)} style={{ width: `${percent}%` }} />
-        </div>
-    );
-}
+import { EmpresaService } from "@/services/domain/cadastros.service";
+import {
+  TorreOperacionalService,
+  TorreData,
+  TrilhaOperacional,
+  EtapaOperacional,
+  SituacaoEtapa,
+} from "@/services/torreOperacional.service";
+import { ExecutiveTorreDrawer } from "@/components/torre/ExecutiveTorreDrawer";
 
 export default function PipelineOperacional() {
-    const navigate = useNavigate();
-    const queryClient = useQueryClient();
+  const queryClient = useQueryClient();
 
-    const [filterEmpresaId, setFilterEmpresaId] = useState<string>("all");
-    const [filterCompetencia, setFilterCompetencia] = useState(new Date().toISOString().substring(0, 7));
-    const [filterTipo, setFilterTipo] = useState("all");
-    const [filterResponsavel, setFilterResponsavel] = useState("all");
-    const [searchTerm, setSearchTerm] = useState("");
+  const [filterEmpresaId, setFilterEmpresaId] = useState<string>("all");
+  const [filterCompetencia, setFilterCompetencia] = useState(
+    new Date().toISOString().substring(0, 7)
+  );
+  const [filterTrilha, setFilterTrilha] = useState<"todas" | "trilha-receitas" | "trilha-custos">("todas");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedStage, setSelectedStage] = useState<EtapaOperacional | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
-    const { data: empresas = [], isLoading: isEmpresasLoading } = useQuery({
-        queryKey: ["empresas"],
-        queryFn: () => EmpresaService.getAll(),
+  // Consulta de empresas para o filtro canônico
+  const { data: empresas = [], isLoading: isEmpresasLoading } = useQuery({
+    queryKey: ["empresas-torre"],
+    queryFn: () => EmpresaService.getAll(),
+  });
+
+  // Consulta principal da Torre Operacional (Zero Mock)
+  const {
+    data: torreData,
+    isLoading: isTorreLoading,
+    isError,
+    error,
+    refetch,
+    isFetching,
+  } = useQuery<TorreData>({
+    queryKey: ["torre-operacional-dados", filterCompetencia, filterEmpresaId],
+    queryFn: () =>
+      TorreOperacionalService.getTorreData(
+        filterCompetencia,
+        filterEmpresaId === "all" ? undefined : filterEmpresaId
+      ),
+  });
+
+  const handleRefresh = () => {
+    const t = toast.loading("Atualizando radar operacional...");
+    refetch().then(() => {
+      toast.success("Torre Operacional sincronizada com dados reais!", { id: t });
+    });
+  };
+
+  const competenciaOptions = useMemo(() => {
+    const options = [];
+    const today = new Date();
+    for (let i = 0; i < 6; i++) {
+      const date = new Date(today.getFullYear(), today.getMonth() - i, 1);
+      const value = date.toISOString().substring(0, 7);
+      const label = format(date, "MMMM 'de' yyyy", { locale: ptBR });
+      options.push({ value, label });
+    }
+    return options;
+  }, []);
+
+  const handleOpenStage = (stage: EtapaOperacional) => {
+    setSelectedStage(stage);
+    setIsDrawerOpen(true);
+  };
+
+  const handleCloseDrawer = () => {
+    setIsDrawerOpen(false);
+    setSelectedStage(null);
+  };
+
+  // Filtragem local por texto de busca nos nós exibidos
+  const filteredTrilhaReceitas = useMemo(() => {
+    if (!torreData?.trilhaReceitas) return null;
+    if (filterTrilha === "trilha-custos") return null;
+    if (!searchTerm.trim()) return torreData.trilhaReceitas;
+
+    const q = searchTerm.toLowerCase();
+    const etapas = torreData.trilhaReceitas.etapas.map((et) => {
+      const matchEtapa =
+        et.nome.toLowerCase().includes(q) ||
+        et.subtitulo.toLowerCase().includes(q) ||
+        et.responsavelSetorial.toLowerCase().includes(q);
+      const matchedItens = et.itens.filter(
+        (i) =>
+          i.codigo.toLowerCase().includes(q) ||
+          i.cliente.toLowerCase().includes(q) ||
+          i.tipo.toLowerCase().includes(q)
+      );
+      if (matchEtapa || matchedItens.length > 0) {
+        return et;
+      }
+      return { ...et, totalProcessos: 0, itens: [] };
     });
 
-    const { data: operacoes = [], isLoading: isOpLoading, isError: isOpError } = useQuery({
-        queryKey: ["pipeline-operacoes", filterEmpresaId, filterCompetencia],
-        queryFn: () => OperacaoService.getAllPainel(
-            filterEmpresaId === "all" ? undefined : filterEmpresaId,
-            null,
-            filterCompetencia
-        ),
+    return { ...torreData.trilhaReceitas, etapas };
+  }, [torreData, filterTrilha, searchTerm]);
+
+  const filteredTrilhaCustos = useMemo(() => {
+    if (!torreData?.trilhaCustos) return null;
+    if (filterTrilha === "trilha-receitas") return null;
+    if (!searchTerm.trim()) return torreData.trilhaCustos;
+
+    const q = searchTerm.toLowerCase();
+    const etapas = torreData.trilhaCustos.etapas.map((et) => {
+      const matchEtapa =
+        et.nome.toLowerCase().includes(q) ||
+        et.subtitulo.toLowerCase().includes(q) ||
+        et.responsavelSetorial.toLowerCase().includes(q);
+      const matchedItens = et.itens.filter(
+        (i) =>
+          i.codigo.toLowerCase().includes(q) ||
+          i.cliente.toLowerCase().includes(q) ||
+          i.tipo.toLowerCase().includes(q)
+      );
+      if (matchEtapa || matchedItens.length > 0) {
+        return et;
+      }
+      return { ...et, totalProcessos: 0, itens: [] };
     });
 
-    const { data: diaristas = [], isLoading: isDiaLoading, isError: isDiaError } = useQuery({
-        queryKey: ["diaristas-pipeline", filterEmpresaId, filterCompetencia],
-        queryFn: () => {
-            // calcular o intervalo do mês selecionado
-            const [year, mo] = filterCompetencia.split('-').map(Number);
-            const inicio = `${filterCompetencia}-01`;
-            const lastDay = new Date(year, mo, 0).getDate();
-            const fim = `${filterCompetencia}-${String(lastDay).padStart(2, '0')}`;
-            return LoteFechamentoDiaristaService.getLotesPorPeriodo(
-                inicio,
-                fim,
-                filterEmpresaId === "all" ? undefined : filterEmpresaId
-            );
-        },
-    });
+    return { ...torreData.trilhaCustos, etapas };
+  }, [torreData, filterTrilha, searchTerm]);
 
-    const { data: custos = [], isLoading: isCustosLoading, isError: isCustosError, error: custosError } = useQuery({
-        queryKey: ["custos-pipeline", filterEmpresaId, filterCompetencia],
-        queryFn: () => CustoExtraOperacionalService.getByCompetencia(
-            filterCompetencia,
-            filterEmpresaId === "all" ? undefined : filterEmpresaId
-        ),
-    });
+  const totalProcessosVisiveis = useMemo(() => {
+    let count = 0;
+    if (filteredTrilhaReceitas) {
+      filteredTrilhaReceitas.etapas.forEach((e) => (count += e.totalProcessos));
+    }
+    if (filteredTrilhaCustos) {
+      filteredTrilhaCustos.etapas.forEach((e) => (count += e.totalProcessos));
+    }
+    return count;
+  }, [filteredTrilhaReceitas, filteredTrilhaCustos]);
 
-    const { data: pontos = [], isLoading: isPontosLoading, isError: isPontosError } = useQuery({
-        queryKey: ["pontos-pipeline", filterEmpresaId, filterCompetencia],
-        queryFn: () => PontoService.getByMonth(filterCompetencia, filterEmpresaId === "all" ? undefined : filterEmpresaId),
-    });
+  return (
+    <AppShell
+      title="Torre de Controle Operacional"
+      subtitle="Monitoramento executivo de fluxos operacionais e despesas em tempo real"
+    >
+      <div className="space-y-6 max-w-[1700px] mx-auto pb-16 px-4 md:px-6">
+        {/* ─── 1. BARRA DE CONTROLE & FILTROS CANÔNICOS ─── */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 py-3.5 px-4 rounded-xl border border-border/70 bg-card dark:bg-[#111419] dark:border-white/[0.05] shadow-xs">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Empresa */}
+            <div className="flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-muted-foreground" />
+              <select
+                value={filterEmpresaId}
+                onChange={(e) => setFilterEmpresaId(e.target.value)}
+                disabled={isEmpresasLoading}
+                className="h-9 px-3 rounded-lg border border-border bg-card dark:bg-[#15191F] dark:border-white/[0.08] text-xs font-medium text-foreground cursor-pointer"
+              >
+                <option value="all">Todas as Empresas</option>
+                {empresas.map((emp) => (
+                  <option key={emp.id} value={emp.id}>
+                    {emp.nome}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-    const { data: servicosExtras = [], isLoading: isServicosLoading, isError: isServicosError } = useQuery({
-        queryKey: ["servicos-extras-pipeline", filterEmpresaId, filterCompetencia],
-        queryFn: () => ServicosExtrasOperacionaisService.getWithEmpresas(
-            filterEmpresaId === "all" ? undefined : filterEmpresaId,
-            filterCompetencia
-        ),
-    });
+            {/* Competência */}
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+              <select
+                value={filterCompetencia}
+                onChange={(e) => setFilterCompetencia(e.target.value)}
+                className="h-9 px-3 rounded-lg border border-border bg-card dark:bg-[#15191F] dark:border-white/[0.08] text-xs font-medium text-foreground cursor-pointer"
+              >
+                {competenciaOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-    const isAnyError = isOpError || isDiaError || isCustosError || isPontosError || isServicosError;
-    const errorDetails = custosError ? String(custosError) : "Erro de sincronização genérico";
-    const isGlobalLoading = (isEmpresasLoading || isOpLoading || isDiaLoading || isCustosLoading || isPontosLoading || isServicosLoading) && !isAnyError;
+            {/* Filtro de Trilha */}
+            <div className="flex items-center rounded-lg border border-border bg-muted/40 dark:bg-[#15191F] dark:border-white/[0.08] p-0.5">
+              <button
+                type="button"
+                onClick={() => setFilterTrilha("todas")}
+                className={cn(
+                  "px-3 py-1 text-xs font-medium rounded-md transition-colors",
+                  filterTrilha === "todas"
+                    ? "bg-card dark:bg-[#1F242D] text-foreground font-semibold shadow-xs"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                Todas as Trilhas
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterTrilha("trilha-receitas")}
+                className={cn(
+                  "px-3 py-1 text-xs font-medium rounded-md transition-colors",
+                  filterTrilha === "trilha-receitas"
+                    ? "bg-card dark:bg-[#1F242D] text-blue-600 dark:text-blue-400 font-semibold shadow-xs"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                Trilha A · Receitas
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterTrilha("trilha-custos")}
+                className={cn(
+                  "px-3 py-1 text-xs font-medium rounded-md transition-colors",
+                  filterTrilha === "trilha-custos"
+                    ? "bg-card dark:bg-[#1F242D] text-purple-600 dark:text-purple-400 font-semibold shadow-xs"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                Trilha B · Custos
+              </button>
+            </div>
 
-    const unifiedItems = useMemo(() => {
-        const result: any[] = [];
-        const now = new Date();
+            {/* Campo de Busca Rápida */}
+            <div className="relative w-full sm:w-48">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/60" />
+              <Input
+                placeholder="Filtrar por etapa..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="h-9 pl-8 text-xs font-medium bg-card dark:bg-[#15191F] dark:border-white/[0.08]"
+              />
+            </div>
+          </div>
 
-        (operacoes || []).forEach((op: any) => {
-            let stageId = "recebido";
-            const s = op.status?.toUpperCase() || "";
-            if (s === "CONCLUIDO") stageId = "concluido";
-            else if (s === "RECEBIDO_FINANCEIRO") stageId = "remetido";
-            else if (s === "FATURADO") stageId = "pronto-cnab";
-            else if (s === "AGUARDANDO_FATURAMENTO") stageId = "financeiro";
-            else if (s === "EM_VALIDACAO") stageId = "analise-rh"; // Use este visual apenas como genérico para análise
-            else if (s === "RECEBIDO") stageId = "recebido";
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isFetching}
+            className="h-9 gap-2 text-xs font-medium dark:border-white/[0.08]"
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin text-primary")} />
+            Sincronizar
+          </Button>
+        </div>
 
-            const createdDate = new Date(op.created_at || op.data_operacao || Date.now());
+        {/* ─── 2. ESTADO DE ERRO ─── */}
+        {isError && (
+          <div className="flex items-center gap-4 p-4 rounded-xl border border-destructive/30 bg-destructive/5 text-destructive">
+            <AlertTriangle className="h-6 w-6 shrink-0" />
+            <div className="space-y-0.5">
+              <p className="text-sm font-semibold">Erro ao carregar dados da Torre Operacional</p>
+              <p className="text-xs text-muted-foreground font-mono">{String(error)}</p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetch()}
+              className="ml-auto text-xs"
+            >
+              Tentar Novamente
+            </Button>
+          </div>
+        )}
 
-            result.push({
-                id: op.id,
-                tipo: "Operações",
-                empresa: op.empresa?.nome || "Sem Empresa",
-                competencia: op.data_operacao ? op.data_operacao.substring(0, 7) : filterCompetencia,
-                stageId: stageId,
-                valor: Number(op.valor_total) || 0,
-                horas: 0,
-                lotes: 1,
-                lancamentos: Number(op.quantidade_colaboradores) || 1,
-                dias_parado: stageId === "concluido" ? 0 : Math.max(0, differenceInDays(now, createdDate)),
-                responsavel: "Operacional",
-                critico: !op.empresa_id || op.status === "inconsistente" || op.status === "bloqueado"
-            });
-        });
+        {/* ─── 3. RADAR OPERACIONAL (4 INDICADORES FACTUAIS) ─── */}
+        {isTorreLoading ? (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {[1, 2, 3, 4].map((i) => (
+              <Skeleton key={i} className="h-20 rounded-xl" />
+            ))}
+          </div>
+        ) : torreData ? (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* Indicador 1: Aguardando Ação */}
+            <div className="p-4 rounded-xl border border-border/80 bg-card dark:bg-[#111419] dark:border-white/[0.05] space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-muted-foreground">Aguardando Ação</span>
+                <Clock className="h-4 w-4 text-amber-500" />
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-bold font-display text-foreground">
+                  {torreData.radar.aguardandoAcao}
+                </span>
+                <span className="text-[11px] text-muted-foreground">processos na fila</span>
+              </div>
+            </div>
 
-        (diaristas || []).forEach((d: any) => {
-            let stageId = "analise-rh";
-            if (d.status === "PAGO") stageId = "concluido";
-            else if (d.status === "PRONTO_CNAB") stageId = "pronto-cnab";
-            else if (d.status === "VALIDADO_FINANCEIRO") stageId = "financeiro";
-            else if (d.status === "VALIDADO_RH") stageId = "aprovado-rh";
-            else if (d.status === "AGUARDANDO_VALIDACAO_RH") stageId = "analise-rh";
+            {/* Indicador 2: Maior Espera (Métrica Observacional) */}
+            <div className="p-4 rounded-xl border border-border/80 bg-card dark:bg-[#111419] dark:border-white/[0.05] space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-muted-foreground">Maior Espera</span>
+                <Activity className="h-4 w-4 text-blue-500" />
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-bold font-display text-foreground">
+                  {torreData.radar.maiorEspera}
+                </span>
+                <span className="text-[11px] text-muted-foreground">tempo máximo observado</span>
+              </div>
+            </div>
 
-            const createdDate = new Date(d.created_at || d.periodo_inicio || Date.now());
+            {/* Indicador 3: Inconsistências Impeditivas */}
+            <div className="p-4 rounded-xl border border-border/80 bg-card dark:bg-[#111419] dark:border-white/[0.05] space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-muted-foreground">Inconsistências Impeditivas</span>
+                <AlertTriangle className="h-4 w-4 text-rose-600" />
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-bold font-display text-destructive">
+                  {torreData.radar.inconsistenciasImpeditivas}
+                </span>
+                <span className="text-[11px] text-muted-foreground">bloqueios detectados</span>
+              </div>
+            </div>
 
-            result.push({
-                id: d.id,
-                tipo: "Diaristas",
-                empresa: d.empresa?.nome || "Sem Empresa",
-                competencia: d.periodo_inicio ? d.periodo_inicio.substring(0, 7) : filterCompetencia,
-                stageId: stageId,
-                valor: Number(d.valor_total) || 0,
-                horas: 0,
-                lotes: 1,
-                lancamentos: d.diaristas?.length || d.quantidade_lancamentos || 1,
-                dias_parado: stageId === "concluido" ? 0 : Math.max(0, differenceInDays(now, createdDate)),
-                responsavel: "RH",
-                critico: !d.empresa_id || d.status === "INCONSISTENTE"
-            });
-        });
+            {/* Indicador 4: Em Andamento Regular */}
+            <div className="p-4 rounded-xl border border-border/80 bg-card dark:bg-[#111419] dark:border-white/[0.05] space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-muted-foreground">Em Andamento Regular</span>
+                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-bold font-display text-foreground">
+                  {torreData.radar.emAndamento}
+                </span>
+                <span className="text-[11px] text-muted-foreground">processando normalmente</span>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
-        (custos || []).forEach((c: any) => {
-            let stageId = "financeiro";
-            if (c.status_pagamento === "PAGO" || c.status === "PAGO") stageId = "concluido";
-            else if (c.status_pagamento === "AGUARDANDO_PAGAMENTO") stageId = "pronto-cnab";
+        {/* ─── 4. SKELETON LOADING PARA AS TRILHAS ─── */}
+        {isTorreLoading && (
+          <div className="space-y-6">
+            <Skeleton className="h-64 rounded-xl" />
+            <Skeleton className="h-64 rounded-xl" />
+          </div>
+        )}
 
-            const createdDate = new Date(c.created_at || c.data_competencia || Date.now());
+        {/* ─── 5. EMPTY STATE CASO NENHUM PROCESSO ENCONTRADO ─── */}
+        {!isTorreLoading && totalProcessosVisiveis === 0 && (
+          <div className="p-12 text-center rounded-xl border border-dashed border-border bg-card/50 dark:bg-[#111419]/50 space-y-3">
+            <Layers className="h-10 w-10 mx-auto text-muted-foreground/40" />
+            <p className="text-sm font-semibold text-foreground">
+              Nenhum processo em andamento para esta competência e filtros selecionados.
+            </p>
+            <p className="text-xs text-muted-foreground max-w-md mx-auto">
+              Utilize os seletores de empresa e competência acima para navegar no histórico ou sincronize para verificar novas entradas.
+            </p>
+          </div>
+        )}
 
-            result.push({
-                id: c.id,
-                tipo: "Custos Extras",
-                empresa: c.empresa?.nome || "Sem Empresa",
-                competencia: c.data_competencia ? c.data_competencia.substring(0, 7) : filterCompetencia,
-                stageId: stageId,
-                valor: Number(c.valor || c.total) || 0,
-                horas: 0,
-                lotes: 1,
-                lancamentos: 1,
-                dias_parado: stageId === "concluido" ? 0 : Math.max(0, differenceInDays(now, createdDate)),
-                responsavel: "Financeiro",
-                critico: !c.empresa_id
-            });
-        });
+        {/* ─── 6. TRILHA A: OPERAÇÕES & RECEITAS ─── */}
+        {!isTorreLoading && filteredTrilhaReceitas && (
+          <TrilhaContainer
+            trilha={filteredTrilhaReceitas}
+            onOpenStage={handleOpenStage}
+          />
+        )}
 
-        (pontos || []).forEach((p: any) => {
-            let stageId = "analise-rh";
-            const sProc = String(p.status_processamento || "").toUpperCase();
-            if (sProc === "PROCESSADO") stageId = "concluido";
-            else if (sProc === "APROVADO_RH") stageId = "aprovado-rh";
+        {/* ─── 7. TRILHA B: MÃO DE OBRA & CUSTOS ─── */}
+        {!isTorreLoading && filteredTrilhaCustos && (
+          <TrilhaContainer
+            trilha={filteredTrilhaCustos}
+            onOpenStage={handleOpenStage}
+          />
+        )}
+      </div>
 
-            const createdDate = new Date(p.created_at || p.data || Date.now());
+      {/* ─── 8. DRAWER OFICIAL DA TORRE (DIAGNÓSTICO + DESPACHO) ─── */}
+      <ExecutiveTorreDrawer
+        stage={selectedStage}
+        open={isDrawerOpen}
+        onClose={handleCloseDrawer}
+      />
+    </AppShell>
+  );
+}
 
-            result.push({
-                id: p.id,
-                tipo: "Pontos",
-                empresa: p.colaboradores?.empresas?.nome || "Sem Empresa",
-                competencia: p.competencia || filterCompetencia,
-                stageId: stageId,
-                valor: 0,
-                horas: 8,
-                lotes: 0,
-                lancamentos: 1,
-                dias_parado: stageId === "concluido" ? 0 : Math.max(0, differenceInDays(now, createdDate)),
-                responsavel: "RH",
-                critico: sProc === "INCONSISTENTE" || sProc === "ERRO" || !p.colaborador_id
-            });
-        });
+// ─── COMPONENTE DA TRILHA OPERACIONAL (4 NÓS CONECTADOS) ─────────────────────────────
 
-        (servicosExtras || []).forEach((s: any) => {
-            let stageId = "recebido";
-            if (s.status === "CONCLUIDO" || s.status === "PAGO") stageId = "concluido";
-            else if (s.status === "APROVADO") stageId = "financeiro";
+interface TrilhaContainerProps {
+  trilha: TrilhaOperacional;
+  onOpenStage: (stage: EtapaOperacional) => void;
+}
 
-            const createdDate = new Date(s.created_at || s.data || Date.now());
+function TrilhaContainer({ trilha, onOpenStage }: TrilhaContainerProps) {
+  return (
+    <div className="rounded-xl border border-border/80 bg-card dark:bg-[#111419] dark:border-white/[0.05] p-5 space-y-4 shadow-xs">
+      {/* Cabeçalho da Trilha */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-border/60 dark:border-white/[0.04]">
+        <div className="space-y-0.5">
+          <div className="flex items-center gap-2">
+            <h2 className="font-display font-bold text-base text-foreground tracking-tight">
+              {trilha.titulo}
+            </h2>
+            <Badge
+              variant="outline"
+              className="text-[10px] font-semibold px-2 py-0 border-border bg-muted/40 dark:bg-white/[0.03] dark:border-white/[0.05]"
+            >
+              {trilha.badgeTrilha}
+            </Badge>
+          </div>
+          <p className="text-xs text-muted-foreground">{trilha.descricao}</p>
+        </div>
+      </div>
 
-            result.push({
-                id: s.id,
-                tipo: "Serviços Extras",
-                empresa: s.empresas?.nome || "Sem Empresa",
-                competencia: s.data ? s.data.substring(0, 7) : filterCompetencia,
-                stageId: stageId,
-                valor: Number(s.valor || s.total) || 0,
-                horas: 0,
-                lotes: 1,
-                lancamentos: 1,
-                dias_parado: stageId === "concluido" ? 0 : Math.max(0, differenceInDays(now, createdDate)),
-                responsavel: "Operacional",
-                critico: !s.empresas
-            });
-        });
+      {/* Grid com os 4 Nós da Trilha */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 relative">
+        {trilha.etapas.map((etapa, idx) => (
+          <EtapaCard
+            key={etapa.id}
+            etapa={etapa}
+            isLast={idx === trilha.etapas.length - 1}
+            onClick={() => onOpenStage(etapa)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
 
-        return result;
-    }, [operacoes, diaristas, custos, pontos, servicosExtras, filterCompetencia]);
+// ─── CARD DE ETAPA / NÓ DA TRILHA ───────────────────────────────────────────────────
 
-    // Apply Filter & Search
-    const filteredItems = useMemo(() => {
-        return unifiedItems.filter(item => {
-            const matchEmpresa = filterEmpresaId === "all" || item.empresa === empresas.find(e => e.id === filterEmpresaId)?.nome;
-            const matchTipo = filterTipo === "all" || item.tipo.toLowerCase().includes(filterTipo);
-            const matchResp = filterResponsavel === "all" || item.responsavel.toLowerCase().includes(filterResponsavel.toLowerCase());
-            const matchComp = !filterCompetencia || item.competencia === filterCompetencia;
-            const matchSearch = !searchTerm || item.empresa.toLowerCase().includes(searchTerm.toLowerCase());
-            return matchEmpresa && matchTipo && matchResp && matchComp && matchSearch;
-        });
-    }, [unifiedItems, filterEmpresaId, filterTipo, filterResponsavel, filterCompetencia, searchTerm, empresas]);
+interface EtapaCardProps {
+  etapa: EtapaOperacional;
+  isLast: boolean;
+  onClick: () => void;
+}
 
-    const kpis = useMemo(() => {
-        let totalLancamentos = 0;
-        let totalLotes = 0;
-        let valorTotal = 0;
-        let horasTotais = 0;
-        let pendencias = 0;
-        let atrasados = 0;
-        let valorProcessado = 0;
-        let totalDiasParado = 0;
+function EtapaCard({ etapa, isLast, onClick }: EtapaCardProps) {
+  const isBloqueado = etapa.situacao === "bloqueado";
+  const isAtencao = etapa.situacao === "atencao";
+  const isConcluido = etapa.situacao === "concluido";
 
-        filteredItems.forEach(i => {
-            totalLancamentos += i.lancamentos;
-            totalLotes += i.lotes;
-            valorTotal += i.valor;
-            horasTotais += i.horas;
-            if (i.critico) pendencias++;
-            if (i.dias_parado > 3) atrasados++; // Regra mockada > 3 dias = atrasado
-            if (i.stageId === "concluido" || i.stageId === "pronto-cnab" || i.stageId === "remetido") {
-                valorProcessado += i.valor;
-            }
-            totalDiasParado += i.dias_parado;
-        });
+  return (
+    <div
+      onClick={onClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => e.key === "Enter" && onClick()}
+      className={cn(
+        "rounded-xl border p-4 space-y-3 transition-all cursor-pointer text-left relative group",
+        "bg-card dark:bg-[#15191F] hover:border-primary/50 dark:hover:border-primary/50 hover:shadow-md",
+        isBloqueado && "border-rose-300/80 bg-rose-50/10 dark:border-rose-900/40",
+        isAtencao && "border-amber-300/80 bg-amber-50/10 dark:border-amber-900/40",
+        isConcluido && "border-emerald-300/40 dark:border-emerald-900/20"
+      )}
+    >
+      {/* Header do Card: Número e Status Badge */}
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-mono text-xs font-bold text-muted-foreground">
+          0{etapa.ordem}
+        </span>
+        <div className="flex items-center gap-1.5">
+          {etapa.processosEmAtencao > 0 && (
+            <Badge
+              variant="outline"
+              className="text-[9px] font-bold px-1.5 py-0 border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30"
+            >
+              {etapa.processosEmAtencao} em atenção
+            </Badge>
+          )}
+          <EtapaStatusPill situacao={etapa.situacao} />
+        </div>
+      </div>
 
-        return {
-            totalLancamentos,
-            totalLotes,
-            valorTotal,
-            horasTotais,
-            pendencias,
-            atrasados,
-            valorProcessado,
-            slaMedio: filteredItems.length > 0 ? (totalDiasParado / filteredItems.length).toFixed(1) : "0",
-        };
-    }, [filteredItems]);
+      {/* Identificação da Etapa */}
+      <div className="space-y-0.5">
+        <h3 className="font-display text-sm font-bold text-foreground group-hover:text-primary transition-colors">
+          {etapa.nome}
+        </h3>
+        <p className="text-[11px] text-muted-foreground line-clamp-1">
+          {etapa.subtitulo}
+        </p>
+      </div>
 
-    const fluxStats = useMemo(() => {
-        const stats: Record<string, { lancamentos: number, lotes: number, valor: number, sumDias: number }> = {};
-        STAGES.forEach(s => stats[s.id] = { lancamentos: 0, lotes: 0, valor: 0, sumDias: 0 });
+      {/* Contagem e Situação Resumida */}
+      <div className="pt-2 border-t border-border/50 dark:border-white/[0.04] space-y-1.5 text-xs">
+        <div className="flex items-baseline justify-between">
+          <span className="text-[11px] text-muted-foreground">Processos ativos</span>
+          <span className="font-bold text-foreground text-sm">
+            {etapa.totalProcessos}
+          </span>
+        </div>
 
-        filteredItems.forEach(i => {
-            if (stats[i.stageId]) {
-                stats[i.stageId].lancamentos += i.lancamentos;
-                stats[i.stageId].lotes += i.lotes;
-                stats[i.stageId].valor += i.valor;
-                stats[i.stageId].sumDias += i.dias_parado;
-            }
-        });
+        <p className="text-[11px] text-muted-foreground line-clamp-1 italic">
+          {etapa.resumoSituacao}
+        </p>
+      </div>
 
-        return stats;
-    }, [filteredItems]);
-
-    // Bloco 4 - Tipos
-    const typeDistribution = useMemo(() => {
-        const types: Record<string, number> = {};
-        filteredItems.forEach(i => {
-            types[i.tipo] = (types[i.tipo] || 0) + i.lancamentos;
-        });
-        return Object.entries(types).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
-    }, [filteredItems]);
-
-    // Bloco 5 - Empresas
-    const companyDistribution = useMemo(() => {
-        const comps: Record<string, { lancamentos: number, valor: number, atrasos: number, etapa: string }> = {};
-        filteredItems.forEach(i => {
-            if (!comps[i.empresa]) comps[i.empresa] = { lancamentos: 0, valor: 0, atrasos: 0, etapa: i.stageId };
-            comps[i.empresa].lancamentos += i.lancamentos;
-            comps[i.empresa].valor += i.valor;
-            if (i.dias_parado > 3) comps[i.empresa].atrasos++;
-            // overwrite etepas to find a common one or just take the last
-            comps[i.empresa].etapa = i.stageId;
-        });
-        return Object.entries(comps)
-            .map(([empresa, data]) => ({ empresa, ...data }))
-            .sort((a, b) => b.lancamentos - a.lancamentos)
-            .slice(0, 6);
-    }, [filteredItems]);
-
-    // Bloco 6 - Gargalos
-    const bottleneckDistribution = useMemo(() => {
-        const bottles: Record<string, { quantidade: number, sumDias: number, etapa: string }> = {};
-        filteredItems.forEach(i => {
-            const key = `${i.responsavel}_${i.stageId}`;
-            if (!bottles[key]) bottles[key] = { quantidade: 0, sumDias: 0, etapa: i.stageId };
-            bottles[key].quantidade += i.lancamentos;
-            bottles[key].sumDias += i.dias_parado;
-        });
-        return Object.entries(bottles)
-            .map(([responsavel_etapa, data]) => ({
-                responsavel: responsavel_etapa.split('_')[0],
-                etapa: STAGES.find(s => s.id === data.etapa)?.label || data.etapa,
-                quantidade: data.quantidade,
-                diasMedio: data.quantidade > 0 ? (data.sumDias / data.quantidade).toFixed(1) : "0"
-            }))
-            .sort((a, b) => parseFloat(b.diasMedio) - parseFloat(a.diasMedio))
-            .slice(0, 5);
-    }, [filteredItems]);
-
-    const handleRefresh = () => {
-        const t = toast.loading("Atualizando pipeline gerencial...");
-        queryClient.invalidateQueries().then(() => {
-            toast.success("Torre de controle atualizada!", { id: t });
-        });
-    };
-
-    const competenciaOptions = useMemo(() => {
-        const options = [];
-        const today = new Date();
-        for (let i = 0; i < 6; i++) {
-            const date = new Date(today.getFullYear(), today.getMonth() - i, 1);
-            const value = date.toISOString().substring(0, 7);
-            const label = format(date, "MMMM 'de' yyyy", { locale: ptBR });
-            options.push({ value, label });
-        }
-        return options;
-    }, []);
-
-    // Color definitions for UI mapping
-    const getBadgeColor = (tone: string) => {
-        const map: any = {
-            blue: "bg-info-soft text-info-strong border-info/20",
-            amber: "bg-warning-soft text-warning-strong border-warning/20",
-            cyan: "bg-cyan-50 text-cyan-700 border-cyan-200",
-            purple: "bg-purple-50 text-purple-700 border-purple-200",
-            indigo: "bg-indigo-50 text-indigo-700 border-indigo-200",
-            orange: "bg-orange-50 text-orange-700 border-orange-200",
-            emerald: "bg-success-soft text-success-strong border-success/20"
-        };
-        return map[tone] || map.blue;
-    };
-
-    const INPUT_TYPES = [
-        { id: "all", label: "Visão Geral", icon: Rocket, color: "text-primary" },
-        { id: "operações", label: "Operações por Volume", icon: ClipboardCheck, color: "text-orange-500" },
-        { id: "pontos", label: "Pontos Recebidos", icon: Clock, color: "text-blue-500" },
-        { id: "diaristas", label: "Diaristas Recebidos", icon: UserCheck, color: "text-yellow-600" },
-        { id: "custos extras", label: "Custos Extras", icon: Wallet, color: "text-purple-500" },
-        { id: "serviços extras", label: "Serviços Extras", icon: Zap, color: "text-indigo-500" },
-    ];
-
-    return (
-        <AppShell
-            title="Torre de Controle Operacional"
-            subtitle="Monitoramento executivo: Fluxos, Gargalos e SLAs"
-        >
-            {isAnyError ? (
-                <div className="flex flex-col items-center justify-center py-32 space-y-4 px-4 text-center">
-                    <div className="h-16 w-16 rounded-full bg-red-100 flex items-center justify-center text-red-600 mb-2">
-                        <AlertTriangle className="h-8 w-8" />
-                    </div>
-                    <h2 className="text-xl font-bold text-foreground">Falha ao sincronizar dados</h2>
-                    <p className="text-red-500 font-mono text-xs max-w-xl text-center bg-red-50 p-4 border border-red-200 rounded">{errorDetails}</p>
-                    <Button variant="outline" onClick={() => window.location.reload()} className="mt-4 gap-2">
-                        <RefreshCw className="h-4 w-4" />
-                        Tentar Novamente
-                    </Button>
-                </div>
-            ) : isGlobalLoading ? (
-                <div className="flex flex-col items-center justify-center py-32 space-y-4">
-                    <RefreshCw className="h-10 w-10 text-primary animate-spin" />
-                    <p className="text-muted-foreground font-medium">Carregando pipeline operacional...</p>
-                </div>
-            ) : (
-                <div className="space-y-6 max-w-[1700px] mx-auto pb-12 px-4 md:px-6">
-                    {/* ALERTAS TÉCNICOS */}
-                    {(kpis.pendencias > 0 || kpis.atrasados > 0) && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-500">
-                            {kpis.pendencias > 0 && (
-                                <div className="flex items-center gap-4 p-4 rounded-xl border border-red-100 bg-red-50/50">
-                                    <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center text-red-600 shrink-0">
-                                        <Zap className="h-5 w-5 fill-red-600" />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-bold text-red-900 leading-none">Radar Executivo: Pendências</p>
-                                        <p className="text-xs text-red-800/70 mt-1">Existem <strong>{kpis.pendencias} lançamentos</strong> com inconsistências.</p>
-                                    </div>
-                                </div>
-                            )}
-                            {kpis.atrasados > 0 && (
-                                <div className="flex items-center gap-4 p-4 rounded-xl border border-orange-100 bg-orange-50/50">
-                                    <div className="h-10 w-10 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 shrink-0">
-                                        <Timer className="h-5 w-5" />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-bold text-orange-900 leading-none">Atrasos de Processamento</p>
-                                        <p className="text-xs text-orange-800/70 mt-1">Identificamos <strong>{kpis.atrasados} registros</strong> fora do SLA.</p>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* FILTROS TIPO */}
-                    <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                        {INPUT_TYPES.map((type) => {
-                            const Icon = type.icon;
-                            const isActive = filterTipo === type.id;
-                            const count = type.id === "all"
-                                ? unifiedItems.length
-                                : unifiedItems.filter(i => i.tipo.toLowerCase().includes(type.id)).length;
-
-                            return (
-                                <button
-                                    key={type.id}
-                                    onClick={() => setFilterTipo(type.id)}
-                                    className={cn(
-                                        "h-9 px-4 rounded-full flex items-center gap-2 border transition-all whitespace-nowrap text-xs font-medium",
-                                        isActive
-                                            ? "bg-[#FFF1EC] text-[#FD4C00] border-[#FD4C00]/20 shadow-sm"
-                                            : "bg-white text-muted-foreground border-border hover:bg-bg-subtle"
-                                    )}
-                                >
-                                    <Icon className={cn("h-3.5 w-3.5", isActive ? "text-[#FD4C00]" : "text-muted-foreground/60")} />
-                                    <span>{type.label}</span>
-                                    {count > 0 && (
-                                        <span className={cn(
-                                            "ml-1 h-4 min-w-[16px] px-1 rounded-full text-[9px] flex items-center justify-center font-bold",
-                                            isActive ? "bg-[#FD4C00] text-white" : "bg-gray-100 text-gray-600"
-                                        )}>
-                                            {count}
-                                        </span>
-                                    )}
-                                </button>
-                            );
-                        })}
-                    </div>
-
-                    {/* FILTROS GERAIS */}
-                    <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 py-4 border-y border-border/60">
-                        <div className="flex flex-wrap items-center gap-3">
-                            <select
-                                value={filterEmpresaId}
-                                onChange={(e) => setFilterEmpresaId(e.target.value)}
-                                className="h-10 px-4 rounded-lg border border-border bg-card text-sm font-medium text-foreground cursor-pointer w-full md:w-auto"
-                            >
-                                <option value="all">Todas as Empresas</option>
-                                {empresas.map((emp) => (
-                                    <option key={emp.id} value={emp.id}>{emp.nome}</option>
-                                ))}
-                            </select>
-
-                            <select
-                                value={filterCompetencia}
-                                onChange={(e) => setFilterCompetencia(e.target.value)}
-                                className="h-10 px-4 rounded-lg border border-border bg-card text-sm font-medium text-foreground cursor-pointer w-full md:w-auto"
-                            >
-                                {competenciaOptions.map(opt => (
-                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                ))}
-                            </select>
-
-                            <div className="relative group w-full md:w-auto">
-                                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60" />
-                                <Input
-                                    placeholder="Pesquisa rápida..."
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="pl-10 h-10 w-full md:w-[240px] rounded-lg border-border bg-card font-medium"
-                                />
-                            </div>
-                        </div>
-
-                        <Button
-                            variant="default"
-                            size="sm"
-                            className="bg-[#FD4C00] hover:bg-[#E54300] h-10 gap-2 font-semibold px-6 shadow-sm rounded-lg"
-                            onClick={handleRefresh}
-                        >
-                            <RefreshCw className="h-4 w-4" />
-                            Atualizar Painel
-                        </Button>
-                    </div>
-
-                    {/* KPIs */}
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                        <div className="esc-card p-5">
-                            <span className="text-[11px] text-gray-500 font-semibold uppercase tracking-wider">Total Lançamentos</span>
-                            <div className="flex items-end justify-between mt-3">
-                                <span className="text-3xl font-bold font-display">{kpis.totalLancamentos.toLocaleString('pt-BR')}</span>
-                                <Layers className="text-blue-500 h-6 w-6 opacity-40" />
-                            </div>
-                        </div>
-                        <div className="esc-card p-5">
-                            <span className="text-[11px] text-gray-500 font-semibold uppercase tracking-wider">Valor Total</span>
-                            <div className="flex items-end justify-between mt-3">
-                                <span className="text-3xl font-bold font-display text-emerald-600">R$ {(kpis.valorTotal / 1000).toFixed(1)}k</span>
-                                <DollarSign className="text-emerald-500 h-6 w-6 opacity-40" />
-                            </div>
-                        </div>
-                        <div className="esc-card p-5 border-destructive/20">
-                            <span className="text-[11px] text-destructive font-semibold uppercase tracking-wider">Pendências</span>
-                            <div className="flex items-end justify-between mt-3">
-                                <span className="text-3xl font-bold font-display text-destructive">{kpis.pendencias}</span>
-                                <AlertTriangle className="text-destructive h-6 w-6 opacity-40" />
-                            </div>
-                        </div>
-                        <div className="esc-card p-5 border-blue-200">
-                            <span className="text-[11px] text-blue-600 font-semibold uppercase tracking-wider">SLA Médio (Dias)</span>
-                            <div className="flex items-end justify-between mt-3">
-                                <span className="text-3xl font-bold font-display text-blue-600">{kpis.slaMedio}</span>
-                                <Activity className="text-blue-500 h-6 w-6 opacity-40" />
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* PIPELINE VISUAL */}
-                    <div className="esc-card p-6 overflow-hidden">
-                        <h2 className="font-display font-semibold text-lg text-foreground mb-8 flex items-center gap-2">
-                            <ArrowRight className="h-5 w-5 text-[#FD4C00]" />
-                            Esteira Operacional <span className="text-gray-500 font-normal text-sm ml-2">· Fluxo de processamento</span>
-                        </h2>
-
-                        <div className="flex flex-col lg:flex-row justify-between w-full relative pt-2 gap-4 lg:gap-0 overflow-x-auto pb-4 scrollbar-hide">
-                            <div className="hidden lg:block absolute left-12 right-12 top-[32px] h-px bg-border -z-0" />
-
-                            {STAGES.map((stage) => {
-                                const data = fluxStats[stage.id] || { lancamentos: 0, lotes: 0, valor: 0, sumDias: 0 };
-                                const sla = data.lancamentos > 0 ? (data.sumDias / data.lancamentos).toFixed(1) : "0";
-                                const Icon = STAGE_ICONS[stage.id] || Filter;
-                                const isActive = data.lancamentos > 0;
-
-                                return (
-                                    <div key={stage.id} className="relative z-10 flex flex-col items-center flex-1 min-w-[140px]">
-                                        <div className={cn(
-                                            "relative z-10 w-14 h-14 rounded-full flex items-center justify-center border-4 border-[#F7F7F7] shadow-sm mb-4 transition-all",
-                                            isActive ? "bg-white text-[#FD4C00] ring-1 ring-border" : "bg-gray-100 text-gray-400"
-                                        )}>
-                                            <Icon className={cn("h-6 w-6", isActive ? "text-[#FD4C00]" : "")} />
-                                        </div>
-
-                                        <div className="text-center w-full px-2">
-                                            <p className="text-xs font-semibold text-foreground uppercase tracking-wider mb-4 border-b border-border/40 pb-2 truncate">
-                                                {stage.label}
-                                            </p>
-                                            <div className={cn("p-4 rounded-xl border space-y-3 bg-gray-50/50", isActive ? "border-border shadow-sm bg-white" : "border-transparent opacity-60")}>
-                                                <div className="flex justify-between items-center text-[10px]">
-                                                    <span className="text-gray-500 font-medium">Itens</span>
-                                                    <span className="font-bold">{data.lancamentos}</span>
-                                                </div>
-                                                <div className="flex justify-between items-center text-[10px] pt-1 border-t border-border/40">
-                                                    <span className="text-gray-500 font-medium text-left">SLA</span>
-                                                    <span className={cn("font-bold", parseFloat(sla) > 3 ? "text-destructive" : "text-success-strong")}>
-                                                        {sla}d
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-
-                    {/* TABELAS COMPLEMENTARES */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <div className="esc-card p-6">
-                            <h3 className="font-display font-semibold text-base flex items-center gap-2 mb-6">
-                                <Building2 className="text-[#FD4C00] h-5 w-5" />
-                                Top 5 por Empresa
-                            </h3>
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-sm">
-                                    <thead>
-                                        <tr className="esc-table-header">
-                                            <th className="px-4 text-left">Empresa</th>
-                                            <th className="px-2 text-right">Itens</th>
-                                            <th className="px-4 text-right">Volume</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-border">
-                                        {companyDistribution.slice(0, 5).map((comp, i) => (
-                                            <tr key={comp.empresa} className="esc-table-row">
-                                                <td className="px-4 py-4 font-semibold text-foreground">{comp.empresa}</td>
-                                                <td className="px-2 py-4 text-right">
-                                                    <span className="bg-gray-100 px-2 py-1 rounded text-xs font-bold text-gray-600">{comp.lancamentos}</span>
-                                                </td>
-                                                <td className="px-4 py-4 text-right font-semibold text-emerald-600">
-                                                    R${comp.valor.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        <div className="esc-card p-6">
-                            <h3 className="font-display font-semibold text-base flex items-center gap-2 mb-6">
-                                <ShieldAlert className="text-orange-500 h-5 w-5" />
-                                Gargalos Operacionais
-                            </h3>
-                            <div className="space-y-4">
-                                {bottleneckDistribution.map((bot, i) => (
-                                    <div key={i} className="flex flex-col gap-2 p-3 bg-gray-50/50 rounded-xl border border-border relative overflow-hidden">
-                                        <div
-                                            className="absolute left-0 top-0 bottom-0 bg-orange-100/20 -z-0"
-                                            style={{ width: `${Math.min(100, (parseFloat(bot.diasMedio) / 5) * 100)}%` }}
-                                        />
-                                        <div className="flex justify-between items-start relative z-10">
-                                            <div>
-                                                <p className="font-bold text-xs uppercase text-gray-700">{bot.responsavel}</p>
-                                                <p className="text-[10px] font-medium text-gray-500 truncate mt-0.5">{bot.etapa}</p>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="text-lg font-bold text-orange-600 font-display leading-tight">{bot.diasMedio}d</p>
-                                                <p className="text-[10px] text-gray-400 font-semibold uppercase">{bot.quantidade} itens</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                </div>
+      {/* Responsável e CTA para Abrir Drawer */}
+      <div className="flex items-center justify-between pt-2 border-t border-border/50 dark:border-white/[0.04] text-[11px]">
+        <span className="text-muted-foreground">
+          Resp:{" "}
+          <strong
+            className={cn(
+              etapa.responsavelSetorial === "Operação" && "text-blue-700 dark:text-blue-400",
+              etapa.responsavelSetorial === "RH" && "text-purple-700 dark:text-purple-400",
+              etapa.responsavelSetorial === "Financeiro" && "text-emerald-700 dark:text-emerald-400",
+              etapa.responsavelSetorial === "Governança" && "text-amber-700 dark:text-amber-400"
             )}
-        </AppShell>
-    );
+          >
+            {etapa.responsavelSetorial}
+          </strong>
+        </span>
+
+        <span className="inline-flex items-center gap-1 font-semibold text-primary opacity-80 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all text-[11px]">
+          Diagnosticar
+          <ArrowRight className="h-3 w-3" />
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ─── PÍLULA DE STATUS COMPACTA DA ETAPA (DETERMINÍSTICA) ─────────────────────────────
+
+function EtapaStatusPill({ situacao }: { situacao: SituacaoEtapa }) {
+  switch (situacao) {
+    case "bloqueado":
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full border border-rose-300 dark:border-rose-800/40 bg-rose-100 dark:bg-rose-950/40 px-1.5 py-0.5 text-[9px] font-bold text-rose-800 dark:text-rose-300">
+          <AlertTriangle className="h-2 w-2" />
+          Bloqueio
+        </span>
+      );
+    case "atencao":
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-950/30 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 dark:text-amber-400">
+          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+          Atenção
+        </span>
+      );
+    case "concluido":
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-950/30 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 dark:text-emerald-400">
+          <CheckCircle2 className="h-2 w-2" />
+          Concluído
+        </span>
+      );
+    case "normal":
+    default:
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/60 dark:bg-white/[0.03] px-1.5 py-0.5 text-[9px] font-semibold text-muted-foreground">
+          <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />
+          Regular
+        </span>
+      );
+  }
 }
