@@ -115,6 +115,12 @@ export default {
           100: "#DCFCE7",
           700: "#15803D",
         },
+        "royal-blue": {
+          DEFAULT: "#2563eb",
+          hover: "#1d4ed8",
+          light: "#60a5fa",
+          dark: "#1e40af",
+        },
       },
       spacing: {
         "1": "var(--space-1)",

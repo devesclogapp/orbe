@@ -216,16 +216,26 @@
     @apply border-border;
   }
 
+  html {
+    overflow-y: scroll;
+    scrollbar-gutter: stable;
+  }
+
   html,
   body,
   main {
     scrollbar-gutter: stable;
   }
 
+  body {
+    overflow-x: hidden;
+  }
+
   body,
   body[data-scroll-locked],
   body[style*="overflow: hidden"],
   html[data-scroll-locked] {
+    overflow: visible !important;
     padding-right: 0px !important;
     margin-right: 0px !important;
   }

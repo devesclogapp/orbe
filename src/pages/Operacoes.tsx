@@ -460,7 +460,7 @@ export default function Operacoes() {
             {/* CTA Estrutural: Nova Operação */}
             <Button
               size="sm"
-              className="h-9 text-xs bg-royal-blue hover:bg-royal-blue/90 text-white font-medium shadow-sm flex items-center gap-1.5"
+              className="h-9 text-xs bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-sm flex items-center gap-1.5"
               onClick={() => {
                 setEditOpData(null);
                 setNovaOpOpen(true);

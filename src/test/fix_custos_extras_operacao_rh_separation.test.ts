@@ -47,9 +47,11 @@ describe('FIX — CUSTOS EXTRAS: RESTAURAÇÃO DA ESTEIRA ADMIN E SEGREGAÇÃO',
 
       expect(pageContent).not.toContain('isApprovalView');
       expect(pageContent).not.toContain('Custos Extras — Validação & Aprovação');
-      expect(pageContent).toContain('title="Custos Extras Recebidos"');
-      expect(pageContent).toContain('badge="ENTRADAS / CAPTURA"');
-      expect(pageContent).toContain('<CustosExtrasTableBlock data={custosExtras} />');
+      // CONV-05: contrato UX07 substitui o layout legacy (CustosExtrasTableBlock)
+      expect(pageContent).toContain('title="Custos Extras"');
+      expect(pageContent).toContain('badge="OPERAÇÕES DE CAMPO"');
+      expect(pageContent).toContain('CustoExtraOperacionalService');
+      expect(pageContent).not.toContain('CustosExtrasTableBlock');
     });
   });
 
