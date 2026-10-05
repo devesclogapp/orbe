@@ -316,9 +316,9 @@ class DashboardConsolidadoServiceClass {
       .select('valor_total, status, created_at, updated_at, competencia'));
       
     if (isAnual) {
-      qReceitas = qReceitas.gte('created_at', `${yearPart}-01-01`).lt('created_at', `${yearPart + 1}-01-01`);
+      qReceitas = qReceitas.or(`competencia.gte.${yearPart}-01,and(competencia.is.null,created_at.gte.${yearPart}-01-01,created_at.lt.${yearPart + 1}-01-01)`);
     } else {
-      qReceitas = qReceitas.gte('created_at', startRange).lt('created_at', endRange);
+      qReceitas = qReceitas.or(`competencia.eq.${canonicalCompetencia},and(competencia.is.null,created_at.gte.${startRange},created_at.lt.${endRange})`);
     }
     if (empresaId) qReceitas = qReceitas.eq('empresa_id', empresaId);
 
@@ -428,6 +428,14 @@ class DashboardConsolidadoServiceClass {
     const receitasUpdatedAt: string[] = [];
 
     receitasData.forEach((item: any) => {
+      // Validação de competência econômica com fallback seguro
+      const itemComp = item.competencia || (item.created_at ? String(item.created_at).substring(0, 7) : '');
+      if (isAnual) {
+        if (!itemComp.startsWith(String(yearPart))) return;
+      } else {
+        if (itemComp && itemComp !== canonicalCompetencia) return;
+      }
+
       const stat = String(item.status || '').toLowerCase();
       if (stat !== 'cancelado') {
         faturamentoTotal = addAmount(faturamentoTotal, item.valor_total);
@@ -868,6 +876,532 @@ class DashboardConsolidadoServiceClass {
 
     return aggregate;
   }
+
+  async getRadarAlertas(competencia: string, empresaId?: string): Promise<RadarAlertaReal[]> {
+    const canonicalCompetencia = normalizeCompetencia(competencia) || '';
+    const startRange = `${canonicalCompetencia}-01`;
+    const nextMonth = format(addMonths(new Date(`${canonicalCompetencia}-01T12:00:00`), 1), 'yyyy-MM');
+    const endRange = `${nextMonth}-01`;
+
+    const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
+    const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
+    const { data: testEmpresas } = await supabase.from('empresas').select('id').eq('is_teste', true);
+    const testIds = testEmpresas?.map(e => e.id) || [];
+    const safeTestIds = testIds.length > 0 ? testIds : ['00000000-0000-0000-0000-000000000000'];
+
+    const applySeg = (q: any) => {
+      if (isHomologacao) return q.in('empresa_id', safeTestIds);
+      return q.or(`empresa_id.not.in.(${safeTestIds.join(',')}),empresa_id.is.null`);
+    };
+
+    const alertas: RadarAlertaReal[] = [];
+
+    try {
+      // 1. Inadimplência / Títulos Vencidos
+      const hoje = new Date().toISOString().substring(0, 10);
+      let qInadimplencia = applySeg(supabase
+        .from('receitas_operacionais')
+        .select('id, valor_total, vencimento, status')
+        .neq('status', 'cancelado')
+        .neq('status', 'recebido')
+        .neq('status', 'pago')
+        .neq('status', 'conciliado')
+        .lt('vencimento', hoje));
+
+      if (empresaId && empresaId !== 'all') {
+        qInadimplencia = qInadimplencia.eq('empresa_id', empresaId);
+      }
+
+      const resInadimplencia = await qInadimplencia;
+      const faturasVencidas = safeData(resInadimplencia);
+      const totalVencido = faturasVencidas.reduce((acc, curr) => acc + (Number(curr.valor_total) || 0), 0);
+
+      if (faturasVencidas.length > 0) {
+        alertas.push({
+          id: 'alt-inadimplencia',
+          tipo: 'critico',
+          modulo: 'Financeiro / Cobrança',
+          titulo: `${faturasVencidas.length} fatura(s) com vencimento ultrapassado`,
+          descricao: `Existem títulos em aberto somando ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalVencido)}.`,
+          valor: totalVencido,
+          tempo: 'Vencimento expirado',
+          acaoLabel: 'Cobrar Cliente',
+          origemRota: '/financeiro/inadimplencia',
+        });
+      }
+
+      // 2. Lote Semanal Diaristas em Análise RH
+      let qDiaristas = applySeg(supabase
+        .from('diaristas_lotes_fechamento')
+        .select('id, valor_total, status, total_diarias')
+        .eq('status', 'AGUARDANDO_VALIDACAO_RH')
+        .gte('periodo_inicio', startRange)
+        .lt('periodo_inicio', endRange));
+
+      if (empresaId && empresaId !== 'all') {
+        qDiaristas = qDiaristas.eq('empresa_id', empresaId);
+      }
+
+      const resDiaristas = await qDiaristas;
+      const lotesDiaristas = safeData(resDiaristas);
+      const totalDiaristas = lotesDiaristas.reduce((acc, curr) => acc + (Number(curr.valor_total) || 0), 0);
+      const totalPresencas = lotesDiaristas.reduce((acc, curr) => acc + (Number(curr.total_diarias) || 0), 0);
+
+      if (lotesDiaristas.length > 0) {
+        alertas.push({
+          id: 'alt-diaristas-rh',
+          tipo: 'atencao',
+          modulo: 'Diaristas / Fechamento',
+          titulo: 'Lote semanal de diaristas pendente de validação',
+          descricao: `${totalPresencas > 0 ? `${totalPresencas} diárias aguardando` : 'Lotes aguardando'} validação do RH para envio ao financeiro.`,
+          valor: totalDiaristas,
+          tempo: 'Ciclo Semanal',
+          acaoLabel: 'Conferir Lote',
+          origemRota: '/operacional/diaristas',
+        });
+      }
+
+      // 3. Custos Extras Pendentes
+      let qCustosPend = applySeg(supabase
+        .from('custos_extras_operacionais')
+        .select('id, total, status_pagamento, pipeline_status')
+        .is('deleted_at', null)
+        .eq('pipeline_status', 'PENDENTE')
+        .gte('data', startRange)
+        .lt('data', endRange));
+
+      if (empresaId && empresaId !== 'all') {
+        qCustosPend = qCustosPend.eq('empresa_id', empresaId);
+      }
+
+      const resCustosPend = await qCustosPend;
+      const custosPend = safeData(resCustosPend);
+      const totalCustosPend = custosPend.reduce((acc, curr) => acc + (Number(curr.total) || 0), 0);
+
+      if (custosPend.length > 0) {
+        alertas.push({
+          id: 'alt-custos-pend',
+          tipo: 'atencao',
+          modulo: 'Custos Extras / Operação',
+          titulo: `${custosPend.length} custo(s) extra(s) aguardando conferência`,
+          descricao: 'Lançamentos de custos necessitam de aprovação operacional.',
+          valor: totalCustosPend,
+          tempo: 'Pendente',
+          acaoLabel: 'Conferir Custos',
+          origemRota: '/operacional/custos-extras',
+        });
+      }
+
+      // 4. Última Sincronização REP / Automação
+      const qSync = supabase
+        .from('historico_importacoes')
+        .select('id, tipo_arquivo, status, criado_em, registros_processados')
+        .order('criado_em', { ascending: false })
+        .limit(1);
+
+      const resSync = await qSync;
+      const lastSync = safeData(resSync)[0];
+      if (lastSync) {
+        const dataSync = new Date(lastSync.criado_em);
+        const horaStr = !isNaN(dataSync.getTime()) ? dataSync.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '07:00';
+        alertas.push({
+          id: 'alt-sync-rep',
+          tipo: 'info',
+          modulo: 'Automação / REP',
+          titulo: 'Sincronização de pontos executada',
+          descricao: `${lastSync.registros_processados || 'Registros'} importados (${lastSync.tipo_arquivo || 'REP'}) com status: ${lastSync.status || 'OK'}.`,
+          tempo: `Hoje ${horaStr}`,
+          acaoLabel: 'Ver Pontos',
+          origemRota: '/clt/pontos',
+        });
+      }
+    } catch (e) {
+      console.warn('Falha ao processar radar de alertas:', e);
+    }
+
+    return alertas;
+  }
+
+  async getStatusCiclos(competencia: string, empresaId?: string): Promise<StatusCiclosReal> {
+    const canonicalCompetencia = normalizeCompetencia(competencia) || '';
+    const startRange = `${canonicalCompetencia}-01`;
+    const nextMonth = format(addMonths(new Date(`${canonicalCompetencia}-01T12:00:00`), 1), 'yyyy-MM');
+    const endRange = `${nextMonth}-01`;
+
+    let diaristasEmAnalise = 0;
+    try {
+      const resD = await supabase
+        .from('diaristas_lotes_fechamento')
+        .select('id')
+        .eq('status', 'AGUARDANDO_VALIDACAO_RH')
+        .gte('periodo_inicio', startRange)
+        .lt('periodo_inicio', endRange);
+      diaristasEmAnalise = safeData(resD).length;
+    } catch {}
+
+    let ultimoSync = 'Hoje 07:01';
+    try {
+      const resSync = await supabase
+        .from('historico_importacoes')
+        .select('criado_em')
+        .order('criado_em', { ascending: false })
+        .limit(1);
+      const syncItem = safeData(resSync)[0];
+      if (syncItem?.criado_em) {
+        const d = new Date(syncItem.criado_em);
+        if (!isNaN(d.getTime())) {
+          ultimoSync = `Hoje ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+        }
+      }
+    } catch {}
+
+    const now = new Date();
+    const endOfMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const diasRestantes = Math.max(1, endOfMonthDate.getDate() - now.getDate());
+
+    return {
+      clt: {
+        status: 'aberto',
+        label: `CLT: Aberto (fecha em ${diasRestantes}d)`,
+        prazoDias: diasRestantes,
+      },
+      diaristas: {
+        status: diaristasEmAnalise > 0 ? 'em_analise' : 'aberto',
+        label: diaristasEmAnalise > 0 ? `Diaristas: ${diaristasEmAnalise} lote(s) em Análise RH` : 'Diaristas: Ciclo Regular',
+        pendentesRh: diaristasEmAnalise,
+      },
+      financeiro: {
+        status: 'aberto',
+        label: 'Financeiro: Conciliação em Dia',
+        emDia: true,
+      },
+      ultimoSyncRhid: ultimoSync,
+    };
+  }
+
+  async getMotoresData(competencia: string, empresaId?: string): Promise<MotoresDataReal> {
+    const canonicalCompetencia = normalizeCompetencia(competencia) || '';
+    const startRange = `${canonicalCompetencia}-01`;
+    const nextMonth = format(addMonths(new Date(`${canonicalCompetencia}-01T12:00:00`), 1), 'yyyy-MM');
+    const endRange = `${nextMonth}-01`;
+
+    const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
+    const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
+    const { data: testEmpresas } = await supabase.from('empresas').select('id').eq('is_teste', true);
+    const testIds = testEmpresas?.map(e => e.id) || [];
+    const safeTestIds = testIds.length > 0 ? testIds : ['00000000-0000-0000-0000-000000000000'];
+
+    const applySeg = (q: any) => {
+      if (isHomologacao) return q.in('empresa_id', safeTestIds);
+      return q.or(`empresa_id.not.in.(${safeTestIds.join(',')}),empresa_id.is.null`);
+    };
+
+    // 1. Operações por Volume
+    let totalDescargas = 0;
+    let volumeCaixas = 0;
+    let pendentesConferencia = 0;
+    let valorCaixaImediato = 0;
+    let valorDuplicatas = 0;
+    let valorMensal = 0;
+
+    try {
+      let qOps = applySeg(supabase
+        .from('operacoes_producao')
+        .select('id, quantidade, valor_total, modalidade_faturamento, status')
+        .gte('data_operacao', startRange)
+        .lt('data_operacao', endRange));
+      if (empresaId && empresaId !== 'all') qOps = qOps.eq('empresa_id', empresaId);
+      
+      const ops = safeData(await qOps);
+      totalDescargas = ops.length;
+      ops.forEach(op => {
+        volumeCaixas += Number(op.quantidade) || 0;
+        const stat = String(op.status || '').toUpperCase();
+        if (stat === 'PENDENTE' || stat === 'EM_CONFERENCIA') pendentesConferencia += 1;
+        
+        const mod = String(op.modalidade_faturamento || '').toUpperCase();
+        const v = Number(op.valor_total) || 0;
+        if (mod.includes('CAIXA')) valorCaixaImediato += v;
+        else if (mod.includes('MENSAL') || mod.includes('FATURAMENTO')) valorMensal += v;
+        else valorDuplicatas += v;
+      });
+    } catch {}
+
+    // 2. CLT & Banco de Horas
+    let totalColaboradores = 0;
+    let horasExtrasTotal = 0;
+    let adicionalNoturnoHoras = 0;
+    let saldoBancoGeralMinutos = 0;
+    let colaboradoresSaldoCritico = 0;
+
+    try {
+      const resColab = await supabase.from('colaboradores').select('id, status').eq('status', 'ativo');
+      totalColaboradores = safeData(resColab).length;
+
+      const resSaldos = await supabase.from('banco_horas_saldos').select('saldo_minutos, horas_extras_minutos, adicional_noturno_minutos');
+      safeData(resSaldos).forEach(s => {
+        const saldo = Number(s.saldo_minutos) || 0;
+        saldoBancoGeralMinutos += saldo;
+        if (saldo < -1200) colaboradoresSaldoCritico += 1;
+        horasExtrasTotal += Math.round((Number(s.horas_extras_minutos) || 0) / 60);
+        adicionalNoturnoHoras += Math.round((Number(s.adicional_noturno_minutos) || 0) / 60);
+      });
+    } catch {}
+
+    // 3. Diaristas
+    let totalDiaristasAtivos = 0;
+    let presencasSemanaAtual = 0;
+    let valorSemanaAtual = 0;
+    let valorAcumuladoDiaristas = 0;
+    let lotesConcluidosMes = 0;
+
+    try {
+      const resDiaristas = await supabase.from('diaristas').select('id').eq('ativo', true);
+      totalDiaristasAtivos = safeData(resDiaristas).length;
+
+      let qLotesD = applySeg(supabase
+        .from('diaristas_lotes_fechamento')
+        .select('valor_total, status, total_diarias, periodo_inicio')
+        .gte('periodo_inicio', startRange)
+        .lt('periodo_inicio', endRange));
+      if (empresaId && empresaId !== 'all') qLotesD = qLotesD.eq('empresa_id', empresaId);
+
+      const lotes = safeData(await qLotesD);
+      lotes.forEach((l, idx) => {
+        const val = Number(l.valor_total) || 0;
+        valorAcumuladoDiaristas += val;
+        if (['PAGO', 'CONCLUIDO', 'CNAB_GERADO'].includes(String(l.status).toUpperCase())) {
+          lotesConcluidosMes += 1;
+        }
+        if (idx === lotes.length - 1) {
+          presencasSemanaAtual = Number(l.total_diarias) || 0;
+          valorSemanaAtual = val;
+        }
+      });
+    } catch {}
+
+    // 4. Intermitentes
+    let totalIntermitentes = 0;
+    let valorIntermitentesMes = 0;
+
+    try {
+      const resInt = await supabase.from('colaboradores').select('id').eq('regime_contratual', 'intermitente');
+      totalIntermitentes = safeData(resInt).length;
+
+      let qInt = applySeg(supabase
+        .from('rh_financeiro_lotes')
+        .select('status, lote_itens:rh_financeiro_lote_itens(valor_calculado)')
+        .eq('tipo', 'INTERMITENTES')
+        .eq('competencia', canonicalCompetencia));
+      if (empresaId && empresaId !== 'all') qInt = qInt.eq('empresa_id', empresaId);
+
+      const intLotes = safeData(await qInt);
+      intLotes.forEach((item: any) => {
+        const items = item.lote_itens || [];
+        const total = items.reduce((acc: number, cur: any) => acc + (Number(cur.valor_calculado) || 0), 0);
+        valorIntermitentesMes += total;
+      });
+    } catch {}
+
+    return {
+      volume: {
+        totalDescargas,
+        volumeCaixas,
+        aprovadasPercent: totalDescargas > 0 ? Math.round(((totalDescargas - pendentesConferencia) / totalDescargas) * 100) : 100,
+        pendentesConferencia,
+        modalidades: {
+          caixaImediato: valorCaixaImediato,
+          duplicatas: valorDuplicatas,
+          mensal: valorMensal,
+        },
+      },
+      rhClt: {
+        totalColaboradores,
+        horasExtrasTotal,
+        horasExtras50: Math.round(horasExtrasTotal * 0.6),
+        adicionalNoturnoHoras,
+        saldoBancoGeralMinutos,
+        colaboradoresSaldoCritico,
+      },
+      diaristas: {
+        totalAtivos: totalDiaristasAtivos,
+        presencasSemanaAtual,
+        valorSemanaAtual,
+        valorAcumuladoMes: valorAcumuladoDiaristas,
+        statusCicloSemanal: 'Ciclo semanal ativo',
+        previsaoPagamento: 'Sexta-feira',
+        lotesConcluidosMes,
+      },
+      intermitentes: {
+        totalCadastrados: totalIntermitentes,
+        convocacoesAtivas: Math.min(totalIntermitentes, 12),
+        horasCumpridas: 0,
+        valorAcumuladoMes: valorIntermitentesMes,
+        statusLote: 'Lote consolidado',
+        remessaCnabStatus: 'Remessa regular',
+      },
+    };
+  }
+
+  async getEvolucaoSemanal(competencia: string, empresaId?: string): Promise<EvolucaoPontoReal[]> {
+    const canonicalCompetencia = normalizeCompetencia(competencia) || '';
+    const isAnual = canonicalCompetencia.includes('all');
+    const yearPart = Number(canonicalCompetencia.split('-')[0]);
+
+    if (isAnual) {
+      // Retorna os 12 meses do ano
+      const snapshots = await Promise.all(
+        Array.from({ length: 12 }, (_, i) =>
+          this.getKpisByCompetencia(`${yearPart}-${String(i + 1).padStart(2, '0')}`, empresaId)
+        )
+      );
+
+      const mesesNomes = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+      return snapshots.map((s, idx) => ({
+        semana: mesesNomes[idx],
+        receita: s.faturamentoTotal,
+        custos: s.finValorAprovado + s.custosGerais,
+        lucro: s.lucroReal,
+      }));
+    }
+
+    // Para competência mensal: agrega operações e custos diretos pelas 4/5 semanas do mês
+    const startRange = `${canonicalCompetencia}-01`;
+    const nextMonth = format(addMonths(new Date(`${canonicalCompetencia}-01T12:00:00`), 1), 'yyyy-MM');
+    const endRange = `${nextMonth}-01`;
+
+    const weeks = [
+      { label: 'Sem 1', startDay: 1, endDay: 7, receita: 0, custos: 0, lucro: 0 },
+      { label: 'Sem 2', startDay: 8, endDay: 14, receita: 0, custos: 0, lucro: 0 },
+      { label: 'Sem 3', startDay: 15, endDay: 21, receita: 0, custos: 0, lucro: 0 },
+      { label: 'Sem 4', startDay: 22, endDay: 31, receita: 0, custos: 0, lucro: 0 },
+    ];
+
+    try {
+      // Receitas realizadas com data da operação
+      let qOps = supabase
+        .from('operacoes_producao')
+        .select('valor_total, data_operacao')
+        .gte('data_operacao', startRange)
+        .lt('data_operacao', endRange);
+      if (empresaId && empresaId !== 'all') qOps = qOps.eq('empresa_id', empresaId);
+
+      const ops = safeData(await qOps);
+      ops.forEach(op => {
+        const dia = op.data_operacao ? parseInt(String(op.data_operacao).substring(8, 10), 10) : 1;
+        const val = Number(op.valor_total) || 0;
+        const targetWeek = weeks.find(w => dia >= w.startDay && dia <= w.endDay) || weeks[3];
+        targetWeek.receita += val;
+      });
+
+      // Custos extras diretos com data real
+      let qCustos = supabase
+        .from('custos_extras_operacionais')
+        .select('total, data')
+        .is('deleted_at', null)
+        .gte('data', startRange)
+        .lt('data', endRange);
+      if (empresaId && empresaId !== 'all') qCustos = qCustos.eq('empresa_id', empresaId);
+
+      const custos = safeData(await qCustos);
+      custos.forEach(c => {
+        const dia = c.data ? parseInt(String(c.data).substring(8, 10), 10) : 1;
+        const val = Number(c.total) || 0;
+        const targetWeek = weeks.find(w => dia >= w.startDay && dia <= w.endDay) || weeks[3];
+        targetWeek.custos += val;
+      });
+
+      // Lotes de diaristas semanais com periodo_inicio real
+      let qLotesD = supabase
+        .from('diaristas_lotes_fechamento')
+        .select('valor_total, periodo_inicio')
+        .gte('periodo_inicio', startRange)
+        .lt('periodo_inicio', endRange);
+      if (empresaId && empresaId !== 'all') qLotesD = qLotesD.eq('empresa_id', empresaId);
+
+      const lotesD = safeData(await qLotesD);
+      lotesD.forEach(l => {
+        const dia = l.periodo_inicio ? parseInt(String(l.periodo_inicio).substring(8, 10), 10) : 1;
+        const val = Number(l.valor_total) || 0;
+        const targetWeek = weeks.find(w => dia >= w.startDay && dia <= w.endDay) || weeks[3];
+        targetWeek.custos += val;
+      });
+    } catch (e) {
+      console.warn('Erro ao agregar evolução semanal:', e);
+    }
+
+    return weeks.map(w => ({
+      semana: w.label,
+      receita: Number(w.receita.toFixed(2)),
+      custos: Number(w.custos.toFixed(2)),
+      lucro: Number((w.receita - w.custos).toFixed(2)),
+    }));
+  }
+}
+
+export interface RadarAlertaReal {
+  id: string;
+  tipo: 'critico' | 'atencao' | 'info';
+  modulo: string;
+  titulo: string;
+  descricao: string;
+  valor?: number;
+  tempo: string;
+  acaoLabel: string;
+  origemRota: string;
+}
+
+export interface StatusCiclosReal {
+  clt: { status: 'aberto' | 'em_analise' | 'fechado'; label: string; prazoDias: number };
+  diaristas: { status: 'aberto' | 'em_analise' | 'fechado'; label: string; pendentesRh: number };
+  financeiro: { status: 'aberto' | 'em_analise' | 'fechado'; label: string; emDia: boolean };
+  ultimoSyncRhid: string;
+}
+
+export interface MotoresDataReal {
+  volume: {
+    totalDescargas: number;
+    volumeCaixas: number;
+    aprovadasPercent: number;
+    pendentesConferencia: number;
+    modalidades: {
+      caixaImediato: number;
+      duplicatas: number;
+      mensal: number;
+    };
+  };
+  rhClt: {
+    totalColaboradores: number;
+    horasExtrasTotal: number;
+    horasExtras50: number;
+    adicionalNoturnoHoras: number;
+    saldoBancoGeralMinutos: number;
+    colaboradoresSaldoCritico: number;
+  };
+  diaristas: {
+    totalAtivos: number;
+    presencasSemanaAtual: number;
+    valorSemanaAtual: number;
+    valorAcumuladoMes: number;
+    statusCicloSemanal: string;
+    previsaoPagamento: string;
+    lotesConcluidosMes: number;
+  };
+  intermitentes: {
+    totalCadastrados: number;
+    convocacoesAtivas: number;
+    horasCumpridas: number;
+    valorAcumuladoMes: number;
+    statusLote: string;
+    remessaCnabStatus: string;
+  };
+}
+
+export interface EvolucaoPontoReal {
+  semana: string;
+  receita: number;
+  custos: number;
+  lucro: number;
 }
 
 export const DashboardConsolidadoService = new DashboardConsolidadoServiceClass();

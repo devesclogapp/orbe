@@ -479,12 +479,12 @@ export const useOperationalPulse = () => {
         }),
         pontos_recebidos: createPulse({
           critical: pontosInconsistentes,
-          waiting: pontosPendentes,
-          healthy: pontosPendentes + pontosInconsistentes === 0 ? 1 : 0,
+          waiting: 0, // Ignora total bruto de batidas importadas (1412) para evitar poluição visual
+          healthy: pontosInconsistentes === 0 ? 1 : 0,
           criticalLabel: "Inconsist.",
           waitingLabel: "Aguardando RH",
           healthyLabel: "Processados",
-          hint: "Registros aguardando processamento RH",
+          hint: pontosInconsistentes > 0 ? `${pontosInconsistentes} inconsistência(s) de ponto` : "Pontos processados",
           details: processamentoDetails,
         }),
         diaristas_recebidos: createPulse({
@@ -517,14 +517,7 @@ export const useOperationalPulse = () => {
           hint: "Servicos extras em tratamento",
           details: [],
         }),
-        central_de_cadastros: createPulse({
-          warning: cadastrosPendentes,
-          healthy: cadastrosPendentes === 0 ? 1 : 0,
-          warningLabel: "Incompletos",
-          healthyLabel: "Cadastros ok",
-          hint: "Cadastros que bloqueiam o fluxo",
-          details: [],
-        }),
+        central_de_cadastros: emptyItem(),
         processamento_rh: createPulse({
           critical: processamentoInconsistencias,
           waiting: processamentoPendencias,

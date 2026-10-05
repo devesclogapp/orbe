@@ -195,8 +195,8 @@ describe('SEGREGAÇÃO GERENCIAL CLT × INTERMITENTES × DIARISTAS — DASHBOARD
     const dashboardPath = path.resolve(__dirname, '../pages/Dashboard.tsx');
     const content = fs.readFileSync(dashboardPath, 'utf-8');
 
-    // Deve chamar sem o 3o argumento tenantId
-    expect(content).toContain('DashboardConsolidadoService.getKpisAggregate(selectedYear, selectedMonthNumber)');
+    // Deve chamar sem o 3o argumento tenantId (usando empresaParam quando aplicável)
+    expect(content).toContain('DashboardConsolidadoService.getKpisAggregate(selectedYear, selectedMonthNumber, empresaParam)');
     // Não pode conter a chamada antiga com tenantId
     expect(content).not.toContain('DashboardConsolidadoService.getKpisAggregate(selectedYear, selectedMonthNumber, tenantId)');
   });
