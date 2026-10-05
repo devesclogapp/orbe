@@ -23,6 +23,7 @@ interface UxLabTopbarProps {
   empresa: string;
   onEmpresaChange: (val: string) => void;
   onRefresh?: () => void;
+  periodoLabel?: string;
 }
 
 export const UxLabTopbar: React.FC<UxLabTopbarProps> = ({
@@ -33,6 +34,7 @@ export const UxLabTopbar: React.FC<UxLabTopbarProps> = ({
   empresa,
   onEmpresaChange,
   onRefresh,
+  periodoLabel,
 }) => {
   const { toggleTheme, isDark } = useUxLabTheme();
 
@@ -82,12 +84,17 @@ export const UxLabTopbar: React.FC<UxLabTopbarProps> = ({
             </Select>
           </div>
 
-          {/* Seletor de Competência */}
-          <div className="w-[160px] sm:w-[180px]">
+          {/* Seletor de Período Financeiro / Competência */}
+          <div className={periodoLabel ? "w-[200px] sm:w-[230px]" : "w-[160px] sm:w-[180px]"}>
             <Select value={competencia} onValueChange={onCompetenciaChange}>
               <SelectTrigger className="h-8 text-xs font-medium bg-card text-foreground border-border dark:border-white/[0.05] dark:bg-[#15191F] dark:text-[#F1F3F5]">
                 <Calendar className="mr-1.5 h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                <SelectValue placeholder="Competência" />
+                <span className="truncate">
+                  {periodoLabel ? (
+                    <span className="font-semibold text-muted-foreground mr-1">{periodoLabel}:</span>
+                  ) : null}
+                  <SelectValue placeholder={periodoLabel || "Competência"} />
+                </span>
               </SelectTrigger>
               <SelectContent className="bg-popover text-popover-foreground border-border dark:border-white/[0.06] dark:bg-[#1A1F27]">
                 {MOCK_COMPETENCIAS_OPTIONS.map((opt) => (

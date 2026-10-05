@@ -16,6 +16,7 @@ interface UxLabShellProps {
   empresa?: string;
   onEmpresaChange?: (val: string) => void;
   onRefresh?: () => void;
+  periodoLabel?: string;
 }
 
 export const UxLabShell: React.FC<UxLabShellProps> = ({
@@ -31,6 +32,7 @@ export const UxLabShell: React.FC<UxLabShellProps> = ({
   empresa = "all",
   onEmpresaChange = () => {},
   onRefresh,
+  periodoLabel,
 }) => {
   const resolvedActiveItem = activeItem || activeSidebarItem || "dashboard";
   const resolvedOnSelectItem = onSelectItem || onSelectSidebarItem;
@@ -50,6 +52,7 @@ export const UxLabShell: React.FC<UxLabShellProps> = ({
             empresa={empresa}
             onEmpresaChange={onEmpresaChange}
             onRefresh={onRefresh}
+            periodoLabel={periodoLabel}
           />
 
           {/* Área de Trabalho com Densidade Otimizada (1366x768 / 1440+) */}

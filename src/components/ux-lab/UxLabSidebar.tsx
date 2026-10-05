@@ -178,6 +178,7 @@ const SECTIONS: LabNavSection[] = [
         id: "despesas",
         label: "Despesas & Contas a Pagar",
         icon: Wallet,
+        isActiveLabTarget: true,
       },
       {
         id: "central-bancaria",
@@ -259,6 +260,7 @@ export const UX_LAB_ROUTES: Record<string, string> = {
   "fechamento-ciclos": "/ux-lab/fechamento-ciclos",
   "fechamento-operacional": "/ux-lab/fechamento-ciclos",
   receitas: "/ux-lab/receitas",
+  despesas: "/ux-lab/despesas",
   dre: "/ux-lab/dre",
   relatorios: "/ux-lab/relatorios",
   "design-system": "/ux-lab/design-system",
