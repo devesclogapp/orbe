@@ -2,9 +2,7 @@ import React, { useMemo } from "react";
 import {
   Building2,
   Calendar,
-  DollarSign,
   FileText,
-  Receipt,
   Tag,
   User,
   Clock,
@@ -14,15 +12,15 @@ import {
   RotateCcw,
   Pencil,
   ArrowRight,
+  Package,
+  Users,
+  Check,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { DrawerPrimarioShell } from "@/components/continuity/DrawerPrimarioShell";
-import {
-  PipelineHorizontalBar,
-  type PipelineStageItem,
-} from "@/components/continuity/PipelineHorizontalBar";
 import { resolveServicoExtraModalidade } from "@/contexts/OperationalPipelineContext";
 
 export interface ServicoExtraItemData {
@@ -37,7 +35,24 @@ export interface ServicoExtraItemData {
   tipo_servico: string;
   descricao_servico: string;
   quantidade?: number | null;
+  quantidade_colaboradores?: number | null;
   valor_unitario?: number | null;
+  valor_unitario_snapshot?: number | null;
+  unidade_cobranca_snapshot?: string | null;
+  tipo_calculo_snapshot?: string | null;
+  materiais_snapshot?: Array<{
+    material_id?: string;
+    nome_snapshot?: string;
+    unidade_snapshot?: string;
+    quantidade?: number;
+    valor_unitario_snapshot?: number;
+    valor_total?: number;
+  }> | null;
+  custo_materiais?: number | null;
+  emite_nf?: boolean | null;
+  nf_numero?: string | null;
+  iss_percentual?: number | null;
+  valor_iss?: number | null;
   total?: number | null;
   forma_pagamento?: string | null;
   forma_pagamento_id?: string | null;
@@ -46,7 +61,6 @@ export interface ServicoExtraItemData {
   status_pagamento?: string | null;
   pipeline_status?: string | null;
   justificativa_devolucao?: string | null;
-  nf_numero?: string | null;
   responsavel_nome?: string | null;
   observacao?: string | null;
   operacao_id?: string | null;
@@ -81,55 +95,24 @@ const formatDate = (value?: string | null) => {
   return date.toLocaleDateString("pt-BR");
 };
 
-// ─── 5 Estágios Horizontais de Serviços Extras ───────────────────────────────
-export const SERVICOS_EXTRAS_HORIZONTAL_STAGES = [
-  {
-    id: "lancamento",
-    key: "RECEBIDO",
-    label: "Recebido",
-    compactLabel: "Recebido",
-    responsible: "Encarregado",
-    description: "Serviço extra registrado e capturado pelo sistema.",
-  },
-  {
-    id: "validacao_operacional",
-    key: "EM_VALIDACAO",
-    label: "Em validação",
-    compactLabel: "Em validação",
-    responsible: "Operação / ADM",
-    description: "Conferência técnica e validação dos dados operacionais.",
-  },
-  {
-    id: "aprovacao",
-    key: "APROVADO_OPERACAO",
-    label: "Aprovado",
-    compactLabel: "Aprovado",
-    responsible: "Gestor Operacional",
-    description: "Serviço validado e aprovado. Receita gerada no financeiro.",
-  },
-  {
-    id: "faturamento",
-    key: "FATURAMENTO",
-    label: "A receber / Faturamento",
-    compactLabel: "A receber",
-    responsible: "Financeiro",
-    description: "Disponível na Central de Receitas para cobrança e faturamento.",
-  },
-  {
-    id: "concluido",
-    key: "CONCLUIDO",
-    label: "Recebido",
-    compactLabel: "Recebido",
-    responsible: "Financeiro / Tesouraria",
-    description: "Receita liquidada e fluxo de serviço extra concluído.",
-  },
+// ─── 5 Etapas Canônicas da Esteira de Serviços Extras ────────────────────────
+export const SERVICOS_EXTRAS_PIPELINE_STEPS = [
+  { key: "RECEBIDO", label: "Recebido" },
+  { key: "EM_VALIDACAO", label: "Validação" },
+  { key: "APROVADO_OPERACAO", label: "Aprovado" },
+  { key: "FATURADO", label: "Faturamento" },
+  { key: "CONCLUIDO", label: "Concluído" },
 ] as const;
 
-export const ServicoExtraDetalhesDrawer: React.FC<ServicoExtraDetalhesDrawerProps> = ({
+export const ServicoExtraDetalhesDrawer: React.FC<ServicoExtraDetalhesDrawerProps> = (props) => {
+  if (!props.item) return null;
+  return <ServicoExtraDetalhesContent {...props} item={props.item} />;
+};
+
+const ServicoExtraDetalhesContent: React.FC<ServicoExtraDetalhesDrawerProps & { item: ServicoExtraItemData }> = ({
   item,
   isOpen,
   onClose,
-  onVerFluxoCompleto,
   onAdvance,
   onDevolve,
   onEdit,
@@ -137,7 +120,7 @@ export const ServicoExtraDetalhesDrawer: React.FC<ServicoExtraDetalhesDrawerProp
   canDevolve,
   isPendingAdvance,
 }) => {
-  if (!item) return null;
+  const navigate = useNavigate();
 
   const currentStatus = String(item.pipeline_status || "PENDENTE").toUpperCase();
   const currentStatusPgto = String(item.status_pagamento || "").toUpperCase();
@@ -196,21 +179,21 @@ export const ServicoExtraDetalhesDrawer: React.FC<ServicoExtraDetalhesDrawerProp
         case "CAIXA_IMEDIATO":
           return {
             label: "Caixa Imediato",
-            badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300",
+            badgeClass: "bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300",
             isValid: true,
             route: resolvedModalidade.route,
           };
         case "DUPLICATA":
           return {
-            label: "Duplicata",
-            badgeClass: "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950/60 dark:text-blue-300",
+            label: "Duplicata a Prazo",
+            badgeClass: "bg-blue-50 text-blue-800 border-blue-300 dark:bg-blue-950/60 dark:text-blue-300",
             isValid: true,
             route: resolvedModalidade.route,
           };
         case "FATURAMENTO_MENSAL":
           return {
             label: "Faturamento Mensal",
-            badgeClass: "bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-950/60 dark:text-purple-300",
+            badgeClass: "bg-purple-50 text-purple-800 border-purple-300 dark:bg-purple-950/60 dark:text-purple-300",
             isValid: true,
             route: resolvedModalidade.route,
           };
@@ -220,7 +203,7 @@ export const ServicoExtraDetalhesDrawer: React.FC<ServicoExtraDetalhesDrawerProp
       item.formas_pagamento_operacional?.nome ||
       item.forma_pagamento ||
       item.modalidade_financeira ||
-      "Não determinada";
+      "Padrão";
     return {
       label: fallbackLabel,
       badgeClass: "bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-800 dark:text-slate-300",
@@ -229,33 +212,64 @@ export const ServicoExtraDetalhesDrawer: React.FC<ServicoExtraDetalhesDrawerProp
     };
   }, [resolvedModalidade, item.formas_pagamento_operacional, item.forma_pagamento, item.modalidade_financeira]);
 
-  // Mapeamento dos 5 estágios horizontais compactos (Drawer Primário)
-  const horizontalStages = useMemo<PipelineStageItem[]>(() => {
-    return SERVICOS_EXTRAS_HORIZONTAL_STAGES.map((st, idx) => {
-      let status: "done" | "current" | "pending" | "devolved" = "pending";
-      if (isFlowDone) {
-        status = "done";
-      } else if (isDevolved && idx === currentStageIndex) {
-        status = "devolved";
-      } else if (idx < currentStageIndex) {
-        status = "done";
-      } else if (idx === currentStageIndex) {
-        status = "current";
-      } else {
-        status = "pending";
-      }
+  // Diagnóstico Operacional Orientado a Processo
+  const diagnostico = useMemo(() => {
+    if (isDevolved) {
       return {
-        id: st.id,
-        label: st.label,
-        compactLabel: st.compactLabel,
-        status,
+        categoria: "bloqueio" as const,
+        responsavelAtual: "Encarregado / Lançador",
+        proximoPasso: "Corrigir dados operacionais conforme justificativa",
+        orientacao: item.justificativa_devolucao || "Serviço extra devolvido pela conferência técnica.",
       };
-    });
-  }, [currentStageIndex, isFlowDone, isDevolved]);
+    }
+    if (currentStatus === "PENDENTE") {
+      return {
+        categoria: "normal" as const,
+        responsavelAtual: "Operação / Gestor de Pátio",
+        proximoPasso: "Encaminhar para validação técnica de turno",
+        orientacao: "Verificar se a quantidade executada, insumos e headcount conferem com o diário de bordo.",
+      };
+    }
+    if (currentStatus === "EM_VALIDACAO") {
+      return {
+        categoria: "normal" as const,
+        responsavelAtual: "Operação / Gestor",
+        proximoPasso: "Aprovar serviço para geração de receita operacional",
+        orientacao: "Conferir regras de período e precificação antes de aprovar para a Central de Receitas.",
+      };
+    }
+    if (currentStatus === "APROVADO_OPERACAO") {
+      return {
+        categoria: "normal" as const,
+        responsavelAtual: "Financeiro / Faturamento",
+        proximoPasso: "Receita gerada. Aguardando emissão de NF ou fechamento mensal",
+        orientacao: "Disponível na Central de Receitas para cobrança e faturamento.",
+      };
+    }
+    if (currentStatus === "APROVADO_FINANCEIRO" || currentStatus === "FATURADO") {
+      return {
+        categoria: "normal" as const,
+        responsavelAtual: "Financeiro / Tesouraria",
+        proximoPasso: "Acompanhar liquidação no Contas a Receber",
+        orientacao: "Faturamento emitido. Aguardando retorno bancário / baixa.",
+      };
+    }
+    return {
+      categoria: "concluido" as const,
+      responsavelAtual: "Finalizado",
+      proximoPasso: "Receita liquidada e conciliada",
+      orientacao: "Fluxo operacional e financeiro encerrado com sucesso.",
+    };
+  }, [currentStatus, isDevolved, item.justificativa_devolucao]);
 
   const empresaNome = item.empresas?.nome || item.empresa_nome || "—";
   const valorTotalStr = item.total != null ? currencyFormatter.format(Number(item.total)) : "—";
   const valorUnitarioStr = item.valor_unitario != null ? currencyFormatter.format(Number(item.valor_unitario)) : "—";
+  const headcountNum = Number(item.quantidade_colaboradores || 1);
+  const headcountStr = `${headcountNum} ${headcountNum === 1 ? "pessoa" : "pessoas"}`;
+  const codigo = `SX-${String(item.id || "").slice(0, 8).toUpperCase()}`;
+
+  const isEditable = !isFlowDone && (currentStatus === "PENDENTE" || isDevolved);
 
   return (
     <DrawerPrimarioShell
@@ -268,10 +282,10 @@ export const ServicoExtraDetalhesDrawer: React.FC<ServicoExtraDetalhesDrawerProp
           className={cn(
             "text-[10px] font-bold uppercase tracking-wider",
             isFlowDone
-              ? "bg-zinc-100 text-zinc-700 border-zinc-300"
+              ? "bg-zinc-100 text-zinc-700 border-zinc-300 dark:bg-zinc-800 dark:text-zinc-200"
               : isDevolved
-              ? "bg-rose-50 text-rose-700 border-rose-200"
-              : "bg-blue-50 text-blue-700 border-blue-200"
+              ? "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/50 dark:text-rose-300"
+              : "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/50 dark:text-blue-300"
           )}
         >
           {isFlowDone ? "RECEBIDO / CONCLUÍDO" : isDevolved ? "DEVOLVIDO" : currentStatus.replace(/_/g, " ")}
@@ -291,7 +305,7 @@ export const ServicoExtraDetalhesDrawer: React.FC<ServicoExtraDetalhesDrawerProp
           </Button>
 
           <div className="flex items-center gap-2">
-            {onEdit && (
+            {isEditable && onEdit && (
               <Button
                 variant="outline"
                 size="sm"
@@ -347,44 +361,111 @@ export const ServicoExtraDetalhesDrawer: React.FC<ServicoExtraDetalhesDrawerProp
         </div>
       }
     >
-      {/* 1. Pipeline Horizontal Compacto com gatilho "Ver fluxo completo →" */}
-      <PipelineHorizontalBar
-        stages={horizontalStages}
-        onVerFluxoCompleto={onVerFluxoCompleto}
-        isFlowDone={isFlowDone}
-        title="Fluxo do Serviço Extra"
-        actionLabel="Ver fluxo completo →"
-      />
-
-      {/* 2. Grid de Status e Classificação */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-3 rounded-xl bg-muted/40 border border-border/70 text-xs">
-        <div className="space-y-1">
-          <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block">
-            Pipeline Operacional
+      {/* 1. Esteira do Processo Compacta (UX06 - Linha de Progresso) */}
+      <div className="p-4 rounded-xl bg-card border border-border/70 shadow-2xs space-y-3">
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+            Esteira do Processo
           </span>
-          <button
-            type="button"
-            onClick={onVerFluxoCompleto}
-            className="group inline-flex items-center gap-1 focus:outline-none"
-            title="Clique para ver a linha do tempo completa"
-          >
+          {isDevolved ? (
+            <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/50 dark:text-rose-300 text-[10px] font-bold">
+              Devolvido para Ajuste
+            </Badge>
+          ) : (
+            <span className="text-[11px] text-muted-foreground font-medium">
+              Etapa {currentStageIndex + 1} de 5
+            </span>
+          )}
+        </div>
+
+        {/* Linha Compacta de Progresso */}
+        <div className="relative flex items-center justify-between pt-1 pb-0.5">
+          {/* Linha de fundo */}
+          <div className="absolute top-[17px] left-4 right-4 h-0.5 bg-muted z-0" />
+          
+          {/* Linha de progresso preenchida */}
+          <div
+            className={cn(
+              "absolute top-[17px] left-4 h-0.5 transition-all duration-300 z-0",
+              isDevolved ? "bg-rose-500" : "bg-primary"
+            )}
+            style={{
+              width: isFlowDone
+                ? "calc(100% - 32px)"
+                : `calc(${(currentStageIndex / 4) * 100}% - 16px)`,
+            }}
+          />
+
+          {SERVICOS_EXTRAS_PIPELINE_STEPS.map((step, idx) => {
+            const isDone = isFlowDone || idx < currentStageIndex;
+            const isCurrent = !isFlowDone && idx === currentStageIndex;
+
+            return (
+              <div key={step.key} className="relative z-10 flex flex-col items-center gap-1.5">
+                <div
+                  className={cn(
+                    "w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold transition-all",
+                    isDevolved && isCurrent
+                      ? "bg-rose-600 text-white ring-4 ring-rose-100 dark:ring-rose-950/60"
+                      : isCurrent
+                      ? "bg-primary text-primary-foreground ring-4 ring-primary/20 shadow-xs"
+                      : isDone
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground border border-border/80"
+                  )}
+                >
+                  {isDevolved && isCurrent ? (
+                    <AlertTriangle className="w-3.5 h-3.5 text-white" />
+                  ) : isDone ? (
+                    <Check className="w-3.5 h-3.5 text-primary-foreground stroke-[3]" />
+                  ) : (
+                    <span>{idx + 1}</span>
+                  )}
+                </div>
+                <span
+                  className={cn(
+                    "text-[10px] tracking-tight whitespace-nowrap",
+                    isCurrent
+                      ? isDevolved
+                        ? "text-rose-700 dark:text-rose-400 font-bold"
+                        : "text-foreground font-bold"
+                      : isDone
+                      ? "text-foreground/80 font-medium"
+                      : "text-muted-foreground"
+                  )}
+                >
+                  {step.label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 2. Faixa de Metadados de Status (Sem Nested Cards) */}
+      <div className="grid grid-cols-3 gap-2 p-3 rounded-xl bg-muted/30 border border-border/70 text-xs">
+        <div className="space-y-0.5">
+          <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block">
+            Status Operacional
+          </span>
+          <div>
             <Badge
               variant="outline"
               className={cn(
-                "border font-semibold uppercase px-2 py-0.5 text-[11px] group-hover:ring-1 group-hover:ring-primary/40 cursor-pointer transition-all",
+                "text-[10px] font-semibold uppercase px-2 py-0.5",
                 isFlowDone
-                  ? "bg-zinc-100 text-zinc-700 border-zinc-300"
+                  ? "bg-zinc-100 text-zinc-700 border-zinc-300 dark:bg-zinc-800 dark:text-zinc-200"
                   : isDevolved
-                  ? "bg-rose-50 text-rose-700 border-rose-200"
-                  : "bg-blue-50 text-blue-700 border-blue-200"
+                  ? "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300"
+                  : "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300"
               )}
             >
-              {isFlowDone ? "RECEBIDO / CONCLUÍDO" : isDevolved ? "DEVOLVIDO" : currentStatus.replace(/_/g, " ")}
+              {isFlowDone ? "RECEBIDO" : isDevolved ? "DEVOLVIDO" : currentStatus.replace(/_/g, " ")}
             </Badge>
-          </button>
+          </div>
         </div>
 
-        <div className="space-y-1">
+        <div className="space-y-0.5">
           <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block">
             Status Financeiro
           </span>
@@ -392,58 +473,60 @@ export const ServicoExtraDetalhesDrawer: React.FC<ServicoExtraDetalhesDrawerProp
             <Badge
               variant="outline"
               className={cn(
-                "border font-medium px-2 py-0.5 text-[11px]",
-                isFlowDone
-                  ? "bg-emerald-100 text-emerald-800 border-emerald-300"
-                  : "bg-amber-50 text-amber-700 border-amber-200"
+                "text-[10px] font-medium px-2 py-0.5",
+                isFlowDone || currentStatusPgto === "RECEBIDO" || currentStatusPgto === "PAGO"
+                  ? "bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950/50 dark:text-emerald-300"
+                  : currentStatusPgto === "ATRASADO"
+                  ? "bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-950/50 dark:text-amber-300"
+                  : "bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300"
               )}
             >
-              {item.status_pagamento || (isFlowDone ? "PAGO" : "PENDENTE")}
+              {item.status_pagamento || (isFlowDone ? "RECEBIDO" : "PENDENTE")}
             </Badge>
           </div>
         </div>
 
-        <div className="space-y-1 sm:col-span-2 pt-1 border-t border-border/50">
+        <div className="space-y-0.5">
           <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block">
-            Modalidade Financeira
+            Modalidade
           </span>
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className={cn("text-[10px] font-semibold h-4 px-1.5", modalidadeInfo.badgeClass)}>
+          <div>
+            <Badge
+              variant="outline"
+              className={cn("text-[10px] font-medium px-2 py-0.5 truncate max-w-full block text-center", modalidadeInfo.badgeClass)}
+              title={modalidadeInfo.label}
+            >
               {modalidadeInfo.label}
             </Badge>
-            {!modalidadeInfo.isValid && !isFlowDone && (
-              <span className="text-[10px] text-amber-700 dark:text-amber-400 italic">
-                (Aguardando definição da modalidade para direcionamento)
-              </span>
-            )}
           </div>
         </div>
       </div>
 
-      {/* 3. Card de Valor Total em Destaque */}
-      <div className="p-4 rounded-xl bg-muted/50 border border-border space-y-2.5 min-w-0">
-        <div className="flex items-baseline justify-between gap-2 min-w-0">
-          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider shrink-0">
+      {/* 3. Total Final (Design System Oficial) */}
+      <div className="p-4 rounded-xl bg-card border border-border/80 shadow-2xs flex items-baseline justify-between gap-3 min-w-0">
+        <div className="space-y-0.5 min-w-0">
+          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">
             Total Final
           </span>
-          <span className="text-2xl font-bold font-display text-emerald-700 dark:text-emerald-400 tracking-tight truncate">
+          <div className="text-xs text-muted-foreground truncate">
+            <strong className="text-foreground font-medium">{item.quantidade != null ? Number(item.quantidade).toLocaleString("pt-BR") : "1"}</strong> {item.unidade_cobranca_snapshot || "un"} × <strong className="text-foreground font-medium">{valorUnitarioStr}</strong>
+          </div>
+        </div>
+        <div className="text-right shrink-0">
+          <span className="text-2xl font-bold font-display text-emerald-700 dark:text-emerald-400 tracking-tight block">
             {valorTotalStr}
           </span>
-        </div>
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground pt-2 border-t border-border/60 min-w-0">
-          <span className="truncate">
-            Qtd: <strong className="text-foreground font-medium">{item.quantidade != null ? Number(item.quantidade).toLocaleString("pt-BR") : "1"}</strong> × Un: <strong className="text-foreground font-medium">{valorUnitarioStr}</strong>
-          </span>
-          <Badge variant="outline" className="text-[11px] font-medium uppercase shrink-0">
+          <span className="text-[10px] font-medium text-muted-foreground uppercase">
             {item.tipos_servico_operacional?.nome || item.tipo_servico || "OPERACIONAL"}
-          </Badge>
+          </span>
         </div>
       </div>
 
-      {/* 4. Grid de Dados Operacionais */}
-      <section className="bg-slate-50 dark:bg-slate-900/60 rounded-xl p-4 border border-border/80 space-y-3 text-xs">
-        <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground pb-1 border-b border-border/60">
-          Dados Consolidados
+      {/* 4. Dados Consolidados */}
+      <section className="bg-card rounded-xl p-4 border border-border/80 shadow-2xs space-y-3 text-xs">
+        <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground pb-1.5 border-b border-border/60 flex items-center justify-between">
+          <span>Dados Consolidados</span>
+          <span className="font-mono text-primary font-semibold">{codigo}</span>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -480,15 +563,22 @@ export const ServicoExtraDetalhesDrawer: React.FC<ServicoExtraDetalhesDrawerProp
           </div>
 
           <div className="flex items-center gap-2">
-            <Receipt className="h-3.5 w-3.5 text-purple-600 shrink-0" />
+            <Users className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
             <div className="min-w-0 flex-1">
-              <div className="text-[10px] text-muted-foreground">Modalidade</div>
+              <div className="text-[10px] text-muted-foreground">Headcount (Equipe)</div>
               <div className="font-medium text-foreground truncate">
-                {modalidadeInfo.label}
+                {headcountStr}
               </div>
             </div>
           </div>
         </div>
+
+        {item.cliente && (
+          <div className="pt-2 border-t border-border/60 text-[11px]">
+            <span className="text-muted-foreground">Tomador / Cliente: </span>
+            <strong className="text-foreground">{item.cliente}</strong>
+          </div>
+        )}
 
         {item.descricao_servico && (
           <div className="pt-2 border-t border-border/60 space-y-1">
@@ -496,7 +586,7 @@ export const ServicoExtraDetalhesDrawer: React.FC<ServicoExtraDetalhesDrawerProp
               <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
               <span>Descrição do Serviço</span>
             </div>
-            <p className="text-xs text-foreground bg-background/60 p-2.5 rounded-lg border border-border/40 leading-relaxed whitespace-pre-wrap break-words">
+            <p className="text-xs text-foreground bg-muted/40 p-2.5 rounded-lg border border-border/40 leading-relaxed whitespace-pre-wrap break-words">
               {item.descricao_servico}
             </p>
           </div>
@@ -519,83 +609,112 @@ export const ServicoExtraDetalhesDrawer: React.FC<ServicoExtraDetalhesDrawerProp
         )}
       </section>
 
-      {/* 5. Alerta de Devolução Anterior se houver */}
-      {item.justificativa_devolucao && (
-        <div className="p-3.5 rounded-xl bg-orange-50/80 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-900/50 text-xs text-orange-900 dark:text-orange-200 space-y-1 min-w-0">
-          <div className="flex items-center gap-1.5 font-semibold text-orange-800 dark:text-orange-300">
-            <AlertTriangle className="h-4 w-4 shrink-0 text-orange-600 dark:text-orange-400" />
-            <span>Motivo do Retorno / Devolução</span>
+      {/* 5. Materiais Consumidos (se houver) */}
+      {((item.materiais_snapshot && item.materiais_snapshot.length > 0) || Number(item.custo_materiais || 0) > 0) && (
+        <section className="bg-card rounded-xl p-4 border border-border/80 shadow-2xs space-y-2 text-xs">
+          <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-muted-foreground pb-1 border-b border-border/60">
+            <span className="flex items-center gap-1.5">
+              <Package className="h-3.5 w-3.5 text-primary" />
+              Materiais & Insumos Utilizados
+            </span>
+            <span className="text-foreground font-mono font-bold">
+              {currencyFormatter.format(Number(item.custo_materiais || 0))}
+            </span>
           </div>
-          <p className="pl-5.5 text-xs text-orange-800/90 dark:text-orange-300/90 break-words">
-            {item.justificativa_devolucao}
-          </p>
-        </div>
+
+          {item.materiais_snapshot && item.materiais_snapshot.length > 0 ? (
+            <div className="divide-y divide-border/60">
+              {item.materiais_snapshot.map((mat, idx) => (
+                <div key={idx} className="py-1.5 flex items-center justify-between text-[11px]">
+                  <div>
+                    <span className="font-medium text-foreground">{mat.nome_snapshot || "Insumo"}</span>
+                    <span className="text-muted-foreground text-[10px] ml-1">
+                      ({mat.quantidade || 1} {mat.unidade_snapshot || "un"} × {currencyFormatter.format(Number(mat.valor_unitario_snapshot || 0))})
+                    </span>
+                  </div>
+                  <span className="font-mono font-semibold text-foreground">
+                    {currencyFormatter.format(Number(mat.valor_total || 0))}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-[11px] text-muted-foreground italic">
+              Custo total de materiais registrado no lançamento: {currencyFormatter.format(Number(item.custo_materiais || 0))}.
+            </p>
+          )}
+        </section>
       )}
 
-      {/* 6. Situação Contextual do Fluxo */}
-      <section className="space-y-2">
-        <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground pb-0.5 border-b border-border/60">
-          Situação do Fluxo
+      {/* 6. Diagnóstico do Processo & Próximos Passos (Alinhado a Torre/Operações) */}
+      <section className="rounded-xl border border-border/80 bg-card p-4 shadow-2xs space-y-2.5 text-xs">
+        <div className="flex items-center justify-between">
+          <div className="inline-flex items-center gap-1.5 text-xs font-bold text-foreground">
+            {diagnostico.categoria === "bloqueio" ? (
+              <AlertTriangle className="h-4 w-4 text-rose-600" />
+            ) : diagnostico.categoria === "concluido" ? (
+              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+            ) : (
+              <Clock className="h-4 w-4 text-blue-600" />
+            )}
+            <span>Diagnóstico do Processo</span>
+          </div>
+          <span className="text-[10px] text-muted-foreground font-medium">
+            Resp: <strong className="text-foreground">{diagnostico.responsavelAtual}</strong>
+          </span>
         </div>
 
-        {isFlowDone ? (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 dark:bg-emerald-950/30 dark:border-emerald-900 p-3.5 space-y-1">
-            <div className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-800 dark:text-emerald-300">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-              <span>Receita liquidada e fluxo de serviço extra concluído.</span>
-            </div>
-            <p className="text-[11px] text-emerald-700/80 dark:text-emerald-400/80 leading-relaxed">
-              O recebimento foi confirmado no financeiro e o ciclo operacional está encerrado.
-            </p>
-          </div>
-        ) : isDevolved ? (
-          <div className="rounded-xl border border-rose-200 bg-rose-50/70 dark:bg-rose-950/30 dark:border-rose-900 p-3.5 space-y-1">
-            <div className="inline-flex items-center gap-1.5 text-xs font-bold text-rose-800 dark:text-rose-300">
-              <AlertTriangle className="h-4 w-4 text-rose-600" />
-              <span>Serviço extra devolvido para correção</span>
-            </div>
-            <p className="text-[11px] text-rose-700/80 dark:text-rose-400/80 leading-relaxed">
-              {item.justificativa_devolucao || "O lançamento retornou à etapa anterior para ajustes operacionais."}
-            </p>
-          </div>
-        ) : (
-          <div className="rounded-xl border border-blue-200 bg-blue-50/70 dark:bg-blue-950/30 dark:border-blue-900 p-3.5 space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-800 dark:text-blue-300">
-                <Clock className="h-4 w-4 text-blue-600" />
-                <span>Etapa Atual: {currentStatus.replace(/_/g, " ")}</span>
-              </div>
-            </div>
-            <p className="text-[11px] text-blue-700/80 dark:text-blue-400/80 leading-relaxed">
-              {currentStatus === "EM_VALIDACAO"
-                ? "Conferência técnica e validação dos dados operacionais em andamento."
-                : currentStatus === "APROVADO_OPERACAO"
-                ? "Serviço aprovado operacionalmente. Pronto para faturamento e receitas."
-                : currentStatus === "APROVADO_FINANCEIRO" || currentStatus === "FATURADO"
-                ? "Receita gerada na Central de Receitas aguardando liquidação."
-                : "Lançamento capturado no sistema. Aguardando encaminhamento para validação."}
-            </p>
-          </div>
-        )}
-      </section>
+        <p className="text-[11px] text-foreground font-medium leading-relaxed">
+          👉 {diagnostico.proximoPasso}
+        </p>
+        <p className="text-[11px] text-muted-foreground leading-relaxed italic">
+          {diagnostico.orientacao}
+        </p>
 
-      {/* 7. Ação explícita para consultar o fluxo completo */}
-      <section className="pt-1">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={onVerFluxoCompleto}
-          className="w-full text-xs font-semibold gap-2 h-9 bg-slate-50 hover:bg-slate-100 dark:bg-slate-900 border-border/80 text-foreground shadow-2xs hover:border-primary/50 transition-all justify-between"
-        >
-          <span className="flex items-center gap-2">
-            <Clock className="h-3.5 w-3.5 text-primary" />
-            <span>Consultar Linha do Tempo e Responsáveis</span>
-          </span>
-          <span className="text-primary font-bold flex items-center gap-0.5">
-            <span>Ver fluxo completo</span>
-            <ArrowRight className="h-3.5 w-3.5" />
-          </span>
-        </Button>
+        {/* Despachos Inter-Módulos Canônicos */}
+        <div className="pt-2 border-t border-border/60 flex flex-wrap gap-2">
+          {isDevolved && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-[11px] h-7 gap-1 text-rose-700 dark:text-rose-400 border-rose-300 hover:bg-rose-50"
+              onClick={() => {
+                onClose();
+                navigate("/inconsistencias");
+              }}
+            >
+              Ver em Inconsistências <ArrowRight className="w-3 h-3" />
+            </Button>
+          )}
+
+          {(currentStatus === "PENDENTE" || currentStatus === "EM_VALIDACAO") && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-[11px] h-7 gap-1 text-primary border-primary/30 hover:bg-primary/5"
+              onClick={() => {
+                onClose();
+                navigate("/rh/aprovacoes");
+              }}
+            >
+              Abrir na Central de Aprovações <ArrowRight className="w-3 h-3" />
+            </Button>
+          )}
+
+          {(currentStatus === "APROVADO_OPERACAO" || currentStatus === "APROVADO_FINANCEIRO" || currentStatus === "FATURADO" || isFlowDone) && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-[11px] h-7 gap-1 text-emerald-700 dark:text-emerald-400 border-emerald-300 hover:bg-emerald-50"
+              onClick={() => {
+                onClose();
+                navigate("/financeiro/receitas");
+              }}
+            >
+              Ver na Central de Receitas <ArrowRight className="w-3 h-3" />
+            </Button>
+          )}
+        </div>
       </section>
     </DrawerPrimarioShell>
   );
