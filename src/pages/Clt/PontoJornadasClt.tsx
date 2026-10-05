@@ -270,6 +270,7 @@ export const PontoJornadasClt: React.FC = () => {
       if (error) throw error;
       return data || [];
     },
+    placeholderData: (previousData) => previousData,
   });
 
   // Regularizações ativas
@@ -286,6 +287,7 @@ export const PontoJornadasClt: React.FC = () => {
         tenantId,
       });
     },
+    placeholderData: (previousData) => previousData,
   });
 
   // Decisões ativas
@@ -302,6 +304,7 @@ export const PontoJornadasClt: React.FC = () => {
         tenantId,
       });
     },
+    placeholderData: (previousData) => previousData,
   });
 
   // Inconsistências

@@ -218,6 +218,20 @@
 
   html,
   body,
+  main {
+    scrollbar-gutter: stable;
+  }
+
+  body,
+  body[data-scroll-locked],
+  body[style*="overflow: hidden"],
+  html[data-scroll-locked] {
+    padding-right: 0px !important;
+    margin-right: 0px !important;
+  }
+
+  html,
+  body,
   #root {
     height: 100%;
   }

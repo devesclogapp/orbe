@@ -100,28 +100,6 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
         return <Navigate to="/login" replace />;
     }
 
-    const searchParams = new URLSearchParams(location.search);
-    const isOnboardingReturn = searchParams.get("onboarding_return") === "true";
-
-    if (isOnboardingActive && !isOnboardingComplete && location.pathname !== "/onboarding" && !isOnboardingReturn) {
-        if (role === "admin" || canAccess("onboarding", "ver")) {
-            return <Navigate to="/onboarding" replace />;
-        } else if (!isSystemReady) {
-            return (
-                <div className="flex min-h-screen items-center justify-center bg-background p-6 text-center">
-                    <div className="max-w-md rounded-2xl border border-border bg-card p-8 shadow-sm">
-                        <h1 className="text-xl font-semibold text-foreground">Sistema em Configuração</h1>
-                        <p className="mt-3 text-sm text-muted-foreground">
-                            O administrador está realizando a configuração inicial do sistema. Aguarde a liberação.
-                        </p>
-                    </div>
-                </div>
-            );
-        }
-    } else if (!isOnboardingActive && location.pathname === "/onboarding") {
-        return <Navigate to="/operacional/dashboard" replace />;
-    }
-
     // Bloqueio explícito por perfil (ex: Encarregado tentando acessar /central)
     if (isRouteForbiddenForRole(role, location.pathname)) {
         const fallback = getAccessDeniedFallbackRoute(role);

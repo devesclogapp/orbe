@@ -66,6 +66,7 @@ export default function PipelineOperacional() {
         filterCompetencia,
         filterEmpresaId === "all" ? undefined : filterEmpresaId
       ),
+    placeholderData: (previousData) => previousData,
   });
 
   const handleRefresh = () => {
@@ -288,7 +289,7 @@ export default function PipelineOperacional() {
         )}
 
         {/* ─── 3. RADAR OPERACIONAL (4 INDICADORES FACTUAIS) ─── */}
-        {isTorreLoading ? (
+        {isTorreLoading && !torreData ? (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             {[1, 2, 3, 4].map((i) => (
               <Skeleton key={i} className="h-20 rounded-xl" />
@@ -355,7 +356,7 @@ export default function PipelineOperacional() {
         ) : null}
 
         {/* ─── 4. SKELETON LOADING PARA AS TRILHAS ─── */}
-        {isTorreLoading && (
+        {isTorreLoading && !torreData && (
           <div className="space-y-6">
             <Skeleton className="h-64 rounded-xl" />
             <Skeleton className="h-64 rounded-xl" />

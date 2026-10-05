@@ -150,6 +150,7 @@ export default function Dashboard() {
     queryKey: ["dashboard-kpis-atual", tenantId, selectedYear, selectedMonthNumber, selectedEmpresaId, environment],
     queryFn: () => DashboardConsolidadoService.getKpisAggregate(selectedYear, selectedMonthNumber, empresaParam),
     enabled: !isTenantLoading && !!tenantId,
+    placeholderData: (previousData) => previousData,
   });
 
   // 3. Query: KPIs Consolidada Competência Anterior (para DELTA-CALC real)
@@ -161,6 +162,7 @@ export default function Dashboard() {
     },
     enabled: !isTenantLoading && !!tenantId,
     staleTime: 1000 * 60 * 15,
+    placeholderData: (previousData) => previousData,
   });
 
   // 4. Query: Radar de Alertas Reais
@@ -168,6 +170,7 @@ export default function Dashboard() {
     queryKey: ["dashboard-radar-alertas", tenantId, canonicalCompetencia, selectedEmpresaId, environment],
     queryFn: () => DashboardConsolidadoService.getRadarAlertas(canonicalCompetencia, empresaParam),
     enabled: !isTenantLoading && !!tenantId,
+    placeholderData: (previousData) => previousData,
   });
 
   // 5. Query: Status dos Ciclos
@@ -175,6 +178,7 @@ export default function Dashboard() {
     queryKey: ["dashboard-status-ciclos", tenantId, canonicalCompetencia, selectedEmpresaId, environment],
     queryFn: () => DashboardConsolidadoService.getStatusCiclos(canonicalCompetencia, empresaParam),
     enabled: !isTenantLoading && !!tenantId,
+    placeholderData: (previousData) => previousData,
   });
 
   // 6. Query: Síntese dos 4 Motores do ORBE
@@ -182,6 +186,7 @@ export default function Dashboard() {
     queryKey: ["dashboard-motores-data", tenantId, canonicalCompetencia, selectedEmpresaId, environment],
     queryFn: () => DashboardConsolidadoService.getMotoresData(canonicalCompetencia, empresaParam),
     enabled: !isTenantLoading && !!tenantId,
+    placeholderData: (previousData) => previousData,
   });
 
   // 7. Query: Gráfico de Evolução Semanal / Factual
@@ -189,6 +194,7 @@ export default function Dashboard() {
     queryKey: ["dashboard-evolucao-semanal", tenantId, canonicalCompetencia, selectedEmpresaId, environment],
     queryFn: () => DashboardConsolidadoService.getEvolucaoSemanal(canonicalCompetencia, empresaParam),
     enabled: !isTenantLoading && !!tenantId,
+    placeholderData: (previousData) => previousData,
   });
 
   // DELTA-CALC: Cálculo Real dos Deltas vs Competência Anterior
@@ -386,7 +392,7 @@ export default function Dashboard() {
 
         {/* 1. COMO ESTAMOS? — 5 KPIs EXECUTIVOS SUPERIORES (COM DRILL-DOWN REAL) */}
         <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          {isLoadingKpis ? (
+          {isLoadingKpis && !kpisAtual ? (
             Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="rounded-xl border border-border p-4 bg-card space-y-2">
                 <Skeleton className="h-3 w-24" />

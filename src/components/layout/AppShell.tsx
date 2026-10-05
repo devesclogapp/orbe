@@ -39,7 +39,10 @@ export const AppShell = ({
           pipelineTrigger={pipelineTrigger}
         />
         <div className="flex flex-1 min-h-0 bg-background">
-          <main className="flex-1 p-4 md:p-6 overflow-y-auto min-w-0">
+          <main
+            className="flex-1 p-4 md:p-6 overflow-y-auto min-w-0"
+            style={{ scrollbarGutter: "stable" }}
+          >
             <div className={fullWidth ? "w-full" : "mx-auto max-w-[1560px] w-full"}>
               {children}
             </div>

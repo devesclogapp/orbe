@@ -70,7 +70,7 @@ export const OrbeDrawer: React.FC<OrbeDrawerProps> = ({
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 sm:p-5 border-b border-border/80 dark:border-white/[0.06] bg-muted/20 dark:bg-[#111419] shrink-0">
-          <div className="space-y-1 pr-4 min-w-0">
+          <div className="space-y-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               {badge}
               <h2 className="text-sm sm:text-base font-bold font-display tracking-tight text-foreground truncate">
@@ -81,16 +81,6 @@ export const OrbeDrawer: React.FC<OrbeDrawerProps> = ({
               <p className="text-xs text-muted-foreground truncate">{subtitle}</p>
             )}
           </div>
-
-          <OrbeButton
-            variant="ghost"
-            size="icon-sm"
-            onClick={onClose}
-            title="Fechar (ESC)"
-            className="shrink-0"
-          >
-            <X className="h-4 w-4" />
-          </OrbeButton>
         </div>
 
         {/* Scrollable Body */}

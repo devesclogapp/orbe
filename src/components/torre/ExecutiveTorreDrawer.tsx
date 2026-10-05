@@ -144,15 +144,6 @@ const ExecutiveTorreDrawerContent: React.FC<ExecutiveTorreDrawerContentProps> = 
 
           <div className="flex items-center gap-2 shrink-0">
             <StageStatusBadge situacao={stage.situacao} />
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onClose}
-              className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground dark:hover:bg-white/[0.04]"
-            >
-              <X className="h-4 w-4" />
-              <span className="sr-only">Fechar</span>
-            </Button>
           </div>
         </div>
 
