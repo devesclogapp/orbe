@@ -29,10 +29,13 @@ describe("Navegação Integrada do UX LAB", () => {
 
     expect(UX_LAB_ROUTES["servicos-extras"]).toBe("/ux-lab/servicos-extras");
     expect(UX_LAB_ROUTES["custos-extras"]).toBe("/ux-lab/custos-extras");
+    expect(UX_LAB_ROUTES["receitas"]).toBe("/ux-lab/receitas");
+    expect(UX_LAB_ROUTES["despesas"]).toBe("/ux-lab/despesas");
+    expect(UX_LAB_ROUTES["central-bancaria"]).toBe("/ux-lab/central-bancaria");
+    expect(UX_LAB_ROUTES["inadimplencia"]).toBe("/ux-lab/inadimplencia");
     expect(UX_LAB_ROUTES["design-system"]).toBe("/ux-lab/design-system");
     expect(UX_LAB_ROUTES["diaristas"]).toBeUndefined();
     expect(UX_LAB_ROUTES["banco-horas"]).toBeUndefined();
-    expect(UX_LAB_ROUTES["receitas"]).toBeUndefined();
   });
 
   it("2. Clicar em itens na Sidebar dispara callback e navegação sem travar telas", () => {

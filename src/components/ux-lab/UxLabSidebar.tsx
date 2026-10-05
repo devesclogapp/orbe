@@ -191,7 +191,8 @@ const SECTIONS: LabNavSection[] = [
         id: "inadimplencia",
         label: "Inadimplência & Cobrança",
         icon: AlertCircle,
-        badge: { count: 2, variant: "critical" },
+        badge: { count: 8, variant: "critical" },
+        isActiveLabTarget: true,
       },
       {
         id: "dre",
@@ -263,6 +264,7 @@ export const UX_LAB_ROUTES: Record<string, string> = {
   receitas: "/ux-lab/receitas",
   despesas: "/ux-lab/despesas",
   "central-bancaria": "/ux-lab/central-bancaria",
+  inadimplencia: "/ux-lab/inadimplencia",
   dre: "/ux-lab/dre",
   relatorios: "/ux-lab/relatorios",
   "design-system": "/ux-lab/design-system",

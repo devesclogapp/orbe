@@ -3574,8 +3574,8 @@ function KpiSummaryCard({
         }
       }}
       className={`bg-muted/20 border border-border/60 rounded-lg p-3 space-y-1 transition-all ${isClickable
-          ? "cursor-pointer hover:border-blue-500/50 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500 group"
-          : ""
+        ? "cursor-pointer hover:border-blue-500/50 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500 group"
+        : ""
         }`}
     >
       <div className="flex items-center justify-between">
@@ -3588,14 +3588,14 @@ function KpiSummaryCard({
       </div>
       <div
         className={`text-xl font-bold font-mono ${status === "danger"
-            ? "text-rose-600 dark:text-rose-400"
-            : status === "warning"
-              ? "text-amber-600 dark:text-amber-400"
-              : status === "success"
-                ? "text-emerald-600 dark:text-emerald-400"
-                : highlight
-                  ? "text-blue-600 dark:text-blue-400"
-                  : "text-foreground"
+          ? "text-rose-600 dark:text-rose-400"
+          : status === "warning"
+            ? "text-amber-600 dark:text-amber-400"
+            : status === "success"
+              ? "text-emerald-600 dark:text-emerald-400"
+              : highlight
+                ? "text-blue-600 dark:text-blue-400"
+                : "text-foreground"
           }`}
       >
         {value}

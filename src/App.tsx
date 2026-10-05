@@ -127,6 +127,7 @@ import UxLabFechamentoCiclos from "./pages/UxLab/UxLabFechamentoCiclos";
 import UxLabReceitas from "./pages/UxLab/UxLabReceitas";
 import UxLabDespesas from "./pages/UxLab/UxLabDespesas";
 import UxLabCentralBancaria from "./pages/UxLab/UxLabCentralBancaria";
+import UxLabInadimplencia from "./pages/UxLab/UxLabInadimplencia";
 import UxLabDesignSystemShowcase from "./pages/UxLab/UxLabDesignSystemShowcase";
 
 const queryClient = new QueryClient({
@@ -293,6 +294,7 @@ const App = () => (
                             <Route path="/ux-lab/receitas" element={<UxLabReceitas />} />
                             <Route path="/ux-lab/despesas" element={<UxLabDespesas />} />
                             <Route path="/ux-lab/central-bancaria" element={<UxLabCentralBancaria />} />
+                            <Route path="/ux-lab/inadimplencia" element={<UxLabInadimplencia />} />
                             <Route path="/ux-lab/dre" element={<UxLabDRE />} />
                             <Route path="/ux-lab/relatorios" element={<UxLabRelatoriosHub />} />
                             <Route path="/ux-lab/relatorios/:reportId" element={<UxLabRelatorioView />} />
