@@ -182,9 +182,10 @@ const SECTIONS: LabNavSection[] = [
       },
       {
         id: "central-bancaria",
-        label: "Central Bancária (CNAB & Retorno)",
+        label: "Central Bancária (CNAB)",
         icon: Banknote,
         badge: { count: "2 rem.", variant: "neutral" },
+        isActiveLabTarget: true,
       },
       {
         id: "inadimplencia",
@@ -261,6 +262,7 @@ export const UX_LAB_ROUTES: Record<string, string> = {
   "fechamento-operacional": "/ux-lab/fechamento-ciclos",
   receitas: "/ux-lab/receitas",
   despesas: "/ux-lab/despesas",
+  "central-bancaria": "/ux-lab/central-bancaria",
   dre: "/ux-lab/dre",
   relatorios: "/ux-lab/relatorios",
   "design-system": "/ux-lab/design-system",
