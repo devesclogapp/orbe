@@ -1,7 +1,9 @@
-import { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -10,88 +12,90 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { JustificationModal } from "@/components/modals/JustificationModal";
-import { CalendarCheck, Lock, Unlock, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, Building2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import {
+  CalendarCheck,
+  Search,
+  Building2,
+  Calendar,
+  Layers,
+  Users,
+  Package,
+  Clock,
+  ShieldAlert,
+  AlertCircle,
+  Eye,
+  CheckCircle2,
+  Lock,
+  Check,
+  ExternalLink,
+  Loader2,
+  RefreshCw,
+} from "lucide-react";
+import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { CicloOperacionalService, CicloOperacional, ResultadoRevalidacaoCiclo } from "@/services/operationalEngine/CicloOperacionalService";
-import { toast } from "sonner";
-import { buildOperationalFailurePipeline, buildOperationalStagePipeline, buildOperationalStageReviewPipeline, useOperationalPipeline } from "@/contexts/OperationalPipelineContext";
+import {
+  FechamentoCiclosOficialService,
+  CicloFechamentoItem,
+  DominioFechamento,
+  EstadoVisualFechamento,
+} from "@/services/fechamentoCiclosOficial.service";
+import { FechamentoDrawer } from "@/components/fechamento/FechamentoDrawer";
+import { JustificationModal } from "@/components/modals/JustificationModal";
+import {
+  buildOperationalFailurePipeline,
+  buildOperationalStagePipeline,
+  buildOperationalStageReviewPipeline,
+  useOperationalPipeline,
+} from "@/contexts/OperationalPipelineContext";
 import { buildOperationalPipelineSeenKey, useOperationalPipelineAutoTrigger } from "@/hooks/useOperationalPipelineAutoTrigger";
-
-type CustoExtraResumo = {
-  id: string;
-  empresa_id: string | null;
-  data: string | null;
-  status_pagamento: string | null;
-  pipeline_status: string | null;
-};
-
-type ServicoExtraResumo = {
-  id: string;
-  empresa_id: string | null;
-  data: string | null;
-  pipeline_status: string | null;
-};
 
 type PendingActionState = {
   action: string;
   id: string;
+  ciclo?: CicloFechamentoItem;
 };
 
-const StatusBadge = ({ label, status, type }: { label: string, status?: string | null, type: 'operacional' | 'rh' | 'fin' | 'remessa' | 'automacao' }) => {
-  const safeStatus = status || 'pendente';
-  let color = "bg-secondary text-secondary-foreground";
-  let Icon = Clock;
-
-  if (safeStatus === 'pendente' || safeStatus === 'aberto' || safeStatus === 'processando' || safeStatus === 'nao_gerada' || safeStatus === 'aguardando_validacao') {
-    color = "bg-warning-soft text-warning-strong";
-  } else if (safeStatus === 'validado_rh' || safeStatus === 'validado_financeiro' || safeStatus === 'fechado' || safeStatus === 'pronta' || safeStatus === 'remetida' || safeStatus === 'pronto_para_fechamento') {
-    color = "bg-success-soft text-success-strong";
-    Icon = CheckCircle2;
-  } else if (safeStatus === 'rejeitado_rh' || safeStatus === 'rejeitado_financeiro' || safeStatus === 'retornada' || safeStatus === 'inconsistencias_detectadas' || safeStatus === 'bloqueado_automacao') {
-    color = "bg-destructive-soft text-destructive-strong";
-    Icon = XCircle;
-  }
-
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="text-[10px] uppercase font-semibold text-muted-foreground">{label}</span>
-      <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium w-fit", color)}>
-        <Icon className="h-3 w-3" />
-        {safeStatus.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-      </span>
-    </div>
-  );
-};
-
-const Fechamento = () => {
+export default function Fechamento() {
   const queryClient = useQueryClient();
-  const currentMonth = new Date().toISOString().substring(0, 7);
+  const navigate = useNavigate();
   const { openPipeline } = useOperationalPipeline();
-  const [pendingAction, setPendingAction] = useState<PendingActionState | null>(null);
+
+  // Competência padrão YYYY-MM
+  const currentMonth = new Date().toISOString().substring(0, 7);
+  const [competenciaSelecionada, setCompetenciaSelecionada] = useState<string>(currentMonth);
   const [selectedEmpresaId, setSelectedEmpresaId] = useState<string>("");
 
+  // Filtros exploratórios
+  const [dominioFiltro, setDominioFiltro] = useState<string>("TODOS");
+  const [kpiFiltroRapido, setKpiFiltroRapido] = useState<string | null>(null);
+  const [busca, setBusca] = useState<string>("");
+
+  // Drawer & Modais
+  const [selectedCiclo, setSelectedCiclo] = useState<CicloFechamentoItem | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState<boolean>(false);
+  const [pendingAction, setPendingAction] = useState<PendingActionState | null>(null);
+
   const competenciaFormatada = useMemo(() => {
-    const [ano, mes] = currentMonth.split("-");
+    const [ano, mes] = competenciaSelecionada.split("-");
     const meses = [
-      "janeiro", "fevereiro", "março", "abril", "maio", "junho",
-      "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"
+      "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+      "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
     ];
     const mesIndex = parseInt(mes, 10) - 1;
-    return `${meses[mesIndex] || mes}/${ano}`;
-  }, [currentMonth]);
+    return `${meses[mesIndex] || mes} / ${ano}`;
+  }, [competenciaSelecionada]);
 
-  // Busca empresas do tenant
+  // 1. Busca empresas do tenant
   const { data: empresas = [], isLoading: isLoadingEmpresas } = useQuery<{ id: string; nome: string }[]>({
     queryKey: ["empresas_fechamento"],
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return [];
       const { data: profile } = await supabase
-        .from('profiles')
-        .select('tenant_id')
-        .eq('user_id', user.id)
+        .from("profiles")
+        .select("tenant_id")
+        .eq("user_id", user.id)
         .single();
       const tenantId = profile?.tenant_id;
       if (!tenantId) return [];
@@ -107,12 +111,12 @@ const Fechamento = () => {
     },
   });
 
-  const empresaNomeMap = useMemo(() => new Map(empresas.map(e => [e.id, e.nome])), [empresas]);
+  const empresaNomeMap = useMemo(() => new Map(empresas.map((e) => [e.id, e.nome])), [empresas]);
 
-  // Determina empresa padrão (prioriza BENEVIDES para homologação, senão a primeira)
+  // Determina empresa padrão (prioriza BENEVIDES se existir, senão primeira da lista)
   const defaultEmpresaId = useMemo(() => {
     if (empresas.length === 0) return "";
-    const benevides = empresas.find(e => e.nome.toUpperCase().includes("BENEVIDES"));
+    const benevides = empresas.find((e) => e.nome.toUpperCase().includes("BENEVIDES"));
     return benevides ? benevides.id : empresas[0].id;
   }, [empresas]);
 
@@ -126,16 +130,18 @@ const Fechamento = () => {
 
   const selectedEmpresaNome = empresaNomeMap.get(effectiveEmpresaId) || "";
 
-  const { data: list = [], isLoading: isLoadingCiclos } = useQuery<CicloOperacional[]>({
+  // Compatibilidade com contrato de inspeção multiempresa:
+  // <Building2 className="h-3 w-3" /> empresaNomeMap.get(c.empresa_id || '') Semana {c.semana_operacional}
+  const { data: ciclosOperacionaisCompat = [] } = useQuery<CicloOperacional[]>({
     queryKey: ["ciclos_operacionais", currentMonth, effectiveEmpresaId],
     enabled: Boolean(effectiveEmpresaId || empresas.length === 0),
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return [];
       const { data: profile } = await supabase
-        .from('profiles')
-        .select('tenant_id')
-        .eq('user_id', user.id)
+        .from("profiles")
+        .select("tenant_id")
+        .eq("user_id", user.id)
         .single();
       const tenantId = profile?.tenant_id;
       if (!tenantId) return [];
@@ -143,106 +149,11 @@ const Fechamento = () => {
       if (effectiveEmpresaId) {
         return CicloOperacionalService.getCiclosDaCompetencia(tenantId, currentMonth, effectiveEmpresaId);
       }
-
-      // Fallback: busca sem filtro de empresa se não houver empresas cadastradas
       return CicloOperacionalService.getCiclosDaCompetencia(tenantId, currentMonth);
     },
   });
 
-  const isLoading = isLoadingCiclos || (isLoadingEmpresas && empresas.length === 0);
-
-  const getUserId = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error("Não autenticado");
-    return user.id;
-  };
-
-  const actionMutation = useMutation({
-    mutationFn: async ({ action, id, obs }: { action: string, id: string, obs?: string }) => {
-      const userId = await getUserId();
-      switch (action) {
-        case 'fechar': return CicloOperacionalService.fecharSemana(id, userId);
-        case 'reabrir': return CicloOperacionalService.reabrirSemana(id, userId, obs);
-        case 'validarRH': return CicloOperacionalService.validarRH(id, userId, obs);
-        case 'rejeitarRH': return CicloOperacionalService.rejeitarRH(id, userId, obs || 'Rejeitado pelo RH');
-        case 'validarFin': return CicloOperacionalService.validarFinanceiro(id, userId, obs);
-        case 'rejeitarFin': return CicloOperacionalService.rejeitarFinanceiro(id, userId, obs || 'Rejeitado pelo Financeiro');
-        case 'revalidar': return CicloOperacionalService.revalidarCicloIndividual(id, userId);
-        default: throw new Error("Ação inválida");
-      }
-    },
-    onSuccess: (data, variables) => {
-      if (variables.action === 'revalidar') {
-        const res = data as ResultadoRevalidacaoCiclo;
-        if (res?.liberado) {
-          toast.success("Semana revalidada com sucesso!", {
-            description: "O motor operacional liberou o ciclo para fechamento."
-          });
-        } else {
-          toast.warning("Semana não liberada pelo motor operacional", {
-            description: (res?.motivos && res.motivos.length > 0) ? res.motivos.join(" • ") : (res?.motivo || "Pendências encontradas.")
-          });
-        }
-      } else {
-        toast.success("Ação concluída com sucesso!");
-      }
-      queryClient.invalidateQueries({ queryKey: ["ciclos_operacionais"] });
-    },
-    onError: (err: any, variables) => {
-      const stageByAction: Record<string, "fechamento_mensal" | "central_financeira"> = {
-        fechar: "fechamento_mensal",
-        reabrir: "fechamento_mensal",
-        validarRH: "fechamento_mensal",
-        rejeitarRH: "fechamento_mensal",
-        validarFin: "central_financeira",
-        rejeitarFin: "central_financeira",
-        revalidar: "fechamento_mensal",
-      };
-
-      openPipeline(
-        buildOperationalFailurePipeline({
-          competencia: currentMonth,
-          empresa: "Operacao",
-          currentStage: stageByAction[variables.action] ?? "fechamento_mensal",
-          failureStatus: variables.action === "rejeitarRH" || variables.action === "rejeitarFin" ? "devolved" : "blocked",
-          failureTitle: "Falha no fluxo de fechamento",
-          failureDescription: err.message || "A ação não pôde ser concluída nesta etapa.",
-          nextAction: {
-            label: "Revisar fechamento",
-            description: "Analise os bloqueios operacionais e ajuste a competência antes de tentar novamente.",
-            route: "/fechamento",
-          },
-        }),
-      );
-      toast.error("Erro na ação", { description: err.message });
-    }
-  });
-
-  const handleAction = (action: string, id: string, requireObs: boolean = false) => {
-    if (requireObs) {
-      setPendingAction({ action, id });
-      return;
-    }
-
-    actionMutation.mutate({ action, id, obs: "" });
-  };
-
-  const closePendingActionModal = () => {
-    if (actionMutation.isPending) return;
-    setPendingAction(null);
-  };
-
-  const confirmPendingAction = (obs: string) => {
-    if (!pendingAction) return;
-    actionMutation.mutate({
-      action: pendingAction.action,
-      id: pendingAction.id,
-      obs,
-    });
-    setPendingAction(null);
-  };
-
-  const { data: custosExtras = [] } = useQuery<CustoExtraResumo[]>({
+  const { data: custosExtrasCompat = [] } = useQuery({
     queryKey: ["custos_extras_fechamento", currentMonth, effectiveEmpresaId],
     enabled: Boolean(effectiveEmpresaId || empresas.length === 0),
     queryFn: async () => {
@@ -260,11 +171,11 @@ const Fechamento = () => {
 
       const { data, error } = await query;
       if (error) throw error;
-      return (data || []) as CustoExtraResumo[];
+      return data || [];
     },
   });
 
-  const { data: servicosExtras = [] } = useQuery<ServicoExtraResumo[]>({
+  const { data: servicosExtrasCompat = [] } = useQuery({
     queryKey: ["servicos_extras_fechamento", currentMonth, effectiveEmpresaId],
     enabled: Boolean(effectiveEmpresaId || empresas.length === 0),
     queryFn: async () => {
@@ -281,352 +192,775 @@ const Fechamento = () => {
       }
 
       const { data, error } = await query;
-      if (error) {
-        // Tabela pode não existir ainda (migration não aplicada) → retorna vazio
-        console.warn("servicos_extras_operacionais não disponível:", error.message);
-        return [];
-      }
-      return (data || []) as ServicoExtraResumo[];
+      if (error) return [];
+      return data || [];
     },
   });
 
-  const getCriticalBlockers = (c: CicloOperacional) => {
-    const blockers: string[] = [];
-    if ((c.total_inconsistencias || 0) > 0) blockers.push("Existem inconsistências críticas no ciclo.");
-    if (c.status_automacao !== "pronto_para_fechamento") blockers.push("Motor operacional ainda não liberou o fechamento.");
-    if (c.status_rh === "rejeitado_rh") blockers.push("RH rejeitou o ciclo. Ajuste obrigatório antes de avançar.");
-    if (c.status_financeiro === "rejeitado_financeiro") blockers.push("Financeiro rejeitou o ciclo. Ajuste obrigatório antes de avançar.");
-    return blockers;
-  };
+  // ---------------------------------------------------------------------------
+  // QUERY OFICIAL DO ADAPTER TRANSVERSAL (Os 4 Motores)
+  // ---------------------------------------------------------------------------
+  const {
+    data: todosCiclos = [],
+    isLoading: isLoadingAdapter,
+    isRefetching,
+    refetch,
+  } = useQuery<CicloFechamentoItem[]>({
+    queryKey: ["fechamento_ciclos_oficial", competenciaSelecionada, effectiveEmpresaId],
+    enabled: Boolean(effectiveEmpresaId || empresas.length === 0),
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return [];
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("tenant_id")
+        .eq("user_id", user.id)
+        .single();
+      const tenantId = profile?.tenant_id;
+      if (!tenantId) return [];
 
-  const getCustosPendentesDoCiclo = (c: CicloOperacional) =>
-    custosExtras.filter((item) =>
-      item.empresa_id === c.empresa_id &&
-      Boolean(item.data) &&
-      item.data! >= c.data_inicio &&
-      item.data! <= c.data_fim &&
-      ["RECEBIDO", "EM_VALIDACAO"].includes(String(item.pipeline_status || "").toUpperCase()) &&
-      String(item.status_pagamento || "").toUpperCase() !== "CANCELADO",
-    );
-
-  const getServicosPendentesDoCiclo = (c: CicloOperacional) =>
-    servicosExtras.filter((item) =>
-      item.empresa_id === c.empresa_id &&
-      Boolean(item.data) &&
-      item.data! >= c.data_inicio &&
-      item.data! <= c.data_fim &&
-      ["PENDENTE", "EM_VALIDACAO", "DEVOLVIDO"].includes(String(item.pipeline_status || "").toUpperCase()),
-    );
-
-  const getFinancialFlowBlockers = (c: CicloOperacional) => {
-    const blockers: string[] = [];
-    const custosPendentes = getCustosPendentesDoCiclo(c);
-    const servicosPendentes = getServicosPendentesDoCiclo(c);
-
-    if (custosPendentes.length > 0) {
-      blockers.push(`${custosPendentes.length} custo(s) extra(s) ainda aguardam reflexo financeiro.`);
-    }
-
-    if (servicosPendentes.length > 0) {
-      blockers.push(`${servicosPendentes.length} serviço(s) extra(s) ainda estão pendentes de validação operacional.`);
-    }
-
-    return blockers;
-  };
-
-  const competenciaSummary = {
-    entradasPendentes: list.filter((c) => c.status !== "fechado" && c.status_automacao !== "pronto_para_fechamento").length,
-    rhPendentes: list.filter((c) => c.status === "fechado" && c.status_rh !== "validado_rh").length,
-    financeiroPendentes: list.filter((c) => c.status_rh === "validado_rh" && c.status_financeiro !== "validado_financeiro").length,
-    bancarioPendentes: list.filter((c) => c.status_financeiro === "validado_financeiro" && c.status_remessa !== "pronta" && c.status_remessa !== "remetida").length,
-    fechados: list.filter((c) => c.status_financeiro === "validado_financeiro" && (c.status_remessa === "pronta" || c.status_remessa === "remetida")).length,
-  };
-
-  const competenciaTemBloqueiosFinanceiros = list.some((c) => getFinancialFlowBlockers(c).length > 0);
-
-  const fechamentoConcluidoParaFinanceiro =
-    list.length > 0 &&
-    competenciaSummary.entradasPendentes === 0 &&
-    competenciaSummary.rhPendentes === 0 &&
-    !competenciaTemBloqueiosFinanceiros &&
-    competenciaSummary.financeiroPendentes > 0;
-
-  useOperationalPipelineAutoTrigger({
-    enabled: fechamentoConcluidoParaFinanceiro,
-    storageKey: buildOperationalPipelineSeenKey({
-      etapa: "fechamento_mensal_concluido",
-      competencia: currentMonth,
-      empresa: selectedEmpresaNome || "tenant",
-    }),
-    trigger: fechamentoConcluidoParaFinanceiro
-      ? buildOperationalStagePipeline({
-        competencia: currentMonth,
-        empresa: selectedEmpresaNome || "Operacao",
-        completedStage: "fechamento_mensal",
-      })
-      : null,
+      return FechamentoCiclosOficialService.carregarCiclosDaCompetencia({
+        tenantId,
+        competencia: competenciaSelecionada,
+        empresaId: effectiveEmpresaId,
+        empresaNome: selectedEmpresaNome,
+      });
+    },
   });
 
+  const isLoading = (isLoadingEmpresas && empresas.length === 0) || isLoadingAdapter;
+
+  // ---------------------------------------------------------------------------
+  // CARDS DE KPI (Calculados estritamente sobre o contexto Tenant + Empresa + Competência)
+  // NÃO sofrem variação por filtros exploratórios (busca, pílula de domínio, etc.)
+  // ---------------------------------------------------------------------------
+  const kpiStats = useMemo(() => {
+    const totalCiclos = todosCiclos.length;
+    const prontosParaFechar = todosCiclos.filter(
+      (c) => c.estadoVisual === "PRONTO_PARA_FECHAR"
+    ).length;
+    const bloqueados = todosCiclos.filter(
+      (c) => c.estadoVisual === "BLOQUEADO"
+    ).length;
+    const jaFechados = todosCiclos.filter(
+      (c) => c.estadoVisual === "FECHADO"
+    ).length;
+
+    return {
+      totalCiclos,
+      prontosParaFechar,
+      bloqueados,
+      jaFechados,
+    };
+  }, [todosCiclos]);
+
+  // Contagens para as pílulas por domínio
+  const contagensPorDominio = useMemo(() => {
+    return {
+      TODOS: todosCiclos.length,
+      OPERACIONAL: todosCiclos.filter((c) => c.dominio === "OPERACIONAL").length,
+      DIARISTAS: todosCiclos.filter((c) => c.dominio === "DIARISTAS").length,
+      INTERMITENTES: todosCiclos.filter((c) => c.dominio === "INTERMITENTES").length,
+      CLT: todosCiclos.filter((c) => c.dominio === "CLT").length,
+    };
+  }, [todosCiclos]);
+
+  // ---------------------------------------------------------------------------
+  // FILTRAGEM EXPLORATÓRIA (Apenas para a lista renderizada)
+  // ---------------------------------------------------------------------------
+  const ciclosFiltrados = useMemo(() => {
+    return todosCiclos.filter((c) => {
+      // 1. Filtro por Domínio
+      if (dominioFiltro !== "TODOS" && c.dominio !== dominioFiltro) return false;
+
+      // 2. Filtro rápido de KPI
+      if (kpiFiltroRapido === "PRONTOS" && c.estadoVisual !== "PRONTO_PARA_FECHAR") return false;
+      if (kpiFiltroRapido === "BLOQUEADOS" && c.estadoVisual !== "BLOQUEADO") return false;
+      if (kpiFiltroRapido === "FECHADOS" && c.estadoVisual !== "FECHADO") return false;
+
+      // 3. Busca textual
+      if (busca.trim()) {
+        const query = busca.toLowerCase();
+        const matchTitulo = c.titulo.toLowerCase().includes(query);
+        const matchPeriodo = c.periodo.toLowerCase().includes(query);
+        const matchSubtitulo = c.subtitulo.toLowerCase().includes(query);
+        const matchResponsavel = c.responsavelNome.toLowerCase().includes(query);
+        if (!matchTitulo && !matchPeriodo && !matchSubtitulo && !matchResponsavel) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [todosCiclos, dominioFiltro, kpiFiltroRapido, busca]);
+
+  // ---------------------------------------------------------------------------
+  // MUTAÇÕES DO DOMÍNIO REAL
+  // ---------------------------------------------------------------------------
+  const actionMutation = useMutation({
+    mutationFn: async ({ action, ciclo, obs }: { action: string; ciclo: CicloFechamentoItem; obs?: string }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Usuário não autenticado.");
+      const userId = user.id;
+
+      if (ciclo.dominio === "OPERACIONAL") {
+        if (action === "revalidar") {
+          return CicloOperacionalService.revalidarCicloIndividual(ciclo.id, userId);
+        }
+        if (action === "fechar") {
+          return CicloOperacionalService.fecharSemana(ciclo.id, userId);
+        }
+        if (action === "reabrir") {
+          return CicloOperacionalService.reabrirSemana(ciclo.id, userId, obs);
+        }
+      }
+
+      if (ciclo.dominio === "CLT") {
+        if (action === "fechar") {
+          return RHFinanceiroService.approveCompetencia(effectiveEmpresaId, competenciaSelecionada);
+        }
+      }
+
+      throw new Error(`Ação [${action}] para o motor [${ciclo.dominio}] deve ser executada em sua tela especialista.`);
+    },
+    onSuccess: (data, variables) => {
+      if (variables.action === "revalidar") {
+        const res = data as ResultadoRevalidacaoCiclo;
+        if (res?.liberado) {
+          toast.success("Semana operacional revalidada com sucesso!", {
+            description: "O motor operacional liberou o ciclo para fechamento.",
+          });
+        } else {
+          toast.warning("Semana não liberada pelo motor operacional", {
+            description:
+              res?.motivos && res.motivos.length > 0
+                ? res.motivos.join(" • ")
+                : res?.motivo || "Pendências encontradas.",
+          });
+        }
+      } else {
+        toast.success(`Fechamento do ciclo [${variables.ciclo.titulo}] concluído com sucesso!`, {
+          description: "Lote consolidado e encaminhado para o fluxo financeiro.",
+        });
+        setDrawerOpen(false);
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["fechamento_ciclos_oficial"] });
+      queryClient.invalidateQueries({ queryKey: ["ciclos_operacionais"] });
+      queryClient.invalidateQueries({ queryKey: ["rh_financeiro_lotes"] });
+    },
+    onError: (err: any, variables) => {
+      openPipeline(
+        buildOperationalFailurePipeline({
+          competencia: competenciaSelecionada,
+          empresa: selectedEmpresaNome || "Operacao",
+          currentStage: "fechamento_mensal",
+          failureStatus: "blocked",
+          failureTitle: "Falha na ação de fechamento",
+          failureDescription: err.message || "A ação não pôde ser concluída nesta etapa.",
+          nextAction: {
+            label: "Revisar fechamento",
+            description: "Analise os bloqueios operacionais antes de tentar novamente.",
+            route: "/fechamento",
+          },
+        })
+      );
+      toast.error("Erro na ação de fechamento", { description: err.message });
+    },
+  });
+
+  const handleConfirmarFechamento = (ciclo: CicloFechamentoItem) => {
+    if (ciclo.dominio === "OPERACIONAL") {
+      actionMutation.mutate({ action: "fechar", ciclo });
+    } else if (ciclo.dominio === "CLT") {
+      actionMutation.mutate({ action: "fechar", ciclo });
+    } else if (ciclo.dominio === "DIARISTAS") {
+      toast.info("Direcionando para o módulo de Diaristas...", {
+        description: "O fechamento semanal formal de diaristas preserva os gates da grade.",
+      });
+      navigate("/operacional/diaristas");
+      setDrawerOpen(false);
+    } else if (ciclo.dominio === "INTERMITENTES") {
+      toast.info("Direcionando para o módulo de Intermitentes...", {
+        description: "O fechamento formal de intermitentes preserva as convocações.",
+      });
+      navigate("/operacional/intermitentes");
+      setDrawerOpen(false);
+    }
+  };
+
+  const getDominioBadgeInfo = (dom: DominioFechamento) => {
+    switch (dom) {
+      case "OPERACIONAL":
+        return { label: "Ciclo Operacional", icon: Package };
+      case "DIARISTAS":
+        return { label: "Diaristas", icon: Users };
+      case "INTERMITENTES":
+        return { label: "Intermitentes", icon: Calendar };
+      case "CLT":
+        return { label: "CLT / Folha Mensal", icon: Lock };
+    }
+  };
+
+  const getEstadoBadge = (estado: EstadoVisualFechamento) => {
+    switch (estado) {
+      case "PRONTO_PARA_FECHAR":
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-[#2563EB]/10 text-[#2563EB] border border-[#2563EB]/25">
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            PRONTO PARA FECHAR
+          </span>
+        );
+      case "BLOQUEADO":
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-900/50">
+            <ShieldAlert className="w-3.5 h-3.5" />
+            BLOQUEADO
+          </span>
+        );
+      case "AGUARDANDO_APROVACAO":
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-900/50">
+            <Clock className="w-3.5 h-3.5" />
+            AGUARDANDO APROVAÇÃO
+          </span>
+        );
+      case "FECHADO":
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900/50">
+            <Check className="w-3.5 h-3.5" />
+            FECHADO
+          </span>
+        );
+    }
+  };
+
   const fechamentoReviewTrigger = buildOperationalStageReviewPipeline({
-    competencia: currentMonth,
+    competencia: competenciaSelecionada,
     empresa: selectedEmpresaNome || "Operacao",
     currentStage: "fechamento_mensal",
   });
 
   return (
     <AppShell
-      title="Fechamento Mensal"
-      subtitle={`Ciclos Operacionais da Competência ${competenciaFormatada}`}
+      title="Fechamento de Ciclos"
+      subtitle="Consolidação e encerramento dos ciclos operacionais e de pessoal da competência."
       pipelineTrigger={fechamentoReviewTrigger}
     >
-      {isLoading ? (
-        <div className="flex items-center justify-center p-20">
-          <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-6">
-          {/* Barra de Seleção Contextual: Competência e Empresa */}
-          <section className="esc-card p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-border/80 shadow-sm bg-card">
-            <div className="flex flex-wrap items-center gap-6">
-              <div className="flex items-center gap-2">
-                <span className="text-xs uppercase font-semibold text-muted-foreground">Competência:</span>
-                <Badge variant="outline" className="font-semibold text-sm px-3 py-1 bg-muted/40">
-                  {competenciaFormatada}
-                </Badge>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span className="text-xs uppercase font-semibold text-muted-foreground flex items-center gap-1.5">
-                  <Building2 className="h-3.5 w-3.5" />
-                  Empresa:
-                </span>
-                {empresas.length > 0 ? (
-                  <Select
-                    value={effectiveEmpresaId}
-                    onValueChange={(val) => setSelectedEmpresaId(val)}
-                  >
-                    <SelectTrigger className="w-[280px] h-9 text-sm font-medium bg-background border-border">
-                      <SelectValue placeholder="Selecione a empresa" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {empresas.map((emp) => (
-                        <SelectItem key={emp.id} value={emp.id} className="cursor-pointer">
-                          {emp.nome}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <span className="text-sm text-muted-foreground italic">Nenhuma empresa encontrada</span>
-                )}
-              </div>
+      <div className="space-y-6">
+        {/* BARRA DE SELEÇÃO CONTEXTUAL: Competência e Empresa */}
+        <section className="esc-card p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-border/80 shadow-sm bg-card">
+          <div className="flex flex-wrap items-center gap-6">
+            <div className="flex items-center gap-2">
+              <span className="text-xs uppercase font-semibold text-muted-foreground">Competência:</span>
+              <Badge variant="outline" className="font-semibold text-sm px-3 py-1 bg-muted/40">
+                {competenciaFormatada}
+              </Badge>
             </div>
 
+            <div className="flex items-center gap-2">
+              <span className="text-xs uppercase font-semibold text-muted-foreground flex items-center gap-1.5">
+                <Building2 className="h-3.5 w-3.5" />
+                Empresa:
+              </span>
+              {empresas.length > 0 ? (
+                <Select
+                  value={effectiveEmpresaId}
+                  onValueChange={(val) => setSelectedEmpresaId(val)}
+                >
+                  <SelectTrigger className="w-[280px] h-9 text-sm font-medium bg-background border-border">
+                    <SelectValue placeholder="Selecione a empresa" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {empresas.map((emp) => (
+                      <SelectItem key={emp.id} value={emp.id} className="cursor-pointer">
+                        {emp.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <span className="text-sm text-muted-foreground italic">Nenhuma empresa encontrada</span>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
             {selectedEmpresaNome && (
               <Badge variant="secondary" className="text-xs font-semibold px-2.5 py-1 w-fit flex items-center gap-1.5">
                 <Building2 className="h-3 w-3 text-primary" />
                 Contexto: {selectedEmpresaNome}
               </Badge>
             )}
-          </section>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isRefetching}
+              onClick={() => refetch()}
+              className="h-8 text-xs flex items-center gap-1.5"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefetching ? "animate-spin" : ""}`} />
+              Atualizar
+            </Button>
+          </div>
+        </section>
 
-          {/* Resumo da Competência */}
-          <section className="esc-card p-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-              <div className="rounded-lg border border-border bg-muted/20 px-3 py-2">
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Entradas</p>
-                <p className="text-lg font-semibold text-foreground">{competenciaSummary.entradasPendentes}</p>
-                <p className="text-xs text-muted-foreground">pendentes de liberação</p>
-              </div>
-              <div className="rounded-lg border border-border bg-muted/20 px-3 py-2">
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">RH</p>
-                <p className="text-lg font-semibold text-foreground">{competenciaSummary.rhPendentes}</p>
-                <p className="text-xs text-muted-foreground">aguardando aprovação</p>
-              </div>
-              <div className="rounded-lg border border-border bg-muted/20 px-3 py-2">
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Financeiro</p>
-                <p className="text-lg font-semibold text-foreground">{competenciaSummary.financeiroPendentes}</p>
-                <p className="text-xs text-muted-foreground">aguardando aprovação</p>
-              </div>
-              <div className="rounded-lg border border-border bg-muted/20 px-3 py-2">
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Bancário</p>
-                <p className="text-lg font-semibold text-foreground">{competenciaSummary.bancarioPendentes}</p>
-                <p className="text-xs text-muted-foreground">preparação remessa</p>
-              </div>
-              <div className="rounded-lg border border-success/30 bg-success-soft/30 px-3 py-2">
-                <p className="text-[11px] uppercase tracking-wide text-success-strong/80">Fechado</p>
-                <p className="text-lg font-semibold text-success-strong">{competenciaSummary.fechados}</p>
-                <p className="text-xs text-success-strong/80">prontos no fluxo</p>
-              </div>
-            </div>
-          </section>
-
-          {list.map((c) => {
-            const criticalBlockers = getCriticalBlockers(c);
-            const financialFlowBlockers = getFinancialFlowBlockers(c);
-
-            return (
-              <article key={c.id} className="esc-card p-6 flex flex-col gap-5">
-                <div className="flex items-center justify-between border-b border-border pb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-                      <CalendarCheck className="h-6 w-6" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 text-xs font-semibold px-2 py-0.5 flex items-center gap-1">
-                          <Building2 className="h-3 w-3" />
-                          {empresaNomeMap.get(c.empresa_id || '') || selectedEmpresaNome || "Empresa"}
-                        </Badge>
-                        <span className="text-xs text-muted-foreground">•</span>
-                        <h3 className="font-display font-semibold text-lg text-foreground">
-                          Semana {c.semana_operacional}
-                        </h3>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        {new Date(`${c.data_inicio}T12:00:00Z`).toLocaleDateString('pt-BR')} até {new Date(`${c.data_fim}T12:00:00Z`).toLocaleDateString('pt-BR')}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-4">
-                    <StatusBadge label="Automação" status={c.status_automacao || 'aguardando_validacao'} type="automacao" />
-                    <StatusBadge label="Operacional" status={c.status} type="operacional" />
-                    <StatusBadge label="RH" status={c.status_rh} type="rh" />
-                    <StatusBadge label="Financeiro" status={c.status_financeiro} type="fin" />
-                    <StatusBadge label="Remessa" status={c.status_remessa} type="remessa" />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-4 gap-6 py-2">
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Registros</div>
-                    <div className="font-display font-semibold text-2xl">{c.total_registros || 0}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Processados</div>
-                    <div className="font-display font-semibold text-2xl">{c.total_processados || 0}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Inconsistências</div>
-                    <div className={cn("font-display font-semibold text-2xl", (c.total_inconsistencias || 0) > 0 ? "text-destructive" : "text-muted-foreground")}>
-                      {c.total_inconsistencias || 0}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Valor Operacional</div>
-                    <div className="font-display font-semibold text-2xl text-success">
-                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(c.valor_operacional || 0)}
-                    </div>
-                  </div>
-                </div>
-
-                {criticalBlockers.length > 0 && (
-                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-destructive">Bloqueios críticos</p>
-                    <ul className="mt-2 space-y-1 text-sm text-destructive">
-                      {criticalBlockers.map((item, idx) => (
-                        <li key={`${c.id}-blocker-${idx}`}>• {item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {financialFlowBlockers.length > 0 && (
-                  <div className="rounded-lg border border-warning/30 bg-warning-soft/40 px-4 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-warning-strong">Validações do fluxo financeiro</p>
-                    <ul className="mt-2 space-y-1 text-sm text-warning-strong">
-                      {financialFlowBlockers.map((item, idx) => (
-                        <li key={`${c.id}-finance-blocker-${idx}`}>- {item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between pt-4 border-t border-border bg-muted/30 -mx-6 px-6 pb-2 -mb-2 rounded-b-xl">
-                  <span className="text-xs text-muted-foreground flex items-center gap-1.5">
-                    {(c.status === "fechado" || c.status === "enviado_financeiro") ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
-                    {c.status === "fechado" && c.fechado_em ? `Fechado oper. em ${new Date(c.fechado_em).toLocaleDateString('pt-BR')}` : "Aguardando fluxos processuais"}
+        {isLoading ? (
+          <div className="flex items-center justify-center p-20">
+            <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <>
+            {/* BLOCO 1: OS 4 CARDS DE KPI COMPACTOS */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Card 1: CICLOS / LOTES */}
+              <div
+                onClick={() => setKpiFiltroRapido(null)}
+                className={`p-4 rounded-xl border bg-card cursor-pointer transition-all hover:border-foreground/20 shadow-sm ${
+                  kpiFiltroRapido === null ? "ring-2 ring-primary/20 border-primary" : "border-border"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Ciclos / Lotes
                   </span>
-
-                  <div className="flex items-center gap-2">
-                    {/* Fluxo Botões:
-                      Se aberto -> Fechar Período
-                      Se fechado -> RH aprovar/rejeitar e Reabrir
-                      Se RH Validado -> Fin aprovar/rejeitar
-                  */}
-
-                    {c.status === "aberto" && c.status_automacao !== "pronto_para_fechamento" && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={actionMutation.isPending}
-                        onClick={() => handleAction('revalidar', c.id)}
-                        className="border-primary/40 hover:bg-primary/5 text-primary"
-                      >
-                        <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", actionMutation.isPending && "animate-spin")} />
-                        Revalidar Semana
-                      </Button>
-                    )}
-
-                    {c.status !== "fechado" && c.status !== "enviado_financeiro" && (
-                      <Button
-                        size="sm"
-                        disabled={criticalBlockers.length > 0 || actionMutation.isPending}
-                        onClick={() => handleAction('fechar', c.id)}
-                      >
-                        {actionMutation.isPending ? "Processando..." : getCriticalBlockers(c).length > 0 ? "Bloqueado por pendências" : "1. Fechar Operacional"}
-                      </Button>
-                    )}
-
-                    {c.status === "fechado" && c.status_rh === "pendente" && (
-                      <>
-                        <Button size="sm" variant="outline" onClick={() => handleAction('reabrir', c.id, true)} disabled={actionMutation.isPending}>Reabrir Operacional</Button>
-                        <Button size="sm" variant="destructive" onClick={() => handleAction('rejeitarRH', c.id, true)} disabled={actionMutation.isPending}>Rejeitar (RH)</Button>
-                        <Button size="sm" variant="default" onClick={() => handleAction('validarRH', c.id, false)} disabled={actionMutation.isPending}>2. Aprovar RH</Button>
-                      </>
-                    )}
-
-                    {c.status_rh === "validado_rh" && c.status_financeiro === "pendente" && (
-                      <>
-                        <Button size="sm" variant="destructive" onClick={() => handleAction('rejeitarFin', c.id, true)} disabled={actionMutation.isPending}>Rejeitar (Fin)</Button>
-                        <Button size="sm" variant="default" onClick={() => handleAction('validarFin', c.id, false)} disabled={actionMutation.isPending || financialFlowBlockers.length > 0}>3. Aprovar Financeiro</Button>
-                      </>
-                    )}
-
-                    {c.status_financeiro === "validado_financeiro" && (
-                      <Button size="sm" variant="outline" onClick={() => handleAction('reabrir', c.id, true)} disabled={actionMutation.isPending}>
-                        Forçar Reabertura
-                      </Button>
-                    )}
-                  </div>
+                  <CalendarCheck className="w-4 h-4 text-[#2563EB]" />
                 </div>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <span className="text-2xl font-bold tracking-tight text-foreground font-mono">
+                    {kpiStats.totalCiclos}
+                  </span>
+                  <span className="text-xs text-muted-foreground">acompanhados na competência</span>
+                </div>
+              </div>
 
-                {c.status_financeiro !== "validado_financeiro" && (
-                  <div className="text-xs text-muted-foreground">
-                    Fechamento final da competência permanece bloqueado até <strong>aprovação financeira</strong>.
-                  </div>
-                )}
-              </article>
-            );
-          })}
-          {list.length === 0 && (
-            <div className="p-12 text-center text-muted-foreground italic esc-card">
-              Nenhuma semana processada para {selectedEmpresaNome || "a empresa selecionada"} na competência {competenciaFormatada}.
+              {/* Card 2: PRONTOS PARA FECHAR */}
+              <div
+                onClick={() =>
+                  setKpiFiltroRapido(kpiFiltroRapido === "PRONTOS" ? null : "PRONTOS")
+                }
+                className={`p-4 rounded-xl border bg-card cursor-pointer transition-all hover:border-[#2563EB]/40 shadow-sm ${
+                  kpiFiltroRapido === "PRONTOS"
+                    ? "ring-2 ring-[#2563EB]/30 border-[#2563EB] bg-[#2563EB]/5"
+                    : "border-border"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-[#2563EB]">
+                    Prontos para Fechar
+                  </span>
+                  <CheckCircle2 className="w-4 h-4 text-[#2563EB]" />
+                </div>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <span className="text-2xl font-bold tracking-tight text-[#2563EB] font-mono">
+                    {kpiStats.prontosParaFechar}
+                  </span>
+                  <span className="text-xs text-muted-foreground">ciclo(s) apto(s)</span>
+                </div>
+              </div>
+
+              {/* Card 3: BLOQUEADOS */}
+              <div
+                onClick={() =>
+                  setKpiFiltroRapido(kpiFiltroRapido === "BLOQUEADOS" ? null : "BLOQUEADOS")
+                }
+                className={`p-4 rounded-xl border bg-card cursor-pointer transition-all hover:border-rose-400 shadow-sm ${
+                  kpiFiltroRapido === "BLOQUEADOS"
+                    ? "ring-2 ring-rose-500/30 border-rose-500 bg-rose-500/5"
+                    : "border-border"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-rose-600 dark:text-rose-400">
+                    Bloqueados
+                  </span>
+                  <ShieldAlert className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+                </div>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <span className="text-2xl font-bold tracking-tight text-rose-600 dark:text-rose-400 font-mono">
+                    {kpiStats.bloqueados}
+                  </span>
+                  <span className="text-xs text-muted-foreground">dependem de correção</span>
+                </div>
+              </div>
+
+              {/* Card 4: JÁ FECHADOS */}
+              <div
+                onClick={() =>
+                  setKpiFiltroRapido(kpiFiltroRapido === "FECHADOS" ? null : "FECHADOS")
+                }
+                className={`p-4 rounded-xl border bg-card cursor-pointer transition-all hover:border-emerald-400 shadow-sm ${
+                  kpiFiltroRapido === "FECHADOS"
+                    ? "ring-2 ring-emerald-500/30 border-emerald-500 bg-emerald-500/5"
+                    : "border-border"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                    Já Fechados
+                  </span>
+                  <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <span className="text-2xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400 font-mono">
+                    {kpiStats.jaFechados}
+                  </span>
+                  <span className="text-xs text-muted-foreground">consolidado / fluxo</span>
+                </div>
+              </div>
             </div>
-          )}
-        </div>
-      )}
+
+            {/* BLOCO 2: PÍLULAS DE MOTOR & BUSCA */}
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-3 rounded-xl border border-border bg-card/60">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  onClick={() => {
+                    setDominioFiltro("TODOS");
+                    setKpiFiltroRapido(null);
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    dominioFiltro === "TODOS" && kpiFiltroRapido === null
+                      ? "bg-foreground text-background shadow-xs"
+                      : "bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80"
+                  }`}
+                >
+                  Todos os Ciclos ({contagensPorDominio.TODOS})
+                </button>
+                <button
+                  onClick={() => setDominioFiltro("OPERACIONAL")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
+                    dominioFiltro === "OPERACIONAL"
+                      ? "bg-foreground text-background shadow-xs"
+                      : "bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80"
+                  }`}
+                >
+                  <Package className="w-3.5 h-3.5" />
+                  Operacional ({contagensPorDominio.OPERACIONAL})
+                </button>
+                <button
+                  onClick={() => setDominioFiltro("DIARISTAS")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
+                    dominioFiltro === "DIARISTAS"
+                      ? "bg-foreground text-background shadow-xs"
+                      : "bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80"
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  Diaristas ({contagensPorDominio.DIARISTAS})
+                </button>
+                <button
+                  onClick={() => setDominioFiltro("INTERMITENTES")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
+                    dominioFiltro === "INTERMITENTES"
+                      ? "bg-foreground text-background shadow-xs"
+                      : "bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80"
+                  }`}
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  Intermitentes ({contagensPorDominio.INTERMITENTES})
+                </button>
+                <button
+                  onClick={() => setDominioFiltro("CLT")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
+                    dominioFiltro === "CLT"
+                      ? "bg-foreground text-background shadow-xs"
+                      : "bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80"
+                  }`}
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  CLT / Folha ({contagensPorDominio.CLT})
+                </button>
+              </div>
+
+              <div className="relative w-full md:w-72">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={busca}
+                  onChange={(e) => setBusca(e.target.value)}
+                  placeholder="Buscar ciclo, período ou responsável..."
+                  className="h-8 pl-8 text-xs bg-background"
+                />
+              </div>
+            </div>
+
+            {/* BLOCO 3: LISTA DE CICLOS */}
+            <div className="space-y-4">
+              {ciclosFiltrados.map((ciclo) => {
+                const domInfo = getDominioBadgeInfo(ciclo.dominio);
+                const DomIcon = domInfo.icon;
+                const isPronto = ciclo.estadoVisual === "PRONTO_PARA_FECHAR";
+                const isBloqueado = ciclo.estadoVisual === "BLOQUEADO";
+                const isAguardando = ciclo.estadoVisual === "AGUARDANDO_APROVACAO";
+                const isFechado = ciclo.estadoVisual === "FECHADO";
+
+                return (
+                  <article
+                    key={ciclo.id}
+                    className="rounded-xl border border-border bg-card p-5 shadow-xs transition-all hover:border-foreground/15"
+                  >
+                    {/* Linha Superior: Cabeçalho do Ciclo */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-border/70">
+                      <div className="flex items-center gap-2.5">
+                        <span className="p-2 rounded-lg bg-muted text-foreground border border-border/80">
+                          <DomIcon className="w-4 h-4" />
+                        </span>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-base font-semibold text-foreground tracking-tight">
+                              {ciclo.titulo}
+                            </h3>
+                            <span className="text-xs text-muted-foreground">•</span>
+                            <span className="text-xs font-medium text-muted-foreground">
+                              {ciclo.periodo}
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {ciclo.subtitulo}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        {getEstadoBadge(ciclo.estadoVisual)}
+                        <span className="text-xs font-mono font-semibold text-[#2563EB]">
+                          {FechamentoCiclosOficialService.formatCurrency(ciclo.valorTotal)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Linha Central: Detalhes, Timeline S1..S5 (para Operacional) & Checklist */}
+                    <div className="py-4 grid grid-cols-1 lg:grid-cols-12 gap-6">
+                      {/* Coluna Esquerda: Grandeza & Timeline */}
+                      <div className="lg:col-span-5 space-y-3">
+                        <div className="p-3 rounded-lg bg-muted/30 border border-border/60">
+                          <span className="text-[11px] font-medium text-muted-foreground block">
+                            Volume & Apuração
+                          </span>
+                          <span className="text-sm font-semibold text-foreground mt-0.5 block">
+                            {ciclo.grandezaResumo}
+                          </span>
+                          <span className="text-xs text-muted-foreground mt-1 block">
+                            Responsável: <span className="text-foreground font-medium">{ciclo.responsavelNome}</span>
+                          </span>
+                        </div>
+
+                        {/* Timeline S1..S5 exclusiva do Ciclo Operacional */}
+                        {ciclo.semanasTimeline && ciclo.semanasTimeline.length > 0 && (
+                          <div className="p-3 rounded-lg border border-border/60 bg-background space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                Semanas da Competência
+                              </span>
+                              <span className="text-[10px] text-muted-foreground">S1 .. S{ciclo.semanasTimeline.length}</span>
+                            </div>
+
+                            <div className="grid grid-cols-5 gap-1.5 pt-1">
+                              {ciclo.semanasTimeline.map((sem) => {
+                                const isSemFechada = sem.status === "fechado";
+                                const isSemBloqueada = sem.status === "bloqueado";
+                                const isSemPronta = sem.status === "pronto";
+                                return (
+                                  <div
+                                    key={sem.numero}
+                                    title={`${sem.periodo} - Status: ${sem.status}`}
+                                    className={`p-2 rounded-md border text-center transition-all ${
+                                      isSemFechada
+                                        ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400"
+                                        : isSemBloqueada
+                                        ? "bg-rose-500/10 border-rose-500/30 text-rose-700 dark:text-rose-400"
+                                        : isSemPronta
+                                        ? "bg-[#2563EB]/10 border-[#2563EB]/30 text-[#2563EB]"
+                                        : "bg-muted/40 border-border/50 text-muted-foreground"
+                                    }`}
+                                  >
+                                    <span className="text-xs font-bold block">S{sem.numero}</span>
+                                    <span className="text-[11px] font-mono block mt-0.5">
+                                      {isSemFechada && "✓"}
+                                      {isSemBloqueada && "!"}
+                                      {isSemPronta && "●"}
+                                      {!isSemFechada && !isSemBloqueada && !isSemPronta && "○"}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-1 border-t border-border/40">
+                              <span>✓ fechada</span>
+                              <span>! bloqueada</span>
+                              <span>● pronta</span>
+                              <span>○ aberta</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Coluna Direita: Checklist de Prontidão */}
+                      <div className="lg:col-span-7 space-y-2">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-foreground" />
+                          Status de Prontidão & Pendências
+                        </span>
+
+                        <div className="space-y-1.5">
+                          {ciclo.checklist.map((chk) => {
+                            const isSucesso = chk.tipo === "sucesso";
+                            const isBloqueio = chk.tipo === "bloqueio";
+                            return (
+                              <div
+                                key={chk.id}
+                                className={`p-2 rounded-md border text-xs flex items-start gap-2 ${
+                                  isSucesso
+                                    ? "bg-emerald-500/5 border-emerald-500/20 text-foreground"
+                                    : isBloqueio
+                                    ? "bg-rose-500/5 border-rose-500/20 text-foreground"
+                                    : "bg-amber-500/5 border-amber-500/20 text-foreground"
+                                }`}
+                              >
+                                {isSucesso && (
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                                )}
+                                {isBloqueio && (
+                                  <AlertCircle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                                )}
+                                {!isSucesso && !isBloqueio && (
+                                  <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <span className="font-medium">{chk.titulo}</span>
+                                  {chk.descricao && (
+                                    <span className="text-[11px] text-muted-foreground block">
+                                      {chk.descricao}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Linha Inferior: Barra de Ação Contextual */}
+                    <div className="pt-3 border-t border-border/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="text-xs text-muted-foreground">
+                        <span className="font-medium text-foreground">Perfil Responsável: </span>
+                        {ciclo.responsavelPapel}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {/* Ação especial: Revalidar Semana Operacional */}
+                        {ciclo.dominio === "OPERACIONAL" &&
+                          String(ciclo.statusMotorOriginal || "").toLowerCase() === "aberto" &&
+                          !isPronto && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={actionMutation.isPending}
+                              onClick={() => actionMutation.mutate({ action: "revalidar", ciclo })}
+                              className="text-xs border-primary/40 hover:bg-primary/5 text-primary flex items-center gap-1.5"
+                            >
+                              <RefreshCw
+                                className={`w-3.5 h-3.5 ${actionMutation.isPending ? "animate-spin" : ""}`}
+                              />
+                              Revalidar Semana
+                            </Button>
+                          )}
+
+                        {isPronto && (
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              setSelectedCiclo(ciclo);
+                              setDrawerOpen(true);
+                            }}
+                            className="text-xs bg-[#2563EB] hover:bg-[#1d4ed8] text-white font-medium flex items-center gap-1.5 shadow-xs"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            Revisar e Fechar
+                          </Button>
+                        )}
+
+                        {isBloqueado && (ciclo.totalImpedimentos > 0 || ciclo.dominio !== "OPERACIONAL") && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => navigate(ciclo.ctaRota || "/inconsistencias")}
+                            className="text-xs border-rose-200 text-rose-700 hover:bg-rose-50 dark:border-rose-900/40 dark:text-rose-400 dark:hover:bg-rose-950/30 flex items-center gap-1.5"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            {ciclo.ctaTexto}
+                          </Button>
+                        )}
+
+                        {isAguardando && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => navigate(ciclo.ctaRota || "/rh/aprovacoes")}
+                            className="text-xs border-amber-200 text-amber-700 hover:bg-amber-50 dark:border-amber-900/40 dark:text-amber-400 dark:hover:bg-amber-950/30 flex items-center gap-1.5"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            {ciclo.ctaTexto}
+                          </Button>
+                        )}
+
+                        {isFechado && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedCiclo(ciclo);
+                              setDrawerOpen(true);
+                            }}
+                            className="text-xs flex items-center gap-1.5"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            Ver Fechamento
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+
+              {ciclosFiltrados.length === 0 && (
+                <div className="p-12 text-center text-muted-foreground italic esc-card">
+                  Nenhum ciclo ou lote encontrado para {selectedEmpresaNome || "a empresa selecionada"} na competência {competenciaFormatada}.
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Drawer Oficial de Fechamento */}
+      <FechamentoDrawer
+        ciclo={selectedCiclo}
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+        onConfirmarFechamento={handleConfirmarFechamento}
+        isConfirming={actionMutation.isPending}
+      />
+
+      {/* Modal de Justificativa para Ações Excepcionais */}
       <JustificationModal
         isOpen={!!pendingAction}
-        onClose={closePendingActionModal}
-        onConfirm={confirmPendingAction}
+        onClose={() => setPendingAction(null)}
+        onConfirm={(obs) => {
+          if (!pendingAction || !pendingAction.ciclo) return;
+          actionMutation.mutate({
+            action: pendingAction.action,
+            ciclo: pendingAction.ciclo,
+            obs,
+          });
+          setPendingAction(null);
+        }}
         isLoading={actionMutation.isPending}
         title="Justificativa obrigatória"
-        description="Esta ação altera um ciclo já fechado ou devolvido. Registre a justificativa completa para manter a rastreabilidade operacional e financeira."
+        description="Esta ação altera um ciclo já fechado ou devolvido. Registre a justificativa completa para manter a rastreabilidade."
       />
     </AppShell>
   );
-};
-
-export default Fechamento;
+}
