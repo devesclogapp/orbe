@@ -9,10 +9,12 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Clock,
   ExternalLink,
   FileCheck,
   Filter,
   History,
+  Layers,
   Loader2,
   Printer,
   RefreshCw,
@@ -28,6 +30,9 @@ import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { CustosExtrasTableBlock } from "@/components/operacoes/CustosExtrasTableBlock";
 import { MetricCard } from "@/components/painel/MetricCard";
+import { ExecutiveMetricCard } from "@/components/dashboard/ExecutiveMetricCard";
+import { OrbeBadge } from "@/components/ux-lab/design-system/OrbeBadge";
+import { OrbeStatusBadge } from "@/components/ux-lab/design-system/OrbeStatusBadge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -49,6 +54,21 @@ import { IntermitentesLoteService } from "@/services/domain/intermitentes.servic
 import { RHFinanceiroService } from "@/services/rhFinanceiro.service";
 import { buildFolhaVariavelPipeline, buildDiaristasPipeline, useOperationalPipeline } from "@/contexts/OperationalPipelineContext";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  DespesasContasPagarOficialService,
+  DespesaFederadaItem,
+  formatCurrency,
+  getSituacaoBadge,
+  getOrigemLabel,
+  getTipoLabel,
+  calcularDiasVencimento,
+  formatDate,
+  formatCompetencia,
+  SituacaoFinanceiraUX,
+  OrigemDespesaFederada,
+  TipoDespesaFederada,
+} from "@/services/despesasOficial.service";
+import { DespesaDrawerOficial } from "./Financeiro/components/DespesaDrawerOficial";
 
 const formatCompetenciaLabel = (competencia: string) => {
   const [year, month] = competencia.split("-").map(Number);
@@ -326,6 +346,82 @@ const CentralFinanceira = () => {
     );
   }, [servicosExtras]);
 
+  // --- CONV-10: WORKBENCH OFICIAL FEDERADO UX12 ---
+  const {
+    data: federadoData,
+    isLoading: loadingFederado,
+    isError: isErrorFederado,
+    error: errorFederado,
+    refetch: refetchFederado,
+  } = useQuery({
+    queryKey: ["despesas-federadas-oficial", selectedMonth, selectedEmpresaId],
+    queryFn: () =>
+      DespesasContasPagarOficialService.fetchDespesasFederadas({
+        competenciaMes: selectedMonth,
+        empresaId: selectedEmpresaId === "all" ? undefined : selectedEmpresaId || undefined,
+      }),
+  });
+
+  const despesasFederadas = useMemo(() => federadoData?.itens || [], [federadoData]);
+  const kpiStats = useMemo(
+    () => federadoData?.stats || DespesasContasPagarOficialService.calculateKpiStats([]),
+    [federadoData]
+  );
+
+  const [filtroTexto, setFiltroTexto] = useState("");
+  const [filtroOrigem, setFiltroOrigem] = useState<string>("TODAS");
+  const [filtroTipo, setFiltroTipo] = useState<string>("TODAS");
+  const [filtroPill, setFiltroPill] = useState<string>("TODAS");
+  const [filtroBeneficiario, setFiltroBeneficiario] = useState<string>("TODOS");
+
+  const [drawerItem, setDrawerItem] = useState<DespesaFederadaItem | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  const handleOpenDrawer = (item: DespesaFederadaItem) => {
+    setDrawerItem(item);
+    setIsDrawerOpen(true);
+  };
+
+  const handleCloseDrawer = () => {
+    setIsDrawerOpen(false);
+    setDrawerItem(null);
+  };
+
+  const beneficiariosUnicos = useMemo(() => {
+    const set = new Set<string>();
+    despesasFederadas.forEach((d) => {
+      if (d.beneficiarioNome) set.add(d.beneficiarioNome);
+    });
+    return Array.from(set).sort();
+  }, [despesasFederadas]);
+
+  const despesasFiltradas = useMemo(() => {
+    return despesasFederadas.filter((item) => {
+      if (filtroPill !== "TODAS" && item.situacaoVisual !== filtroPill) {
+        return false;
+      }
+      if (filtroOrigem !== "TODAS" && item.origem !== filtroOrigem) {
+        return false;
+      }
+      if (filtroTipo !== "TODAS" && item.tipo !== filtroTipo) {
+        return false;
+      }
+      if (filtroBeneficiario !== "TODOS" && item.beneficiarioNome !== filtroBeneficiario) {
+        return false;
+      }
+      if (filtroTexto.trim()) {
+        const q = filtroTexto.toLowerCase();
+        const matchBeneficiario = item.beneficiarioNome.toLowerCase().includes(q);
+        const matchTitulo = item.titulo.toLowerCase().includes(q);
+        const matchRef = item.referencia?.toLowerCase().includes(q) || false;
+        const matchLote = item.loteIdentificador?.toLowerCase().includes(q) || false;
+        const matchDoc = item.documentoFiscal?.toLowerCase().includes(q) || false;
+        if (!matchBeneficiario && !matchTitulo && !matchRef && !matchLote && !matchDoc) return false;
+      }
+      return true;
+    });
+  }, [despesasFederadas, filtroPill, filtroOrigem, filtroTipo, filtroBeneficiario, filtroTexto]);
+
   const reprocessMutation = useMutation({
     mutationFn: () => AIService.processDay(`${selectedMonth}-01`, selectedEmpresaId!),
     onSuccess: () => {
@@ -517,96 +613,93 @@ const CentralFinanceira = () => {
 
   return (
     <AppShell
-      title={isCustosExtrasContext ? "Pagamentos — Custos Extras" : "Central Financeira"}
+      title={isCustosExtrasContext ? "Pagamentos — Custos Extras" : "Despesas & Contas a Pagar"}
       subtitle={isCustosExtrasContext
         ? `Acompanhamento financeiro, liberação e liquidação de despesas extras · ${selectedCompetenciaLabel}`
-        : `Aprovação de lotes, faturamento e fechamento de competência · ${selectedCompetenciaLabel}`}
+        : "Gestão de obrigações, desembolsos e contas a pagar."}
       pipelineTrigger={isCustosExtrasContext ? undefined : financePipelineReviewTrigger}
     >
       <div className="space-y-6">
-        <section className="esc-card p-4 md:p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative">
-                <input
-                  type="month"
-                  value={filterMonth}
-                  onChange={(e) => setFilterMonth(e.target.value)}
-                  className="h-10 pl-3 pr-8 rounded-md border border-border bg-card text-sm focus:outline-none focus:ring-1 focus:ring-primary font-medium"
-                />
-                <Filter className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+        <section className="rounded-lg border border-border/80 dark:border-white/[0.08] bg-card dark:bg-[#15191F] p-3 sm:p-4 shadow-2xs">
+          <div className="flex flex-col gap-3.5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap items-center gap-2.5">
+              {/* Seletor de Período Financeiro com Rótulo Explícito */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider shrink-0">
+                  Período Financeiro:
+                </span>
+                <div className="relative">
+                  <input
+                    type="month"
+                    value={filterMonth}
+                    onChange={(e) => setFilterMonth(e.target.value)}
+                    className="h-9 pl-3 pr-8 rounded-lg border border-border/80 dark:border-white/[0.08] bg-background dark:bg-[#111419] text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-600 shadow-2xs"
+                  />
+                  <Filter className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                </div>
               </div>
 
+              {/* Seletor de Empresa com Rótulo Explícito */}
               {empresas.length > 0 && (
-                <div className="relative">
-                  <select
-                    value={filterEmpresaId || ""}
-                    onChange={(e) => setFilterEmpresaId(e.target.value)}
-                    className="h-10 pl-3 pr-8 rounded-md border border-border bg-card text-sm focus:outline-none focus:ring-1 focus:ring-primary font-medium appearance-none min-w-[220px]"
-                  >
-                    {empresas.map((empresa) => (
-                      <option key={empresa.id} value={empresa.id}>
-                        {empresa.nome}
-                      </option>
-                    ))}
-                  </select>
-                  <Building2 className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider shrink-0">
+                    Empresa:
+                  </span>
+                  <div className="relative">
+                    <select
+                      value={filterEmpresaId || "all"}
+                      onChange={(e) => setFilterEmpresaId(e.target.value === "all" ? null : e.target.value)}
+                      className="h-9 pl-3 pr-8 rounded-lg border border-border/80 dark:border-white/[0.08] bg-background dark:bg-[#111419] text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-600 shadow-2xs appearance-none min-w-[200px] cursor-pointer"
+                    >
+                      <option value="all">Todas as Empresas</option>
+                      {empresas.map((empresa) => (
+                        <option key={empresa.id} value={empresa.id}>
+                          {empresa.nome}
+                        </option>
+                      ))}
+                    </select>
+                    <Building2 className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                  </div>
                 </div>
               )}
 
               <Button
                 variant={filterMonth !== selectedMonth || filterEmpresaId !== selectedEmpresaId ? "default" : "secondary"}
                 size="sm"
-                className="h-10"
+                className={cn(
+                  "h-9 px-3 rounded-lg text-xs font-semibold select-none",
+                  (filterMonth !== selectedMonth || filterEmpresaId !== selectedEmpresaId) && "bg-[#2563EB] hover:bg-[#1D4ED8] text-white"
+                )}
                 onClick={() => {
                   setSelectedMonth(filterMonth);
                   setSelectedEmpresaId(filterEmpresaId);
                 }}
               >
-                {filterMonth !== selectedMonth || filterEmpresaId !== selectedEmpresaId ? "⚡ Aplicar Filtros" : "Aplicar Filtros"}
+                {filterMonth !== selectedMonth || filterEmpresaId !== selectedEmpresaId ? "⚡ Aplicar Filtros" : "Aplicar"}
               </Button>
 
-              <Badge
-                className={cn(
-                  "h-10 px-3 rounded-md font-semibold",
-                  competencia?.status === "aberta"
-                    ? "bg-info-soft text-info-strong"
-                    : "bg-success-soft text-success-strong"
-                )}
-              >
-                Status: {competencia?.status || "Aguardando processamento"}
-              </Badge>
+              <OrbeStatusBadge
+                status={competencia?.status === "aberta" ? "info" : "success"}
+                label={`Status: ${competencia?.status || "Aguardando processamento"}`}
+                className="h-9 px-3 rounded-lg text-xs font-medium"
+              />
             </div>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {isCustosExtrasContext ? (
-                <Button variant="outline" size="sm" onClick={() => navigate("/financeiro")} className="gap-1.5 text-muted-foreground hover:text-foreground">
-                  <ExternalLink className="h-4 w-4" />
+                <Button variant="outline" size="sm" onClick={() => navigate("/financeiro")} className="h-9 rounded-lg gap-1.5 text-xs text-muted-foreground hover:text-foreground">
+                  <ExternalLink className="h-3.5 w-3.5" />
                   Ver Central Financeira Global
                 </Button>
               ) : (
                 <>
-                  <Button variant="outline" size="sm" onClick={() => navigate("/financeiro/regras")}>
-                    <ExternalLink className="h-4 w-4 mr-2" />
+                  <Button variant="outline" size="sm" onClick={() => navigate("/financeiro/regras")} className="h-9 rounded-lg text-xs font-medium">
+                    <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
                     Regras
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => navigate("/bancario")}>
-                    <ExternalLink className="h-4 w-4 mr-2" />
+                  <Button variant="outline" size="sm" onClick={() => navigate("/bancario")} className="h-9 rounded-lg text-xs font-medium">
+                    <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
                     Bancário (CNAB)
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => reprocessMutation.mutate()}
-                    disabled={reprocessMutation.isPending || !selectedEmpresaId}
-                    title="Consolida e recalcula os valores financeiros da competência selecionada"
-                  >
-                    {reprocessMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <RefreshCw className="h-4 w-4 mr-2" />
-                    )}
-                    Consolidar Competência
                   </Button>
                 </>
               )}
@@ -760,249 +853,416 @@ const CentralFinanceira = () => {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-4">
-              <MetricCard
-                label="Aguardando aprovação"
-                value={`R$ ${Number(lotesRhValorTotal).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+            {/* 4 KPIs OFICIAIS FEDERADOS (ALINHADOS AO DASHBOARD EXECUTIVO) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+              <ExecutiveMetricCard
+                label="Despesas no Período"
+                value={formatCurrency(kpiStats.totalDespesas ?? kpiStats.despesasNoPeriodo)}
+                subtitle={`${kpiStats.quantidadeDespesas ?? kpiStats.qtdReconhecidas} despesa(s) reconhecida(s)`}
                 icon={Wallet}
-                accent
               />
-              <MetricCard
-                label="Prontos para CNAB"
-                value={`R$ ${Number(lotesRhValorBancario).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+              <ExecutiveMetricCard
+                label="A Pagar"
+                value={formatCurrency(kpiStats.totalAPagar ?? kpiStats.aPagar)}
+                subtitle={`${(kpiStats.quantidadeAPagar ?? kpiStats.qtdAPagar)} obrigação(ões) pendente(s)`}
+                icon={AlertTriangle}
+              />
+              <ExecutiveMetricCard
+                label="Prontas para Execução"
+                value={formatCurrency(kpiStats.totalProntasExecucao ?? kpiStats.prontasExecucao)}
+                subtitle={`Mão de Obra: ${formatCurrency(kpiStats.maoDeObraProntaBanco)} · Custos: ${formatCurrency(kpiStats.custosExtrasProntos ?? kpiStats.prontasLiquidacaoDireta)}`}
                 icon={FileCheck}
               />
-              <MetricCard
-                label="Lotes aguardando"
-                value={lotesRhPendentes.length.toString()}
-                icon={AlertTriangle}
+              <ExecutiveMetricCard
+                label="Pagas / Liquidadas"
+                value={formatCurrency(kpiStats.totalPagas ?? kpiStats.pagasLiquidadas)}
+                subtitle={`${kpiStats.quantidadePagas ?? kpiStats.qtdPagasLiquidadas} liquidada(s)`}
+                icon={CheckCircle2}
               />
-              <MetricCard
-                label="Inconsistências"
-                value={competencia?.contagem_inconsistencias?.toString() || "0"}
-                icon={AlertTriangle}
-              />
-              <MetricCard label="Total consolidado" value={`R$ ${Number(totalFaturavel).toLocaleString("pt-BR")}`} icon={Wallet} />
-              <MetricCard label="Clientes" value={clientes.length.toString()} icon={Building2} />
             </div>
 
+            {/* INDICADOR SECUNDÁRIO BANCÁRIO (MÃO DE OBRA PRONTA P/ BANCO) */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 rounded-lg border border-border/80 dark:border-white/[0.08] bg-card dark:bg-[#15191F] shadow-2xs">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="h-7 w-7 rounded-md bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+                  <Building2 className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-foreground">
+                      Mão de Obra Pronta p/ Banco: {formatCurrency(kpiStats.maoDeObraProntaBanco)}
+                    </span>
+                    <OrbeBadge variant="institutional">CNAB / Bancário</OrbeBadge>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Lotes de Mão de Obra (CLT, Diaristas e Intermitentes) prontos para remessa bancária. Custos Extras são executados fora do CNAB.
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate("/bancario")}
+                className="shrink-0 h-8 px-3 rounded-lg text-xs font-semibold bg-background hover:bg-muted text-foreground border-border/80"
+              >
+                Abrir Central Bancária
+                <ArrowRight className="h-3.5 w-3.5 ml-1.5" />
+              </Button>
+            </div>
+
+            {/* FAIL-CLOSED CRITICAL ERROR STATE */}
+            {isErrorFederado && (
+              <div className="flex items-center gap-3 p-3.5 rounded-lg border border-destructive/40 bg-destructive/10 text-destructive text-xs">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                <div className="leading-relaxed">
+                  <span className="font-semibold">Falha crítica ao consultar fontes federadas de despesas.</span>{" "}
+                  Dados financeiros bloqueados para evitar exibição de saldo parcial incompleto. Verifique sua conexão ou contate o suporte.
+                </div>
+              </div>
+            )}
+
             <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
-              <TabsList className="bg-muted/50 p-1 rounded-xl border border-border/50 flex flex-wrap h-auto">
-                <TabsTrigger value="visao-geral">Visão geral</TabsTrigger>
-                <TabsTrigger value="lotes-rh" className="relative">
-                  Lotes do RH
-                  {(lotesRhPendentes.length > 0 || lotesRhProntosBancario.length > 0) && (
-                    <span className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-info text-white text-[10px] font-bold px-1">
-                      {lotesRhPendentes.length + lotesRhProntosBancario.length}
-                    </span>
-                  )}
-                </TabsTrigger>
-                <TabsTrigger value="faturamento" className="esc-tab-trigger text-xs sm:text-sm">Faturamento (Clientes)</TabsTrigger>
-                <TabsTrigger value="custos-extras">Custos Extras</TabsTrigger>
-                <TabsTrigger value="servicos-extras">Serviços Extras</TabsTrigger>
-                <TabsTrigger value="fechamento">Fechamento</TabsTrigger>
-              </TabsList>
+              {activeTab !== "visao-geral" && (
+                <TabsList className="bg-muted/50 p-1 rounded-lg border border-border/60 flex flex-wrap h-auto">
+                  <TabsTrigger value="visao-geral">Visão Geral (Despesas)</TabsTrigger>
+                  <TabsTrigger value="lotes-rh" className="relative">
+                    Lotes do RH
+                    {(lotesRhPendentes.length > 0 || lotesRhProntosBancario.length > 0) && (
+                      <span className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-info text-white text-[10px] font-bold px-1">
+                        {lotesRhPendentes.length + lotesRhProntosBancario.length}
+                      </span>
+                    )}
+                  </TabsTrigger>
+                  <TabsTrigger value="faturamento" className="esc-tab-trigger text-xs sm:text-sm">Faturamento (Clientes)</TabsTrigger>
+                  <TabsTrigger value="custos-extras">Custos Extras</TabsTrigger>
+                  <TabsTrigger value="servicos-extras">Serviços Extras</TabsTrigger>
+                  <TabsTrigger value="fechamento">Fechamento</TabsTrigger>
+                </TabsList>
+              )}
 
-              <TabsContent value="visao-geral" className="space-y-5">
-                {/* Pipeline financeiro */}
-                <section className="esc-card p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <FileCheck className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm font-semibold text-foreground">Pipeline da competência</span>
-                    </div>
-                    <span className="text-[11px] text-muted-foreground">
-                      {selectedMonth} · {new Date().toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap items-stretch gap-0">
-                    {[
-                      {
-                        step: "1",
-                        label: "RH → Financeiro",
-                        detail: (lotesRhPendentes.length + lotesRhProntosBancario.length) > 0 ? `${lotesRhPendentes.length + lotesRhProntosBancario.length} lote(s) recebidos` : "Fila vazia",
-                        tone: (lotesRhPendentes.length + lotesRhProntosBancario.length) > 0 ? "ok" : "idle",
-                      },
-                      {
-                        step: "2",
-                        label: "Aprovação Financeira",
-                        detail: lotesRhProntosBancario.length > 0 ? `${lotesRhProntosBancario.length} lote(s) aprovado(s)` : "Aguardando aprovação",
-                        tone: lotesRhProntosBancario.length > 0 ? "ok" : "idle",
-                      },
-                      {
-                        step: "3",
-                        label: "Bancário / CNAB",
-                        detail: lotesRhProntosBancario.length > 0 ? `R$ ${Number(lotesRhValorBancario).toLocaleString("pt-BR", { minimumFractionDigits: 2 })} prontos` : "Aguardando lotes aprovados",
-                        tone: lotesRhProntosBancario.length > 0 ? "info" : "idle",
-                      },
-                      {
-                        step: "4",
-                        label: "Fechamento",
-                        detail: competencia?.status === "fechada" ? "Competência fechada" : "Competência aberta",
-                        tone: competencia?.status === "fechada" ? "ok" : "idle",
-                      },
-                    ].map((s, i, arr) => (
-                      <div key={s.step} className="flex items-stretch">
-                        <div className={cn(
-                          "flex flex-col justify-center px-4 py-2.5 rounded-lg border text-xs min-w-[140px]",
-                          s.tone === "warning" && "bg-warning-soft/50 border-warning/30 text-warning-strong",
-                          s.tone === "ok" && "bg-success-soft/50 border-success/30 text-success-strong",
-                          s.tone === "info" && "bg-info-soft/50 border-info/30 text-info-strong",
-                          s.tone === "idle" && "bg-muted/30 border-border text-muted-foreground",
-                        )}>
-                          <div className="flex items-center gap-1.5 mb-0.5">
-                            <span className={cn(
-                              "inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold",
-                              s.tone === "warning" && "bg-warning/20 text-warning-strong",
-                              s.tone === "ok" && "bg-success/20 text-success-strong",
-                              s.tone === "info" && "bg-info/20 text-info-strong",
-                              s.tone === "idle" && "bg-muted text-muted-foreground",
-                            )}>{s.step}</span>
-                            <span className="font-semibold text-[11px]">{s.label}</span>
-                          </div>
-                          <span className="text-[11px] opacity-80 pl-5">{s.detail}</span>
-                        </div>
-                        {i < arr.length - 1 && (
-                          <div className="flex items-center px-1">
-                            <ArrowRight className="h-3 w-3 text-muted-foreground/40" />
-                          </div>
+              <TabsContent value="visao-geral" className="space-y-4">
+                {/* FILTROS DE ESTÁGIO / SEGMENTED FILTER BUTTONS (PADRÃO CENTRAL DE APROVAÇÕES) */}
+                <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                  {[
+                    { id: "TODAS", label: "Todas as Despesas", icon: Layers, count: despesasFederadas.length },
+                    {
+                      id: "AGUARDANDO_LIBERACAO",
+                      label: "Aguardando Liberação",
+                      icon: Clock,
+                      count: despesasFederadas.filter((i) => i.situacaoVisual === "AGUARDANDO_LIBERACAO").length,
+                    },
+                    {
+                      id: "A_PAGAR",
+                      label: "A Pagar",
+                      icon: AlertTriangle,
+                      count: despesasFederadas.filter((i) => i.situacaoVisual === "A_PAGAR").length,
+                    },
+                    {
+                      id: "PRONTA_BANCO",
+                      label: "Prontas p/ Banco",
+                      icon: Building2,
+                      count: despesasFederadas.filter((i) => i.situacaoVisual === "PRONTA_BANCO").length,
+                    },
+                    {
+                      id: "PAGA",
+                      label: "Pagas / Liquidadas",
+                      icon: CheckCircle2,
+                      count: despesasFederadas.filter((i) => i.situacaoVisual === "PAGA").length,
+                    },
+                  ].map((tab) => {
+                    const Icon = tab.icon;
+                    const isSelected = filtroPill === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setFiltroPill(tab.id)}
+                        className={cn(
+                          "h-9 px-3.5 rounded-lg flex items-center gap-2 border text-xs font-semibold whitespace-nowrap transition-all duration-200 select-none cursor-pointer",
+                          isSelected
+                            ? "bg-[#2563EB] text-white border-[#2563EB] shadow-xs dark:bg-blue-600 dark:border-blue-600"
+                            : "bg-card dark:bg-[#15191F] text-muted-foreground border-border/80 dark:border-white/[0.08] hover:bg-muted/60 hover:text-foreground"
                         )}
-                      </div>
-                    ))}
-                  </div>
-                </section>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <section className="esc-card">
-                    <header className="px-5 py-4 border-b border-border flex items-center justify-between">
-                      <div>
-                        <h2 className="font-display font-semibold text-foreground">Faturamento por cliente</h2>
-                        <p className="text-sm text-muted-foreground">
-                          Situação consolidada da competência em um só lugar.
-                        </p>
-                      </div>
-                      <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => navigate("/financeiro/faturamento")}>
-                        Ver histórico <ArrowRight className="h-3 w-3 ml-1" />
-                      </Button>
-                    </header>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead className="esc-table-header">
-                          <tr className="text-left text-muted-foreground">
-                            <th className="px-5 h-10 font-medium">Cliente</th>
-                            <th className="px-3 h-10 font-medium text-right">Valor</th>
-                            <th className="px-5 h-10 font-medium text-center">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {clientes.map((cliente: any) => (
-                            <tr key={cliente.id} className="border-t border-muted hover:bg-background transition-colors">
-                              <td className="px-5 h-12 font-medium text-foreground">{cliente.clientes?.nome}</td>
-                              <td className="px-3 text-right font-display font-semibold">
-                                R$ {Number(cliente.valor_total).toLocaleString("pt-BR")}
-                              </td>
-                              <td className="px-5 text-center">
-                                <span
-                                  className={cn(
-                                    "esc-chip",
-                                    cliente.status === "aprovado"
-                                      ? "bg-success-soft text-success-strong"
-                                      : "bg-warning-soft text-warning-strong"
-                                  )}
-                                >
-                                  {cliente.status}
-                                </span>
-                              </td>
-                            </tr>
-                          ))}
-                          {clientes.length === 0 && (
-                            <tr>
-                              <td colSpan={3} className="p-8 text-center text-muted-foreground italic">
-                                Nenhum cliente consolidado nesta competência.
-                              </td>
-                            </tr>
+                      >
+                        <Icon className={cn("w-3.5 h-3.5 shrink-0", isSelected ? "text-white" : "text-muted-foreground")} />
+                        <span>{tab.label}</span>
+                        <span
+                          className={cn(
+                            "ml-1 text-[10px] font-bold font-mono px-1.5 py-0.2 rounded-full",
+                            isSelected ? "bg-white/20 text-white" : "bg-muted text-muted-foreground dark:bg-white/[0.06]"
                           )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </section>
+                        >
+                          {tab.count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
 
-                  <section className="esc-card">
-                    <header className="px-5 py-4 border-b border-border flex items-center justify-between">
-                      <div>
-                        <h2 className="font-display font-semibold text-foreground">Últimos lotes recebidos</h2>
-                        <p className="text-sm text-muted-foreground">
-                          Registro dos lotes enviados pelo RH para esta competência.
-                        </p>
-                      </div>
-                      <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setActiveTab("lotes-rh")}>
-                        Lotes do RH <ArrowRight className="h-3 w-3 ml-1" />
+                {/* FILTERBAR DENSA (ORBE DESIGN SYSTEM) */}
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 bg-card dark:bg-[#15191F] p-2.5 sm:p-3 rounded-lg border border-border/80 dark:border-white/[0.08] shadow-2xs">
+                  <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
+                    {/* Busca Textual */}
+                    <div className="relative min-w-[200px] flex-1 max-w-sm">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                      <input
+                        type="text"
+                        placeholder="Filtrar por beneficiário, código ou descrição..."
+                        value={filtroTexto}
+                        onChange={(e) => setFiltroTexto(e.target.value)}
+                        className="h-8 pl-8 pr-2.5 w-full rounded-lg border border-border/80 dark:border-white/[0.08] bg-background dark:bg-[#111419] text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-600 shadow-2xs"
+                      />
+                    </div>
+
+                    {/* Select Origem */}
+                    <select
+                      value={filtroOrigem}
+                      onChange={(e) => setFiltroOrigem(e.target.value)}
+                      className="h-8 px-2.5 rounded-lg border border-border/80 dark:border-white/[0.08] bg-background dark:bg-[#111419] text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-600 shadow-2xs cursor-pointer min-w-[130px]"
+                    >
+                      <option value="TODAS">Todas as Origens</option>
+                      <option value="CUSTOS_EXTRAS">Custos Extras</option>
+                      <option value="CLT">CLT / Folha</option>
+                      <option value="DIARISTAS">Diaristas</option>
+                      <option value="INTERMITENTES">Intermitentes</option>
+                    </select>
+
+                    {/* Select Tipo */}
+                    <select
+                      value={filtroTipo}
+                      onChange={(e) => setFiltroTipo(e.target.value)}
+                      className="h-8 px-2.5 rounded-lg border border-border/80 dark:border-white/[0.08] bg-background dark:bg-[#111419] text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-600 shadow-2xs cursor-pointer min-w-[140px]"
+                    >
+                      <option value="TODAS">Todos os Tipos</option>
+                      <option value="PAGO_EMPRESA">Pago pela Empresa</option>
+                      <option value="REEMBOLSO_COLABORADOR">Reembolso Colaborador</option>
+                      <option value="PAGAMENTO_PENDENTE">Fornecedor / Boleto</option>
+                      <option value="MAO_DE_OBRA">Mão de Obra</option>
+                    </select>
+
+                    {/* Select Beneficiário */}
+                    {beneficiariosUnicos.length > 0 && (
+                      <select
+                        value={filtroBeneficiario}
+                        onChange={(e) => setFiltroBeneficiario(e.target.value)}
+                        className="h-8 px-2.5 rounded-lg border border-border/80 dark:border-white/[0.08] bg-background dark:bg-[#111419] text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-600 shadow-2xs cursor-pointer max-w-[180px]"
+                      >
+                        <option value="TODOS">Todos os Beneficiários</option>
+                        {beneficiariosUnicos.map((b) => (
+                          <option key={b} value={b}>
+                            {b}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+
+                    {/* Limpar Filtros */}
+                    {(filtroTexto || filtroOrigem !== "TODAS" || filtroTipo !== "TODAS" || filtroBeneficiario !== "TODOS" || filtroPill !== "TODAS") && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setFiltroTexto("");
+                          setFiltroOrigem("TODAS");
+                          setFiltroTipo("TODAS");
+                          setFiltroBeneficiario("TODOS");
+                          setFiltroPill("TODAS");
+                        }}
+                        className="h-8 px-2 text-[11px] text-muted-foreground hover:text-rose-600 dark:hover:text-rose-400 gap-1 rounded-lg"
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                        Limpar
                       </Button>
-                    </header>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead className="esc-table-header">
-                          <tr className="text-left text-muted-foreground">
-                            <th className="px-5 h-10 font-medium">Tipo / Empresa</th>
-                            <th className="px-3 h-10 font-medium text-right">Valor</th>
-                            <th className="px-3 h-10 font-medium text-center">Colaboradores</th>
-                            <th className="px-5 h-10 font-medium text-center">Status</th>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2.5 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-border/40">
+                    <span className="text-[11px] text-muted-foreground font-mono">
+                      {despesasFiltradas.length} de {despesasFederadas.length} item(ns)
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => refetchFederado()}
+                      className="h-8 px-2.5 rounded-lg text-xs font-medium border-border/80 dark:border-white/[0.08]"
+                    >
+                      <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", loadingFederado && "animate-spin")} />
+                      Atualizar
+                    </Button>
+                  </div>
+                </div>
+
+                {/* TABELA FEDERADA DENSA (ORBE DESIGN SYSTEM) */}
+                <section className="rounded-lg border border-border/80 dark:border-white/[0.08] bg-card dark:bg-[#15191F] shadow-2xs overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left">
+                      <thead className="h-9 bg-muted/40 dark:bg-white/[0.02] border-b border-border/70 text-muted-foreground uppercase text-[10px] tracking-wider font-semibold">
+                        <tr>
+                          <th className="px-4 py-2.5 font-semibold">Beneficiário / Referência</th>
+                          <th className="px-3 py-2.5 font-semibold">Origem</th>
+                          <th className="px-3 py-2.5 font-semibold">Tipo</th>
+                          <th className="px-3 py-2.5 font-semibold">Competência</th>
+                          <th className="px-3 py-2.5 font-semibold">Vencimento</th>
+                          <th className="px-3 py-2.5 font-semibold text-right">Valor</th>
+                          <th className="px-3 py-2.5 font-semibold text-center">Situação</th>
+                          <th className="px-4 py-2.5 font-semibold text-right">Ação</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/40">
+                        {loadingFederado ? (
+                          <tr>
+                            <td colSpan={8} className="p-12 text-center text-muted-foreground">
+                              <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2 text-primary" />
+                              <span>Carregando despesas federadas...</span>
+                            </td>
                           </tr>
-                        </thead>
-                        <tbody>
-                          {lotesRh.slice(0, 6).map((lote: any) => {
-                            const isAguardando = lote.status === "AGUARDANDO_FINANCEIRO";
-                            const isEmAnalise = lote.status === "EM_ANALISE_FINANCEIRA";
-                            const isAprovado = lote.status === "AGUARDANDO_PAGAMENTO";
-                            const isDevolvido = lote.status === "DEVOLVIDO_RH";
+                        ) : despesasFiltradas.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="p-12 text-center text-muted-foreground">
+                              <p className="font-medium text-foreground">Nenhuma despesa ou obrigação encontrada para o contexto selecionado.</p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Ajuste os filtros de pesquisa ou selecione outra competência.
+                              </p>
+                            </td>
+                          </tr>
+                        ) : (
+                          despesasFiltradas.map((item) => {
+                            const badgeSituacao = getSituacaoBadge(item.situacaoVisual, item.dataVencimento);
+                            const diasVenc = calcularDiasVencimento(item.dataVencimento, item.situacaoVisual);
+
+                            const statusSemantico =
+                              diasVenc.isVencido && item.situacaoVisual !== "PAGA"
+                                ? "danger"
+                                : item.situacaoVisual === "PAGA"
+                                ? "success"
+                                : item.situacaoVisual === "AGUARDANDO_LIBERACAO"
+                                ? "warning"
+                                : item.situacaoVisual === "PRONTA_BANCO"
+                                ? "info"
+                                : "neutral";
+
                             return (
-                              <tr key={lote.id} className="border-t border-muted hover:bg-background transition-colors">
-                                <td className="px-5 h-12">
-                                  <div className="font-medium text-foreground">
-                                    {lote.tipo === "BANCO_HORAS" ? "Banco de Horas" : lote.tipo === "DIARISTAS" ? "Diaristas" : "Folha Variável"}
+                              <tr
+                                key={item.id}
+                                className="h-10 hover:bg-muted/30 dark:hover:bg-white/[0.02] transition-colors group cursor-pointer border-b border-border/30"
+                                onClick={() => handleOpenDrawer(item)}
+                              >
+                                {/* Beneficiário / Referência */}
+                                <td className="px-4 py-2">
+                                  <div className="font-medium text-foreground flex items-center gap-1.5">
+                                    <span className="truncate max-w-[200px]" title={item.beneficiarioNome}>
+                                      {item.beneficiarioNome}
+                                    </span>
+                                    {item.origem === "CUSTOS_EXTRAS" && (
+                                      <OrbeBadge variant="neutral" className="text-[9px] px-1 py-0 h-4 border-amber-300 text-amber-700 bg-amber-50/50">
+                                        Fora CNAB
+                                      </OrbeBadge>
+                                    )}
                                   </div>
-                                  <div className="text-[11px] text-muted-foreground">{lote.empresa?.nome || "-"}</div>
+                                  <div className="text-[11px] text-muted-foreground truncate max-w-[240px]" title={item.titulo || item.referencia}>
+                                    {item.titulo || item.referencia}
+                                  </div>
                                 </td>
-                                <td className="px-3 text-right font-display font-semibold">
-                                  R$ {Number(lote.valor_total || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+
+                                {/* Origem */}
+                                <td className="px-3 py-2">
+                                  <OrbeBadge
+                                    variant={item.origem === "CLT" ? "institutional" : "neutral"}
+                                    className={cn(
+                                      "text-[10px] font-medium",
+                                      item.origem === "CUSTOS_EXTRAS" && "text-amber-800 border-amber-200 bg-amber-50/50 dark:text-amber-400 dark:border-amber-900/40 dark:bg-amber-950/20",
+                                      item.origem === "DIARISTAS" && "text-emerald-800 border-emerald-200 bg-emerald-50/50 dark:text-emerald-400 dark:border-emerald-900/40 dark:bg-emerald-950/20",
+                                      item.origem === "INTERMITENTES" && "text-purple-800 border-purple-200 bg-purple-50/50 dark:text-purple-400 dark:border-purple-900/40 dark:bg-purple-950/20"
+                                    )}
+                                  >
+                                    {getOrigemLabel(item.origem)}
+                                  </OrbeBadge>
                                 </td>
-                                <td className="px-3 text-center text-muted-foreground">{lote.total_colaboradores}</td>
-                                <td className="px-5 text-center">
-                                  <span className={cn(
-                                    "esc-chip text-[10px]",
-                                    isAguardando && "bg-warning-soft text-warning-strong",
-                                    isEmAnalise && "bg-info-soft text-info-strong",
-                                    isAprovado && "bg-success-soft text-success-strong",
-                                    isDevolvido && "bg-destructive/10 text-destructive",
-                                    !isAguardando && !isEmAnalise && !isAprovado && !isDevolvido && "bg-muted text-muted-foreground",
-                                  )}>
-                                    {isAguardando ? "Aguardando" : isEmAnalise ? "Em análise" : isAprovado ? "Aprovado" : isDevolvido ? "Devolvido" : lote.status}
+
+                                {/* Tipo */}
+                                <td className="px-3 py-2 text-muted-foreground">
+                                  <span className="truncate block max-w-[130px]" title={getTipoLabel(item.tipo)}>
+                                    {getTipoLabel(item.tipo)}
                                   </span>
+                                </td>
+
+                                {/* Competência */}
+                                <td className="px-3 py-2 text-muted-foreground whitespace-nowrap font-mono text-[11px]">
+                                  {item.competenciaFormatada || item.competencia || "—"}
+                                </td>
+
+                                {/* Vencimento */}
+                                <td className="px-3 py-2 whitespace-nowrap">
+                                  {item.dataVencimento ? (
+                                    <div>
+                                      <span className={cn("font-mono text-[11px]", diasVenc.isVencido && "font-semibold text-rose-600 dark:text-rose-400")}>
+                                        {formatDate(item.dataVencimento)}
+                                      </span>
+                                      {diasVenc.isVencido && (
+                                        <span className="block text-[10px] text-rose-500 font-medium">
+                                          ({diasVenc.diasAtraso}d atrás)
+                                        </span>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <span className="text-muted-foreground">—</span>
+                                  )}
+                                </td>
+
+                                {/* Valor */}
+                                <td className="px-3 py-2 text-right font-display font-semibold font-mono text-foreground whitespace-nowrap">
+                                  {formatCurrency(item.valorTotal)}
+                                </td>
+
+                                {/* Situação */}
+                                <td className="px-3 py-2 text-center whitespace-nowrap">
+                                  <OrbeStatusBadge
+                                    status={statusSemantico}
+                                    label={badgeSituacao.label}
+                                  />
+                                </td>
+
+                                {/* Ação */}
+                                <td className="px-4 py-2 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleOpenDrawer(item)}
+                                    className="h-7 px-2 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-md"
+                                  >
+                                    Detalhes →
+                                  </Button>
                                 </td>
                               </tr>
                             );
-                          })}
-                          {lotesRh.length === 0 && (
-                            <tr>
-                              <td colSpan={4} className="p-8 text-center text-muted-foreground italic">
-                                Nenhum lote recebido do RH nesta competência.
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                    {lotesRh.length > 0 && (
-                      <div className="border-t border-border px-5 py-2.5 flex items-center justify-between text-[11px] text-muted-foreground">
-                        <span>Total de lotes: <strong className="text-foreground">{lotesRh.length}</strong></span>
-                        <span>Valor total: <strong className="text-foreground">R$ {lotesRh.reduce((acc: number, l: any) => acc + Number(l.valor_total || 0), 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong></span>
-                      </div>
-                    )}
-                  </section>
-                </div>
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
               </TabsContent>
 
               <TabsContent value="lotes-rh" className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <MetricCard
+                    label="Aguardando aprovação"
+                    value={`R$ ${Number(lotesRhValorTotal).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+                    icon={Wallet}
+                    accent
+                  />
+                  <MetricCard
+                    label="Prontos para CNAB"
+                    value={`R$ ${Number(lotesRhValorBancario).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+                    icon={FileCheck}
+                  />
+                  <MetricCard
+                    label="Lotes aguardando"
+                    value={lotesRhPendentes.length.toString()}
+                    icon={AlertTriangle}
+                  />
+                </div>
+
                 <section className="esc-card overflow-hidden">
                   <header className="px-5 py-4 border-b border-border flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
@@ -1877,6 +2137,13 @@ const CentralFinanceira = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Drawer Contextual Oficial UX12 */}
+      <DespesaDrawerOficial
+        item={drawerItem}
+        open={isDrawerOpen}
+        onClose={handleCloseDrawer}
+      />
     </AppShell>
   );
 };
