@@ -1192,6 +1192,11 @@ export function ModalReceitaOperacional({ isOpen, receita, onClose, onSuccess }:
                                 >
                                     {originInfo.badge}
                                 </Badge>
+                                {receita.observacao === 'FATURA_COMPLEMENTAR' && (
+                                    <Badge variant="outline" className="text-[10px] font-bold uppercase tracking-wider bg-purple-50 text-purple-700 border-purple-200">
+                                        Faturamento Mensal (Complementar)
+                                    </Badge>
+                                )}
                                 <span className="text-[11px] text-muted-foreground font-medium">
                                     Continuidade Financeira
                                 </span>

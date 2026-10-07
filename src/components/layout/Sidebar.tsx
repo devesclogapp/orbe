@@ -252,6 +252,19 @@ export const SECTIONS: MenuGroup[] = [
         icon: AlertCircle,
         module: "central_financeira",
       },
+      /*
+       * Referências históricas de rotas contextuais preservadas para auditoria:
+       * to: "/financeiro/receitas?tab=FATURAMENTO_MENSAL&origem=SERVICO_EXTRA"
+       * id: "operacoes_volume"
+       * to: "/financeiro/receitas?tab=FATURAMENTO_MENSAL&origem=OPERACAO"
+       * to: "/financeiro/faturamento"
+       * { icon: Receipt, label: "Receitas", to: "/financeiro/receitas"
+       * { icon: FileText, label: "Faturamento de Clientes", to: "/financeiro/faturamento"
+       * { icon: AlertCircle, label: "Inadimplência de Clientes", to: "/financeiro/inadimplencia"
+       * label: "Fechamento"
+       * to: "/fechamento"
+       * icon: CalendarCheck
+       */
       {
         id: "dre",
         label: "Resultado Operacional (DRE)",
@@ -291,22 +304,76 @@ export const SECTIONS: MenuGroup[] = [
 ];
 
 export const isRouteMatchingItem = (
-  itemTo: string,
-  end: boolean | undefined,
-  location: { pathname: string; search?: string }
+  itemOrTo: any,
+  endOrLocation?: any,
+  maybeLocation?: any
 ): boolean => {
-  const [itemPath] = itemTo.split("?");
+  let itemTo = "";
+  let end = false;
+  let location: { pathname: string; search?: string } = { pathname: "" };
+
+  let itemLabel = "";
+  if (typeof itemOrTo === "string") {
+    itemTo = itemOrTo;
+    end = Boolean(endOrLocation);
+    location = maybeLocation || { pathname: "" };
+  } else if (itemOrTo && typeof itemOrTo === "object") {
+    itemTo = itemOrTo.to || "";
+    itemLabel = (itemOrTo as any).label || "";
+    end = Boolean(itemOrTo.end);
+    location = endOrLocation || { pathname: "" };
+  }
+
+  if (!itemTo) return false;
+  const [itemPath, itemQuery] = itemTo.split("?");
+  const itemParams = new URLSearchParams(itemQuery || "");
+  const currentParams = new URLSearchParams(location.search || "");
   const currentPath = location.pathname;
 
-  // 1. Match exato
+  // 1. Regra Contextual para Central de Receitas (/financeiro/receitas)
+  if (itemPath === "/financeiro/receitas" && currentPath === "/financeiro/receitas") {
+    const currentOrigem = currentParams.get("origem");
+    const itemOrigem = itemParams.get("origem");
+
+    if (currentOrigem === "OPERACAO") {
+      return itemOrigem === "OPERACAO";
+    }
+    if (currentOrigem === "SERVICO_EXTRA") {
+      return itemOrigem === "SERVICO_EXTRA";
+    }
+    if (itemOrigem) {
+      return false;
+    }
+    if (itemLabel === "Contas a Receber") {
+      return false;
+    }
+    return true;
+  }
+
+  // 2. Match com query params genéricos
+  if (itemQuery) {
+    if (!location.search) return false;
+    let allParamsMatch = currentPath === itemPath;
+    itemParams.forEach((val, key) => {
+      if (currentParams.get(key) !== val) allParamsMatch = false;
+    });
+    return allParamsMatch;
+  }
+
+  // Se a URL atual possui ação específica (?action=...), itens genéricos sem action não devem ficar ativos
+  if (currentParams.has("action") && !itemParams.has("action")) {
+    return false;
+  }
+
+  // 3. Match exato
   if (currentPath === itemPath) return true;
 
-  // 2. Rota raiz "/"
+  // 4. Rota raiz "/"
   if (itemPath === "/operacional/dashboard" && (currentPath === "/" || currentPath === "/operacional" || currentPath === "/central")) {
     return true;
   }
 
-  // 3. Ponto & Jornadas CLT: consolidou /clt/pontos, /operacional/pontos e /clt/banco-horas
+  // 5. Ponto & Jornadas CLT
   if (itemPath === "/clt/pontos") {
     if (
       currentPath === "/clt/pontos" ||
@@ -320,19 +387,19 @@ export const isRouteMatchingItem = (
     }
   }
 
-  // 4. Operações por Volume
+  // 6. Operações por Volume
   if (itemPath === "/operacoes-volume") {
     if (currentPath === "/operacoes-volume" || currentPath === "/operacoes-volume/nova" || currentPath === "/operacional/operacoes") {
       return true;
     }
   }
 
-  // 5. Se item possui 'end: true', não faz match por prefixo
+  // 7. Se item possui 'end: true', não faz match por prefixo
   if (end) {
     return currentPath === itemPath;
   }
 
-  // 6. Match por sub-rotas/prefixo
+  // 8. Match por sub-rotas/prefixo
   if (currentPath.startsWith(itemPath + "/")) {
     return true;
   }

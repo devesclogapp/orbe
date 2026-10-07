@@ -333,7 +333,7 @@ export default function UxLabReceitas() {
               navigate("/financeiro/retorno");
             }}
           >
-            Abrir Central Bancária <ChevronRight className="h-3 w-3" />
+            Acessar Central Bancária <ChevronRight className="h-3 w-3" />
           </Button>
         </div>
 
