@@ -1,37 +1,44 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useState, useMemo, useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import {
-  AlertCircle,
   Banknote,
+  Search,
+  Filter,
+  RotateCcw,
   Building2,
   Calendar,
-  CheckCircle2,
-  CreditCard,
-  Download,
+  Layers,
+  ArrowRight,
+  AlertCircle,
+  AlertTriangle,
   Eye,
+  CheckCircle2,
+  Info,
+  Clock,
   ExternalLink,
-  FileCheck,
-  FileText,
-  Filter,
-  History,
-  Loader2,
-  Search,
+  DollarSign,
+  Download,
   Send,
+  FileSpreadsheet,
+  Check,
+  ChevronRight,
+  RefreshCw,
+  XCircle,
   ShieldCheck,
-  Upload,
+  FileCheck,
+  UploadCloud,
+  FileCode2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { CentralBancariaDiaristas } from "./Financeiro/CentralBancariaDiaristas";
-import { CentralBancariaIntermitentes } from "./Financeiro/CentralBancariaIntermitentes";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 import { AppShell } from "@/components/layout/AppShell";
-import { MetricCard } from "@/components/painel/MetricCard";
-import { Badge } from "@/components/ui/badge";
+import { ExecutiveMetricCard } from "@/components/dashboard/ExecutiveMetricCard";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -39,151 +46,75 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { EmpresaService } from "@/services/domain/cadastros.service";
-import { CNAB240BBWriter } from "@/services/cnab/CNAB240BBWriter";
-import { CNABService, ContaBancariaService, CnabRemessaArquivoService } from "@/services/financial.service";
-import { CnabRetornoService } from "@/services/cnab/cnabRetorno.service";
-import { RHFinanceiroService } from "@/services/rhFinanceiro.service";
-import { LoteFechamentoDiaristaService } from "@/services/domain/diaristas.service";
-import { IntermitentesLoteService } from "@/services/domain/intermitentes.service";
-import { buildFolhaVariavelPipeline, useOperationalPipeline } from "@/contexts/OperationalPipelineContext";
+import {
+  BancarioOficialAdapter,
+  ItemObrigacaoBancariaOficial,
+  EstagioBancarioTab,
+  SituacaoBancariaOficial,
+  OrigemBancariaOficial,
+  calculateCentralBancariaKpiStats,
+  getSituacaoBadge,
+  getOrigemBadge,
+} from "@/services/bancarioOficialAdapter";
+import { CentralBancariaDrawerOficial } from "@/components/bancario/CentralBancariaDrawerOficial";
+import { ImportarRetornoModalOficial } from "@/components/bancario/ImportarRetornoModalOficial";
 
-const REQUIRE_RH_LOTE_FOR_CNAB = String(import.meta.env.VITE_REQUIRE_RH_LOTE_FOR_CNAB || "false").toLowerCase() === "true";
-
-const formatPipelineTimestamp = (value?: string | null) => {
-  if (!value) return undefined;
-  return new Date(value).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
-};
-
-const statusBadge = (status: string) => {
-  switch (status) {
-    case "gerado":
-    case "pronto_cnab":
-      return <Badge className="bg-info-soft text-info-strong">Gerado</Badge>;
-    case "baixado":
-      return <Badge className="bg-info-soft text-info-strong">Baixado</Badge>;
-    case "enviado_manual":
-      return <Badge className="bg-warning-soft text-warning-strong">Enviado ao Banco</Badge>;
-    case "homologado":
-      return <Badge className="bg-success-soft text-success-strong">Homologado</Badge>;
-    case "erro_homologacao":
-      return <Badge className="bg-destructive-soft text-destructive-strong">Erro Homologação</Badge>;
-    case "rascunho":
-      return <Badge variant="outline">Rascunho</Badge>;
-    case "validado":
-      return <Badge className="bg-success-soft text-success-strong">Validado</Badge>;
-    case "pendente_correcao":
-      return <Badge className="bg-warning-soft text-warning-strong">Pendências</Badge>;
-    case "enviado":
-      return <Badge className="bg-warning-soft text-warning-strong">Enviado</Badge>;
-    case "processado":
-      return <Badge className="bg-success-soft text-success-strong">Processado</Badge>;
-    case "erro":
-      return <Badge className="bg-destructive-soft text-destructive-strong">Erro</Badge>;
-    default:
-      return <Badge variant="secondary">{status}</Badge>;
-  }
-};
-
-const CentralBancaria = () => {
+export default function CentralBancaria() {
   const navigate = useNavigate();
-  const { openPipeline } = useOperationalPipeline();
-  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const [competencia, setCompetencia] = useState(searchParams.get("competencia") || "");
-  const [empresaId, setEmpresaId] = useState(searchParams.get("empresaId") || "");
-  const [contaId, setContaId] = useState("");
-  const [isValidating, setIsValidating] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [validation, setValidation] = useState<any>(null);
-  const [banco, setBanco] = useState("");
-  const [historySearch, setHistorySearch] = useState("");
-  const [markingEnviadoId, setMarkingEnviadoId] = useState<string | null>(null);
-  const [observacaoEnvio, setObservacaoEnvio] = useState("");
-  const [loteRhSelecionadoId, setLoteRhSelecionadoId] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const isContextDiaristas = searchParams.get("origem") === "DIARISTA";
-  const isContextIntermitentes = searchParams.get("origem") === "INTERMITENTE";
-  const tabParam = searchParams.get("tab");
-  const validTabs = ["remessa", "diaristas", "intermitentes", "retorno", "historico"];
-  const [activeTab, setActiveTab] = useState(() => {
-    if (searchParams.get("origem") === "DIARISTA") {
-      return tabParam === "retorno" ? "retorno" : "diaristas";
-    }
-    if (searchParams.get("origem") === "INTERMITENTE") {
-      return tabParam === "retorno" ? "retorno" : "intermitentes";
-    }
-    return tabParam && validTabs.includes(tabParam) ? tabParam : "remessa";
+  // 1. Contexto Topbar
+  const [empresaContexto, setEmpresaContexto] = useState<string>(
+    searchParams.get("empresaId") || "todas"
+  );
+  const [competenciaContexto, setCompetenciaContexto] = useState<string>(
+    searchParams.get("competencia") || "todas"
+  );
+
+  // 2. Filtros de Interface
+  const [activeTab, setActiveTab] = useState<EstagioBancarioTab>(() => {
+    const tabParam = searchParams.get("tab");
+    if (tabParam === "PRONTAS_BANCO" || tabParam === "remessa") return "PRONTAS_BANCO";
+    if (tabParam === "REMESSAS" || tabParam === "historico") return "REMESSAS";
+    if (tabParam === "AGUARDANDO_RETORNO") return "AGUARDANDO_RETORNO";
+    if (tabParam === "CONCILIACAO" || tabParam === "retorno") return "CONCILIACAO";
+    if (tabParam === "PENDENCIAS") return "PENDENCIAS";
+    return "TODAS";
   });
 
-  useEffect(() => {
-    const currentTab = searchParams.get("tab");
-    const isDiaristas = searchParams.get("origem") === "DIARISTA";
-    const isIntermitentes = searchParams.get("origem") === "INTERMITENTE";
-    if (isDiaristas) {
-      if (currentTab === "retorno") {
-        if (activeTab !== "retorno") setActiveTab("retorno");
-      } else {
-        if (activeTab !== "diaristas") setActiveTab("diaristas");
-      }
-    } else if (isIntermitentes) {
-      if (currentTab === "retorno") {
-        if (activeTab !== "retorno") setActiveTab("retorno");
-      } else {
-        if (activeTab !== "intermitentes") setActiveTab("intermitentes");
-      }
-    } else {
-      if (currentTab && validTabs.includes(currentTab)) {
-        if (currentTab !== activeTab) setActiveTab(currentTab);
-      } else if (!currentTab && activeTab !== "remessa") {
-        setActiveTab("remessa");
-      }
-    }
-  }, [searchParams]);
+  const [busca, setBusca] = useState<string>("");
+  const [origemFiltro, setOrigemFiltro] = useState<string>(() => {
+    const orig = searchParams.get("origem");
+    if (orig === "DIARISTA") return "DIARISTAS";
+    if (orig === "INTERMITENTE") return "INTERMITENTES";
+    if (orig === "CLT") return "CLT";
+    const tab = searchParams.get("tab");
+    if (tab === "diaristas") return "DIARISTAS";
+    if (tab === "intermitentes") return "INTERMITENTES";
+    return "TODAS";
+  });
 
-  const handleTabChange = (newTab: string) => {
-    setActiveTab(newTab);
-    const next = new URLSearchParams(searchParams);
-    next.set("tab", newTab);
-    setSearchParams(next, { replace: true });
-  };
+  const [bancoFiltro, setBancoFiltro] = useState<string>("TODOS");
+  const [situacaoFiltro, setSituacaoFiltro] = useState<string>("TODAS");
+  const [contaPagadoraFiltro, setContaPagadoraFiltro] = useState<string>("ALL");
 
-  const [diaristasMetrics, setDiaristasMetrics] = useState({ totalRemessas: 0, totalTitulos: 0, totalValor: 0, remessasComErro: 0 });
-  const [intermitentesMetrics, setIntermitentesMetrics] = useState({ totalRemessas: 0, totalTitulos: 0, totalValor: 0, remessasComErro: 0 });
+  // 3. Modais & Drawers
+  const [selectedItem, setSelectedItem] = useState<ItemObrigacaoBancariaOficial | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState<boolean>(false);
+  const [retornoModalOpen, setRetornoModalOpen] = useState<boolean>(false);
 
-  const [isUploadingRetorno, setIsUploadingRetorno] = useState(false);
-  const [retornoResultado, setRetornoResultado] = useState<any>(null);
+  // Carregar Empresas
+  const { data: empresas = [] } = useQuery<any[]>({
+    queryKey: ["empresas-bancario"],
+    queryFn: () => EmpresaService.getAll(),
+  });
 
-  const handleUploadRetorno = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!banco) {
-      toast.error("Selecione o banco correspondente ao arquivo de retorno antes de prosseguir.");
-      e.target.value = '';
-      return;
-    }
-
-    setIsUploadingRetorno(true);
-    setRetornoResultado(null);
-    try {
-      const resultado = await CnabRetornoService.processarArquivo(file, banco);
-      setRetornoResultado(resultado);
-      toast.success(`Retorno processado! ${resultado.resumo.totalProcessado} lido(s).`);
-    } catch (err: any) {
-      console.error("[Retorno] Erro ao importar:", err);
-      toast.error(`Erro ao processar arquivo: ${err.message}`);
-    } finally {
-      setIsUploadingRetorno(false);
-      e.target.value = '';
-    }
-  };
-
-  const { data: competencias = [], isLoading: loadingCompetencias } = useQuery<any[]>({
-    queryKey: ["financeiro-competencias"],
+  // Carregar Competências
+  const { data: competencias = [] } = useQuery<any[]>({
+    queryKey: ["financeiro-competencias-bancario"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("financeiro_competencias")
@@ -194,1113 +125,744 @@ const CentralBancaria = () => {
     },
   });
 
-  const { data: empresas = [], isLoading: loadingEmpresas } = useQuery<any[]>({
-    queryKey: ["empresas"],
-    queryFn: () => EmpresaService.getAll(),
+  // 4. Carregar Obrigações Bancárias Reais via Adapter Oficial
+  const {
+    data: items = [],
+    isLoading,
+    isRefetching,
+    refetch,
+  } = useQuery<ItemObrigacaoBancariaOficial[]>({
+    queryKey: [
+      "central-bancaria-obrigacoes",
+      empresaContexto !== "todas" ? empresaContexto : undefined,
+      competenciaContexto !== "todas" ? competenciaContexto : undefined,
+    ],
+    queryFn: () =>
+      BancarioOficialAdapter.carregarObrigacoes({
+        empresaId: empresaContexto !== "todas" ? empresaContexto : undefined,
+        competencia: competenciaContexto !== "todas" ? competenciaContexto : undefined,
+      }),
   });
 
-  const { data: contas = [], isLoading: loadingContas } = useQuery<any[]>({
-    queryKey: ["contas-cnab", empresaId],
-    queryFn: () => (empresaId ? ContaBancariaService.getElegiveisParaCnab(empresaId) : Promise.resolve([])),
-    enabled: !!empresaId,
-  });
-
-  useEffect(() => {
-    if (!empresaId) return;
-    if (contaId) return;
-    if ((contas || []).length === 1) {
-      setContaId(contas[0].id);
-      toast.success("Conta bancária sugerida automaticamente para a empresa selecionada.");
-    }
-  }, [empresaId, contas, contaId]);
-
+  // Sincronizar parâmetros de deep-link
   useEffect(() => {
     const next = new URLSearchParams(searchParams);
-    if (competencia) {
-      next.set("competencia", competencia);
-    } else {
-      next.delete("competencia");
-    }
-    if (empresaId) {
-      next.set("empresaId", empresaId);
+    if (empresaContexto && empresaContexto !== "todas") {
+      next.set("empresaId", empresaContexto);
     } else {
       next.delete("empresaId");
+    }
+    if (competenciaContexto && competenciaContexto !== "todas") {
+      next.set("competencia", competenciaContexto);
+    } else {
+      next.delete("competencia");
     }
     if (next.toString() !== searchParams.toString()) {
       setSearchParams(next, { replace: true });
     }
-  }, [competencia, empresaId, searchParams, setSearchParams]);
+  }, [empresaContexto, competenciaContexto]);
 
-  const { data: remessas = [], isLoading: loadingRemessas } = useQuery<any[]>({
-    queryKey: ["cnab-remessas-arquivos"],
-    queryFn: () => CnabRemessaArquivoService.listarHistorico(),
-  });
-  const { data: rawLotesRh = [], isLoading: loadingRhLotes } = useQuery<any[]>({
-    queryKey: ["rh-financeiro-lotes-bancario", competencia, empresaId],
-    queryFn: () => RHFinanceiroService.listLotesRecebidos(competencia || undefined, empresaId || undefined),
-  });
-
-  const { data: lotesDiaristas = [], isLoading: loadingDiaristas } = useQuery({
-    queryKey: ["lotes-diaristas-financeiro-bancario", empresaId],
-    queryFn: () => (empresaId ? LoteFechamentoDiaristaService.getByEmpresaParaFinanceiro(empresaId) : Promise.resolve([])),
-  });
-
-  const loadingLotesRh = loadingRhLotes || loadingDiaristas;
-
-  const lotesRh = useMemo(() => {
-    return [...rawLotesRh].sort((a, b) =>
-      new Date(b.created_at).getTime() - new Date(a.getTime ? a.getTime() : a.created_at ? new Date(a.created_at).getTime() : 0)
-    );
-  }, [rawLotesRh, loteRhSelecionadoId]);
-
-  const lotesRhProntosCnab = useMemo(
-    () => (lotesRh || []).filter((lote: any) => lote.status === "AGUARDANDO_PAGAMENTO"),
-    [lotesRh]
-  );
-  const lotesRhProntosValor = useMemo(
-    () => lotesRhProntosCnab.reduce((acc: number, lote: any) => acc + Number(lote.valor_total || 0), 0),
-    [lotesRhProntosCnab]
-  );
-
-  const aplicarLoteRhNaRemessa = (lote: any) => {
-    setLoteRhSelecionadoId(lote.id);
-    setCompetencia(lote.competencia || "");
-    setEmpresaId(lote.empresa_id || "");
-    setContaId("");
-    setValidation(null);
-    toast.success("Lote aplicado ao formulário de remessa.");
-  };
-  const abrirLoteNoFinanceiro = (lote: any) => {
-    const params = new URLSearchParams();
-    params.set("rhLoteId", String(lote.id));
-    if (lote.competencia) params.set("competencia", String(lote.competencia));
-    if (lote.empresa_id) params.set("empresaId", String(lote.empresa_id));
-    navigate(`/financeiro?${params.toString()}`);
-  };
-
-  const limparLoteRhSelecionado = () => {
-    setLoteRhSelecionadoId(null);
-    setCompetencia("");
-    setEmpresaId("");
-    setContaId("");
-    setValidation(null);
-  };
-
-  const limparFiltrosRemessa = () => {
-    setLoteRhSelecionadoId(null);
-    setCompetencia("");
-    setEmpresaId("");
-    setContaId("");
-    setValidation(null);
-  };
-
+  // Se houver rhLoteId ou item destacado via URL, abre o drawer correspondente
   useEffect(() => {
-    if (!loteRhSelecionadoId) return;
-    const loteSelecionado = lotesRhProntosCnab.find((l: any) => l.id === loteRhSelecionadoId);
-    if (!loteSelecionado) {
-      setLoteRhSelecionadoId(null);
-      return;
-    }
-    const mudouCompetencia = !!competencia && competencia !== loteSelecionado.competencia;
-    const mudouEmpresa = !!empresaId && empresaId !== loteSelecionado.empresa_id;
-    if (mudouCompetencia || mudouEmpresa) {
-      setLoteRhSelecionadoId(null);
-    }
-  }, [loteRhSelecionadoId, lotesRhProntosCnab, competencia, empresaId]);
-
-  const formattedCompetencias = useMemo(() => {
-    const unique = competencias.filter(
-      (value, index, array) => array.findIndex((item) => item.competencia === value.competencia) === index
-    );
-    return unique.map((item) => ({
-      value: item.competencia,
-      label: format(new Date(`${item.competencia}T12:00:00`), "MMMM yyyy", { locale: ptBR }).replace(/^\w/, (c) => c.toUpperCase()),
-    }));
-  }, [competencias]);
-
-  const bankPipelineReviewTrigger = useMemo(
-    () =>
-      buildFolhaVariavelPipeline({
-        competencia: competencia || new Date().toISOString().slice(0, 7),
-        empresa: empresas.find((e) => e.id === empresaId)?.nome || "Empresa",
-        currentStep: "retorno",
-        completedStage: "cnab",
-        timestamps: {
-          cnab: formatPipelineTimestamp(remessas[0]?.data_geracao || remessas[0]?.created_at),
-        },
-      }),
-    [competencia, empresaId, empresas, remessas],
-  );
-
-  const filteredRemessas = useMemo(
-    () =>
-      remessas.filter((remessa) => {
-        const remessaCompetencia = remessa.competencia || remessa.lotes_remessa?.competencia;
-        const matchesSearch =
-          !historySearch ||
-          remessa.id.toLowerCase().includes(historySearch.toLowerCase()) ||
-          String(remessaCompetencia || "").toLowerCase().includes(historySearch.toLowerCase()) ||
-          String(remessa.nome_arquivo || "").toLowerCase().includes(historySearch.toLowerCase());
-        const matchesCompetencia = !competencia || remessaCompetencia === competencia;
-        return matchesSearch && matchesCompetencia;
-      }),
-    [remessas, historySearch, competencia]
-  );
-
-  const totalRemessas = activeTab === "diaristas" ? diaristasMetrics.totalRemessas : remessas.length;
-  const totalTitulos = activeTab === "diaristas" ? diaristasMetrics.totalTitulos : remessas.reduce((acc, remessa) => acc + Number(remessa.lotes_remessa?.quantidade_titulos || 0), 0);
-  const totalValor = activeTab === "diaristas" ? diaristasMetrics.totalValor : remessas.reduce((acc, remessa) => acc + Number(remessa.total_valor || remessa.lotes_remessa?.valor_total || 0), 0);
-  const remessasComErro = activeTab === "diaristas" ? diaristasMetrics.remessasComErro : remessas.filter((remessa) => remessa.status === "erro_homologacao").length;
-  const totalLotesRhProntos = lotesRhProntosCnab.length;
-
-  const handleValidate = async () => {
-    if (REQUIRE_RH_LOTE_FOR_CNAB && !loteRhSelecionadoId) {
-      return toast.error("Selecione um lote do RH na fila para validar a remessa.");
-    }
-    if (!competencia) return toast.error("Selecione a competência");
-    if (!empresaId) return toast.error("Selecione uma empresa");
-    if (!contaId) return toast.error("Selecione a conta bancária");
-
-    setIsValidating(true);
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 600));
-
-      const loteSelecionado = lotesRhProntosCnab.find((l: any) => l.id === loteRhSelecionadoId);
-
-      const result = await CNABService.validateRemessa(competencia, empresaId, contaId, loteRhSelecionadoId || undefined);
-      setValidation(result);
-      if (result.isValid) {
-        toast.success("Remessa validada com sucesso");
-      } else {
-        toast.warning("Inconsistências encontradas na remessa");
-      }
-    } catch {
-      toast.error("Erro ao validar remessa");
-    } finally {
-      setIsValidating(false);
-    }
-  };
-
-  const triggerDownload = (content: string, fileName: string) => {
-    const element = document.createElement("a");
-    const file = new Blob([content], { type: "text/plain" });
-    element.href = URL.createObjectURL(file);
-    element.download = fileName;
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
-  };
-
-  const handleGenerate = async () => {
-    if (REQUIRE_RH_LOTE_FOR_CNAB && !loteRhSelecionadoId) {
-      return toast.error("Selecione um lote do RH na fila para gerar o CNAB.");
-    }
-    if (!contaId) return toast.error("Selecione a conta bancária");
-    setIsGenerating(true);
-    try {
-      const result = await CNABService.generateRemessa({
-        competencia,
-        empresaId,
-        contaId,
-        rhLoteId: loteRhSelecionadoId || undefined
-      });
-
-      toast.success(`CNAB gerado: ${result.fileName} | Seq: ${result.sequencial ?? "-"}`);
-      triggerDownload(result.content, result.fileName);
-
-      if (result.arquivoId && result.arquivoId !== "nao-registrado") {
-        await CnabRemessaArquivoService.marcarComoBaixado(result.arquivoId);
-      }
-
-      queryClient.invalidateQueries({ queryKey: ["cnab-remessas-arquivos"] });
-
-      const empresaNome = empresas.find((e) => e.id === empresaId)?.nome || "Empresa";
-      openPipeline(
-        buildFolhaVariavelPipeline({
-          competencia: competencia,
-          empresa: empresaNome,
-          currentStep: "retorno",
-          completedStage: "cnab",
-          timestamps: {
-            cnab: formatPipelineTimestamp(new Date().toISOString()),
-          },
-        })
+    const rhLoteId = searchParams.get("rhLoteId");
+    if (rhLoteId && items.length > 0) {
+      const found = items.find(
+        (it) => it.loteId === rhLoteId || it.id.includes(rhLoteId)
       );
-    } catch (error: any) {
-      toast.error(error?.message || "Erro ao gerar arquivo");
-    } finally {
-      setIsGenerating(false);
+      if (found) {
+        setSelectedItem(found);
+        setDrawerOpen(true);
+      }
     }
+  }, [searchParams, items]);
+
+  const formatCurrency = (val: number) => {
+    return val.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   };
 
-  const handleRedownload = async (arquivoId: string) => {
-    try {
-      const result = await CNAB240BBWriter.redownload(arquivoId);
-      if (!result) {
-        toast.error("Conteudo do arquivo nao esta disponivel para re-download.");
-        return;
+  // 5. KPIs Principais (Derivados do Universo Contextual: Empresa + Competência)
+  const kpiStats = useMemo(() => {
+    return calculateCentralBancariaKpiStats(items);
+  }, [items]);
+
+  // 6. Opções Dinâmicas de Contas Pagadoras para Filtro
+  const contasPagadorasOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    items.forEach((it) => {
+      if (it.contaPagadora?.id && it.contaPagadora.id.trim() !== "") {
+        const label = `${it.contaPagadora.bancoNome} (${it.contaPagadora.contaMascarada})`;
+        map.set(it.contaPagadora.id, label);
+      }
+    });
+    return Array.from(map.entries()).map(([id, label]) => ({ id, label }));
+  }, [items]);
+
+  // 7. Filtragem Reativa da Tabela
+  const filteredItems = useMemo(() => {
+    return items.filter((item) => {
+      // Filtro por Tab de Estágio
+      if (activeTab === "PRONTAS_BANCO" && item.situacao !== "PRONTO_BANCO") {
+        return false;
+      }
+      if (
+        activeTab === "REMESSAS" &&
+        item.situacao !== "REMESSA_GERADA" &&
+        item.situacao !== "ARQUIVO_BAIXADO"
+      ) {
+        return false;
+      }
+      if (
+        activeTab === "AGUARDANDO_RETORNO" &&
+        item.situacao !== "ENVIADO_MANUAL"
+      ) {
+        return false;
+      }
+      if (
+        activeTab === "CONCILIACAO" &&
+        item.situacao !== "LIQUIDADO" &&
+        item.situacao !== "CONCILIADO"
+      ) {
+        return false;
+      }
+      if (
+        activeTab === "PENDENCIAS" &&
+        item.situacao !== "REJEITADO" &&
+        item.situacao !== "DIVERGENTE"
+      ) {
+        return false;
       }
 
-      triggerDownload(result.content, result.fileName);
-      queryClient.invalidateQueries({ queryKey: ["cnab-remessas-arquivos"] });
-    } catch (error: any) {
-      toast.error(error?.message || "Erro ao baixar arquivo");
-    }
+      // Filtro por Origem
+      if (origemFiltro !== "TODAS" && item.origemTipo !== origemFiltro) {
+        return false;
+      }
+
+      // Filtro por Banco
+      if (bancoFiltro !== "TODOS" && item.contaPagadora.bancoCodigo !== bancoFiltro) {
+        return false;
+      }
+
+      // Filtro por Situação
+      if (situacaoFiltro !== "TODAS" && item.situacao !== situacaoFiltro) {
+        return false;
+      }
+
+      // Filtro por Conta Pagadora
+      if (contaPagadoraFiltro !== "ALL" && item.contaPagadora.id !== contaPagadoraFiltro) {
+        return false;
+      }
+
+      // Filtro por Busca Textual
+      if (busca.trim() !== "") {
+        const query = busca.toLowerCase();
+        const matchRef = item.referencia.toLowerCase().includes(query);
+        const matchLote = item.loteCodigo ? item.loteCodigo.toLowerCase().includes(query) : false;
+        const matchRemessa = item.remessaNumero ? item.remessaNumero.toLowerCase().includes(query) : false;
+        const matchNsa = item.remessaNsa ? item.remessaNsa.toString().includes(query) : false;
+        const matchFavorecido = item.favorecidoDescricao.toLowerCase().includes(query);
+        const matchEmpresa = item.empresaNome.toLowerCase().includes(query);
+
+        if (!matchRef && !matchLote && !matchRemessa && !matchNsa && !matchFavorecido && !matchEmpresa) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [items, activeTab, origemFiltro, bancoFiltro, situacaoFiltro, contaPagadoraFiltro, busca]);
+
+  // Contadores por Tab
+  const tabCounts = useMemo(() => {
+    return {
+      TODAS: items.length,
+      PRONTAS_BANCO: items.filter((i) => i.situacao === "PRONTO_BANCO").length,
+      REMESSAS: items.filter((i) => i.situacao === "REMESSA_GERADA" || i.situacao === "ARQUIVO_BAIXADO").length,
+      AGUARDANDO_RETORNO: items.filter((i) => i.situacao === "ENVIADO_MANUAL").length,
+      CONCILIACAO: items.filter((i) => i.situacao === "LIQUIDADO" || i.situacao === "CONCILIADO").length,
+      PENDENCIAS: items.filter((i) => i.situacao === "REJEITADO" || i.situacao === "DIVERGENTE").length,
+    };
+  }, [items]);
+
+  const openDrawer = (item: ItemObrigacaoBancariaOficial) => {
+    setSelectedItem(item);
+    setDrawerOpen(true);
   };
 
-  const handleMarcarEnviado = async (arquivoId: string) => {
-    setMarkingEnviadoId(arquivoId);
+  const resetFilters = () => {
+    setActiveTab("TODAS");
+    setBusca("");
+    setOrigemFiltro("TODAS");
+    setBancoFiltro("TODOS");
+    setSituacaoFiltro("TODAS");
+    setContaPagadoraFiltro("ALL");
+    toast.info("Filtros redefinidos");
   };
 
-  const handleConfirmarEnvio = async () => {
-    if (!markingEnviadoId) return;
-    try {
-      await CnabRemessaArquivoService.marcarComoEnviadoManual(markingEnviadoId, observacaoEnvio || undefined);
-      toast.success("Arquivo marcado como enviado ao banco.");
-      queryClient.invalidateQueries({ queryKey: ["cnab-remessas-arquivos"] });
-    } catch (error: any) {
-      toast.error(error?.message || "Erro ao marcar envio");
-    } finally {
-      setMarkingEnviadoId(null);
-      setObservacaoEnvio("");
-    }
+  const handleRefresh = () => {
+    refetch();
+    queryClient.invalidateQueries({ queryKey: ["central-bancaria-obrigacoes"] });
+    toast.success("Dados bancários atualizados com sucesso.");
   };
 
-  const renderRetornoContent = () => (
-    <div className="max-w-4xl mx-auto space-y-6">
-      {isContextDiaristas && (
-        <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 flex items-center justify-between gap-3 text-xs text-foreground shadow-2xs">
-          <div className="flex items-center gap-2.5">
-            <div className="h-8 w-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
-              <Banknote className="h-4 w-4" />
-            </div>
-            <div>
-              <p className="font-semibold text-primary">Contexto: Conciliação de Diaristas</p>
-              <p className="text-muted-foreground">
-                Selecione o arquivo .RET fornecido pelo banco (Itaú 341 ou BB 001). A conciliação identificará automaticamente os títulos de diaristas e efetuará a liquidação do lote.
-              </p>
-            </div>
-          </div>
-          <Badge variant="outline" className="border-primary/40 text-primary font-semibold shrink-0">
-            Diaristas
-          </Badge>
-        </div>
-      )}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="p-6 md:col-span-1 space-y-6">
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase flex items-center gap-2">
-              <Banknote className="w-4 h-4" /> Configuração
-            </h3>
-
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-muted-foreground">Banco do arquivo</label>
-              <Select value={banco} onValueChange={setBanco}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o banco" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="001">001 - Banco do Brasil</SelectItem>
-                  <SelectItem value="341">341 - Itaú Unibanco</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="pt-4">
-              <div className="text-xs text-muted-foreground bg-muted/30 p-3 rounded border border-dashed border-border/50">
-                Selecione o modelo adequado do seu banco. A conciliação identificará automaticamente títulos pendentes em RH, Diaristas e Intermitentes e fará a baixa financeira.
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-10 md:col-span-2 border-2 border-dashed border-border/50 flex flex-col items-center justify-center text-center space-y-4">
-          <div className="w-16 h-16 bg-muted/50 text-muted-foreground rounded-full flex items-center justify-center">
-            <Upload className="w-8 h-8" />
-          </div>
+  return (
+    <AppShell
+      title="Central Bancária & CNAB"
+      subtitle="Esteira unificada de remessas, retornos e conciliações dos pagamentos bancarizados."
+    >
+      <div className="space-y-4 pb-12 w-full max-w-[1560px] mx-auto pt-1 animate-in fade-in-50 duration-200">
+        {/* ========================================================================= */}
+        {/* 1. TOPBAR & CONTEXTO PRINCIPAL */}
+        {/* ========================================================================= */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-card border border-border/80 rounded-xl p-3 shadow-xs">
           <div>
-            <h3 className="text-lg font-semibold text-foreground">Importar Retorno Bancário</h3>
-            <p className="text-sm text-muted-foreground mb-6 max-w-md mx-auto">
-              Selecione o arquivo de retorno (.ret) fornecido pelo banco para processar a conciliação automática e efetuar a baixa financeira.
+            <h1 className="text-sm font-bold tracking-tight text-foreground flex items-center gap-2">
+              <Banknote className="h-4 w-4 text-blue-600" />
+              Central Bancária & CNAB
+            </h1>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Esteira unificada de remessas, retornos e conciliações dos pagamentos bancarizados.
             </p>
           </div>
 
-          {!banco && (
-            <div className="text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3.5 py-2 max-w-xs">
-              ⚠️ Selecione o banco acima para liberar o envio do arquivo.
-            </div>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Seletor de Empresa */}
+            <Select value={empresaContexto} onValueChange={setEmpresaContexto}>
+              <SelectTrigger className="h-8 text-xs w-[210px] bg-background border-border">
+                <Building2 className="mr-1.5 h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <SelectValue placeholder="Todas as Empresas" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas" className="text-xs font-semibold">
+                  Todas as Empresas
+                </SelectItem>
+                {empresas.filter((e) => Boolean(e?.id)).map((e) => (
+                  <SelectItem key={e.id} value={e.id} className="text-xs">
+                    {e.nome || e.razao_social || e.id}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-          {retornoResultado ? (
-            <div className="w-full text-left bg-muted/20 p-4 rounded-lg border border-border space-y-4">
-              <div className="flex items-center gap-2 mb-2">
-                <ShieldCheck className="w-5 h-5 text-success" />
-                <span className="font-semibold text-sm">Arquivo Processado: {retornoResultado.arquivo.nome_arquivo}</span>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-background p-3 rounded border border-border">
-                  <p className="text-xs text-muted-foreground text-center">Processados</p>
-                  <p className="text-xl font-bold text-center text-foreground">{retornoResultado.resumo.totalProcessado}</p>
-                </div>
-                <div className="bg-success-soft p-3 rounded border border-success/20">
-                  <p className="text-xs text-success-strong text-center">Pagos</p>
-                  <p className="text-xl font-bold text-center text-success-strong">{retornoResultado.resumo.pagos}</p>
-                </div>
-                <div className="bg-destructive-soft p-3 rounded border border-destructive/20">
-                  <p className="text-xs text-destructive-strong text-center">Rejeitados</p>
-                  <p className="text-xl font-bold text-center text-destructive-strong">{retornoResultado.resumo.rejeitados}</p>
-                </div>
-                <div className="bg-warning-soft p-3 rounded border border-warning/20">
-                  <p className="text-xs text-warning-strong text-center">Divergentes</p>
-                  <p className="text-xl font-bold text-center text-warning-strong">{retornoResultado.resumo.divergentes}</p>
-                </div>
-              </div>
-              <div className="flex justify-center mt-4">
-                <Button variant="outline" onClick={() => setRetornoResultado(null)}>
-                  Importar outro arquivo
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="relative">
-              <input
-                type="file"
-                accept=".ret,.txt"
-                onChange={handleUploadRetorno}
-                disabled={isUploadingRetorno || !banco}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
-              />
-              <Button disabled={isUploadingRetorno || !banco} className="min-w-[200px]">
-                {isUploadingRetorno ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Processando...
-                  </>
-                ) : (
-                  <>
-                    <Upload className="w-4 h-4 mr-2" />
-                    Selecionar arquivo
-                  </>
-                )}
-              </Button>
-            </div>
-          )}
-        </Card>
-      </div>
-    </div>
-  );
+            {/* Seletor de Competência */}
+            <Select value={competenciaContexto} onValueChange={setCompetenciaContexto}>
+              <SelectTrigger className="h-8 text-xs w-[140px] bg-background border-border">
+                <Calendar className="mr-1.5 h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <SelectValue placeholder="Todas Competências" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas" className="text-xs">
+                  Todas Competências
+                </SelectItem>
+                {competencias.filter((c) => Boolean(c?.competencia)).map((c) => (
+                  <SelectItem key={c.competencia} value={c.competencia} className="text-xs">
+                    {c.competencia}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-  return (
-    <>
-      <AppShell
-        title={
-          isContextDiaristas
-            ? activeTab === "retorno"
-              ? "Conciliação Bancária"
-              : "Pagamentos e Remessas"
-            : isContextIntermitentes
-            ? activeTab === "retorno"
-              ? "Conciliação Bancária"
-              : "Pagamentos e Remessas"
-            : "Pagamentos e Remessas"
-        }
-        subtitle={
-          isContextDiaristas
-            ? activeTab === "retorno"
-              ? "Retorno bancário e baixa financeira dos pagamentos de diaristas"
-              : "Gestão e remessas bancárias de diaristas"
-            : isContextIntermitentes
-            ? activeTab === "retorno"
-              ? "Retorno bancário e baixa financeira dos pagamentos de intermitentes"
-              : "Gestão e remessas bancárias de intermitentes"
-            : "Remessa, histórico e retorno no mesmo fluxo operacional"
-        }
-        pipelineTrigger={bankPipelineReviewTrigger}
-      >
-        <div className="space-y-6">
-          <section className="esc-card p-4 md:p-5">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            {/* Botão Atualizar */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={isRefetching}
+              className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground"
+            >
+              <RotateCcw className={`h-3.5 w-3.5 mr-1 ${isRefetching ? "animate-spin" : ""}`} />
+              Atualizar
+            </Button>
+
+            {/* Despacho Desacoplado: Conciliação de Receitas */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate("/financeiro/retorno?tab=receitas")}
+              className="h-8 text-xs font-medium border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+              title="Acessar conciliação de faturamentos de clientes"
+            >
+              <DollarSign className="h-3.5 w-3.5 mr-1 text-emerald-600" />
+              Conciliação Receitas
+            </Button>
+
+            {/* Botão Importar Retorno CTA Primário */}
+            <Button
+              size="sm"
+              onClick={() => setRetornoModalOpen(true)}
+              className="h-8 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-xs"
+            >
+              <UploadCloud className="h-3.5 w-3.5 mr-1.5" />
+              Importar Retorno
+            </Button>
+          </div>
+        </div>
+
+        {/* ========================================================================= */}
+        {/* 2. SEÇÃO DE KPIS PRINCIPAIS (GOLDEN REFERENCE: EXECUTIVE METRIC CARD) */}
+        {/* ========================================================================= */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+          {/* KPI 1: PRONTAS PARA BANCO */}
+          <ExecutiveMetricCard
+            label="PRONTAS PARA BANCO"
+            value={formatCurrency(kpiStats.prontasValor)}
+            subtitle={`${kpiStats.prontasQtdLotes} lotes homologados sem remessa`}
+            icon={Clock}
+            badge={{ text: "Aguardando Remessa", variant: "neutral" }}
+          />
+
+          {/* KPI 2: EM TRÂNSITO BANCÁRIO */}
+          <ExecutiveMetricCard
+            label="EM TRÂNSITO BANCÁRIO"
+            value={formatCurrency(kpiStats.emTransitoValor)}
+            subtitle={`${kpiStats.emTransitoBaixadasQtd} baixadas • ${kpiStats.emTransitoEnviadasQtd} enviadas`}
+            icon={Send}
+            badge={{ text: "No Banco / Em Trânsito", variant: "info" }}
+          />
+
+          {/* KPI 3: LIQUIDADAS NO PERÍODO */}
+          <ExecutiveMetricCard
+            label="LIQUIDADAS NO PERÍODO"
+            value={formatCurrency(kpiStats.liquidadasValor)}
+            subtitle={`${kpiStats.liquidadasQtdItens} pagamentos com retorno confirmado`}
+            icon={CheckCircle2}
+            badge={{ text: "Retorno OK", variant: "success" }}
+          />
+
+          {/* KPI 4: PENDÊNCIAS BANCÁRIAS */}
+          <ExecutiveMetricCard
+            label="PENDÊNCIAS BANCÁRIAS"
+            value={formatCurrency(kpiStats.pendenciasValor)}
+            subtitle={`${kpiStats.pendenciasRejeitadosQtd} rejeitados • ${kpiStats.pendenciasDivergentesQtd} divergentes`}
+            icon={AlertTriangle}
+            badge={{
+              text: kpiStats.pendenciasQtdTotal > 0 ? "Atenção Operacional" : "Sem Pendências",
+              variant: kpiStats.pendenciasQtdTotal > 0 ? "destructive" : "neutral",
+            }}
+          />
+        </div>
+
+        {/* ========================================================================= */}
+        {/* 3. FAIXA OPERACIONAL SECUNDÁRIA (QUANDO HÁ REMESSAS ENVIADAS) */}
+        {/* ========================================================================= */}
+        {kpiStats.emTransitoEnviadasQtd > 0 && (
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 rounded-lg border border-blue-200/80 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-900/40">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600/10 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400">
+                <FileCheck className="h-4 w-4" />
+              </div>
               <div>
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <h2 className="font-display font-semibold text-foreground text-lg">
-                    {isContextDiaristas || isContextIntermitentes
-                      ? activeTab === "retorno"
-                        ? "Conciliação Bancária"
-                        : "Pagamentos e Remessas"
-                      : "Ciclo bancário consolidado"}
-                  </h2>
-                  {isContextDiaristas && (
-                    <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 text-xs px-2.5 py-0.5 font-medium">
-                      Contexto: Diaristas
-                    </Badge>
-                  )}
-                  {isContextIntermitentes && (
-                    <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 text-xs px-2.5 py-0.5 font-medium">
-                      Contexto: Intermitentes
-                    </Badge>
-                  )}
-                </div>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  {isContextDiaristas
-                    ? activeTab === "retorno"
-                      ? "Retorno bancário e baixa financeira dos pagamentos de diaristas."
-                      : "Gestão de lotes fechados, geração de remessa CNAB e liquidação de diaristas."
-                    : isContextIntermitentes
-                    ? activeTab === "retorno"
-                      ? "Retorno bancário e baixa financeira dos pagamentos de intermitentes."
-                      : "Gestão de lotes fechados, geração de remessa CNAB e liquidação de intermitentes."
-                    : "Prepare, valide, gere e acompanhe a trilha CNAB sem trocar de módulo."}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2 items-center">
-                {isContextDiaristas || isContextIntermitentes ? (
-                  <Button
-                    variant="default"
-                    size="sm"
-                    className="font-medium gap-1.5 shadow-sm"
-                    onClick={() => navigate("/bancario")}
-                  >
-                    Ir para Financeiro
-                    <span className="text-xs ml-0.5">→</span>
-                  </Button>
-                ) : (
-                  <>
-                    <Button variant="outline" size="sm" onClick={() => navigate("/financeiro")}>
-                      <ExternalLink className="h-4 w-4 mr-2" />
-                      Visão Geral Financeiro
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => navigate("/financeiro/remessa/historico")}>
-                      <History className="h-4 w-4 mr-2" />
-                      Histórico detalhado
-                    </Button>
-                  </>
-                )}
+                <span className="text-xs font-semibold text-foreground">
+                  {kpiStats.emTransitoEnviadasQtd} remessa(s) transmitida(s) aguardam arquivo de retorno bancário (.RET)
+                </span>
+                <span className="text-[11px] text-muted-foreground block sm:inline sm:ml-2">
+                  (Total em trânsito com envio confirmado: {formatCurrency(items.filter(i => i.situacao === 'ENVIADO_MANUAL').reduce((acc, c) => acc + c.valorTotal, 0))})
+                </span>
               </div>
             </div>
-          </section>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-            <MetricCard
-              label={
-                isContextDiaristas || activeTab === "diaristas"
-                  ? "Lotes Fechados"
-                  : isContextIntermitentes || activeTab === "intermitentes"
-                  ? "Lotes Fechados"
-                  : "Remessas"
-              }
-              value={
-                (isContextDiaristas || activeTab === "diaristas"
-                  ? diaristasMetrics.totalRemessas
-                  : isContextIntermitentes || activeTab === "intermitentes"
-                  ? intermitentesMetrics.totalRemessas
-                  : totalRemessas
-                ).toString()
-              }
-              icon={FileText}
-            />
-            <MetricCard
-              label={
-                isContextDiaristas || activeTab === "diaristas"
-                  ? "Diaristas"
-                  : isContextIntermitentes || activeTab === "intermitentes"
-                  ? "Intermitentes"
-                  : "Títulos"
-              }
-              value={
-                (isContextDiaristas || activeTab === "diaristas"
-                  ? diaristasMetrics.totalTitulos
-                  : isContextIntermitentes || activeTab === "intermitentes"
-                  ? intermitentesMetrics.totalTitulos
-                  : totalTitulos
-                ).toString()
-              }
-              icon={FileCheck}
-            />
-            <MetricCard
-              label="Valor total"
-              value={new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
-                isContextDiaristas || activeTab === "diaristas"
-                  ? diaristasMetrics.totalValor
-                  : isContextIntermitentes || activeTab === "intermitentes"
-                  ? intermitentesMetrics.totalValor
-                  : totalValor
-              )}
-              icon={Banknote}
-              accent
-            />
-            <MetricCard
-              label={
-                isContextDiaristas || activeTab === "diaristas"
-                  ? "Pendentes de Pgto"
-                  : isContextIntermitentes || activeTab === "intermitentes"
-                  ? "Pendentes de Pgto"
-                  : "Lotes RH prontos CNAB"
-              }
-              value={
-                (isContextDiaristas || activeTab === "diaristas"
-                  ? diaristasMetrics.remessasComErro
-                  : isContextIntermitentes || activeTab === "intermitentes"
-                  ? intermitentesMetrics.remessasComErro
-                  : totalLotesRhProntos
-                ).toString()
-              }
-              icon={AlertCircle}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setRetornoModalOpen(true)}
+              className="h-7 text-xs font-semibold border-blue-300 dark:border-blue-800 text-blue-700 dark:text-blue-300 hover:bg-blue-100/50 dark:hover:bg-blue-950/50 shrink-0"
+            >
+              <UploadCloud className="mr-1.5 h-3.5 w-3.5 text-blue-600" />
+              Importar Retorno
+            </Button>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* 4. TABS DE ESTÁGIO BANCÁRIO (FILTER BUTTONS RETANGULARES DO DESIGN SYSTEM) */}
+        {/* ========================================================================= */}
+        <div className="flex items-center gap-1.5 border-b border-border pb-2 overflow-x-auto">
+          {[
+            { id: "TODAS", label: "Todas as Obrigações", count: tabCounts.TODAS },
+            { id: "PRONTAS_BANCO", label: "Prontas para Banco", count: tabCounts.PRONTAS_BANCO },
+            { id: "REMESSAS", label: "Remessas", count: tabCounts.REMESSAS },
+            { id: "AGUARDANDO_RETORNO", label: "Aguardando Retorno", count: tabCounts.AGUARDANDO_RETORNO },
+            { id: "CONCILIACAO", label: "Conciliação / Liquidadas", count: tabCounts.CONCILIACAO },
+            {
+              id: "PENDENCIAS",
+              label: "Pendências (Rejeições / Divergências)",
+              count: tabCounts.PENDENCIAS,
+              isCritical: tabCounts.PENDENCIAS > 0,
+            },
+          ].map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id as EstagioBancarioTab)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${
+                  isActive
+                    ? "bg-blue-600 text-white font-semibold shadow-xs dark:bg-white/[0.08] dark:text-[#F1F3F5] dark:border dark:border-blue-500/40"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                }`}
+              >
+                <span>{tab.label}</span>
+                <span
+                  className={`inline-flex items-center justify-center text-[10px] font-bold rounded px-1.5 py-0.2 min-w-[18px] ${
+                    isActive
+                      ? "bg-white/20 text-white dark:bg-blue-500/30 dark:text-blue-200"
+                      : tab.isCritical
+                      ? "bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-400 font-bold"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {tab.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* ========================================================================= */}
+        {/* 5. LINHA COMPACTA DE FILTROS EXPLORATÓRIOS */}
+        {/* ========================================================================= */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 p-3 rounded-lg border border-border bg-card">
+          {/* Busca Textual */}
+          <div className="md:col-span-4 relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Buscar por ref., lote, favorecido, remessa, NSA..."
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              className="h-8 pl-8 text-xs bg-background"
             />
           </div>
 
-          {isContextDiaristas ? (
-            activeTab === "retorno" ? (
-              <div className="mt-4">
-                {renderRetornoContent()}
-              </div>
-            ) : (
-              <div className="mt-4 bg-card text-card-foreground border border-border shadow-sm rounded-xl overflow-hidden">
-                <CentralBancariaDiaristas
-                  onMetricsUpdate={setDiaristasMetrics}
-                  empresaId={empresaId}
-                  competencia={competencia}
-                />
-              </div>
-            )
-          ) : isContextIntermitentes ? (
-            activeTab === "retorno" ? (
-              <div className="mt-4">
-                {renderRetornoContent()}
-              </div>
-            ) : (
-              <div className="mt-4 bg-card text-card-foreground border border-border shadow-sm rounded-xl overflow-hidden">
-                <CentralBancariaIntermitentes
-                  onMetricsUpdate={setIntermitentesMetrics}
-                  empresaId={empresaId}
-                  competencia={competencia}
-                />
-              </div>
-            )
-          ) : (
-            <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
-              <TabsList className="bg-muted/50 p-1 rounded-xl border border-border/50 flex flex-wrap h-auto">
-                <TabsTrigger value="remessa">Folha Oficial e CLT</TabsTrigger>
-                <TabsTrigger value="diaristas">Eventuais / Diaristas</TabsTrigger>
-                <TabsTrigger value="intermitentes">Trabalhadores Intermitentes</TabsTrigger>
-                <TabsTrigger value="retorno">Conciliação Bancária (Retorno)</TabsTrigger>
-                <TabsTrigger value="historico">Auditoria e Arquivos Gerados</TabsTrigger>
-              </TabsList>
+          {/* Filtro Origem */}
+          <div className="md:col-span-2">
+            <Select value={origemFiltro} onValueChange={setOrigemFiltro}>
+              <SelectTrigger className="h-8 text-xs bg-background">
+                <SelectValue placeholder="Origem" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="TODAS" className="text-xs">Origem: Todas</SelectItem>
+                <SelectItem value="CLT" className="text-xs">CLT</SelectItem>
+                <SelectItem value="DIARISTAS" className="text-xs">Diaristas</SelectItem>
+                <SelectItem value="INTERMITENTES" className="text-xs">Intermitentes</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-            <TabsContent value="remessa">
-              <div className="space-y-6">
-                <Card className="p-4 border-border bg-card">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Fila RH para Bancário/CNAB</p>
-                      <p className="text-sm text-foreground">
-                        {loadingLotesRh
-                          ? "Carregando lotes..."
-                          : `${lotesRhProntosCnab.length} lote(s) pronto(s) · ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(lotesRhProntosValor)}`}
-                      </p>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" onClick={() => navigate("/financeiro")}>
-                        Ver lotes no Financeiro
-                      </Button>
-                    </div>
-                  </div>
-                  {!loadingLotesRh && lotesRhProntosCnab.length > 0 && (
-                    <div className="mt-4 overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead className="esc-table-header">
-                          <tr className="text-left">
-                            <th className="px-3 h-10 font-medium">Competência</th>
-                            <th className="px-3 h-10 font-medium">Empresa</th>
-                            <th className="px-3 h-10 font-medium text-right">Valor</th>
-                            <th className="px-3 h-10 font-medium text-center">Colaboradores</th>
-                            <th className="px-3 h-10 font-medium text-center">Status</th>
-                            <th className="px-3 h-10 font-medium text-right">Ação</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {lotesRhProntosCnab.slice(0, 6).map((lote: any) => (
-                            <tr key={lote.id} className="border-t border-muted">
-                              <td className="px-3 h-11 font-medium text-foreground">{lote.competencia}</td>
-                              <td className="px-3 h-11 text-muted-foreground">{lote.empresa?.nome || "-"}</td>
-                              <td className="px-3 h-11 text-right font-semibold text-foreground">
-                                {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(lote.valor_total || 0))}
-                              </td>
-                              <td className="px-3 h-11 text-center">{Number(lote.total_colaboradores || 0)}</td>
-                              <td className="px-3 h-11 text-center">
-                                <Badge className="bg-success-soft text-success-strong">Aguardando Pagamento/CNAB</Badge>
-                              </td>
-                              <td className="px-3 h-11 text-right">
-                                <div className="flex items-center justify-end gap-2">
-                                  <Button
-                                    variant={loteRhSelecionadoId === lote.id ? "default" : "outline"}
-                                    size="sm"
-                                    onClick={() => aplicarLoteRhNaRemessa(lote)}
-                                  >
-                                    Usar na remessa
-                                  </Button>
-                                  <Button variant="outline" size="sm" onClick={() => abrirLoteNoFinanceiro(lote)}>
-                                    Ver no financeiro
-                                  </Button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                  {!loadingLotesRh && lotesRhProntosCnab.length === 0 && (
-                    <div className="mt-4 rounded-lg border border-dashed border-border bg-muted/20 p-4 text-sm text-muted-foreground">
-                      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                        <span>
-                          {competencia || empresaId
-                            ? "Nenhum lote do RH aguardando pagamento/CNAB para os filtros atuais."
-                            : "Nenhum lote do RH aguardando pagamento/CNAB no momento."}
-                        </span>
-                        {(competencia || empresaId) && (
-                          <Button variant="outline" size="sm" onClick={limparFiltrosRemessa}>
-                            Limpar filtros
-                          </Button>
-                        )}
+          {/* Filtro Banco */}
+          <div className="md:col-span-2">
+            <Select value={bancoFiltro} onValueChange={setBancoFiltro}>
+              <SelectTrigger className="h-8 text-xs bg-background">
+                <SelectValue placeholder="Banco" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="TODOS" className="text-xs">Banco: Todos</SelectItem>
+                <SelectItem value="001" className="text-xs">001 — Banco do Brasil</SelectItem>
+                <SelectItem value="341" className="text-xs">341 — Itaú Unibanco</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Filtro Situação */}
+          <div className="md:col-span-2">
+            <Select value={situacaoFiltro} onValueChange={setSituacaoFiltro}>
+              <SelectTrigger className="h-8 text-xs bg-background">
+                <SelectValue placeholder="Situação" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="TODAS" className="text-xs">Situação: Todas</SelectItem>
+                <SelectItem value="PRONTO_BANCO" className="text-xs">Pronto para Banco</SelectItem>
+                <SelectItem value="REMESSA_GERADA" className="text-xs">Remessa Gerada</SelectItem>
+                <SelectItem value="ARQUIVO_BAIXADO" className="text-xs">Arquivo Baixado</SelectItem>
+                <SelectItem value="ENVIADO_MANUAL" className="text-xs">Enviado ao Banco</SelectItem>
+                <SelectItem value="LIQUIDADO" className="text-xs">Liquidado</SelectItem>
+                <SelectItem value="CONCILIADO" className="text-xs">Conciliado</SelectItem>
+                <SelectItem value="REJEITADO" className="text-xs">Rejeitado</SelectItem>
+                <SelectItem value="DIVERGENTE" className="text-xs">Divergente</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Filtro Conta Pagadora / Botão Limpar */}
+          <div className="md:col-span-2 flex items-center gap-1.5">
+            <Select value={contaPagadoraFiltro} onValueChange={setContaPagadoraFiltro}>
+              <SelectTrigger className="h-8 text-xs bg-background flex-1">
+                <SelectValue placeholder="Conta Pagadora" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL" className="text-xs">Conta: Todas</SelectItem>
+                {contasPagadorasOptions.filter((opt) => Boolean(opt?.id && opt.id.trim() !== "")).map((opt) => (
+                  <SelectItem key={opt.id} value={opt.id} className="text-xs">
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={resetFilters}
+              title="Limpar Filtros"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+
+        {/* ========================================================================= */}
+        {/* 6. TABELA CONSOLIDADA OPERACIONAL (DESKTOP-FIRST) */}
+        {/* ========================================================================= */}
+        <div className="rounded-lg border border-border bg-card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead className="bg-muted/50 border-b border-border text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                <tr>
+                  <th className="py-2.5 px-3">REFERÊNCIA / LOTE</th>
+                  <th className="py-2.5 px-3">ORIGEM</th>
+                  <th className="py-2.5 px-3">EMPRESA / FAVORECIDOS</th>
+                  <th className="py-2.5 px-3">BANCO / CONTA PAGADORA</th>
+                  <th className="py-2.5 px-3">COMPETÊNCIA</th>
+                  <th className="py-2.5 px-3 text-right">VALOR</th>
+                  <th className="py-2.5 px-3 text-center">SITUAÇÃO BANCÁRIA</th>
+                  <th className="py-2.5 px-3 text-right">AÇÃO</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/60 font-sans">
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={8} className="py-12 text-center text-muted-foreground">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <RefreshCw className="h-6 w-6 animate-spin text-blue-600" />
+                        <p className="text-xs font-medium">Carregando esteira bancária...</p>
                       </div>
-                    </div>
-                  )}
-                </Card>
-
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                  <Card className="lg:col-span-5 p-8 space-y-6 shadow-sm border-border bg-card/50 backdrop-blur-sm">
-                    <div className="flex items-center gap-3 border-b border-border/50 pb-4">
-                      <div className="p-2 bg-primary/10 rounded-lg text-primary">
-                        <Calendar className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h3 className="text-sm font-bold text-foreground uppercase tracking-tight">Preparar lote</h3>
-                        <p className="text-xs text-muted-foreground">Defina competência, empresa e conta de origem</p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-5">
-                      {loteRhSelecionadoId && (
-                        <div className="rounded-lg border border-success/30 bg-success/5 p-3 text-xs text-success-strong flex items-center justify-between gap-2">
-                          <span>
-                            Lote RH aplicado ao formulário de remessa.
-                          </span>
-                          <Button variant="outline" size="sm" onClick={limparLoteRhSelecionado}>
-                            Limpar seleção
-                          </Button>
-                        </div>
-                      )}
-                      <div className="space-y-2">
-                        <label className="text-[11px] font-bold text-muted-foreground uppercase flex items-center gap-2">
-                          <Calendar className="w-3 h-3" /> Competência
-                        </label>
-                        <input
-                          type="month"
-                          value={competencia}
-                          onChange={(e) => { setCompetencia(e.target.value); setValidation(null); }}
-                          className="flex h-11 w-full rounded-md border border-border/50 bg-muted/20 px-3 py-2 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-primary"
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="text-[11px] font-bold text-muted-foreground uppercase flex items-center gap-2">
-                          <Building2 className="w-3 h-3" /> Empresa
-                        </label>
-                        <Select value={empresaId} onValueChange={(value) => { setEmpresaId(value); setValidation(null); setContaId(""); }}>
-                          <SelectTrigger className="h-11 bg-muted/20 border-border/50">
-                            <SelectValue placeholder={loadingEmpresas ? "Carregando..." : "Selecione a empresa"} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {empresas.map((empresa) => (
-                              <SelectItem key={empresa.id} value={empresa.id}>{empresa.nome}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="text-[11px] font-bold text-muted-foreground uppercase flex items-center gap-2">
-                          <CreditCard className="w-3 h-3" /> Conta bancária (CNAB)
-                        </label>
-                        <Select value={contaId} onValueChange={setContaId} disabled={!empresaId}>
-                          <SelectTrigger className="h-11 bg-muted/20 border-border/50">
-                            <SelectValue placeholder={loadingContas ? "Carregando..." : "Selecione a conta"} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {contas.length === 0 ? (
-                              <div className="p-4 text-center text-xs text-muted-foreground">Nenhuma conta elegível para CNAB</div>
-                            ) : (
-                              contas.map((conta) => (
-                                <SelectItem key={conta.id} value={conta.id}>
-                                  {conta.banco_nome || conta.banco_codigo} - Ag: {conta.agencia} Cc: {conta.conta}{conta.conta_digito ? `-${conta.conta_digito}` : ""}
-                                </SelectItem>
-                              ))
-                            )}
-                          </SelectContent>
-                        </Select>
-                        {empresaId && !loadingContas && contas.length === 0 && (
-                          <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-xs flex items-center justify-between gap-2">
-                            <span className="text-warning-strong">
-                              Nenhuma conta bancária habilitada para CNAB nesta empresa.
-                            </span>
-                            <Button variant="outline" size="sm" className="shrink-0 text-xs" onClick={() => navigate("/financeiro/contas-bancarias")}>
-                              Cadastrar conta
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-
-                      <Button className="w-full h-11 font-semibold" onClick={handleValidate} disabled={isValidating || !competencia || !empresaId || !contaId}>
-                        {isValidating ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                            Validando...
-                          </>
-                        ) : (
-                          "Validar remessa"
-                        )}
-                      </Button>
-                    </div>
-                  </Card>
-
-                  <Card
-                    className={cn(
-                      "lg:col-span-7 p-8 shadow-sm transition-all duration-300",
-                      !validation
-                        ? "bg-muted/10 border-dashed border-border"
-                        : validation.isValid
-                          ? "bg-success/5 border-success/20"
-                          : "bg-destructive/5 border-destructive/20"
-                    )}
-                  >
-                    <div className="flex items-center gap-2 mb-8 border-b border-border/50 pb-4">
-                      <FileText className="w-5 h-5 text-muted-foreground" />
-                      <h3 className="text-sm font-bold text-foreground uppercase tracking-tight">Resumo da Remessa</h3>
-                    </div>
-
-                    {!validation ? (
-                      <div className="flex flex-col items-center justify-center py-24 text-center">
-                        <div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center mb-4">
-                          <FileText className="w-10 h-10 text-muted-foreground/30" />
-                        </div>
-                        <p className="text-sm text-muted-foreground max-w-[280px]">
-                          Valide a remessa para liberar a geração do arquivo CNAB.
+                    </td>
+                  </tr>
+                ) : filteredItems.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="py-12 text-center text-muted-foreground">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <AlertCircle className="h-8 w-8 text-muted-foreground/50 stroke-[1.5]" />
+                        <p className="text-xs font-medium text-foreground">
+                          Nenhuma obrigação bancária encontrada.
                         </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          Ajuste os filtros contextuais ou selecione outra aba de estágio bancário.
+                        </p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={resetFilters}
+                          className="mt-2 h-7 text-xs"
+                        >
+                          Limpar Filtros
+                        </Button>
                       </div>
-                    ) : (
-                      <div className="space-y-8">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="bg-card p-5 rounded-xl border border-border shadow-sm">
-                            <span className="text-[10px] font-black text-muted-foreground uppercase tracking-wider block mb-1">
-                              Quantidade de títulos
-                            </span>
-                            <span className="text-3xl font-extrabold text-foreground">{validation.summary.totalItems}</span>
-                          </div>
-                          <div className="bg-card p-5 rounded-xl border border-border shadow-sm">
-                            <span className="text-[10px] font-black text-muted-foreground uppercase tracking-wider block mb-1">
-                              Valor total
-                            </span>
-                            <span className="text-3xl font-extrabold text-primary">
-                              {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(validation.summary.totalValue)}
-                            </span>
-                          </div>
-                        </div>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredItems.map((item) => {
+                    const sitBadge = getSituacaoBadge(item.situacao);
+                    const origBadge = getOrigemBadge(item.origemTipo);
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm mt-4">
-                          <div className="bg-card p-4 rounded-xl border border-border">
-                            <span className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Empresa selecionada</span>
-                            <p className="font-medium text-foreground">{empresas.find((e) => e.id === empresaId)?.nome || "-"}</p>
+                    return (
+                      <tr
+                        key={item.id}
+                        className="hover:bg-muted/30 transition-colors group cursor-pointer"
+                        onClick={() => openDrawer(item)}
+                      >
+                        {/* 1. Referência / Lote */}
+                        <td className="py-2.5 px-3 font-mono font-medium text-foreground whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
+                            <span>{item.referencia}</span>
+                            {item.remessaNumero && (
+                              <span className="text-[10px] text-muted-foreground font-normal">
+                                ({item.remessaNumero})
+                              </span>
+                            )}
                           </div>
-                          {(() => {
-                            const contaSelecionada = contas.find((c) => c.id === contaId);
-                            const contaMascarada = contaSelecionada
-                              ? (contaSelecionada.conta?.length > 2
-                                ? '*'.repeat(contaSelecionada.conta.length - 2) + contaSelecionada.conta.slice(-2)
-                                : contaSelecionada.conta)
-                              + (contaSelecionada.conta_digito ? `-${contaSelecionada.conta_digito}` : '')
-                              : '-';
-                            return (
-                              <div className="bg-card p-4 rounded-xl border border-border">
-                                <span className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Conta Origem</span>
-                                <p className="font-medium text-foreground">
-                                  {contaSelecionada?.banco_nome || contaSelecionada?.banco_codigo || '-'}
-                                </p>
-                                <p className="text-xs text-muted-foreground mt-0.5 font-mono">
-                                  Ag: {contaSelecionada?.agencia || '-'}{contaSelecionada?.agencia_digito ? `-${contaSelecionada.agencia_digito}` : ''} · Cc: {contaMascarada}
-                                </p>
-                              </div>
-                            );
-                          })()}
-                        </div>
-
-                        {validation.isValid ? (
-                          <div className="flex items-start gap-4 bg-card p-4 rounded-lg border border-success/20">
-                            <div className="p-2 bg-success/10 rounded-full">
-                              <CheckCircle2 className="w-5 h-5 text-success" />
+                          {item.remessaNsa && (
+                            <div className="text-[10px] text-muted-foreground font-mono">
+                              NSA: {String(item.remessaNsa).padStart(6, "0")}
                             </div>
-                            <div>
-                              <span className="text-sm font-bold text-success">Validação concluída</span>
-                              <p className="text-xs text-muted-foreground mt-0.5">
-                                Nenhuma inconsistência encontrada. Quantidade de favorecidos válidos processada com sucesso.
-                              </p>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="space-y-4">
-                            <h4 className="text-sm font-bold text-destructive uppercase tracking-tight">Inconsistências Encontradas</h4>
-                            {validation.errors && validation.errors.map((error: string, index: number) => (
-                              <div key={index} className="flex items-start gap-4 bg-card p-4 rounded-lg border border-destructive/20">
-                                <div className="p-2 bg-destructive/10 rounded-full">
-                                  <AlertCircle className="w-5 h-5 text-destructive" />
-                                </div>
-                                <div>
-                                  <span className="text-sm font-bold text-destructive">Impedimento</span>
-                                  <p className="text-xs text-muted-foreground mt-0.5">{error}</p>
-                                </div>
-                              </div>
-                            ))}
+                          )}
+                        </td>
 
-                            {validation.pendenciesByColaborador && validation.pendenciesByColaborador.map((pc: any, i: number) => (
-                              <div key={i} className="flex items-start gap-4 bg-card p-4 rounded-lg border border-warning/30 bg-warning/5">
-                                <div className="p-2 bg-warning/20 rounded-full shrink-0">
-                                  <AlertCircle className="w-4 h-4 text-warning-strong" />
-                                </div>
-                                <div>
-                                  <span className="text-sm font-bold text-warning-strong">Favorecido: {pc.nome}</span>
-                                  <ul className="list-disc list-inside mt-1">
-                                    {pc.pendencies.map((pend: string, j: number) => (
-                                      <li key={j} className="text-xs text-muted-foreground">{pend}</li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                        {/* 2. Origem */}
+                        <td className="py-2.5 px-3 whitespace-nowrap">
+                          <span
+                            className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-bold ${origBadge.className}`}
+                          >
+                            {origBadge.label}
+                          </span>
+                        </td>
 
-                        {validation.isValid && (
-                          <div className="pt-6 border-t border-border border-dashed flex flex-col sm:flex-row items-center justify-between gap-4">
-                            <div className="text-xs text-muted-foreground flex items-center gap-2 bg-card px-3 py-1.5 rounded-full border border-border">
-                              <div className="w-2 h-2 bg-success rounded-full animate-pulse" />
-                              Pronto para gerar arquivo CNAB
+                        {/* 3. Empresa / Favorecidos */}
+                        <td className="py-2.5 px-3">
+                          <div className="font-semibold text-foreground truncate max-w-[200px]">
+                            {item.empresaNome}
+                          </div>
+                          <div className="text-[11px] text-muted-foreground truncate max-w-[220px]">
+                            {item.favorecidoDescricao}
+                          </div>
+                        </td>
+
+                        {/* 4. Banco / Conta Pagadora */}
+                        <td className="py-2.5 px-3 whitespace-nowrap">
+                          <div className="flex items-center gap-1 text-foreground font-medium">
+                            <Building2 className="h-3 w-3 text-blue-600 shrink-0" />
+                            <span>{item.contaPagadora.bancoNome}</span>
+                          </div>
+                          <div className="text-[10px] font-mono text-muted-foreground">
+                            {item.contaPagadora.agenciaMascarada} • {item.contaPagadora.contaMascarada}
+                          </div>
+                        </td>
+
+                        {/* 5. Competência */}
+                        <td className="py-2.5 px-3 text-muted-foreground whitespace-nowrap font-mono text-[11px]">
+                          {item.competencia}
+                        </td>
+
+                        {/* 6. Valor */}
+                        <td className="py-2.5 px-3 text-right font-mono font-bold text-foreground whitespace-nowrap">
+                          {formatCurrency(item.valorTotal)}
+                          {item.situacao === "DIVERGENTE" && item.valorRetornado && (
+                            <div className="text-[10px] text-amber-600 dark:text-amber-400 font-normal">
+                              Retornado: {formatCurrency(item.valorRetornado)}
                             </div>
-                            <Button className="font-bold h-12 px-8" onClick={handleGenerate} disabled={isGenerating || !contaId}>
-                              {isGenerating ? (
-                                <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                              ) : (
-                                <Download className="w-4 h-4 mr-2" />
-                              )}
-                              Gerar CNAB240
+                          )}
+                        </td>
+
+                        {/* 7. Situação Bancária */}
+                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                          <span
+                            className={`inline-flex items-center rounded-md border px-2.5 py-0.5 text-[10px] font-bold ${sitBadge.className}`}
+                          >
+                            {sitBadge.label}
+                          </span>
+                          {item.situacao === "REJEITADO" && item.motivoRejeicaoCodigo && (
+                            <div className="text-[10px] text-rose-600 dark:text-rose-400 font-mono mt-0.5">
+                              Cód. {item.motivoRejeicaoCodigo}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* 8. Ação Contextual */}
+                        <td
+                          className="py-2.5 px-3 text-right whitespace-nowrap"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {item.situacao === "PRONTO_BANCO" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openDrawer(item)}
+                              className="h-7 text-[11px] font-semibold text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-900/60 hover:bg-blue-50 dark:hover:bg-blue-950/40"
+                            >
+                              Gerar Remessa
+                              <ChevronRight className="ml-1 h-3 w-3" />
                             </Button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </Card>
-                </div>
-              </div>
-            </TabsContent>
+                          )}
 
-            <TabsContent value="historico">
-              <div className="space-y-4">
-                <Card className="p-4 border-border bg-card">
-                  <div className="flex flex-wrap gap-4 items-center justify-between">
-                    <div className="flex items-center gap-2 bg-muted/50 px-3 py-2 rounded-md flex-1 max-w-md border border-border">
-                      <Search className="w-4 h-4 text-muted-foreground" />
-                      <input
-                        type="text"
-                        placeholder="Buscar por arquivo, lote ou competência..."
-                        className="bg-transparent border-none outline-none text-sm w-full text-foreground font-medium"
-                        value={historySearch}
-                        onChange={(event) => setHistorySearch(event.target.value)}
-                      />
-                    </div>
-                    <Button variant="outline" size="sm" className="gap-2 border-border font-bold" onClick={() => setHistorySearch("")}>
-                      <Filter className="w-4 h-4" /> Limpar filtros
-                    </Button>
-                  </div>
-                </Card>
+                          {item.situacao === "REMESSA_GERADA" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openDrawer(item)}
+                              className="h-7 text-[11px] font-semibold text-foreground hover:bg-muted"
+                            >
+                              <Download className="mr-1 h-3 w-3 text-blue-600" />
+                              Baixar Arquivo
+                            </Button>
+                          )}
 
-                <Card className="overflow-hidden border-border bg-card shadow-sm">
-                  <table className="w-full text-sm">
-                    <thead className="esc-table-header">
-                      <tr className="text-left">
-                        <th className="px-5 h-11 font-medium">Arquivo</th>
-                        <th className="px-3 h-11 font-medium">Competência</th>
-                        <th className="px-3 h-11 font-medium">Data emissão</th>
-                        <th className="px-3 h-11 font-medium">Conta origem</th>
-                        <th className="px-3 h-11 font-medium text-center">Títulos</th>
-                        <th className="px-3 h-11 font-medium text-right">Valor total</th>
-                        <th className="px-3 h-11 font-medium text-center">Status</th>
-                        <th className="px-5 h-11 font-medium text-right">Ações</th>
+                          {item.situacao === "ARQUIVO_BAIXADO" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openDrawer(item)}
+                              className="h-7 text-[11px] font-semibold text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-950/40"
+                            >
+                              <Send className="mr-1 h-3 w-3 text-blue-600" />
+                              Marcar Enviado
+                            </Button>
+                          )}
+
+                          {item.situacao === "ENVIADO_MANUAL" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openDrawer(item)}
+                              className="h-7 text-[11px] font-semibold text-muted-foreground hover:text-foreground"
+                            >
+                              <Clock className="mr-1 h-3 w-3" />
+                              Aguardando Retorno
+                            </Button>
+                          )}
+
+                          {(item.situacao === "LIQUIDADO" || item.situacao === "CONCILIADO") && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => openDrawer(item)}
+                              className="h-7 text-[11px] font-medium text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                            >
+                              <CheckCircle2 className="mr-1 h-3.5 w-3.5 text-emerald-600" />
+                              Ver Detalhes
+                            </Button>
+                          )}
+
+                          {item.situacao === "REJEITADO" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openDrawer(item)}
+                              className="h-7 text-[11px] font-bold text-rose-700 dark:text-rose-400 border-rose-300 dark:border-rose-900 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                            >
+                              <XCircle className="mr-1 h-3 w-3 text-rose-600" />
+                              Tratar Rejeição
+                            </Button>
+                          )}
+
+                          {item.situacao === "DIVERGENTE" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openDrawer(item)}
+                              className="h-7 text-[11px] font-bold text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-900 hover:bg-amber-50 dark:hover:bg-amber-950/40"
+                            >
+                              <AlertTriangle className="mr-1 h-3 w-3 text-amber-600" />
+                              Revisar Divergência
+                            </Button>
+                          )}
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {loadingRemessas ? (
-                        <tr>
-                          <td colSpan={8} className="text-center py-12 text-muted-foreground">
-                            <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2 opacity-50" />
-                            Carregando histórico...
-                          </td>
-                        </tr>
-                      ) : filteredRemessas.length === 0 ? (
-                        <tr>
-                          <td colSpan={8} className="text-center py-12 text-muted-foreground italic">
-                            Nenhuma remessa encontrada para os filtros atuais.
-                          </td>
-                        </tr>
-                      ) : (
-                        filteredRemessas.map((remessa) => (
-                          <tr key={remessa.id} className="border-t border-muted hover:bg-background">
-                            <td className="px-5 h-[56px]">
-                              <div className="text-xs">
-                                <p className="font-mono text-muted-foreground/80">{remessa.nome_arquivo || `${remessa.id.substring(0, 8)}...`}</p>
-                                <p className="text-muted-foreground/70">Seq: {remessa.sequencial_arquivo}</p>
-                              </div>
-                            </td>
-                            <td className="px-3 font-bold text-foreground">{remessa.competencia || remessa.lotes_remessa?.competencia || "-"}</td>
-                            <td className="px-3 text-sm text-muted-foreground">{new Date(remessa.data_geracao || remessa.created_at).toLocaleDateString("pt-BR")}</td>
-                            <td className="px-3">
-                              <div className="text-xs">
-                                <p className="font-bold text-foreground">{remessa.contas_bancarias_empresa?.banco_nome || remessa.banco_nome}</p>
-                                <p className="text-muted-foreground/70">
-                                  Ag: {remessa.contas_bancarias_empresa?.agencia} C: {remessa.contas_bancarias_empresa?.conta}
-                                </p>
-                              </div>
-                            </td>
-                            <td className="px-3 text-center font-medium">{remessa.lotes_remessa?.quantidade_titulos ?? "-"}</td>
-                            <td className="px-3 text-right font-black text-foreground">
-                              {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(remessa.total_valor || remessa.lotes_remessa?.valor_total || 0)}
-                            </td>
-                            <td className="px-3 text-center">{statusBadge(remessa.status || "gerado")}</td>
-                            <td className="px-5 text-right">
-                              <div className="flex justify-end gap-1">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 text-muted-foreground hover:text-primary"
-                                  title="Re-download do arquivo"
-                                  onClick={() => handleRedownload(remessa.id)}
-                                >
-                                  <Download className="w-4 h-4" />
-                                </Button>
-                                {(remessa.status === "gerado" || remessa.status === "baixado") && (
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 text-muted-foreground hover:text-warning-strong"
-                                    title="Marcar como enviado ao banco"
-                                    onClick={() => handleMarcarEnviado(remessa.id)}
-                                  >
-                                    <Send className="w-4 h-4" />
-                                  </Button>
-                                )}
-                                {remessa.status === "enviado_manual" && (
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 text-muted-foreground hover:text-success"
-                                    title="Marcar como homologado"
-                                    onClick={async () => {
-                                      try {
-                                        await CnabRemessaArquivoService.marcarComoHomologado(remessa.id);
-                                        toast.success("Marcado como homologado!");
-                                        queryClient.invalidateQueries({ queryKey: ["cnab-remessas-arquivos"] });
-                                      } catch (e: any) {
-                                        toast.error(e?.message || "Erro ao homologar");
-                                      }
-                                    }}
-                                  >
-                                    <ShieldCheck className="w-4 h-4" />
-                                  </Button>
-                                )}
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" title={remessa.hash_arquivo}>
-                                  <Eye className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </Card>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="retorno">
-              {renderRetornoContent()}
-            </TabsContent>
-
-            <TabsContent value="diaristas">
-              <div className="bg-card text-card-foreground border border-border shadow-sm rounded-xl overflow-hidden">
-                <CentralBancariaDiaristas
-                  onMetricsUpdate={setDiaristasMetrics}
-                  empresaId={empresaId}
-                  competencia={competencia}
-                />
-              </div>
-            </TabsContent>
-
-            <TabsContent value="intermitentes">
-              <div className="bg-card text-card-foreground border border-border shadow-sm rounded-xl overflow-hidden">
-                <CentralBancariaIntermitentes
-                  onMetricsUpdate={setIntermitentesMetrics}
-                  empresaId={empresaId}
-                  competencia={competencia}
-                />
-              </div>
-            </TabsContent>
-          </Tabs>
-          )}
-        </div>
-      </AppShell>
-
-      {markingEnviadoId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-card border border-border rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 space-y-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-warning/10 rounded-lg">
-                <Send className="w-5 h-5 text-warning-strong" />
-              </div>
-              <div>
-                <h3 className="font-bold text-foreground">Confirmar envio ao banco</h3>
-                <p className="text-xs text-muted-foreground">Esta ação registra que o arquivo foi enviado manualmente ao Banco do Brasil.</p>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-muted-foreground uppercase">Observação (opcional)</label>
-              <textarea
-                className="w-full rounded-lg border border-border bg-muted/20 px-3 py-2 text-sm text-foreground resize-none h-20 outline-none focus:border-primary"
-                placeholder="Ex: Enviado via internet banking às 14h30..."
-                value={observacaoEnvio}
-                onChange={(e) => setObservacaoEnvio(e.target.value)}
-              />
-            </div>
-
-            <div className="flex gap-3 justify-end">
-              <Button
-                variant="outline"
-                onClick={() => { setMarkingEnviadoId(null); setObservacaoEnvio(""); }}
-              >
-                Cancelar
-              </Button>
-              <Button
-                className="bg-warning text-warning-foreground hover:bg-warning/90 font-bold"
-                onClick={handleConfirmarEnvio}
-              >
-                <Send className="w-4 h-4 mr-2" />
-                Confirmar envio
-              </Button>
-            </div>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
-      )}
-    </>
+
+        {/* ========================================================================= */}
+        {/* 7. DRAWERS & MODAIS CONECTADOS AOS SERVIÇOS REAIS */}
+        {/* ========================================================================= */}
+        <CentralBancariaDrawerOficial
+          item={selectedItem}
+          open={drawerOpen}
+          onOpenChange={setDrawerOpen}
+          onItemUpdated={handleRefresh}
+          onOpenImportarRetorno={() => setRetornoModalOpen(true)}
+        />
+
+        <ImportarRetornoModalOficial
+          open={retornoModalOpen}
+          onOpenChange={setRetornoModalOpen}
+          onProcessedSuccess={handleRefresh}
+        />
+      </div>
+    </AppShell>
   );
-};
-
-export default CentralBancaria;
-
-
+}
