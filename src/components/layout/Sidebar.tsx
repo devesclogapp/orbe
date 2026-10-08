@@ -9,6 +9,7 @@ import {
   Clock,
   Database,
   ExternalLink,
+  FileText,
   Layers,
   LayoutDashboard,
   LayoutGrid,
@@ -278,6 +279,14 @@ export const SECTIONS: MenuGroup[] = [
     id: "cadastros-sistema",
     title: "Cadastros & Sistema",
     items: [
+      {
+        id: "central-relatorios",
+        label: "Central de Relatórios",
+        to: "/relatorios",
+        icon: FileText,
+        module: "central_de_relatorios",
+        pulseKey: "central_de_relatorios",
+      },
       {
         id: "cadastros",
         label: "Central de Cadastros",

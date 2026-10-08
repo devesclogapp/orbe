@@ -40,6 +40,8 @@ import Importacoes from "./pages/Importacoes";
 import Fechamento from "./pages/Fechamento";
 
 // Relatórios e Integração V4
+import CentralRelatoriosOficial from "./pages/Relatorios/CentralRelatoriosOficial";
+import RelatorioVisualizadorOficial from "./pages/Relatorios/RelatorioVisualizadorOficial";
 import RelatoriosHub from "./pages/Relatorios/RelatoriosHub";
 import RelatorioDetalhe from "./pages/Relatorios/RelatorioDetalhe";
 import Agendamentos from "./pages/Relatorios/Agendamentos";
@@ -258,8 +260,8 @@ const App = () => (
 
                             <Route path="/fechamento" element={<AuthGuard><Fechamento /></AuthGuard>} />
 
-                            {/* Relatórios e Integração V4 */}
-                            <Route path="/relatorios" element={<AuthGuard><CentralRelatoriosIntegracoes /></AuthGuard>} />
+                            {/* Relatórios e Integração V4 — Oficial e Legado */}
+                            <Route path="/relatorios" element={<AuthGuard><CentralRelatoriosOficial /></AuthGuard>} />
                             <Route path="/relatorios/legado" element={<AuthGuard><RelatoriosHub /></AuthGuard>} />
                             <Route path="/relatorios/detalhe/:id" element={<AuthGuard><RelatorioDetalhe /></AuthGuard>} />
                             <Route path="/relatorios/agendamentos" element={<AuthGuard><Agendamentos /></AuthGuard>} />
@@ -267,6 +269,8 @@ const App = () => (
                             <Route path="/relatorios/integracao" element={<AuthGuard><IntegracaoContabil /></AuthGuard>} />
                             <Route path="/relatorios/mapeamento" element={<AuthGuard><MapeamentoContabil /></AuthGuard>} />
                             <Route path="/relatorios/integracao/logs" element={<AuthGuard><LogsIntegracao /></AuthGuard>} />
+                            <Route path="/relatorios/integracoes" element={<AuthGuard><CentralRelatoriosIntegracoes /></AuthGuard>} />
+                            <Route path="/relatorios/:reportId" element={<AuthGuard><RelatorioVisualizadorOficial /></AuthGuard>} />
 
                             {/* Banco de Horas V4 */}
                             <Route path="/banco-horas" element={<AuthGuard><PainelGeralBH /></AuthGuard>} />
