@@ -236,7 +236,7 @@ const loadCompetenciaContext = async (tenantId: string, empresaId: string, compe
         .order("executado_em", { ascending: false }),
       (supabase as any)
         .from("banco_horas_regras")
-        .select("id, nome, adicional_hora_extra_percentual, ativo, empresa_id, tenant_id")
+        .select("id, nome, adicional_hora_extra_percentual, bh_ativo, status, empresa_id, tenant_id")
         .eq("tenant_id", tenantId),
     ]);
 
@@ -244,12 +244,18 @@ const loadCompetenciaContext = async (tenantId: string, empresaId: string, compe
   if (colaboradoresError) throw colaboradoresError;
   if (inconsistenciasError) throw inconsistenciasError;
   if (logsError) throw logsError;
+  if (regrasError) throw regrasError;
+
+  const regrasMapeadas = ((regras || []) as any[]).map((r) => ({
+    ...r,
+    ativo: Boolean(r.bh_ativo ?? (String(r.status || "").toLowerCase() === "ativo")),
+  }));
 
   return {
     empresa: empresa ?? null,
     pontos: pontos ?? [],
     colaboradores: colaboradores ?? [],
-    regras: (regras || []) as any[],
+    regras: regrasMapeadas,
     inconsistencias: inconsistencias ?? [],
     logs: logs ?? [],
     startDate,

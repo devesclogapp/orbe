@@ -1,0 +1,114 @@
+{
+  "height_768": {
+    "initial": {
+      "windowH": 768,
+      "visualViewportH": 768,
+      "list": {
+        "top": 352.5,
+        "bottom": 740,
+        "clientHeight": 388,
+        "scrollHeight": 809,
+        "scrollTop": 0,
+        "overflowY": "auto",
+        "marginToBottom": 28
+      },
+      "diagnostico": {
+        "top": 352.5,
+        "bottom": 740,
+        "clientHeight": 386,
+        "scrollHeight": 448,
+        "overflowY": "auto",
+        "marginToBottom": 28
+      },
+      "main": {
+        "scrollHeight": 712,
+        "clientHeight": 712,
+        "scrollTop": 0,
+        "hasMainScroll": false
+      }
+    },
+    "afterScroll": {
+      "scrollTopAfterScroll": 421,
+      "lastCardVisible": true,
+      "lastCardName": "Operacional,Castanhal",
+      "totalCards": 9
+    },
+    "drawer": {
+      "drawerAbertoOk": true
+    }
+  },
+  "height_900": {
+    "initial": {
+      "windowH": 900,
+      "visualViewportH": 900,
+      "list": {
+        "top": 352.5,
+        "bottom": 872,
+        "clientHeight": 520,
+        "scrollHeight": 809,
+        "scrollTop": 0,
+        "overflowY": "auto",
+        "marginToBottom": 28
+      },
+      "diagnostico": {
+        "top": 352.5,
+        "bottom": 872,
+        "clientHeight": 518,
+        "scrollHeight": 518,
+        "overflowY": "auto",
+        "marginToBottom": 28
+      },
+      "main": {
+        "scrollHeight": 844,
+        "clientHeight": 844,
+        "scrollTop": 0,
+        "hasMainScroll": false
+      }
+    },
+    "afterScroll": {
+      "scrollTopAfterScroll": 289,
+      "lastCardVisible": true,
+      "lastCardName": "Operacional,Castanhal",
+      "totalCards": 9
+    },
+    "drawer": {
+      "drawerAbertoOk": true
+    }
+  },
+  "height_1080": {
+    "initial": {
+      "windowH": 1080,
+      "visualViewportH": 1080,
+      "list": {
+        "top": 352.5,
+        "bottom": 1052,
+        "clientHeight": 700,
+        "scrollHeight": 809,
+        "scrollTop": 0,
+        "overflowY": "auto",
+        "marginToBottom": 28
+      },
+      "diagnostico": {
+        "top": 352.5,
+        "bottom": 1052,
+        "clientHeight": 698,
+        "scrollHeight": 698,
+        "overflowY": "auto",
+        "marginToBottom": 28
+      },
+      "main": {
+        "scrollHeight": 1024,
+        "clientHeight": 1024,
+        "scrollTop": 0,
+        "hasMainScroll": false
+      }
+    },
+    "afterScroll": {
+      "scrollTopAfterScroll": 109,
+      "lastCardVisible": true,
+      "lastCardName": "Operacional,Castanhal",
+      "totalCards": 9
+    },
+    "drawer": null
+  }
+}

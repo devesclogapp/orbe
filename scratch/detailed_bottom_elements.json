@@ -1,0 +1,1780 @@
+{
+  "main": {
+    "tag": "MAIN",
+    "cls": "flex-1 p-4 md:p-6 overflow-y-auto min-w-0",
+    "rect": {
+      "top": 56,
+      "bottom": 695,
+      "height": 639,
+      "left": 256,
+      "right": 1526,
+      "width": 1270
+    },
+    "bg": "rgba(0, 0, 0, 0)",
+    "overflow": "auto",
+    "overflowY": "auto",
+    "boxShadow": "none"
+  },
+  "workspace": {
+    "tag": "DIV",
+    "cls": "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3",
+    "rect": {
+      "top": 192.5,
+      "bottom": 312.5,
+      "height": 120,
+      "left": 280,
+      "right": 1492,
+      "width": 1212
+    },
+    "bg": "rgba(0, 0, 0, 0)",
+    "overflow": "visible",
+    "overflowY": "visible",
+    "boxShadow": "none"
+  },
+  "leftCol": {
+    "tag": "DIV",
+    "cls": "flex flex-col gap-2.5 overflow-y-auto overflow-x-hidden pr-1.5 max-h-[380px] lg:max-h-[calc(100vh-395px)] min-h-0",
+    "rect": {
+      "top": 368.5,
+      "bottom": 670.5,
+      "height": 302,
+      "left": 280,
+      "right": 876,
+      "width": 596
+    },
+    "bg": "rgba(0, 0, 0, 0)",
+    "overflow": "hidden auto",
+    "overflowY": "auto",
+    "boxShadow": "none"
+  },
+  "rightCol": {
+    "tag": "DIV",
+    "cls": "bg-card dark:bg-[#15191F] border border-border/80 dark:border-white/[0.06] rounded-xl p-3.5 sm:p-4 shadow-xs flex flex-col justify-between space-y-2 select-none",
+    "rect": {
+      "top": 192.5,
+      "bottom": 312.5,
+      "height": 120,
+      "left": 586,
+      "right": 880,
+      "width": 294
+    },
+    "bg": "rgb(255, 255, 255)",
+    "overflow": "visible",
+    "overflowY": "visible",
+    "boxShadow": "none"
+  },
+  "allElementsNearBottom": [
+    {
+      "tag": "HTML",
+      "cls": "",
+      "rect": {
+        "top": 0,
+        "bottom": 695,
+        "height": 695,
+        "left": 0,
+        "right": 1526,
+        "width": 1526
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "auto scroll",
+      "overflowY": "scroll",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "BODY",
+      "cls": "",
+      "rect": {
+        "top": 0,
+        "bottom": 695,
+        "height": 695,
+        "left": 0,
+        "right": 1526,
+        "width": 1526
+      },
+      "bg": "rgb(247, 247, 247)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "",
+      "rect": {
+        "top": 0,
+        "bottom": 695,
+        "height": 695,
+        "left": 0,
+        "right": 1526,
+        "width": 1526
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "OL",
+      "cls": "fixed top-0 z-[100] flex max-h-screen w-full flex-col-reverse p-4 sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col md:max-w-[420px]",
+      "rect": {
+        "top": 663,
+        "bottom": 695,
+        "height": 32,
+        "left": 1106,
+        "right": 1526,
+        "width": 420
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "min-h-screen bg-background text-foreground flex transition-colors duration-200",
+      "rect": {
+        "top": 0,
+        "bottom": 695,
+        "height": 695,
+        "left": 0,
+        "right": 1526,
+        "width": 1526
+      },
+      "bg": "rgb(247, 247, 247)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "ASIDE",
+      "cls": "sticky top-0 flex h-screen w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-colors duration-200",
+      "rect": {
+        "top": 0,
+        "bottom": 695,
+        "height": 695,
+        "left": 0,
+        "right": 256,
+        "width": 256
+      },
+      "bg": "rgb(255, 255, 255)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "border-t border-sidebar-border/80 p-2.5 space-y-2 bg-sidebar/50 dark:border-white/[0.04]",
+      "rect": {
+        "top": 603.5,
+        "bottom": 695,
+        "height": 91.5,
+        "left": 0,
+        "right": 255,
+        "width": 255
+      },
+      "bg": "rgba(255, 255, 255, 0.5)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "flex items-center justify-between rounded-lg border border-border/80 bg-background p-2 transition-colors",
+      "rect": {
+        "top": 639,
+        "bottom": 685,
+        "height": 46,
+        "left": 10,
+        "right": 245,
+        "width": 235
+      },
+      "bg": "rgb(247, 247, 247)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "BUTTON",
+      "cls": "flex items-center gap-2.5 min-w-0 text-left flex-1",
+      "rect": {
+        "top": 648,
+        "bottom": 676,
+        "height": 28,
+        "left": 19,
+        "right": 208,
+        "width": 189
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-muted font-display text-xs font-bold text-foreground",
+      "rect": {
+        "top": 648,
+        "bottom": 676,
+        "height": 28,
+        "left": 19,
+        "right": 47,
+        "width": 28
+      },
+      "bg": "rgb(235, 235, 235)",
+      "overflow": "hidden",
+      "overflowY": "hidden",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "min-w-0 flex-1",
+      "rect": {
+        "top": 648.5,
+        "bottom": 675.5,
+        "height": 27,
+        "left": 57,
+        "right": 208,
+        "width": 151
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "truncate font-display text-xs font-semibold text-foreground leading-tight",
+      "rect": {
+        "top": 648.5,
+        "bottom": 663.5,
+        "height": 15,
+        "left": 57,
+        "right": 208,
+        "width": 151
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "hidden",
+      "overflowY": "hidden",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "BUTTON",
+      "cls": "inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors",
+      "rect": {
+        "top": 648,
+        "bottom": 676,
+        "height": 28,
+        "left": 208,
+        "right": 236,
+        "width": 28
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "svg",
+      "cls": {},
+      "rect": {
+        "top": 654,
+        "bottom": 670,
+        "height": 16,
+        "left": 214,
+        "right": 230,
+        "width": 16
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "hidden",
+      "overflowY": "hidden",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "path",
+      "cls": {},
+      "rect": {
+        "top": 656,
+        "bottom": 668,
+        "height": 12,
+        "left": 216,
+        "right": 220,
+        "width": 4
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "flex-1 flex flex-col min-w-0",
+      "rect": {
+        "top": 0,
+        "bottom": 695,
+        "height": 695,
+        "left": 256,
+        "right": 1526,
+        "width": 1270
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "flex flex-1 min-h-0 bg-background",
+      "rect": {
+        "top": 56,
+        "bottom": 695,
+        "height": 639,
+        "left": 256,
+        "right": 1526,
+        "width": 1270
+      },
+      "bg": "rgb(247, 247, 247)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "MAIN",
+      "cls": "flex-1 p-4 md:p-6 overflow-y-auto min-w-0",
+      "rect": {
+        "top": 56,
+        "bottom": 695,
+        "height": 639,
+        "left": 256,
+        "right": 1526,
+        "width": 1270
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "auto",
+      "overflowY": "auto",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "mx-auto max-w-[1560px] w-full",
+      "rect": {
+        "top": 80,
+        "bottom": 670.5,
+        "height": 590.5,
+        "left": 280,
+        "right": 1492,
+        "width": 1212
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "flex flex-col gap-4 lg:gap-5",
+      "rect": {
+        "top": 80,
+        "bottom": 670.5,
+        "height": 590.5,
+        "left": 280,
+        "right": 1492,
+        "width": 1212
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "grid grid-cols-1 lg:grid-cols-2 gap-5 items-start",
+      "rect": {
+        "top": 332.5,
+        "bottom": 670.5,
+        "height": 338,
+        "left": 280,
+        "right": 1492,
+        "width": 1212
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "SECTION",
+      "cls": "flex flex-col gap-3 min-h-0",
+      "rect": {
+        "top": 332.5,
+        "bottom": 670.5,
+        "height": 338,
+        "left": 280,
+        "right": 876,
+        "width": 596
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "flex flex-col gap-2.5 overflow-y-auto overflow-x-hidden pr-1.5 max-h-[380px] lg:max-h-[calc(100vh-395px)] min-h-0",
+      "rect": {
+        "top": 368.5,
+        "bottom": 670.5,
+        "height": 302,
+        "left": 280,
+        "right": 876,
+        "width": 596
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "hidden auto",
+      "overflowY": "auto",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "ARTICLE",
+      "cls": "p-3 rounded-xl border transition-all text-left cursor-pointer flex flex-col gap-1.5 select-none border-border bg-card hover:bg-muted/30 hover:border-border/80",
+      "rect": {
+        "top": 641.5,
+        "bottom": 722.5,
+        "height": 81,
+        "left": 280,
+        "right": 870,
+        "width": 590
+      },
+      "bg": "rgb(255, 255, 255)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "flex items-center justify-between gap-3",
+      "rect": {
+        "top": 654.5,
+        "bottom": 682.5,
+        "height": 28,
+        "left": 293,
+        "right": 857,
+        "width": 564
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "flex items-center gap-2.5 min-w-0",
+      "rect": {
+        "top": 654.5,
+        "bottom": 682.5,
+        "height": 28,
+        "left": 293,
+        "right": 469.921875,
+        "width": 176.921875
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "h-7 w-7 rounded-lg flex items-center justify-center shrink-0 bg-muted text-muted-foreground",
+      "rect": {
+        "top": 654.5,
+        "bottom": 682.5,
+        "height": 28,
+        "left": 293,
+        "right": 321,
+        "width": 28
+      },
+      "bg": "rgb(235, 235, 235)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "svg",
+      "cls": {},
+      "rect": {
+        "top": 661.5,
+        "bottom": 675.5,
+        "height": 14,
+        "left": 300,
+        "right": 314,
+        "width": 14
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "hidden",
+      "overflowY": "hidden",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "path",
+      "cls": {},
+      "rect": {
+        "top": 663.25,
+        "bottom": 673.75,
+        "height": 10.5,
+        "left": 303.5,
+        "right": 310.5,
+        "width": 7
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "SPAN",
+      "cls": "font-semibold text-sm text-foreground truncate",
+      "rect": {
+        "top": 658.5,
+        "bottom": 678.5,
+        "height": 20,
+        "left": 331,
+        "right": 469.921875,
+        "width": 138.921875
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "hidden",
+      "overflowY": "hidden",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "SPAN",
+      "cls": "inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-900/50 shrink-0",
+      "rect": {
+        "top": 657.25,
+        "bottom": 679.75,
+        "height": 22.5,
+        "left": 738.6875,
+        "right": 857,
+        "width": 118.3125
+      },
+      "bg": "rgb(255, 241, 242)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "svg",
+      "cls": {},
+      "rect": {
+        "top": 662.5,
+        "bottom": 674.5,
+        "height": 12,
+        "left": 747.6875,
+        "right": 759.6875,
+        "width": 12
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "hidden",
+      "overflowY": "hidden",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "flex items-center justify-between text-xs pt-1 border-t border-border/40",
+      "rect": {
+        "top": 688.5,
+        "bottom": 709.5,
+        "height": 21,
+        "left": 293,
+        "right": 857,
+        "width": 564
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "SPAN",
+      "cls": "text-muted-foreground text-[11px]",
+      "rect": {
+        "top": 693.5,
+        "bottom": 709.5,
+        "height": 16,
+        "left": 293,
+        "right": 447.859375,
+        "width": 154.859375
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "ARTICLE",
+      "cls": "p-3 rounded-xl border transition-all text-left cursor-pointer flex flex-col gap-1.5 select-none border-border bg-card hover:bg-muted/30 hover:border-border/80",
+      "rect": {
+        "top": 732.5,
+        "bottom": 813.5,
+        "height": 81,
+        "left": 280,
+        "right": 870,
+        "width": 590
+      },
+      "bg": "rgb(255, 255, 255)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "flex items-center justify-between gap-3",
+      "rect": {
+        "top": 745.5,
+        "bottom": 773.5,
+        "height": 28,
+        "left": 293,
+        "right": 857,
+        "width": 564
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "flex items-center gap-2.5 min-w-0",
+      "rect": {
+        "top": 745.5,
+        "bottom": 773.5,
+        "height": 28,
+        "left": 293,
+        "right": 418.90625,
+        "width": 125.90625
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "h-7 w-7 rounded-lg flex items-center justify-center shrink-0 bg-muted text-muted-foreground",
+      "rect": {
+        "top": 745.5,
+        "bottom": 773.5,
+        "height": 28,
+        "left": 293,
+        "right": 321,
+        "width": 28
+      },
+      "bg": "rgb(235, 235, 235)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "svg",
+      "cls": {},
+      "rect": {
+        "top": 752.5,
+        "bottom": 766.5,
+        "height": 14,
+        "left": 300,
+        "right": 314,
+        "width": 14
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "hidden",
+      "overflowY": "hidden",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "path",
+      "cls": {},
+      "rect": {
+        "top": 754.25,
+        "bottom": 764.75,
+        "height": 10.5,
+        "left": 303.5,
+        "right": 310.5,
+        "width": 7
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "SPAN",
+      "cls": "font-semibold text-sm text-foreground truncate",
+      "rect": {
+        "top": 749.5,
+        "bottom": 769.5,
+        "height": 20,
+        "left": 331,
+        "right": 418.90625,
+        "width": 87.90625
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "hidden",
+      "overflowY": "hidden",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "SPAN",
+      "cls": "inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-900/50 shrink-0",
+      "rect": {
+        "top": 748.25,
+        "bottom": 770.75,
+        "height": 22.5,
+        "left": 738.40625,
+        "right": 857,
+        "width": 118.59375
+      },
+      "bg": "rgb(255, 241, 242)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "svg",
+      "cls": {},
+      "rect": {
+        "top": 753.5,
+        "bottom": 765.5,
+        "height": 12,
+        "left": 747.40625,
+        "right": 759.40625,
+        "width": 12
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "hidden",
+      "overflowY": "hidden",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "flex items-center justify-between text-xs pt-1 border-t border-border/40",
+      "rect": {
+        "top": 779.5,
+        "bottom": 800.5,
+        "height": 21,
+        "left": 293,
+        "right": 857,
+        "width": 564
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "SPAN",
+      "cls": "text-muted-foreground text-[11px]",
+      "rect": {
+        "top": 784.5,
+        "bottom": 800.5,
+        "height": 16,
+        "left": 293,
+        "right": 447.859375,
+        "width": 154.859375
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "ARTICLE",
+      "cls": "p-3 rounded-xl border transition-all text-left cursor-pointer flex flex-col gap-1.5 select-none border-border bg-card hover:bg-muted/30 hover:border-border/80",
+      "rect": {
+        "top": 823.5,
+        "bottom": 904.5,
+        "height": 81,
+        "left": 280,
+        "right": 870,
+        "width": 590
+      },
+      "bg": "rgb(255, 255, 255)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "flex items-center justify-between gap-3",
+      "rect": {
+        "top": 836.5,
+        "bottom": 864.5,
+        "height": 28,
+        "left": 293,
+        "right": 857,
+        "width": 564
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "flex items-center gap-2.5 min-w-0",
+      "rect": {
+        "top": 836.5,
+        "bottom": 864.5,
+        "height": 28,
+        "left": 293,
+        "right": 436.234375,
+        "width": 143.234375
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "h-7 w-7 rounded-lg flex items-center justify-center shrink-0 bg-muted text-muted-foreground",
+      "rect": {
+        "top": 836.5,
+        "bottom": 864.5,
+        "height": 28,
+        "left": 293,
+        "right": 321,
+        "width": 28
+      },
+      "bg": "rgb(235, 235, 235)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "svg",
+      "cls": {},
+      "rect": {
+        "top": 843.5,
+        "bottom": 857.5,
+        "height": 14,
+        "left": 300,
+        "right": 314,
+        "width": 14
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "hidden",
+      "overflowY": "hidden",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "path",
+      "cls": {},
+      "rect": {
+        "top": 845.25,
+        "bottom": 855.75,
+        "height": 10.5,
+        "left": 303.5,
+        "right": 310.5,
+        "width": 7
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "SPAN",
+      "cls": "font-semibold text-sm text-foreground truncate",
+      "rect": {
+        "top": 840.5,
+        "bottom": 860.5,
+        "height": 20,
+        "left": 331,
+        "right": 436.234375,
+        "width": 105.234375
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "hidden",
+      "overflowY": "hidden",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "SPAN",
+      "cls": "inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-900/50 shrink-0",
+      "rect": {
+        "top": 839.25,
+        "bottom": 861.75,
+        "height": 22.5,
+        "left": 733.953125,
+        "right": 857,
+        "width": 123.046875
+      },
+      "bg": "rgb(255, 241, 242)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "svg",
+      "cls": {},
+      "rect": {
+        "top": 844.5,
+        "bottom": 856.5,
+        "height": 12,
+        "left": 742.953125,
+        "right": 754.953125,
+        "width": 12
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "hidden",
+      "overflowY": "hidden",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "flex items-center justify-between text-xs pt-1 border-t border-border/40",
+      "rect": {
+        "top": 870.5,
+        "bottom": 891.5,
+        "height": 21,
+        "left": 293,
+        "right": 857,
+        "width": 564
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "SPAN",
+      "cls": "text-muted-foreground text-[11px]",
+      "rect": {
+        "top": 875.5,
+        "bottom": 891.5,
+        "height": 16,
+        "left": 293,
+        "right": 447.859375,
+        "width": 154.859375
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "ARTICLE",
+      "cls": "p-3 rounded-xl border transition-all text-left cursor-pointer flex flex-col gap-1.5 select-none border-border bg-card hover:bg-muted/30 hover:border-border/80",
+      "rect": {
+        "top": 914.5,
+        "bottom": 995.5,
+        "height": 81,
+        "left": 280,
+        "right": 870,
+        "width": 590
+      },
+      "bg": "rgb(255, 255, 255)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "flex items-center justify-between gap-3",
+      "rect": {
+        "top": 927.5,
+        "bottom": 955.5,
+        "height": 28,
+        "left": 293,
+        "right": 857,
+        "width": 564
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "flex items-center gap-2.5 min-w-0",
+      "rect": {
+        "top": 927.5,
+        "bottom": 955.5,
+        "height": 28,
+        "left": 293,
+        "right": 482.1875,
+        "width": 189.1875
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "h-7 w-7 rounded-lg flex items-center justify-center shrink-0 bg-muted text-muted-foreground",
+      "rect": {
+        "top": 927.5,
+        "bottom": 955.5,
+        "height": 28,
+        "left": 293,
+        "right": 321,
+        "width": 28
+      },
+      "bg": "rgb(235, 235, 235)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "svg",
+      "cls": {},
+      "rect": {
+        "top": 934.5,
+        "bottom": 948.5,
+        "height": 14,
+        "left": 300,
+        "right": 314,
+        "width": 14
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "hidden",
+      "overflowY": "hidden",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "path",
+      "cls": {},
+      "rect": {
+        "top": 936.25,
+        "bottom": 946.75,
+        "height": 10.5,
+        "left": 303.5,
+        "right": 310.5,
+        "width": 7
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "SPAN",
+      "cls": "font-semibold text-sm text-foreground truncate",
+      "rect": {
+        "top": 931.5,
+        "bottom": 951.5,
+        "height": 20,
+        "left": 331,
+        "right": 482.1875,
+        "width": 151.1875
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "hidden",
+      "overflowY": "hidden",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "SPAN",
+      "cls": "inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-900/50 shrink-0",
+      "rect": {
+        "top": 930.25,
+        "bottom": 952.75,
+        "height": 22.5,
+        "left": 731.90625,
+        "right": 857,
+        "width": 125.09375
+      },
+      "bg": "rgb(255, 241, 242)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "svg",
+      "cls": {},
+      "rect": {
+        "top": 935.5,
+        "bottom": 947.5,
+        "height": 12,
+        "left": 740.90625,
+        "right": 752.90625,
+        "width": 12
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "hidden",
+      "overflowY": "hidden",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "flex items-center justify-between text-xs pt-1 border-t border-border/40",
+      "rect": {
+        "top": 961.5,
+        "bottom": 982.5,
+        "height": 21,
+        "left": 293,
+        "right": 857,
+        "width": 564
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "SPAN",
+      "cls": "text-muted-foreground text-[11px]",
+      "rect": {
+        "top": 966.5,
+        "bottom": 982.5,
+        "height": 16,
+        "left": 293,
+        "right": 447.859375,
+        "width": 154.859375
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "ARTICLE",
+      "cls": "p-3 rounded-xl border transition-all text-left cursor-pointer flex flex-col gap-1.5 select-none border-border bg-card hover:bg-muted/30 hover:border-border/80",
+      "rect": {
+        "top": 1005.5,
+        "bottom": 1086.5,
+        "height": 81,
+        "left": 280,
+        "right": 870,
+        "width": 590
+      },
+      "bg": "rgb(255, 255, 255)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "flex items-center justify-between gap-3",
+      "rect": {
+        "top": 1018.5,
+        "bottom": 1046.5,
+        "height": 28,
+        "left": 293,
+        "right": 857,
+        "width": 564
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "flex items-center gap-2.5 min-w-0",
+      "rect": {
+        "top": 1018.5,
+        "bottom": 1046.5,
+        "height": 28,
+        "left": 293,
+        "right": 471.84375,
+        "width": 178.84375
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "h-7 w-7 rounded-lg flex items-center justify-center shrink-0 bg-muted text-muted-foreground",
+      "rect": {
+        "top": 1018.5,
+        "bottom": 1046.5,
+        "height": 28,
+        "left": 293,
+        "right": 321,
+        "width": 28
+      },
+      "bg": "rgb(235, 235, 235)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "svg",
+      "cls": {},
+      "rect": {
+        "top": 1025.5,
+        "bottom": 1039.5,
+        "height": 14,
+        "left": 300,
+        "right": 314,
+        "width": 14
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "hidden",
+      "overflowY": "hidden",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "path",
+      "cls": {},
+      "rect": {
+        "top": 1027.25,
+        "bottom": 1037.75,
+        "height": 10.5,
+        "left": 303.5,
+        "right": 310.5,
+        "width": 7
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "SPAN",
+      "cls": "font-semibold text-sm text-foreground truncate",
+      "rect": {
+        "top": 1022.5,
+        "bottom": 1042.5,
+        "height": 20,
+        "left": 331,
+        "right": 471.84375,
+        "width": 140.84375
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "hidden",
+      "overflowY": "hidden",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "SPAN",
+      "cls": "inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-900/50 shrink-0",
+      "rect": {
+        "top": 1021.25,
+        "bottom": 1043.75,
+        "height": 22.5,
+        "left": 738.71875,
+        "right": 857,
+        "width": 118.28125
+      },
+      "bg": "rgb(255, 241, 242)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "svg",
+      "cls": {},
+      "rect": {
+        "top": 1026.5,
+        "bottom": 1038.5,
+        "height": 12,
+        "left": 747.71875,
+        "right": 759.71875,
+        "width": 12
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "hidden",
+      "overflowY": "hidden",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "flex items-center justify-between text-xs pt-1 border-t border-border/40",
+      "rect": {
+        "top": 1052.5,
+        "bottom": 1073.5,
+        "height": 21,
+        "left": 293,
+        "right": 857,
+        "width": 564
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "SPAN",
+      "cls": "text-muted-foreground text-[11px]",
+      "rect": {
+        "top": 1057.5,
+        "bottom": 1073.5,
+        "height": 16,
+        "left": 293,
+        "right": 447.859375,
+        "width": 154.859375
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "ARTICLE",
+      "cls": "p-3 rounded-xl border transition-all text-left cursor-pointer flex flex-col gap-1.5 select-none border-border bg-card hover:bg-muted/30 hover:border-border/80",
+      "rect": {
+        "top": 1096.5,
+        "bottom": 1177.5,
+        "height": 81,
+        "left": 280,
+        "right": 870,
+        "width": 590
+      },
+      "bg": "rgb(255, 255, 255)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "flex items-center justify-between gap-3",
+      "rect": {
+        "top": 1109.5,
+        "bottom": 1137.5,
+        "height": 28,
+        "left": 293,
+        "right": 857,
+        "width": 564
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "flex items-center gap-2.5 min-w-0",
+      "rect": {
+        "top": 1109.5,
+        "bottom": 1137.5,
+        "height": 28,
+        "left": 293,
+        "right": 484.640625,
+        "width": 191.640625
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "h-7 w-7 rounded-lg flex items-center justify-center shrink-0 bg-muted text-muted-foreground",
+      "rect": {
+        "top": 1109.5,
+        "bottom": 1137.5,
+        "height": 28,
+        "left": 293,
+        "right": 321,
+        "width": 28
+      },
+      "bg": "rgb(235, 235, 235)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "svg",
+      "cls": {},
+      "rect": {
+        "top": 1116.5,
+        "bottom": 1130.5,
+        "height": 14,
+        "left": 300,
+        "right": 314,
+        "width": 14
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "hidden",
+      "overflowY": "hidden",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "path",
+      "cls": {},
+      "rect": {
+        "top": 1118.25,
+        "bottom": 1128.75,
+        "height": 10.5,
+        "left": 303.5,
+        "right": 310.5,
+        "width": 7
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "SPAN",
+      "cls": "font-semibold text-sm text-foreground truncate",
+      "rect": {
+        "top": 1113.5,
+        "bottom": 1133.5,
+        "height": 20,
+        "left": 331,
+        "right": 484.640625,
+        "width": 153.640625
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "hidden",
+      "overflowY": "hidden",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "SPAN",
+      "cls": "inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-900/50 shrink-0",
+      "rect": {
+        "top": 1112.25,
+        "bottom": 1134.75,
+        "height": 22.5,
+        "left": 746.984375,
+        "right": 857,
+        "width": 110.015625
+      },
+      "bg": "rgb(255, 241, 242)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "svg",
+      "cls": {},
+      "rect": {
+        "top": 1117.5,
+        "bottom": 1129.5,
+        "height": 12,
+        "left": 755.984375,
+        "right": 767.984375,
+        "width": 12
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "hidden",
+      "overflowY": "hidden",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "flex items-center justify-between text-xs pt-1 border-t border-border/40",
+      "rect": {
+        "top": 1143.5,
+        "bottom": 1164.5,
+        "height": 21,
+        "left": 293,
+        "right": 857,
+        "width": 564
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "SPAN",
+      "cls": "text-muted-foreground text-[11px]",
+      "rect": {
+        "top": 1148.5,
+        "bottom": 1164.5,
+        "height": 16,
+        "left": 293,
+        "right": 447.859375,
+        "width": 154.859375
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "ARTICLE",
+      "cls": "bg-card border border-border rounded-xl p-5 shadow-xs flex flex-col gap-5",
+      "rect": {
+        "top": 372.5,
+        "bottom": 834,
+        "height": 461.5,
+        "left": 896,
+        "right": 1488,
+        "width": 592
+      },
+      "bg": "rgb(255, 255, 255)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "rounded-lg border border-border bg-card p-3.5 space-y-2.5",
+      "rect": {
+        "top": 599,
+        "bottom": 716,
+        "height": 117,
+        "left": 917,
+        "right": 1467,
+        "width": 550
+      },
+      "bg": "rgb(255, 255, 255)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "UL",
+      "cls": "space-y-1.5 pt-1",
+      "rect": {
+        "top": 652,
+        "bottom": 701,
+        "height": 49,
+        "left": 932,
+        "right": 1452,
+        "width": 520
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "LI",
+      "cls": "text-xs text-muted-foreground flex items-start gap-2",
+      "rect": {
+        "top": 656,
+        "bottom": 675.5,
+        "height": 19.5,
+        "left": 932,
+        "right": 1452,
+        "width": 520
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "SPAN",
+      "cls": "text-rose-600 dark:text-rose-400 font-bold shrink-0",
+      "rect": {
+        "top": 656,
+        "bottom": 672,
+        "height": 16,
+        "left": 932,
+        "right": 938.046875,
+        "width": 6.046875
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "SPAN",
+      "cls": "leading-relaxed",
+      "rect": {
+        "top": 656,
+        "bottom": 675.5,
+        "height": 19.5,
+        "left": 946.046875,
+        "right": 1387.09375,
+        "width": 441.046875
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "LI",
+      "cls": "text-xs text-muted-foreground flex items-start gap-2",
+      "rect": {
+        "top": 681.5,
+        "bottom": 701,
+        "height": 19.5,
+        "left": 932,
+        "right": 1452,
+        "width": 520
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "SPAN",
+      "cls": "text-rose-600 dark:text-rose-400 font-bold shrink-0",
+      "rect": {
+        "top": 681.5,
+        "bottom": 697.5,
+        "height": 16,
+        "left": 932,
+        "right": 938.046875,
+        "width": 6.046875
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "SPAN",
+      "cls": "leading-relaxed",
+      "rect": {
+        "top": 681.5,
+        "bottom": 701,
+        "height": 19.5,
+        "left": 946.046875,
+        "right": 1242.40625,
+        "width": 296.359375
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "pt-2 border-t border-border flex flex-col gap-3",
+      "rect": {
+        "top": 736,
+        "bottom": 813,
+        "height": 77,
+        "left": 917,
+        "right": 1467,
+        "width": 550
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "flex items-center justify-between text-xs text-muted-foreground",
+      "rect": {
+        "top": 745,
+        "bottom": 761,
+        "height": 16,
+        "left": 917,
+        "right": 1467,
+        "width": 550
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "SPAN",
+      "cls": "flex items-center gap-1.5",
+      "rect": {
+        "top": 745,
+        "bottom": 761,
+        "height": 16,
+        "left": 917,
+        "right": 1232.46875,
+        "width": 315.46875
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "svg",
+      "cls": {},
+      "rect": {
+        "top": 746,
+        "bottom": 760,
+        "height": 14,
+        "left": 917,
+        "right": 931,
+        "width": 14
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "hidden",
+      "overflowY": "hidden",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "SPAN",
+      "cls": "font-mono text-[11px]",
+      "rect": {
+        "top": 745,
+        "bottom": 761,
+        "height": 16,
+        "left": 1382.3125,
+        "right": 1467,
+        "width": 84.6875
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "DIV",
+      "cls": "flex items-center justify-end gap-2 pt-1",
+      "rect": {
+        "top": 773,
+        "bottom": 813,
+        "height": 40,
+        "left": 917,
+        "right": 1467,
+        "width": 550
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "BUTTON",
+      "cls": "inline-flex items-center justify-center whitespace-nowrap ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 border border-input bg-background hover:bg-accent hover:text-accent-foreground rounded-md px-3 h-9 text-xs font-medium gap-1.5",
+      "rect": {
+        "top": 777,
+        "bottom": 813,
+        "height": 36,
+        "left": 1068.015625,
+        "right": 1281.046875,
+        "width": 213.03125
+      },
+      "bg": "rgb(247, 247, 247)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "svg",
+      "cls": {},
+      "rect": {
+        "top": 787,
+        "bottom": 803,
+        "height": 16,
+        "left": 1081.015625,
+        "right": 1097.015625,
+        "width": 16
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "overflow": "hidden",
+      "overflowY": "hidden",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "BUTTON",
+      "cls": "inline-flex items-center justify-center gap-2 whitespace-nowrap ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-3 h-9 text-xs font-medium",
+      "rect": {
+        "top": 777,
+        "bottom": 813,
+        "height": 36,
+        "left": 1289.046875,
+        "right": 1467,
+        "width": 177.953125
+      },
+      "bg": "rgb(36, 99, 235)",
+      "overflow": "visible",
+      "overflowY": "visible",
+      "boxShadow": "none"
+    }
+  ]
+}

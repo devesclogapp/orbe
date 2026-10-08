@@ -147,9 +147,9 @@ export function FechamentoDrawer({
         onOpenChange(v);
       }}
     >
-      <SheetContent className="sm:max-w-[560px] w-full p-0 flex flex-col bg-background border-l border-border shadow-xl">
-        {/* Header Institucional com Estado Semântico */}
-        <div className="p-6 border-b border-border bg-card/50">
+      <SheetContent className="sm:max-w-[620px] w-full p-0 flex flex-col bg-background border-l border-border shadow-2xl z-50 overflow-hidden">
+        {/* Header Institucional Fixo no Topo com Estado Semântico */}
+        <div className="shrink-0 p-5 border-b border-border bg-card/70 backdrop-blur-sm">
           <div className="flex items-center justify-between gap-3 mb-2">
             <div className="flex items-center gap-2">
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground border border-border">
@@ -170,8 +170,8 @@ export function FechamentoDrawer({
           </SheetDescription>
         </div>
 
-        {/* Corpo Scrollável */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {/* Corpo Scrollável Independente */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-5">
           {/* Card: O Que Será Consolidado? */}
           <div className="rounded-lg border border-border bg-card p-4 space-y-3">
             <div className="flex items-center justify-between">
@@ -373,8 +373,8 @@ export function FechamentoDrawer({
           )}
         </div>
 
-        {/* Footer com Ações */}
-        <div className="p-4 border-t border-border bg-card/50 flex items-center justify-between gap-3">
+        {/* Footer com Ações Fixo na Base */}
+        <div className="shrink-0 p-4 border-t border-border bg-card/70 backdrop-blur-sm flex items-center justify-between gap-3">
           <Button
             variant="outline"
             size="sm"

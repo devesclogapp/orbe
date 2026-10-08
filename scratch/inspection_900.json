@@ -1,0 +1,45 @@
+{
+  "windowInnerHeight": 900,
+  "windowScrollY": 0,
+  "mainScrollTop": null,
+  "mainScrollHeight": null,
+  "mainClientHeight": null,
+  "mainBoundingRect": null,
+  "listBoundingRect": null,
+  "listClientHeight": null,
+  "listScrollHeight": null,
+  "listStyleMaxHeight": null,
+  "listComputedOverflowY": null,
+  "bottomElement": {
+    "tagName": "DIV",
+    "className": "min-h-screen bg-background flex flex-col items-center justify-center p-4",
+    "id": "",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 1430,
+      "height": 900,
+      "top": 0,
+      "right": 1430,
+      "bottom": 900,
+      "left": 0
+    },
+    "outerHTMLPreview": "<div class=\"min-h-screen bg-background flex flex-col items-center justify-center p-4\"><div class=\"mb-10 flex justify-center\"><div class=\"flex flex-col gap-1 items-center text-center w-40\"><span class=\"text-3xl font-black tracking-tighter uppercase\"><span class=\"text-[#FD4C00]\">N</span><span class=\"t"
+  },
+  "leftColBottomElement": {
+    "tagName": "DIV",
+    "className": "min-h-screen bg-background flex flex-col items-center justify-center p-4",
+    "id": "",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 1430,
+      "height": 900,
+      "top": 0,
+      "right": 1430,
+      "bottom": 900,
+      "left": 0
+    },
+    "outerHTMLPreview": "<div class=\"min-h-screen bg-background flex flex-col items-center justify-center p-4\"><div class=\"mb-10 flex justify-center\"><div class=\"flex flex-col gap-1 items-center text-center w-40\"><span class=\"text-3xl font-black tracking-tighter uppercase\"><span class=\"text-[#FD4C00]\">N</span><span class=\"t"
+  }
+}

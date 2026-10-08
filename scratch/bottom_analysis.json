@@ -1,0 +1,202 @@
+{
+  "windowH": 695,
+  "windowW": 1536,
+  "bodyScrollHeight": 695,
+  "htmlScrollHeight": 695,
+  "bodyRect": {
+    "x": 0,
+    "y": 0,
+    "width": 1526,
+    "height": 695,
+    "top": 0,
+    "right": 1526,
+    "bottom": 695,
+    "left": 0
+  },
+  "htmlRect": {
+    "x": 0,
+    "y": 0,
+    "width": 1526,
+    "height": 695,
+    "top": 0,
+    "right": 1526,
+    "bottom": 695,
+    "left": 0
+  },
+  "elementsAtPoints": [
+    {
+      "point": {
+        "x": 100,
+        "y": 680
+      },
+      "tagName": "DIV",
+      "className": "flex items-center justify-between rounded-lg border border-border/80 bg-background p-2 transition-colors",
+      "id": "",
+      "bg": "rgb(247, 247, 247)",
+      "position": "static",
+      "zIndex": "auto",
+      "rect": {
+        "x": 10,
+        "y": 639,
+        "width": 235,
+        "height": 46,
+        "top": 639,
+        "right": 245,
+        "bottom": 685,
+        "left": 10
+      },
+      "outerHTML": "<div class=\"flex items-center justify-between rounded-lg border border-border/80 bg-background p-2 transition-colors\"><button class=\"flex items-center gap-2.5 min-w-0 text-left flex-1\" title=\"Acessar "
+    },
+    {
+      "point": {
+        "x": 400,
+        "y": 680
+      },
+      "tagName": "MAIN",
+      "className": "flex-1 p-4 md:p-6 overflow-y-auto min-w-0",
+      "id": "",
+      "bg": "rgba(0, 0, 0, 0)",
+      "position": "static",
+      "zIndex": "auto",
+      "rect": {
+        "x": 256,
+        "y": 56,
+        "width": 1270,
+        "height": 639,
+        "top": 56,
+        "right": 1526,
+        "bottom": 695,
+        "left": 256
+      },
+      "outerHTML": "<main class=\"flex-1 p-4 md:p-6 overflow-y-auto min-w-0\" style=\"scrollbar-gutter: stable;\"><div class=\"mx-auto max-w-[1560px] w-full\"><div class=\"flex flex-col gap-4 lg:gap-5\"><section class=\"bg-card b"
+    },
+    {
+      "point": {
+        "x": 800,
+        "y": 680
+      },
+      "tagName": "MAIN",
+      "className": "flex-1 p-4 md:p-6 overflow-y-auto min-w-0",
+      "id": "",
+      "bg": "rgba(0, 0, 0, 0)",
+      "position": "static",
+      "zIndex": "auto",
+      "rect": {
+        "x": 256,
+        "y": 56,
+        "width": 1270,
+        "height": 639,
+        "top": 56,
+        "right": 1526,
+        "bottom": 695,
+        "left": 256
+      },
+      "outerHTML": "<main class=\"flex-1 p-4 md:p-6 overflow-y-auto min-w-0\" style=\"scrollbar-gutter: stable;\"><div class=\"mx-auto max-w-[1560px] w-full\"><div class=\"flex flex-col gap-4 lg:gap-5\"><section class=\"bg-card b"
+    },
+    {
+      "point": {
+        "x": 1200,
+        "y": 680
+      },
+      "tagName": "MAIN",
+      "className": "flex-1 p-4 md:p-6 overflow-y-auto min-w-0",
+      "id": "",
+      "bg": "rgba(0, 0, 0, 0)",
+      "position": "static",
+      "zIndex": "auto",
+      "rect": {
+        "x": 256,
+        "y": 56,
+        "width": 1270,
+        "height": 639,
+        "top": 56,
+        "right": 1526,
+        "bottom": 695,
+        "left": 256
+      },
+      "outerHTML": "<main class=\"flex-1 p-4 md:p-6 overflow-y-auto min-w-0\" style=\"scrollbar-gutter: stable;\"><div class=\"mx-auto max-w-[1560px] w-full\"><div class=\"flex flex-col gap-4 lg:gap-5\"><section class=\"bg-card b"
+    },
+    {
+      "point": {
+        "x": 400,
+        "y": 660
+      },
+      "tagName": "SPAN",
+      "className": "font-semibold text-sm text-foreground truncate",
+      "id": "",
+      "bg": "rgba(0, 0, 0, 0)",
+      "position": "static",
+      "zIndex": "auto",
+      "rect": {
+        "x": 331,
+        "y": 658.5,
+        "width": 138.921875,
+        "height": 20,
+        "top": 658.5,
+        "right": 469.921875,
+        "bottom": 678.5,
+        "left": 331
+      },
+      "outerHTML": "<span class=\"font-semibold text-sm text-foreground truncate\">Encarregado GARRA</span>"
+    },
+    {
+      "point": {
+        "x": 400,
+        "y": 690
+      },
+      "tagName": "MAIN",
+      "className": "flex-1 p-4 md:p-6 overflow-y-auto min-w-0",
+      "id": "",
+      "bg": "rgba(0, 0, 0, 0)",
+      "position": "static",
+      "zIndex": "auto",
+      "rect": {
+        "x": 256,
+        "y": 56,
+        "width": 1270,
+        "height": 639,
+        "top": 56,
+        "right": 1526,
+        "bottom": 695,
+        "left": 256
+      },
+      "outerHTML": "<main class=\"flex-1 p-4 md:p-6 overflow-y-auto min-w-0\" style=\"scrollbar-gutter: stable;\"><div class=\"mx-auto max-w-[1560px] w-full\"><div class=\"flex flex-col gap-4 lg:gap-5\"><section class=\"bg-card b"
+    }
+  ],
+  "positioned": [
+    {
+      "tagName": "OL",
+      "className": "fixed top-0 z-[100] flex max-h-screen w-full flex-col-reverse p-4 sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col md:max-w-[420px]",
+      "position": "fixed",
+      "bg": "rgba(0, 0, 0, 0)",
+      "rect": {
+        "x": 1106,
+        "y": 663,
+        "width": 420,
+        "height": 32,
+        "top": 663,
+        "right": 1526,
+        "bottom": 695,
+        "left": 1106
+      },
+      "outerHTML": "<ol tabindex=\"-1\" class=\"fixed top-0 z-[100] flex max-h-screen w-full flex-col-reverse p-4 sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col md:max-w-[420px]\"></ol>"
+    },
+    {
+      "tagName": "ASIDE",
+      "className": "sticky top-0 flex h-screen w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-colors duration-200",
+      "position": "sticky",
+      "bg": "rgb(255, 255, 255)",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 256,
+        "height": 695,
+        "top": 0,
+        "right": 256,
+        "bottom": 695,
+        "left": 0
+      },
+      "outerHTML": "<aside class=\"sticky top-0 flex h-screen w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-colors duration-200\"><div class=\"border-b border-sidebar-bo"
+    }
+  ]
+}
