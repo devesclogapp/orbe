@@ -134,6 +134,7 @@ import UxLabDespesas from "./pages/UxLab/UxLabDespesas";
 import UxLabCentralBancaria from "./pages/UxLab/UxLabCentralBancaria";
 import UxLabInadimplencia from "./pages/UxLab/UxLabInadimplencia";
 import UxLabDesignSystemShowcase from "./pages/UxLab/UxLabDesignSystemShowcase";
+import DevDiaristasDrawersPreview from "./pages/Dev/DevDiaristasDrawersPreview";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -310,6 +311,9 @@ const App = () => (
                             <Route path="/ux-lab/relatorios/:reportId" element={<UxLabRelatorioView />} />
                             <Route path="/ux-lab/design-system" element={<UxLabDesignSystemShowcase />} />
                             <Route path="/uxlab" element={<Navigate to="/ux-lab" replace />} />
+                            {import.meta.env.DEV && (
+                              <Route path="/dev/diaristas-drawers" element={<DevDiaristasDrawersPreview />} />
+                            )}
 
                             <Route path="*" element={<NotFound />} />
                           </Routes>
