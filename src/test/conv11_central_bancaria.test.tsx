@@ -257,8 +257,8 @@ describe("CONV-11 — CENTRAL BANCÁRIA & CNAB: Suíte Oficial de Convergência"
 
   it("08. geração CNAB reutiliza os serviços e RPCs oficiais existentes", () => {
     expect(drawerContent).toContain("CNABService.generateRemessa");
-    expect(drawerContent).toContain("LoteFechamentoDiaristaService.gerarRemessaCNAB");
-    expect(drawerContent).toContain("IntermitentesLoteService.gerarRemessaCNAB");
+    expect(drawerContent).toContain("LoteFechamentoDiaristaService.gerarCNABParaLote");
+    expect(drawerContent).toContain("IntermitentesLoteService.gerarCNABParaLote");
   });
 
   // -------------------------------------------------------------------------

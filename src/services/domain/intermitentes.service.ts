@@ -254,12 +254,16 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
         lote.status === 'FECHADO_FINANCEIRO' ? 'AGUARDANDO_PAGAMENTO' :
         lote.status === 'CNAB_GERADO' ? 'CNAB_GERADO' :
         lote.status === 'PAGO' ? 'PAGO' :
-        lote.status === 'DEVOLVIDO' ? 'DEVOLVIDO_RH' : 'AGUARDANDO_FINANCEIRO'
+        lote.status === 'DEVOLVIDO' ? 'DEVOLVIDO_RH' :
+        lote.status === 'CANCELADO' ? 'CANCELADO' : 'AGUARDANDO_FINANCEIRO'
       );
 
       let divergencia_financeira: string | undefined;
-      // Defesa na leitura: se o lote operacional já está PAGO, o status financeiro de apresentação não pode regredir
-      if (lote.status === 'PAGO') {
+      // Precedência estrita: se o lote operacional está CANCELADO, o status financeiro de apresentação é CANCELADO
+      if (lote.status === 'CANCELADO') {
+        status_financeiro = 'CANCELADO';
+      } else if (lote.status === 'PAGO') {
+        // Defesa na leitura: se o lote operacional já está PAGO, o status financeiro de apresentação não pode regredir
         if (status_financeiro_espelho && status_financeiro_espelho !== 'PAGO') {
           divergencia_financeira = `Espelho financeiro desatualizado (${status_financeiro_espelho}) para lote operacional PAGO.`;
         }
@@ -321,9 +325,9 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
     const he_50 = (itens ?? []).reduce((acc: number, curr: any) => acc + Number(curr.he_50 || 0), 0);
     const he_100 = (itens ?? []).reduce((acc: number, curr: any) => acc + Number(curr.he_100 || 0), 0);
 
-    let status_financeiro = 'AGUARDANDO_FINANCEIRO';
+    let status_financeiro = lote.status === 'CANCELADO' ? 'CANCELADO' : 'AGUARDANDO_FINANCEIRO';
     let status_financeiro_espelho: string | undefined;
-    if (lote.empresa_id && lote.competencia) {
+    if (lote.empresa_id && lote.competencia && lote.status !== 'CANCELADO') {
       const { data: rhLote } = await this.supabase
         .from('rh_financeiro_lotes')
         .select('status')
@@ -338,8 +342,11 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
     }
 
     let divergencia_financeira: string | undefined;
-    // Defesa na leitura: se o lote operacional já está PAGO, o status financeiro de apresentação não pode regredir
-    if (lote.status === 'PAGO') {
+    // Precedência estrita: se o lote operacional está CANCELADO, o status financeiro de apresentação é CANCELADO
+    if (lote.status === 'CANCELADO') {
+      status_financeiro = 'CANCELADO';
+    } else if (lote.status === 'PAGO') {
+      // Defesa na leitura: se o lote operacional já está PAGO, o status financeiro de apresentação não pode regredir
       if (status_financeiro_espelho && status_financeiro_espelho !== 'PAGO') {
         divergencia_financeira = `Espelho financeiro desatualizado (${status_financeiro_espelho}) para lote operacional PAGO.`;
       }

@@ -26,7 +26,7 @@ import {
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams, useLocation } from "react-router-dom";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
@@ -136,6 +136,15 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const location = useLocation();
+
+  const navState = (location.state || {}) as {
+    selectedLoteId?: string;
+    loteId?: string;
+    empresaId?: string;
+    competencia?: string;
+  };
+  const targetLoteId = navState.selectedLoteId || navState.loteId || searchParams.get("loteId") || undefined;
 
   // ── Context Mode (Props ou URL SearchParams) ──
   const effectiveFlowType = flowType || searchParams.get("tipo") || searchParams.get("flowType") || undefined;
@@ -176,13 +185,15 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
     queryFn: () => EmpresaService.getAll(),
   });
 
+  const queryTipo = effectiveFlowType || (dominioFiltro !== "TODAS" ? dominioFiltro : "all");
+
   const { data: results, isLoading, isFetching, refetch } = useQuery({
-    queryKey: ["aprovacoes-rh", empresaFiltro],
+    queryKey: ["aprovacoes-rh", empresaFiltro, queryTipo],
     queryFn: async () => {
       const res = await AprovacoesService.getAprovacoesRh({
         page: 1,
         itemsPerPage: 1000,
-        tipo: "all",
+        tipo: queryTipo,
         empresaId: empresaFiltro === "all" ? "" : empresaFiltro,
         searchTerm: "",
         situacao: undefined as any,
@@ -190,6 +201,22 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
       return (res?.data || []) as unknown as ApprovalItem[];
     },
   });
+
+  // ── Auto-abertura contextual do item recebido por navegação ──
+  useEffect(() => {
+    if (targetLoteId && results && results.length > 0 && !activeItem) {
+      const match = results.find(
+        (i) => i.id === targetLoteId || (i.referencia && i.referencia.includes(targetLoteId.substring(0, 6)))
+      );
+      if (match) {
+        if (match.situacao === "Devolvido" && situacaoFiltro !== "DEVOLVIDO") {
+          setSituacaoFiltro("DEVOLVIDO");
+        }
+        setActiveItem(match);
+        setDrawerOpen(true);
+      }
+    }
+  }, [targetLoteId, results, activeItem, situacaoFiltro]);
 
   const itensRaw = useMemo(() => results || [], [results]);
 

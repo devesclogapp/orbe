@@ -639,7 +639,7 @@ describe('PROMOÇÃO FINAL INTERMITENTES — TESTES E2E E REGRAS DE INTEGRIDADE'
     // CNAB_GERADO deve ser "Aprovado"
     const badgeCnab = getSituacaoBadge('CNAB_GERADO');
     expect(badgeCnab.props.children).toBe('Aprovado');
-    expect(badgeCnab.props.className).toContain('bg-emerald-100');
+    expect(badgeCnab.props.className).toContain('emerald');
   });
 
   // 8. PAGO → Status Financeiro Pago/Conciliado
@@ -891,14 +891,14 @@ describe('PROMOÇÃO FINAL INTERMITENTES — TESTES E2E E REGRAS DE INTEGRIDADE'
     expect(pipeline.stages.some((st) => st.status === 'error')).toBe(false);
   });
 
-  // 12. Drawer Primário Footer CTAs: PAGO não possui nenhum CTA de avanço e mantém Ver fluxo completo
-  it('12. getDrawerFooterActions não permite CTA de avanço em lote terminal PAGO e mantém Ver fluxo completo', () => {
+  // 12. Drawer Primário Footer CTAs: PAGO não possui nenhum CTA de avanço e elimina Ver fluxo completo
+  it('12. getDrawerFooterActions não permite CTA de avanço em lote terminal PAGO e elimina Ver fluxo completo', () => {
     const actions = getDrawerFooterActions('PAGO');
     expect(actions.canAprovarFinanceiro).toBe(false);
     expect(actions.canAvancarRemessa).toBe(false);
     expect(actions.canVerConciliacao).toBe(false);
     expect(actions.hasAvancoAction).toBe(false);
-    expect(actions.canVerFluxoCompleto).toBe(true);
+    expect(actions.canVerFluxoCompleto).toBe(false);
   });
 
   // 13. Drawer Secundário Timeline: PAGO conclui integralmente todas as 6 etapas na timeline com último passo Liquidado

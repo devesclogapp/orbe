@@ -182,6 +182,9 @@ export const ROUTE_ACCESS_RULES: Array<{
   { prefix: "/operacional/pontos", module: "pontos_recebidos" },
   { prefix: "/operacional/diaristas", module: "diaristas_recebidos" },
   { prefix: "/operacional/intermitentes", module: "operacoes_recebidas" },
+  { prefix: "/intermitentes/lotes", module: "operacoes_recebidas" },
+  { prefix: "/intermitentes/inconsistencias", module: "operacoes_recebidas" },
+  { prefix: "/inconsistencias", module: "fechamento_mensal" },
   { prefix: "/producao/diaristas", module: "central_operacional" },
   { prefix: "/rh/diaristas", module: "diaristas_recebidos" },
   { prefix: "/banco-horas/regras", module: "regras_de_banco" },
@@ -319,6 +322,10 @@ export function isRouteForbiddenForRole(role: string | null | undefined, pathnam
   if (normalizedRole === "encarregado") {
     // /central é tela de torre de controle administrativa e nunca deve ser acessada por encarregado
     if (pathname === "/central" || pathname.startsWith("/central/")) {
+      return true;
+    }
+    // /inconsistencias e sub-rotas são de auditoria transversal e bloqueadas para encarregado
+    if (pathname === "/inconsistencias" || pathname.startsWith("/inconsistencias/")) {
       return true;
     }
   }

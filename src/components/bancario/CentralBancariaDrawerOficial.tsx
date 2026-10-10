@@ -50,6 +50,8 @@ import {
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/contexts/AuthContext";
 import { cleanUuid } from "@/services/domain/base.service";
 import {
   ItemObrigacaoBancariaOficial,
@@ -189,18 +191,75 @@ export function CentralBancariaDrawerOficial({
         });
         toast.success(`CNAB CLT gerado: ${result.fileName}`);
         triggerDownload(result.content, result.fileName);
-      } else if (item.origemTipo === "DIARISTAS") {
-        await LoteFechamentoDiaristaService.gerarRemessaCNAB(item.loteId, {
-          bancoRemessa: item.contaPagadora.bancoCodigo,
-          contaBancariaId: contaIdLimpo,
-        });
-        toast.success("Remessa CNAB de Diaristas gerada com sucesso!");
-      } else if (item.origemTipo === "INTERMITENTES") {
-        await IntermitentesLoteService.gerarRemessaCNAB(item.loteId, {
-          bancoRemessa: item.contaPagadora.bancoCodigo,
-          contaBancariaId: contaIdLimpo,
-        });
-        toast.success("Remessa CNAB de Intermitentes gerada com sucesso!");
+      } else if (item.origemTipo === "DIARISTAS" || item.origemTipo === "INTERMITENTES") {
+        // Obter usuário da sessão de forma canônica
+        const currentUser = (await supabase.auth.getUser()).data?.user;
+        if (!currentUser?.id) {
+          toast.error("Geração bloqueada: Sessão de usuário não autenticada.");
+          return;
+        }
+
+        // Resolução canônica e não-mascarada da Conta Bancária Pagadora
+        const { data: contaDb, error: contaErr } = await supabase
+          .from("contas_bancarias_empresa")
+          .select("id, empresa_id, banco_codigo, banco_nome, agencia, agencia_digito, conta, conta_digito, convenio, cedente_cnpj, cedente_nome, ativo, permite_cnab")
+          .eq("id", contaIdLimpo)
+          .single();
+
+        if (contaErr || !contaDb || !contaDb.ativo || !contaDb.permite_cnab) {
+          toast.error("Geração bloqueada: Conta bancária pagadora inativa ou não habilitada para CNAB.");
+          return;
+        }
+
+        // Resolução canônica da Empresa Pagadora
+        const { data: empresaDb, error: empErr } = await supabase
+          .from("empresas")
+          .select("id, nome, cnpj")
+          .eq("id", empresaIdLimpa)
+          .single();
+
+        if (empErr || !empresaDb) {
+          toast.error("Geração bloqueada: Empresa pagadora não encontrada no sistema.");
+          return;
+        }
+
+        const rawCnpj = (contaDb.cedente_cnpj || empresaDb.cnpj || "").replace(/\D/g, "");
+        if (!rawCnpj || (rawCnpj.length !== 14 && rawCnpj.length !== 11) || /^0+$/.test(rawCnpj)) {
+          toast.error("Geração bloqueada: CNPJ/CPF da empresa pagadora inválido ou incompleto.");
+          return;
+        }
+
+        const empresaRemetente = {
+          cnpj: rawCnpj,
+          razao_social: contaDb.cedente_nome || empresaDb.nome || item.empresaNome,
+          banco_codigo: String(contaDb.banco_codigo || item.contaPagadora.bancoCodigo).trim(),
+          agencia: String(contaDb.agencia || item.contaPagadora.agencia).trim(),
+          agencia_digito: String(contaDb.agencia_digito || " ").trim() || " ",
+          conta: String(contaDb.conta || item.contaPagadora.conta).trim(),
+          digito_conta: String(contaDb.conta_digito || " ").trim() || " ",
+          convenio_bancario: contaDb.convenio?.trim() || undefined,
+        };
+
+        if (item.origemTipo === "DIARISTAS") {
+          const result = await LoteFechamentoDiaristaService.gerarCNABParaLote({
+            loteId: item.loteId,
+            empresaId: empresaIdLimpa,
+            geradoPor: currentUser.id,
+            geradoPorNome: currentUser.email || "Operador Financeiro",
+            contaBancariaId: contaIdLimpo,
+            empresaRemetente,
+          });
+          toast.success(`Remessa CNAB de Diaristas gerada com sucesso: ${result.nomeArquivo}`);
+        } else {
+          const result = await IntermitentesLoteService.gerarCNABParaLote({
+            loteId: item.loteId,
+            empresaId: empresaIdLimpa,
+            geradoPor: currentUser.id,
+            geradoPorNome: currentUser.email || "Operador Financeiro",
+            empresaRemetente,
+          });
+          toast.success(`Remessa CNAB de Intermitentes gerada com sucesso: ${result.nomeArquivo}`);
+        }
       }
 
       setModalGerarCnabOpen(false);
