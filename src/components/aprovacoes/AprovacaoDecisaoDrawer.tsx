@@ -21,7 +21,11 @@ import {
   Ban,
   Check,
   Loader2,
-  DollarSign
+  DollarSign,
+  RefreshCw,
+  FileEdit,
+  ArrowRight,
+  UserX
 } from "lucide-react";
 import {
   Sheet,
@@ -206,7 +210,11 @@ export function AprovacaoDecisaoDrawer({
   const [motivoDevolucao, setMotivoDevolucao] = useState("");
 
   // Sub-queries sob demanda
-  const { data: valData } = useQuery({
+  const {
+    data: valData,
+    refetch: refetchCompletude,
+    isFetching: isFetchingCompletude,
+  } = useQuery({
     queryKey: ["completude-lote", item?.id],
     queryFn: async () => {
       if (item?.tipo === "INTERMITENTE" && item?.situacao === "Em análise") {
@@ -297,6 +305,23 @@ export function AprovacaoDecisaoDrawer({
     navigate(route);
   };
 
+  const handleResolverPendenciaColaborador = (colaboradorId?: string, colaboradorNome?: string) => {
+    if (!colaboradorId) {
+      handleAbrirModuloEspecialista();
+      return;
+    }
+    onOpenChange(false);
+    navigate("/colaboradores", {
+      state: {
+        openEditId: colaboradorId,
+        returnTo: "/rh/aprovacoes",
+        loteId: item.id,
+        loteRef: item.referencia,
+        colaboradorNome,
+      },
+    });
+  };
+
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
@@ -347,27 +372,184 @@ export function AprovacaoDecisaoDrawer({
 
           {/* Conteúdo Rolável */}
           <div className="flex-1 p-5 space-y-6">
-            {/* Bloco de Alerta se houver restrição impeditiva */}
+            {/* Bloco de Alerta Estruturado (Fail-Closed) com Diagnóstico Acionável */}
             {isFailClosedBloqueado && (
-              <div className="rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/80 dark:bg-rose-950/30 p-4 space-y-2.5">
-                <div className="flex items-center gap-2 text-rose-800 dark:text-rose-300 font-bold text-sm">
-                  <ShieldAlert className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
-                  Decisão Bloqueada por Pendência Cadastral/Operacional (Fail-Closed)
+              <div className="rounded-xl border border-rose-300 dark:border-rose-900 bg-rose-50/90 dark:bg-rose-950/40 p-4 space-y-4 shadow-sm">
+                {/* Header Fail-Closed */}
+                <div className="flex items-start justify-between gap-3 pb-3 border-b border-rose-200 dark:border-rose-900/60">
+                  <div className="flex items-start gap-2.5">
+                    <ShieldAlert className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="text-sm font-bold text-rose-900 dark:text-rose-200">
+                        Decisão Bloqueada por Pendência Cadastral/Operacional (Fail-Closed)
+                      </h4>
+                      <p className="text-xs text-rose-700/90 dark:text-rose-300/80 mt-0.5">
+                        Aprovação RH impedida preventivamente. O lote não avançará para o Financeiro até que todas as inconsistências sejam regularizadas.
+                      </p>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="border-rose-400 text-rose-800 dark:border-rose-700 dark:text-rose-300 text-[10px] font-bold shrink-0 bg-rose-100/60 dark:bg-rose-900/40">
+                    Bloqueio Ativo
+                  </Badge>
                 </div>
-                <p className="text-xs text-rose-700 dark:text-rose-300/90 leading-relaxed">
-                  {isOperacaoRestrita
-                    ? "Esta operação possui restrições de horários e deve ser corrigida em Pendências antes de ser aprovada pelo RH."
-                    : "Este lote de intermitentes possui inconsistências cadastrais ou de apuração."}
-                </p>
-                <div className="pt-1">
+
+                {/* Estrutura: PROBLEMA -> DIAGNÓSTICO -> IMPACTO -> PRÓXIMA AÇÃO -> DESTINO CORRETO */}
+                {item.tipo === "INTERMITENTE" && (
+                  <div className="space-y-3">
+                    {/* Lista de Registros Inconsistentes */}
+                    {valData?.itensPendentes && valData.itensPendentes.length > 0 ? (
+                      valData.itensPendentes.map((p, idx) => (
+                        <div
+                          key={p.colaboradorId || idx}
+                          className="rounded-lg border border-rose-200 dark:border-rose-900/60 bg-card p-3.5 space-y-3 shadow-xs"
+                        >
+                          {/* Colaborador Afetado */}
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div className="flex items-center gap-2">
+                              <span className="w-6 h-6 rounded-full bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300 flex items-center justify-center text-xs font-bold shrink-0">
+                                {idx + 1}
+                              </span>
+                              <div>
+                                <span className="text-xs font-bold text-foreground block">
+                                  {p.colaborador}
+                                </span>
+                                <span className="text-[11px] text-muted-foreground">
+                                  {p.cargo ? `${p.cargo} · ` : ""}Matrícula: {p.matricula || "Não informada"}
+                                </span>
+                              </div>
+                            </div>
+                            <Badge variant="outline" className="text-[10px] border-amber-300 bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                              Pendente Complemento
+                            </Badge>
+                          </div>
+
+                          {/* Diagnóstico Factual (Motivo Real da Validação) */}
+                          <div className="space-y-1.5 text-xs bg-muted/40 p-2.5 rounded-md border border-border/60">
+                            <span className="text-[11px] font-bold text-rose-800 dark:text-rose-300 uppercase tracking-wider block">
+                              Diagnóstico Factual:
+                            </span>
+
+                            {p.detalhes?.operacional && p.detalhes.operacional.length > 0 && (
+                              <div className="text-[11px] text-foreground">
+                                <span className="font-semibold text-rose-700 dark:text-rose-400">Identificação Pessoal: </span>
+                                {p.detalhes.operacional.join(", ")}
+                              </div>
+                            )}
+
+                            {p.detalhes?.rh && p.detalhes.rh.length > 0 && (
+                              <div className="text-[11px] text-foreground">
+                                <span className="font-semibold text-rose-700 dark:text-rose-400">Remuneração & Regra RH: </span>
+                                {p.detalhes.rh.join(", ")}
+                              </div>
+                            )}
+
+                            {p.detalhes?.financeiro && p.detalhes.financeiro.length > 0 && (
+                              <div className="text-[11px] text-foreground">
+                                <span className="font-semibold text-rose-700 dark:text-rose-400">Dados Bancários para Pagamento: </span>
+                                {p.detalhes.financeiro.join(", ")}
+                              </div>
+                            )}
+
+                            {!p.detalhes && (
+                              <p className="text-[11px] text-muted-foreground">{p.motivo}</p>
+                            )}
+                          </div>
+
+                          {/* Impacto e Próxima Ação */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                            <div className="p-2 rounded bg-muted/20 border border-border/40">
+                              <span className="font-semibold text-muted-foreground block text-[10px] uppercase">Impacto:</span>
+                              <span className="text-foreground">Lote impedido de gerar despesa financeira e remessa CNAB.</span>
+                            </div>
+                            <div className="p-2 rounded bg-muted/20 border border-border/40">
+                              <span className="font-semibold text-muted-foreground block text-[10px] uppercase">Próxima Ação:</span>
+                              <span className="text-foreground">{p.proximaAcao}</span>
+                            </div>
+                          </div>
+
+                          {/* CTA Corretivo Direto no Registro Afetado */}
+                          <div className="pt-1 flex items-center justify-between gap-2 flex-wrap">
+                            <span className="text-[10px] text-muted-foreground">
+                              Destino: <strong className="text-foreground">{p.moduloDestino}</strong>
+                            </span>
+                            <Button
+                              size="sm"
+                              onClick={() => handleResolverPendenciaColaborador(p.colaboradorId, p.colaborador)}
+                              className="h-8 text-xs font-bold bg-[#2563EB] hover:bg-[#2563EB]/90 text-white shadow-xs"
+                            >
+                              <FileEdit className="w-3.5 h-3.5 mr-1.5" />
+                              Resolver Cadastro de {p.colaborador.split(" ")[0]}
+                            </Button>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      /* Fallback para pendências genéricas */
+                      <div className="space-y-2 text-xs">
+                        <span className="font-bold text-rose-800 dark:text-rose-300">Pendências identificadas no lote:</span>
+                        <ul className="list-disc pl-5 space-y-1 text-rose-700 dark:text-rose-300/90 text-xs">
+                          {valData?.pendencias.map((pend, i) => (
+                            <li key={i}>{pend}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Se for Operação Restrita */}
+                {isOperacaoRestrita && (
+                  <div className="rounded-lg border border-rose-200 dark:border-rose-900/60 bg-card p-3 space-y-2.5 text-xs">
+                    <div>
+                      <span className="font-bold text-rose-800 dark:text-rose-300 block">Diagnóstico Operacional:</span>
+                      <p className="text-muted-foreground text-[11px] mt-0.5">
+                        Horários de entrada ou saída não registrados ou status em restrição operacional.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                      <div className="p-2 rounded bg-muted/20 border border-border/40">
+                        <span className="font-semibold text-muted-foreground block text-[10px] uppercase">Impacto:</span>
+                        <span className="text-foreground">Impossível faturar operação ou apurar rateio da equipe.</span>
+                      </div>
+                      <div className="p-2 rounded bg-muted/20 border border-border/40">
+                        <span className="font-semibold text-muted-foreground block text-[10px] uppercase">Próxima Ação:</span>
+                        <span className="text-foreground">Preencher horários de entrada e saída na operação de volume.</span>
+                      </div>
+                    </div>
+                    <div className="pt-1 flex justify-end">
+                      <Button
+                        size="sm"
+                        onClick={handleAbrirModuloEspecialista}
+                        className="h-8 text-xs font-bold bg-[#2563EB] hover:bg-[#2563EB]/90 text-white shadow-xs"
+                      >
+                        <FileEdit className="w-3.5 h-3.5 mr-1.5" />
+                        Corrigir na Recepção Operacional
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Barra de Revalidação e Ações Rápidas */}
+                <div className="pt-2 border-t border-rose-200 dark:border-rose-900/60 flex items-center justify-between gap-2 flex-wrap">
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={handleAbrirModuloEspecialista}
-                    className="h-8 text-xs font-bold border-rose-300 text-rose-800 dark:border-rose-800 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/40"
+                    disabled={isFetchingCompletude}
+                    onClick={() => refetchCompletude()}
+                    className="h-8 text-xs font-semibold border-rose-300 text-rose-800 dark:border-rose-800 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/40"
                   >
-                    Resolver no Módulo Especialista
-                    <ExternalLink className="w-3.5 h-3.5 ml-1.5" />
+                    <RefreshCw className={cn("w-3.5 h-3.5 mr-1.5", isFetchingCompletude && "animate-spin")} />
+                    Revalidar Integridade
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleAbrirModuloEspecialista}
+                    className="h-8 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
+                    Ver Lote de Origem
                   </Button>
                 </div>
               </div>
@@ -463,6 +645,31 @@ export function AprovacaoDecisaoDrawer({
                       </div>
                       <Badge variant="outline" className={!isOperacaoRestrita ? "border-emerald-300 text-emerald-700 text-[10px]" : "border-rose-300 text-rose-700 text-[10px] font-bold"}>
                         {!isOperacaoRestrita ? "Conforme" : "Pendente"}
+                      </Badge>
+                    </div>
+                  )}
+
+                  {item.tipo === "INTERMITENTE" && (
+                    <div className="flex items-start justify-between p-3 gap-3">
+                      <div className="flex items-start gap-2 min-w-0">
+                        {!isIntermitenteIncompleto ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                        ) : (
+                          <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                        )}
+                        <div>
+                          <span className={!isIntermitenteIncompleto ? "font-medium text-foreground" : "font-bold text-rose-700 dark:text-rose-400"}>
+                            Completude Cadastral & Bancária
+                          </span>
+                          <p className="text-[11px] text-muted-foreground">
+                            {!isIntermitenteIncompleto
+                              ? "Todos os colaboradores do lote possuem dados cadastrais, remuneração e bancários completos."
+                              : `${valData?.itensPendentes?.length || valData?.pendencias?.length || 1} pendência(s) cadastral(is) impeditiva(s) detectada(s).`}
+                          </p>
+                        </div>
+                      </div>
+                      <Badge variant="outline" className={!isIntermitenteIncompleto ? "border-emerald-300 text-emerald-700 text-[10px]" : "border-rose-300 text-rose-700 text-[10px] font-bold"}>
+                        {!isIntermitenteIncompleto ? "Conforme" : "Pendente (Fail-Closed)"}
                       </Badge>
                     </div>
                   )}

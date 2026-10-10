@@ -137,6 +137,13 @@ const Colaboradores = () => {
   const [selectedRegime, setSelectedRegime] = useState("all");
   const [selectedModelo, setSelectedModelo] = useState("all");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [returnContext, setReturnContext] = useState<{
+    returnTo?: string;
+    loteId?: string;
+    loteRef?: string;
+    colaboradorNome?: string;
+  } | null>(null);
+  const [pendingEditId, setPendingEditId] = useState<string | null>(null);
 
 
   const [form, setForm] = useState(getInitialColaboradorFormData());
@@ -213,6 +220,22 @@ const Colaboradores = () => {
       queryClient.invalidateQueries({ queryKey: ["colaboradores_list"] });
       resetWizardState();
       setOpen(false);
+
+      if (returnContext?.returnTo) {
+        const dest = returnContext.returnTo;
+        const loteId = returnContext.loteId;
+        setReturnContext(null);
+        toast.info("Retornando à Central de Aprovações RH...", {
+          action: {
+            label: "Voltar Agora",
+            onClick: () => navigate(dest, { state: { loteId } }),
+          },
+        });
+        setTimeout(() => {
+          navigate(dest, { state: { loteId } });
+        }, 900);
+      }
+
       if (isOnboardingReturn) {
         await handleOnboardingReturn();
       }
@@ -277,7 +300,19 @@ const Colaboradores = () => {
   };
 
   useEffect(() => {
-    if (location.state?.openNew && !open) {
+    if (location.state?.returnTo && !returnContext) {
+      setReturnContext({
+        returnTo: location.state.returnTo,
+        loteId: location.state.loteId,
+        loteRef: location.state.loteRef,
+        colaboradorNome: location.state.colaboradorNome,
+      });
+    }
+
+    if (location.state?.openEditId && !open) {
+      setPendingEditId(location.state.openEditId);
+      navigate(location.pathname, { replace: true, state: {} });
+    } else if (location.state?.openNew && !open) {
       handleModalOpenChange(true);
       setStep(1);
       setEditingId(null);
@@ -291,14 +326,19 @@ const Colaboradores = () => {
         }));
       }
       navigate(location.pathname, { replace: true, state: {} });
-    } else if (location.state?.openEditId && !open && list.length > 0) {
-      const colab = list.find((c: any) => c.id === location.state.openEditId);
+    }
+  }, [location.state, open, navigate, returnContext]);
+
+  // Disparo seguro da edição assim que a lista de colaboradores estiver disponível
+  useEffect(() => {
+    if (pendingEditId && list.length > 0 && !open) {
+      const colab = list.find((c: any) => c.id === pendingEditId);
       if (colab) {
         handleEdit(colab);
+        setPendingEditId(null);
       }
-      navigate(location.pathname, { replace: true, state: {} });
     }
-  }, [location.state, open, navigate, list]);
+  }, [pendingEditId, list, open]);
 
   const handleDelete = (id: string) => {
     if (confirm("Tem certeza que deseja remover este colaborador?")) {
@@ -806,6 +846,23 @@ const Colaboradores = () => {
               </div>
             )}
           </DialogHeader>
+
+          {returnContext && (
+            <div className="rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50/90 dark:bg-amber-950/40 p-3 text-xs space-y-1.5 mb-1">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 font-bold text-amber-900 dark:text-amber-200">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                  Regularização Cadastral para Aprovação RH
+                </div>
+                <Badge variant="outline" className="border-amber-400 text-amber-800 dark:text-amber-300 text-[10px]">
+                  Lote {returnContext.loteRef || returnContext.loteId?.substring(0, 6) || "RH"}
+                </Badge>
+              </div>
+              <p className="text-[11px] text-amber-800/90 dark:text-amber-300/80 leading-relaxed">
+                Preencha o CPF, defina a remuneração (valor base/hora) e informe os dados bancários para viabilizar a aprovação na Central.
+              </p>
+            </div>
+          )}
 
           {/* Resumo de Completude do Cadastro */}
           <EntityCompletenessPanel data={formCompletudeDetailed} />

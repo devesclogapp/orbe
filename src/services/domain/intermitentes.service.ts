@@ -52,6 +52,30 @@ export interface IntermitenteLoteFechamento {
   empresa?: { nome: string } | null;
 }
 
+export interface PendenciaCompletudeLoteItem {
+  colaboradorId?: string;
+  colaborador: string;
+  matricula?: string;
+  cargo?: string;
+  categoria: 'cadastral' | 'bancario' | 'vinculo' | 'operacional' | 'CADASTRAL';
+  motivo: string;
+  proximaAcao: string;
+  moduloDestino: string;
+  rotaDestino: string;
+  pendencias?: string[];
+  detalhes?: {
+    operacional?: string[];
+    rh?: string[];
+    financeiro?: string[];
+  };
+}
+
+export interface CompletudeLoteResult {
+  podeAprovar: boolean;
+  pendencias: string[];
+  itensPendentes?: PendenciaCompletudeLoteItem[];
+}
+
 class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fechamento'> {
   constructor() {
     super('intermitentes_lotes_fechamento');
@@ -696,25 +720,35 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
     return true;
   }
 
-  async verificarCompletudeLote(loteId: string) {
+  async verificarCompletudeLote(loteId: string): Promise<CompletudeLoteResult> {
     const { data: lancamentos, error: errLanc } = await this.supabase
       .from('lancamentos_intermitentes')
       .select('colaborador_id, nome_colaborador')
       .eq('lote_fechamento_id', loteId);
 
     if (errLanc) throw errLanc;
-    if (!lancamentos || lancamentos.length === 0) return { podeAprovar: false, pendencias: [] };
+    if (!lancamentos || lancamentos.length === 0) {
+      return { podeAprovar: false, pendencias: ['Lote sem lançamentos operacionais vinculados.'], itensPendentes: [] };
+    }
 
     const colabIds = [...new Set(lancamentos.map((l: any) => l.colaborador_id).filter(Boolean))];
     const mapLancSemColab = lancamentos.filter((l: any) => !l.colaborador_id);
 
-    const pendencias: Array<{ colaborador: string; pendencias: string[] }> = [];
+    const itensPendentes: PendenciaCompletudeLoteItem[] = [];
+    const pendencias: string[] = [];
 
     if (mapLancSemColab.length > 0) {
       for (const l of mapLancSemColab) {
-        pendencias.push({
+        const msg = `Colaborador "${l.nome_colaborador || 'Desconhecido'}" sem vínculo na base operacional (ID nulo).`;
+        pendencias.push(msg);
+        itensPendentes.push({
           colaborador: l.nome_colaborador || 'Desconhecido',
-          pendencias: ['Colaborador não vinculado à base (sem ID)']
+          categoria: 'vinculo',
+          motivo: msg,
+          proximaAcao: 'Vincular o lançamento a um colaborador cadastrado na base de Cadastros.',
+          moduloDestino: 'Lançamentos de Intermitentes',
+          rotaDestino: '/intermitentes/lotes',
+          pendencias: [msg]
         });
       }
     }
@@ -729,20 +763,41 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
 
       for (const c of (colaboradores ?? [])) {
         const comp = getColaboradorCompletudeDetailed(c);
-        const isOk = comp.operacional.completo && comp.rh.completo && comp.financeiro.completo;
-        const falhas = [...new Set([...comp.operacional.pendencias, ...comp.rh.pendencias, ...comp.financeiro.pendencias])];
+        const faltantesOp = comp.operacional.faltantes || [];
+        const faltantesRh = comp.rh.faltantes || [];
+        const faltantesFin = comp.financeiro.faltantes || [];
+        const isOk = comp.geral.completo && faltantesOp.length === 0 && faltantesRh.length === 0 && faltantesFin.length === 0;
+
         if (!isOk) {
-          pendencias.push({
+          const faltantesGeral = [...faltantesOp, ...faltantesRh, ...faltantesFin];
+          const motivo = `Cadastro incompleto: ${faltantesGeral.join(', ')}.`;
+          pendencias.push(`${c.nome}: ${motivo}`);
+
+          itensPendentes.push({
+            colaboradorId: c.id,
             colaborador: c.nome_completo || c.nome || "Colaborador",
-            pendencias: falhas
+            matricula: c.matricula || undefined,
+            cargo: c.cargo || undefined,
+            categoria: 'CADASTRAL',
+            motivo,
+            proximaAcao: 'Completar os campos cadastrais pendentes (pessoal, remuneração e dados bancários) do colaborador no módulo de Cadastros.',
+            moduloDestino: 'Cadastros / Colaboradores',
+            rotaDestino: '/colaboradores',
+            pendencias: faltantesGeral,
+            detalhes: {
+              operacional: faltantesOp,
+              rh: faltantesRh,
+              financeiro: faltantesFin,
+            }
           });
         }
       }
     }
 
     return {
-      podeAprovar: pendencias.length === 0,
-      pendencias
+      podeAprovar: pendencias.length === 0 && itensPendentes.length === 0,
+      pendencias,
+      itensPendentes
     };
   }
 
